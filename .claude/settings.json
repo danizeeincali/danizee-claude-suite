@@ -1,0 +1,108 @@
+{
+  "danizee-suite": {
+    "version": "1.0.0",
+    "installedAt": "2025-12-30T04:02:56.465Z",
+    "plugins": {
+      "claude-flow": true,
+      "compound-engineering": true,
+      "frontend-design": true
+    },
+    "updatedAt": "2025-12-30T04:02:56.465Z"
+  },
+  "mcpServers": {
+    "claude-flow": {
+      "command": "npx",
+      "args": [
+        "claude-flow@alpha",
+        "mcp",
+        "start"
+      ],
+      "description": "Claude Flow multi-agent orchestration with memory and swarm support"
+    }
+  },
+  "permissions": {
+    "allow": [
+      "Bash(npx claude-flow*)",
+      "Bash(git worktree*)",
+      "Read(docs/solutions/**)",
+      "Write(docs/solutions/**)"
+    ]
+  },
+  "features": {
+    "danizee-compound-memory": true,
+    "danizee-compound-checkpoints": true,
+    "danizee-compound-docs": true
+  },
+  "plugins": {
+    "claude-flow": {
+      "namespace": "danizee-flow",
+      "swarm": {
+        "topologies": [
+          "hierarchical",
+          "mesh",
+          "ring",
+          "star"
+        ],
+        "defaultTopology": "hierarchical"
+      },
+      "memory": {
+        "enabled": true,
+        "namespaces": [
+          "project/features/*",
+          "project/bugs/*",
+          "project/security/*",
+          "project/performance/*",
+          "project/architecture/*",
+          "project/reviews/*",
+          "project/incidents/*",
+          "project/tdd/*",
+          "project/implementations/*",
+          "project/debugging/*",
+          "project/full-tdd-swarm/*",
+          "project/multi-repo/*"
+        ]
+      },
+      "agents": [
+        "coder",
+        "tester",
+        "reviewer",
+        "security-sentinel",
+        "performance-oracle",
+        "architecture-strategist",
+        "pattern-recognition-specialist",
+        "code-simplicity-reviewer",
+        "analyst",
+        "git-history-analyzer",
+        "system-architect"
+      ]
+    },
+    "compound-engineering": {
+      "namespace": "danizee-compound",
+      "commands": [
+        "plan",
+        "work",
+        "review",
+        "compound"
+      ],
+      "docsPath": "docs/solutions",
+      "checkpoints": {
+        "enabled": true,
+        "pauseMessage": "Say \"continue\" to proceed or give feedback to redirect."
+      }
+    },
+    "frontend-design": {
+      "namespace": "danizee-frontend",
+      "commands": [
+        "design",
+        "component",
+        "layout",
+        "theme"
+      ],
+      "frameworks": [
+        "react",
+        "vue",
+        "svelte"
+      ]
+    }
+  }
+}
