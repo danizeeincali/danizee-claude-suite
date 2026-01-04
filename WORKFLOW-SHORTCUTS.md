@@ -31,6 +31,112 @@ Every workflow follows this pattern:
 
 ---
 
+## Session Management
+
+### Cold-Start Session
+
+**Say:** "Start session with [plan-file]" or "Resume work on [task]"
+**Slash:** `/w-start [plan-file]`
+
+**What it does:** Boot up a session with full project context - perfect when `--resume` isn't available.
+
+**Flow:**
+1. **Project Scan** - Read `CLAUDE.md`, `.claude/settings.json`, tree structure
+2. **Load Context** - If plan-file provided, load it into working memory
+3. **Memory Sync** - Search memory for related past work
+4. **Ready State** - Summary of context loaded, ready for commands
+
+**When to use:**
+- Starting fresh VS Code terminal
+- Beginning work without `--resume` flag
+- Switching contexts between different features/bugs
+- After system restart or long break
+
+**Example:**
+```
+/w-start .claude/plans/oauth-implementation.md
+/w-start
+```
+
+<details>
+<summary>Under the hood</summary>
+
+```bash
+# Project Context
+Read CLAUDE.md
+Read .claude/settings.json
+Bash("ls -la && git status && git log --oneline -5")
+
+# Memory Sync
+mcp__claude-flow__memory_search { pattern: "project/*" }
+mcp__claude-flow__memory_search { pattern: "session/*" }
+
+# Load Plan (if provided)
+Read [plan-file]
+
+# Ready
+"Session initialized. Context loaded. Ready for commands."
+```
+</details>
+
+---
+
+### End Session
+
+**Say:** "End session" or "Wrap up work"
+**Slash:** `/w-end [category]`
+
+**What it does:** Gracefully end a work session - compound knowledge + commit changes.
+
+**Flow:**
+1. **Gather Work** - Summarize what was accomplished this session
+2. **Compound** - Store patterns and solutions in memory
+3. **Commit** - Create a commit with session summary
+4. **Handoff** - Generate context for next `/w-start`
+
+**Checkpoints:**
+| # | After | You Review |
+|---|-------|------------|
+| 0 | Summary | Work accomplished this session |
+| 1 | Compound | Patterns to store |
+| 2 | Commit | Commit message and changes |
+| 3 | Handoff | Context saved for next session |
+
+**Categories:** `feature`, `bug`, `security`, `performance`, `architecture`, `docs`, `refactor`
+
+**Example:**
+```
+/w-end feature
+/w-end bug
+```
+
+<details>
+<summary>Under the hood</summary>
+
+```bash
+# Gather
+git diff --stat
+git status
+
+# Compound
+mcp__claude-flow__memory_usage { action: "store", key: "session/[timestamp]" }
+/compound-engineering:workflows:compound
+
+# Commit
+git add -A
+git commit -m "[category]: [summary]
+
+🤖 Generated with Claude Code
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
+
+# Handoff
+Write session summary to .claude/plans/last-session.md
+```
+</details>
+
+---
+
 ## Slash Commands (Quick Access)
 
 Use the `/w-` prefix for quick workflow invocation:
@@ -282,6 +388,97 @@ Task("code-simplicity-reviewer", "Simplicity check", "reviewer")
 mcp__claude-flow__memory_usage { action: "store", key: "project/full-tdd-swarm/[feature]" }
 /compound-engineering:workflows:compound
 mcp__claude-flow__neural_patterns { action: "learn" }
+```
+</details>
+
+---
+
+### Idea → TDD Swarm
+
+**Say:** "I have an idea for [rough concept]" or "Help me build [half-baked idea]"
+**Slash:** `/w-idea-tdd-swarm [idea]`
+
+**What it does:** Deep interview to refine a half-baked idea, then flows into Full TDD Swarm.
+
+**Philosophy:** Ideas need refinement before implementation. This workflow uses structured interviewing to transform vague concepts into clear specs, then executes them with TDD Swarm rigor.
+
+**Phase 1: Deep Interview**
+- Clarify the core value and purpose
+- Define success criteria (how do we know it works?)
+- Identify edge cases and constraints
+- Explore integration points
+- Establish measurable acceptance criteria
+
+**Phase 2: Full TDD Swarm**
+- Plan → Tests → Build → Review → Compound
+
+**Interview Questions:**
+```
+• What problem does this solve? Who benefits?
+• What does "done" look like? Be specific.
+• What are the must-have vs nice-to-have features?
+• What are the constraints? (time, tech, security)
+• What could go wrong? Edge cases?
+• How will we test this works correctly?
+• Does this integrate with existing code?
+```
+
+**Checkpoints:**
+| # | After | You Review |
+|---|-------|------------|
+| 0 | Idea captured | Initial rough concept |
+| 1 | Interview | Clarified requirements |
+| 2 | Spec | Refined, actionable specification |
+| 3 | Plan | Architecture based on refined spec |
+| 4 | Tests | Test cases (must fail) |
+| 5 | Build | Implementation (tests pass) |
+| 6 | Review | Full review |
+| 7 | Compound | Complete pattern to store |
+
+**Compounds:**
+```
+Memory: project/ideas/[idea-name]
+Doc: docs/solutions/ideas/[idea-name].md
+Pattern: interview answers + refined spec + implementation
+```
+
+**Example:**
+```
+User: /w-idea-tdd-swarm I want some kind of caching layer for the API
+Claude: Let me interview you to refine this idea...
+  - What problem does caching solve here? Slow responses? Rate limits?
+  - What data needs caching? All endpoints or specific ones?
+  - What's the TTL? Should users be able to invalidate?
+  ...
+Claude: [Checkpoint 2] Here's the refined spec:
+  - Redis cache for /api/products with 5min TTL
+  - Cache-Control headers for browser caching
+  - Admin endpoint to invalidate cache
+User: continue
+Claude: [Proceeds to Full TDD Swarm...]
+```
+
+<details>
+<summary>Under the hood</summary>
+
+```bash
+# Phase 1: Deep Interview
+AskUserQuestion("What problem does this solve?", options)
+AskUserQuestion("What does done look like?", options)
+AskUserQuestion("Must-haves vs nice-to-haves?", options)
+AskUserQuestion("Constraints?", options)
+AskUserQuestion("Edge cases?", options)
+AskUserQuestion("How to test?", options)
+
+# Generate refined spec
+Write refined spec to .claude/plans/[idea]-spec.md
+
+# Phase 2: Full TDD Swarm
+/w-tdd-swarm [refined-spec]
+
+# Compound
+mcp__claude-flow__memory_usage { action: "store", key: "project/ideas/[idea]" }
+/compound-engineering:workflows:compound
 ```
 </details>
 
@@ -724,6 +921,159 @@ Claude: Found 3 matches:
   - project/features/oauth2-google (Nov 2024)
   - project/security/auth-module (Oct 2024)
 ```
+
+---
+
+## Ralph Wiggum Workflows
+
+Iterative AI development methodology - a "simple while loop that repeatedly feeds an AI agent a prompt until completion."
+
+**Core concept:**
+```bash
+while :; do cat PROMPT.md | claude ; done
+```
+
+**Best for:** Greenfield projects, TDD cycles, overnight automation, measurable completion tasks.
+
+---
+
+### Ralph This
+
+**Say:** "Ralph this [prompt]" or "Run a Ralph loop on [file]"
+**Slash:** `/w-ralph-this [prompt or file path]`
+
+**What it does:** Run a Ralph Wiggum iterative loop on a prompt or file until completion.
+
+**Parameters:**
+- **Prompt**: Inline text or path to a .md file
+- **Max Iterations**: Safety limit (default: 10)
+- **Completion Promise**: Exact string that signals done (e.g., "DONE", "ALL_TESTS_PASS")
+
+**Checkpoints:**
+| # | After | You Review |
+|---|-------|------------|
+| 0 | Load | Prompt content and config |
+| 1 | Each iteration | Progress and state |
+| 2 | Completion | Final result |
+| 3 | Compound | Pattern to store |
+
+**Example:**
+```
+/w-ralph-this "Build a REST API with full test coverage. When all tests pass, output COMPLETE."
+/w-ralph-this .claude/plans/api-spec.md
+```
+
+<details>
+<summary>Under the hood</summary>
+
+```bash
+# Load prompt
+content = Read(file_path) OR inline prompt
+completionSignal = extract_completion_promise(content)
+maxIterations = 10
+
+# Ralph loop
+for (i = 0; i < maxIterations; i++) {
+  result = Task("executor", content)
+  if (result.contains(completionSignal)) {
+    break  # Done!
+  }
+  # Continue to next iteration
+}
+
+# Compound
+mcp__claude-flow__memory_usage { action: "store", key: "project/ralph/[name]" }
+```
+</details>
+
+---
+
+### Ralph Goals
+
+**Say:** "Ralph goals for [rough idea]" or "Build me a Ralph spec for [concept]"
+**Slash:** `/w-ralph-goals [idea]`
+
+**What it does:** Interactive interview to build an optimal Ralph Wiggum spec from a rough idea.
+
+**Interview Flow:**
+1. **Capture Idea** - Get the rough concept
+2. **Interview** - Clarify completion criteria, phases, testing, limits
+3. **Build Spec** - Generate a Ralph-ready prompt
+4. **Save** - Write to `.claude/plans/YYYY-MM-DD-[name]-ralph.md`
+5. **Execute?** - Optionally run `/w-ralph-this` on it
+
+**Interview Questions:**
+```
+• What specific output signals that the task is complete?
+• What are the major phases or milestones?
+• How can each phase be automatically verified?
+• What's a reasonable max iteration limit?
+• Should the loop include self-testing cycles?
+```
+
+**Checkpoints:**
+| # | After | You Review |
+|---|-------|------------|
+| 0 | Idea captured | Initial concept |
+| 1 | Interview | Answers and clarity |
+| 2 | Spec built | Generated Ralph prompt |
+| 3 | Execute? | Option to run immediately |
+
+**Compounds:**
+```
+Memory: project/ralph-specs/[idea-name]
+Doc: .claude/plans/YYYY-MM-DD-[name]-ralph.md
+Pattern: interview answers + optimized prompt
+```
+
+**Example:**
+```
+User: /w-ralph-goals I want to build a CLI tool
+Claude: Let me help you build a Ralph spec for this...
+  - What signals completion? "All CLI commands work"? "Tests pass"?
+  - What are the phases? Init → Core commands → Help → Tests?
+  - How to verify each phase? Unit tests? Integration tests?
+  - Max iterations? 10? 20?
+  ...
+Claude: [Checkpoint 2] Here's your Ralph spec:
+  ---
+  # CLI Tool Ralph Spec
+  ## Completion Signal: ALL_TESTS_PASS
+  ## Max Iterations: 15
+  ## Prompt:
+  Build a CLI tool with the following commands...
+  When all tests pass, output "ALL_TESTS_PASS"
+  ---
+User: Run it
+Claude: [Executes /w-ralph-this on the spec]
+```
+
+<details>
+<summary>Under the hood</summary>
+
+```bash
+# Interview
+AskUserQuestion("What signals completion?", options)
+AskUserQuestion("What are the phases?", options)
+AskUserQuestion("How to verify each phase?", options)
+AskUserQuestion("Max iterations?", options)
+AskUserQuestion("Include self-testing?", options)
+
+# Build spec
+prompt = generate_ralph_prompt(answers)
+filename = `YYYY-MM-DD-[name]-ralph.md`
+Write(filename, prompt)
+
+# Execute?
+AskUserQuestion("Run this Ralph spec now?", ["Yes", "No"])
+if (yes) {
+  /w-ralph-this [filename]
+}
+
+# Compound
+mcp__claude-flow__memory_usage { action: "store", key: "project/ralph-specs/[name]" }
+```
+</details>
 
 ---
 
