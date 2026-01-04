@@ -37,6 +37,7 @@ Use the `/.` prefix for quick workflow invocation:
 
 | Command | Description |
 |---------|-------------|
+| `/.start [plan-file]` | Cold-start session with project context |
 | `/.tdd-swarm [feature]` | Full TDD + Swarm + Review combined (recommended) |
 | `/.swarm [task]` | Parallel agents for rapid implementation |
 | `/.fix [bug]` | Quick bug investigation and fix |
@@ -710,6 +711,7 @@ Claude: Found 3 matches:
 
 | Workflow | Slash | Natural Language | Best For |
 |----------|-------|------------------|----------|
+| Cold-Start | `/.start` | "start session with [plan]" | Resume without --resume |
 | Full TDD Swarm | `/.tdd-swarm` | "Full TDD Swarm on [X]" | New features (recommended) |
 | Swarm Build | `/.swarm` | "swarm to build [X]" | Parallel implementation |
 | Full Cycle | - | "full cycle workflow on [X]" | Features without strict TDD |
