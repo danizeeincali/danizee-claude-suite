@@ -46,8 +46,8 @@ export function getDefaultSettings() {
     },
     permissions: {
       allow: [
-        'Bash(npx claude-flow*)',
-        'Bash(git worktree*)',
+        'Bash(npx claude-flow:*)',
+        'Bash(git worktree:*)',
         'Read(docs/solutions/**)',
         'Write(docs/solutions/**)'
       ]
