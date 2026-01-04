@@ -1,10 +1,10 @@
-# /.swarm
+# /w-swarm
 
 Swarm Build - Spawns parallel agents (coder, tester, reviewer) for rapid implementation.
 
 ## Usage
 ```
-/.swarm [task description]
+/w-swarm [task description]
 ```
 
 ## What Happens
@@ -30,5 +30,5 @@ Doc: docs/solutions/implementations/[task-name].md
 
 ## Example
 ```
-/.swarm REST API for user management with CRUD and tests
+/w-swarm REST API for user management with CRUD and tests
 ```

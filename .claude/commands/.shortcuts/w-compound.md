@@ -1,10 +1,10 @@
-# /.compound
+# /w-compound
 
 Compound This - Captures current context as reusable knowledge (ad-hoc).
 
 ## Usage
 ```
-/.compound [category]
+/w-compound [category]
 ```
 
 ## Categories
@@ -21,7 +21,7 @@ Compound This - Captures current context as reusable knowledge (ad-hoc).
 
 ## Example
 ```
-/.compound feature
+/w-compound feature
 # Stores to: project/features/[auto-named]
 # Creates: docs/solutions/features/[name].md
 ```

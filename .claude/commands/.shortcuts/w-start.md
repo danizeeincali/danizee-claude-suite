@@ -1,10 +1,10 @@
-# /.start
+# /w-start
 
 Cold-start a session by loading project context from plan docs, memories, and git.
 
 ## Usage
 ```
-/.start [plan-file]
+/w-start [plan-file]
 ```
 
 Default: MASTER_PLAN.md
@@ -24,7 +24,7 @@ Default: MASTER_PLAN.md
 
 ## Example
 ```
-/.start
-/.start ROADMAP.md
-/.start docs/SPRINT_PLAN.md
+/w-start
+/w-start ROADMAP.md
+/w-start docs/SPRINT_PLAN.md
 ```

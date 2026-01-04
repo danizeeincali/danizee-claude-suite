@@ -1,10 +1,10 @@
-# /.multi-repo
+# /w-multi-repo
 
 Multi-Repository - Coordinates changes across repos with dependency awareness.
 
 ## Usage
 ```
-/.multi-repo [task description]
+/w-multi-repo [task description]
 ```
 
 ## What Happens
@@ -31,5 +31,5 @@ Doc: docs/solutions/multi-repo/[task-name].md
 
 ## Example
 ```
-/.multi-repo updating shared auth library across all repos
+/w-multi-repo updating shared auth library across all repos
 ```

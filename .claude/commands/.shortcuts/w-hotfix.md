@@ -1,10 +1,10 @@
-# /.hotfix
+# /w-hotfix
 
 Critical Hotfix - Isolated branch → minimal fix → security-focused review → expedited PR.
 
 ## Usage
 ```
-/.hotfix [issue description]
+/w-hotfix [issue description]
 ```
 
 ## What Happens
@@ -31,5 +31,5 @@ Doc: docs/solutions/incidents/[incident-name].md
 
 ## Example
 ```
-/.hotfix SQL injection vulnerability in search endpoint
+/w-hotfix SQL injection vulnerability in search endpoint
 ```

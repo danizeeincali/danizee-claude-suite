@@ -1,10 +1,10 @@
-# /.architect
+# /w-architect
 
 Hive-Mind Architecture - Multiple agents collaborate with collective intelligence for complex design.
 
 ## Usage
 ```
-/.architect [system description]
+/w-architect [system description]
 ```
 
 ## What Happens
@@ -31,5 +31,5 @@ Doc: docs/solutions/architecture/[system-name]-adr.md
 
 ## Example
 ```
-/.architect microservices migration
+/w-architect microservices migration
 ```

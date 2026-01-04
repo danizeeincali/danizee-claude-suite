@@ -1,4 +1,4 @@
-# /.tdd-swarm
+# /w-tdd-swarm
 
 Full TDD Swarm - Combines planning + test-first + parallel build + comprehensive review.
 
@@ -6,7 +6,7 @@ Full TDD Swarm - Combines planning + test-first + parallel build + comprehensive
 
 ## Usage
 ```
-/.tdd-swarm [feature description]
+/w-tdd-swarm [feature description]
 ```
 
 ## What Happens
@@ -40,5 +40,5 @@ Doc: docs/solutions/full-tdd-swarm/[feature-name].md
 
 ## Example
 ```
-/.tdd-swarm user authentication with JWT tokens
+/w-tdd-swarm user authentication with JWT tokens
 ```

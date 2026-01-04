@@ -30,8 +30,8 @@ program
       console.log('\n' + chalk.cyan('Next steps:'));
       console.log('  1. Ensure claude-flow MCP is installed: ' + chalk.yellow('npx claude-flow@alpha mcp start'));
       console.log('  2. Review the generated WORKFLOW-SHORTCUTS.md');
-      console.log('  3. Try a workflow: ' + chalk.yellow('/.tdd-swarm [feature]') + ' or ' + chalk.yellow('"Full TDD Swarm on [feature]"'));
-      console.log('\n' + chalk.dim('Tip: Use /. prefix for quick access: /.tdd-swarm, /.swarm, /.fix, /.review, etc.'));
+      console.log('  3. Try a workflow: ' + chalk.yellow('/w-tdd-swarm [feature]') + ' or ' + chalk.yellow('"Full TDD Swarm on [feature]"'));
+      console.log('\n' + chalk.dim('Tip: Use /w- prefix for quick access: /w-tdd-swarm, /w-swarm, /w-fix, /w-review, etc.'));
     } catch (error) {
       spinner.fail(chalk.red('Installation failed'));
       console.error(chalk.red(error.message));
@@ -60,7 +60,7 @@ program
       console.log(`  ${status.plugins.claudeFlow ? chalk.green('✓') : chalk.red('✗')} Claude Flow plugin`);
       console.log(`  ${status.plugins.compoundEngineering ? chalk.green('✓') : chalk.red('✗')} Compound Engineering plugin`);
       console.log(`  ${status.plugins.frontendDesign ? chalk.green('✓') : chalk.red('✗')} Frontend Design plugin`);
-      console.log(`  ${status.plugins.dotShortcuts ? chalk.green('✓') : chalk.red('✗')} Dot Shortcuts (/.tdd-swarm, /.swarm, /.fix, etc.)`);
+      console.log(`  ${status.plugins.dotShortcuts ? chalk.green('✓') : chalk.red('✗')} Workflow Shortcuts (/w-tdd-swarm, /w-swarm, /w-fix, etc.)`);
 
       if (!status.installed) {
         console.log('\n' + chalk.yellow('Run `node bin/cli.js init` to install.'));

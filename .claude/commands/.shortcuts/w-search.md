@@ -1,10 +1,10 @@
-# /.search
+# /w-search
 
 Search Solutions - Searches memory and solution docs for relevant past work.
 
 ## Usage
 ```
-/.search [query]
+/w-search [query]
 ```
 
 ## What Happens
@@ -23,7 +23,7 @@ Search Solutions - Searches memory and solution docs for relevant past work.
 
 ## Example
 ```
-/.search authentication issues
+/w-search authentication issues
 # Returns:
 #   - project/bugs/auth-logout-reset (Dec 2024)
 #   - project/features/oauth2-google (Nov 2024)

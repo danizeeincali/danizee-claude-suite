@@ -1,10 +1,10 @@
-# /.security
+# /w-security
 
 Security Audit - OWASP top 10, auth/authz, data exposure analysis.
 
 ## Usage
 ```
-/.security [target description]
+/w-security [target description]
 ```
 
 ## What Happens
@@ -38,5 +38,5 @@ Doc: docs/solutions/security/[audit-name].md
 
 ## Example
 ```
-/.security authentication module
+/w-security authentication module
 ```

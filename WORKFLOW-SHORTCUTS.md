@@ -33,31 +33,31 @@ Every workflow follows this pattern:
 
 ## Slash Commands (Quick Access)
 
-Use the `/.` prefix for quick workflow invocation:
+Use the `/w-` prefix for quick workflow invocation:
 
 | Command | Description |
 |---------|-------------|
-| `/.start [plan-file]` | Cold-start session with project context |
-| `/.end [category]` | End session - compound and commit |
-| `/.tdd-swarm [feature]` | Full TDD + Swarm + Review combined (recommended) |
-| `/.idea->tdd-swarm [idea]` | Deep interview → refine idea → TDD Swarm |
-| `/.swarm [task]` | Parallel agents for rapid implementation |
-| `/.fix [bug]` | Quick bug investigation and fix |
-| `/.debug [issue]` | Debug → diagnose → TDD-swarm fix |
-| `/.hotfix [issue]` | Critical production fix |
-| `/.review [PR#]` | Comprehensive multi-agent review |
-| `/.security [target]` | OWASP security audit |
-| `/.perf [target]` | Performance bottleneck analysis |
-| `/.architect [system]` | Hive-mind architecture design |
-| `/.multi-repo [task]` | Cross-repository coordination |
-| `/.compound` | Store current solution in memory |
-| `/.search [query]` | Search past solutions |
+| `/w-start [plan-file]` | Cold-start session with project context |
+| `/w-end [category]` | End session - compound and commit |
+| `/w-tdd-swarm [feature]` | Full TDD + Swarm + Review combined (recommended) |
+| `/w-idea-tdd-swarm [idea]` | Deep interview → refine idea → TDD Swarm |
+| `/w-swarm [task]` | Parallel agents for rapid implementation |
+| `/w-fix [bug]` | Quick bug investigation and fix |
+| `/w-debug [issue]` | Debug → diagnose → TDD-swarm fix |
+| `/w-hotfix [issue]` | Critical production fix |
+| `/w-review [PR#]` | Comprehensive multi-agent review |
+| `/w-security [target]` | OWASP security audit |
+| `/w-perf [target]` | Performance bottleneck analysis |
+| `/w-architect [system]` | Hive-mind architecture design |
+| `/w-multi-repo [task]` | Cross-repository coordination |
+| `/w-compound` | Store current solution in memory |
+| `/w-search [query]` | Search past solutions |
 
 **Example:**
 ```
-/.tdd-swarm OAuth2 authentication with Google
-/.swarm REST API with CRUD endpoints
-/.fix users getting logged out after password reset
+/w-tdd-swarm OAuth2 authentication with Google
+/w-swarm REST API with CRUD endpoints
+/w-fix users getting logged out after password reset
 ```
 
 ---
@@ -116,7 +116,7 @@ mcp__claude-flow__neural_patterns { action: "learn" }
 ### Swarm Build
 
 **Say:** "Use swarm to build [task]"
-**Slash:** `/.swarm [task]`
+**Slash:** `/w-swarm [task]`
 
 **What it does:** Spawns parallel agents (coder, tester, reviewer) for rapid implementation.
 
@@ -209,7 +209,7 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/tdd/shopping-car
 ### Full TDD Swarm
 
 **Say:** "Full TDD Swarm on [feature]"
-**Slash:** `/.tdd-swarm [feature]`
+**Slash:** `/w-tdd-swarm [feature]`
 
 **What it does:** Combines planning (Full Cycle) + test-first (TDD) + parallel build (Swarm) + comprehensive review.
 
@@ -290,7 +290,7 @@ mcp__claude-flow__neural_patterns { action: "learn" }
 ### Quick Fix
 
 **Say:** "Quick fix for [bug description]"
-**Slash:** `/.fix [bug]`
+**Slash:** `/w-fix [bug]`
 
 **What it does:** Fast investigation → targeted fix → verification.
 
@@ -335,7 +335,7 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/bugs/auth-logout
 ### Deep Debug → TDD Swarm
 
 **Say:** "Debug workflow for [issue]"
-**Slash:** `/.debug [issue]`
+**Slash:** `/w-debug [issue]`
 
 **What it does:** Thorough investigation → diagnose root cause → TDD-swarm fix with regression tests.
 
@@ -402,7 +402,7 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/debugging/api-ti
 ### Critical Hotfix
 
 **Say:** "Critical hotfix for [issue]"
-**Slash:** `/.hotfix [issue]`
+**Slash:** `/w-hotfix [issue]`
 
 **What it does:** Isolated branch → minimal fix → security-focused review → expedited PR.
 
@@ -452,7 +452,7 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/incidents/sql-in
 ### Full Review
 
 **Say:** "Full review of PR [number]"
-**Slash:** `/.review [PR#]`
+**Slash:** `/w-review [PR#]`
 
 **What it does:** 12+ specialized agents analyze code, security, performance, architecture.
 
@@ -500,7 +500,7 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/reviews/pr-47-au
 ### Security Audit
 
 **Say:** "Security audit on [target]"
-**Slash:** `/.security [target]`
+**Slash:** `/w-security [target]`
 
 **What it does:** OWASP top 10, auth/authz, data exposure analysis.
 
@@ -546,7 +546,7 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/security/auth-mo
 ### Performance Audit
 
 **Say:** "Performance audit on [target]"
-**Slash:** `/.perf [target]`
+**Slash:** `/w-perf [target]`
 
 **What it does:** Bottlenecks, N+1 queries, memory issues, optimization opportunities.
 
@@ -594,7 +594,7 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/performance/dash
 ### Hive-Mind Architecture
 
 **Say:** "Hive-mind architecture for [system]"
-**Slash:** `/.architect [system]`
+**Slash:** `/w-architect [system]`
 
 **What it does:** Multiple agents collaborate with collective intelligence for complex design.
 
@@ -643,7 +643,7 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/architecture/mic
 ### Multi-Repository
 
 **Say:** "Multi-repo workflow for [task]"
-**Slash:** `/.multi-repo [task]`
+**Slash:** `/w-multi-repo [task]`
 
 **What it does:** Coordinates changes across repos with dependency awareness.
 
@@ -693,7 +693,7 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/multi-repo/auth-
 ### Compound This
 
 **Say:** "Compound this solution" or "Document what we just solved"
-**Slash:** `/.compound [category]`
+**Slash:** `/w-compound [category]`
 
 **What it does:** Captures current context as reusable knowledge (ad-hoc).
 
@@ -710,7 +710,7 @@ Claude: Stored as project/bugs/[auto-named] + created docs/solutions/bugs/[name]
 ### Search Solutions
 
 **Say:** "Search for solutions to [problem]" or "What patterns exist for [category]?"
-**Slash:** `/.search [query]`
+**Slash:** `/w-search [query]`
 
 **What it does:** Searches memory and solution docs for relevant past work.
 
@@ -731,23 +731,23 @@ Claude: Found 3 matches:
 
 | Workflow | Slash | Natural Language | Best For |
 |----------|-------|------------------|----------|
-| Cold-Start | `/.start` | "start session with [plan]" | Resume without --resume |
-| End Session | `/.end` | "end session" | Compound and commit before disconnect |
-| Full TDD Swarm | `/.tdd-swarm` | "Full TDD Swarm on [X]" | New features (recommended) |
-| Idea → TDD Swarm | `/.idea->tdd-swarm` | "I have an idea for [X]" | Half-baked ideas → features |
-| Swarm Build | `/.swarm` | "swarm to build [X]" | Parallel implementation |
+| Cold-Start | `/w-start` | "start session with [plan]" | Resume without --resume |
+| End Session | `/w-end` | "end session" | Compound and commit before disconnect |
+| Full TDD Swarm | `/w-tdd-swarm` | "Full TDD Swarm on [X]" | New features (recommended) |
+| Idea → TDD Swarm | `/w-idea-tdd-swarm` | "I have an idea for [X]" | Half-baked ideas → features |
+| Swarm Build | `/w-swarm` | "swarm to build [X]" | Parallel implementation |
 | Full Cycle | - | "full cycle workflow on [X]" | Features without strict TDD |
 | TDD | - | "TDD workflow for [X]" | Simple test-first |
-| Quick Fix | `/.fix` | "quick fix for [X]" | Simple bugs |
-| Deep Debug → TDD | `/.debug` | "debug workflow for [X]" | Complex issues with regression tests |
-| Hotfix | `/.hotfix` | "critical hotfix for [X]" | Production emergencies |
-| Full Review | `/.review` | "full review of PR [#]" | Comprehensive review |
-| Security Audit | `/.security` | "security audit on [X]" | Security analysis |
-| Perf Audit | `/.perf` | "performance audit on [X]" | Optimization |
-| Hive Architect | `/.architect` | "hive-mind architecture for [X]" | Complex design |
-| Multi-Repo | `/.multi-repo` | "multi-repo workflow for [X]" | Cross-repo changes |
-| Compound This | `/.compound` | "compound this solution" | Ad-hoc capture |
-| Search Solutions | `/.search` | "search for solutions to [X]" | Find past work |
+| Quick Fix | `/w-fix` | "quick fix for [X]" | Simple bugs |
+| Deep Debug → TDD | `/w-debug` | "debug workflow for [X]" | Complex issues with regression tests |
+| Hotfix | `/w-hotfix` | "critical hotfix for [X]" | Production emergencies |
+| Full Review | `/w-review` | "full review of PR [#]" | Comprehensive review |
+| Security Audit | `/w-security` | "security audit on [X]" | Security analysis |
+| Perf Audit | `/w-perf` | "performance audit on [X]" | Optimization |
+| Hive Architect | `/w-architect` | "hive-mind architecture for [X]" | Complex design |
+| Multi-Repo | `/w-multi-repo` | "multi-repo workflow for [X]" | Cross-repo changes |
+| Compound This | `/w-compound` | "compound this solution" | Ad-hoc capture |
+| Search Solutions | `/w-search` | "search for solutions to [X]" | Find past work |
 
 ### Key Agents
 

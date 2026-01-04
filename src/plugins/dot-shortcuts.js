@@ -1,6 +1,6 @@
 /**
- * Dot Shortcuts Plugin for Danizee Claude Suite
- * Provides quick `/.` prefixed slash commands for all workflows
+ * Workflow Shortcuts Plugin for Danizee Claude Suite
+ * Provides quick `/w-` prefixed slash commands for all workflows
  */
 
 import fs from 'fs/promises';
@@ -11,16 +11,16 @@ import path from 'path';
  */
 export function getCommands() {
   return {
-    '.swarm': {
-      name: '.swarm',
+    'w-swarm': {
+      name: 'w-swarm',
       description: 'Swarm Build - Parallel agents for rapid implementation',
-      content: `# /.swarm
+      content: `# /w-swarm
 
 Swarm Build - Spawns parallel agents (coder, tester, reviewer) for rapid implementation.
 
 ## Usage
 \`\`\`
-/.swarm [task description]
+/w-swarm [task description]
 \`\`\`
 
 ## What Happens
@@ -46,15 +46,15 @@ Doc: docs/solutions/implementations/[task-name].md
 
 ## Example
 \`\`\`
-/.swarm REST API for user management with CRUD and tests
+/w-swarm REST API for user management with CRUD and tests
 \`\`\`
 `
     },
 
-    '.tdd-swarm': {
-      name: '.tdd-swarm',
+    'w-tdd-swarm': {
+      name: 'w-tdd-swarm',
       description: 'Full TDD Swarm - Plan + TDD + Swarm + Review combined',
-      content: `# /.tdd-swarm
+      content: `# /w-tdd-swarm
 
 Full TDD Swarm - Combines planning + test-first + parallel build + comprehensive review.
 
@@ -62,7 +62,7 @@ Full TDD Swarm - Combines planning + test-first + parallel build + comprehensive
 
 ## Usage
 \`\`\`
-/.tdd-swarm [feature description]
+/w-tdd-swarm [feature description]
 \`\`\`
 
 ## What Happens
@@ -96,23 +96,23 @@ Doc: docs/solutions/full-tdd-swarm/[feature-name].md
 
 ## Example
 \`\`\`
-/.tdd-swarm user authentication with JWT tokens
+/w-tdd-swarm user authentication with JWT tokens
 \`\`\`
 `
     },
 
-    '.idea->tdd-swarm': {
-      name: '.idea->tdd-swarm',
+    'w-idea-tdd-swarm': {
+      name: 'w-idea-tdd-swarm',
       description: 'Idea to TDD Swarm - Deep interview refines idea, then Full TDD Swarm builds it',
-      content: `# /.idea->tdd-swarm
+      content: `# /w-idea-tdd-swarm
 
 Turn a half-baked idea into a well-built feature through deep interviewing + Full TDD Swarm.
 
 ## Usage
 \`\`\`
-/.idea->tdd-swarm [description or file path]
-/.idea->tdd-swarm user authentication system
-/.idea->tdd-swarm .claude/plans/auth-idea.md
+/w-idea-tdd-swarm [description or file path]
+/w-idea-tdd-swarm user authentication system
+/w-idea-tdd-swarm .claude/plans/auth-idea.md
 \`\`\`
 
 ## What Happens
@@ -177,21 +177,21 @@ Spec: .claude/plans/YYYY-MM-DD-[name].md
 
 ## Example
 \`\`\`
-/.idea->tdd-swarm I want some kind of notification system but I'm not sure exactly what
+/w-idea-tdd-swarm I want some kind of notification system but I'm not sure exactly what
 \`\`\`
 `
     },
 
-    '.fix': {
-      name: '.fix',
+    'w-fix': {
+      name: 'w-fix',
       description: 'Quick Fix - Fast bug investigation and targeted fix',
-      content: `# /.fix
+      content: `# /w-fix
 
 Quick Fix - Fast investigation → targeted fix → verification.
 
 ## Usage
 \`\`\`
-/.fix [bug description]
+/w-fix [bug description]
 \`\`\`
 
 ## What Happens
@@ -217,21 +217,21 @@ Doc: docs/solutions/bugs/[bug-name].md
 
 ## Example
 \`\`\`
-/.fix users getting logged out after password reset
+/w-fix users getting logged out after password reset
 \`\`\`
 `
     },
 
-    '.debug': {
-      name: '.debug',
+    'w-debug': {
+      name: 'w-debug',
       description: 'Deep Debug → TDD Swarm - Diagnose issue then fix with regression tests',
-      content: `# /.debug
+      content: `# /w-debug
 
 Deep Debug → TDD Swarm - Thorough investigation then fix with regression tests.
 
 ## Usage
 \`\`\`
-/.debug [issue description]
+/w-debug [issue description]
 \`\`\`
 
 ## What Happens
@@ -274,21 +274,21 @@ Pattern: root cause + regression tests + fix approach
 
 ## Example
 \`\`\`
-/.debug intermittent API timeouts in production
+/w-debug intermittent API timeouts in production
 \`\`\`
 `
     },
 
-    '.hotfix': {
-      name: '.hotfix',
+    'w-hotfix': {
+      name: 'w-hotfix',
       description: 'Critical Hotfix - Isolated branch, minimal fix, security review',
-      content: `# /.hotfix
+      content: `# /w-hotfix
 
 Critical Hotfix - Isolated branch → minimal fix → security-focused review → expedited PR.
 
 ## Usage
 \`\`\`
-/.hotfix [issue description]
+/w-hotfix [issue description]
 \`\`\`
 
 ## What Happens
@@ -315,21 +315,21 @@ Doc: docs/solutions/incidents/[incident-name].md
 
 ## Example
 \`\`\`
-/.hotfix SQL injection vulnerability in search endpoint
+/w-hotfix SQL injection vulnerability in search endpoint
 \`\`\`
 `
     },
 
-    '.review': {
-      name: '.review',
+    'w-review': {
+      name: 'w-review',
       description: 'Full Review - 12+ specialized agents analyze code',
-      content: `# /.review
+      content: `# /w-review
 
 Full Review - 12+ specialized agents analyze code, security, performance, architecture.
 
 ## Usage
 \`\`\`
-/.review [PR number or description]
+/w-review [PR number or description]
 \`\`\`
 
 ## What Happens
@@ -364,21 +364,21 @@ Doc: docs/solutions/reviews/[pr-number].md
 
 ## Example
 \`\`\`
-/.review PR 47
+/w-review PR 47
 \`\`\`
 `
     },
 
-    '.security': {
-      name: '.security',
+    'w-security': {
+      name: 'w-security',
       description: 'Security Audit - OWASP top 10, auth/authz, data exposure',
-      content: `# /.security
+      content: `# /w-security
 
 Security Audit - OWASP top 10, auth/authz, data exposure analysis.
 
 ## Usage
 \`\`\`
-/.security [target description]
+/w-security [target description]
 \`\`\`
 
 ## What Happens
@@ -412,21 +412,21 @@ Doc: docs/solutions/security/[audit-name].md
 
 ## Example
 \`\`\`
-/.security authentication module
+/w-security authentication module
 \`\`\`
 `
     },
 
-    '.perf': {
-      name: '.perf',
+    'w-perf': {
+      name: 'w-perf',
       description: 'Performance Audit - Bottlenecks, N+1 queries, memory issues',
-      content: `# /.perf
+      content: `# /w-perf
 
 Performance Audit - Bottlenecks, N+1 queries, memory issues, optimization opportunities.
 
 ## Usage
 \`\`\`
-/.perf [target description]
+/w-perf [target description]
 \`\`\`
 
 ## What Happens
@@ -459,21 +459,21 @@ Doc: docs/solutions/performance/[audit-name].md
 
 ## Example
 \`\`\`
-/.perf dashboard loading
+/w-perf dashboard loading
 \`\`\`
 `
     },
 
-    '.architect': {
-      name: '.architect',
+    'w-architect': {
+      name: 'w-architect',
       description: 'Hive-Mind Architecture - Collective intelligence for complex design',
-      content: `# /.architect
+      content: `# /w-architect
 
 Hive-Mind Architecture - Multiple agents collaborate with collective intelligence for complex design.
 
 ## Usage
 \`\`\`
-/.architect [system description]
+/w-architect [system description]
 \`\`\`
 
 ## What Happens
@@ -500,21 +500,21 @@ Doc: docs/solutions/architecture/[system-name]-adr.md
 
 ## Example
 \`\`\`
-/.architect microservices migration
+/w-architect microservices migration
 \`\`\`
 `
     },
 
-    '.multi-repo': {
-      name: '.multi-repo',
+    'w-multi-repo': {
+      name: 'w-multi-repo',
       description: 'Multi-Repository - Coordinate changes across repos',
-      content: `# /.multi-repo
+      content: `# /w-multi-repo
 
 Multi-Repository - Coordinates changes across repos with dependency awareness.
 
 ## Usage
 \`\`\`
-/.multi-repo [task description]
+/w-multi-repo [task description]
 \`\`\`
 
 ## What Happens
@@ -541,21 +541,21 @@ Doc: docs/solutions/multi-repo/[task-name].md
 
 ## Example
 \`\`\`
-/.multi-repo updating shared auth library across all repos
+/w-multi-repo updating shared auth library across all repos
 \`\`\`
 `
     },
 
-    '.compound': {
-      name: '.compound',
+    'w-compound': {
+      name: 'w-compound',
       description: 'Compound This - Capture current context as reusable knowledge',
-      content: `# /.compound
+      content: `# /w-compound
 
 Compound This - Captures current context as reusable knowledge (ad-hoc).
 
 ## Usage
 \`\`\`
-/.compound [category]
+/w-compound [category]
 \`\`\`
 
 ## Categories
@@ -572,23 +572,23 @@ Compound This - Captures current context as reusable knowledge (ad-hoc).
 
 ## Example
 \`\`\`
-/.compound feature
+/w-compound feature
 # Stores to: project/features/[auto-named]
 # Creates: docs/solutions/features/[name].md
 \`\`\`
 `
     },
 
-    '.search': {
-      name: '.search',
+    'w-search': {
+      name: 'w-search',
       description: 'Search Solutions - Find relevant past work',
-      content: `# /.search
+      content: `# /w-search
 
 Search Solutions - Searches memory and solution docs for relevant past work.
 
 ## Usage
 \`\`\`
-/.search [query]
+/w-search [query]
 \`\`\`
 
 ## What Happens
@@ -607,7 +607,7 @@ Search Solutions - Searches memory and solution docs for relevant past work.
 
 ## Example
 \`\`\`
-/.search authentication issues
+/w-search authentication issues
 # Returns:
 #   - project/bugs/auth-logout-reset (Dec 2024)
 #   - project/features/oauth2-google (Nov 2024)
@@ -616,16 +616,16 @@ Search Solutions - Searches memory and solution docs for relevant past work.
 `
     },
 
-    '.start': {
-      name: '.start',
+    'w-start': {
+      name: 'w-start',
       description: 'Cold-Start Session - Load project context when --resume unavailable',
-      content: `# /.start
+      content: `# /w-start
 
 Cold-start a session by loading project context from plan docs, memories, and git.
 
 ## Usage
 \`\`\`
-/.start [plan-file]
+/w-start [plan-file]
 \`\`\`
 
 Default: MASTER_PLAN.md
@@ -645,24 +645,24 @@ Default: MASTER_PLAN.md
 
 ## Example
 \`\`\`
-/.start
-/.start ROADMAP.md
-/.start docs/SPRINT_PLAN.md
+/w-start
+/w-start ROADMAP.md
+/w-start docs/SPRINT_PLAN.md
 \`\`\`
 `
     },
 
-    '.end': {
-      name: '.end',
-      description: 'End Session - Compound knowledge and commit for next /.start',
-      content: `# /.end
+    'w-end': {
+      name: 'w-end',
+      description: 'End Session - Compound knowledge and commit for next /w-start',
+      content: `# /w-end
 
 Gracefully end a session by compounding knowledge and committing work.
 
 ## Usage
 \`\`\`
-/.end
-/.end [category]
+/w-end
+/w-end [category]
 \`\`\`
 
 Categories: feature, bug, security, performance, architecture, debug
@@ -672,7 +672,7 @@ Categories: feature, bug, security, performance, architecture, debug
 2. **Update Docs** - Write/update docs/solutions/ with session learnings
 3. **Commit** - Stage all changes and commit with session summary
 4. **Summarize** - Recap what was accomplished this session
-5. **Goodbye** - "See you later! Run \\\`/.start\\\` to resume."
+5. **Goodbye** - "See you later! Run \\\`/w-start\\\` to resume."
 
 ## Memory Storage
 - Claude-Flow: project/[category]/[auto-named]
@@ -687,13 +687,13 @@ Categories: feature, bug, security, performance, architecture, debug
 
 ## Example
 \`\`\`
-/.end
-/.end feature
-/.end bug
+/w-end
+/w-end feature
+/w-end bug
 \`\`\`
 
 ## Next Session
-Run \\\`/.start\\\` to load this session's context and continue where you left off.
+Run \\\`/w-start\\\` to load this session's context and continue where you left off.
 `
     }
   };

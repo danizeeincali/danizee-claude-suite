@@ -1,10 +1,10 @@
-# /.debug
+# /w-debug
 
 Deep Debug → TDD Swarm - Thorough investigation then fix with regression tests.
 
 ## Usage
 ```
-/.debug [issue description]
+/w-debug [issue description]
 ```
 
 ## What Happens
@@ -47,5 +47,5 @@ Pattern: root cause + regression tests + fix approach
 
 ## Example
 ```
-/.debug intermittent API timeouts in production
+/w-debug intermittent API timeouts in production
 ```

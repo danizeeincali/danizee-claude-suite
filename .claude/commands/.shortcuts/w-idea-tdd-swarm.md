@@ -1,12 +1,12 @@
-# /.idea->tdd-swarm
+# /w-idea-tdd-swarm
 
 Turn a half-baked idea into a well-built feature through deep interviewing + Full TDD Swarm.
 
 ## Usage
 ```
-/.idea->tdd-swarm [description or file path]
-/.idea->tdd-swarm user authentication system
-/.idea->tdd-swarm .claude/plans/auth-idea.md
+/w-idea-tdd-swarm [description or file path]
+/w-idea-tdd-swarm user authentication system
+/w-idea-tdd-swarm .claude/plans/auth-idea.md
 ```
 
 ## What Happens
@@ -71,5 +71,5 @@ Spec: .claude/plans/YYYY-MM-DD-[name].md
 
 ## Example
 ```
-/.idea->tdd-swarm I want some kind of notification system but I'm not sure exactly what
+/w-idea-tdd-swarm I want some kind of notification system but I'm not sure exactly what
 ```

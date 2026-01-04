@@ -1,10 +1,10 @@
-# /.fix
+# /w-fix
 
 Quick Fix - Fast investigation → targeted fix → verification.
 
 ## Usage
 ```
-/.fix [bug description]
+/w-fix [bug description]
 ```
 
 ## What Happens
@@ -30,5 +30,5 @@ Doc: docs/solutions/bugs/[bug-name].md
 
 ## Example
 ```
-/.fix users getting logged out after password reset
+/w-fix users getting logged out after password reset
 ```

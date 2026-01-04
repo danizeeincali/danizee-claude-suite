@@ -1,10 +1,10 @@
-# /.review
+# /w-review
 
 Full Review - 12+ specialized agents analyze code, security, performance, architecture.
 
 ## Usage
 ```
-/.review [PR number or description]
+/w-review [PR number or description]
 ```
 
 ## What Happens
@@ -39,5 +39,5 @@ Doc: docs/solutions/reviews/[pr-number].md
 
 ## Example
 ```
-/.review PR 47
+/w-review PR 47
 ```

@@ -1,10 +1,10 @@
-# /.perf
+# /w-perf
 
 Performance Audit - Bottlenecks, N+1 queries, memory issues, optimization opportunities.
 
 ## Usage
 ```
-/.perf [target description]
+/w-perf [target description]
 ```
 
 ## What Happens
@@ -37,5 +37,5 @@ Doc: docs/solutions/performance/[audit-name].md
 
 ## Example
 ```
-/.perf dashboard loading
+/w-perf dashboard loading
 ```
