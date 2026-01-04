@@ -49,10 +49,8 @@ Use the \`/.\` prefix for quick workflow invocation:
 
 | Command | Description |
 |---------|-------------|
-| \`/.full-cycle [feature]\` | Plan → implement → review → PR ready |
+| \`/.tdd-swarm [feature]\` | Full TDD + Swarm + Review combined (recommended) |
 | \`/.swarm [task]\` | Parallel agents for rapid implementation |
-| \`/.tdd [feature]\` | Test-first development (SPARC) |
-| \`/.tdd-swarm [feature]\` | Full TDD + Swarm + Review combined |
 | \`/.fix [bug]\` | Quick bug investigation and fix |
 | \`/.debug [issue]\` | Deep multi-angle debugging |
 | \`/.hotfix [issue]\` | Critical production fix |
@@ -66,8 +64,8 @@ Use the \`/.\` prefix for quick workflow invocation:
 
 **Example:**
 \`\`\`
-/.full-cycle OAuth2 authentication with Google
-/.tdd shopping cart with add, remove, checkout
+/.tdd-swarm OAuth2 authentication with Google
+/.swarm REST API with CRUD endpoints
 /.fix users getting logged out after password reset
 \`\`\`
 
@@ -78,7 +76,6 @@ Use the \`/.\` prefix for quick workflow invocation:
 ### Full Cycle Development
 
 **Say:** "Run the full cycle workflow on [feature]"
-**Slash:** \`/.full-cycle [feature]\`
 
 **What it does:** Plans → implements in isolated worktree → comprehensive review → PR ready.
 
@@ -176,7 +173,6 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/implementations/
 ### TDD Development
 
 **Say:** "TDD workflow for [feature]"
-**Slash:** \`/.tdd [feature]\`
 
 **What it does:** SPARC methodology: Spec → Tests first → Implementation → Refinement.
 
@@ -726,10 +722,10 @@ Claude: Found 3 matches:
 
 | Workflow | Slash | Natural Language | Best For |
 |----------|-------|------------------|----------|
-| Full Cycle | \`/.full-cycle\` | "full cycle workflow on [X]" | New features |
+| Full TDD Swarm | \`/.tdd-swarm\` | "Full TDD Swarm on [X]" | New features (recommended) |
 | Swarm Build | \`/.swarm\` | "swarm to build [X]" | Parallel implementation |
-| TDD | \`/.tdd\` | "TDD workflow for [X]" | Test-first development |
-| Full TDD Swarm | \`/.tdd-swarm\` | "Full TDD Swarm on [X]" | Critical features |
+| Full Cycle | - | "full cycle workflow on [X]" | Features without strict TDD |
+| TDD | - | "TDD workflow for [X]" | Simple test-first |
 | Quick Fix | \`/.fix\` | "quick fix for [X]" | Simple bugs |
 | Deep Debug | \`/.debug\` | "debug workflow for [X]" | Complex issues |
 | Hotfix | \`/.hotfix\` | "critical hotfix for [X]" | Production emergencies |

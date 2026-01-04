@@ -11,47 +11,6 @@ import path from 'path';
  */
 export function getCommands() {
   return {
-    '.full-cycle': {
-      name: '.full-cycle',
-      description: 'Full Cycle Development - Plan → implement → review → PR ready',
-      content: `# /.full-cycle
-
-Full Cycle Development - Plan → implement → review → PR ready.
-
-## Usage
-\`\`\`
-/.full-cycle [feature description]
-\`\`\`
-
-## What Happens
-1. **Search** - Check memory for similar past solutions
-2. **Plan** - Design implementation approach
-3. **Implement** - Build in isolated worktree
-4. **Review** - Multi-agent code review
-5. **Compound** - Store solution pattern
-
-## Checkpoints
-| # | After | You Review |
-|---|-------|------------|
-| 0 | Search | Similar past solutions found |
-| 1 | Planning | Proposed approach and files |
-| 2 | Implementation | Code changes before PR |
-| 3 | Review | Findings before merge |
-| 4 | Compound | Solution summary to store |
-
-## Compounds
-\`\`\`
-Memory: project/features/[feature-name]
-Doc: docs/solutions/features/[feature-name].md
-\`\`\`
-
-## Example
-\`\`\`
-/.full-cycle OAuth2 authentication with Google
-\`\`\`
-`
-    },
-
     '.swarm': {
       name: '.swarm',
       description: 'Swarm Build - Parallel agents for rapid implementation',
@@ -88,47 +47,6 @@ Doc: docs/solutions/implementations/[task-name].md
 ## Example
 \`\`\`
 /.swarm REST API for user management with CRUD and tests
-\`\`\`
-`
-    },
-
-    '.tdd': {
-      name: '.tdd',
-      description: 'TDD Development - Test-first with SPARC methodology',
-      content: `# /.tdd
-
-TDD Development - SPARC methodology: Spec → Tests first → Implementation → Refinement.
-
-## Usage
-\`\`\`
-/.tdd [feature description]
-\`\`\`
-
-## What Happens
-1. **Search** - Find similar test patterns
-2. **Spec** - Define requirements and acceptance criteria
-3. **Test** - Write tests BEFORE implementation
-4. **Implement** - Code to make tests pass
-5. **Compound** - Store test patterns
-
-## Checkpoints
-| # | After | You Review |
-|---|-------|------------|
-| 0 | Search | Similar test patterns |
-| 1 | Specification | Requirements and acceptance criteria |
-| 2 | Test creation | Test cases before implementation |
-| 3 | Implementation | Code that makes tests pass |
-| 4 | Compound | Test patterns to store |
-
-## Compounds
-\`\`\`
-Memory: project/tdd/[feature-name]
-Doc: docs/solutions/tdd/[feature-name].md
-\`\`\`
-
-## Example
-\`\`\`
-/.tdd shopping cart with add, remove, and checkout
 \`\`\`
 `
     },
