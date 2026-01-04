@@ -555,6 +555,51 @@ Default: MASTER_PLAN.md
 /.start docs/SPRINT_PLAN.md
 \`\`\`
 `
+    },
+
+    '.end': {
+      name: '.end',
+      description: 'End Session - Compound knowledge and commit for next /.start',
+      content: `# /.end
+
+Gracefully end a session by compounding knowledge and committing work.
+
+## Usage
+\`\`\`
+/.end
+/.end [category]
+\`\`\`
+
+Categories: feature, bug, security, performance, architecture, debug
+
+## What Happens
+1. **Compound** - Store session patterns to claude-flow memory
+2. **Update Docs** - Write/update docs/solutions/ with session learnings
+3. **Commit** - Stage all changes and commit with session summary
+4. **Summarize** - Recap what was accomplished this session
+5. **Goodbye** - "See you later! Run \\\`/.start\\\` to resume."
+
+## Memory Storage
+- Claude-Flow: project/[category]/[auto-named]
+- Compound Doc: docs/solutions/[category]/[name].md
+
+## What Gets Captured
+- Problems solved and approaches used
+- Key decisions made
+- Patterns discovered
+- Files modified
+- Tests added/changed
+
+## Example
+\`\`\`
+/.end
+/.end feature
+/.end bug
+\`\`\`
+
+## Next Session
+Run \\\`/.start\\\` to load this session's context and continue where you left off.
+`
     }
   };
 }
