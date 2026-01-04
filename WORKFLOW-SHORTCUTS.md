@@ -40,6 +40,7 @@ Use the `/.` prefix for quick workflow invocation:
 | `/.start [plan-file]` | Cold-start session with project context |
 | `/.end [category]` | End session - compound and commit |
 | `/.tdd-swarm [feature]` | Full TDD + Swarm + Review combined (recommended) |
+| `/.idea->tdd-swarm [idea]` | Deep interview → refine idea → TDD Swarm |
 | `/.swarm [task]` | Parallel agents for rapid implementation |
 | `/.fix [bug]` | Quick bug investigation and fix |
 | `/.debug [issue]` | Deep multi-angle debugging |
@@ -715,6 +716,7 @@ Claude: Found 3 matches:
 | Cold-Start | `/.start` | "start session with [plan]" | Resume without --resume |
 | End Session | `/.end` | "end session" | Compound and commit before disconnect |
 | Full TDD Swarm | `/.tdd-swarm` | "Full TDD Swarm on [X]" | New features (recommended) |
+| Idea → TDD Swarm | `/.idea->tdd-swarm` | "I have an idea for [X]" | Half-baked ideas → features |
 | Swarm Build | `/.swarm` | "swarm to build [X]" | Parallel implementation |
 | Full Cycle | - | "full cycle workflow on [X]" | Features without strict TDD |
 | TDD | - | "TDD workflow for [X]" | Simple test-first |
