@@ -64,6 +64,8 @@ Use the \`/w-\` prefix for quick workflow invocation:
 | \`/w-multi-repo [task]\` | Cross-repository coordination |
 | \`/w-compound\` | Store current solution in memory |
 | \`/w-search [query]\` | Search past solutions |
+| \`/w-ralph-this [prompt]\` | Ralph Wiggum iterative loop |
+| \`/w-ralph-goals [idea]\` | Interview to build Ralph spec |
 
 **Example:**
 \`\`\`
@@ -760,6 +762,8 @@ Claude: Found 3 matches:
 | Multi-Repo | \`/w-multi-repo\` | "multi-repo workflow for [X]" | Cross-repo changes |
 | Compound This | \`/w-compound\` | "compound this solution" | Ad-hoc capture |
 | Search Solutions | \`/w-search\` | "search for solutions to [X]" | Find past work |
+| Ralph Loop | \`/w-ralph-this\` | "ralph this [prompt]" | Iterative AI loop |
+| Ralph Spec | \`/w-ralph-goals\` | "ralph goals for [idea]" | Build Ralph prompt |
 
 ### Key Agents
 
