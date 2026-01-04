@@ -30,8 +30,8 @@ program
       console.log('\n' + chalk.cyan('Next steps:'));
       console.log('  1. Ensure claude-flow MCP is installed: ' + chalk.yellow('npx claude-flow@alpha mcp start'));
       console.log('  2. Review the generated WORKFLOW-SHORTCUTS.md');
-      console.log('  3. Try a workflow: ' + chalk.yellow('"Run the full cycle workflow on [feature]"'));
-      console.log('\n' + chalk.dim('Tip: Each workflow searches memory first, then compounds what you learn.'));
+      console.log('  3. Try a workflow: ' + chalk.yellow('/.full-cycle [feature]') + ' or ' + chalk.yellow('"Run the full cycle workflow on [feature]"'));
+      console.log('\n' + chalk.dim('Tip: Use /. prefix for quick access: /.tdd, /.swarm, /.fix, /.review, etc.'));
     } catch (error) {
       spinner.fail(chalk.red('Installation failed'));
       console.error(chalk.red(error.message));
@@ -60,6 +60,7 @@ program
       console.log(`  ${status.plugins.claudeFlow ? chalk.green('✓') : chalk.red('✗')} Claude Flow plugin`);
       console.log(`  ${status.plugins.compoundEngineering ? chalk.green('✓') : chalk.red('✗')} Compound Engineering plugin`);
       console.log(`  ${status.plugins.frontendDesign ? chalk.green('✓') : chalk.red('✗')} Frontend Design plugin`);
+      console.log(`  ${status.plugins.dotShortcuts ? chalk.green('✓') : chalk.red('✗')} Dot Shortcuts (/.full-cycle, /.tdd, etc.)`);
 
       if (!status.installed) {
         console.log('\n' + chalk.yellow('Run `node bin/cli.js init` to install.'));

@@ -11,6 +11,7 @@ import { writeWorkflowShortcuts, shortcutsExist } from './utils/shortcuts.js';
 import * as claudeFlow from './plugins/claude-flow.js';
 import * as compoundEngineering from './plugins/compound-engineering.js';
 import * as frontendDesign from './plugins/frontend-design.js';
+import * as dotShortcuts from './plugins/dot-shortcuts.js';
 
 /**
  * DaniZee Suite Installer
@@ -76,6 +77,7 @@ export class DaniZeeSuiteInstaller {
       path.join(this.claudeDir, 'commands', 'workflows'),
       path.join(this.claudeDir, 'commands', 'coordination'),
       path.join(this.claudeDir, 'commands', 'analysis'),
+      path.join(this.claudeDir, 'commands', '.shortcuts'),
       path.join(this.claudeDir, 'helpers')
     ];
 
@@ -104,6 +106,12 @@ export class DaniZeeSuiteInstaller {
 
     // Install Frontend Design
     results.push(await frontendDesign.install(this.claudeDir, {
+      dryRun: this.dryRun,
+      targetDir: this.targetDir
+    }));
+
+    // Install Dot Shortcuts (/.full-cycle, /.tdd, etc.)
+    results.push(await dotShortcuts.install(this.claudeDir, {
       dryRun: this.dryRun,
       targetDir: this.targetDir
     }));
@@ -171,7 +179,8 @@ echo "MCP server started. You can now use memory and swarm operations."
       plugins: {
         claudeFlow: false,
         compoundEngineering: false,
-        frontendDesign: false
+        frontendDesign: false,
+        dotShortcuts: false
       }
     };
 
@@ -194,6 +203,7 @@ echo "MCP server started. You can now use memory and swarm operations."
     status.plugins.claudeFlow = await claudeFlow.isInstalled(this.claudeDir);
     status.plugins.compoundEngineering = await compoundEngineering.isInstalled(this.claudeDir);
     status.plugins.frontendDesign = await frontendDesign.isInstalled(this.claudeDir);
+    status.plugins.dotShortcuts = await dotShortcuts.isInstalled(this.claudeDir);
 
     // Overall status
     status.installed = status.claudeDir &&
@@ -201,7 +211,8 @@ echo "MCP server started. You can now use memory and swarm operations."
       status.shortcuts &&
       status.plugins.claudeFlow &&
       status.plugins.compoundEngineering &&
-      status.plugins.frontendDesign;
+      status.plugins.frontendDesign &&
+      status.plugins.dotShortcuts;
 
     return status;
   }
@@ -214,6 +225,7 @@ echo "MCP server started. You can now use memory and swarm operations."
     await claudeFlow.uninstall(this.claudeDir);
     await compoundEngineering.uninstall(this.claudeDir);
     await frontendDesign.uninstall(this.claudeDir);
+    await dotShortcuts.uninstall(this.claudeDir);
 
     // Remove settings
     await removeSettings(this.claudeDir, this.keepSettings);
@@ -233,7 +245,7 @@ echo "MCP server started. You can now use memory and swarm operations."
     }
 
     // Remove empty command directories
-    const commandDirs = ['workflows', 'coordination', 'analysis'];
+    const commandDirs = ['workflows', 'coordination', 'analysis', '.shortcuts'];
     for (const dir of commandDirs) {
       try {
         await fs.rmdir(path.join(this.claudeDir, 'commands', dir));
@@ -262,6 +274,7 @@ echo "MCP server started. You can now use memory and swarm operations."
         `${this.claudeDir}/commands/workflows/`,
         `${this.claudeDir}/commands/coordination/`,
         `${this.claudeDir}/commands/analysis/`,
+        `${this.claudeDir}/commands/.shortcuts/`,
         `${this.claudeDir}/helpers/`,
         `${this.claudeDir}/settings.json`,
         `${this.targetDir}/WORKFLOW-SHORTCUTS.md`,
@@ -270,7 +283,8 @@ echo "MCP server started. You can now use memory and swarm operations."
       plugins: [
         'claude-flow',
         'compound-engineering',
-        'frontend-design'
+        'frontend-design',
+        'dot-shortcuts'
       ]
     };
   }

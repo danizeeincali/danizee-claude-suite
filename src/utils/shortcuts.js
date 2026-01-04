@@ -43,12 +43,42 @@ Every workflow follows this pattern:
 
 ---
 
+## Slash Commands (Quick Access)
+
+Use the \`/.\` prefix for quick workflow invocation:
+
+| Command | Description |
+|---------|-------------|
+| \`/.full-cycle [feature]\` | Plan → implement → review → PR ready |
+| \`/.swarm [task]\` | Parallel agents for rapid implementation |
+| \`/.tdd [feature]\` | Test-first development (SPARC) |
+| \`/.tdd-swarm [feature]\` | Full TDD + Swarm + Review combined |
+| \`/.fix [bug]\` | Quick bug investigation and fix |
+| \`/.debug [issue]\` | Deep multi-angle debugging |
+| \`/.hotfix [issue]\` | Critical production fix |
+| \`/.review [PR#]\` | Comprehensive multi-agent review |
+| \`/.security [target]\` | OWASP security audit |
+| \`/.perf [target]\` | Performance bottleneck analysis |
+| \`/.architect [system]\` | Hive-mind architecture design |
+| \`/.multi-repo [task]\` | Cross-repository coordination |
+| \`/.compound\` | Store current solution in memory |
+| \`/.search [query]\` | Search past solutions |
+
+**Example:**
+\`\`\`
+/.full-cycle OAuth2 authentication with Google
+/.tdd shopping cart with add, remove, checkout
+/.fix users getting logged out after password reset
+\`\`\`
+
+---
+
 ## Development Workflows
 
 ### Full Cycle Development
 
-**Say:**
-> "Run the full cycle workflow on [feature]"
+**Say:** "Run the full cycle workflow on [feature]"
+**Slash:** \`/.full-cycle [feature]\`
 
 **What it does:** Plans → implements in isolated worktree → comprehensive review → PR ready.
 
@@ -97,8 +127,8 @@ mcp__claude-flow__neural_patterns { action: "learn" }
 
 ### Swarm Build
 
-**Say:**
-> "Use swarm to build [task]"
+**Say:** "Use swarm to build [task]"
+**Slash:** \`/.swarm [task]\`
 
 **What it does:** Spawns parallel agents (coder, tester, reviewer) for rapid implementation.
 
@@ -145,8 +175,8 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/implementations/
 
 ### TDD Development
 
-**Say:**
-> "TDD workflow for [feature]"
+**Say:** "TDD workflow for [feature]"
+**Slash:** \`/.tdd [feature]\`
 
 **What it does:** SPARC methodology: Spec → Tests first → Implementation → Refinement.
 
@@ -191,8 +221,8 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/tdd/shopping-car
 
 ### Full TDD Swarm
 
-**Say:**
-> "Full TDD Swarm on [feature]"
+**Say:** "Full TDD Swarm on [feature]"
+**Slash:** \`/.tdd-swarm [feature]\`
 
 **What it does:** Combines planning (Full Cycle) + test-first (TDD) + parallel build (Swarm) + comprehensive review.
 
@@ -272,8 +302,8 @@ mcp__claude-flow__neural_patterns { action: "learn" }
 
 ### Quick Fix
 
-**Say:**
-> "Quick fix for [bug description]"
+**Say:** "Quick fix for [bug description]"
+**Slash:** \`/.fix [bug]\`
 
 **What it does:** Fast investigation → targeted fix → verification.
 
@@ -317,8 +347,8 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/bugs/auth-logout
 
 ### Deep Debug
 
-**Say:**
-> "Debug workflow for [issue]"
+**Say:** "Debug workflow for [issue]"
+**Slash:** \`/.debug [issue]\`
 
 **What it does:** Thorough multi-angle analysis: code, git history, performance profiling.
 
@@ -366,8 +396,8 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/debugging/api-ti
 
 ### Critical Hotfix
 
-**Say:**
-> "Critical hotfix for [issue]"
+**Say:** "Critical hotfix for [issue]"
+**Slash:** \`/.hotfix [issue]\`
 
 **What it does:** Isolated branch → minimal fix → security-focused review → expedited PR.
 
@@ -416,8 +446,8 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/incidents/sql-in
 
 ### Full Review
 
-**Say:**
-> "Full review of PR [number]"
+**Say:** "Full review of PR [number]"
+**Slash:** \`/.review [PR#]\`
 
 **What it does:** 12+ specialized agents analyze code, security, performance, architecture.
 
@@ -464,8 +494,8 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/reviews/pr-47-au
 
 ### Security Audit
 
-**Say:**
-> "Security audit on [target]"
+**Say:** "Security audit on [target]"
+**Slash:** \`/.security [target]\`
 
 **What it does:** OWASP top 10, auth/authz, data exposure analysis.
 
@@ -510,8 +540,8 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/security/auth-mo
 
 ### Performance Audit
 
-**Say:**
-> "Performance audit on [target]"
+**Say:** "Performance audit on [target]"
+**Slash:** \`/.perf [target]\`
 
 **What it does:** Bottlenecks, N+1 queries, memory issues, optimization opportunities.
 
@@ -558,8 +588,8 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/performance/dash
 
 ### Hive-Mind Architecture
 
-**Say:**
-> "Hive-mind architecture for [system]"
+**Say:** "Hive-mind architecture for [system]"
+**Slash:** \`/.architect [system]\`
 
 **What it does:** Multiple agents collaborate with collective intelligence for complex design.
 
@@ -607,8 +637,8 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/architecture/mic
 
 ### Multi-Repository
 
-**Say:**
-> "Multi-repo workflow for [task]"
+**Say:** "Multi-repo workflow for [task]"
+**Slash:** \`/.multi-repo [task]\`
 
 **What it does:** Coordinates changes across repos with dependency awareness.
 
@@ -657,9 +687,8 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/multi-repo/auth-
 
 ### Compound This
 
-**Say:**
-> "Compound this solution"
-> "Document what we just solved"
+**Say:** "Compound this solution" or "Document what we just solved"
+**Slash:** \`/.compound [category]\`
 
 **What it does:** Captures current context as reusable knowledge (ad-hoc).
 
@@ -675,9 +704,8 @@ Claude: Stored as project/bugs/[auto-named] + created docs/solutions/bugs/[name]
 
 ### Search Solutions
 
-**Say:**
-> "Search for solutions to [problem]"
-> "What patterns exist for [category]?"
+**Say:** "Search for solutions to [problem]" or "What patterns exist for [category]?"
+**Slash:** \`/.search [query]\`
 
 **What it does:** Searches memory and solution docs for relevant past work.
 
@@ -696,22 +724,22 @@ Claude: Found 3 matches:
 
 ### Workflow Summary
 
-| Workflow | Trigger | Best For |
-|----------|---------|----------|
-| Full Cycle | "full cycle workflow on [X]" | New features |
-| Swarm Build | "swarm to build [X]" | Parallel implementation |
-| TDD | "TDD workflow for [X]" | Test-first development |
-| Full TDD Swarm | "Full TDD Swarm on [X]" | Critical features (speed + quality) |
-| Quick Fix | "quick fix for [X]" | Simple bugs |
-| Deep Debug | "debug workflow for [X]" | Complex issues |
-| Hotfix | "critical hotfix for [X]" | Production emergencies |
-| Full Review | "full review of PR [#]" | Comprehensive review |
-| Security Audit | "security audit on [X]" | Security analysis |
-| Perf Audit | "performance audit on [X]" | Optimization |
-| Hive Architect | "hive-mind architecture for [X]" | Complex design |
-| Multi-Repo | "multi-repo workflow for [X]" | Cross-repo changes |
-| Compound This | "compound this solution" | Ad-hoc capture |
-| Search Solutions | "search for solutions to [X]" | Find past work |
+| Workflow | Slash | Natural Language | Best For |
+|----------|-------|------------------|----------|
+| Full Cycle | \`/.full-cycle\` | "full cycle workflow on [X]" | New features |
+| Swarm Build | \`/.swarm\` | "swarm to build [X]" | Parallel implementation |
+| TDD | \`/.tdd\` | "TDD workflow for [X]" | Test-first development |
+| Full TDD Swarm | \`/.tdd-swarm\` | "Full TDD Swarm on [X]" | Critical features |
+| Quick Fix | \`/.fix\` | "quick fix for [X]" | Simple bugs |
+| Deep Debug | \`/.debug\` | "debug workflow for [X]" | Complex issues |
+| Hotfix | \`/.hotfix\` | "critical hotfix for [X]" | Production emergencies |
+| Full Review | \`/.review\` | "full review of PR [#]" | Comprehensive review |
+| Security Audit | \`/.security\` | "security audit on [X]" | Security analysis |
+| Perf Audit | \`/.perf\` | "performance audit on [X]" | Optimization |
+| Hive Architect | \`/.architect\` | "hive-mind architecture for [X]" | Complex design |
+| Multi-Repo | \`/.multi-repo\` | "multi-repo workflow for [X]" | Cross-repo changes |
+| Compound This | \`/.compound\` | "compound this solution" | Ad-hoc capture |
+| Search Solutions | \`/.search\` | "search for solutions to [X]" | Find past work |
 
 ### Key Agents
 
