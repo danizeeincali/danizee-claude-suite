@@ -43,7 +43,7 @@ Use the `/.` prefix for quick workflow invocation:
 | `/.idea->tdd-swarm [idea]` | Deep interview → refine idea → TDD Swarm |
 | `/.swarm [task]` | Parallel agents for rapid implementation |
 | `/.fix [bug]` | Quick bug investigation and fix |
-| `/.debug [issue]` | Deep multi-angle debugging |
+| `/.debug [issue]` | Debug → diagnose → TDD-swarm fix |
 | `/.hotfix [issue]` | Critical production fix |
 | `/.review [PR#]` | Comprehensive multi-agent review |
 | `/.security [target]` | OWASP security audit |
@@ -332,28 +332,38 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/bugs/auth-logout
 
 ---
 
-### Deep Debug
+### Deep Debug → TDD Swarm
 
 **Say:** "Debug workflow for [issue]"
 **Slash:** `/.debug [issue]`
 
-**What it does:** Thorough multi-angle analysis: code, git history, performance profiling.
+**What it does:** Thorough investigation → diagnose root cause → TDD-swarm fix with regression tests.
+
+**Phase 1: Debug Investigation**
+- Search → Analyze → Investigate → Diagnose root cause
+
+**Phase 2: TDD-Swarm Fix**
+- Plan fix → Write regression tests (must fail) → Build fix → Review
+
+**Strict TDD Rule:** Fix phase is BLOCKED until regression tests are written and failing.
 
 **Checkpoints:**
 | # | After | You Review |
 |---|-------|------------|
 | 0 | Search | Related debugging sessions |
 | 1 | Analysis | Initial findings and hypotheses |
-| 2 | Investigation | Confirmed root cause |
-| 3 | Fix proposal | Proposed solution approach |
-| 4 | Verification | Fix applied and tested |
-| 5 | Compound | Root cause analysis to store |
+| 2 | Diagnosis | Confirmed root cause |
+| 3 | Plan | Fix architecture based on diagnosis |
+| 4 | Tests | Regression tests (must fail) |
+| 5 | Build | Fix implementation (tests pass) |
+| 6 | Review | Security, performance, no regressions |
+| 7 | Compound | Root cause + fix pattern to store |
 
 **Compounds:**
 ```
 Memory: project/debugging/[issue-category]
 Doc: docs/solutions/debugging/[issue-name].md
-Pattern: investigation approach + root cause + prevention
+Pattern: root cause + regression tests + fix approach
 ```
 
 **Example:**
@@ -365,13 +375,21 @@ User: Debug workflow for intermittent API timeouts in production
 <summary>Under the hood</summary>
 
 ```bash
-# Search
+# Phase 1: Debug Investigation
 mcp__claude-flow__memory_search { pattern: "debugging/*timeout*" }
-
-# Execute
 npx claude-flow@alpha sparc debugger "[issue]"
 Task("analyst", "Analyze patterns...", "analyst")
 Task("git-history-analyzer", "Check recent changes...", "researcher")
+# CHECKPOINT: Root cause confirmed
+
+# Phase 2: TDD-Swarm Fix
+/compound-engineering:workflows:plan
+Task("tester", "Write regression tests that reproduce bug", "tester")
+# GATE: npm run test → MUST FAIL (bug still exists)
+npx claude-flow@alpha swarm init --topology hierarchical
+Task("coder", "Implement fix to pass tests", "coder")
+# VERIFY: npm run test → ALL MUST PASS
+/compound-engineering:workflows:review
 
 # Compound
 mcp__claude-flow__memory_usage { action: "store", key: "project/debugging/api-timeouts" }
@@ -721,7 +739,7 @@ Claude: Found 3 matches:
 | Full Cycle | - | "full cycle workflow on [X]" | Features without strict TDD |
 | TDD | - | "TDD workflow for [X]" | Simple test-first |
 | Quick Fix | `/.fix` | "quick fix for [X]" | Simple bugs |
-| Deep Debug | `/.debug` | "debug workflow for [X]" | Complex issues |
+| Deep Debug → TDD | `/.debug` | "debug workflow for [X]" | Complex issues with regression tests |
 | Hotfix | `/.hotfix` | "critical hotfix for [X]" | Production emergencies |
 | Full Review | `/.review` | "full review of PR [#]" | Comprehensive review |
 | Security Audit | `/.security` | "security audit on [X]" | Security analysis |
