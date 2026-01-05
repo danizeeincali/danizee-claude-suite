@@ -87,11 +87,7 @@ STOP and wait for user response.
 - Files created/modified: _____
 - Test results (if applicable): _____
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Execution complete. Proceed to Integrate and Compound?"
-- Options: ["Continue", "Revise work", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Compound phase.
 
 ---
 
@@ -109,7 +105,8 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 5 phases
-- [ ] All 4 checkpoints completed with user confirmation
+- [ ] Checkpoints 0-1 completed with user confirmation
+- [ ] Checkpoints 2-3 completed (auto-proceed)
 - [ ] All required outputs generated
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
@@ -237,11 +234,7 @@ STOP and wait for user response.
 - Implementation file paths: _____
 - Test run result: "All _____ tests PASS"
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Implementation complete. All tests pass. Proceed to Review?"
-- Options: ["Continue", "Revise implementation"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Review phase.
 
 ---
 
@@ -253,11 +246,7 @@ STOP and wait for user response.
 | Performance | _____ | _____ |
 | Architecture | _____ | _____ |
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Review complete. Proceed to Compound?"
-- Options: ["Continue", "Address findings first"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Compound phase.
 
 ---
 
@@ -275,7 +264,8 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 7 phases
-- [ ] All 7 checkpoints completed with user confirmation
+- [ ] Checkpoints 0-3 completed with user confirmation
+- [ ] Checkpoints 4-6 completed (auto-proceed)
 - [ ] All required outputs generated
 - [ ] All tests pass
 - [ ] Compound phase executed
@@ -445,11 +435,7 @@ STOP and wait for user response.
 - Implementation file paths: _____
 - Test run result: "All _____ tests PASS"
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Implementation complete. All tests pass. Proceed to Review?"
-- Options: ["Continue", "Revise implementation"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Review phase.
 
 ---
 
@@ -461,11 +447,7 @@ STOP and wait for user response.
 | Performance | _____ | _____ |
 | Architecture | _____ | _____ |
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Review complete. Proceed to Compound?"
-- Options: ["Continue", "Address findings first"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Compound phase.
 
 ---
 
@@ -484,7 +466,8 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 9 phases
-- [ ] All 8 checkpoints completed with user confirmation
+- [ ] Checkpoints 0-4 completed with user confirmation
+- [ ] Checkpoints 5-7 completed (auto-proceed)
 - [ ] Interview conducted with multiple questions
 - [ ] Refined spec saved to .claude/plans/
 - [ ] All required outputs generated
@@ -579,11 +562,7 @@ STOP and wait for user response.
 - Changes summary: _____
 - Test results: _____
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Fix applied. Tests pass. Proceed to Compound?"
-- Options: ["Continue", "Revise fix", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Compound phase.
 
 ---
 
@@ -601,7 +580,8 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 5 phases
-- [ ] All 4 checkpoints completed with user confirmation
+- [ ] Checkpoints 0-1 completed with user confirmation
+- [ ] Checkpoints 2-3 completed (auto-proceed)
 - [ ] Root cause identified
 - [ ] Fix applied and tests pass
 - [ ] Compound phase executed
@@ -757,11 +737,7 @@ STOP and wait for user response.
 - Test run result: "All _____ tests PASS"
 - Bug confirmed fixed: yes/no
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Fix implemented. All tests pass. Proceed to Review?"
-- Options: ["Continue", "Revise implementation"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Review phase.
 
 ---
 
@@ -773,11 +749,7 @@ STOP and wait for user response.
 | Performance | _____ | _____ |
 | Regressions | _____ | _____ |
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Review complete. No regressions found. Proceed to Compound?"
-- Options: ["Continue", "Address findings first"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Compound phase.
 
 ---
 
@@ -796,7 +768,8 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 9 phases
-- [ ] All 8 checkpoints completed with user confirmation
+- [ ] Checkpoints 0-4 completed with user confirmation
+- [ ] Checkpoints 5-7 completed (auto-proceed)
 - [ ] Root cause confirmed before fix
 - [ ] Regression tests written and initially failed
 - [ ] All tests now pass
@@ -892,11 +865,7 @@ STOP and wait for user response.
 - Changes summary (minimal): _____
 - Test results: _____
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Minimal fix applied. Proceed to Security Review?"
-- Options: ["Continue", "Revise fix", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Security Review phase.
 
 ---
 
@@ -931,7 +900,9 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 5 phases
-- [ ] All 5 checkpoints completed with user confirmation
+- [ ] Checkpoints 0-1 completed with user confirmation
+- [ ] Checkpoint 2 completed (auto-proceed)
+- [ ] Checkpoints 3-4 completed with user confirmation
 - [ ] Hotfix branch created and isolated
 - [ ] Minimal fix applied
 - [ ] Security review completed
@@ -1024,11 +995,7 @@ STOP and wait for user response.
 | Quality | _____ | _____ |
 | Simplicity | _____ | _____ |
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Code analysis complete. Proceed to Security Scan?"
-- Options: ["Continue", "Address findings first", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Security Scan phase.
 
 ---
 
@@ -1038,11 +1005,7 @@ STOP and wait for user response.
 |---------------|------|----------|
 | _____ | _____ | _____ |
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Security scan complete. Found [N] issues. Proceed to Performance?"
-- Options: ["Continue", "Address security first", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Performance Check phase.
 
 ---
 
@@ -1052,11 +1015,7 @@ STOP and wait for user response.
 |-------------|--------|----------|
 | _____ | _____ | _____ |
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Performance check complete. Proceed to Compound?"
-- Options: ["Continue", "Address performance first", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Compound phase.
 
 ---
 
@@ -1074,7 +1033,8 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 6 phases
-- [ ] All 5 checkpoints completed with user confirmation
+- [ ] Checkpoint 0 completed with user confirmation
+- [ ] Checkpoints 1-4 completed (auto-proceed)
 - [ ] Code analysis completed
 - [ ] Security scan completed
 - [ ] Performance check completed
@@ -1170,11 +1130,7 @@ STOP and wait for user response.
 | Input validation | _____ | _____ | _____ |
 | Authz flaws | _____ | _____ | _____ |
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Security scan complete. Found [N] issues. Proceed to Analysis?"
-- Options: ["Continue", "Investigate findings", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Analysis phase.
 
 ---
 
@@ -1184,11 +1140,7 @@ STOP and wait for user response.
 - Prioritized remediation list (by severity)
 - Recommended fixes
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Analysis complete. Proceed to Compound?"
-- Options: ["Continue", "Review priorities", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Compound phase.
 
 ---
 
@@ -1206,7 +1158,8 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 4 phases
-- [ ] All 4 checkpoints completed with user confirmation
+- [ ] Checkpoint 0 completed with user confirmation
+- [ ] Checkpoints 1-3 completed (auto-proceed)
 - [ ] All OWASP categories scanned
 - [ ] Risk assessment completed
 - [ ] Compound phase executed
@@ -1299,11 +1252,7 @@ STOP and wait for user response.
 | Caching | _____ | _____ | _____ |
 | Bundle size | _____ | _____ | _____ |
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Profiling complete. Found [N] bottlenecks. Proceed to Analysis?"
-- Options: ["Continue", "Investigate bottlenecks", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Analysis phase.
 
 ---
 
@@ -1313,11 +1262,7 @@ STOP and wait for user response.
 - Estimated improvement metrics
 - Implementation suggestions
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Analysis complete. Proceed to Compound?"
-- Options: ["Continue", "Review recommendations", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Compound phase.
 
 ---
 
@@ -1335,7 +1280,8 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 4 phases
-- [ ] All 4 checkpoints completed with user confirmation
+- [ ] Checkpoint 0 completed with user confirmation
+- [ ] Checkpoints 1-3 completed (auto-proceed)
 - [ ] All performance categories checked
 - [ ] Recommendations prioritized
 - [ ] Compound phase executed
@@ -1586,11 +1532,7 @@ STOP and wait for user response.
 - Verification status per repo: _____
 - Any failures: _____
 
-**USER GATE:** Use AskUserQuestion
-- Question: "All [N] repos synced. Proceed to Compound?"
-- Options: ["Continue", "Address failures", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Compound phase.
 
 ---
 
@@ -1608,7 +1550,8 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 5 phases
-- [ ] All 5 checkpoints completed with user confirmation
+- [ ] Checkpoints 0-2 completed with user confirmation
+- [ ] Checkpoints 3-4 completed (auto-proceed)
 - [ ] Dependency map created
 - [ ] Changes applied in correct order
 - [ ] All repos verified
@@ -1875,11 +1818,7 @@ STOP and wait for user response.
 - Doc path: docs/solutions/[category]/_____.md
 - Patterns captured: _____
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Knowledge compounded. Proceed to Commit?"
-- Options: ["Continue", "Revise compound"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Commit phase.
 
 ---
 
@@ -1906,6 +1845,9 @@ STOP and wait for user response.
 
 ## Completion Checklist
 
+- [ ] Checkpoint 0 completed with user confirmation
+- [ ] Checkpoint 1 completed (auto-proceed)
+- [ ] Checkpoint 2 completed with user confirmation
 - [ ] Session summary created
 - [ ] Compound phase completed
 - [ ] Memory key stored: _____
@@ -1996,12 +1938,9 @@ STOP and wait for user response.
 - Progress made: _____
 - Completion signal detected: yes/no
 
-If NOT completed and approaching max:
-**USER GATE:** Use AskUserQuestion
-- Question: "Iteration [N] of [MAX]. Continue?"
-- Options: ["Continue", "Stop here", "Extend max"]
+**AUTO-PROCEED:** Continue iterations until completion signal or max reached.
 
-STOP and wait for user response.
+Only stop for user confirmation if max iterations reached without completion.
 
 ---
 
@@ -2011,11 +1950,7 @@ STOP and wait for user response.
 - Completion signal: _____
 - Final result: _____
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Loop completed in [N] iterations. Proceed to Compound?"
-- Options: ["Continue", "Review result"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Compound phase.
 
 ---
 
@@ -2033,7 +1968,8 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 4 phases
-- [ ] All checkpoints completed with user confirmation
+- [ ] Checkpoint 0 completed with user confirmation
+- [ ] Checkpoints 1-3 completed (auto-proceed)
 - [ ] Loop completed successfully OR stopped intentionally
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
