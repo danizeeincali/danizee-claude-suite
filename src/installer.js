@@ -5,6 +5,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
+import { execSync } from 'child_process';
 import { runConflictChecks } from './utils/conflicts.js';
 import { mergeSettings, removeSettings, readSettings } from './utils/settings.js';
 import { writeWorkflowShortcuts, shortcutsExist } from './utils/shortcuts.js';
@@ -29,6 +30,9 @@ export class DaniZeeSuiteInstaller {
    * Run the installation
    */
   async install() {
+    // Check required tools first
+    const toolStatus = this.checkRequiredTools();
+
     // Check for conflicts
     const conflictCheck = await runConflictChecks(this.claudeDir, {
       force: this.force
@@ -64,7 +68,8 @@ export class DaniZeeSuiteInstaller {
     return {
       success: true,
       plugins: results,
-      shortcuts: path.join(this.targetDir, 'WORKFLOW-SHORTCUTS.md')
+      shortcuts: path.join(this.targetDir, 'WORKFLOW-SHORTCUTS.md'),
+      tools: toolStatus
     };
   }
 
@@ -165,6 +170,40 @@ echo "MCP server started. You can now use memory and swarm operations."
       mcpSetup,
       { mode: 0o755 }
     );
+  }
+
+  /**
+   * Check for required tools (gh CLI, etc.)
+   * Returns array of tool status objects
+   */
+  checkRequiredTools() {
+    const tools = [];
+
+    // Check GitHub CLI
+    try {
+      const version = execSync('gh --version', { stdio: 'pipe', encoding: 'utf-8' });
+      const versionMatch = version.match(/gh version ([\d.]+)/);
+      tools.push({
+        name: 'gh',
+        displayName: 'GitHub CLI',
+        installed: true,
+        version: versionMatch ? versionMatch[1] : 'unknown'
+      });
+    } catch {
+      tools.push({
+        name: 'gh',
+        displayName: 'GitHub CLI',
+        installed: false,
+        installInstructions: [
+          'macOS:   brew install gh',
+          'Linux:   sudo apt install gh  (or: sudo dnf install gh)',
+          'Windows: winget install GitHub.cli',
+          'Or visit: https://cli.github.com/'
+        ]
+      });
+    }
+
+    return tools;
   }
 
   /**

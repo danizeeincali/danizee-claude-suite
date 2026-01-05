@@ -23,9 +23,26 @@ program
 
     try {
       const installer = new DaniZeeSuiteInstaller(options);
-      await installer.install();
+      const result = await installer.install();
 
       spinner.succeed(chalk.green('Danizee Claude Suite initialized successfully!'));
+
+      // Check for missing tools and display warnings
+      if (result.tools) {
+        const missingTools = result.tools.filter(t => !t.installed);
+        if (missingTools.length > 0) {
+          console.log('');
+          for (const tool of missingTools) {
+            console.log(chalk.yellow(`⚠️  ${tool.displayName} (${tool.name}) not found`));
+            if (tool.installInstructions) {
+              console.log(chalk.dim('   Install with:'));
+              for (const instruction of tool.installInstructions) {
+                console.log(chalk.dim(`     ${instruction}`));
+              }
+            }
+          }
+        }
+      }
 
       console.log('\n' + chalk.cyan('Next steps:'));
       console.log('  1. Ensure claude-flow MCP is installed: ' + chalk.yellow('npx claude-flow@alpha mcp start'));
