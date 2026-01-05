@@ -37,7 +37,7 @@ Use TodoWrite NOW to create todos for ALL phases:
 ---
 
 ## Key Parameters
-- **Max Iterations**: Safety limit (default: 10)
+- **Max Iterations**: Safety limit (default: 50)
 - **Completion Promise**: String that signals done (e.g., "DONE", "<promise>COMPLETE</promise>")
 
 ---
