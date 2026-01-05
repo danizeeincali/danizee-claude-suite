@@ -221,11 +221,7 @@ NEVER proceed to Build until:
 - [ ] All tests RUN and FAIL
 - [ ] Failure output captured
 
-**USER GATE:** Use AskUserQuestion
-- Question: "All [N] tests written and failing. Proceed to Build?"
-- Options: ["Continue", "Add more tests", "Revise tests"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Build phase after tests fail.
 
 ---
 
@@ -264,8 +260,8 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 7 phases
-- [ ] Checkpoints 0-3 completed with user confirmation
-- [ ] Checkpoints 4-6 completed (auto-proceed)
+- [ ] Checkpoints 0-2 completed with user confirmation
+- [ ] Checkpoints 3-6 completed (auto-proceed)
 - [ ] All required outputs generated
 - [ ] All tests pass
 - [ ] Compound phase executed
@@ -422,11 +418,7 @@ NEVER proceed to Build until:
 - [ ] All tests RUN and FAIL
 - [ ] Failure output captured
 
-**USER GATE:** Use AskUserQuestion
-- Question: "All [N] tests written and failing. Proceed to Build?"
-- Options: ["Continue", "Add more tests", "Revise tests"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Build phase after tests fail.
 
 ---
 
@@ -466,8 +458,8 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 9 phases
-- [ ] Checkpoints 0-4 completed with user confirmation
-- [ ] Checkpoints 5-7 completed (auto-proceed)
+- [ ] Checkpoints 0-3 completed with user confirmation
+- [ ] Checkpoints 4-7 completed (auto-proceed)
 - [ ] Interview conducted with multiple questions
 - [ ] Refined spec saved to .claude/plans/
 - [ ] All required outputs generated
@@ -723,11 +715,7 @@ NEVER proceed to Build until:
 - [ ] All tests RUN and FAIL
 - [ ] Failure output shows the bug being reproduced
 
-**USER GATE:** Use AskUserQuestion
-- Question: "All [N] regression tests written and failing. Proceed to Build fix?"
-- Options: ["Continue", "Add more tests", "Revise tests"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Build phase after tests fail.
 
 ---
 
@@ -768,8 +756,8 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 9 phases
-- [ ] Checkpoints 0-4 completed with user confirmation
-- [ ] Checkpoints 5-7 completed (auto-proceed)
+- [ ] Checkpoints 0-3 completed with user confirmation
+- [ ] Checkpoints 4-7 completed (auto-proceed)
 - [ ] Root cause confirmed before fix
 - [ ] Regression tests written and initially failed
 - [ ] All tests now pass
