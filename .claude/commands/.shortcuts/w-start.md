@@ -9,18 +9,46 @@ Cold-start a session by loading project context from plan docs, memories, and gi
 
 Default: MASTER_PLAN.md
 
-## What Happens
-1. **Read Plan** - Load specified plan file (or MASTER_PLAN.md)
-2. **Search Claude-Flow Memories** - Query project/* namespaces for stored patterns
-3. **Scan Compound Docs** - Read docs/solutions/ for compound-engineering knowledge
-4. **Check Git** - Recent commits, current branch, uncommitted changes
-5. **Summarize** - Present context summary
-6. **Ask** - "What would you like to work on?"
+---
+
+## ⚠️ MANDATORY EXECUTION
+
+This command MUST complete all context loading steps. NEVER skip memory search.
+
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Context Loaded
+**REQUIRED OUTPUT:**
+- Plan file loaded: _____
+- Memories found: _____ patterns
+- Compound docs: _____ files
+- Git status: branch _____, _____ uncommitted changes
+- Recent commits: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Session initialized. What would you like to work on?"
+- Options: ["Continue existing work", "Start new task", "Review context"]
+
+STOP and wait for user response.
+
+---
 
 ## Memory Sources
 - **Claude-Flow**: project/features/*, project/bugs/*, project/implementations/*, etc.
 - **Compound Engineering**: docs/solutions/ markdown files
 - **Git**: Recent commits and current branch state
+
+## Completion Checklist
+
+- [ ] Plan file read (or default used)
+- [ ] Memory search completed
+- [ ] Compound docs scanned
+- [ ] Git status checked
+- [ ] Context summary presented
+
+⚠️ Session NOT ready until all steps complete
 
 ## Example
 ```

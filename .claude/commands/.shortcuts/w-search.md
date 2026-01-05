@@ -7,10 +7,27 @@ Search Solutions - Searches memory and solution docs for relevant past work.
 /w-search [query]
 ```
 
-## What Happens
-1. Searches memory namespaces for matching patterns
-2. Scans docs/solutions/ for relevant documentation
-3. Returns ranked matches with dates
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Search Complete
+**REQUIRED OUTPUT:**
+- Results count: _____
+- Ranked matches with dates:
+
+| # | Memory Key | Date | Relevance |
+|---|------------|------|-----------|
+| 1 | _____ | _____ | _____ |
+| 2 | _____ | _____ | _____ |
+
+**USER GATE:** Use AskUserQuestion (if results found)
+- Question: "Found [N] matches. View details for any?"
+- Options: ["Show #1", "Show #2", "Show all", "Done"]
+
+STOP and wait for user response.
+
+---
 
 ## Memory Namespaces Searched
 - `project/features/*`
@@ -20,6 +37,10 @@ Search Solutions - Searches memory and solution docs for relevant past work.
 - `project/architecture/*`
 - `project/reviews/*`
 - `project/incidents/*`
+- `project/implementations/*`
+- `project/debugging/*`
+- `project/ideas/*`
+- `project/ralph-specs/*`
 
 ## Example
 ```

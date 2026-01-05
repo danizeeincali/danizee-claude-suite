@@ -16,6 +16,30 @@ Natural language workflows that **compound knowledge** - each task makes future 
 
 ---
 
+## ⚠️ AI-Proof Enforcement Protocol
+
+All workflows include enforcement mechanisms to prevent AI agents from skipping steps:
+
+### Mandatory First Action
+Every workflow requires **TodoWrite** before any other action. Violation = restart.
+
+### Checkpoint Gates
+Each ⛔ **CHECKPOINT** requires:
+1. **REQUIRED OUTPUT** - Specific artifacts that must be produced
+2. **USER GATE** - AskUserQuestion confirmation before proceeding
+3. **STOP** - Wait for user response before continuing
+
+### Blocking Rules
+- **NEVER** proceed without completing required outputs
+- **NEVER** skip checkpoints
+- **NEVER** skip compound phase at the end
+- **VIOLATION** markers indicate restart conditions
+
+### Completion Checklists
+Every workflow ends with a checklist. Workflow is **INCOMPLETE** until all boxes checked.
+
+---
+
 ## How It Works
 
 Every workflow follows this pattern:
@@ -335,16 +359,21 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/tdd/shopping-car
 
 **Philosophy:** Plan like Full Cycle, test like TDD, build like Swarm.
 
+**⚠️ Enforcement:**
+- MANDATORY: Use TodoWrite first with all 7 phases
+- BLOCKING: Build phase is BLOCKED until all tests exist and FAIL
+- NEVER skip compound phase at the end
+
 **Checkpoints:**
 | # | After | You Review |
 |---|-------|------------|
-| 0 | Search | Past solutions, TDD patterns, implementations |
-| 1 | Plan | Architecture, files, approach |
-| 2 | Spec | Acceptance criteria, test cases |
-| 3 | Tests | Test files (must fail - no implementation yet) |
-| 4 | Build | Implementation (tests must pass) |
-| 5 | Review | Security, performance, patterns, architecture |
-| 6 | Compound | Complete solution summary |
+| ⛔ 0 | Search | Past solutions, TDD patterns, implementations |
+| ⛔ 1 | Plan | Architecture, files, approach |
+| ⛔ 2 | Spec | Acceptance criteria, test cases |
+| ⛔ 3 | Tests | Test files (must fail - no implementation yet) |
+| ⛔ 4 | Build | Implementation (tests must pass) |
+| ⛔ 5 | Review | Security, performance, patterns, architecture |
+| ⛔ 6 | Compound | Complete solution summary |
 
 **Strict TDD Rule:** Build phase is BLOCKED until all tests are written and failing.
 
@@ -414,6 +443,12 @@ mcp__claude-flow__neural_patterns { action: "learn" }
 
 **Philosophy:** Ideas need refinement before implementation. This workflow uses structured interviewing to transform vague concepts into clear specs, then executes them with TDD Swarm rigor.
 
+**⚠️ Enforcement:**
+- MANDATORY: Use TodoWrite first with all 9 phases
+- NEVER skip interview phase - ideas MUST be refined
+- BLOCKING: Build is BLOCKED until tests exist and FAIL
+- NEVER skip compound phase at the end
+
 **Phase 1: Deep Interview**
 - Clarify the core value and purpose
 - Define success criteria (how do we know it works?)
@@ -438,14 +473,14 @@ mcp__claude-flow__neural_patterns { action: "learn" }
 **Checkpoints:**
 | # | After | You Review |
 |---|-------|------------|
-| 0 | Idea captured | Initial rough concept |
-| 1 | Interview | Clarified requirements |
-| 2 | Spec | Refined, actionable specification |
-| 3 | Plan | Architecture based on refined spec |
-| 4 | Tests | Test cases (must fail) |
-| 5 | Build | Implementation (tests pass) |
-| 6 | Review | Full review |
-| 7 | Compound | Complete pattern to store |
+| ⛔ 0 | Idea captured | Initial rough concept |
+| ⛔ 1 | Interview | Clarified requirements |
+| ⛔ 2 | Spec | Refined, actionable specification |
+| ⛔ 3 | Plan | Architecture based on refined spec |
+| ⛔ 4 | Tests | Test cases (must fail) |
+| ⛔ 5 | Build | Implementation (tests pass) |
+| ⛔ 6 | Review | Full review |
+| ⛔ 7 | Compound | Complete pattern to store |
 
 **Compounds:**
 \`\`\`
@@ -550,6 +585,12 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/bugs/auth-logout
 
 **What it does:** Thorough investigation → diagnose root cause → TDD-swarm fix with regression tests.
 
+**⚠️ Enforcement:**
+- MANDATORY: Use TodoWrite first with all 9 phases
+- NEVER skip diagnosis - root cause MUST be confirmed
+- BLOCKING: Fix is BLOCKED until regression tests exist and FAIL
+- NEVER skip compound phase at the end
+
 **Phase 1: Debug Investigation**
 - Search → Analyze → Investigate → Diagnose root cause
 
@@ -561,14 +602,14 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/bugs/auth-logout
 **Checkpoints:**
 | # | After | You Review |
 |---|-------|------------|
-| 0 | Search | Related debugging sessions |
-| 1 | Analysis | Initial findings and hypotheses |
-| 2 | Diagnosis | Confirmed root cause |
-| 3 | Plan | Fix architecture based on diagnosis |
-| 4 | Tests | Regression tests (must fail) |
-| 5 | Build | Fix implementation (tests pass) |
-| 6 | Review | Security, performance, no regressions |
-| 7 | Compound | Root cause + fix pattern to store |
+| ⛔ 0 | Search | Related debugging sessions |
+| ⛔ 1 | Analysis | Initial findings and hypotheses |
+| ⛔ 2 | Diagnosis | Confirmed root cause |
+| ⛔ 3 | Plan | Fix architecture based on diagnosis |
+| ⛔ 4 | Tests | Regression tests (must fail) |
+| ⛔ 5 | Build | Fix implementation (tests pass) |
+| ⛔ 6 | Review | Security, performance, no regressions |
+| ⛔ 7 | Compound | Root cause + fix pattern to store |
 
 **Compounds:**
 \`\`\`

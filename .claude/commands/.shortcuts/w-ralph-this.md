@@ -13,24 +13,102 @@ An iterative AI development methodology - a "simple while loop that repeatedly f
 /w-ralph-this .claude/plans/api-spec.md
 ```
 
-## What Happens
-1. **Detect Input** - File path vs inline prompt
-2. **Load Prompt** - Read file or use inline text
-3. **Configure** - Set max iterations (default: 10), completion promise
-4. **Execute Loop** - Repeatedly feed prompt until completion signal or max iterations
-5. **Compound** - Store the successful pattern
+---
+
+## ⚠️ MANDATORY FIRST ACTION
+
+Use TodoWrite NOW to create todos for ALL phases:
+1. Load and validate prompt
+2. Configure iteration parameters
+3. Execute loop (track each iteration)
+4. Compound successful pattern
+
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- NEVER skip checkpoints - each requires user confirmation
+- NEVER exceed max iterations without user confirmation
+- NEVER skip compound phase at the end
+- VIOLATION: Running without completion promise = risk of infinite loop
+
+---
 
 ## Key Parameters
 - **Max Iterations**: Safety limit (default: 10)
 - **Completion Promise**: String that signals done (e.g., "DONE", "<promise>COMPLETE</promise>")
 
-## Checkpoints
-| # | After | You Review |
-|---|-------|------------|
-| 0 | Load | Prompt content and config |
-| 1 | Each iteration | Progress and state |
-| 2 | Completion | Final result |
-| 3 | Compound | Pattern to store |
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Load
+**REQUIRED OUTPUT:**
+- Input type: file/inline
+- Prompt content: _____
+- Completion promise: _____
+- Max iterations: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Prompt loaded. Completion signal: [X]. Max: [N]. Start loop?"
+- Options: ["Start loop", "Adjust config", "Show prompt"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Each Iteration
+**REQUIRED OUTPUT (per iteration):**
+- Iteration #: _____
+- Progress made: _____
+- Completion signal detected: yes/no
+
+If NOT completed and approaching max:
+**USER GATE:** Use AskUserQuestion
+- Question: "Iteration [N] of [MAX]. Continue?"
+- Options: ["Continue", "Stop here", "Extend max"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 2: Completion
+**REQUIRED OUTPUT:**
+- Total iterations: _____
+- Completion signal: _____
+- Final result: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Loop completed in [N] iterations. Proceed to Compound?"
+- Options: ["Continue", "Review result"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Memory key: project/ralph/_____
+- Doc path: docs/solutions/ralph/_____.md
+- Pattern stored: yes/no
+
+NEVER skip this phase. Workflow is INCOMPLETE without compound.
+
+---
+
+## Completion Checklist
+
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 4 phases
+- [ ] All checkpoints completed with user confirmation
+- [ ] Loop completed successfully OR stopped intentionally
+- [ ] Compound phase executed
+- [ ] Memory key stored: _____
+- [ ] Solution doc created: _____
+
+⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Best For
 - Greenfield projects with clear success criteria

@@ -7,36 +7,177 @@ Deep Debug → TDD Swarm - Thorough investigation then fix with regression tests
 /w-debug [issue description]
 ```
 
-## What Happens
+---
+
+## ⚠️ MANDATORY FIRST ACTION
+
+Use TodoWrite NOW to create todos for ALL phases:
+1. Search for related debugging sessions
+2. Analyze and form hypotheses
+3. Investigate with multiple tools
+4. Diagnose and confirm root cause
+5. Plan fix architecture
+6. Write regression tests (must fail)
+7. Build fix (tests pass)
+8. Run review
+9. Compound solution
+
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- NEVER skip checkpoints - each requires user confirmation
+- NEVER proceed to Build before regression tests exist and FAIL
+- NEVER skip compound phase at the end
+- NEVER skip the diagnosis phase - root cause MUST be confirmed
+- VIOLATION: Starting fix without confirmed diagnosis = restart workflow
+
+---
+
+## Execution Protocol
 
 ### Phase 1: Debug Investigation
-1. **Search** - Find related debugging sessions
-2. **Analyze** - Form initial hypotheses
-3. **Investigate** - Deep dive with multiple tools
-4. **Diagnose** - Confirm root cause
+
+### ⛔ CHECKPOINT 0: Search
+**REQUIRED OUTPUT:**
+- List of related debugging sessions (0+ items with memory keys)
+- Relevance assessment for each
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Found [N] related sessions. Proceed to Analysis or use existing solution?"
+- Options: ["Proceed to Analysis", "Use existing solution", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Analysis
+**REQUIRED OUTPUT:**
+- Initial findings summary
+- Hypotheses list (numbered, prioritized)
+- Evidence supporting each hypothesis
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Analysis complete. Top hypothesis: [X]. Proceed to Investigation?"
+- Options: ["Continue", "Revise hypotheses", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 2: Diagnosis (BLOCKING GATE)
+**REQUIRED OUTPUT:**
+- Confirmed root cause: _____
+- Evidence supporting diagnosis: _____
+- Files/lines involved: _____
+
+**BLOCKING RULE:**
+NEVER proceed to Plan until:
+- [ ] Root cause identified with high confidence
+- [ ] Evidence documented
+- [ ] User confirms diagnosis
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Root cause confirmed: [X]. Proceed to Plan fix?"
+- Options: ["Continue", "Investigate more", "Revise diagnosis"]
+
+STOP and wait for user response.
+
+---
 
 ### Phase 2: TDD-Swarm Fix
-5. **Plan** - Architecture for the fix based on diagnosis
-6. **Spec** - Test cases that would have caught this bug
-7. **Test-First** - Write regression tests (must fail with current code)
-8. **Build** - Swarm implements the fix to pass tests
-9. **Review** - Security, performance, ensure no regressions
-10. **Compound** - Store root cause + fix pattern
 
-## Strict TDD Rule
-Fix phase is **BLOCKED** until regression tests are written and failing.
+### ⛔ CHECKPOINT 3: Plan
+**REQUIRED OUTPUT:**
+- Fix architecture summary (3-5 bullets)
+- Files to modify (list)
+- Approach and rationale
 
-## Checkpoints
-| # | After | You Review |
-|---|-------|------------|
-| 0 | Search | Related debugging sessions |
-| 1 | Analysis | Initial findings and hypotheses |
-| 2 | Diagnosis | Confirmed root cause |
-| 3 | Plan | Fix architecture based on diagnosis |
-| 4 | Tests | Regression tests (must fail) |
-| 5 | Build | Fix implementation (tests pass) |
-| 6 | Review | Security, performance, no regressions |
-| 7 | Compound | Root cause + fix pattern to store |
+**USER GATE:** Use AskUserQuestion
+- Question: "Fix plan ready. Proceed to write regression tests?"
+- Options: ["Continue", "Revise plan", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 4: Tests (BLOCKING GATE)
+**REQUIRED OUTPUT:**
+- Test file paths: _____
+- Test count: _____ regression tests written
+- Test run result: "All _____ tests FAIL (bug still exists)"
+
+**BLOCKING RULE:**
+NEVER proceed to Build until:
+- [ ] All regression tests written
+- [ ] All tests RUN and FAIL
+- [ ] Failure output shows the bug being reproduced
+
+**USER GATE:** Use AskUserQuestion
+- Question: "All [N] regression tests written and failing. Proceed to Build fix?"
+- Options: ["Continue", "Add more tests", "Revise tests"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 5: Build
+**REQUIRED OUTPUT:**
+- Implementation file paths: _____
+- Test run result: "All _____ tests PASS"
+- Bug confirmed fixed: yes/no
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Fix implemented. All tests pass. Proceed to Review?"
+- Options: ["Continue", "Revise implementation"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 6: Review
+**REQUIRED OUTPUT:**
+| Category | Finding | Severity |
+|----------|---------|----------|
+| Security | _____ | _____ |
+| Performance | _____ | _____ |
+| Regressions | _____ | _____ |
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Review complete. No regressions found. Proceed to Compound?"
+- Options: ["Continue", "Address findings first"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Memory key: project/debugging/_____
+- Doc path: docs/solutions/debugging/_____.md
+- Root cause documented: yes/no
+- Fix pattern stored: yes/no
+
+NEVER skip this phase. Workflow is INCOMPLETE without compound.
+
+---
+
+## Completion Checklist
+
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 9 phases
+- [ ] All 8 checkpoints completed with user confirmation
+- [ ] Root cause confirmed before fix
+- [ ] Regression tests written and initially failed
+- [ ] All tests now pass
+- [ ] No regressions introduced
+- [ ] Compound phase executed
+- [ ] Memory key stored: _____
+- [ ] Solution doc created: _____
+
+⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Compounds
 ```

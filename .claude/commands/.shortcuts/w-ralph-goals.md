@@ -9,20 +9,31 @@ Ralph Spec Builder - Interactive interview to build an optimal Ralph Wiggum prom
 /w-ralph-goals create a REST API with authentication
 ```
 
-## What Happens
-1. **Capture Idea** - Get the rough concept
-2. **Interview** - Ask clarifying questions (one at a time):
-   - What does "done" look like? (completion criteria)
-   - What are the major phases/milestones?
-   - What tests can verify success?
-   - What's a reasonable max iteration limit?
-   - Should the loop include self-testing cycles?
-3. **Build Spec** - Generate a Ralph-ready prompt with:
-   - Clear completion promise
-   - Incremental goals
-   - Test-and-verify cycles
-4. **Save** - Write to .claude/plans/YYYY-MM-DD-[name]-ralph.md
-5. **Execute?** - Ask if you want to run /w-ralph-this on it
+---
+
+## ⚠️ MANDATORY FIRST ACTION
+
+Use TodoWrite NOW to create todos for ALL phases:
+1. Capture initial idea
+2. Interview for completion criteria
+3. Interview for phases/milestones
+4. Interview for verification
+5. Build Ralph spec
+6. Save spec file
+7. Optionally execute
+
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- NEVER skip interview questions - each is critical
+- NEVER skip checkpoints - each requires user confirmation
+- NEVER skip saving the spec file
+- Ask ONE question at a time using AskUserQuestion
+
+---
 
 ## Interview Categories
 
@@ -42,13 +53,64 @@ Ralph Spec Builder - Interactive interview to build an optimal Ralph Wiggum prom
 - What's the max iteration limit?
 - Are there any destructive operations to avoid?
 
-## Checkpoints
-| # | After | You Review |
-|---|-------|------------|
-| 0 | Idea captured | Initial concept |
-| 1 | Interview | Answers and clarity |
-| 2 | Spec built | Generated Ralph prompt |
-| 3 | Execute? | Option to run immediately |
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Idea Captured
+**REQUIRED OUTPUT:**
+- Initial idea: _____
+- Context needed: _____
+
+**USER GATE:** Use AskUserQuestion (first interview question)
+- Question: "What specific output signals that [idea] is complete?"
+- Options: (free text via "Other")
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Interview Complete
+**REQUIRED OUTPUT:**
+- Completion criteria: _____
+- Phases identified: _____
+- Verification methods: _____
+- Max iterations: _____
+- Safety considerations: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Interview complete. Proceed to build spec?"
+- Options: ["Continue", "Add more questions"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 2: Spec Built
+**REQUIRED OUTPUT:**
+- Spec preview with all sections
+- Completion promise: _____
+- Phase list: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Ralph spec ready. Review and save?"
+- Options: ["Save spec", "Revise spec"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 3: Execute Decision
+**REQUIRED OUTPUT:**
+- Spec saved to: .claude/plans/YYYY-MM-DD-[name]-ralph.md
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Spec saved. Run /w-ralph-this on it now?"
+- Options: ["Execute now", "Later"]
+
+STOP and wait for user response.
+
+---
 
 ## Output Format
 The generated spec will include:
@@ -68,6 +130,17 @@ Output <promise>COMPLETE</promise> when done.
 
 ## Max Iterations: N
 ```
+
+## Completion Checklist
+
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 7 phases
+- [ ] All interview questions answered
+- [ ] All 4 checkpoints completed with user confirmation
+- [ ] Spec file saved: _____
+- [ ] Execute decision made
+
+⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Example
 ```

@@ -23,20 +23,99 @@ Swarm Build - Spawns parallel agents (coder, tester, reviewer) for rapid impleme
 /w-swarm [task description]
 \`\`\`
 
-## What Happens
-1. **Search** - Find related implementation patterns
-2. **Spawn** - Initialize hierarchical swarm topology
-3. **Execute** - Parallel agents work on components
-4. **Integrate** - Combine and verify results
-5. **Compound** - Store implementation pattern
+---
 
-## Checkpoints
-| # | After | You Review |
-|---|-------|------------|
-| 0 | Search | Related implementation patterns |
-| 1 | Agent spawn | Agent assignments and strategy |
-| 2 | Execution | Completed work before integration |
-| 3 | Compound | Implementation pattern to store |
+## ⚠️ MANDATORY FIRST ACTION
+
+Use TodoWrite NOW to create todos for ALL phases:
+1. Search for related implementation patterns
+2. Spawn agents with assignments
+3. Execute parallel work
+4. Integrate and verify results
+5. Compound solution
+
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- NEVER skip checkpoints - each requires user confirmation
+- NEVER skip compound phase at the end
+- VIOLATION: Starting implementation without search = restart workflow
+
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Search
+**REQUIRED OUTPUT:**
+- List of related patterns (0+ items with memory keys)
+- Relevance assessment for each
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Found [N] related patterns. Proceed to Spawn agents or use existing?"
+- Options: ["Proceed to Spawn", "Use existing solution", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Agent Spawn
+**REQUIRED OUTPUT:**
+- Agent assignments table:
+| Agent | Task | Role |
+|-------|------|------|
+| _____ | _____ | coder |
+| _____ | _____ | tester |
+| _____ | _____ | reviewer |
+
+- Swarm topology: _____
+- Coordination strategy: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Agent assignments ready. Proceed to Execute?"
+- Options: ["Continue", "Revise assignments", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 2: Execution Complete
+**REQUIRED OUTPUT:**
+- Completed work summary per agent
+- Files created/modified: _____
+- Test results (if applicable): _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Execution complete. Proceed to Integrate and Compound?"
+- Options: ["Continue", "Revise work", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Memory key: project/implementations/_____
+- Doc path: docs/solutions/implementations/_____.md
+- Pattern stored: yes/no
+
+NEVER skip this phase. Workflow is INCOMPLETE without compound.
+
+---
+
+## Completion Checklist
+
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 5 phases
+- [ ] All 4 checkpoints completed with user confirmation
+- [ ] All required outputs generated
+- [ ] Compound phase executed
+- [ ] Memory key stored: _____
+- [ ] Solution doc created: _____
+
+⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Compounds
 \`\`\`
@@ -65,28 +144,145 @@ Full TDD Swarm - Combines planning + test-first + parallel build + comprehensive
 /w-tdd-swarm [feature description]
 \`\`\`
 
-## What Happens
-1. **Search** - Check features, TDD patterns, implementations
-2. **Plan** - Architecture and approach
-3. **Spec** - Acceptance criteria and test cases
-4. **Test-First** - ALL tests written (must fail initially)
-5. **Build** - Swarm implements to pass tests
-6. **Review** - Security, performance, architecture
-7. **Compound** - Store complete solution
+---
 
-## Strict TDD Rule
-Build phase is **BLOCKED** until all tests are written and failing.
+## ⚠️ MANDATORY FIRST ACTION
 
-## Checkpoints
-| # | After | You Review |
-|---|-------|------------|
-| 0 | Search | Past solutions, TDD patterns, implementations |
-| 1 | Plan | Architecture, files, approach |
-| 2 | Spec | Acceptance criteria, test cases |
-| 3 | Tests | Test files (must fail - no implementation yet) |
-| 4 | Build | Implementation (tests must pass) |
-| 5 | Review | Security, performance, patterns, architecture |
-| 6 | Compound | Complete solution summary |
+Use TodoWrite NOW to create todos for ALL phases:
+1. Search for past solutions
+2. Plan architecture
+3. Write spec/acceptance criteria
+4. Write ALL tests (must fail)
+5. Build implementation (tests pass)
+6. Run full review
+7. Compound solution
+
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- NEVER skip checkpoints - each requires user confirmation
+- NEVER proceed to Build before all tests exist and FAIL
+- NEVER skip compound phase at the end
+- VIOLATION: Starting implementation without search = restart workflow
+
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Search
+**REQUIRED OUTPUT:**
+- List of past solutions (0+ items with memory keys)
+- Relevance assessment for each
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Found [N] past solutions. Proceed to Plan or use existing?"
+- Options: ["Proceed to Plan", "Use existing solution", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Plan
+**REQUIRED OUTPUT:**
+- Architecture summary (3-5 bullets)
+- Files to create/modify (list)
+- Approach and rationale
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Plan complete. Proceed to Spec?"
+- Options: ["Continue", "Revise plan", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 2: Spec
+**REQUIRED OUTPUT:**
+- Acceptance criteria (numbered list)
+- Test cases (numbered list)
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Spec ready. Proceed to Tests?"
+- Options: ["Continue", "Revise spec"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 3: Tests (BLOCKING GATE)
+**REQUIRED OUTPUT:**
+- Test file paths: _____
+- Test count: _____ tests written
+- Test run result: "All _____ tests FAIL as expected"
+
+**BLOCKING RULE:**
+NEVER proceed to Build until:
+- [ ] All tests written
+- [ ] All tests RUN and FAIL
+- [ ] Failure output captured
+
+**USER GATE:** Use AskUserQuestion
+- Question: "All [N] tests written and failing. Proceed to Build?"
+- Options: ["Continue", "Add more tests", "Revise tests"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 4: Build
+**REQUIRED OUTPUT:**
+- Implementation file paths: _____
+- Test run result: "All _____ tests PASS"
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Implementation complete. All tests pass. Proceed to Review?"
+- Options: ["Continue", "Revise implementation"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 5: Review
+**REQUIRED OUTPUT:**
+| Category | Finding | Severity |
+|----------|---------|----------|
+| Security | _____ | _____ |
+| Performance | _____ | _____ |
+| Architecture | _____ | _____ |
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Review complete. Proceed to Compound?"
+- Options: ["Continue", "Address findings first"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 6: Compound (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Memory key: project/full-tdd-swarm/_____
+- Doc path: docs/solutions/full-tdd-swarm/_____.md
+- Pattern stored: yes/no
+
+NEVER skip this phase. Workflow is INCOMPLETE without compound.
+
+---
+
+## Completion Checklist
+
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 7 phases
+- [ ] All 7 checkpoints completed with user confirmation
+- [ ] All required outputs generated
+- [ ] All tests pass
+- [ ] Compound phase executed
+- [ ] Memory key stored: _____
+- [ ] Solution doc created: _____
+
+⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Compounds
 \`\`\`
@@ -115,25 +311,52 @@ Turn a half-baked idea into a well-built feature through deep interviewing + Ful
 /w-idea-tdd-swarm .claude/plans/auth-idea.md
 \`\`\`
 
-## What Happens
+---
 
-### Phase 1: Deep Interview
-1. **Detect Input** - File path or inline description
-2. **Load Context** - Read relevant project docs if mentioned
-3. **Interview** - One question at a time (see below)
-4. **Capture Quotes** - Note verbatim moments of clarity
-5. **Final Question** - "What did I forget to ask about?"
-6. **Save Spec** - Write to .claude/plans/YYYY-MM-DD-[name].md
+## ⚠️ MANDATORY FIRST ACTION
 
-### Phase 2: Full TDD Swarm
-7. **Plan** - Architecture based on refined spec
-8. **Spec** - Acceptance criteria from interview
-9. **Test-First** - ALL tests written (must fail)
-10. **Build** - Swarm implements to pass tests
-11. **Review** - Security, performance, architecture
-12. **Compound** - Store complete solution
+Use TodoWrite NOW to create todos for ALL phases:
+1. Search for past solutions
+2. Interview to refine idea
+3. Save refined spec
+4. Plan architecture
+5. Write spec/acceptance criteria
+6. Write ALL tests (must fail)
+7. Build implementation (tests pass)
+8. Run full review
+9. Compound solution
 
-## Interview Categories
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- NEVER skip checkpoints - each requires user confirmation
+- NEVER proceed to Build before all tests exist and FAIL
+- NEVER skip compound phase at the end
+- NEVER skip the interview phase - ideas MUST be refined first
+- VIOLATION: Starting implementation without interview = restart workflow
+
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Search
+**REQUIRED OUTPUT:**
+- List of past solutions (0+ items with memory keys)
+- Relevance assessment for each
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Found [N] past solutions. Proceed to Interview or use existing?"
+- Options: ["Proceed to Interview", "Use existing solution", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Interview (MANDATORY - NEVER SKIP)
+**Interview Categories:**
 
 **Technical & Architecture**
 - Implementation approach, tradeoffs, edge cases
@@ -150,23 +373,127 @@ Turn a half-baked idea into a well-built feature through deep interviewing + Ful
 - What's the simplest version that delivers value?
 - What would make you regret building this?
 
-## Interview Rules
-- Ask ONE question at a time
+**Interview Rules:**
+- Ask ONE question at a time using AskUserQuestion
 - Go deep on answers revealing uncertainty or assumptions
 - Don't ask obvious questions - push on unthought things
 - Capture quotable moments verbatim for the spec
+- End with: "What did I forget to ask about?"
 
-## Checkpoints
-| # | After | You Review |
-|---|-------|------------|
-| 0 | Search | Past solutions, patterns |
-| 1 | Interview | Refined spec from questions |
-| 2 | Plan | Architecture, files, approach |
-| 3 | Spec | Acceptance criteria, test cases |
-| 4 | Tests | Test files (must fail) |
-| 5 | Build | Implementation (tests pass) |
-| 6 | Review | Security, performance, patterns |
-| 7 | Compound | Complete solution summary |
+**REQUIRED OUTPUT:**
+- Interview notes with user quotes
+- Refined requirements list
+- Spec file: .claude/plans/YYYY-MM-DD-[name].md
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Interview complete. Here's the refined spec. Proceed to Plan?"
+- Options: ["Continue", "Add more questions", "Revise spec"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 2: Plan
+**REQUIRED OUTPUT:**
+- Architecture summary (3-5 bullets)
+- Files to create/modify (list)
+- Approach and rationale
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Plan complete. Proceed to Spec?"
+- Options: ["Continue", "Revise plan", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 3: Spec
+**REQUIRED OUTPUT:**
+- Acceptance criteria (numbered list)
+- Test cases (numbered list)
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Spec ready. Proceed to Tests?"
+- Options: ["Continue", "Revise spec"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 4: Tests (BLOCKING GATE)
+**REQUIRED OUTPUT:**
+- Test file paths: _____
+- Test count: _____ tests written
+- Test run result: "All _____ tests FAIL as expected"
+
+**BLOCKING RULE:**
+NEVER proceed to Build until:
+- [ ] All tests written
+- [ ] All tests RUN and FAIL
+- [ ] Failure output captured
+
+**USER GATE:** Use AskUserQuestion
+- Question: "All [N] tests written and failing. Proceed to Build?"
+- Options: ["Continue", "Add more tests", "Revise tests"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 5: Build
+**REQUIRED OUTPUT:**
+- Implementation file paths: _____
+- Test run result: "All _____ tests PASS"
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Implementation complete. All tests pass. Proceed to Review?"
+- Options: ["Continue", "Revise implementation"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 6: Review
+**REQUIRED OUTPUT:**
+| Category | Finding | Severity |
+|----------|---------|----------|
+| Security | _____ | _____ |
+| Performance | _____ | _____ |
+| Architecture | _____ | _____ |
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Review complete. Proceed to Compound?"
+- Options: ["Continue", "Address findings first"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Memory key: project/ideas/_____
+- Doc path: docs/solutions/ideas/_____.md
+- Spec path: .claude/plans/YYYY-MM-DD-[name].md
+- Pattern stored: yes/no
+
+NEVER skip this phase. Workflow is INCOMPLETE without compound.
+
+---
+
+## Completion Checklist
+
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 9 phases
+- [ ] All 8 checkpoints completed with user confirmation
+- [ ] Interview conducted with multiple questions
+- [ ] Refined spec saved to .claude/plans/
+- [ ] All required outputs generated
+- [ ] All tests pass
+- [ ] Compound phase executed
+- [ ] Memory key stored: _____
+- [ ] Solution doc created: _____
+
+⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Compounds
 \`\`\`
@@ -194,20 +521,94 @@ Quick Fix - Fast investigation → targeted fix → verification.
 /w-fix [bug description]
 \`\`\`
 
-## What Happens
-1. **Search** - Find similar bugs fixed before
-2. **Investigate** - Identify root cause
-3. **Fix** - Apply minimal targeted fix
-4. **Verify** - Run tests
-5. **Compound** - Store bug pattern
+---
 
-## Checkpoints
-| # | After | You Review |
-|---|-------|------------|
-| 0 | Search | Similar bugs fixed before |
-| 1 | Investigation | Root cause analysis |
-| 2 | Fix applied | Changes before testing |
-| 3 | Compound | Bug pattern to store |
+## ⚠️ MANDATORY FIRST ACTION
+
+Use TodoWrite NOW to create todos for ALL phases:
+1. Search for similar bugs fixed before
+2. Investigate root cause
+3. Apply minimal targeted fix
+4. Verify with tests
+5. Compound bug pattern
+
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- NEVER skip checkpoints - each requires user confirmation
+- NEVER skip compound phase at the end
+- VIOLATION: Starting fix without search = restart workflow
+
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Search
+**REQUIRED OUTPUT:**
+- List of similar bugs (0+ items with memory keys)
+- Relevance assessment for each
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Found [N] similar bugs. Proceed to Investigation or use existing fix?"
+- Options: ["Proceed to Investigation", "Use existing fix", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Investigation
+**REQUIRED OUTPUT:**
+- Root cause identified: _____
+- Files/lines involved: _____
+- Evidence: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Root cause: [X]. Proceed to apply fix?"
+- Options: ["Continue", "Investigate more", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 2: Fix Applied
+**REQUIRED OUTPUT:**
+- Files modified: _____
+- Changes summary: _____
+- Test results: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Fix applied. Tests pass. Proceed to Compound?"
+- Options: ["Continue", "Revise fix", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Memory key: project/bugs/_____
+- Doc path: docs/solutions/bugs/_____.md
+- Pattern stored: yes/no
+
+NEVER skip this phase. Workflow is INCOMPLETE without compound.
+
+---
+
+## Completion Checklist
+
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 5 phases
+- [ ] All 4 checkpoints completed with user confirmation
+- [ ] Root cause identified
+- [ ] Fix applied and tests pass
+- [ ] Compound phase executed
+- [ ] Memory key stored: _____
+- [ ] Solution doc created: _____
+
+⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Compounds
 \`\`\`
@@ -234,36 +635,177 @@ Deep Debug → TDD Swarm - Thorough investigation then fix with regression tests
 /w-debug [issue description]
 \`\`\`
 
-## What Happens
+---
+
+## ⚠️ MANDATORY FIRST ACTION
+
+Use TodoWrite NOW to create todos for ALL phases:
+1. Search for related debugging sessions
+2. Analyze and form hypotheses
+3. Investigate with multiple tools
+4. Diagnose and confirm root cause
+5. Plan fix architecture
+6. Write regression tests (must fail)
+7. Build fix (tests pass)
+8. Run review
+9. Compound solution
+
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- NEVER skip checkpoints - each requires user confirmation
+- NEVER proceed to Build before regression tests exist and FAIL
+- NEVER skip compound phase at the end
+- NEVER skip the diagnosis phase - root cause MUST be confirmed
+- VIOLATION: Starting fix without confirmed diagnosis = restart workflow
+
+---
+
+## Execution Protocol
 
 ### Phase 1: Debug Investigation
-1. **Search** - Find related debugging sessions
-2. **Analyze** - Form initial hypotheses
-3. **Investigate** - Deep dive with multiple tools
-4. **Diagnose** - Confirm root cause
+
+### ⛔ CHECKPOINT 0: Search
+**REQUIRED OUTPUT:**
+- List of related debugging sessions (0+ items with memory keys)
+- Relevance assessment for each
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Found [N] related sessions. Proceed to Analysis or use existing solution?"
+- Options: ["Proceed to Analysis", "Use existing solution", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Analysis
+**REQUIRED OUTPUT:**
+- Initial findings summary
+- Hypotheses list (numbered, prioritized)
+- Evidence supporting each hypothesis
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Analysis complete. Top hypothesis: [X]. Proceed to Investigation?"
+- Options: ["Continue", "Revise hypotheses", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 2: Diagnosis (BLOCKING GATE)
+**REQUIRED OUTPUT:**
+- Confirmed root cause: _____
+- Evidence supporting diagnosis: _____
+- Files/lines involved: _____
+
+**BLOCKING RULE:**
+NEVER proceed to Plan until:
+- [ ] Root cause identified with high confidence
+- [ ] Evidence documented
+- [ ] User confirms diagnosis
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Root cause confirmed: [X]. Proceed to Plan fix?"
+- Options: ["Continue", "Investigate more", "Revise diagnosis"]
+
+STOP and wait for user response.
+
+---
 
 ### Phase 2: TDD-Swarm Fix
-5. **Plan** - Architecture for the fix based on diagnosis
-6. **Spec** - Test cases that would have caught this bug
-7. **Test-First** - Write regression tests (must fail with current code)
-8. **Build** - Swarm implements the fix to pass tests
-9. **Review** - Security, performance, ensure no regressions
-10. **Compound** - Store root cause + fix pattern
 
-## Strict TDD Rule
-Fix phase is **BLOCKED** until regression tests are written and failing.
+### ⛔ CHECKPOINT 3: Plan
+**REQUIRED OUTPUT:**
+- Fix architecture summary (3-5 bullets)
+- Files to modify (list)
+- Approach and rationale
 
-## Checkpoints
-| # | After | You Review |
-|---|-------|------------|
-| 0 | Search | Related debugging sessions |
-| 1 | Analysis | Initial findings and hypotheses |
-| 2 | Diagnosis | Confirmed root cause |
-| 3 | Plan | Fix architecture based on diagnosis |
-| 4 | Tests | Regression tests (must fail) |
-| 5 | Build | Fix implementation (tests pass) |
-| 6 | Review | Security, performance, no regressions |
-| 7 | Compound | Root cause + fix pattern to store |
+**USER GATE:** Use AskUserQuestion
+- Question: "Fix plan ready. Proceed to write regression tests?"
+- Options: ["Continue", "Revise plan", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 4: Tests (BLOCKING GATE)
+**REQUIRED OUTPUT:**
+- Test file paths: _____
+- Test count: _____ regression tests written
+- Test run result: "All _____ tests FAIL (bug still exists)"
+
+**BLOCKING RULE:**
+NEVER proceed to Build until:
+- [ ] All regression tests written
+- [ ] All tests RUN and FAIL
+- [ ] Failure output shows the bug being reproduced
+
+**USER GATE:** Use AskUserQuestion
+- Question: "All [N] regression tests written and failing. Proceed to Build fix?"
+- Options: ["Continue", "Add more tests", "Revise tests"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 5: Build
+**REQUIRED OUTPUT:**
+- Implementation file paths: _____
+- Test run result: "All _____ tests PASS"
+- Bug confirmed fixed: yes/no
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Fix implemented. All tests pass. Proceed to Review?"
+- Options: ["Continue", "Revise implementation"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 6: Review
+**REQUIRED OUTPUT:**
+| Category | Finding | Severity |
+|----------|---------|----------|
+| Security | _____ | _____ |
+| Performance | _____ | _____ |
+| Regressions | _____ | _____ |
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Review complete. No regressions found. Proceed to Compound?"
+- Options: ["Continue", "Address findings first"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Memory key: project/debugging/_____
+- Doc path: docs/solutions/debugging/_____.md
+- Root cause documented: yes/no
+- Fix pattern stored: yes/no
+
+NEVER skip this phase. Workflow is INCOMPLETE without compound.
+
+---
+
+## Completion Checklist
+
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 9 phases
+- [ ] All 8 checkpoints completed with user confirmation
+- [ ] Root cause confirmed before fix
+- [ ] Regression tests written and initially failed
+- [ ] All tests now pass
+- [ ] No regressions introduced
+- [ ] Compound phase executed
+- [ ] Memory key stored: _____
+- [ ] Solution doc created: _____
+
+⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Compounds
 \`\`\`
@@ -291,21 +833,113 @@ Critical Hotfix - Isolated branch → minimal fix → security-focused review �
 /w-hotfix [issue description]
 \`\`\`
 
-## What Happens
-1. **Search** - Find similar incidents
-2. **Isolate** - Create hotfix branch
-3. **Fix** - Apply minimal targeted change
-4. **Security Review** - Focused security analysis
-5. **Compound** - Store incident documentation
+---
 
-## Checkpoints
-| # | After | You Review |
-|---|-------|------------|
-| 0 | Search | Similar incidents |
-| 1 | Branch created | Isolated hotfix branch |
-| 2 | Fix applied | Minimal change for review |
-| 3 | Security review | Security analysis complete |
-| 4 | Compound | Incident doc to store |
+## ⚠️ MANDATORY FIRST ACTION
+
+Use TodoWrite NOW to create todos for ALL phases:
+1. Search for similar incidents
+2. Create isolated hotfix branch
+3. Apply minimal targeted fix
+4. Run security review
+5. Compound incident documentation
+
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- NEVER skip checkpoints - each requires user confirmation
+- NEVER skip security review - hotfixes MUST be security-reviewed
+- NEVER skip compound phase at the end
+- VIOLATION: Applying fix without isolated branch = restart workflow
+
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Search
+**REQUIRED OUTPUT:**
+- List of similar incidents (0+ items with memory keys)
+- Relevance assessment for each
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Found [N] similar incidents. Proceed to create hotfix branch?"
+- Options: ["Proceed to Isolate", "Review existing incidents", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Branch Created
+**REQUIRED OUTPUT:**
+- Hotfix branch name: hotfix/_____
+- Base branch: _____
+- Branch creation confirmed: yes/no
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Hotfix branch created: [branch]. Proceed to apply fix?"
+- Options: ["Continue", "Revise branch", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 2: Fix Applied
+**REQUIRED OUTPUT:**
+- Files modified: _____
+- Changes summary (minimal): _____
+- Test results: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Minimal fix applied. Proceed to Security Review?"
+- Options: ["Continue", "Revise fix", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 3: Security Review (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+| Check | Status | Notes |
+|-------|--------|-------|
+| Input validation | _____ | _____ |
+| Auth/authz | _____ | _____ |
+| Data exposure | _____ | _____ |
+| Injection risks | _____ | _____ |
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Security review complete. Proceed to Compound?"
+- Options: ["Continue", "Address security concerns", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 4: Compound (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Memory key: project/incidents/_____
+- Doc path: docs/solutions/incidents/_____.md
+- Incident documented: yes/no
+
+NEVER skip this phase. Workflow is INCOMPLETE without compound.
+
+---
+
+## Completion Checklist
+
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 5 phases
+- [ ] All 5 checkpoints completed with user confirmation
+- [ ] Hotfix branch created and isolated
+- [ ] Minimal fix applied
+- [ ] Security review completed
+- [ ] Compound phase executed
+- [ ] Memory key stored: _____
+- [ ] Incident doc created: _____
+
+⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Compounds
 \`\`\`
@@ -332,13 +966,30 @@ Full Review - 12+ specialized agents analyze code, security, performance, archit
 /w-review [PR number or description]
 \`\`\`
 
-## What Happens
-1. **Search** - Find past review patterns for this code area
-2. **Code Analysis** - Style, patterns, quality
-3. **Security Scan** - Vulnerability detection
-4. **Performance Check** - Optimization opportunities
-5. **Architecture Review** - Design patterns
-6. **Compound** - Store review findings
+---
+
+## ⚠️ MANDATORY FIRST ACTION
+
+Use TodoWrite NOW to create todos for ALL phases:
+1. Search for past review patterns
+2. Run code analysis
+3. Run security scan
+4. Run performance check
+5. Run architecture review
+6. Compound review findings
+
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- NEVER skip checkpoints - each requires user confirmation
+- NEVER skip any review category
+- NEVER skip compound phase at the end
+- VIOLATION: Completing review without all categories = incomplete
+
+---
 
 ## Agents Deployed
 - code-simplicity-reviewer
@@ -347,14 +998,91 @@ Full Review - 12+ specialized agents analyze code, security, performance, archit
 - architecture-strategist
 - pattern-recognition-specialist
 
-## Checkpoints
-| # | After | You Review |
-|---|-------|------------|
-| 0 | Search | Past review patterns for this code area |
-| 1 | Code analysis | Style, patterns, quality findings |
-| 2 | Security scan | Vulnerability report |
-| 3 | Performance check | Optimization opportunities |
-| 4 | Compound | Review findings to store |
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Search
+**REQUIRED OUTPUT:**
+- List of past reviews (0+ items with memory keys)
+- Relevance assessment for each
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Found [N] past reviews for this area. Proceed to Code Analysis?"
+- Options: ["Continue", "Review past findings first", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Code Analysis
+**REQUIRED OUTPUT:**
+| Category | Finding | Severity |
+|----------|---------|----------|
+| Style | _____ | _____ |
+| Patterns | _____ | _____ |
+| Quality | _____ | _____ |
+| Simplicity | _____ | _____ |
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Code analysis complete. Proceed to Security Scan?"
+- Options: ["Continue", "Address findings first", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 2: Security Scan
+**REQUIRED OUTPUT:**
+| Vulnerability | Risk | Location |
+|---------------|------|----------|
+| _____ | _____ | _____ |
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Security scan complete. Found [N] issues. Proceed to Performance?"
+- Options: ["Continue", "Address security first", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 3: Performance Check
+**REQUIRED OUTPUT:**
+| Opportunity | Impact | Location |
+|-------------|--------|----------|
+| _____ | _____ | _____ |
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Performance check complete. Proceed to Compound?"
+- Options: ["Continue", "Address performance first", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 4: Compound (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Memory key: project/reviews/_____
+- Doc path: docs/solutions/reviews/_____.md
+- All findings documented: yes/no
+
+NEVER skip this phase. Workflow is INCOMPLETE without compound.
+
+---
+
+## Completion Checklist
+
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 6 phases
+- [ ] All 5 checkpoints completed with user confirmation
+- [ ] Code analysis completed
+- [ ] Security scan completed
+- [ ] Performance check completed
+- [ ] Compound phase executed
+- [ ] Memory key stored: _____
+- [ ] Review doc created: _____
+
+⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Compounds
 \`\`\`
@@ -381,11 +1109,28 @@ Security Audit - OWASP top 10, auth/authz, data exposure analysis.
 /w-security [target description]
 \`\`\`
 
-## What Happens
-1. **Search** - Find past security findings in this area
-2. **Scan** - Run comprehensive security checks
-3. **Analyze** - Risk assessment and prioritization
-4. **Compound** - Store security patterns
+---
+
+## ⚠️ MANDATORY FIRST ACTION
+
+Use TodoWrite NOW to create todos for ALL phases:
+1. Search for past security findings
+2. Run comprehensive security scan
+3. Analyze and prioritize risks
+4. Compound security patterns
+
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- NEVER skip checkpoints - each requires user confirmation
+- NEVER skip any OWASP category
+- NEVER skip compound phase at the end
+- VIOLATION: Incomplete scan = incomplete audit
+
+---
 
 ## Checks Performed
 - SQL injection
@@ -396,13 +1141,79 @@ Security Audit - OWASP top 10, auth/authz, data exposure analysis.
 - Input validation
 - Authorization flaws
 
-## Checkpoints
-| # | After | You Review |
-|---|-------|------------|
-| 0 | Search | Past security findings in this area |
-| 1 | Scan complete | Vulnerability findings |
-| 2 | Analysis done | Risk assessment and priorities |
-| 3 | Compound | Security patterns to store |
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Search
+**REQUIRED OUTPUT:**
+- List of past security findings (0+ items with memory keys)
+- Relevance assessment for each
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Found [N] past security findings. Proceed to Scan?"
+- Options: ["Continue", "Review past findings first", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Scan Complete
+**REQUIRED OUTPUT:**
+| Category | Finding | Severity | Location |
+|----------|---------|----------|----------|
+| SQL Injection | _____ | _____ | _____ |
+| XSS | _____ | _____ | _____ |
+| CSRF | _____ | _____ | _____ |
+| Auth bypass | _____ | _____ | _____ |
+| Secrets | _____ | _____ | _____ |
+| Input validation | _____ | _____ | _____ |
+| Authz flaws | _____ | _____ | _____ |
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Security scan complete. Found [N] issues. Proceed to Analysis?"
+- Options: ["Continue", "Investigate findings", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 2: Analysis Done
+**REQUIRED OUTPUT:**
+- Risk assessment summary
+- Prioritized remediation list (by severity)
+- Recommended fixes
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Analysis complete. Proceed to Compound?"
+- Options: ["Continue", "Review priorities", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Memory key: project/security/_____
+- Doc path: docs/solutions/security/_____.md
+- All findings documented: yes/no
+
+NEVER skip this phase. Workflow is INCOMPLETE without compound.
+
+---
+
+## Completion Checklist
+
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 4 phases
+- [ ] All 4 checkpoints completed with user confirmation
+- [ ] All OWASP categories scanned
+- [ ] Risk assessment completed
+- [ ] Compound phase executed
+- [ ] Memory key stored: _____
+- [ ] Security doc created: _____
+
+⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Compounds
 \`\`\`
@@ -429,11 +1240,28 @@ Performance Audit - Bottlenecks, N+1 queries, memory issues, optimization opport
 /w-perf [target description]
 \`\`\`
 
-## What Happens
-1. **Search** - Find past performance optimizations
-2. **Profile** - Identify bottlenecks
-3. **Analyze** - Prioritize recommendations
-4. **Compound** - Store performance patterns
+---
+
+## ⚠️ MANDATORY FIRST ACTION
+
+Use TodoWrite NOW to create todos for ALL phases:
+1. Search for past performance optimizations
+2. Profile and identify bottlenecks
+3. Analyze and prioritize recommendations
+4. Compound performance patterns
+
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- NEVER skip checkpoints - each requires user confirmation
+- NEVER skip any performance category
+- NEVER skip compound phase at the end
+- VIOLATION: Incomplete profiling = incomplete audit
+
+---
 
 ## Checks Performed
 - N+1 query detection
@@ -443,13 +1271,78 @@ Performance Audit - Bottlenecks, N+1 queries, memory issues, optimization opport
 - Caching opportunities
 - Bundle size analysis
 
-## Checkpoints
-| # | After | You Review |
-|---|-------|------------|
-| 0 | Search | Past performance optimizations |
-| 1 | Profiling done | Bottleneck identification |
-| 2 | Analysis complete | Prioritized recommendations |
-| 3 | Compound | Performance patterns to store |
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Search
+**REQUIRED OUTPUT:**
+- List of past optimizations (0+ items with memory keys)
+- Relevance assessment for each
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Found [N] past performance patterns. Proceed to Profiling?"
+- Options: ["Continue", "Review past optimizations first", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Profiling Done
+**REQUIRED OUTPUT:**
+| Category | Finding | Impact | Location |
+|----------|---------|--------|----------|
+| N+1 queries | _____ | _____ | _____ |
+| Memory | _____ | _____ | _____ |
+| CPU | _____ | _____ | _____ |
+| I/O | _____ | _____ | _____ |
+| Caching | _____ | _____ | _____ |
+| Bundle size | _____ | _____ | _____ |
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Profiling complete. Found [N] bottlenecks. Proceed to Analysis?"
+- Options: ["Continue", "Investigate bottlenecks", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 2: Analysis Complete
+**REQUIRED OUTPUT:**
+- Prioritized recommendations (by impact)
+- Estimated improvement metrics
+- Implementation suggestions
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Analysis complete. Proceed to Compound?"
+- Options: ["Continue", "Review recommendations", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Memory key: project/performance/_____
+- Doc path: docs/solutions/performance/_____.md
+- All findings documented: yes/no
+
+NEVER skip this phase. Workflow is INCOMPLETE without compound.
+
+---
+
+## Completion Checklist
+
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 4 phases
+- [ ] All 4 checkpoints completed with user confirmation
+- [ ] All performance categories checked
+- [ ] Recommendations prioritized
+- [ ] Compound phase executed
+- [ ] Memory key stored: _____
+- [ ] Performance doc created: _____
+
+⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Compounds
 \`\`\`
@@ -476,21 +1369,117 @@ Hive-Mind Architecture - Multiple agents collaborate with collective intelligenc
 /w-architect [system description]
 \`\`\`
 
-## What Happens
-1. **Search** - Find related architecture decisions
-2. **Initialize** - Set up hive-mind collaboration
-3. **Design** - Multiple agents propose options
-4. **Consensus** - Converge on recommended design
-5. **Compound** - Store architecture decision record
+---
 
-## Checkpoints
-| # | After | You Review |
-|---|-------|------------|
-| 0 | Search | Related architecture decisions |
-| 1 | Hive initialized | Agent assignments |
-| 2 | Design proposals | Multiple architecture options |
-| 3 | Consensus reached | Final recommended design |
-| 4 | Compound | Architecture decision record |
+## ⚠️ MANDATORY FIRST ACTION
+
+Use TodoWrite NOW to create todos for ALL phases:
+1. Search for related architecture decisions
+2. Initialize hive-mind collaboration
+3. Generate design proposals
+4. Reach consensus on design
+5. Compound architecture decision record
+
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- NEVER skip checkpoints - each requires user confirmation
+- NEVER skip consensus phase - all options must be evaluated
+- NEVER skip compound phase at the end
+- VIOLATION: Skipping proposals = incomplete architecture
+
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Search
+**REQUIRED OUTPUT:**
+- List of related ADRs (0+ items with memory keys)
+- Relevance assessment for each
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Found [N] related architecture decisions. Proceed to Hive Init?"
+- Options: ["Continue", "Review past decisions first", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Hive Initialized
+**REQUIRED OUTPUT:**
+- Agent assignments:
+| Agent | Role | Focus |
+|-------|------|-------|
+| _____ | system-architect | _____ |
+| _____ | analyst | _____ |
+| _____ | domain-expert | _____ |
+
+- Hive topology: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Hive initialized with [N] agents. Proceed to Design Proposals?"
+- Options: ["Continue", "Revise agents", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 2: Design Proposals
+**REQUIRED OUTPUT:**
+| Option | Description | Pros | Cons |
+|--------|-------------|------|------|
+| Option A | _____ | _____ | _____ |
+| Option B | _____ | _____ | _____ |
+| Option C | _____ | _____ | _____ |
+
+**USER GATE:** Use AskUserQuestion
+- Question: "[N] design options generated. Proceed to Consensus?"
+- Options: ["Continue", "Explore more options", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 3: Consensus Reached
+**REQUIRED OUTPUT:**
+- Recommended design: _____
+- Rationale: _____
+- Trade-offs accepted: _____
+- Implementation roadmap: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Consensus: [Option X]. Proceed to Compound?"
+- Options: ["Continue", "Revisit options", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 4: Compound (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Memory key: project/architecture/_____
+- Doc path: docs/solutions/architecture/_____-adr.md
+- ADR documented: yes/no
+
+NEVER skip this phase. Workflow is INCOMPLETE without compound.
+
+---
+
+## Completion Checklist
+
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 5 phases
+- [ ] All 5 checkpoints completed with user confirmation
+- [ ] Multiple design options evaluated
+- [ ] Consensus reached with rationale
+- [ ] Compound phase executed
+- [ ] Memory key stored: _____
+- [ ] ADR doc created: _____
+
+⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Compounds
 \`\`\`
@@ -517,21 +1506,117 @@ Multi-Repository - Coordinates changes across repos with dependency awareness.
 /w-multi-repo [task description]
 \`\`\`
 
-## What Happens
-1. **Search** - Find past multi-repo coordination patterns
-2. **Analyze** - Map dependencies between repos
-3. **Plan** - Coordinate change order
-4. **Execute** - Apply changes across repos
-5. **Compound** - Store coordination pattern
+---
 
-## Checkpoints
-| # | After | You Review |
-|---|-------|------------|
-| 0 | Search | Past multi-repo coordination patterns |
-| 1 | Repos analyzed | Dependency map and change plan |
-| 2 | Changes prepared | Per-repo changes for review |
-| 3 | Sync complete | All repos updated |
-| 4 | Compound | Coordination pattern to store |
+## ⚠️ MANDATORY FIRST ACTION
+
+Use TodoWrite NOW to create todos for ALL phases:
+1. Search for past multi-repo patterns
+2. Analyze dependencies between repos
+3. Plan change coordination order
+4. Execute changes across repos
+5. Compound coordination pattern
+
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- NEVER skip checkpoints - each requires user confirmation
+- NEVER skip dependency analysis - order matters
+- NEVER skip compound phase at the end
+- VIOLATION: Executing changes without dependency map = risk
+
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Search
+**REQUIRED OUTPUT:**
+- List of past multi-repo patterns (0+ items with memory keys)
+- Relevance assessment for each
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Found [N] past coordination patterns. Proceed to Analyze?"
+- Options: ["Continue", "Review past patterns first", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Repos Analyzed
+**REQUIRED OUTPUT:**
+- Dependency map:
+| Repo | Depends On | Depended By |
+|------|------------|-------------|
+| _____ | _____ | _____ |
+
+- Change order (critical): _____
+- Risk assessment: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Dependency map ready. Change order: [X → Y → Z]. Proceed to Plan?"
+- Options: ["Continue", "Revise order", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 2: Changes Prepared
+**REQUIRED OUTPUT:**
+- Per-repo changes:
+| Repo | Files | Changes |
+|------|-------|---------|
+| _____ | _____ | _____ |
+
+- Rollback plan: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Changes prepared for [N] repos. Proceed to Execute?"
+- Options: ["Continue", "Revise changes", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 3: Sync Complete
+**REQUIRED OUTPUT:**
+- Repos updated: _____
+- Verification status per repo: _____
+- Any failures: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "All [N] repos synced. Proceed to Compound?"
+- Options: ["Continue", "Address failures", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 4: Compound (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Memory key: project/multi-repo/_____
+- Doc path: docs/solutions/multi-repo/_____.md
+- Pattern documented: yes/no
+
+NEVER skip this phase. Workflow is INCOMPLETE without compound.
+
+---
+
+## Completion Checklist
+
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 5 phases
+- [ ] All 5 checkpoints completed with user confirmation
+- [ ] Dependency map created
+- [ ] Changes applied in correct order
+- [ ] All repos verified
+- [ ] Compound phase executed
+- [ ] Memory key stored: _____
+- [ ] Coordination doc created: _____
+
+⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Compounds
 \`\`\`
@@ -558,6 +1643,14 @@ Compound This - Captures current context as reusable knowledge (ad-hoc).
 /w-compound [category]
 \`\`\`
 
+---
+
+## ⚠️ MANDATORY EXECUTION
+
+This command MUST complete fully. NEVER skip the storage step.
+
+---
+
 ## Categories
 - \`feature\` - Feature implementations
 - \`bug\` - Bug fixes
@@ -569,6 +1662,41 @@ Compound This - Captures current context as reusable knowledge (ad-hoc).
 1. **Memory Key** - Searchable pattern reference
 2. **Solution Doc** - Markdown documentation
 3. **Neural Pattern** - Learned behavior for similar problems
+
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Category Selection
+**REQUIRED OUTPUT:**
+- Category selected: _____
+- Context to capture: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Storing as [category]. Confirm?"
+- Options: ["Continue", "Change category"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Storage Complete (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Memory key: project/[category]/_____
+- Doc path: docs/solutions/[category]/_____.md
+- Pattern stored: yes/no
+
+NEVER skip this phase. Command is INCOMPLETE without storage.
+
+---
+
+## Completion Checklist
+
+- [ ] Category confirmed
+- [ ] Memory key stored: _____
+- [ ] Solution doc created: _____
+
+⚠️ Command INCOMPLETE until all boxes checked
 
 ## Example
 \`\`\`
@@ -591,10 +1719,27 @@ Search Solutions - Searches memory and solution docs for relevant past work.
 /w-search [query]
 \`\`\`
 
-## What Happens
-1. Searches memory namespaces for matching patterns
-2. Scans docs/solutions/ for relevant documentation
-3. Returns ranked matches with dates
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Search Complete
+**REQUIRED OUTPUT:**
+- Results count: _____
+- Ranked matches with dates:
+
+| # | Memory Key | Date | Relevance |
+|---|------------|------|-----------|
+| 1 | _____ | _____ | _____ |
+| 2 | _____ | _____ | _____ |
+
+**USER GATE:** Use AskUserQuestion (if results found)
+- Question: "Found [N] matches. View details for any?"
+- Options: ["Show #1", "Show #2", "Show all", "Done"]
+
+STOP and wait for user response.
+
+---
 
 ## Memory Namespaces Searched
 - \`project/features/*\`
@@ -604,6 +1749,10 @@ Search Solutions - Searches memory and solution docs for relevant past work.
 - \`project/architecture/*\`
 - \`project/reviews/*\`
 - \`project/incidents/*\`
+- \`project/implementations/*\`
+- \`project/debugging/*\`
+- \`project/ideas/*\`
+- \`project/ralph-specs/*\`
 
 ## Example
 \`\`\`
@@ -630,18 +1779,46 @@ Cold-start a session by loading project context from plan docs, memories, and gi
 
 Default: MASTER_PLAN.md
 
-## What Happens
-1. **Read Plan** - Load specified plan file (or MASTER_PLAN.md)
-2. **Search Claude-Flow Memories** - Query project/* namespaces for stored patterns
-3. **Scan Compound Docs** - Read docs/solutions/ for compound-engineering knowledge
-4. **Check Git** - Recent commits, current branch, uncommitted changes
-5. **Summarize** - Present context summary
-6. **Ask** - "What would you like to work on?"
+---
+
+## ⚠️ MANDATORY EXECUTION
+
+This command MUST complete all context loading steps. NEVER skip memory search.
+
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Context Loaded
+**REQUIRED OUTPUT:**
+- Plan file loaded: _____
+- Memories found: _____ patterns
+- Compound docs: _____ files
+- Git status: branch _____, _____ uncommitted changes
+- Recent commits: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Session initialized. What would you like to work on?"
+- Options: ["Continue existing work", "Start new task", "Review context"]
+
+STOP and wait for user response.
+
+---
 
 ## Memory Sources
 - **Claude-Flow**: project/features/*, project/bugs/*, project/implementations/*, etc.
 - **Compound Engineering**: docs/solutions/ markdown files
 - **Git**: Recent commits and current branch state
+
+## Completion Checklist
+
+- [ ] Plan file read (or default used)
+- [ ] Memory search completed
+- [ ] Compound docs scanned
+- [ ] Git status checked
+- [ ] Context summary presented
+
+⚠️ Session NOT ready until all steps complete
 
 ## Example
 \`\`\`
@@ -667,16 +1844,58 @@ Gracefully end a session by compounding knowledge and committing work.
 
 Categories: feature, bug, security, performance, architecture, debug
 
-## What Happens
-1. **Compound** - Store session patterns to claude-flow memory
-2. **Update Docs** - Write/update docs/solutions/ with session learnings
-3. **Commit** - Stage all changes and commit with session summary
-4. **Summarize** - Recap what was accomplished this session
-5. **Goodbye** - "See you later! Run \\\`/w-start\\\` to resume."
+---
 
-## Memory Storage
-- Claude-Flow: project/[category]/[auto-named]
-- Compound Doc: docs/solutions/[category]/[name].md
+## ⚠️ MANDATORY EXECUTION
+
+This command MUST complete all steps. NEVER skip compound or commit.
+
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Summary
+**REQUIRED OUTPUT:**
+- Work accomplished: _____
+- Files modified: _____
+- Tests added/changed: _____
+- Key decisions: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Session summary ready. Proceed to Compound?"
+- Options: ["Continue", "Add more details"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Compound (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Memory key: project/[category]/_____
+- Doc path: docs/solutions/[category]/_____.md
+- Patterns captured: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Knowledge compounded. Proceed to Commit?"
+- Options: ["Continue", "Revise compound"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 2: Commit (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Commit message: _____
+- Files staged: _____
+- Commit hash: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Commit complete. Session ended. Run /w-start to resume later."
+- Options: ["Done", "Push to remote"]
+
+STOP and wait for user response.
+
+---
 
 ## What Gets Captured
 - Problems solved and approaches used
@@ -684,6 +1903,16 @@ Categories: feature, bug, security, performance, architecture, debug
 - Patterns discovered
 - Files modified
 - Tests added/changed
+
+## Completion Checklist
+
+- [ ] Session summary created
+- [ ] Compound phase completed
+- [ ] Memory key stored: _____
+- [ ] Solution doc created: _____
+- [ ] Changes committed
+
+⚠️ Session NOT properly ended until all steps complete
 
 ## Example
 \`\`\`
@@ -715,24 +1944,102 @@ An iterative AI development methodology - a "simple while loop that repeatedly f
 /w-ralph-this .claude/plans/api-spec.md
 \`\`\`
 
-## What Happens
-1. **Detect Input** - File path vs inline prompt
-2. **Load Prompt** - Read file or use inline text
-3. **Configure** - Set max iterations (default: 10), completion promise
-4. **Execute Loop** - Repeatedly feed prompt until completion signal or max iterations
-5. **Compound** - Store the successful pattern
+---
+
+## ⚠️ MANDATORY FIRST ACTION
+
+Use TodoWrite NOW to create todos for ALL phases:
+1. Load and validate prompt
+2. Configure iteration parameters
+3. Execute loop (track each iteration)
+4. Compound successful pattern
+
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- NEVER skip checkpoints - each requires user confirmation
+- NEVER exceed max iterations without user confirmation
+- NEVER skip compound phase at the end
+- VIOLATION: Running without completion promise = risk of infinite loop
+
+---
 
 ## Key Parameters
 - **Max Iterations**: Safety limit (default: 10)
 - **Completion Promise**: String that signals done (e.g., "DONE", "<promise>COMPLETE</promise>")
 
-## Checkpoints
-| # | After | You Review |
-|---|-------|------------|
-| 0 | Load | Prompt content and config |
-| 1 | Each iteration | Progress and state |
-| 2 | Completion | Final result |
-| 3 | Compound | Pattern to store |
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Load
+**REQUIRED OUTPUT:**
+- Input type: file/inline
+- Prompt content: _____
+- Completion promise: _____
+- Max iterations: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Prompt loaded. Completion signal: [X]. Max: [N]. Start loop?"
+- Options: ["Start loop", "Adjust config", "Show prompt"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Each Iteration
+**REQUIRED OUTPUT (per iteration):**
+- Iteration #: _____
+- Progress made: _____
+- Completion signal detected: yes/no
+
+If NOT completed and approaching max:
+**USER GATE:** Use AskUserQuestion
+- Question: "Iteration [N] of [MAX]. Continue?"
+- Options: ["Continue", "Stop here", "Extend max"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 2: Completion
+**REQUIRED OUTPUT:**
+- Total iterations: _____
+- Completion signal: _____
+- Final result: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Loop completed in [N] iterations. Proceed to Compound?"
+- Options: ["Continue", "Review result"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Memory key: project/ralph/_____
+- Doc path: docs/solutions/ralph/_____.md
+- Pattern stored: yes/no
+
+NEVER skip this phase. Workflow is INCOMPLETE without compound.
+
+---
+
+## Completion Checklist
+
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 4 phases
+- [ ] All checkpoints completed with user confirmation
+- [ ] Loop completed successfully OR stopped intentionally
+- [ ] Compound phase executed
+- [ ] Memory key stored: _____
+- [ ] Solution doc created: _____
+
+⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Best For
 - Greenfield projects with clear success criteria
@@ -761,20 +2068,31 @@ Ralph Spec Builder - Interactive interview to build an optimal Ralph Wiggum prom
 /w-ralph-goals create a REST API with authentication
 \`\`\`
 
-## What Happens
-1. **Capture Idea** - Get the rough concept
-2. **Interview** - Ask clarifying questions (one at a time):
-   - What does "done" look like? (completion criteria)
-   - What are the major phases/milestones?
-   - What tests can verify success?
-   - What's a reasonable max iteration limit?
-   - Should the loop include self-testing cycles?
-3. **Build Spec** - Generate a Ralph-ready prompt with:
-   - Clear completion promise
-   - Incremental goals
-   - Test-and-verify cycles
-4. **Save** - Write to .claude/plans/YYYY-MM-DD-[name]-ralph.md
-5. **Execute?** - Ask if you want to run /w-ralph-this on it
+---
+
+## ⚠️ MANDATORY FIRST ACTION
+
+Use TodoWrite NOW to create todos for ALL phases:
+1. Capture initial idea
+2. Interview for completion criteria
+3. Interview for phases/milestones
+4. Interview for verification
+5. Build Ralph spec
+6. Save spec file
+7. Optionally execute
+
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- NEVER skip interview questions - each is critical
+- NEVER skip checkpoints - each requires user confirmation
+- NEVER skip saving the spec file
+- Ask ONE question at a time using AskUserQuestion
+
+---
 
 ## Interview Categories
 
@@ -794,13 +2112,64 @@ Ralph Spec Builder - Interactive interview to build an optimal Ralph Wiggum prom
 - What's the max iteration limit?
 - Are there any destructive operations to avoid?
 
-## Checkpoints
-| # | After | You Review |
-|---|-------|------------|
-| 0 | Idea captured | Initial concept |
-| 1 | Interview | Answers and clarity |
-| 2 | Spec built | Generated Ralph prompt |
-| 3 | Execute? | Option to run immediately |
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Idea Captured
+**REQUIRED OUTPUT:**
+- Initial idea: _____
+- Context needed: _____
+
+**USER GATE:** Use AskUserQuestion (first interview question)
+- Question: "What specific output signals that [idea] is complete?"
+- Options: (free text via "Other")
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Interview Complete
+**REQUIRED OUTPUT:**
+- Completion criteria: _____
+- Phases identified: _____
+- Verification methods: _____
+- Max iterations: _____
+- Safety considerations: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Interview complete. Proceed to build spec?"
+- Options: ["Continue", "Add more questions"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 2: Spec Built
+**REQUIRED OUTPUT:**
+- Spec preview with all sections
+- Completion promise: _____
+- Phase list: _____
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Ralph spec ready. Review and save?"
+- Options: ["Save spec", "Revise spec"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 3: Execute Decision
+**REQUIRED OUTPUT:**
+- Spec saved to: .claude/plans/YYYY-MM-DD-[name]-ralph.md
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Spec saved. Run /w-ralph-this on it now?"
+- Options: ["Execute now", "Later"]
+
+STOP and wait for user response.
+
+---
 
 ## Output Format
 The generated spec will include:
@@ -820,6 +2189,17 @@ Output <promise>COMPLETE</promise> when done.
 
 ## Max Iterations: N
 \`\`\`
+
+## Completion Checklist
+
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 7 phases
+- [ ] All interview questions answered
+- [ ] All 4 checkpoints completed with user confirmation
+- [ ] Spec file saved: _____
+- [ ] Execute decision made
+
+⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Example
 \`\`\`

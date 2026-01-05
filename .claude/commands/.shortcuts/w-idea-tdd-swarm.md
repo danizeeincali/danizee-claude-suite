@@ -9,25 +9,52 @@ Turn a half-baked idea into a well-built feature through deep interviewing + Ful
 /w-idea-tdd-swarm .claude/plans/auth-idea.md
 ```
 
-## What Happens
+---
 
-### Phase 1: Deep Interview
-1. **Detect Input** - File path or inline description
-2. **Load Context** - Read relevant project docs if mentioned
-3. **Interview** - One question at a time (see below)
-4. **Capture Quotes** - Note verbatim moments of clarity
-5. **Final Question** - "What did I forget to ask about?"
-6. **Save Spec** - Write to .claude/plans/YYYY-MM-DD-[name].md
+## ⚠️ MANDATORY FIRST ACTION
 
-### Phase 2: Full TDD Swarm
-7. **Plan** - Architecture based on refined spec
-8. **Spec** - Acceptance criteria from interview
-9. **Test-First** - ALL tests written (must fail)
-10. **Build** - Swarm implements to pass tests
-11. **Review** - Security, performance, architecture
-12. **Compound** - Store complete solution
+Use TodoWrite NOW to create todos for ALL phases:
+1. Search for past solutions
+2. Interview to refine idea
+3. Save refined spec
+4. Plan architecture
+5. Write spec/acceptance criteria
+6. Write ALL tests (must fail)
+7. Build implementation (tests pass)
+8. Run full review
+9. Compound solution
 
-## Interview Categories
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- NEVER skip checkpoints - each requires user confirmation
+- NEVER proceed to Build before all tests exist and FAIL
+- NEVER skip compound phase at the end
+- NEVER skip the interview phase - ideas MUST be refined first
+- VIOLATION: Starting implementation without interview = restart workflow
+
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Search
+**REQUIRED OUTPUT:**
+- List of past solutions (0+ items with memory keys)
+- Relevance assessment for each
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Found [N] past solutions. Proceed to Interview or use existing?"
+- Options: ["Proceed to Interview", "Use existing solution", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Interview (MANDATORY - NEVER SKIP)
+**Interview Categories:**
 
 **Technical & Architecture**
 - Implementation approach, tradeoffs, edge cases
@@ -44,23 +71,127 @@ Turn a half-baked idea into a well-built feature through deep interviewing + Ful
 - What's the simplest version that delivers value?
 - What would make you regret building this?
 
-## Interview Rules
-- Ask ONE question at a time
+**Interview Rules:**
+- Ask ONE question at a time using AskUserQuestion
 - Go deep on answers revealing uncertainty or assumptions
 - Don't ask obvious questions - push on unthought things
 - Capture quotable moments verbatim for the spec
+- End with: "What did I forget to ask about?"
 
-## Checkpoints
-| # | After | You Review |
-|---|-------|------------|
-| 0 | Search | Past solutions, patterns |
-| 1 | Interview | Refined spec from questions |
-| 2 | Plan | Architecture, files, approach |
-| 3 | Spec | Acceptance criteria, test cases |
-| 4 | Tests | Test files (must fail) |
-| 5 | Build | Implementation (tests pass) |
-| 6 | Review | Security, performance, patterns |
-| 7 | Compound | Complete solution summary |
+**REQUIRED OUTPUT:**
+- Interview notes with user quotes
+- Refined requirements list
+- Spec file: .claude/plans/YYYY-MM-DD-[name].md
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Interview complete. Here's the refined spec. Proceed to Plan?"
+- Options: ["Continue", "Add more questions", "Revise spec"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 2: Plan
+**REQUIRED OUTPUT:**
+- Architecture summary (3-5 bullets)
+- Files to create/modify (list)
+- Approach and rationale
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Plan complete. Proceed to Spec?"
+- Options: ["Continue", "Revise plan", "Show more detail"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 3: Spec
+**REQUIRED OUTPUT:**
+- Acceptance criteria (numbered list)
+- Test cases (numbered list)
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Spec ready. Proceed to Tests?"
+- Options: ["Continue", "Revise spec"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 4: Tests (BLOCKING GATE)
+**REQUIRED OUTPUT:**
+- Test file paths: _____
+- Test count: _____ tests written
+- Test run result: "All _____ tests FAIL as expected"
+
+**BLOCKING RULE:**
+NEVER proceed to Build until:
+- [ ] All tests written
+- [ ] All tests RUN and FAIL
+- [ ] Failure output captured
+
+**USER GATE:** Use AskUserQuestion
+- Question: "All [N] tests written and failing. Proceed to Build?"
+- Options: ["Continue", "Add more tests", "Revise tests"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 5: Build
+**REQUIRED OUTPUT:**
+- Implementation file paths: _____
+- Test run result: "All _____ tests PASS"
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Implementation complete. All tests pass. Proceed to Review?"
+- Options: ["Continue", "Revise implementation"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 6: Review
+**REQUIRED OUTPUT:**
+| Category | Finding | Severity |
+|----------|---------|----------|
+| Security | _____ | _____ |
+| Performance | _____ | _____ |
+| Architecture | _____ | _____ |
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Review complete. Proceed to Compound?"
+- Options: ["Continue", "Address findings first"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Memory key: project/ideas/_____
+- Doc path: docs/solutions/ideas/_____.md
+- Spec path: .claude/plans/YYYY-MM-DD-[name].md
+- Pattern stored: yes/no
+
+NEVER skip this phase. Workflow is INCOMPLETE without compound.
+
+---
+
+## Completion Checklist
+
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 9 phases
+- [ ] All 8 checkpoints completed with user confirmation
+- [ ] Interview conducted with multiple questions
+- [ ] Refined spec saved to .claude/plans/
+- [ ] All required outputs generated
+- [ ] All tests pass
+- [ ] Compound phase executed
+- [ ] Memory key stored: _____
+- [ ] Solution doc created: _____
+
+⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Compounds
 ```
