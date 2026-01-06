@@ -1,26 +1,30 @@
 # Danizee Claude Suite
 
+[![npm version](https://badge.fury.io/js/danizee-claude-suite.svg)](https://www.npmjs.com/package/danizee-claude-suite)
+
 Unified workflow shortcuts for Claude Code that **compound knowledge** - each task makes future tasks easier.
 
-## Quick Start
+## Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/danizeeincali/danizee-claude-suite.git
-cd danizee-claude-suite
-
-# Install dependencies
-npm install
+# Install globally
+npm install -g danizee-claude-suite
 
 # Initialize in your project
 cd /path/to/your/project
-node /path/to/danizee-claude-suite/bin/cli.js init
+danizee-claude-suite init
+```
+
+Or use npx without installing:
+
+```bash
+npx danizee-claude-suite init
 ```
 
 ## Requirements
 
 - Node.js >= 18.0.0
-- Claude Flow MCP server (`npx claude-flow@alpha mcp start`)
+- GitHub CLI (`gh`) - recommended for PR workflows
 
 ## How It Works
 
@@ -85,22 +89,22 @@ Every workflow follows the **Search → Execute → Compound** pattern:
 
 ```bash
 # Initialize suite in current project
-node bin/cli.js init
+danizee-claude-suite init
 
 # Check installation status
-node bin/cli.js check
+danizee-claude-suite check
 
 # Update existing installation
-node bin/cli.js update
+danizee-claude-suite update
 
 # Remove suite
-node bin/cli.js uninstall
+danizee-claude-suite uninstall
 
 # Preview changes (dry run)
-node bin/cli.js init --dry-run
+danizee-claude-suite init --dry-run
 
 # Force overwrite existing
-node bin/cli.js init --force
+danizee-claude-suite init --force
 ```
 
 ## What Gets Installed
