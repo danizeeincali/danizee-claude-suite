@@ -2452,6 +2452,251 @@ Before marking workflow complete, verify ALL boxes:
 /w-ralph-pick --priority P1
 \`\`\`
 `
+    },
+
+    'w-ralph-batch': {
+      name: 'w-ralph-batch',
+      description: 'Ralph Batch - Process multiple candidates or generate overnight script',
+      content: `# /w-ralph-batch
+
+Batch process multiple Ralph candidates sequentially, or generate an overnight script for unattended execution.
+
+## Usage
+\`\`\`
+/w-ralph-batch                    # Interactive mode - process one by one
+/w-ralph-batch --script           # Generate overnight batch script
+/w-ralph-batch --priority P1      # Only process P1 candidates
+/w-ralph-batch --all              # Process all ready candidates sequentially
+/w-ralph-batch --phased           # Execute by priority (P1 → P2 → P3)
+\`\`\`
+
+---
+
+## ⚠️ MANDATORY FIRST ACTION
+
+Use TodoWrite NOW to create todos for ALL phases:
+1. Load candidates from .claude/ralph-candidates.md
+2. Filter by status (ready) and priority (if specified)
+3. Select execution mode
+4. Execute batch or generate script
+5. Update candidate statuses
+6. Generate summary report
+
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- NEVER skip checkpoints - each requires user confirmation
+- NEVER execute without reviewing candidate list first
+- NEVER skip status updates after completion
+- ALWAYS generate summary report at end
+
+---
+
+## Execution Modes
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| Interactive | Process one by one with verification | Supervised execution |
+| Script | Generate overnight-work.sh | Unattended overnight runs |
+| Phased | Execute by priority order | Structured batch processing |
+| All | Process all ready candidates | Quick batch run |
+
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Load & Filter Candidates
+**REQUIRED OUTPUT:**
+- Candidates file: .claude/ralph-candidates.md
+- Total candidates: _____
+- Ready candidates: _____
+- Filtered candidates (if priority specified): _____
+
+**Candidate Summary:**
+| ID | Priority | Name | Completion Tests | Status |
+|----|----------|------|------------------|--------|
+| RC-___ | P_ | _____ | ___ tests | ready |
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Found [N] ready candidates. Select execution mode:"
+- Options: ["Interactive (one by one)", "Generate script", "Phased (P1→P2→P3)", "All at once"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Mode Configuration
+
+**For Interactive Mode:**
+- Processing order: by priority (P1 first) or by ID
+- Pause between candidates: yes/no
+- Auto-archive on success: yes/no
+
+**For Script Mode:**
+- Script path: ./overnight-ralph.sh
+- Max iterations per candidate: 50 (default)
+- Include status updates: yes/no
+- Log output to file: yes/no
+
+**For Phased Mode:**
+- Phase 1 (P1 Critical): [list IDs]
+- Phase 2 (P2 Important): [list IDs]
+- Phase 3 (P3 Nice-to-have): [list IDs]
+- Completion promises: <promise>P1_COMPLETE</promise>, etc.
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Configuration ready. Proceed with [mode]?"
+- Options: ["Start execution", "Adjust config", "Change mode"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 2: Execute/Generate
+
+**Interactive Mode - Per Candidate:**
+1. Load candidate spec
+2. Verify completion tests
+3. Execute Ralph loop (max 50 iterations)
+4. Run completion tests
+5. Update status (complete/in-progress/blocked)
+6. Move to next candidate
+
+**Script Mode - Generate overnight-work.sh:**
+\`\`\`bash
+#!/bin/bash
+# Ralph Batch - Generated [DATE]
+# Candidates: [IDs]
+# Total: [N] candidates
+
+set -e  # Exit on error
+LOG_FILE="ralph-batch-$(date +%Y%m%d-%H%M%S).log"
+
+echo "Starting Ralph Batch Processing..." | tee -a $LOG_FILE
+echo "Start time: $(date)" | tee -a $LOG_FILE
+
+# RC-001: [Name]
+echo "Processing RC-001: [Name]..." | tee -a $LOG_FILE
+claude -p "/w-ralph-this '[spec]'
+Output <promise>RC001_DONE</promise> when all tests pass.
+Max iterations: 50" 2>&1 | tee -a $LOG_FILE
+echo "RC-001 complete: $(date)" | tee -a $LOG_FILE
+
+# RC-002: [Name]
+echo "Processing RC-002: [Name]..." | tee -a $LOG_FILE
+claude -p "/w-ralph-this '[spec]'
+Output <promise>RC002_DONE</promise> when all tests pass.
+Max iterations: 50" 2>&1 | tee -a $LOG_FILE
+echo "RC-002 complete: $(date)" | tee -a $LOG_FILE
+
+echo "Ralph Batch Complete: $(date)" | tee -a $LOG_FILE
+echo "Results logged to: $LOG_FILE"
+\`\`\`
+
+**Phased Mode - Sequential Priority Execution:**
+\`\`\`
+# Phase 1: P1 Critical
+Processing RC-001, RC-005...
+Output <promise>P1_COMPLETE</promise>
+
+# Phase 2: P2 Important
+Processing RC-002, RC-003...
+Output <promise>P2_COMPLETE</promise>
+
+# Phase 3: P3 Nice-to-have
+Processing RC-004...
+Output <promise>P3_COMPLETE</promise>
+
+Output <promise>ALL_PHASES_COMPLETE</promise>
+\`\`\`
+
+**AUTO-PROCEED:** Continue until all candidates processed or script generated.
+
+---
+
+### ⛔ CHECKPOINT 3: Summary Report
+**REQUIRED OUTPUT:**
+
+**Execution Summary:**
+| Metric | Value |
+|--------|-------|
+| Total candidates | _____ |
+| Processed | _____ |
+| Successful | _____ |
+| Failed/Blocked | _____ |
+| Skipped | _____ |
+
+**Per-Candidate Results:**
+| ID | Name | Result | Iterations | Notes |
+|----|------|--------|------------|-------|
+| RC-___ | _____ | success/failed/blocked | ___ | _____ |
+
+**Script Generated (if applicable):**
+- Path: ./overnight-ralph.sh
+- Chmod: +x applied
+- Run command: \`./overnight-ralph.sh\`
+
+**Status Updates:**
+- Candidates marked complete: [IDs]
+- Candidates still in-progress: [IDs]
+- Candidates blocked: [IDs]
+- Archived: [IDs]
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Batch complete. [X/Y] successful. Next action?"
+- Options: ["Done", "Retry failed", "View details", "Run generated script"]
+
+STOP and wait for user response.
+
+---
+
+## Completion Checklist
+
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 6 phases
+- [ ] Checkpoints 0-1 completed with user confirmation
+- [ ] Checkpoint 2 completed (execution/generation)
+- [ ] Checkpoint 3 completed with summary
+- [ ] All candidate statuses updated in .claude/ralph-candidates.md
+- [ ] Successful candidates archived
+- [ ] Summary report generated
+
+⚠️ Workflow INCOMPLETE until all boxes checked
+
+## Script Output Location
+- Default: ./overnight-ralph.sh
+- Log file: ./ralph-batch-YYYYMMDD-HHMMSS.log
+
+## Best Practices
+
+**For Overnight Runs:**
+1. Generate script with \`/w-ralph-batch --script\`
+2. Review generated script
+3. Run \`chmod +x overnight-ralph.sh\`
+4. Execute before bed: \`./overnight-ralph.sh\`
+5. Check logs in morning
+
+**For Phased Execution:**
+1. Use \`/w-ralph-batch --phased\`
+2. Monitor P1 completion first
+3. Review results between phases
+4. Continue or abort as needed
+
+## Example
+\`\`\`
+/w-ralph-batch --script
+# Generates overnight-ralph.sh with all ready candidates
+
+/w-ralph-batch --priority P1
+# Only processes P1 (critical) candidates
+
+/w-ralph-batch --phased
+# Executes P1 → P2 → P3 with completion promises
+\`\`\`
+`
     }
   };
 }
