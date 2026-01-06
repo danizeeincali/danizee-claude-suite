@@ -99,7 +99,7 @@ STOP and wait for user response.
 
 **RALPH CANDIDATE CHECK (MANDATORY):**
 - Dev pattern identified for future Ralph loop: yes/no
-- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -259,7 +259,7 @@ NEVER proceed to Build until:
 
 **RALPH CANDIDATE CHECK (MANDATORY):**
 - Dev pattern identified for future Ralph loop: yes/no
-- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -462,7 +462,7 @@ NEVER proceed to Build until:
 
 **RALPH CANDIDATE CHECK (MANDATORY):**
 - Dev pattern identified for future Ralph loop: yes/no
-- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -581,7 +581,7 @@ STOP and wait for user response.
 
 **RALPH CANDIDATE CHECK (MANDATORY):**
 - Dev pattern identified for future Ralph loop: yes/no
-- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -770,7 +770,7 @@ NEVER proceed to Build until:
 
 **RALPH CANDIDATE CHECK (MANDATORY):**
 - Dev pattern identified for future Ralph loop: yes/no
-- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -907,7 +907,7 @@ STOP and wait for user response.
 
 **RALPH CANDIDATE CHECK (MANDATORY):**
 - Dev pattern identified for future Ralph loop: yes/no
-- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -1033,11 +1033,39 @@ STOP and wait for user response.
 |-------------|--------|----------|
 | _____ | _____ | _____ |
 
+**AUTO-PROCEED:** Continue to Ralph Candidates phase.
+
+---
+
+### ⛔ CHECKPOINT 4: Ralph Candidates (AUTO-PROCEED)
+**Scan for dev patterns that could become future Ralph loops:**
+- Repeating code patterns in this PR
+- Bug fix patterns that recur
+- Feature patterns worth templating
+
+**If candidate identified:**
+1. Generate unique ID: RC-NNN (check .claude/ralph-candidates.md for next available)
+2. Assign priority: P1 (critical) / P2 (important) / P3 (nice-to-have)
+3. Define AI-verifiable completion tests:
+   - File exists: \`path/to/expected/file\`
+   - Pattern match: \`"regex"\` in \`file\`
+   - Test passes: \`npm test -- --grep "name"\`
+   - Lint clean: \`npm run lint\`
+4. Add entry to .claude/ralph-candidates.md
+5. Set initial status: draft
+
+**REQUIRED OUTPUT:**
+- Candidates identified: 0/1/2+
+- If any:
+  - ID(s) added: RC-___
+  - Priority: P_
+  - Completion tests defined: yes/no
+
 **AUTO-PROCEED:** Continue to Compound phase.
 
 ---
 
-### ⛔ CHECKPOINT 4: Compound (MANDATORY - NEVER SKIP)
+### ⛔ CHECKPOINT 5: Compound (MANDATORY - NEVER SKIP)
 **REQUIRED OUTPUT:**
 - Memory key: project/reviews/_____
 - Doc path: docs/solutions/reviews/_____.md
@@ -1045,7 +1073,7 @@ STOP and wait for user response.
 
 **RALPH CANDIDATE CHECK (MANDATORY):**
 - Dev pattern identified for future Ralph loop: yes/no
-- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -1056,10 +1084,11 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 6 phases
 - [ ] Checkpoint 0 completed with user confirmation
-- [ ] Checkpoints 1-4 completed (auto-proceed)
+- [ ] Checkpoints 1-5 completed (auto-proceed)
 - [ ] Code analysis completed
 - [ ] Security scan completed
 - [ ] Performance check completed
+- [ ] Ralph candidates scanned
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Review doc created: _____
@@ -1175,7 +1204,7 @@ STOP and wait for user response.
 
 **RALPH CANDIDATE CHECK (MANDATORY):**
 - Dev pattern identified for future Ralph loop: yes/no
-- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -1302,7 +1331,7 @@ STOP and wait for user response.
 
 **RALPH CANDIDATE CHECK (MANDATORY):**
 - Dev pattern identified for future Ralph loop: yes/no
-- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -1445,7 +1474,7 @@ STOP and wait for user response.
 
 **RALPH CANDIDATE CHECK (MANDATORY):**
 - Dev pattern identified for future Ralph loop: yes/no
-- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -1582,7 +1611,7 @@ STOP and wait for user response.
 
 **RALPH CANDIDATE CHECK (MANDATORY):**
 - Dev pattern identified for future Ralph loop: yes/no
-- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -1672,7 +1701,45 @@ STOP and wait for user response.
 - Doc path: docs/solutions/[category]/_____.md
 - Pattern stored: yes/no
 
-NEVER skip this phase. Command is INCOMPLETE without storage.
+---
+
+### ⛔ CHECKPOINT 2: Ralph Candidate Check (MANDATORY)
+**Evaluate if this pattern could become a future Ralph loop:**
+- Is this a repeating dev pattern (feature/bug/refactor)?
+- Does it have clear completion criteria?
+- Could it be automated with test verification?
+
+**If YES - Create Ralph Candidate:**
+1. Read .claude/ralph-candidates.md for next available ID (RC-NNN)
+2. Assign priority:
+   - P1: Critical - should run soon
+   - P2: Important - run when available
+   - P3: Nice-to-have - backlog
+3. Define AI-verifiable completion tests (at least 2):
+   | Type | Format |
+   |------|--------|
+   | File exists | \`File exists: path/to/file\` |
+   | Pattern match | \`Pattern: "regex" in path/to/file\` |
+   | Test passes | \`Test: npm test -- --grep "name"\` |
+   | Lint clean | \`Lint: npm run lint\` |
+   | Build passes | \`Build: npm run build\` |
+4. Add to .claude/ralph-candidates.md:
+   - Summary row in Active Candidates table
+   - Full details in Candidate Details section
+5. Set status: draft (needs refinement) or ready (can execute)
+
+**REQUIRED OUTPUT:**
+- Ralph candidate identified: yes/no
+- If yes:
+  - ID: RC-___
+  - Priority: P_
+  - Completion tests (list at least 2):
+    1. _____
+    2. _____
+  - Status: draft/ready
+  - Added to .claude/ralph-candidates.md: yes/no
+
+NEVER skip this phase. Command is INCOMPLETE without Ralph check.
 
 ---
 
@@ -1681,6 +1748,8 @@ NEVER skip this phase. Command is INCOMPLETE without storage.
 - [ ] Category confirmed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
+- [ ] Ralph candidate check completed
+- [ ] If candidate: added to .claude/ralph-candidates.md
 
 ⚠️ Command INCOMPLETE until all boxes checked
 
@@ -1863,7 +1932,7 @@ STOP and wait for user response.
 
 **RALPH CANDIDATE CHECK (MANDATORY):**
 - Dev pattern identified for future Ralph loop: yes/no
-- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
 **AUTO-PROCEED:** Continue to Commit phase.
 
@@ -2010,7 +2079,7 @@ Only stop for user confirmation if max iterations reached without completion.
 
 **RALPH CANDIDATE CHECK (MANDATORY):**
 - Dev pattern identified for future Ralph loop: yes/no
-- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -2193,6 +2262,194 @@ Before marking workflow complete, verify ALL boxes:
 ## Example
 \`\`\`
 /w-ralph-goals I want to build a markdown-to-HTML converter CLI
+\`\`\`
+`
+    },
+
+    'w-ralph-pick': {
+      name: 'w-ralph-pick',
+      description: 'Ralph Pick - Select and execute a Ralph candidate from the queue',
+      content: `# /w-ralph-pick
+
+Select and execute a Ralph candidate from .claude/ralph-candidates.md.
+
+## Usage
+\`\`\`
+/w-ralph-pick
+/w-ralph-pick RC-001
+/w-ralph-pick --priority P1
+\`\`\`
+
+---
+
+## ⚠️ MANDATORY FIRST ACTION
+
+Use TodoWrite NOW to create todos for ALL phases:
+1. Load candidates from .claude/ralph-candidates.md
+2. Select candidate (user choice or by ID/priority)
+3. Verify completion tests are valid
+4. Execute Ralph loop
+5. Verify completion
+6. Update candidate status
+
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- NEVER skip checkpoints - each requires user confirmation
+- NEVER execute without valid completion tests
+- NEVER mark complete without passing all completion tests
+- ALWAYS update candidate status in .claude/ralph-candidates.md
+
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Load Candidates
+**REQUIRED OUTPUT:**
+- Candidates file: .claude/ralph-candidates.md
+- Total candidates: _____
+- Ready candidates: _____
+- By priority:
+  | Priority | Count | IDs |
+  |----------|-------|-----|
+  | P1 | _____ | _____ |
+  | P2 | _____ | _____ |
+  | P3 | _____ | _____ |
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Found [N] ready candidates. Which to execute?"
+- Options: [List candidate IDs with names, e.g., "RC-001: API endpoint tests"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 1: Candidate Selected
+**REQUIRED OUTPUT:**
+- Selected ID: RC-___
+- Name: _____
+- Priority: P_
+- Source workflow: _____
+- Pattern description: _____
+
+**Completion Tests:**
+| # | Type | Test | Current Status |
+|---|------|------|----------------|
+| 1 | _____ | _____ | pending |
+| 2 | _____ | _____ | pending |
+
+**USER GATE:** Use AskUserQuestion
+- Question: "RC-[N]: [Name]. [X] completion tests. Verify tests are valid?"
+- Options: ["Verify tests", "Edit tests", "Choose different candidate"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 2: Tests Verified
+**Run each completion test to establish baseline:**
+
+| # | Test | Initial Result | Expected After |
+|---|------|----------------|----------------|
+| 1 | _____ | FAIL/PASS | PASS |
+| 2 | _____ | FAIL/PASS | PASS |
+
+**BLOCKING RULE:**
+For TDD-style candidates, tests SHOULD fail initially.
+For existing code candidates, some tests may already pass.
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Baseline established. [X/Y] tests currently fail. Start Ralph loop?"
+- Options: ["Start loop", "Revise tests", "Cancel"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 3: Ralph Loop Execution
+**Update candidate status to: in-progress**
+
+Execute the Ralph loop with the candidate spec:
+- Max iterations: 50 (or candidate-specified)
+- Completion: All tests pass
+
+**Per-iteration tracking:**
+- Iteration #: _____
+- Tests passing: X/Y
+- Progress: _____
+
+**AUTO-PROCEED:** Continue iterations until all tests pass or max reached.
+
+---
+
+### ⛔ CHECKPOINT 4: Completion Verification
+**Run ALL completion tests:**
+
+| # | Test | Result |
+|---|------|--------|
+| 1 | _____ | PASS/FAIL |
+| 2 | _____ | PASS/FAIL |
+
+**REQUIRED OUTPUT:**
+- All tests pass: yes/no
+- Total iterations: _____
+- If failed: which tests still failing
+
+**If ALL tests PASS:**
+- Update candidate status to: complete
+- Add completion date
+- Move to Archived section in .claude/ralph-candidates.md
+
+**If ANY test FAILS:**
+- Keep status: in-progress
+- Log progress for next attempt
+
+**USER GATE:** Use AskUserQuestion
+- Question: "[All pass: Complete! / Some fail: Partial progress]. Update candidate status?"
+- Options: ["Mark complete", "Keep in-progress", "Mark as blocked"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 5: Candidate Updated
+**REQUIRED OUTPUT:**
+- Candidate ID: RC-___
+- Final status: complete/in-progress/blocked
+- Updated in .claude/ralph-candidates.md: yes/no
+- If complete: moved to Archived section: yes/no
+
+---
+
+## Completion Checklist
+
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 6 phases
+- [ ] Checkpoints 0-2 completed with user confirmation
+- [ ] Checkpoints 3-5 completed
+- [ ] Candidate selected and verified
+- [ ] Ralph loop executed
+- [ ] All completion tests evaluated
+- [ ] Candidate status updated in .claude/ralph-candidates.md
+- [ ] If complete: candidate archived
+
+⚠️ Workflow INCOMPLETE until all boxes checked
+
+## Candidate Statuses
+- **draft**: Needs refinement before execution
+- **ready**: Can be executed
+- **in-progress**: Currently being worked on
+- **complete**: All tests pass, archived
+- **blocked**: Cannot proceed, needs intervention
+
+## Example
+\`\`\`
+/w-ralph-pick
+/w-ralph-pick RC-003
+/w-ralph-pick --priority P1
 \`\`\`
 `
     }
