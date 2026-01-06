@@ -43,47 +43,128 @@ Every workflow follows the **Search → Execute → Compound** pattern:
 │  3. COMPOUND                                    │
 │     → Store solution pattern in memory          │
 │     → Create/update solution doc                │
-│     → Learn from outcome                        │
+│     → Check for Ralph candidates                │
 └─────────────────────────────────────────────────┘
 ```
 
 **Result**: The 2nd time you solve a similar problem, it's faster because the workflow finds and applies your previous solution.
 
-## Available Workflows
+## Quick Reference: /w- Shortcuts
+
+All workflows use `/w-` prefix shortcuts:
+
+| Shortcut | Description |
+|----------|-------------|
+| `/w-swarm` | Parallel agent build |
+| `/w-tdd-swarm` | Full TDD + Swarm |
+| `/w-idea-tdd-swarm` | Interview → TDD → Swarm |
+| `/w-fix` | Quick bug fix |
+| `/w-debug` | Deep debug → TDD fix |
+| `/w-hotfix` | Critical production fix |
+| `/w-review` | Multi-agent code review |
+| `/w-security` | Security audit |
+| `/w-perf` | Performance audit |
+| `/w-architect` | Hive-mind architecture |
+| `/w-multi-repo` | Cross-repo coordination |
+| `/w-compound` | Ad-hoc knowledge capture |
+| `/w-search` | Search past solutions |
+| `/w-start` | Cold-start session |
+| `/w-end` | End session + compound |
+| `/w-ralph-this` | Ralph Wiggum loop |
+| `/w-ralph-goals` | Build Ralph spec |
+| `/w-ralph-pick` | Execute Ralph candidate |
+| `/w-ralph-batch` | Batch process candidates |
+
+## Workflows by Category
 
 ### Development
-| Workflow | Trigger | Best For |
+
+| Workflow | Command | Best For |
 |----------|---------|----------|
-| Full Cycle | "Run the full cycle workflow on [X]" | New features |
-| Swarm Build | "Use swarm to build [X]" | Parallel implementation |
-| TDD | "TDD workflow for [X]" | Test-first development |
-| Full TDD Swarm | "Full TDD Swarm on [X]" | Critical features |
+| Swarm Build | `/w-swarm` | Parallel implementation with coder/tester/reviewer agents |
+| Full TDD Swarm | `/w-tdd-swarm` | Plan → TDD → Swarm → Review combined |
+| Idea to TDD | `/w-idea-tdd-swarm` | Interview refines idea, then Full TDD Swarm builds it |
 
 ### Bug Fixes
-| Workflow | Trigger | Best For |
-|----------|---------|----------|
-| Quick Fix | "Quick fix for [X]" | Simple bugs |
-| Deep Debug | "Debug workflow for [X]" | Complex issues |
-| Critical Hotfix | "Critical hotfix for [X]" | Production emergencies |
 
-### Reviews
-| Workflow | Trigger | Best For |
+| Workflow | Command | Best For |
 |----------|---------|----------|
-| Full Review | "Full review of PR [#]" | Comprehensive review |
-| Security Audit | "Security audit on [X]" | Security analysis |
-| Performance Audit | "Performance audit on [X]" | Optimization |
+| Quick Fix | `/w-fix` | Simple bugs - investigate → fix → verify |
+| Deep Debug | `/w-debug` | Complex issues - hypothesis → diagnose → TDD fix |
+| Critical Hotfix | `/w-hotfix` | Production emergencies - isolated branch + security review |
+
+### Reviews & Audits
+
+| Workflow | Command | Best For |
+|----------|---------|----------|
+| Full Review | `/w-review` | Comprehensive code review (12+ agents) |
+| Security Audit | `/w-security` | OWASP top 10, auth/authz, data exposure |
+| Performance Audit | `/w-perf` | N+1 queries, memory, bottlenecks |
 
 ### Architecture
-| Workflow | Trigger | Best For |
+
+| Workflow | Command | Best For |
 |----------|---------|----------|
-| Hive Architect | "Hive-mind architecture for [X]" | Complex design |
-| Multi-Repo | "Multi-repo workflow for [X]" | Cross-repo changes |
+| Hive Architect | `/w-architect` | Collective intelligence for complex design |
+| Multi-Repo | `/w-multi-repo` | Coordinate changes across repositories |
+
+### Session Management
+
+| Workflow | Command | Best For |
+|----------|---------|----------|
+| Cold Start | `/w-start` | Load project context when `--resume` unavailable |
+| End Session | `/w-end` | Compound knowledge + commit for next session |
+
+### Ralph Wiggum (Iterative AI Development)
+
+| Workflow | Command | Best For |
+|----------|---------|----------|
+| Ralph Loop | `/w-ralph-this` | Iterate prompt until completion signal |
+| Ralph Goals | `/w-ralph-goals` | Interview to build optimal Ralph spec |
+| Ralph Pick | `/w-ralph-pick` | Select and execute a queued candidate |
+| Ralph Batch | `/w-ralph-batch` | Batch process or generate overnight script |
 
 ### Utilities
-| Workflow | Trigger | Best For |
+
+| Workflow | Command | Best For |
 |----------|---------|----------|
-| Compound This | "Compound this solution" | Ad-hoc capture |
-| Search Solutions | "Search for solutions to [X]" | Find past work |
+| Compound | `/w-compound` | Ad-hoc knowledge capture |
+| Search | `/w-search` | Find relevant past solutions |
+
+## Ralph Candidates System
+
+During compound phases, patterns suitable for future Ralph loops are logged to `.claude/ralph-candidates.md`:
+
+```markdown
+## Active Candidates
+
+| ID | Priority | Name | Source | Completion Tests | Status |
+|----|----------|------|--------|------------------|--------|
+| RC-001 | P1 | API endpoints | /w-compound | 3 tests | ready |
+| RC-002 | P2 | Form validation | /w-review | 2 tests | draft |
+```
+
+**AI-Verifiable Completion Tests:**
+- `File exists: path/to/file`
+- `Pattern: "regex" in file`
+- `Test: npm test -- --grep "name"`
+- `Lint: npm run lint`
+- `Build: npm run build`
+
+**Batch Processing:**
+```bash
+# Generate overnight script
+/w-ralph-batch --script
+
+# Process by priority
+/w-ralph-batch --priority P1
+
+# Execute all ready candidates
+/w-ralph-batch --all
+
+# Phased execution (P1 → P2 → P3)
+/w-ralph-batch --phased
+```
 
 ## CLI Commands
 
@@ -113,19 +194,23 @@ danizee-claude-suite init --force
 your-project/
 ├── .claude/
 │   ├── commands/
+│   │   ├── .shortcuts/     # /w- workflow shortcuts
 │   │   ├── workflows/      # plan, work, review, compound
 │   │   ├── coordination/   # swarm-init, agent-spawn, memory-ops
 │   │   └── analysis/       # design, component, layout, theme
-│   ├── helpers/
-│   │   ├── quick-start.sh
-│   │   └── setup-mcp.sh
+│   ├── ralph-candidates.md # Ralph candidate queue
 │   └── settings.json       # Suite configuration
 ├── docs/
 │   └── solutions/          # Compounded solution docs
 │       ├── features/
 │       ├── bugs/
 │       ├── security/
-│       └── ...
+│       ├── performance/
+│       ├── architecture/
+│       ├── reviews/
+│       ├── incidents/
+│       ├── ideas/
+│       └── ralph/
 └── WORKFLOW-SHORTCUTS.md   # Complete workflow reference
 ```
 
@@ -140,6 +225,8 @@ your-project/
 | `project/architecture/*` | Design decisions |
 | `project/reviews/*` | Review findings |
 | `project/incidents/*` | Incident responses |
+| `project/ideas/*` | Refined ideas from interviews |
+| `project/ralph/*` | Ralph loop patterns |
 
 ## Included Plugins
 
@@ -165,11 +252,12 @@ UI component generation utilities.
 
 ## Tips
 
-1. **Be specific** - More detail = better pattern matching
+1. **Use /w- shortcuts** - Quick access to all workflows
 2. **Review checkpoint 0** - Past solutions may already solve your problem
-3. **Name patterns well** - Good names make future searches easier
-4. **Trust the compound** - Don't skip the final checkpoint
-5. **Search first manually** - "Search for solutions to [X]" before starting if unsure
+3. **Trust the compound** - Don't skip the final checkpoint
+4. **Log Ralph candidates** - Repeating patterns become future automation
+5. **Batch overnight work** - Use `/w-ralph-batch --script` for unattended runs
+6. **Search first** - `/w-search` before starting if unsure
 
 ## License
 
