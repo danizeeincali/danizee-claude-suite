@@ -97,6 +97,10 @@ STOP and wait for user response.
 - Doc path: docs/solutions/implementations/_____.md
 - Pattern stored: yes/no
 
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -111,6 +115,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
+- [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -252,6 +257,10 @@ NEVER proceed to Build until:
 - Doc path: docs/solutions/full-tdd-swarm/_____.md
 - Pattern stored: yes/no
 
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -267,6 +276,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
+- [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -450,6 +460,10 @@ NEVER proceed to Build until:
 - Spec path: .claude/plans/YYYY-MM-DD-[name].md
 - Pattern stored: yes/no
 
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -467,6 +481,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
+- [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -564,6 +579,10 @@ STOP and wait for user response.
 - Doc path: docs/solutions/bugs/_____.md
 - Pattern stored: yes/no
 
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -579,6 +598,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
+- [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -748,6 +768,10 @@ NEVER proceed to Build until:
 - Root cause documented: yes/no
 - Fix pattern stored: yes/no
 
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -765,6 +789,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
+- [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -880,6 +905,10 @@ STOP and wait for user response.
 - Doc path: docs/solutions/incidents/_____.md
 - Incident documented: yes/no
 
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -897,6 +926,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Incident doc created: _____
+- [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -1013,6 +1043,10 @@ STOP and wait for user response.
 - Doc path: docs/solutions/reviews/_____.md
 - All findings documented: yes/no
 
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -1029,6 +1063,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Review doc created: _____
+- [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -1138,6 +1173,10 @@ STOP and wait for user response.
 - Doc path: docs/solutions/security/_____.md
 - All findings documented: yes/no
 
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -1153,6 +1192,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Security doc created: _____
+- [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -1260,6 +1300,10 @@ STOP and wait for user response.
 - Doc path: docs/solutions/performance/_____.md
 - All findings documented: yes/no
 
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -1275,6 +1319,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Performance doc created: _____
+- [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -1398,6 +1443,10 @@ STOP and wait for user response.
 - Doc path: docs/solutions/architecture/_____-adr.md
 - ADR documented: yes/no
 
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -1412,6 +1461,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] ADR doc created: _____
+- [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -1530,6 +1580,10 @@ STOP and wait for user response.
 - Doc path: docs/solutions/multi-repo/_____.md
 - Pattern documented: yes/no
 
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -1546,6 +1600,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Coordination doc created: _____
+- [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -1806,6 +1861,10 @@ STOP and wait for user response.
 - Doc path: docs/solutions/[category]/_____.md
 - Patterns captured: _____
 
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+
 **AUTO-PROCEED:** Continue to Commit phase.
 
 ---
@@ -1841,6 +1900,7 @@ STOP and wait for user response.
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
 - [ ] Changes committed
+- [ ] Ralph candidate check completed
 
 ⚠️ Session NOT properly ended until all steps complete
 
@@ -1948,6 +2008,10 @@ Only stop for user confirmation if max iterations reached without completion.
 - Doc path: docs/solutions/ralph/_____.md
 - Pattern stored: yes/no
 
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: docs/solutions/ralph-candidates/RALPH_CANDIDATES.md
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -1962,6 +2026,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
+- [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
