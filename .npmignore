@@ -1,0 +1,30 @@
+# Directories
+.claude/
+docs/
+.git/
+.github/
+node_modules/
+coverage/
+tests/
+
+# Markdown (except README)
+*.md
+!README.md
+
+# Environment and logs
+.env*
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Plan files
+.claude/plans/
