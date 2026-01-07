@@ -250,6 +250,23 @@ UI component generation utilities.
 - Layout: Page layouts and grids
 - Theme: Design tokens and theming
 
+## Checkpoint Automation
+
+Workflows use **USER GATE** (requires confirmation) and **AUTO-PROCEED** (continues automatically):
+
+| Phase | Gate Type | Rationale |
+|-------|-----------|-----------|
+| Search | USER GATE | Review past solutions before proceeding |
+| Interview | USER GATE | Ensure requirements are captured |
+| Plan | USER GATE | Validate approach before coding |
+| Spec | AUTO-PROCEED | Flows directly to Tests |
+| Tests | AUTO-PROCEED | Blocking rule ensures tests fail first |
+| Build | AUTO-PROCEED | Continues after tests pass |
+| Review | AUTO-PROCEED | Automatic code review |
+| Compound | AUTO-PROCEED | Mandatory knowledge capture |
+
+**Philosophy**: Human gates in planning/context phases, auto-proceed in coding/verification phases.
+
 ## Tips
 
 1. **Use /w- shortcuts** - Quick access to all workflows
