@@ -206,11 +206,7 @@ STOP and wait for user response.
 - Acceptance criteria (numbered list)
 - Test cases (numbered list)
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Spec ready. Proceed to Tests?"
-- Options: ["Continue", "Revise spec"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Tests phase.
 
 ---
 
@@ -408,11 +404,7 @@ STOP and wait for user response.
 - Acceptance criteria (numbered list)
 - Test cases (numbered list)
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Spec ready. Proceed to Tests?"
-- Options: ["Continue", "Revise spec"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Tests phase.
 
 ---
 
