@@ -21,6 +21,21 @@ Or use npx without installing:
 npx danizee-claude-suite init
 ```
 
+## Updating
+
+When a new version is released:
+
+```bash
+# Update the npm package globally
+npm update -g danizee-claude-suite
+
+# Update your project's installed workflows
+cd /path/to/your/project
+danizee-claude-suite update
+```
+
+The `update` command regenerates all workflow shortcuts and documentation while preserving your existing candidates and solution docs.
+
 ## Requirements
 
 - Node.js >= 18.0.0
@@ -201,18 +216,27 @@ danizee-claude-suite init
 # Check installation status
 danizee-claude-suite check
 
-# Update existing installation
+# Update existing installation (preserves your data)
 danizee-claude-suite update
 
-# Remove suite
+# Remove suite completely
 danizee-claude-suite uninstall
 
-# Preview changes (dry run)
+# Preview changes without writing (dry run)
 danizee-claude-suite init --dry-run
 
-# Force overwrite existing
+# Force overwrite existing files
 danizee-claude-suite init --force
 ```
+
+| Command | Description |
+|---------|-------------|
+| `init` | Install all workflows, create directories, generate docs |
+| `check` | Verify installation status and show installed components |
+| `update` | Regenerate workflows and docs, preserve ralph-candidates.md and solution docs |
+| `uninstall` | Remove all installed files and directories |
+| `--dry-run` | Preview what will be created without writing files |
+| `--force` | Overwrite existing files without prompting |
 
 ## What Gets Installed
 
@@ -253,6 +277,7 @@ your-project/
 | `project/incidents/*` | Incident responses |
 | `project/ideas/*` | Refined ideas from interviews |
 | `project/ralph/*` | Ralph loop patterns |
+| `project/ralph-specs/*` | Generated Ralph specifications |
 
 ## Included Plugins
 
