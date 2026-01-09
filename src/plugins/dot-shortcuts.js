@@ -1640,21 +1640,23 @@ Doc: docs/solutions/multi-repo/[task-name].md
 
     'w-compound': {
       name: 'w-compound',
-      description: 'Compound This - Capture current context as reusable knowledge',
+      description: 'Compound This - Capture context + auto-generate diagnostic/fix candidates',
       content: `# /w-compound
 
-Compound This - Captures current context as reusable knowledge (ad-hoc).
+Compound This - Captures current context as reusable knowledge AND auto-generates diagnostic/fix Ralph candidates for overnight verification.
 
 ## Usage
 \`\`\`
 /w-compound [category]
+/w-compound feature
+/w-compound bug
 \`\`\`
 
 ---
 
 ## ⚠️ MANDATORY EXECUTION
 
-This command MUST complete fully. NEVER skip the storage step.
+This command MUST complete ALL phases including auto-QA generation.
 
 ---
 
@@ -1668,7 +1670,8 @@ This command MUST complete fully. NEVER skip the storage step.
 ## What Gets Stored
 1. **Memory Key** - Searchable pattern reference
 2. **Solution Doc** - Markdown documentation
-3. **Neural Pattern** - Learned behavior for similar problems
+3. **Diagnostic Candidates** - RC-D### to verify patterns exist
+4. **Fix Candidates** - RC-F### to restore patterns if diagnostics fail
 
 ---
 
@@ -1693,45 +1696,147 @@ STOP and wait for user response.
 - Doc path: docs/solutions/[category]/_____.md
 - Pattern stored: yes/no
 
+**AUTO-PROCEED:** Continue to Analyze Changes phase.
+
 ---
 
-### ⛔ CHECKPOINT 2: Ralph Candidate Check (MANDATORY)
-**Evaluate if this pattern could become a future Ralph loop:**
-- Is this a repeating dev pattern (feature/bug/refactor)?
-- Does it have clear completion criteria?
-- Could it be automated with test verification?
+### ⛔ CHECKPOINT 2: Analyze Changes (AUTO-PROCEED)
+**Parse git diff to identify what was built:**
 
-**If YES - Create Ralph Candidate:**
-1. Read .claude/ralph-candidates.md for next available ID (RC-NNN)
-2. Assign priority:
-   - P1: Critical - should run soon
-   - P2: Important - run when available
-   - P3: Nice-to-have - backlog
-3. Define AI-verifiable completion tests (at least 2):
-   | Type | Format |
-   |------|--------|
-   | File exists | \`File exists: path/to/file\` |
-   | Pattern match | \`Pattern: "regex" in path/to/file\` |
-   | Test passes | \`Test: npm test -- --grep "name"\` |
-   | Lint clean | \`Lint: npm run lint\` |
-   | Build passes | \`Build: npm run build\` |
-4. Add to .claude/ralph-candidates.md:
-   - Summary row in Active Candidates table
-   - Full details in Candidate Details section
-5. Set status: draft (needs refinement) or ready (can execute)
+Run: \`git diff --name-only HEAD~1\` and \`git diff HEAD~1\`
+
+**Categorize changes:**
+| Change Type | Detection Method |
+|-------------|------------------|
+| New function | \`+ export function\` or \`+ function\` |
+| New interface | \`+ export interface\` or \`+ interface\` |
+| Pattern change | Significant line changes in existing files |
+| Test added | Changes in \`*.test.*\` or \`*.spec.*\` files |
+| Config change | Changes in config/settings files |
 
 **REQUIRED OUTPUT:**
-- Ralph candidate identified: yes/no
-- If yes:
-  - ID: RC-___
-  - Priority: P_
-  - Completion tests (list at least 2):
-    1. _____
-    2. _____
-  - Status: draft/ready
-  - Added to .claude/ralph-candidates.md: yes/no
+- Files changed: _____
+- Functions added: _____
+- Interfaces added: _____
+- Patterns modified: _____
+- Tests added: _____
 
-NEVER skip this phase. Command is INCOMPLETE without Ralph check.
+**AUTO-PROCEED:** Continue to Generate Diagnostics phase.
+
+---
+
+### ⛔ CHECKPOINT 3: Generate Diagnostics (AUTO-PROCEED)
+**For each significant change, create RC-D### diagnostic:**
+
+**Diagnostic Template:**
+| Change Type | Diagnostic Command | Pass Criteria |
+|-------------|-------------------|---------------|
+| Function added | \`grep -n "export function NAME" FILE\` | Match found |
+| Interface added | \`grep -n "export interface NAME" FILE\` | Match found |
+| Pattern exists | \`grep -rn "PATTERN" PATH\` | N matches found |
+| Test passes | \`npm test -- --grep "NAME"\` | Exit code 0 |
+| Pattern removed | \`grep -rn "OLD_PATTERN" PATH\` | 0 matches |
+
+**For each diagnostic, generate:**
+\`\`\`markdown
+### RC-D###: [Name] Exists
+
+**Auto-Generated From**: /w-compound on [DATE]
+**Type**: Diagnostic
+**Verifies**: [description]
+
+**Test Command**:
+\\\`\\\`\\\`bash
+grep -n "[pattern]" [file]
+\\\`\\\`\\\`
+
+**AI-Verifiable Output**:
+DIAGNOSTIC: [NAME]
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+
+**Triggers**: RC-F### if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+\`\`\`
+
+**REQUIRED OUTPUT:**
+- Diagnostics generated: _____ (list RC-D### IDs)
+
+**AUTO-PROCEED:** Continue to Generate Fix Candidates phase.
+
+---
+
+### ⛔ CHECKPOINT 4: Generate Fix Candidates (AUTO-PROCEED)
+**For each diagnostic, create paired RC-F### fix candidate:**
+
+**For each fix, generate:**
+\`\`\`markdown
+### RC-F###: Restore [Name]
+
+**Auto-Generated From**: /w-compound on [DATE]
+**Type**: Conditional Fix
+**Triggered By**: RC-D### failure
+**Priority**: P1 (critical - restores functionality)
+
+**Pattern to Restore**:
+\\\`\\\`\\\`[language]
+[actual code that was just written]
+\\\`\\\`\\\`
+
+**File**: [path/to/file]
+
+**Completion Tests**:
+1. Pattern: \`[pattern]\` exists in \`[file]\`
+2. Test: RC-D### returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D### fails)
+\`\`\`
+
+**REQUIRED OUTPUT:**
+- Fix candidates generated: _____ (list RC-F### IDs)
+- Diagnostic → Fix pairs: RC-D001→RC-F001, etc.
+
+**AUTO-PROCEED:** Continue to Append phase.
+
+---
+
+### ⛔ CHECKPOINT 5: Append to Ralph Candidates (AUTO-PROCEED)
+**Add all generated candidates to .claude/ralph-candidates.md:**
+
+1. Read current file to find highest RC-D### and RC-F### IDs
+2. Assign sequential IDs to new candidates
+3. Append to Active Diagnostics table
+4. Append to Active Fixes table
+5. Append full details to Diagnostic Details and Fix Details sections
+
+**REQUIRED OUTPUT:**
+- Candidates appended: _____
+- New highest RC-D ID: RC-D___
+- New highest RC-F ID: RC-F___
+- File updated: .claude/ralph-candidates.md
+
+**AUTO-PROCEED:** Continue to Ralph Candidate Check phase.
+
+---
+
+### ⛔ CHECKPOINT 6: Ralph Candidate Check (MANDATORY)
+**Evaluate if this pattern could become a GENERAL Ralph loop (RC-###):**
+- Is this a repeating dev pattern beyond just this session?
+- Could it be templated for future similar work?
+
+**If YES - Create General Ralph Candidate (RC-###):**
+1. Read .claude/ralph-candidates.md for next available RC-### ID
+2. Assign priority: P1/P2/P3
+3. Define completion tests
+4. Add to Active Candidates table
+
+**REQUIRED OUTPUT:**
+- General Ralph candidate identified: yes/no
+- If yes: ID, priority, tests, status
+
+NEVER skip this phase. Command is INCOMPLETE without all checks.
 
 ---
 
@@ -1740,16 +1845,32 @@ NEVER skip this phase. Command is INCOMPLETE without Ralph check.
 - [ ] Category confirmed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
-- [ ] Ralph candidate check completed
-- [ ] If candidate: added to .claude/ralph-candidates.md
+- [ ] Changes analyzed
+- [ ] Diagnostics generated: RC-D___ to RC-D___
+- [ ] Fixes generated: RC-F___ to RC-F___
+- [ ] Candidates appended to .claude/ralph-candidates.md
+- [ ] General Ralph candidate check completed
 
 ⚠️ Command INCOMPLETE until all boxes checked
+
+## Output Summary
+At completion, report:
+\`\`\`
+Compounded: [category] - [name]
+Memory: project/[category]/[name]
+Doc: docs/solutions/[category]/[name].md
+Auto-generated: N diagnostic/fix pairs for overnight Ralph
+  - RC-D001 → RC-F001: [description]
+  - RC-D002 → RC-F002: [description]
+Run /w-ralph-batch to process overnight.
+\`\`\`
 
 ## Example
 \`\`\`
 /w-compound feature
 # Stores to: project/features/[auto-named]
 # Creates: docs/solutions/features/[name].md
+# Generates: RC-D001→RC-F001, RC-D002→RC-F002 (auto QA pairs)
 \`\`\`
 `
     },
@@ -2452,6 +2573,7 @@ Before marking workflow complete, verify ALL boxes:
       content: `# /w-ralph-batch
 
 Batch process multiple Ralph candidates sequentially, or generate an overnight script for unattended execution.
+Supports Diagnostic→Fix flow for automated QA verification.
 
 ## Usage
 \`\`\`
@@ -2460,6 +2582,7 @@ Batch process multiple Ralph candidates sequentially, or generate an overnight s
 /w-ralph-batch --priority P1      # Only process P1 candidates
 /w-ralph-batch --all              # Process all ready candidates sequentially
 /w-ralph-batch --phased           # Execute by priority (P1 → P2 → P3)
+/w-ralph-batch --diagnostics      # Run all diagnostics first, then fixes if needed
 \`\`\`
 
 ---
@@ -2484,6 +2607,7 @@ Use TodoWrite NOW to create todos for ALL phases:
 - NEVER execute without reviewing candidate list first
 - NEVER skip status updates after completion
 - ALWAYS generate summary report at end
+- For diagnostics: ALWAYS run RC-D### before paired RC-F###
 
 ---
 
@@ -2495,6 +2619,23 @@ Use TodoWrite NOW to create todos for ALL phases:
 | Script | Generate overnight-work.sh | Unattended overnight runs |
 | Phased | Execute by priority order | Structured batch processing |
 | All | Process all ready candidates | Quick batch run |
+| Diagnostics | Run diagnostics first, fixes only if needed | QA verification |
+
+---
+
+## Candidate Types
+
+| ID Format | Type | Purpose |
+|-----------|------|---------|
+| RC-### | General | Standard Ralph candidates |
+| RC-D### | Diagnostic | Verify patterns/code exists |
+| RC-F### | Fix | Restore code if diagnostic fails |
+
+**Diagnostic→Fix Flow:**
+1. Run RC-D### diagnostic command
+2. If STATUS: PASS → log "VERIFIED" → skip paired RC-F###
+3. If STATUS: FAIL → run RC-F### fix → re-run RC-D### to verify
+4. Report final status
 
 ---
 
@@ -2505,16 +2646,23 @@ Use TodoWrite NOW to create todos for ALL phases:
 - Candidates file: .claude/ralph-candidates.md
 - Total candidates: _____
 - Ready candidates: _____
+- Ready diagnostics (RC-D###): _____
+- Ready fixes (RC-F###): _____
 - Filtered candidates (if priority specified): _____
 
-**Candidate Summary:**
+**General Candidates:**
 | ID | Priority | Name | Completion Tests | Status |
 |----|----------|------|------------------|--------|
 | RC-___ | P_ | _____ | ___ tests | ready |
 
+**Diagnostics & Fixes (if any):**
+| Diagnostic | Verifies | Paired Fix | Status |
+|------------|----------|------------|--------|
+| RC-D___ | _____ | RC-F___ | ready |
+
 **USER GATE:** Use AskUserQuestion
-- Question: "Found [N] ready candidates. Select execution mode:"
-- Options: ["Interactive (one by one)", "Generate script", "Phased (P1→P2→P3)", "All at once"]
+- Question: "Found [N] ready candidates ([X] diagnostics, [Y] fixes, [Z] general). Select execution mode:"
+- Options: ["Interactive (one by one)", "Generate script", "Phased (P1→P2→P3)", "Diagnostics first", "All at once"]
 
 STOP and wait for user response.
 
@@ -2538,6 +2686,12 @@ STOP and wait for user response.
 - Phase 2 (P2 Important): [list IDs]
 - Phase 3 (P3 Nice-to-have): [list IDs]
 - Completion promises: <promise>P1_COMPLETE</promise>, etc.
+
+**For Diagnostics Mode:**
+- Diagnostic pairs to process: [list RC-D### → RC-F### pairs]
+- Run fixes only on failure: yes (default)
+- Re-verify after fix: yes (default)
+- Processing order: by diagnostic ID
 
 **USER GATE:** Use AskUserQuestion
 - Question: "Configuration ready. Proceed with [mode]?"
@@ -2605,6 +2759,47 @@ Output <promise>P3_COMPLETE</promise>
 Output <promise>ALL_PHASES_COMPLETE</promise>
 \`\`\`
 
+**Diagnostics Mode - Verify & Fix Flow:**
+For each RC-D### diagnostic:
+\`\`\`
+┌─────────────────────────────────────────────────┐
+│ DIAGNOSTIC: RC-D001 - getOrderBookDepth exists  │
+├─────────────────────────────────────────────────┤
+│ Running: grep -n "export function getOrder..."  │
+│                                                 │
+│ RESULT: PATTERN_FOUND: YES                      │
+│         LOCATION: src/api/depth.ts:42           │
+│         STATUS: PASS                            │
+│                                                 │
+│ → VERIFIED. Skipping RC-F001.                   │
+└─────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────┐
+│ DIAGNOSTIC: RC-D002 - validateOrderParams       │
+├─────────────────────────────────────────────────┤
+│ Running: grep -n "export function validate..."  │
+│                                                 │
+│ RESULT: PATTERN_FOUND: NO                       │
+│         LOCATION: NONE                          │
+│         STATUS: FAIL                            │
+│                                                 │
+│ → Running paired fix: RC-F002                   │
+│ → Fix applied.                                  │
+│ → Re-running diagnostic...                      │
+│ → STATUS: PASS                                  │
+│ → RESTORED.                                     │
+└─────────────────────────────────────────────────┘
+\`\`\`
+
+**Diagnostic Output Format:**
+\`\`\`
+DIAGNOSTIC: [NAME]
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+ACTION: VERIFIED|RESTORED|FAILED
+\`\`\`
+
 **AUTO-PROCEED:** Continue until all candidates processed or script generated.
 
 ---
@@ -2621,10 +2816,23 @@ Output <promise>ALL_PHASES_COMPLETE</promise>
 | Failed/Blocked | _____ |
 | Skipped | _____ |
 
-**Per-Candidate Results:**
+**General Candidate Results:**
 | ID | Name | Result | Iterations | Notes |
 |----|------|--------|------------|-------|
 | RC-___ | _____ | success/failed/blocked | ___ | _____ |
+
+**Diagnostic Results (if applicable):**
+| Diagnostic | Verifies | Status | Action | Fix Run |
+|------------|----------|--------|--------|---------|
+| RC-D___ | _____ | PASS/FAIL | VERIFIED/RESTORED/FAILED | RC-F___/skipped |
+
+**Diagnostic Summary:**
+| Metric | Count |
+|--------|-------|
+| Total diagnostics run | _____ |
+| Verified (PASS, no fix needed) | _____ |
+| Restored (FAIL → fix → PASS) | _____ |
+| Failed (FAIL → fix → still FAIL) | _____ |
 
 **Script Generated (if applicable):**
 - Path: ./overnight-ralph.sh
@@ -2635,10 +2843,12 @@ Output <promise>ALL_PHASES_COMPLETE</promise>
 - Candidates marked complete: [IDs]
 - Candidates still in-progress: [IDs]
 - Candidates blocked: [IDs]
+- Diagnostics verified: [RC-D### IDs]
+- Diagnostics restored: [RC-D### IDs]
 - Archived: [IDs]
 
 **USER GATE:** Use AskUserQuestion
-- Question: "Batch complete. [X/Y] successful. Next action?"
+- Question: "Batch complete. [X/Y] successful. [Z] diagnostics verified. Next action?"
 - Options: ["Done", "Retry failed", "View details", "Run generated script"]
 
 STOP and wait for user response.
@@ -2654,6 +2864,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Checkpoint 3 completed with summary
 - [ ] All candidate statuses updated in .claude/ralph-candidates.md
 - [ ] Successful candidates archived
+- [ ] Diagnostics verified/restored (if applicable)
 - [ ] Summary report generated
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
@@ -2677,6 +2888,12 @@ Before marking workflow complete, verify ALL boxes:
 3. Review results between phases
 4. Continue or abort as needed
 
+**For Diagnostic Verification:**
+1. Use \`/w-ralph-batch --diagnostics\` after /w-compound
+2. Verifies patterns built in previous session still exist
+3. Auto-fixes any regressions detected
+4. Run nightly to catch accidental deletions
+
 ## Example
 \`\`\`
 /w-ralph-batch --script
@@ -2687,6 +2904,9 @@ Before marking workflow complete, verify ALL boxes:
 
 /w-ralph-batch --phased
 # Executes P1 → P2 → P3 with completion promises
+
+/w-ralph-batch --diagnostics
+# Runs all RC-D### diagnostics, fixes only if needed
 \`\`\`
 `
     }

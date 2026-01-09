@@ -1,6 +1,6 @@
 {
   "name": "danizee-claude-suite",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "description": "Unified workflow shortcuts for Claude Code with knowledge compounding",
   "main": "bin/cli.js",
   "type": "module",
