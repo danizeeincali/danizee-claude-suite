@@ -68,11 +68,7 @@ STOP and wait for user response.
 | Input validation | _____ | _____ | _____ |
 | Authz flaws | _____ | _____ | _____ |
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Security scan complete. Found [N] issues. Proceed to Analysis?"
-- Options: ["Continue", "Investigate findings", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Analysis phase.
 
 ---
 
@@ -82,11 +78,7 @@ STOP and wait for user response.
 - Prioritized remediation list (by severity)
 - Recommended fixes
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Analysis complete. Proceed to Compound?"
-- Options: ["Continue", "Review priorities", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Compound phase.
 
 ---
 
@@ -96,6 +88,10 @@ STOP and wait for user response.
 - Doc path: docs/solutions/security/_____.md
 - All findings documented: yes/no
 
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -104,12 +100,14 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 4 phases
-- [ ] All 4 checkpoints completed with user confirmation
+- [ ] Checkpoint 0 completed with user confirmation
+- [ ] Checkpoints 1-3 completed (auto-proceed)
 - [ ] All OWASP categories scanned
 - [ ] Risk assessment completed
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Security doc created: _____
+- [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 

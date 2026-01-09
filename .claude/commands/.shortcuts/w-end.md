@@ -41,11 +41,11 @@ STOP and wait for user response.
 - Doc path: docs/solutions/[category]/_____.md
 - Patterns captured: _____
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Knowledge compounded. Proceed to Commit?"
-- Options: ["Continue", "Revise compound"]
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Commit phase.
 
 ---
 
@@ -72,11 +72,15 @@ STOP and wait for user response.
 
 ## Completion Checklist
 
+- [ ] Checkpoint 0 completed with user confirmation
+- [ ] Checkpoint 1 completed (auto-proceed)
+- [ ] Checkpoint 2 completed with user confirmation
 - [ ] Session summary created
 - [ ] Compound phase completed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
 - [ ] Changes committed
+- [ ] Ralph candidate check completed
 
 ⚠️ Session NOT properly ended until all steps complete
 

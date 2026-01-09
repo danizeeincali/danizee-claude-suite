@@ -115,11 +115,7 @@ NEVER proceed to Build until:
 - [ ] All tests RUN and FAIL
 - [ ] Failure output shows the bug being reproduced
 
-**USER GATE:** Use AskUserQuestion
-- Question: "All [N] regression tests written and failing. Proceed to Build fix?"
-- Options: ["Continue", "Add more tests", "Revise tests"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Build phase after tests fail.
 
 ---
 
@@ -129,11 +125,7 @@ STOP and wait for user response.
 - Test run result: "All _____ tests PASS"
 - Bug confirmed fixed: yes/no
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Fix implemented. All tests pass. Proceed to Review?"
-- Options: ["Continue", "Revise implementation"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Review phase.
 
 ---
 
@@ -145,11 +137,7 @@ STOP and wait for user response.
 | Performance | _____ | _____ |
 | Regressions | _____ | _____ |
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Review complete. No regressions found. Proceed to Compound?"
-- Options: ["Continue", "Address findings first"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Compound phase.
 
 ---
 
@@ -160,6 +148,10 @@ STOP and wait for user response.
 - Root cause documented: yes/no
 - Fix pattern stored: yes/no
 
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -168,7 +160,8 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 9 phases
-- [ ] All 8 checkpoints completed with user confirmation
+- [ ] Checkpoints 0-3 completed with user confirmation
+- [ ] Checkpoints 4-7 completed (auto-proceed)
 - [ ] Root cause confirmed before fix
 - [ ] Regression tests written and initially failed
 - [ ] All tests now pass
@@ -176,6 +169,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
+- [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 

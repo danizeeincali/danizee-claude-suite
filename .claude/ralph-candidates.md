@@ -137,7 +137,7 @@ STATUS: PASS|FAIL
 
 ### ID Formats
 | Format | Purpose | Example |
-|--------|---------|---------|
+|--------|---------|---------
 | RC-### | General candidates | RC-001 |
 | RC-D### | Diagnostic candidates | RC-D001 |
 | RC-F### | Fix candidates (paired) | RC-F001 |

@@ -66,11 +66,7 @@ STOP and wait for user response.
 | Caching | _____ | _____ | _____ |
 | Bundle size | _____ | _____ | _____ |
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Profiling complete. Found [N] bottlenecks. Proceed to Analysis?"
-- Options: ["Continue", "Investigate bottlenecks", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Analysis phase.
 
 ---
 
@@ -80,11 +76,7 @@ STOP and wait for user response.
 - Estimated improvement metrics
 - Implementation suggestions
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Analysis complete. Proceed to Compound?"
-- Options: ["Continue", "Review recommendations", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Compound phase.
 
 ---
 
@@ -94,6 +86,10 @@ STOP and wait for user response.
 - Doc path: docs/solutions/performance/_____.md
 - All findings documented: yes/no
 
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -102,12 +98,14 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 4 phases
-- [ ] All 4 checkpoints completed with user confirmation
+- [ ] Checkpoint 0 completed with user confirmation
+- [ ] Checkpoints 1-3 completed (auto-proceed)
 - [ ] All performance categories checked
 - [ ] Recommendations prioritized
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Performance doc created: _____
+- [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 

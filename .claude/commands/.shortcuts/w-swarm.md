@@ -71,11 +71,7 @@ STOP and wait for user response.
 - Files created/modified: _____
 - Test results (if applicable): _____
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Execution complete. Proceed to Integrate and Compound?"
-- Options: ["Continue", "Revise work", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Compound phase.
 
 ---
 
@@ -85,6 +81,10 @@ STOP and wait for user response.
 - Doc path: docs/solutions/implementations/_____.md
 - Pattern stored: yes/no
 
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -93,11 +93,13 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 5 phases
-- [ ] All 4 checkpoints completed with user confirmation
+- [ ] Checkpoints 0-1 completed with user confirmation
+- [ ] Checkpoints 2-3 completed (auto-proceed)
 - [ ] All required outputs generated
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
+- [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 

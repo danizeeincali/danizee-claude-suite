@@ -65,11 +65,7 @@ STOP and wait for user response.
 | Quality | _____ | _____ |
 | Simplicity | _____ | _____ |
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Code analysis complete. Proceed to Security Scan?"
-- Options: ["Continue", "Address findings first", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Security Scan phase.
 
 ---
 
@@ -79,11 +75,7 @@ STOP and wait for user response.
 |---------------|------|----------|
 | _____ | _____ | _____ |
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Security scan complete. Found [N] issues. Proceed to Performance?"
-- Options: ["Continue", "Address security first", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Performance Check phase.
 
 ---
 
@@ -93,19 +85,47 @@ STOP and wait for user response.
 |-------------|--------|----------|
 | _____ | _____ | _____ |
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Performance check complete. Proceed to Compound?"
-- Options: ["Continue", "Address performance first", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Ralph Candidates phase.
 
 ---
 
-### ⛔ CHECKPOINT 4: Compound (MANDATORY - NEVER SKIP)
+### ⛔ CHECKPOINT 4: Ralph Candidates (AUTO-PROCEED)
+**Scan for dev patterns that could become future Ralph loops:**
+- Repeating code patterns in this PR
+- Bug fix patterns that recur
+- Feature patterns worth templating
+
+**If candidate identified:**
+1. Generate unique ID: RC-NNN (check .claude/ralph-candidates.md for next available)
+2. Assign priority: P1 (critical) / P2 (important) / P3 (nice-to-have)
+3. Define AI-verifiable completion tests:
+   - File exists: `path/to/expected/file`
+   - Pattern match: `"regex"` in `file`
+   - Test passes: `npm test -- --grep "name"`
+   - Lint clean: `npm run lint`
+4. Add entry to .claude/ralph-candidates.md
+5. Set initial status: draft
+
+**REQUIRED OUTPUT:**
+- Candidates identified: 0/1/2+
+- If any:
+  - ID(s) added: RC-___
+  - Priority: P_
+  - Completion tests defined: yes/no
+
+**AUTO-PROCEED:** Continue to Compound phase.
+
+---
+
+### ⛔ CHECKPOINT 5: Compound (MANDATORY - NEVER SKIP)
 **REQUIRED OUTPUT:**
 - Memory key: project/reviews/_____
 - Doc path: docs/solutions/reviews/_____.md
 - All findings documented: yes/no
+
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -115,13 +135,16 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 6 phases
-- [ ] All 5 checkpoints completed with user confirmation
+- [ ] Checkpoint 0 completed with user confirmation
+- [ ] Checkpoints 1-5 completed (auto-proceed)
 - [ ] Code analysis completed
 - [ ] Security scan completed
 - [ ] Performance check completed
+- [ ] Ralph candidates scanned
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Review doc created: _____
+- [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 

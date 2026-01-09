@@ -184,6 +184,8 @@ Use the `/w-` prefix for quick workflow invocation:
 | `/w-search [query]` | Search past solutions |
 | `/w-ralph-this [prompt]` | Ralph Wiggum iterative loop |
 | `/w-ralph-goals [idea]` | Interview to build Ralph spec |
+| `/w-ralph-pick [ID]` | Execute a Ralph candidate |
+| `/w-ralph-batch [mode]` | Batch process candidates |
 
 **Example:**
 ```
@@ -1118,6 +1120,119 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/ralph-specs/[nam
 
 ---
 
+### Ralph Pick
+
+**Say:** "Pick Ralph candidate [ID]" or "Execute RC-001"
+**Slash:** `/w-ralph-pick [ID]`
+
+**What it does:** Select and execute a Ralph candidate from the queue.
+
+**Flow:**
+1. **Load Candidates** - Read `.claude/ralph-candidates.md`
+2. **Select** - User picks candidate by ID or priority
+3. **Verify Tests** - Validate completion tests are executable
+4. **Execute** - Run Ralph loop until tests pass
+5. **Update Status** - Mark complete and archive
+
+**Checkpoints:**
+| # | After | You Review |
+|---|-------|------------|
+| 0 | Loaded | Available candidates |
+| 1 | Selected | Candidate details |
+| 2 | Verified | Completion test baseline |
+| 3 | Loop | Execution progress |
+| 4 | Complete | Final results |
+
+**Example:**
+```
+/w-ralph-pick RC-001
+/w-ralph-pick --priority P1
+```
+
+---
+
+### Ralph Batch
+
+**Say:** "Batch process Ralph candidates" or "Generate overnight script"
+**Slash:** `/w-ralph-batch [mode]`
+
+**What it does:** Process multiple Ralph candidates or generate overnight scripts.
+
+**Modes:**
+| Mode | Flag | Description |
+|------|------|-------------|
+| Interactive | (default) | Process one by one with verification |
+| Script | `--script` | Generate `overnight-ralph.sh` |
+| Phased | `--phased` | Execute by priority (P1 → P2 → P3) |
+| All | `--all` | Process all ready candidates |
+| Diagnostics | `--diagnostics` | Run diagnostics, fix only if needed |
+
+**Example:**
+```
+/w-ralph-batch --script
+/w-ralph-batch --priority P1
+/w-ralph-batch --diagnostics
+```
+
+---
+
+## Ralph Candidates System
+
+During compound phases, patterns are logged to `.claude/ralph-candidates.md`:
+
+### Candidate Types
+
+| ID Format | Type | Purpose |
+|-----------|------|---------|
+| RC-### | General | Standard Ralph candidates |
+| RC-D### | Diagnostic | Verify patterns/code exists |
+| RC-F### | Fix | Restore code if diagnostic fails |
+
+### Auto-Generated QA
+
+`/w-compound` automatically generates diagnostic and fix candidates:
+
+1. **Analyze Changes** - Parse git diff for new functions/interfaces
+2. **Generate Diagnostics** - Create RC-D### to verify patterns exist
+3. **Generate Fixes** - Create paired RC-F### to restore if needed
+
+### Diagnostic → Fix Flow
+
+```
+1. Run RC-D### diagnostic command
+2. If STATUS: PASS → log "VERIFIED" → skip RC-F###
+3. If STATUS: FAIL → run RC-F### → re-run RC-D### to verify
+4. Report: VERIFIED | RESTORED | FAILED
+```
+
+### AI-Verifiable Completion Tests
+
+| Type | Format | Example |
+|------|--------|---------|
+| File exists | `File exists: path` | `File exists: src/api/users.ts` |
+| Pattern match | `Pattern: "regex" in file` | `Pattern: "export.*getUser" in src/api.ts` |
+| Test passes | `Test: command` | `Test: npm test -- --grep "getUser"` |
+| Lint clean | `Lint: command` | `Lint: npm run lint` |
+| Build passes | `Build: command` | `Build: npm run build` |
+
+### Batch Processing
+
+```bash
+# Generate overnight script
+/w-ralph-batch --script
+
+# Process by priority
+/w-ralph-batch --priority P1
+
+# Run diagnostics first, fixes only if needed
+/w-ralph-batch --diagnostics
+
+# Phased execution (P1 → P2 → P3)
+/w-ralph-batch --phased
+```
+
+---
+
 ## Quick Reference
 
 ### Workflow Summary
@@ -1143,6 +1258,8 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/ralph-specs/[nam
 | Search Solutions | `/w-search` | "search for solutions to [X]" | Find past work |
 | Ralph Loop | `/w-ralph-this` | "ralph this [prompt]" | Iterative AI loop |
 | Ralph Spec | `/w-ralph-goals` | "ralph goals for [idea]" | Build Ralph prompt |
+| Ralph Pick | `/w-ralph-pick` | "pick candidate RC-001" | Execute queued candidate |
+| Ralph Batch | `/w-ralph-batch` | "batch process candidates" | Batch/overnight runs |
 
 ### Key Agents
 
@@ -1167,6 +1284,9 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/ralph-specs/[nam
 | `project/architecture/*` | Design decisions |
 | `project/reviews/*` | Review findings |
 | `project/incidents/*` | Incident responses |
+| `project/ideas/*` | Refined ideas from interviews |
+| `project/ralph/*` | Ralph loop patterns |
+| `project/ralph-specs/*` | Generated Ralph specs |
 
 ---
 
@@ -1177,3 +1297,6 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/ralph-specs/[nam
 3. **Name patterns well** - Good names make future searches easier
 4. **Trust the compound** - Don't skip the final checkpoint
 5. **Search first manually** - "Search for solutions to [X]" before starting if unsure
+6. **Log Ralph candidates** - Repeating patterns become future automation
+7. **Batch overnight work** - Use `/w-ralph-batch --script` for unattended runs
+8. **Run diagnostics nightly** - `/w-ralph-batch --diagnostics` catches accidental deletions

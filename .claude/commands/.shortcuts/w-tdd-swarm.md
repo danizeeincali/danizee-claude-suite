@@ -69,11 +69,7 @@ STOP and wait for user response.
 - Acceptance criteria (numbered list)
 - Test cases (numbered list)
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Spec ready. Proceed to Tests?"
-- Options: ["Continue", "Revise spec"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Tests phase.
 
 ---
 
@@ -89,11 +85,7 @@ NEVER proceed to Build until:
 - [ ] All tests RUN and FAIL
 - [ ] Failure output captured
 
-**USER GATE:** Use AskUserQuestion
-- Question: "All [N] tests written and failing. Proceed to Build?"
-- Options: ["Continue", "Add more tests", "Revise tests"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Build phase after tests fail.
 
 ---
 
@@ -102,11 +94,7 @@ STOP and wait for user response.
 - Implementation file paths: _____
 - Test run result: "All _____ tests PASS"
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Implementation complete. All tests pass. Proceed to Review?"
-- Options: ["Continue", "Revise implementation"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Review phase.
 
 ---
 
@@ -118,11 +106,7 @@ STOP and wait for user response.
 | Performance | _____ | _____ |
 | Architecture | _____ | _____ |
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Review complete. Proceed to Compound?"
-- Options: ["Continue", "Address findings first"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Compound phase.
 
 ---
 
@@ -132,6 +116,10 @@ STOP and wait for user response.
 - Doc path: docs/solutions/full-tdd-swarm/_____.md
 - Pattern stored: yes/no
 
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -140,12 +128,14 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 7 phases
-- [ ] All 7 checkpoints completed with user confirmation
+- [ ] Checkpoints 0-2 completed with user confirmation
+- [ ] Checkpoints 3-6 completed (auto-proceed)
 - [ ] All required outputs generated
 - [ ] All tests pass
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
+- [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 

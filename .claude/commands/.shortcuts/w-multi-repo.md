@@ -87,11 +87,7 @@ STOP and wait for user response.
 - Verification status per repo: _____
 - Any failures: _____
 
-**USER GATE:** Use AskUserQuestion
-- Question: "All [N] repos synced. Proceed to Compound?"
-- Options: ["Continue", "Address failures", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to Compound phase.
 
 ---
 
@@ -101,6 +97,10 @@ STOP and wait for user response.
 - Doc path: docs/solutions/multi-repo/_____.md
 - Pattern documented: yes/no
 
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -109,13 +109,15 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 5 phases
-- [ ] All 5 checkpoints completed with user confirmation
+- [ ] Checkpoints 0-2 completed with user confirmation
+- [ ] Checkpoints 3-4 completed (auto-proceed)
 - [ ] Dependency map created
 - [ ] Changes applied in correct order
 - [ ] All repos verified
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Coordination doc created: _____
+- [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 

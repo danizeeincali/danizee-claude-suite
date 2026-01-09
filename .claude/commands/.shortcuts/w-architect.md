@@ -102,6 +102,10 @@ STOP and wait for user response.
 - Doc path: docs/solutions/architecture/_____-adr.md
 - ADR documented: yes/no
 
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -116,6 +120,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] ADR doc created: _____
+- [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
