@@ -4,7 +4,7 @@ Initialize a multi-agent swarm for parallel task execution.
 
 ## Usage
 ```
-npx claude-flow@alpha swarm init --topology [hierarchical|mesh|ring|star]
+npx claude-flow@v3alpha swarm init --topology [hierarchical|mesh|ring|star]
 ```
 
 ## Topologies
@@ -15,5 +15,5 @@ npx claude-flow@alpha swarm init --topology [hierarchical|mesh|ring|star]
 
 ## Example
 ```bash
-npx claude-flow@alpha swarm init --topology hierarchical
+npx claude-flow@v3alpha swarm init --topology hierarchical
 ```

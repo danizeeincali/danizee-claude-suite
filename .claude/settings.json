@@ -1,19 +1,19 @@
 {
   "danizee-suite": {
     "version": "1.0.0",
-    "installedAt": "2026-01-09T17:49:06.223Z",
+    "installedAt": "2026-01-20T04:04:46.006Z",
     "plugins": {
       "claude-flow": true,
       "compound-engineering": true,
       "frontend-design": true
     },
-    "updatedAt": "2026-01-09T17:49:06.223Z"
+    "updatedAt": "2026-01-20T04:04:46.006Z"
   },
   "mcpServers": {
     "claude-flow": {
       "command": "npx",
       "args": [
-        "claude-flow@alpha",
+        "claude-flow@v3alpha",
         "mcp",
         "start"
       ],

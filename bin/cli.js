@@ -45,7 +45,7 @@ program
       }
 
       console.log('\n' + chalk.cyan('Next steps:'));
-      console.log('  1. Ensure claude-flow MCP is installed: ' + chalk.yellow('npx claude-flow@alpha mcp start'));
+      console.log('  1. Ensure claude-flow MCP is installed: ' + chalk.yellow('npx claude-flow@v3alpha mcp start'));
       console.log('  2. Review the generated WORKFLOW-SHORTCUTS.md');
       console.log('  3. Try a workflow: ' + chalk.yellow('/w-tdd-swarm [feature]') + ' or ' + chalk.yellow('"Full TDD Swarm on [feature]"'));
       console.log('\n' + chalk.dim('Tip: Use /w- prefix for quick access: /w-tdd-swarm, /w-swarm, /w-fix, /w-review, etc.'));

@@ -40,7 +40,7 @@ export function getDefaultSettings() {
     mcpServers: {
       'claude-flow': {
         command: 'npx',
-        args: ['claude-flow@alpha', 'mcp', 'start'],
+        args: ['claude-flow@v3alpha', 'mcp', 'start'],
         description: 'Claude Flow multi-agent orchestration with memory and swarm support'
       }
     },

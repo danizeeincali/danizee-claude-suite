@@ -246,7 +246,7 @@ mcp__claude-flow__memory_search { pattern: "auth/*" }
 
 # Execute
 /compound-engineering:workflows:plan
-npx claude-flow@alpha swarm init --topology hierarchical
+npx claude-flow@v3alpha swarm init --topology hierarchical
 /compound-engineering:workflows:work
 /compound-engineering:workflows:review
 
@@ -294,7 +294,7 @@ User: Use swarm to build a REST API for user management with CRUD and tests
 mcp__claude-flow__memory_search { pattern: "implementations/*api*" }
 
 # Execute
-npx claude-flow@alpha swarm init --topology hierarchical
+npx claude-flow@v3alpha swarm init --topology hierarchical
 Task("coder", "Implement endpoints...", "coder") x3
 Task("tester", "Create tests...", "tester") x2
 Task("reviewer", "Review code...", "reviewer")
@@ -342,7 +342,7 @@ User: TDD workflow for shopping cart with add, remove, and checkout
 mcp__claude-flow__memory_search { pattern: "tdd/*cart*" }
 
 # Execute
-npx claude-flow@alpha sparc tdd "[feature]"
+npx claude-flow@v3alpha sparc tdd "[feature]"
 
 # Compound
 mcp__claude-flow__memory_usage { action: "store", key: "project/tdd/shopping-cart" }
@@ -404,10 +404,10 @@ mcp__claude-flow__memory_search { pattern: "implementations/*[feature]*" }
 /compound-engineering:workflows:plan [feature]
 
 # 2. SPEC
-npx claude-flow@alpha sparc run spec-pseudocode "[feature]"
+npx claude-flow@v3alpha sparc run spec-pseudocode "[feature]"
 
 # 3. TEST-FIRST (strict: ALL tests before ANY implementation)
-npx claude-flow@alpha swarm init --topology hierarchical
+npx claude-flow@v3alpha swarm init --topology hierarchical
 Task("tester", "Write unit tests for [component-1]", "tester")
 Task("tester", "Write unit tests for [component-2]", "tester")
 Task("tester", "Write integration tests", "tester")
@@ -631,7 +631,7 @@ User: Debug workflow for intermittent API timeouts in production
 \`\`\`bash
 # Phase 1: Debug Investigation
 mcp__claude-flow__memory_search { pattern: "debugging/*timeout*" }
-npx claude-flow@alpha sparc debugger "[issue]"
+npx claude-flow@v3alpha sparc debugger "[issue]"
 Task("analyst", "Analyze patterns...", "analyst")
 Task("git-history-analyzer", "Check recent changes...", "researcher")
 # CHECKPOINT: Root cause confirmed
@@ -640,7 +640,7 @@ Task("git-history-analyzer", "Check recent changes...", "researcher")
 /compound-engineering:workflows:plan
 Task("tester", "Write regression tests that reproduce bug", "tester")
 # GATE: npm run test → MUST FAIL (bug still exists)
-npx claude-flow@alpha swarm init --topology hierarchical
+npx claude-flow@v3alpha swarm init --topology hierarchical
 Task("coder", "Implement fix to pass tests", "coder")
 # VERIFY: npm run test → ALL MUST PASS
 /compound-engineering:workflows:review
@@ -690,7 +690,7 @@ mcp__claude-flow__memory_search { pattern: "incidents/*sql*" }
 
 # Execute
 git worktree add ../hotfix-branch hotfix/[issue]
-npx claude-flow@alpha swarm init --topology star
+npx claude-flow@v3alpha swarm init --topology star
 Task("security-sentinel", "Security review...", "reviewer")
 
 # Compound
@@ -833,7 +833,7 @@ mcp__claude-flow__memory_search { pattern: "performance/*dashboard*" }
 
 # Execute
 Task("performance-oracle", "Profile and analyze...", "analyst")
-npx claude-flow@alpha analysis bottleneck-detect
+npx claude-flow@v3alpha analysis bottleneck-detect
 
 # Compound
 mcp__claude-flow__memory_usage { action: "store", key: "project/performance/dashboard" }
@@ -881,7 +881,7 @@ User: Hive-mind architecture for microservices migration
 mcp__claude-flow__memory_search { pattern: "architecture/*microservices*" }
 
 # Execute
-npx claude-flow@alpha hive-mind init
+npx claude-flow@v3alpha hive-mind init
 Task("system-architect", "Design system...", "architect")
 Task("analyst", "Analyze trade-offs...", "analyst")
 mcp__claude-flow__collective-intelligence-coordinator
@@ -930,9 +930,9 @@ User: Multi-repo workflow for updating shared auth library across all repos
 mcp__claude-flow__memory_search { pattern: "multi-repo/*" }
 
 # Execute
-npx claude-flow@alpha swarm init --topology mesh
+npx claude-flow@v3alpha swarm init --topology mesh
 Task("multi-repo-swarm", "Coordinate changes...", "coordinator")
-npx claude-flow@alpha github multi-repo --repos "frontend,backend,mobile"
+npx claude-flow@v3alpha github multi-repo --repos "frontend,backend,mobile"
 
 # Compound
 mcp__claude-flow__memory_usage { action: "store", key: "project/multi-repo/auth-library-update" }

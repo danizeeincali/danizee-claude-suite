@@ -38,8 +38,77 @@ The `update` command regenerates all workflow shortcuts and documentation while 
 
 ## Requirements
 
-- Node.js >= 18.0.0
+- Node.js >= 20.0.0 (updated for Claude Flow 3.0)
 - GitHub CLI (`gh`) - recommended for PR workflows
+
+## Migrating to v2.0.0 (Claude Flow 3.0)
+
+danizee-claude-suite v2.0.0 uses Claude Flow 3.0 (`claude-flow@v3alpha`).
+
+### For New Installations
+
+```bash
+npm install -g danizee-claude-suite
+cd /path/to/project
+danizee-claude-suite init
+```
+
+### For Existing Installations
+
+**Step 1: Update Node.js to v20+**
+```bash
+node --version  # Should show v20.x.x or higher
+```
+
+**Step 2: Update danizee-claude-suite**
+```bash
+npm update -g danizee-claude-suite
+```
+
+**Step 3: Update your project**
+```bash
+cd /path/to/your/project
+danizee-claude-suite update
+```
+
+**Step 4: Migrate Claude Flow data (if you have existing data)**
+```bash
+# Backup first
+cp -r ./data ./data-backup-v2
+cp -r ./.claude-flow ./.claude-flow-backup-v2
+
+# Check migration status
+npx claude-flow@v3alpha migrate status
+
+# Dry run first
+npx claude-flow@v3alpha migrate run --dry-run
+
+# Execute migration
+npx claude-flow@v3alpha migrate run --from v2
+
+# Verify
+npx claude-flow@v3alpha migrate verify
+
+# Initialize v3 learning
+npx claude-flow@v3alpha hooks pretrain
+npx claude-flow@v3alpha doctor --fix
+```
+
+### Breaking Changes in v2.0.0
+
+| Change | Before | After |
+|--------|--------|-------|
+| Node.js minimum | 18.0.0 | 20.0.0 |
+| Claude Flow package | `claude-flow@alpha` | `claude-flow@v3alpha` |
+| MCP start command | `npx claude-flow@alpha mcp start` | `npx claude-flow@v3alpha mcp start` |
+
+### Rollback
+
+If you need to revert to the previous version:
+```bash
+npm install -g danizee-claude-suite@1.3.1
+danizee-claude-suite update
+```
 
 ## How It Works
 
@@ -281,11 +350,13 @@ your-project/
 
 ## Included Plugins
 
-### Claude Flow
-Multi-agent orchestration with memory and swarm support.
+### Claude Flow 3.0
+Multi-agent orchestration with memory and swarm support (`claude-flow@v3alpha`).
 - Swarm topologies: hierarchical, mesh, ring, star
-- Agents: coder, tester, reviewer, security-sentinel, performance-oracle, etc.
-- Memory operations for knowledge compounding
+- 54+ specialized agents: coder, tester, reviewer, security-sentinel, performance-oracle, etc.
+- HNSW-indexed memory for 150x faster pattern search
+- ReasoningBank self-learning intelligence
+- 175+ MCP tools for development workflows
 
 ### Compound Engineering
 Systematic feature development workflows.

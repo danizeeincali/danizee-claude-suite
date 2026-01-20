@@ -13,7 +13,7 @@ export function getMcpConfig() {
   return {
     'claude-flow': {
       command: 'npx',
-      args: ['claude-flow@alpha', 'mcp', 'start'],
+      args: ['claude-flow@v3alpha', 'mcp', 'start'],
       description: 'Claude Flow multi-agent orchestration with memory and swarm support'
     }
   };
@@ -33,7 +33,7 @@ Initialize a multi-agent swarm for parallel task execution.
 
 ## Usage
 \`\`\`
-npx claude-flow@alpha swarm init --topology [hierarchical|mesh|ring|star]
+npx claude-flow@v3alpha swarm init --topology [hierarchical|mesh|ring|star]
 \`\`\`
 
 ## Topologies
@@ -44,7 +44,7 @@ npx claude-flow@alpha swarm init --topology [hierarchical|mesh|ring|star]
 
 ## Example
 \`\`\`bash
-npx claude-flow@alpha swarm init --topology hierarchical
+npx claude-flow@v3alpha swarm init --topology hierarchical
 \`\`\`
 `
     },
