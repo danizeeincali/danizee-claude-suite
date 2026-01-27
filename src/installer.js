@@ -5,6 +5,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 import { runConflictChecks } from './utils/conflicts.js';
 import { mergeSettings, removeSettings, readSettings } from './utils/settings.js';
@@ -13,6 +14,10 @@ import * as claudeFlow from './plugins/claude-flow.js';
 import * as compoundEngineering from './plugins/compound-engineering.js';
 import * as frontendDesign from './plugins/frontend-design.js';
 import * as dotShortcuts from './plugins/dot-shortcuts.js';
+
+// Get directory of this file for template resolution
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * DaniZee Suite Installer
@@ -53,6 +58,9 @@ export class DaniZeeSuiteInstaller {
     // Install plugins
     const results = await this.installPlugins();
 
+    // Install Pure Ralph templates
+    const ralphResult = await this.installRalphTemplates();
+
     // Merge settings
     await mergeSettings(this.claudeDir, {
       force: this.force,
@@ -68,6 +76,7 @@ export class DaniZeeSuiteInstaller {
     return {
       success: true,
       plugins: results,
+      ralph: ralphResult,
       shortcuts: path.join(this.targetDir, 'WORKFLOW-SHORTCUTS.md'),
       tools: toolStatus
     };
@@ -83,12 +92,64 @@ export class DaniZeeSuiteInstaller {
       path.join(this.claudeDir, 'commands', 'coordination'),
       path.join(this.claudeDir, 'commands', 'analysis'),
       path.join(this.claudeDir, 'commands', '.shortcuts'),
-      path.join(this.claudeDir, 'helpers')
+      path.join(this.claudeDir, 'helpers'),
+      path.join(this.claudeDir, 'ralph'),
+      path.join(this.claudeDir, 'plans')
     ];
 
     for (const dir of dirs) {
       await fs.mkdir(dir, { recursive: true });
     }
+
+    // Create specs directory at project root for Ralph specs
+    await fs.mkdir(path.join(this.targetDir, 'specs'), { recursive: true });
+  }
+
+  /**
+   * Install Pure Ralph templates
+   */
+  async installRalphTemplates() {
+    const ralphDir = path.join(this.claudeDir, 'ralph');
+    const templatesDir = path.join(__dirname, 'templates', 'ralph');
+
+    // Files to copy from templates
+    const templateFiles = [
+      'loop.sh',
+      'PROMPT_build.md',
+      'PROMPT_plan.md',
+      'AGENTS.md',
+      'IMPLEMENTATION_PLAN.md'
+    ];
+
+    for (const file of templateFiles) {
+      const sourcePath = path.join(templatesDir, file);
+      const destPath = path.join(ralphDir, file);
+
+      try {
+        const content = await fs.readFile(sourcePath, 'utf-8');
+        await fs.writeFile(destPath, content, 'utf-8');
+
+        // Make loop.sh executable
+        if (file === 'loop.sh') {
+          await fs.chmod(destPath, 0o755);
+        }
+      } catch (err) {
+        // Template file doesn't exist yet (during development), skip
+        console.warn(`Warning: Could not copy Ralph template ${file}: ${err.message}`);
+      }
+    }
+
+    // Create .gitkeep in specs directory
+    await fs.writeFile(
+      path.join(this.targetDir, 'specs', '.gitkeep'),
+      '# Place Ralph specification files here\n',
+      'utf-8'
+    );
+
+    return {
+      ralphDir,
+      files: templateFiles
+    };
   }
 
   /**
@@ -215,6 +276,7 @@ echo "MCP server started. You can now use memory and swarm operations."
       claudeDir: false,
       settings: false,
       shortcuts: false,
+      ralph: false,
       plugins: {
         claudeFlow: false,
         compoundEngineering: false,
@@ -238,6 +300,15 @@ echo "MCP server started. You can now use memory and swarm operations."
     // Check shortcuts
     status.shortcuts = await shortcutsExist(this.targetDir);
 
+    // Check Ralph installation
+    try {
+      const ralphDir = path.join(this.claudeDir, 'ralph');
+      await fs.access(path.join(ralphDir, 'loop.sh'));
+      status.ralph = true;
+    } catch {
+      status.ralph = false;
+    }
+
     // Check plugins
     status.plugins.claudeFlow = await claudeFlow.isInstalled(this.claudeDir);
     status.plugins.compoundEngineering = await compoundEngineering.isInstalled(this.claudeDir);
@@ -248,6 +319,7 @@ echo "MCP server started. You can now use memory and swarm operations."
     status.installed = status.claudeDir &&
       status.settings &&
       status.shortcuts &&
+      status.ralph &&
       status.plugins.claudeFlow &&
       status.plugins.compoundEngineering &&
       status.plugins.frontendDesign &&
@@ -279,6 +351,20 @@ echo "MCP server started. You can now use memory and swarm operations."
     // Remove helpers
     try {
       await fs.rm(path.join(this.claudeDir, 'helpers'), { recursive: true });
+    } catch {
+      // Directory doesn't exist
+    }
+
+    // Remove Ralph directory
+    try {
+      await fs.rm(path.join(this.claudeDir, 'ralph'), { recursive: true });
+    } catch {
+      // Directory doesn't exist
+    }
+
+    // Remove plans directory
+    try {
+      await fs.rm(path.join(this.claudeDir, 'plans'), { recursive: true });
     } catch {
       // Directory doesn't exist
     }
@@ -315,7 +401,15 @@ echo "MCP server started. You can now use memory and swarm operations."
         `${this.claudeDir}/commands/analysis/`,
         `${this.claudeDir}/commands/.shortcuts/`,
         `${this.claudeDir}/helpers/`,
+        `${this.claudeDir}/ralph/`,
+        `${this.claudeDir}/ralph/loop.sh`,
+        `${this.claudeDir}/ralph/PROMPT_build.md`,
+        `${this.claudeDir}/ralph/PROMPT_plan.md`,
+        `${this.claudeDir}/ralph/AGENTS.md`,
+        `${this.claudeDir}/ralph/IMPLEMENTATION_PLAN.md`,
+        `${this.claudeDir}/plans/`,
         `${this.claudeDir}/settings.json`,
+        `${this.targetDir}/specs/`,
         `${this.targetDir}/WORKFLOW-SHORTCUTS.md`,
         `${this.targetDir}/docs/solutions/`
       ],
@@ -323,7 +417,8 @@ echo "MCP server started. You can now use memory and swarm operations."
         'claude-flow',
         'compound-engineering',
         'frontend-design',
-        'dot-shortcuts'
+        'dot-shortcuts',
+        'pure-ralph'
       ]
     };
   }

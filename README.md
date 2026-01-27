@@ -199,14 +199,28 @@ All workflows use `/w-` prefix shortcuts:
 | Cold Start | `/w-start` | Load project context when `--resume` unavailable |
 | End Session | `/w-end` | Compound knowledge + commit for next session |
 
-### Ralph Wiggum (Iterative AI Development)
+### Pure Ralph (Bash Loop Approach)
+
+Pure Ralph uses external bash orchestration for **fresh context each iteration**:
 
 | Workflow | Command | Best For |
 |----------|---------|----------|
-| Ralph Loop | `/w-ralph-this` | Iterate prompt until completion signal |
-| Ralph Goals | `/w-ralph-goals` | Interview to build optimal Ralph spec |
-| Ralph Pick | `/w-ralph-pick` | Select and execute a queued candidate |
-| Ralph Batch | `/w-ralph-batch` | Batch process or generate overnight script |
+| Ralph Init | `/w-ralph-init` | Initialize Ralph structure in project |
+| Ralph This | `/w-ralph-this` | Convert task to IMPLEMENTATION_PLAN.md |
+| Ralph Goals | `/w-ralph-goals` | Interview to build plan + specs |
+| Ralph Pick | `/w-ralph-pick` | Execute a queued candidate |
+| Ralph Batch | `/w-ralph-batch` | Generate overnight bash scripts |
+
+**Key Principle**: Each iteration starts with FRESH context. State passes through `IMPLEMENTATION_PLAN.md` only.
+
+```bash
+# Quick start
+/w-ralph-init              # Create Ralph structure
+/w-ralph-this "Build X"    # Generate plan
+
+# Run the loop (in terminal)
+./.claude/ralph/loop.sh
+```
 
 ### Utilities
 
@@ -276,6 +290,115 @@ During compound phases, patterns suitable for future Ralph loops are logged to `
 4. Report final status (VERIFIED | RESTORED | FAILED)
 ```
 
+## Pure Ralph (Bash Loop Methodology)
+
+Pure Ralph is the **fresh context, file-based state** approach to AI development loops:
+
+### Key Differences from Plugin-Style
+
+| Aspect | Plugin-Style | Pure Ralph (Bash Loop) |
+|--------|--------------|------------------------|
+| Context | Accumulates each iteration | Fresh each iteration |
+| Orchestration | Internal hooks | External bash loop |
+| State | In-memory | File-based (IMPLEMENTATION_PLAN.md) |
+| Task scope | Multiple per session | ONE per iteration |
+| Completion | String matching | Plan file + git commit |
+
+### How It Works
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ while [ tasks_remaining ]; do                               │
+│   cat PROMPT.md AGENTS.md IMPLEMENTATION_PLAN.md | claude   │
+│                          ↓                                  │
+│   ┌──────────────────────────────────────────────────────┐ │
+│   │ Fresh Claude reads plan → picks ONE task → executes  │ │
+│   │ → validates → marks done → commits → exits           │ │
+│   └──────────────────────────────────────────────────────┘ │
+│                          ↓                                  │
+│   IMPLEMENTATION_PLAN.md updated (state preserved!)         │
+│ done                                                        │
+└────────────────────────────────────────────────────────────┘
+```
+
+### Project Structure
+
+```
+.claude/ralph/
+├── loop.sh              # Bash orchestrator (run this!)
+├── PROMPT_build.md      # Build mode prompt
+├── PROMPT_plan.md       # Planning mode prompt
+├── AGENTS.md            # Validation commands (customize!)
+└── IMPLEMENTATION_PLAN.md  # Task tracking (shared state)
+
+specs/
+└── *.md                 # Specification files
+```
+
+### Quick Start
+
+```bash
+# 1. Initialize Ralph structure
+/w-ralph-init
+
+# 2. Create implementation plan from a task
+/w-ralph-this "Build authentication with JWT tokens"
+
+# 3. Run the loop (in your terminal, not Claude)
+./.claude/ralph/loop.sh
+
+# Options:
+./.claude/ralph/loop.sh build 50   # Max 50 iterations
+./.claude/ralph/loop.sh plan       # Planning mode
+```
+
+### IMPLEMENTATION_PLAN.md Format
+
+```markdown
+# Implementation Plan
+
+## Status
+- Total tasks: 8
+- Completed: 3
+- Remaining: 5
+
+## Tasks
+- [x] Create auth types in src/types/auth.ts
+- [x] Implement JWT utilities in src/lib/jwt.ts
+- [x] Add login endpoint
+- [ ] Add refresh endpoint       ← Next iteration picks this
+- [ ] Add auth middleware
+- [ ] Write tests for auth flow
+- [ ] Add logout endpoint
+- [ ] Update API documentation
+
+## Discoveries
+- Found existing bcrypt dependency, using that for password hashing
+```
+
+### Why Fresh Context Matters
+
+1. **No pollution** - Previous iteration's mistakes don't carry forward
+2. **Clean state** - Each iteration reads the same source of truth
+3. **Backpressure** - Tests/lints reject bad work automatically
+4. **Predictable** - Same input (plan file) = consistent behavior
+
+### Overnight Runs
+
+```bash
+# Generate overnight script
+/w-ralph-batch --script
+
+# Run with nohup
+nohup ./overnight-ralph.sh > overnight.log 2>&1 &
+
+# Or with screen
+screen -S ralph ./overnight-ralph.sh
+
+# Check progress
+tail -f ralph-batch-*.log
+```
+
 ## CLI Commands
 
 ```bash
@@ -317,8 +440,16 @@ your-project/
 │   │   ├── workflows/      # plan, work, review, compound
 │   │   ├── coordination/   # swarm-init, agent-spawn, memory-ops
 │   │   └── analysis/       # design, component, layout, theme
+│   ├── ralph/              # Pure Ralph bash loop structure
+│   │   ├── loop.sh         # Bash orchestrator (run this!)
+│   │   ├── PROMPT_build.md # Build mode prompt
+│   │   ├── PROMPT_plan.md  # Planning mode prompt
+│   │   ├── AGENTS.md       # Validation commands
+│   │   └── IMPLEMENTATION_PLAN.md # Task tracking
+│   ├── plans/              # Saved plan files
 │   ├── ralph-candidates.md # Ralph candidate queue
 │   └── settings.json       # Suite configuration
+├── specs/                  # Ralph specification files
 ├── docs/
 │   └── solutions/          # Compounded solution docs
 │       ├── features/

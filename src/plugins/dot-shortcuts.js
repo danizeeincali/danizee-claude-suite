@@ -2098,22 +2098,178 @@ Run \\\`/w-start\\\` to load this session's context and continue where you left 
 `
     },
 
-    'w-ralph-this': {
-      name: 'w-ralph-this',
-      description: 'Ralph Wiggum Loop - Iteratively execute a prompt until completion',
-      content: `# /w-ralph-this
+    'w-ralph-init': {
+      name: 'w-ralph-init',
+      description: 'Initialize Pure Ralph - Set up Ralph loop structure in current project',
+      content: `# /w-ralph-init
 
-Ralph Wiggum Loop - Iteratively feed a prompt to Claude until a completion signal is detected.
+Initialize Pure Ralph structure in the current project. Sets up the bash loop orchestrator and template files.
 
-## What is Ralph Wiggum?
+## What is Pure Ralph?
 
-An iterative AI development methodology - a "simple while loop that repeatedly feeds an AI agent a prompt until completion."
+Pure Ralph is the bash loop approach to AI development:
+- **Fresh context each iteration** - No context pollution
+- **State through files** - IMPLEMENTATION_PLAN.md is the source of truth
+- **External orchestration** - Bash loop controls iteration
+- **Backpressure via tests** - Bad work gets rejected automatically
 
 ## Usage
 \`\`\`
-/w-ralph-this [prompt or file path]
-/w-ralph-this "Build a REST API with full test coverage"
-/w-ralph-this .claude/plans/api-spec.md
+/w-ralph-init
+/w-ralph-init --customize
+\`\`\`
+
+---
+
+## ⚠️ MANDATORY EXECUTION
+
+This command sets up the Pure Ralph structure. Execute ALL steps.
+
+---
+
+## What Gets Created
+
+\`\`\`
+.claude/ralph/
+├── loop.sh              # Bash orchestrator (run this!)
+├── PROMPT_plan.md       # Planning mode prompt
+├── PROMPT_build.md      # Building mode prompt
+├── AGENTS.md            # Validation commands (customize this!)
+└── IMPLEMENTATION_PLAN.md  # Task tracking (shared state)
+
+specs/
+└── .gitkeep             # Place spec files here
+\`\`\`
+
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Verify Structure
+**Check if Ralph files already exist:**
+
+\`\`\`bash
+ls -la .claude/ralph/
+\`\`\`
+
+**REQUIRED OUTPUT:**
+- Ralph directory exists: yes/no
+- Files present: _____
+
+**If exists:**
+**USER GATE:** Use AskUserQuestion
+- Question: "Ralph structure exists. Overwrite?"
+- Options: ["Overwrite all", "Keep existing", "Merge (keep customizations)"]
+
+**If not exists:**
+**AUTO-PROCEED:** Create structure.
+
+---
+
+### ⛔ CHECKPOINT 1: Create/Update Structure
+**Create directories:**
+\`\`\`bash
+mkdir -p .claude/ralph specs .claude/plans
+\`\`\`
+
+**Copy template files from installation or create defaults.**
+
+**REQUIRED OUTPUT:**
+- Directories created: .claude/ralph/, specs/, .claude/plans/
+- Files created: loop.sh, PROMPT_*.md, AGENTS.md, IMPLEMENTATION_PLAN.md
+- loop.sh made executable: yes/no
+
+---
+
+### ⛔ CHECKPOINT 2: Customize AGENTS.md
+**Detect project type and customize validation commands:**
+
+| Project Type | Detection | Commands |
+|--------------|-----------|----------|
+| Node.js | package.json | npm test, npm run build |
+| Python | pyproject.toml/setup.py | pytest, mypy |
+| Go | go.mod | go test, go build |
+| Rust | Cargo.toml | cargo test, cargo build |
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Detected [project type]. Customize AGENTS.md commands?"
+- Options: ["Auto-configure", "Manual edit", "Skip customization"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 3: Setup Complete
+**REQUIRED OUTPUT:**
+\`\`\`
+Pure Ralph initialized!
+
+Structure created:
+  .claude/ralph/loop.sh (executable)
+  .claude/ralph/PROMPT_build.md
+  .claude/ralph/PROMPT_plan.md
+  .claude/ralph/AGENTS.md
+  .claude/ralph/IMPLEMENTATION_PLAN.md
+  specs/
+
+To start a Ralph loop:
+  1. Add tasks to .claude/ralph/IMPLEMENTATION_PLAN.md
+  2. Run: ./.claude/ralph/loop.sh
+
+Modes:
+  ./.claude/ralph/loop.sh build    # Build mode (default)
+  ./.claude/ralph/loop.sh plan     # Planning mode
+  ./.claude/ralph/loop.sh build 50 # Max 50 iterations
+\`\`\`
+
+---
+
+## Completion Checklist
+
+- [ ] Ralph directory created: .claude/ralph/
+- [ ] loop.sh created and executable
+- [ ] PROMPT_build.md created
+- [ ] PROMPT_plan.md created
+- [ ] AGENTS.md created (and customized if requested)
+- [ ] IMPLEMENTATION_PLAN.md created
+- [ ] specs/ directory created
+- [ ] User informed of next steps
+
+⚠️ Command INCOMPLETE until all boxes checked
+
+## Example
+\`\`\`
+/w-ralph-init
+# Creates Pure Ralph structure
+
+# Then start your loop:
+./.claude/ralph/loop.sh
+\`\`\`
+`
+    },
+
+    'w-ralph-this': {
+      name: 'w-ralph-this',
+      description: 'Ralph This - Convert a task into Pure Ralph loop execution',
+      content: `# /w-ralph-this
+
+Convert a task description into a Pure Ralph loop. Creates IMPLEMENTATION_PLAN.md and outputs the command to run.
+
+## What is Pure Ralph?
+
+Pure Ralph uses a bash loop for fresh context each iteration:
+- Each iteration reads IMPLEMENTATION_PLAN.md
+- Picks ONE task, completes it, marks done
+- Commits changes, exits
+- Bash loop restarts with fresh context
+
+**Key difference from plugin-style:** Context doesn't accumulate. State passes through files only.
+
+## Usage
+\`\`\`
+/w-ralph-this [task description]
+/w-ralph-this Build a REST API with CRUD endpoints and tests
+/w-ralph-this .claude/plans/feature-spec.md
 \`\`\`
 
 ---
@@ -2121,10 +2277,11 @@ An iterative AI development methodology - a "simple while loop that repeatedly f
 ## ⚠️ MANDATORY FIRST ACTION
 
 Use TodoWrite NOW to create todos for ALL phases:
-1. Load and validate prompt
-2. Configure iteration parameters
-3. Execute loop (track each iteration)
-4. Compound successful pattern
+1. Parse task/spec into atomic tasks
+2. Create/update IMPLEMENTATION_PLAN.md
+3. Customize AGENTS.md if needed
+4. Output run command
+5. (Optional) Execute loop
 
 ⚠️ VIOLATION: Any action before TodoWrite = restart workflow
 
@@ -2132,105 +2289,179 @@ Use TodoWrite NOW to create todos for ALL phases:
 
 ## Rules
 
-- NEVER skip checkpoints - each requires user confirmation
-- NEVER exceed max iterations without user confirmation
-- NEVER skip compound phase at the end
-- VIOLATION: Running without completion promise = risk of infinite loop
-
----
-
-## Key Parameters
-- **Max Iterations**: Safety limit (default: 50)
-- **Completion Promise**: String that signals done (e.g., "DONE", "<promise>COMPLETE</promise>")
+- NEVER run the loop internally - output the bash command
+- ALWAYS break tasks into atomic, one-iteration steps
+- ALWAYS include verification for each task
+- NEVER skip IMPLEMENTATION_PLAN.md creation
 
 ---
 
 ## Execution Protocol
 
-### ⛔ CHECKPOINT 0: Load
+### ⛔ CHECKPOINT 0: Parse Task
+**Read input (inline or file) and analyze:**
+
 **REQUIRED OUTPUT:**
-- Input type: file/inline
-- Prompt content: _____
-- Completion promise: _____
-- Max iterations: _____
+- Input type: inline/file
+- Task summary: _____
+- Complexity estimate: simple/medium/complex
+- Estimated tasks: N atomic tasks
 
 **USER GATE:** Use AskUserQuestion
-- Question: "Prompt loaded. Completion signal: [X]. Max: [N]. Start loop?"
-- Options: ["Start loop", "Adjust config", "Show prompt"]
+- Question: "Task: [summary]. ~[N] atomic tasks. Proceed to plan?"
+- Options: ["Create plan", "Refine scope", "Show task breakdown"]
 
 STOP and wait for user response.
 
 ---
 
-### ⛔ CHECKPOINT 1: Each Iteration
-**REQUIRED OUTPUT (per iteration):**
-- Iteration #: _____
-- Progress made: _____
-- Completion signal detected: yes/no
+### ⛔ CHECKPOINT 1: Create Implementation Plan
+**Break into atomic tasks (one per iteration):**
 
-**AUTO-PROCEED:** Continue iterations until completion signal or max reached.
+**Write to .claude/ralph/IMPLEMENTATION_PLAN.md:**
+\`\`\`markdown
+# Implementation Plan
 
-Only stop for user confirmation if max iterations reached without completion.
+## Status
+- Total tasks: N
+- Completed: 0
+- In Progress: 0
+- Remaining: N
+
+## Tasks
+
+### Phase 1: Foundation
+- [ ] Task 1 description
+  - Verify: [command or check]
+- [ ] Task 2 description
+  - Verify: [command or check]
+
+### Phase 2: Core Implementation
+- [ ] Task 3 description
+...
+
+## Discoveries
+
+<!-- Learnings will be captured here during execution -->
+\`\`\`
+
+**REQUIRED OUTPUT:**
+- Plan file: .claude/ralph/IMPLEMENTATION_PLAN.md
+- Total tasks: N
+- Phases: _____
+
+**AUTO-PROCEED:** Continue to AGENTS.md check.
 
 ---
 
-### ⛔ CHECKPOINT 2: Completion
-**REQUIRED OUTPUT:**
-- Total iterations: _____
-- Completion signal: _____
-- Final result: _____
+### ⛔ CHECKPOINT 2: Verify AGENTS.md
+**Check AGENTS.md has correct validation commands:**
 
-**AUTO-PROCEED:** Continue to Compound phase.
+**REQUIRED OUTPUT:**
+- AGENTS.md exists: yes/no
+- Build command: _____
+- Test command: _____
+- Lint command: _____
+
+**If commands need updating:**
+**USER GATE:** Use AskUserQuestion
+- Question: "Update AGENTS.md validation commands?"
+- Options: ["Auto-detect", "Manual edit", "Keep current"]
+
+STOP and wait for user response if changes needed.
 
 ---
 
-### ⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)
+### ⛔ CHECKPOINT 3: Output Run Command
+
 **REQUIRED OUTPUT:**
-- Memory key: project/ralph/_____
-- Doc path: docs/solutions/ralph/_____.md
-- Pattern stored: yes/no
+\`\`\`
+╔════════════════════════════════════════════════════╗
+║  Pure Ralph Ready!                                 ║
+╠════════════════════════════════════════════════════╣
+║  Plan: .claude/ralph/IMPLEMENTATION_PLAN.md        ║
+║  Tasks: N tasks in M phases                        ║
+╠════════════════════════════════════════════════════╣
+║  To start the loop:                                ║
+║                                                    ║
+║    ./.claude/ralph/loop.sh                         ║
+║                                                    ║
+║  Options:                                          ║
+║    ./.claude/ralph/loop.sh build 50   # Max 50    ║
+║    ./.claude/ralph/loop.sh plan       # Plan mode ║
+╚════════════════════════════════════════════════════╝
+\`\`\`
 
-**RALPH CANDIDATE CHECK (MANDATORY):**
-- Dev pattern identified for future Ralph loop: yes/no
-- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
+**USER GATE:** Use AskUserQuestion
+- Question: "Plan created. Start loop now or run manually later?"
+- Options: ["Run now (will exit session)", "Run manually later", "Show plan"]
 
-NEVER skip this phase. Workflow is INCOMPLETE without compound.
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 4: Execute (if requested)
+**If user chose "Run now":**
+
+Inform user:
+\`\`\`
+Starting Pure Ralph loop...
+This session will end. The bash loop will orchestrate fresh Claude instances.
+Run this command in your terminal:
+
+  ./.claude/ralph/loop.sh
+
+Or for verbose output:
+  ./.claude/ralph/loop.sh build 999 --verbose
+\`\`\`
+
+**Do NOT attempt to run loop internally.**
 
 ---
 
 ## Completion Checklist
 
-Before marking workflow complete, verify ALL boxes:
-- [ ] TodoWrite used at start with all 4 phases
-- [ ] Checkpoint 0 completed with user confirmation
-- [ ] Checkpoints 1-3 completed (auto-proceed)
-- [ ] Loop completed successfully OR stopped intentionally
-- [ ] Compound phase executed
-- [ ] Memory key stored: _____
-- [ ] Solution doc created: _____
-- [ ] Ralph candidate check completed
+- [ ] TodoWrite used at start
+- [ ] Task parsed and understood
+- [ ] IMPLEMENTATION_PLAN.md created with atomic tasks
+- [ ] AGENTS.md verified/updated
+- [ ] Run command provided to user
+- [ ] User informed of execution options
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
-## Best For
-- Greenfield projects with clear success criteria
-- Test-driven development cycles
-- Tasks executable overnight/unattended
-- Feature implementation with measurable completion
-
 ## Example
 \`\`\`
-/w-ralph-this "Build a CLI tool that converts markdown to HTML. Output <promise>COMPLETE</promise> when all tests pass."
+/w-ralph-this Build authentication with JWT tokens
+
+# Creates plan with tasks like:
+# - [ ] Create auth types in src/types/auth.ts
+# - [ ] Implement JWT utilities in src/lib/jwt.ts
+# - [ ] Add login endpoint
+# - [ ] Add refresh endpoint
+# - [ ] Add auth middleware
+# - [ ] Write tests for auth flow
+
+# Then user runs:
+./.claude/ralph/loop.sh
 \`\`\`
 `
     },
 
     'w-ralph-goals': {
       name: 'w-ralph-goals',
-      description: 'Ralph Spec Builder - Interview to build an optimal Ralph Wiggum prompt',
+      description: 'Ralph Goals - Interview to build IMPLEMENTATION_PLAN.md and specs',
       content: `# /w-ralph-goals
 
-Ralph Spec Builder - Interactive interview to build an optimal Ralph Wiggum prompt from a rough idea.
+Build a complete Pure Ralph setup from a rough idea through interactive interview.
+
+## What This Does
+
+1. **Interviews you** to understand the idea deeply
+2. **Creates IMPLEMENTATION_PLAN.md** with atomic tasks
+3. **Generates spec files** in specs/ directory
+4. **Configures AGENTS.md** for your project
+5. **Outputs the run command**
 
 ## Usage
 \`\`\`
@@ -2244,13 +2475,14 @@ Ralph Spec Builder - Interactive interview to build an optimal Ralph Wiggum prom
 ## ⚠️ MANDATORY FIRST ACTION
 
 Use TodoWrite NOW to create todos for ALL phases:
-1. Capture initial idea
-2. Interview for completion criteria
-3. Interview for phases/milestones
-4. Interview for verification
-5. Build Ralph spec
-6. Save spec file
-7. Optionally execute
+1. Capture and clarify initial idea
+2. Interview for acceptance criteria
+3. Interview for architecture decisions
+4. Interview for verification approach
+5. Generate IMPLEMENTATION_PLAN.md
+6. Generate spec files
+7. Configure AGENTS.md
+8. Output run command
 
 ⚠️ VIOLATION: Any action before TodoWrite = restart workflow
 
@@ -2260,28 +2492,30 @@ Use TodoWrite NOW to create todos for ALL phases:
 
 - NEVER skip interview questions - each is critical
 - NEVER skip checkpoints - each requires user confirmation
-- NEVER skip saving the spec file
 - Ask ONE question at a time using AskUserQuestion
+- Generate ATOMIC tasks (one per Ralph iteration)
 
 ---
 
 ## Interview Categories
 
-**Completion Criteria**
-- What specific output signals the task is complete?
-- How can we automatically verify success?
+**Acceptance Criteria**
+- What does "done" look like?
+- How will we verify each feature works?
 
-**Phases & Milestones**
-- What are the major steps?
-- What order should they happen?
+**Architecture & Approach**
+- What's the high-level design?
+- What files/modules need to be created?
+- What dependencies are needed?
 
-**Self-Correction**
-- What tests should run each iteration?
-- How should failures be handled?
+**Verification**
+- What test framework to use?
+- What commands validate success?
+- What's the build command?
 
-**Safety**
-- What's the max iteration limit?
-- Are there any destructive operations to avoid?
+**Scope & Safety**
+- What's explicitly OUT of scope?
+- Are there any risky operations to avoid?
 
 ---
 
@@ -2292,89 +2526,173 @@ Use TodoWrite NOW to create todos for ALL phases:
 - Initial idea: _____
 - Context needed: _____
 
-**USER GATE:** Use AskUserQuestion (first interview question)
-- Question: "What specific output signals that [idea] is complete?"
+**USER GATE:** Use AskUserQuestion
+- Question: "What does 'done' look like for [idea]? What's the acceptance criteria?"
 - Options: (free text via "Other")
 
 STOP and wait for user response.
 
 ---
 
-### ⛔ CHECKPOINT 1: Interview Complete
+### ⛔ CHECKPOINT 1: Requirements Clear
+**Continue interviewing (one question at a time):**
+- Architecture approach
+- Key components needed
+- Testing strategy
+- Dependencies
+
 **REQUIRED OUTPUT:**
-- Completion criteria: _____
-- Phases identified: _____
-- Verification methods: _____
-- Max iterations: _____
-- Safety considerations: _____
+- Acceptance criteria: _____
+- Architecture summary: _____
+- Key components: _____
+- Test approach: _____
+- Dependencies: _____
 
 **USER GATE:** Use AskUserQuestion
-- Question: "Interview complete. Proceed to build spec?"
-- Options: ["Continue", "Add more questions"]
+- Question: "Requirements captured. Proceed to generate plan?"
+- Options: ["Generate plan", "Add more details", "Show summary"]
 
 STOP and wait for user response.
 
 ---
 
-### ⛔ CHECKPOINT 2: Spec Built
-**REQUIRED OUTPUT:**
-- Spec preview with all sections
-- Completion promise: _____
-- Phase list: _____
+### ⛔ CHECKPOINT 2: Generate IMPLEMENTATION_PLAN.md
+**Create atomic tasks (ONE task = ONE Ralph iteration):**
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Ralph spec ready. Review and save?"
-- Options: ["Save spec", "Revise spec"]
-
-STOP and wait for user response.
-
----
-
-### ⛔ CHECKPOINT 3: Execute Decision
-**REQUIRED OUTPUT:**
-- Spec saved to: .claude/plans/YYYY-MM-DD-[name]-ralph.md
-
-**USER GATE:** Use AskUserQuestion
-- Question: "Spec saved. Run /w-ralph-this on it now?"
-- Options: ["Execute now", "Later"]
-
-STOP and wait for user response.
-
----
-
-## Output Format
-The generated spec will include:
+**Write to .claude/ralph/IMPLEMENTATION_PLAN.md:**
 \`\`\`markdown
-# Ralph Spec: [Name]
+# Implementation Plan: [Name]
 
-## Completion Promise
-Output <promise>COMPLETE</promise> when done.
+## Status
+- Total tasks: N
+- Completed: 0
+- In Progress: 0
+- Remaining: N
 
-## Phases
-1. Phase 1: ...
-2. Phase 2: ...
+## Acceptance Criteria
+[From interview]
 
-## Verification
-- Test 1: ...
-- Test 2: ...
+## Tasks
 
-## Max Iterations: N
+### Phase 1: Setup
+- [ ] Task 1
+  - Verify: [command]
+- [ ] Task 2
+  - Verify: [command]
+
+### Phase 2: Core
+- [ ] Task 3
+...
+
+### Phase N: Polish
+- [ ] Final task
+  - Verify: All tests pass, build succeeds
+
+## Discoveries
+
+<!-- Will be populated during execution -->
 \`\`\`
+
+**REQUIRED OUTPUT:**
+- Plan file created: .claude/ralph/IMPLEMENTATION_PLAN.md
+- Total tasks: N
+- Phases: M
+
+**AUTO-PROCEED:** Continue to spec generation.
+
+---
+
+### ⛔ CHECKPOINT 3: Generate Spec Files
+**Create detailed specs in specs/ directory:**
+
+For each major component/feature:
+\`\`\`markdown
+# Spec: [Component Name]
+
+## Purpose
+[What this component does]
+
+## Interface
+[API/function signatures]
+
+## Behavior
+[Expected behavior, edge cases]
+
+## Tests
+[Test cases to implement]
+\`\`\`
+
+**REQUIRED OUTPUT:**
+- Spec files created: specs/*.md
+- Components covered: _____
+
+**AUTO-PROCEED:** Continue to AGENTS.md.
+
+---
+
+### ⛔ CHECKPOINT 4: Configure AGENTS.md
+**Detect project type and configure validation:**
+
+**Update .claude/ralph/AGENTS.md with:**
+- Build command
+- Test command
+- Lint command
+- Type check command (if applicable)
+
+**USER GATE:** Use AskUserQuestion
+- Question: "AGENTS.md configured for [project type]. Review commands?"
+- Options: ["Looks good", "Edit commands", "Show AGENTS.md"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 5: Output Run Command
+**REQUIRED OUTPUT:**
+\`\`\`
+╔════════════════════════════════════════════════════════════╗
+║  Pure Ralph Setup Complete!                                 ║
+╠════════════════════════════════════════════════════════════╣
+║  Plan: .claude/ralph/IMPLEMENTATION_PLAN.md                 ║
+║  Tasks: N tasks in M phases                                 ║
+║  Specs: K spec files in specs/                              ║
+╠════════════════════════════════════════════════════════════╣
+║  To start the loop:                                         ║
+║                                                             ║
+║    ./.claude/ralph/loop.sh                                  ║
+║                                                             ║
+╚════════════════════════════════════════════════════════════╝
+\`\`\`
+
+---
 
 ## Completion Checklist
 
-Before marking workflow complete, verify ALL boxes:
-- [ ] TodoWrite used at start with all 7 phases
-- [ ] All interview questions answered
-- [ ] All 4 checkpoints completed with user confirmation
-- [ ] Spec file saved: _____
-- [ ] Execute decision made
+- [ ] TodoWrite used at start
+- [ ] Interview completed (all key questions answered)
+- [ ] IMPLEMENTATION_PLAN.md created with atomic tasks
+- [ ] Spec files created in specs/
+- [ ] AGENTS.md configured
+- [ ] Run command provided to user
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Example
 \`\`\`
 /w-ralph-goals I want to build a markdown-to-HTML converter CLI
+
+# Interview extracts:
+# - Should support GitHub-flavored markdown
+# - CLI interface with --input and --output flags
+# - Tests with Jest
+# - TypeScript project
+
+# Generates:
+# - .claude/ralph/IMPLEMENTATION_PLAN.md (12 tasks)
+# - specs/cli-interface.md
+# - specs/markdown-parser.md
+# - specs/html-output.md
+# - Configured AGENTS.md
 \`\`\`
 `
     },
@@ -2569,20 +2887,25 @@ Before marking workflow complete, verify ALL boxes:
 
     'w-ralph-batch': {
       name: 'w-ralph-batch',
-      description: 'Ralph Batch - Process multiple candidates or generate overnight script',
+      description: 'Ralph Batch - Generate overnight bash scripts for multiple projects',
       content: `# /w-ralph-batch
 
-Batch process multiple Ralph candidates sequentially, or generate an overnight script for unattended execution.
-Supports Diagnostic→Fix flow for automated QA verification.
+Generate overnight bash scripts that run Pure Ralph loops on multiple projects or candidates.
+
+## What This Does
+
+Uses the **Pure Ralph bash loop approach** for batch processing:
+- Each candidate/project gets its own Ralph loop
+- Scripts use \`.claude/ralph/loop.sh\` for execution
+- Fresh context for every iteration
+- State persisted through IMPLEMENTATION_PLAN.md files
 
 ## Usage
 \`\`\`
-/w-ralph-batch                    # Interactive mode - process one by one
-/w-ralph-batch --script           # Generate overnight batch script
-/w-ralph-batch --priority P1      # Only process P1 candidates
-/w-ralph-batch --all              # Process all ready candidates sequentially
-/w-ralph-batch --phased           # Execute by priority (P1 → P2 → P3)
-/w-ralph-batch --diagnostics      # Run all diagnostics first, then fixes if needed
+/w-ralph-batch                    # Interactive mode
+/w-ralph-batch --script           # Generate overnight-ralph.sh
+/w-ralph-batch --multi-project    # Multiple project directories
+/w-ralph-batch --diagnostics      # Run diagnostics from ralph-candidates.md
 \`\`\`
 
 ---
@@ -2590,323 +2913,280 @@ Supports Diagnostic→Fix flow for automated QA verification.
 ## ⚠️ MANDATORY FIRST ACTION
 
 Use TodoWrite NOW to create todos for ALL phases:
-1. Load candidates from .claude/ralph-candidates.md
-2. Filter by status (ready) and priority (if specified)
-3. Select execution mode
-4. Execute batch or generate script
-5. Update candidate statuses
-6. Generate summary report
+1. Scan for candidates/projects
+2. Configure batch parameters
+3. Generate overnight script
+4. Output execution instructions
 
 ⚠️ VIOLATION: Any action before TodoWrite = restart workflow
 
 ---
 
-## Rules
+## Batch Modes
 
-- NEVER skip checkpoints - each requires user confirmation
-- NEVER execute without reviewing candidate list first
-- NEVER skip status updates after completion
-- ALWAYS generate summary report at end
-- For diagnostics: ALWAYS run RC-D### before paired RC-F###
-
----
-
-## Execution Modes
-
-| Mode | Description | Use Case |
-|------|-------------|----------|
-| Interactive | Process one by one with verification | Supervised execution |
-| Script | Generate overnight-work.sh | Unattended overnight runs |
-| Phased | Execute by priority order | Structured batch processing |
-| All | Process all ready candidates | Quick batch run |
-| Diagnostics | Run diagnostics first, fixes only if needed | QA verification |
-
----
-
-## Candidate Types
-
-| ID Format | Type | Purpose |
-|-----------|------|---------|
-| RC-### | General | Standard Ralph candidates |
-| RC-D### | Diagnostic | Verify patterns/code exists |
-| RC-F### | Fix | Restore code if diagnostic fails |
-
-**Diagnostic→Fix Flow:**
-1. Run RC-D### diagnostic command
-2. If STATUS: PASS → log "VERIFIED" → skip paired RC-F###
-3. If STATUS: FAIL → run RC-F### fix → re-run RC-D### to verify
-4. Report final status
+| Mode | Description | Output |
+|------|-------------|--------|
+| Script | Generate overnight bash script | overnight-ralph.sh |
+| Multi-project | Batch multiple project dirs | overnight-multi.sh |
+| Diagnostics | Process ralph-candidates.md | overnight-diagnostics.sh |
+| Interactive | Select and configure interactively | User choice |
 
 ---
 
 ## Execution Protocol
 
-### ⛔ CHECKPOINT 0: Load & Filter Candidates
+### ⛔ CHECKPOINT 0: Scan Candidates
+**Check for Ralph candidates and projects:**
+
+\`\`\`bash
+# Check for candidates file
+cat .claude/ralph-candidates.md
+
+# Check for Ralph setup in current project
+ls -la .claude/ralph/
+
+# Check for multi-project config
+ls ../*/.claude/ralph/ 2>/dev/null
+\`\`\`
+
 **REQUIRED OUTPUT:**
-- Candidates file: .claude/ralph-candidates.md
-- Total candidates: _____
-- Ready candidates: _____
-- Ready diagnostics (RC-D###): _____
-- Ready fixes (RC-F###): _____
-- Filtered candidates (if priority specified): _____
-
-**General Candidates:**
-| ID | Priority | Name | Completion Tests | Status |
-|----|----------|------|------------------|--------|
-| RC-___ | P_ | _____ | ___ tests | ready |
-
-**Diagnostics & Fixes (if any):**
-| Diagnostic | Verifies | Paired Fix | Status |
-|------------|----------|------------|--------|
-| RC-D___ | _____ | RC-F___ | ready |
+- Candidates file exists: yes/no
+- Ready candidates: N (RC-### IDs)
+- Ready diagnostics: N (RC-D### IDs)
+- Ralph setup in current project: yes/no
+- Other projects with Ralph: [list paths]
 
 **USER GATE:** Use AskUserQuestion
-- Question: "Found [N] ready candidates ([X] diagnostics, [Y] fixes, [Z] general). Select execution mode:"
-- Options: ["Interactive (one by one)", "Generate script", "Phased (P1→P2→P3)", "Diagnostics first", "All at once"]
+- Question: "Found [N] candidates, [M] diagnostics, [P] projects. Select mode:"
+- Options: ["Generate overnight script", "Multi-project batch", "Diagnostics only", "Interactive"]
 
 STOP and wait for user response.
 
 ---
 
-### ⛔ CHECKPOINT 1: Mode Configuration
+### ⛔ CHECKPOINT 1: Configure Batch
 
-**For Interactive Mode:**
-- Processing order: by priority (P1 first) or by ID
-- Pause between candidates: yes/no
-- Auto-archive on success: yes/no
+**For Overnight Script:**
+\`\`\`
+Max iterations per candidate: 50 (default)
+Stop on first failure: no (default)
+Log to file: yes (default)
+Notification on complete: no (default)
+\`\`\`
 
-**For Script Mode:**
-- Script path: ./overnight-ralph.sh
-- Max iterations per candidate: 50 (default)
-- Include status updates: yes/no
-- Log output to file: yes/no
+**For Multi-Project:**
+\`\`\`
+Projects to include: [list]
+Order: sequential/parallel
+Shared log file: yes/no
+\`\`\`
 
-**For Phased Mode:**
-- Phase 1 (P1 Critical): [list IDs]
-- Phase 2 (P2 Important): [list IDs]
-- Phase 3 (P3 Nice-to-have): [list IDs]
-- Completion promises: <promise>P1_COMPLETE</promise>, etc.
-
-**For Diagnostics Mode:**
-- Diagnostic pairs to process: [list RC-D### → RC-F### pairs]
-- Run fixes only on failure: yes (default)
-- Re-verify after fix: yes (default)
-- Processing order: by diagnostic ID
+**For Diagnostics:**
+\`\`\`
+Run fixes on failure: yes (default)
+Re-verify after fix: yes (default)
+\`\`\`
 
 **USER GATE:** Use AskUserQuestion
-- Question: "Configuration ready. Proceed with [mode]?"
-- Options: ["Start execution", "Adjust config", "Change mode"]
+- Question: "Configuration ready. Generate script?"
+- Options: ["Generate", "Adjust settings", "Add more projects"]
 
 STOP and wait for user response.
 
 ---
 
-### ⛔ CHECKPOINT 2: Execute/Generate
+### ⛔ CHECKPOINT 2: Generate Script
 
-**Interactive Mode - Per Candidate:**
-1. Load candidate spec
-2. Verify completion tests
-3. Execute Ralph loop (max 50 iterations)
-4. Run completion tests
-5. Update status (complete/in-progress/blocked)
-6. Move to next candidate
-
-**Script Mode - Generate overnight-work.sh:**
+**Generate overnight-ralph.sh:**
 \`\`\`bash
 #!/bin/bash
-# Ralph Batch - Generated [DATE]
-# Candidates: [IDs]
-# Total: [N] candidates
+# Pure Ralph Batch - Generated [DATE]
+#
+# This script runs Pure Ralph loops on multiple candidates/projects.
+# Each loop gets FRESH CONTEXT - no accumulation.
 
-set -e  # Exit on error
+set -e
 LOG_FILE="ralph-batch-$(date +%Y%m%d-%H%M%S).log"
 
-echo "Starting Ralph Batch Processing..." | tee -a $LOG_FILE
-echo "Start time: $(date)" | tee -a $LOG_FILE
+log() {
+  echo "[$(date '+%H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
 
-# RC-001: [Name]
-echo "Processing RC-001: [Name]..." | tee -a $LOG_FILE
-claude -p "/w-ralph-this '[spec]'
-Output <promise>RC001_DONE</promise> when all tests pass.
-Max iterations: 50" 2>&1 | tee -a $LOG_FILE
-echo "RC-001 complete: $(date)" | tee -a $LOG_FILE
+log "╔════════════════════════════════════════════════╗"
+log "║  Pure Ralph Batch Starting                      ║"
+log "║  Candidates: [N]                                ║"
+log "║  Log: $LOG_FILE                                 ║"
+log "╚════════════════════════════════════════════════╝"
 
-# RC-002: [Name]
-echo "Processing RC-002: [Name]..." | tee -a $LOG_FILE
-claude -p "/w-ralph-this '[spec]'
-Output <promise>RC002_DONE</promise> when all tests pass.
-Max iterations: 50" 2>&1 | tee -a $LOG_FILE
-echo "RC-002 complete: $(date)" | tee -a $LOG_FILE
+#───────────────────────────────────────────────────────
+# Candidate: RC-001 - [Name]
+#───────────────────────────────────────────────────────
+log ""
+log "Processing RC-001: [Name]..."
 
-echo "Ralph Batch Complete: $(date)" | tee -a $LOG_FILE
-echo "Results logged to: $LOG_FILE"
+# Create/update IMPLEMENTATION_PLAN.md for this candidate
+cat > .claude/ralph/IMPLEMENTATION_PLAN.md << 'PLAN_EOF'
+# Implementation Plan: RC-001
+
+## Status
+- Total tasks: N
+- Completed: 0
+- Remaining: N
+
+## Tasks
+- [ ] Task 1
+- [ ] Task 2
+...
+
+## Discoveries
+PLAN_EOF
+
+# Run the Pure Ralph loop
+./.claude/ralph/loop.sh build 50
+
+log "RC-001 complete: $(date)"
+
+#───────────────────────────────────────────────────────
+# Candidate: RC-002 - [Name]
+#───────────────────────────────────────────────────────
+log ""
+log "Processing RC-002: [Name]..."
+
+# [Similar pattern for each candidate]
+
+log ""
+log "╔════════════════════════════════════════════════╗"
+log "║  Pure Ralph Batch Complete!                     ║"
+log "║  End time: $(date)                              ║"
+log "║  Log: $LOG_FILE                                 ║"
+log "╚════════════════════════════════════════════════╝"
 \`\`\`
 
-**Phased Mode - Sequential Priority Execution:**
-\`\`\`
-# Phase 1: P1 Critical
-Processing RC-001, RC-005...
-Output <promise>P1_COMPLETE</promise>
+**For Multi-Project Script:**
+\`\`\`bash
+#!/bin/bash
+# Pure Ralph Multi-Project Batch
 
-# Phase 2: P2 Important
-Processing RC-002, RC-003...
-Output <promise>P2_COMPLETE</promise>
+PROJECTS=(
+  "/path/to/project1"
+  "/path/to/project2"
+)
 
-# Phase 3: P3 Nice-to-have
-Processing RC-004...
-Output <promise>P3_COMPLETE</promise>
+for project in "\${PROJECTS[@]}"; do
+  echo "═══ Processing: $project ═══"
+  cd "$project"
 
-Output <promise>ALL_PHASES_COMPLETE</promise>
-\`\`\`
-
-**Diagnostics Mode - Verify & Fix Flow:**
-For each RC-D### diagnostic:
-\`\`\`
-┌─────────────────────────────────────────────────┐
-│ DIAGNOSTIC: RC-D001 - getOrderBookDepth exists  │
-├─────────────────────────────────────────────────┤
-│ Running: grep -n "export function getOrder..."  │
-│                                                 │
-│ RESULT: PATTERN_FOUND: YES                      │
-│         LOCATION: src/api/depth.ts:42           │
-│         STATUS: PASS                            │
-│                                                 │
-│ → VERIFIED. Skipping RC-F001.                   │
-└─────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────┐
-│ DIAGNOSTIC: RC-D002 - validateOrderParams       │
-├─────────────────────────────────────────────────┤
-│ Running: grep -n "export function validate..."  │
-│                                                 │
-│ RESULT: PATTERN_FOUND: NO                       │
-│         LOCATION: NONE                          │
-│         STATUS: FAIL                            │
-│                                                 │
-│ → Running paired fix: RC-F002                   │
-│ → Fix applied.                                  │
-│ → Re-running diagnostic...                      │
-│ → STATUS: PASS                                  │
-│ → RESTORED.                                     │
-└─────────────────────────────────────────────────┘
+  if [[ -f ".claude/ralph/loop.sh" ]]; then
+    ./.claude/ralph/loop.sh build 50
+  else
+    echo "Warning: No Ralph setup in $project"
+  fi
+done
 \`\`\`
 
-**Diagnostic Output Format:**
-\`\`\`
-DIAGNOSTIC: [NAME]
-PATTERN_FOUND: YES|NO
-LOCATION: [file:line] or NONE
-STATUS: PASS|FAIL
-ACTION: VERIFIED|RESTORED|FAILED
+**For Diagnostics Script:**
+\`\`\`bash
+#!/bin/bash
+# Pure Ralph Diagnostics
+
+run_diagnostic() {
+  local id="$1"
+  local cmd="$2"
+  local fix_id="$3"
+
+  echo "DIAGNOSTIC: $id"
+  if eval "$cmd"; then
+    echo "STATUS: PASS"
+    echo "ACTION: VERIFIED"
+  else
+    echo "STATUS: FAIL"
+    if [[ -n "$fix_id" ]]; then
+      echo "Running fix: $fix_id"
+      # Run fix via Ralph loop
+      ./.claude/ralph/loop.sh build 10
+      # Re-verify
+      if eval "$cmd"; then
+        echo "ACTION: RESTORED"
+      else
+        echo "ACTION: FAILED"
+      fi
+    fi
+  fi
+}
+
+# RC-D001: [Name] Exists
+run_diagnostic "RC-D001" "grep -q 'pattern' file.ts" "RC-F001"
 \`\`\`
 
-**AUTO-PROCEED:** Continue until all candidates processed or script generated.
+**Make executable:**
+\`\`\`bash
+chmod +x overnight-ralph.sh
+\`\`\`
+
+**REQUIRED OUTPUT:**
+- Script path: ./overnight-ralph.sh
+- Candidates included: [list]
+- Executable: yes
 
 ---
 
-### ⛔ CHECKPOINT 3: Summary Report
+### ⛔ CHECKPOINT 3: Output Instructions
+
 **REQUIRED OUTPUT:**
-
-**Execution Summary:**
-| Metric | Value |
-|--------|-------|
-| Total candidates | _____ |
-| Processed | _____ |
-| Successful | _____ |
-| Failed/Blocked | _____ |
-| Skipped | _____ |
-
-**General Candidate Results:**
-| ID | Name | Result | Iterations | Notes |
-|----|------|--------|------------|-------|
-| RC-___ | _____ | success/failed/blocked | ___ | _____ |
-
-**Diagnostic Results (if applicable):**
-| Diagnostic | Verifies | Status | Action | Fix Run |
-|------------|----------|--------|--------|---------|
-| RC-D___ | _____ | PASS/FAIL | VERIFIED/RESTORED/FAILED | RC-F___/skipped |
-
-**Diagnostic Summary:**
-| Metric | Count |
-|--------|-------|
-| Total diagnostics run | _____ |
-| Verified (PASS, no fix needed) | _____ |
-| Restored (FAIL → fix → PASS) | _____ |
-| Failed (FAIL → fix → still FAIL) | _____ |
-
-**Script Generated (if applicable):**
-- Path: ./overnight-ralph.sh
-- Chmod: +x applied
-- Run command: \`./overnight-ralph.sh\`
-
-**Status Updates:**
-- Candidates marked complete: [IDs]
-- Candidates still in-progress: [IDs]
-- Candidates blocked: [IDs]
-- Diagnostics verified: [RC-D### IDs]
-- Diagnostics restored: [RC-D### IDs]
-- Archived: [IDs]
-
-**USER GATE:** Use AskUserQuestion
-- Question: "Batch complete. [X/Y] successful. [Z] diagnostics verified. Next action?"
-- Options: ["Done", "Retry failed", "View details", "Run generated script"]
-
-STOP and wait for user response.
+\`\`\`
+╔════════════════════════════════════════════════════════════╗
+║  Overnight Script Generated!                                ║
+╠════════════════════════════════════════════════════════════╣
+║  Script: ./overnight-ralph.sh                               ║
+║  Candidates: [N]                                            ║
+║  Max iterations per candidate: 50                           ║
+╠════════════════════════════════════════════════════════════╣
+║  To run overnight:                                          ║
+║                                                             ║
+║    nohup ./overnight-ralph.sh > overnight.log 2>&1 &        ║
+║                                                             ║
+║  Or with screen:                                            ║
+║    screen -S ralph ./overnight-ralph.sh                     ║
+║                                                             ║
+║  Check progress:                                            ║
+║    tail -f ralph-batch-*.log                                ║
+╚════════════════════════════════════════════════════════════╝
+\`\`\`
 
 ---
 
 ## Completion Checklist
 
-Before marking workflow complete, verify ALL boxes:
-- [ ] TodoWrite used at start with all 6 phases
-- [ ] Checkpoints 0-1 completed with user confirmation
-- [ ] Checkpoint 2 completed (execution/generation)
-- [ ] Checkpoint 3 completed with summary
-- [ ] All candidate statuses updated in .claude/ralph-candidates.md
-- [ ] Successful candidates archived
-- [ ] Diagnostics verified/restored (if applicable)
-- [ ] Summary report generated
+- [ ] TodoWrite used at start
+- [ ] Candidates/projects scanned
+- [ ] Batch parameters configured
+- [ ] overnight-ralph.sh generated
+- [ ] Script made executable
+- [ ] Run instructions provided
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
-
-## Script Output Location
-- Default: ./overnight-ralph.sh
-- Log file: ./ralph-batch-YYYYMMDD-HHMMSS.log
 
 ## Best Practices
 
 **For Overnight Runs:**
-1. Generate script with \`/w-ralph-batch --script\`
-2. Review generated script
-3. Run \`chmod +x overnight-ralph.sh\`
-4. Execute before bed: \`./overnight-ralph.sh\`
-5. Check logs in morning
+1. Generate script: \`/w-ralph-batch --script\`
+2. Review the generated script
+3. Run with nohup or screen:
+   \`\`\`bash
+   nohup ./overnight-ralph.sh > overnight.log 2>&1 &
+   \`\`\`
+4. Check logs in morning: \`tail -f ralph-batch-*.log\`
 
-**For Phased Execution:**
-1. Use \`/w-ralph-batch --phased\`
-2. Monitor P1 completion first
-3. Review results between phases
-4. Continue or abort as needed
-
-**For Diagnostic Verification:**
-1. Use \`/w-ralph-batch --diagnostics\` after /w-compound
-2. Verifies patterns built in previous session still exist
-3. Auto-fixes any regressions detected
-4. Run nightly to catch accidental deletions
+**Key Principle:** The script runs \`loop.sh\` which gives each iteration fresh context. Bad work gets rejected by tests. Good work accumulates in git.
 
 ## Example
 \`\`\`
 /w-ralph-batch --script
-# Generates overnight-ralph.sh with all ready candidates
+# Generates overnight-ralph.sh for all ready candidates
 
-/w-ralph-batch --priority P1
-# Only processes P1 (critical) candidates
-
-/w-ralph-batch --phased
-# Executes P1 → P2 → P3 with completion promises
-
-/w-ralph-batch --diagnostics
-# Runs all RC-D### diagnostics, fixes only if needed
+./overnight-ralph.sh
+# Runs all Ralph loops sequentially
+# Each iteration: fresh context, one task, commit, exit
 \`\`\`
 `
     }

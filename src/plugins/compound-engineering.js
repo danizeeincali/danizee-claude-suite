@@ -203,8 +203,34 @@ export async function install(claudeDir, options = {}) {
   const ralphCandidatesContent = `# Ralph Candidates
 
 > Dev patterns identified during compound that could become future Ralph Wiggum loops.
-> Use \`/w-ralph-pick\` to select and execute a candidate.
-> Use \`/w-ralph-batch\` to process multiple candidates or generate overnight scripts.
+> Use Pure Ralph approach: fresh context each iteration, state through files only.
+
+## Quick Start
+
+\`\`\`bash
+# Initialize Ralph in your project
+/w-ralph-init
+
+# Create implementation plan from a task
+/w-ralph-this "Build feature X with tests"
+
+# Or build plan interactively
+/w-ralph-goals "I want to build a CLI tool"
+
+# Run the loop (in terminal)
+./.claude/ralph/loop.sh
+\`\`\`
+
+## Pure Ralph Principle
+
+Each iteration:
+1. Fresh Claude instance reads IMPLEMENTATION_PLAN.md
+2. Picks ONE task, completes it fully
+3. Runs validation from AGENTS.md
+4. Marks task done, commits, exits
+5. Bash loop restarts fresh
+
+State passes through files only. No context accumulation.
 
 ## Active Candidates
 
