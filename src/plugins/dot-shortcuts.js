@@ -289,18 +289,18 @@ Doc: docs/solutions/full-tdd-swarm/[feature-name].md
 `
     },
 
-    'w-idea-tdd-swarm': {
-      name: 'w-idea-tdd-swarm',
-      description: 'Idea to TDD Swarm - Deep interview refines idea, then Full TDD Swarm builds it',
-      content: `# /w-idea-tdd-swarm
+    'w-interview-tdd-swarm': {
+      name: 'w-interview-tdd-swarm',
+      description: 'Interview to TDD Swarm - Deep interview refines idea, then Full TDD Swarm builds it',
+      content: `# /w-interview-tdd-swarm
 
 Turn a half-baked idea into a well-built feature through deep interviewing + Full TDD Swarm.
 
 ## Usage
 \`\`\`
-/w-idea-tdd-swarm [description or file path]
-/w-idea-tdd-swarm user authentication system
-/w-idea-tdd-swarm .claude/plans/auth-idea.md
+/w-interview-tdd-swarm [description or file path]
+/w-interview-tdd-swarm user authentication system
+/w-interview-tdd-swarm .claude/plans/auth-idea.md
 \`\`\`
 
 ---
@@ -486,7 +486,7 @@ Spec: .claude/plans/YYYY-MM-DD-[name].md
 
 ## Example
 \`\`\`
-/w-idea-tdd-swarm I want some kind of notification system but I'm not sure exactly what
+/w-interview-tdd-swarm I want some kind of notification system but I'm not sure exactly what
 \`\`\`
 `
     },
@@ -1677,16 +1677,25 @@ This command MUST complete ALL phases including auto-QA generation.
 
 ## Execution Protocol
 
-### ⛔ CHECKPOINT 0: Category Selection
+### ⛔ CHECKPOINT 0: Category Detection
 **REQUIRED OUTPUT:**
 - Category selected: _____
 - Context to capture: _____
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Storing as [category]. Confirm?"
-- Options: ["Continue", "Change category"]
+**AUTO-DETECT:** If argument provided, use it. Otherwise, auto-detect from git diff:
+\\\`\\\`\\\`bash
+git diff HEAD~1
+\\\`\\\`\\\`
+Use weighted pattern matching:
+- security (weight 3): injection, vulnerability, sanitize, xss, csrf, auth
+- bug (weight 2): fix, bug, patch, hotfix, error handling, fallback
+- performance (weight 2): cache, optimize, batch, lazy, memoize, throttle
+- architecture (weight 2): refactor, redesign, restructure, migration, rename
+- feature (weight 1): export function, new file mode, CREATE TABLE, add/create/implement
 
-STOP and wait for user response.
+Highest score wins. Default to 'feature' on empty diff.
+
+**AUTO-PROCEED:** Continue to Storage phase.
 
 ---
 
@@ -1930,6 +1939,78 @@ STOP and wait for user response.
 #   - project/features/oauth2-google (Nov 2024)
 #   - project/security/auth-module (Oct 2024)
 \`\`\`
+`
+    },
+
+    'w-background-compound': {
+      name: 'w-background-compound',
+      description: 'Fire-and-Forget Compound - Zero-gate background compound',
+      content: `# /w-background-compound
+
+Fire-and-Forget Compound. Auto-detects category and dispatches to a background agent. No human interaction at any point.
+
+## Usage
+\\\`\\\`\\\`
+/w-background-compound [category]
+/w-background-compound feature
+\\\`\\\`\\\`
+
+---
+
+## Execution Protocol
+
+### ⛔ CHECKPOINT 0: Pre-flight
+- **Step 1:** Category detection (argument or auto-detect from git diff HEAD~1)
+  - Use weighted pattern matching: security(3), bug(2), performance(2), architecture(2), feature(1)
+  - Highest score wins. Default to 'feature' on empty diff.
+- **Step 2:** Branch detection (current branch name)
+- **Step 3:** Merge decision (auto-resolved based on branch)
+
+**AUTO-PROCEED:** Continue to Background Dispatch.
+
+---
+
+### ⛔ CHECKPOINT 1: Background Dispatch
+Launch a background agent via the Task tool that runs 4 phases autonomously:
+
+**Phase 1: Inline Compound**
+- Storage: memory key + solution doc
+- Analyze: parse git diff for functions, interfaces, patterns, tests
+- Diagnostics: generate RC-D### for each significant change
+- Fixes: generate paired RC-F### for each diagnostic
+- Append all to .claude/ralph-candidates.md
+- Ralph candidate check
+
+**Phase 2: Git Commit**
+- Stage specific changed files only (NOT git add -A)
+- Commit with descriptive message
+
+**Phase 3: Git Push/Merge**
+- Push current branch
+- If not main: merge to main and cleanup
+
+**Phase 4: Final Summary Report**
+- Log what was compounded, committed, and pushed
+
+**ERROR HANDLING:** Log errors but NEVER abort. Complete as many phases as possible.
+
+---
+
+## Difference from /w-compound
+
+| Aspect | /w-compound | /w-background-compound |
+|--------|-------------|----------------------|
+| User gates | 0 (auto-detect) | 0 |
+| Auto-merge | No | Yes |
+| Auto-push | No | Yes |
+| Runs in | Foreground | Background agent |
+| Error handling | May block | Logs, never aborts |
+
+## Example
+\\\`\\\`\\\`
+/w-background-compound
+/w-background-compound feature
+\\\`\\\`\\\`
 `
     },
 

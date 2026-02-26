@@ -14,6 +14,8 @@ import * as claudeFlow from './plugins/claude-flow.js';
 import * as compoundEngineering from './plugins/compound-engineering.js';
 import * as frontendDesign from './plugins/frontend-design.js';
 import * as dotShortcuts from './plugins/dot-shortcuts.js';
+import * as pmShortcuts from './plugins/pm-shortcuts.js';
+import * as agentCookbook from './plugins/agent-cookbook.js';
 
 // Get directory of this file for template resolution
 const __filename = fileURLToPath(import.meta.url);
@@ -29,6 +31,8 @@ export class DaniZeeSuiteInstaller {
     this.force = options.force || false;
     this.dryRun = options.dryRun || false;
     this.keepSettings = options.keepSettings || false;
+    this.withPm = options.withPm || false;
+    this.withoutCookbook = options.withoutCookbook || false;
   }
 
   /**
@@ -182,6 +186,35 @@ export class DaniZeeSuiteInstaller {
       targetDir: this.targetDir
     }));
 
+    // Install Agent Cookbook (unless opted out)
+    if (!this.withoutCookbook) {
+      results.push(await agentCookbook.install(this.claudeDir, {
+        dryRun: this.dryRun,
+        targetDir: this.targetDir
+      }));
+    }
+
+    // Install PM Module (if opted in)
+    if (this.withPm) {
+      results.push(await pmShortcuts.install(this.claudeDir, {
+        dryRun: this.dryRun,
+        targetDir: this.targetDir
+      }));
+
+      // Initialize PM database
+      if (!this.dryRun) {
+        try {
+          const dataDir = path.join(this.targetDir, 'data');
+          await fs.mkdir(dataDir, { recursive: true });
+          const { initDatabase } = await import('./lib/db.js');
+          initDatabase(path.join(dataDir, 'chief-of-staff.db'));
+        } catch (err) {
+          console.warn(`Warning: Could not initialize PM database: ${err.message}`);
+          console.warn('Install better-sqlite3 to enable PM features: npm install better-sqlite3');
+        }
+      }
+    }
+
     return results;
   }
 
@@ -281,7 +314,9 @@ echo "MCP server started. You can now use memory and swarm operations."
         claudeFlow: false,
         compoundEngineering: false,
         frontendDesign: false,
-        dotShortcuts: false
+        dotShortcuts: false,
+        agentCookbook: false,
+        pmShortcuts: false
       }
     };
 
@@ -314,8 +349,10 @@ echo "MCP server started. You can now use memory and swarm operations."
     status.plugins.compoundEngineering = await compoundEngineering.isInstalled(this.claudeDir);
     status.plugins.frontendDesign = await frontendDesign.isInstalled(this.claudeDir);
     status.plugins.dotShortcuts = await dotShortcuts.isInstalled(this.claudeDir);
+    status.plugins.agentCookbook = await agentCookbook.isInstalled(this.claudeDir);
+    status.plugins.pmShortcuts = await pmShortcuts.isInstalled(this.claudeDir);
 
-    // Overall status
+    // Overall status (core plugins only — PM and cookbook are optional)
     status.installed = status.claudeDir &&
       status.settings &&
       status.shortcuts &&
@@ -337,6 +374,8 @@ echo "MCP server started. You can now use memory and swarm operations."
     await compoundEngineering.uninstall(this.claudeDir);
     await frontendDesign.uninstall(this.claudeDir);
     await dotShortcuts.uninstall(this.claudeDir);
+    await agentCookbook.uninstall(this.claudeDir);
+    await pmShortcuts.uninstall(this.claudeDir);
 
     // Remove settings
     await removeSettings(this.claudeDir, this.keepSettings);
@@ -418,7 +457,9 @@ echo "MCP server started. You can now use memory and swarm operations."
         'compound-engineering',
         'frontend-design',
         'dot-shortcuts',
-        'pure-ralph'
+        'pure-ralph',
+        ...(this.withoutCookbook ? [] : ['agent-cookbook']),
+        ...(this.withPm ? ['pm-shortcuts'] : [])
       ]
     };
   }
