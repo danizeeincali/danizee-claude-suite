@@ -589,6 +589,286 @@ Spec: .claude/plans/YYYY-MM-DD-[name].md
 `
     },
 
+    'w-agent-tdd-swarm': {
+      name: 'w-agent-tdd-swarm',
+      description: 'Gateless TDD Swarm - Fully autonomous TDD cycle for terminal agents. Zero user gates, auto-PR.',
+      content: `# /w-agent-tdd-swarm
+
+Fully Autonomous TDD Swarm — Zero user gates. Designed for terminal agents (tmux + worktree).
+
+**Philosophy:** Same rigor as /w-tdd-swarm, but fully autonomous. No gates, no stops, auto-PR.
+
+## Usage
+\\\`\\\`\\\`
+/w-agent-tdd-swarm [feature description]
+\\\`\\\`\\\`
+
+---
+
+## ⚠️ MANDATORY FIRST ACTION
+
+Use TodoWrite NOW to create todos for ALL phases:
+1. Search for past solutions
+2. Plan architecture
+3. Write spec/acceptance criteria
+4. Write ALL tests (must fail)
+5. Build implementation (tests pass)
+6. Run full review
+7. Commit, push, and create PR
+8. Compound solution
+
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- ZERO user gates — this workflow runs fully autonomously
+- NEVER proceed to Build before all tests exist and FAIL
+- NEVER skip compound phase at the end
+- ALWAYS create a PR at the end with \\\`gh pr create --fill\\\`
+- ALWAYS commit with descriptive messages
+
+---
+
+## Execution Protocol
+
+### PHASE 0: Context Gathering (AUTO-PROCEED)
+**Run /w-start on yourself first** to load project context, memory, follow-ups, and session state.
+
+**AUTO-PROCEED:** Continue to Search.
+
+---
+
+### PHASE 1: Search (AUTO-PROCEED)
+Search for past solutions. Check memory keys, search codebase for similar implementations, note reusable patterns.
+
+**AUTO-PROCEED:** Continue to Plan.
+
+---
+
+### PHASE 2: Plan (AUTO-PROCEED)
+**REQUIRED OUTPUT:**
+- Architecture summary (3-5 bullets)
+- Files to create/modify (list)
+- Approach and rationale
+
+**AUTO-PROCEED:** Continue to Spec.
+
+---
+
+### PHASE 3: Spec (AUTO-PROCEED)
+**REQUIRED OUTPUT:**
+- Acceptance criteria (numbered list)
+- Test cases (numbered list)
+
+**AUTO-PROCEED:** Continue to Tests.
+
+---
+
+### PHASE 4: Tests (BLOCKING GATE — TDD only)
+**REQUIRED OUTPUT:**
+- Test file paths: _____
+- Test count: _____ tests written
+- Test run result: "All _____ tests FAIL as expected"
+
+**BLOCKING RULE:**
+NEVER proceed to Build until:
+- [ ] All tests written
+- [ ] All tests RUN and FAIL
+- [ ] Failure output captured
+
+**AUTO-PROCEED:** Continue to Build after tests fail.
+
+---
+
+### PHASE 5: Build (AUTO-PROCEED)
+**REQUIRED OUTPUT:**
+- Implementation file paths: _____
+- Test run result: "All _____ tests PASS"
+
+**AUTO-PROCEED:** Continue to Review.
+
+---
+
+### PHASE 6: Review (AUTO-PROCEED)
+Quick self-review. Fix any critical/high findings before proceeding.
+
+| Category | Finding | Severity |
+|----------|---------|----------|
+| Security | _____ | _____ |
+| Performance | _____ | _____ |
+| Architecture | _____ | _____ |
+
+**AUTO-PROCEED:** Continue to PR.
+
+---
+
+### PHASE 7: Commit & PR (AUTO-PROCEED)
+**REQUIRED ACTIONS:**
+1. Stage all changes: \\\`git add -A\\\`
+2. Commit with descriptive message
+3. Push branch: \\\`git push -u origin HEAD\\\`
+4. Create PR: \\\`gh pr create --fill\\\`
+
+**REQUIRED OUTPUT:**
+- Commit hash: _____
+- PR URL: _____
+
+**AUTO-PROCEED:** Continue to Compound.
+
+---
+
+### PHASE 8: Compound (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Memory key: project/full-tdd-swarm/_____
+- Doc path: docs/solutions/full-tdd-swarm/_____.md
+- Pattern stored: yes/no
+
+NEVER skip this phase. Workflow is INCOMPLETE without compound.
+
+---
+
+## Completion Checklist
+
+- [ ] TodoWrite used at start
+- [ ] All 8 phases completed (zero user gates)
+- [ ] Tests written and pass
+- [ ] PR created with \\\`gh pr create --fill\\\`
+- [ ] Compound phase executed
+`
+    },
+
+    'w-agent-interview-swarm': {
+      name: 'w-agent-interview-swarm',
+      description: 'Interview then Spawn Agent - Interactive interview, then spawns gateless terminal agent to build it.',
+      content: `# /w-agent-interview-swarm
+
+Interview then Spawn Autonomous Agent. Interactive interview refines the idea, then spawns a terminal agent (tmux + worktree) to build it with zero gates.
+
+**Philosophy:** Humans are best at requirements. Agents are best at execution. Split the work.
+
+## Usage
+\\\`\\\`\\\`
+/w-agent-interview-swarm [description or file path]
+/w-agent-interview-swarm I want some kind of notification system
+\\\`\\\`\\\`
+
+---
+
+## ⚠️ MANDATORY FIRST ACTION
+
+Use TodoWrite NOW to create todos for ALL phases:
+1. Search for past solutions
+2. Interview to refine idea
+3. Save refined spec to .claude/plans/
+4. Spawn terminal agent with spec
+
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- Interview phase HAS user gates (needs human input)
+- After interview completes, ALL remaining work is autonomous
+- The spawned agent runs /w-agent-tdd-swarm (gateless)
+- The spawned agent creates the PR automatically
+
+---
+
+## Execution Protocol
+
+### PHASE 0: Context Gathering (AUTO-PROCEED)
+**Run /w-start on yourself first** to load project context, memory, follow-ups, and session state.
+
+**AUTO-PROCEED:** Continue to Search.
+
+---
+
+### PHASE 0.5: Search (AUTO-PROCEED)
+Search for past solutions. Check memory keys, search codebase.
+
+**AUTO-PROCEED:** Continue to Interview.
+
+---
+
+### ⛔ PHASE 1: Interview (USER GATES — MANDATORY)
+**Interview Categories:**
+
+**Technical & Architecture**
+- Implementation approach, tradeoffs, edge cases
+- How this fits with existing systems
+- What could break or need migration
+
+**Human & Workflow**
+- Who else is affected?
+- What's the manual fallback if automation fails?
+- How will you know it's working? What does success look like?
+
+**Strategic**
+- Why now? What's the cost of waiting?
+- What's the simplest version that delivers value?
+- What would make you regret building this?
+
+**Interview Rules:**
+- Ask ONE question at a time using AskUserQuestion
+- Go deep on answers revealing uncertainty or assumptions
+- Don't ask obvious questions — push on unthought things
+- Capture quotable moments verbatim for the spec
+- End with: "What did I forget to ask about?"
+
+**REQUIRED OUTPUT:**
+- Interview notes with user quotes
+- Refined requirements list
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Interview complete. Here's the refined spec. Ready to spawn the agent?"
+- Options: ["Spawn agent", "Add more questions", "Revise spec"]
+
+STOP and wait for user response.
+
+---
+
+### PHASE 2: Save Spec (AUTO-PROCEED)
+Save the refined spec to: \\\`.claude/plans/YYYY-MM-DD-[name].md\\\`
+
+Include: requirements, acceptance criteria, key decisions, user quotes.
+
+**AUTO-PROCEED:** Continue to Spawn.
+
+---
+
+### PHASE 3: Spawn Terminal Agent (AUTO-PROCEED)
+**Use the spawn_terminal_agent MCP tool:**
+
+- \\\`repo_path\\\`: Current repository path
+- \\\`task\\\`: The complete refined spec from the interview
+- \\\`workflow\\\`: "/w-agent-tdd-swarm"
+
+**After spawning, report to the user:**
+- Agent ID
+- Branch name
+- How to check status: \\\`check_terminal_agents\\\` MCP tool
+- How to redirect: \\\`redirect_terminal_agent\\\` MCP tool
+- The agent will create a PR with \\\`gh pr create --fill\\\` when done
+
+**REQUIRED OUTPUT:**
+- Agent ID: _____
+- Branch: _____
+- Spec file: .claude/plans/YYYY-MM-DD-[name].md
+
+---
+
+## Completion Checklist
+
+- [ ] Interview conducted with multiple questions
+- [ ] Spec saved to .claude/plans/
+- [ ] Terminal agent spawned via spawn_terminal_agent
+- [ ] Agent ID reported to user
+`
+    },
+
     'w-fix': {
       name: 'w-fix',
       description: 'Quick Fix - Fast bug investigation and targeted fix',

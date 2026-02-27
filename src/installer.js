@@ -16,6 +16,7 @@ import * as frontendDesign from './plugins/frontend-design.js';
 import * as dotShortcuts from './plugins/dot-shortcuts.js';
 import * as pmShortcuts from './plugins/pm-shortcuts.js';
 import * as agentCookbook from './plugins/agent-cookbook.js';
+import * as terminalAgents from './plugins/terminal-agents.js';
 
 // Get directory of this file for template resolution
 const __filename = fileURLToPath(import.meta.url);
@@ -194,6 +195,12 @@ export class DaniZeeSuiteInstaller {
       }));
     }
 
+    // Install Terminal Agents MCP server
+    results.push(await terminalAgents.install(this.claudeDir, {
+      dryRun: this.dryRun,
+      targetDir: this.targetDir
+    }));
+
     // Install PM Module (if opted in)
     if (this.withPm) {
       results.push(await pmShortcuts.install(this.claudeDir, {
@@ -316,7 +323,8 @@ echo "MCP server started. You can now use memory and swarm operations."
         frontendDesign: false,
         dotShortcuts: false,
         agentCookbook: false,
-        pmShortcuts: false
+        pmShortcuts: false,
+        terminalAgents: false
       }
     };
 
@@ -351,6 +359,7 @@ echo "MCP server started. You can now use memory and swarm operations."
     status.plugins.dotShortcuts = await dotShortcuts.isInstalled(this.claudeDir);
     status.plugins.agentCookbook = await agentCookbook.isInstalled(this.claudeDir);
     status.plugins.pmShortcuts = await pmShortcuts.isInstalled(this.claudeDir);
+    status.plugins.terminalAgents = await terminalAgents.isInstalled(this.claudeDir);
 
     // Overall status (core plugins only — PM and cookbook are optional)
     status.installed = status.claudeDir &&
@@ -376,6 +385,7 @@ echo "MCP server started. You can now use memory and swarm operations."
     await dotShortcuts.uninstall(this.claudeDir);
     await agentCookbook.uninstall(this.claudeDir);
     await pmShortcuts.uninstall(this.claudeDir);
+    await terminalAgents.uninstall(this.claudeDir, { targetDir: this.targetDir });
 
     // Remove settings
     await removeSettings(this.claudeDir, this.keepSettings);
