@@ -112,6 +112,61 @@ function saveRegistry(registryPath, registry) {
   fs.renameSync(tmp, registryPath);
 }
 
+// --- Path Validation & Mapping ---
+
+const CONTAINER_PATH_PREFIXES = ['/workspace/', '/container/', '/app/'];
+
+export function validateRepoPath(repoPath) {
+  for (const prefix of CONTAINER_PATH_PREFIXES) {
+    if (repoPath.startsWith(prefix)) {
+      return {
+        valid: false,
+        reason: `Container path detected: "${repoPath}". Terminal agents run on the host — use the host filesystem path. Configure .claude/path-mappings.json to auto-translate container paths.`
+      };
+    }
+  }
+  return { valid: true };
+}
+
+export function loadPathMappings(claudeDir) {
+  try {
+    const mappingPath = path.join(claudeDir, 'path-mappings.json');
+    if (fs.existsSync(mappingPath)) {
+      return JSON.parse(fs.readFileSync(mappingPath, 'utf-8'));
+    }
+  } catch { /* missing or invalid */ }
+  return {};
+}
+
+export function translatePaths(text, mappings) {
+  let result = text;
+  for (const [containerPath, hostPath] of Object.entries(mappings)) {
+    result = result.replaceAll(containerPath, hostPath);
+  }
+  return result;
+}
+
+function resolveRepoPath(repoPath) {
+  const claudeDir = path.join(process.cwd(), '.claude');
+  const mappings = loadPathMappings(claudeDir);
+
+  // Try path mapping first
+  if (Object.keys(mappings).length > 0) {
+    const translated = translatePaths(repoPath, mappings);
+    if (translated !== repoPath) {
+      return { resolved: translated, mappings };
+    }
+  }
+
+  // No mapping matched — validate
+  const validation = validateRepoPath(repoPath);
+  if (!validation.valid) {
+    return { error: validation.reason, mappings };
+  }
+
+  return { resolved: repoPath, mappings };
+}
+
 // --- Agent Operations ---
 
 function generateAgentId(task) {
@@ -144,7 +199,16 @@ function spawnAgent(args) {
     return { error: `Max ${MAX_CONCURRENT} concurrent agents. ${running.length} running.` };
   }
 
-  const repoPath = args.repo_path.replace(/^~/, process.env.HOME || '~');
+  let repoPath = args.repo_path.replace(/^~/, process.env.HOME || '~');
+
+  // Path validation and translation
+  const pathResult = resolveRepoPath(repoPath);
+  if (pathResult.error) {
+    return { error: pathResult.error };
+  }
+  repoPath = pathResult.resolved;
+  const mappings = pathResult.mappings || {};
+
   const agentId = generateAgentId(args.task);
   const branch = args.branch_name || generateBranchName(args.task);
 
@@ -156,7 +220,8 @@ function spawnAgent(args) {
     fs.mkdirSync(worktreeBase, { recursive: true });
     execSync(`git worktree add "${worktreePath}" -b "${branch}" HEAD`, { cwd: repoPath, stdio: 'pipe' });
 
-    let prompt = args.task;
+    // Translate container paths in task description
+    let prompt = Object.keys(mappings).length > 0 ? translatePaths(args.task, mappings) : args.task;
     if (args.workflow) {
       prompt = `Run ${args.workflow} for the following task: ${args.task}. When complete, commit all changes and create a PR with \`gh pr create --fill\`.`;
     } else {
@@ -319,20 +384,42 @@ function repoSlug(rp) {
   try { const u = execSync('git remote get-url origin', { cwd: rp, encoding: 'utf-8', stdio: 'pipe' }).trim(); const m = u.match(/github\\.com[:/]([^/]+\\/[^/.]+)/); return m ? m[1] : ''; } catch { return ''; }
 }
 
+const CONTAINER_PREFIXES = ['/workspace/', '/container/', '/app/'];
+
+function loadPathMappings() {
+  try { const p = path.join(process.cwd(), '.claude', 'path-mappings.json'); if (fs.existsSync(p)) return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch {}
+  return {};
+}
+
+function translatePaths(text, mappings) {
+  let r = text; for (const [c, h] of Object.entries(mappings)) r = r.replaceAll(c, h); return r;
+}
+
+function resolveRepo(rp) {
+  const mappings = loadPathMappings();
+  if (Object.keys(mappings).length > 0) { const t = translatePaths(rp, mappings); if (t !== rp) return { resolved: t, mappings }; }
+  for (const pfx of CONTAINER_PREFIXES) { if (rp.startsWith(pfx)) return { error: 'Container path detected: "' + rp + '". Use a host path or configure .claude/path-mappings.json.' }; }
+  return { resolved: rp, mappings };
+}
+
 function handleTool(name, args) {
   if (name === 'spawn_terminal_agent') {
     const reg = loadRegistry();
     const running = reg.agents.filter(a => a.status === 'running');
     if (running.length >= MAX_CONCURRENT) return { content: [{ type: 'text', text: 'Max ' + MAX_CONCURRENT + ' concurrent agents. ' + running.length + ' running.' }], isError: true };
-    const rp = (args.repo_path || '').replace(/^~/, process.env.HOME || '~');
+    let rp = (args.repo_path || '').replace(/^~/, process.env.HOME || '~');
+    const pr = resolveRepo(rp);
+    if (pr.error) return { content: [{ type: 'text', text: pr.error }], isError: true };
+    rp = pr.resolved; const mappings = pr.mappings || {};
     const id = genId(args.task);
     const br = args.branch_name || genBranch(args.task);
     const wt = path.join(path.dirname(rp), path.basename(rp) + '-worktrees', br.replace(/\\//g, '-'));
     try {
       fs.mkdirSync(path.dirname(wt), { recursive: true });
       execSync('git worktree add "' + wt + '" -b "' + br + '" HEAD', { cwd: rp, stdio: 'pipe' });
-      let prompt = args.task;
-      if (args.workflow) prompt = 'Run ' + args.workflow + ' for: ' + args.task + '. When done, commit and create PR with \`gh pr create --fill\`.';
+      let task = Object.keys(mappings).length > 0 ? translatePaths(args.task, mappings) : args.task;
+      let prompt = task;
+      if (args.workflow) prompt = 'Run ' + args.workflow + ' for: ' + task + '. When done, commit and create PR with \`gh pr create --fill\`.';
       else prompt += '. When done, commit and create PR with \`gh pr create --fill\`.';
       prompt += '\\n\\nIMPORTANT — After creating the PR, write a completion report to .claude/agent-reports/' + id + '.md with: task summary, files changed, test results, PR URL, and any issues encountered.';
       if (args.parent_agent_id) prompt += '\\nThen use the redirect_terminal_agent MCP tool to notify the parent agent (agent_id: "' + args.parent_agent_id + '") with a brief completion summary including the PR URL.';

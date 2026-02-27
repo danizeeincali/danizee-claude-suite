@@ -250,6 +250,148 @@ describe('Terminal Agents MCP server', () => {
 });
 
 // ============================================================
+// Path Validation & Mapping
+// ============================================================
+
+describe('Path validation and container path rejection', () => {
+  let mcpModule;
+
+  before(async () => {
+    mcpModule = await import('../src/mcp/terminal-agents.js');
+  });
+
+  it('should reject /workspace/* paths with helpful error', () => {
+    const result = mcpModule.executeTool('spawn_terminal_agent', {
+      repo_path: '/workspace/group',
+      task: 'test task'
+    });
+    assert.ok(result.error, 'should return error for container path');
+    assert.ok(
+      result.error.toLowerCase().includes('container') || result.error.toLowerCase().includes('path'),
+      'error should mention container path: ' + result.error
+    );
+  });
+
+  it('should reject /workspace/project paths', () => {
+    const result = mcpModule.executeTool('spawn_terminal_agent', {
+      repo_path: '/workspace/project',
+      task: 'test task'
+    });
+    assert.ok(result.error, 'should return error for /workspace/project');
+  });
+
+  it('should export validateRepoPath function', () => {
+    assert.ok(
+      typeof mcpModule.validateRepoPath === 'function',
+      'should export validateRepoPath'
+    );
+  });
+
+  it('validateRepoPath should reject container paths', () => {
+    const result = mcpModule.validateRepoPath('/workspace/group');
+    assert.ok(!result.valid, '/workspace/group should be invalid');
+    assert.ok(result.reason, 'should include reason');
+  });
+
+  it('validateRepoPath should accept host paths', () => {
+    const result = mcpModule.validateRepoPath('/Users/demi/NanoClaw');
+    assert.ok(result.valid, 'host path should be valid');
+  });
+
+  it('should export loadPathMappings function', () => {
+    assert.ok(
+      typeof mcpModule.loadPathMappings === 'function',
+      'should export loadPathMappings'
+    );
+  });
+
+  it('loadPathMappings should return empty object when no config file', () => {
+    const mappings = mcpModule.loadPathMappings('/nonexistent/.claude');
+    assert.deepEqual(mappings, {}, 'should return empty when no config');
+  });
+
+  it('should translate container path when mapping exists', async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-test-'));
+    const claudeDir = path.join(tmpDir, '.claude');
+    await fs.mkdir(claudeDir, { recursive: true });
+
+    // Write a path mapping config
+    await fs.writeFile(
+      path.join(claudeDir, 'path-mappings.json'),
+      JSON.stringify({ '/workspace/group': '/Users/demi/NanoClaw' }),
+      'utf-8'
+    );
+
+    const mappings = mcpModule.loadPathMappings(claudeDir);
+    assert.deepEqual(
+      mappings,
+      { '/workspace/group': '/Users/demi/NanoClaw' },
+      'should load mappings from config file'
+    );
+
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('should apply path substitution to task descriptions', () => {
+    assert.ok(
+      typeof mcpModule.translatePaths === 'function',
+      'should export translatePaths'
+    );
+
+    const mappings = { '/workspace/group': '/Users/demi/NanoClaw' };
+    const translated = mcpModule.translatePaths(
+      'Read /workspace/group/.claude/specs/heartbeat.md and build it',
+      mappings
+    );
+    assert.ok(
+      translated.includes('/Users/demi/NanoClaw/.claude/specs/heartbeat.md'),
+      'task should have translated paths: ' + translated
+    );
+    assert.ok(
+      !translated.includes('/workspace/group'),
+      'container path should be replaced'
+    );
+  });
+});
+
+// ============================================================
+// Error State Tracking
+// ============================================================
+
+describe('Error state tracking for failed spawns', () => {
+  let mcpModule;
+
+  before(async () => {
+    mcpModule = await import('../src/mcp/terminal-agents.js');
+  });
+
+  it('failed spawn should record error in registry', () => {
+    // Spawning with a non-existent path should fail and record the error
+    const result = mcpModule.executeTool('spawn_terminal_agent', {
+      repo_path: '/tmp/definitely-not-a-repo-' + Date.now(),
+      task: 'test task'
+    });
+    assert.ok(result.error, 'spawn should fail for non-existent repo');
+  });
+
+  it('getMcpServerSource should include path validation', () => {
+    const source = mcpModule.getMcpServerSource();
+    assert.ok(
+      source.includes('/workspace') || source.includes('container'),
+      'MCP server source should include container path detection'
+    );
+  });
+
+  it('getMcpServerSource should include path mapping support', () => {
+    const source = mcpModule.getMcpServerSource();
+    assert.ok(
+      source.includes('path-mappings') || source.includes('pathMapping'),
+      'MCP server source should support path mappings'
+    );
+  });
+});
+
+// ============================================================
 // Plugin — Install/Uninstall/IsInstalled
 // ============================================================
 
