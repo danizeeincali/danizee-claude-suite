@@ -616,6 +616,7 @@ Use TodoWrite NOW to create todos for ALL phases:
 6. Run full review
 7. Commit, push, and create PR
 8. Compound solution
+9. Write completion report and notify parent
 
 ⚠️ VIOLATION: Any action before TodoWrite = restart workflow
 
@@ -729,13 +730,36 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
 
+### PHASE 9: Report & Notify Parent (MANDATORY - NEVER SKIP)
+**Write a completion report** to \\\`.claude/agent-reports/{your-agent-id}.md\\\` containing:
+- Task summary (what was built)
+- Files changed (list with brief descriptions)
+- Test results (pass/fail counts)
+- PR URL
+- Any issues encountered or decisions made
+
+Your agent-id was specified in the initial prompt. If unclear, use the branch name.
+
+**If a parent agent was specified in your initial prompt**, use the \\\`redirect_terminal_agent\\\` MCP tool to send:
+\\\`\\\`\\\`
+Agent {id} completed. PR: {url}. Report: .claude/agent-reports/{id}.md
+\\\`\\\`\\\`
+
+**REQUIRED OUTPUT:**
+- Report path: .claude/agent-reports/_____.md
+- Parent notified: yes/no
+
+---
+
 ## Completion Checklist
 
 - [ ] TodoWrite used at start
-- [ ] All 8 phases completed (zero user gates)
+- [ ] All 9 phases completed (zero user gates)
 - [ ] Tests written and pass
 - [ ] PR created with \\\`gh pr create --fill\\\`
 - [ ] Compound phase executed
+- [ ] Completion report written to .claude/agent-reports/
+- [ ] Parent agent notified (if applicable)
 `
     },
 
@@ -845,17 +869,23 @@ Include: requirements, acceptance criteria, key decisions, user quotes.
 - \\\`repo_path\\\`: Current repository path
 - \\\`task\\\`: The complete refined spec from the interview
 - \\\`workflow\\\`: "/w-agent-tdd-swarm"
+- \\\`parent_agent_id\\\`: Your own tmux session name (so the child can notify you when done)
+
+To find your own tmux session name, run: \\\`tmux display-message -p '#S'\\\` (if not in tmux, omit parent_agent_id)
 
 **After spawning, report to the user:**
 - Agent ID
 - Branch name
-- How to check status: \\\`check_terminal_agents\\\` MCP tool
-- How to redirect: \\\`redirect_terminal_agent\\\` MCP tool
-- The agent will create a PR with \\\`gh pr create --fill\\\` when done
+- The agent will notify you when done via \\\`redirect_terminal_agent\\\`
+- The agent will write a report to \\\`.claude/agent-reports/{agent-id}.md\\\`
+- The agent will create a PR with \\\`gh pr create --fill\\\`
+- To check status manually: \\\`check_terminal_agents\\\` MCP tool
+- To read the report: \\\`get_agent_report\\\` MCP tool
 
 **REQUIRED OUTPUT:**
 - Agent ID: _____
 - Branch: _____
+- Parent agent ID: _____ (or "not in tmux")
 - Spec file: .claude/plans/YYYY-MM-DD-[name].md
 
 ---
@@ -864,7 +894,7 @@ Include: requirements, acceptance criteria, key decisions, user quotes.
 
 - [ ] Interview conducted with multiple questions
 - [ ] Spec saved to .claude/plans/
-- [ ] Terminal agent spawned via spawn_terminal_agent
+- [ ] Terminal agent spawned via spawn_terminal_agent with parent_agent_id
 - [ ] Agent ID reported to user
 `
     },

@@ -73,6 +73,22 @@ describe('w-agent-tdd-swarm workflow', () => {
       'w-agent-tdd-swarm should include compound phase'
     );
   });
+
+  it('should include completion report phase', () => {
+    const content = commands['w-agent-tdd-swarm'].content;
+    assert.ok(
+      content.includes('agent-reports') && content.includes('Report'),
+      'w-agent-tdd-swarm should write completion report'
+    );
+  });
+
+  it('should include parent notification instruction', () => {
+    const content = commands['w-agent-tdd-swarm'].content;
+    assert.ok(
+      content.includes('redirect_terminal_agent') && content.includes('parent'),
+      'w-agent-tdd-swarm should notify parent agent'
+    );
+  });
 });
 
 // ============================================================
@@ -124,6 +140,22 @@ describe('w-agent-interview-swarm workflow', () => {
       'w-agent-interview-swarm should save spec before spawning agent'
     );
   });
+
+  it('should pass parent_agent_id when spawning', () => {
+    const content = commands['w-agent-interview-swarm'].content;
+    assert.ok(
+      content.includes('parent_agent_id'),
+      'w-agent-interview-swarm should pass parent_agent_id to spawn'
+    );
+  });
+
+  it('should mention get_agent_report for reading results', () => {
+    const content = commands['w-agent-interview-swarm'].content;
+    assert.ok(
+      content.includes('get_agent_report'),
+      'w-agent-interview-swarm should reference get_agent_report tool'
+    );
+  });
 });
 
 // ============================================================
@@ -144,9 +176,9 @@ describe('Terminal Agents MCP server', () => {
     );
   });
 
-  it('should return 4 tool definitions', () => {
+  it('should return 5 tool definitions', () => {
     const tools = mcpModule.getToolDefinitions();
-    assert.equal(tools.length, 4, 'should have 4 tools');
+    assert.equal(tools.length, 5, 'should have 5 tools');
   });
 
   it('should include spawn_terminal_agent tool', () => {
@@ -173,6 +205,21 @@ describe('Terminal Agents MCP server', () => {
     assert.ok(names.includes('stop_terminal_agent'), 'should include stop_terminal_agent');
   });
 
+  it('should include get_agent_report tool', () => {
+    const tools = mcpModule.getToolDefinitions();
+    const names = tools.map(t => t.name);
+    assert.ok(names.includes('get_agent_report'), 'should include get_agent_report');
+  });
+
+  it('spawn_terminal_agent should accept parent_agent_id parameter', () => {
+    const tools = mcpModule.getToolDefinitions();
+    const spawn = tools.find(t => t.name === 'spawn_terminal_agent');
+    assert.ok(
+      spawn.inputSchema.properties.parent_agent_id,
+      'spawn_terminal_agent should have parent_agent_id in schema'
+    );
+  });
+
   it('should export getMcpServerSource', () => {
     assert.ok(
       typeof mcpModule.getMcpServerSource === 'function',
@@ -183,6 +230,22 @@ describe('Terminal Agents MCP server', () => {
   it('getMcpServerSource should return non-empty string', () => {
     const source = mcpModule.getMcpServerSource();
     assert.ok(source.length > 100, 'MCP server source should be substantial');
+  });
+
+  it('getMcpServerSource should handle get_agent_report', () => {
+    const source = mcpModule.getMcpServerSource();
+    assert.ok(
+      source.includes('get_agent_report'),
+      'MCP server source should handle get_agent_report tool'
+    );
+  });
+
+  it('getMcpServerSource should handle parent_agent_id in spawn', () => {
+    const source = mcpModule.getMcpServerSource();
+    assert.ok(
+      source.includes('parent_agent_id'),
+      'MCP server source should handle parent_agent_id parameter'
+    );
   });
 });
 

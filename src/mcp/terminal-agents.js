@@ -42,6 +42,7 @@ The agent commits changes and creates a PR when done.`,
           task: { type: 'string', description: 'What the agent should build or fix' },
           workflow: { type: 'string', description: 'Optional /w- workflow command' },
           branch_name: { type: 'string', description: 'Optional custom branch name' },
+          parent_agent_id: { type: 'string', description: 'Agent ID of the parent that spawned this agent (for completion notifications)' },
         },
         required: ['repo_path', 'task'],
       },
@@ -70,6 +71,17 @@ The agent commits changes and creates a PR when done.`,
         type: 'object',
         properties: {
           agent_id: { type: 'string', description: 'The agent ID to stop' },
+        },
+        required: ['agent_id'],
+      },
+    },
+    {
+      name: 'get_agent_report',
+      description: 'Read the completion report written by a terminal agent after it finishes. Returns the full markdown report.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          agent_id: { type: 'string', description: 'The agent ID to get the report for' },
         },
         required: ['agent_id'],
       },
@@ -151,16 +163,23 @@ function spawnAgent(args) {
       prompt = `${args.task}. When complete, commit all changes and create a PR with \`gh pr create --fill\`.`;
     }
 
+    // Add completion report + parent notification instructions
+    prompt += `\n\nIMPORTANT — After creating the PR, write a completion report to .claude/agent-reports/${agentId}.md with: task summary, files changed, test results, PR URL, and any issues encountered.`;
+    if (args.parent_agent_id) {
+      prompt += `\nThen use the redirect_terminal_agent MCP tool to notify the parent agent (agent_id: "${args.parent_agent_id}") with a brief completion summary including the PR URL.`;
+    }
+
     const claudeCmd = `claude --dangerously-skip-permissions -p ${JSON.stringify(prompt)}`;
     execSync(
       `tmux new-session -d -s "${agentId}" -c "${worktreePath}" '${claudeCmd.replace(/'/g, "'\\''")}'`,
       { stdio: 'pipe' }
     );
 
+    const parentId = args.parent_agent_id || null;
     const agent = {
       id: agentId, repoPath, worktreePath, branch,
       tmuxSession: agentId, status: 'running', prompt: args.task,
-      workflow: args.workflow, startedAt: new Date().toISOString(),
+      workflow: args.workflow, parentAgentId: parentId, startedAt: new Date().toISOString(),
     };
     registry.agents.push(agent);
     saveRegistry(registryPath, registry);
@@ -194,6 +213,15 @@ function checkAgents() {
         }
       } catch { agent.status = 'completed'; }
       agent.completedAt = new Date().toISOString();
+
+      // Check for completion report
+      const reportPath = path.join(agent.repoPath, '.claude', 'agent-reports', `${agent.id}.md`);
+      try {
+        if (fs.existsSync(reportPath)) {
+          agent.hasReport = true;
+          agent.reportPath = reportPath;
+        }
+      } catch { /* no report */ }
     }
   }
 
@@ -231,6 +259,22 @@ function stopAgent(args) {
   agent.completedAt = new Date().toISOString();
   saveRegistry(registryPath, registry);
   return { success: true };
+}
+
+function getAgentReport(args) {
+  const registryPath = getRegistryPath();
+  const registry = loadRegistry(registryPath);
+  const agent = registry.agents.find(a => a.id === args.agent_id);
+
+  if (!agent) return { error: `Agent "${args.agent_id}" not found` };
+
+  const reportPath = path.join(agent.repoPath, '.claude', 'agent-reports', `${agent.id}.md`);
+  try {
+    const content = fs.readFileSync(reportPath, 'utf-8');
+    return { report: content, agent: { id: agent.id, branch: agent.branch, status: agent.status, pr: agent.pr || null, prUrl: agent.prUrl || null } };
+  } catch {
+    return { error: `No completion report found for agent "${args.agent_id}". Report expected at: ${reportPath}` };
+  }
 }
 
 // --- MCP Server Source (written to .claude/helpers/ on install) ---
@@ -290,9 +334,12 @@ function handleTool(name, args) {
       let prompt = args.task;
       if (args.workflow) prompt = 'Run ' + args.workflow + ' for: ' + args.task + '. When done, commit and create PR with \`gh pr create --fill\`.';
       else prompt += '. When done, commit and create PR with \`gh pr create --fill\`.';
+      prompt += '\\n\\nIMPORTANT — After creating the PR, write a completion report to .claude/agent-reports/' + id + '.md with: task summary, files changed, test results, PR URL, and any issues encountered.';
+      if (args.parent_agent_id) prompt += '\\nThen use the redirect_terminal_agent MCP tool to notify the parent agent (agent_id: "' + args.parent_agent_id + '") with a brief completion summary including the PR URL.';
       const cmd = 'claude --dangerously-skip-permissions -p ' + JSON.stringify(prompt);
       execSync('tmux new-session -d -s "' + id + '" -c "' + wt + '" \\'' + cmd.replace(/'/g, "'\\\\\\\\'") + "\\'", { stdio: 'pipe' });
-      reg.agents.push({ id, repoPath: rp, worktreePath: wt, branch: br, tmuxSession: id, status: 'running', prompt: args.task, workflow: args.workflow, startedAt: new Date().toISOString() });
+      const parentId = args.parent_agent_id || null;
+      reg.agents.push({ id, repoPath: rp, worktreePath: wt, branch: br, tmuxSession: id, status: 'running', prompt: args.task, workflow: args.workflow, parentAgentId: parentId, startedAt: new Date().toISOString() });
       saveRegistry(reg);
       return { content: [{ type: 'text', text: 'Spawned agent ' + id + ' on branch ' + br + (args.workflow ? ' (workflow: ' + args.workflow + ')' : '') }] };
     } catch (e) { return { content: [{ type: 'text', text: 'Spawn failed: ' + (e.message || e) }], isError: true }; }
@@ -307,11 +354,12 @@ function handleTool(name, args) {
       if (!alive) {
         try { const o = execSync('gh pr list --head "' + a.branch + '" --json number,title,state --limit 1', { cwd: a.repoPath, encoding: 'utf-8', stdio: 'pipe' }); const p = JSON.parse(o); if (p.length > 0) { a.pr = p[0].number; a.prUrl = 'https://github.com/' + repoSlug(a.repoPath) + '/pull/' + p[0].number; } } catch {}
         a.status = 'completed'; a.completedAt = new Date().toISOString();
+        try { const rp2 = path.join(a.repoPath, '.claude', 'agent-reports', a.id + '.md'); if (fs.existsSync(rp2)) { a.hasReport = true; } } catch {}
       }
     }
     saveRegistry(reg);
     if (reg.agents.length === 0) return { content: [{ type: 'text', text: 'No terminal agents found.' }] };
-    const fmt = reg.agents.map(a => '• [' + a.id + '] ' + a.prompt.slice(0, 60) + '\\n  Status: ' + a.status + ' | Branch: ' + a.branch + (a.pr ? ' | PR: #' + a.pr : '') + (a.workflow ? ' | Workflow: ' + a.workflow : '')).join('\\n\\n');
+    const fmt = reg.agents.map(a => '• [' + a.id + '] ' + a.prompt.slice(0, 60) + '\\n  Status: ' + a.status + ' | Branch: ' + a.branch + (a.pr ? ' | PR: #' + a.pr : '') + (a.hasReport ? ' | Report: available' : '') + (a.workflow ? ' | Workflow: ' + a.workflow : '')).join('\\n\\n');
     return { content: [{ type: 'text', text: 'Terminal agents:\\n\\n' + fmt }] };
   }
 
@@ -332,6 +380,15 @@ function handleTool(name, args) {
     a.status = 'stopped'; a.completedAt = new Date().toISOString();
     saveRegistry(reg);
     return { content: [{ type: 'text', text: 'Stopped agent ' + args.agent_id }] };
+  }
+
+  if (name === 'get_agent_report') {
+    const reg = loadRegistry();
+    const a = reg.agents.find(x => x.id === args.agent_id);
+    if (!a) return { content: [{ type: 'text', text: 'Agent not found: ' + args.agent_id }], isError: true };
+    const rp = path.join(a.repoPath, '.claude', 'agent-reports', a.id + '.md');
+    try { const c = fs.readFileSync(rp, 'utf-8'); return { content: [{ type: 'text', text: c }] }; }
+    catch { return { content: [{ type: 'text', text: 'No report found for ' + args.agent_id + '. Expected at: ' + rp }], isError: true }; }
   }
 
   return { content: [{ type: 'text', text: 'Unknown tool: ' + name }], isError: true };
@@ -370,6 +427,7 @@ export function executeTool(name, args) {
     case 'check_terminal_agents': return checkAgents();
     case 'redirect_terminal_agent': return redirectAgent(args);
     case 'stop_terminal_agent': return stopAgent(args);
+    case 'get_agent_report': return getAgentReport(args);
     default: return { error: `Unknown tool: ${name}` };
   }
 }
