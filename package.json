@@ -1,6 +1,6 @@
 {
   "name": "danizee-claude-suite",
-  "version": "3.1.0",
+  "version": "3.2.0",
   "description": "Unified workflow shortcuts for Claude Code with knowledge compounding, PM workflows, and Agent Cookbook integration",
   "main": "bin/cli.js",
   "type": "module",
