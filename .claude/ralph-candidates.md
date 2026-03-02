@@ -8,7 +8,7 @@
 
 | ID | Priority | Name | Source | Completion Tests | Status |
 |----|----------|------|--------|------------------|--------|
-| - | - | (none yet) | - | - | - |
+| RC-001 | P3 | Workflow Variant Generator | /w-idea-tdd-swarm 2026-03-02 | See details below | draft |
 
 ---
 
@@ -34,8 +34,25 @@
 
 ## Candidate Details
 
+### RC-001: Workflow Variant Generator
+- **Priority:** P3 (nice-to-have)
+- **Source:** /w-idea-tdd-swarm on 2026-03-02
+- **Pattern:** Generating bg- workflow variants from foreground templates. Remove user gates, add AUTO-PROCEED, keep blocking rules, add Git Commit phase.
+
+**Completion Tests (AI-Verifiable):**
+1. [ ] File exists: `.claude/commands/.shortcuts/w-bg-{name}.md` for each input
+2. [ ] Pattern match: `All checkpoints auto-proceed - NO user gates` in each output file
+3. [ ] Pattern match: `Git Commit (MANDATORY - NEVER SKIP)` in each output file
+4. [ ] Pattern match: `Compound (MANDATORY - NEVER SKIP)` in each output file
+5. [ ] No `AskUserQuestion` or `STOP and wait` in any output file (except w-bg-idea-tdd-swarm interview)
+
+**Status:** draft
+**Completed:** —
+
+---
+
 <!--
-### RC-001: [Name]
+### RC-002: [Name]
 - **Priority:** P1 (critical) / P2 (important) / P3 (nice-to-have)
 - **Source:** /w-[workflow] on YYYY-MM-DD
 - **Pattern:** Brief description of the repeating dev pattern
