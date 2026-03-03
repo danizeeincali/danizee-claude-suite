@@ -5,13 +5,10 @@
  * terminal agent orchestration via tmux + git worktrees. Zero external deps.
  *
  * Tools:
- *   spawn_terminal_agent    — Start Claude Code in tmux with git worktree
- *   check_terminal_agents   — List running agents with status/PR info
- *   redirect_terminal_agent — Send instructions to running agent (+ instant ack heartbeat)
- *   stop_terminal_agent     — Kill agent's tmux session
- *   get_agent_report        — Read agent completion report
- *   send_agent_heartbeat    — Report progress at Fibonacci-filtered intervals
- *   get_agent_heartbeats    — Retrieve heartbeat history for an agent
+ *   spawn_terminal_agent  — Start Claude Code in tmux with git worktree
+ *   check_terminal_agents — List running agents with status/PR info
+ *   redirect_terminal_agent — Send instructions to running agent
+ *   stop_terminal_agent   — Kill agent's tmux session
  */
 
 import { execSync } from 'child_process';
@@ -85,37 +82,6 @@ The agent commits changes and creates a PR when done.`,
         type: 'object',
         properties: {
           agent_id: { type: 'string', description: 'The agent ID to get the report for' },
-        },
-        required: ['agent_id'],
-      },
-    },
-    {
-      name: 'send_agent_heartbeat',
-      description: `Report a progress heartbeat from a running agent. Heartbeats should be sent at Fibonacci-filtered intervals (1s, 2s, 4s, 7s, 12s, 20s, 33s, 54s, 88s from task start). Types:
-• ack — Instant acknowledgment when task received ("..." indicator)
-• progress — Periodic update at Fibonacci beats
-• complete — Final result notification
-• error — Error notification`,
-      inputSchema: {
-        type: 'object',
-        properties: {
-          agent_id: { type: 'string', description: 'The agent sending the heartbeat' },
-          type: { type: 'string', enum: ['ack', 'progress', 'complete', 'error'], description: 'Heartbeat type' },
-          message: { type: 'string', description: 'Human-readable status message' },
-          beat_index: { type: 'number', description: 'Fibonacci beat index (0-8). -1 for ack.' },
-          metadata: { type: 'object', description: 'Optional structured data (progress %, phase, etc.)' },
-        },
-        required: ['agent_id', 'type', 'message'],
-      },
-    },
-    {
-      name: 'get_agent_heartbeats',
-      description: 'Retrieve heartbeat history for an agent. Returns all heartbeats (ack, progress, complete, error) in chronological order. Use since_timestamp to get only new heartbeats.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          agent_id: { type: 'string', description: 'The agent ID to get heartbeats for' },
-          since_timestamp: { type: 'string', description: 'Optional ISO timestamp — only return heartbeats after this time' },
         },
         required: ['agent_id'],
       },
@@ -201,50 +167,6 @@ function resolveRepoPath(repoPath) {
   return { resolved: repoPath, mappings };
 }
 
-// --- Heartbeat Storage ---
-
-const FIBONACCI_BEATS = [1, 2, 4, 7, 12, 20, 33, 54, 88];
-
-function getHeartbeatsPath() {
-  return path.join(process.cwd(), '.claude', 'agent-heartbeats.json');
-}
-
-function loadHeartbeats(heartbeatsPath) {
-  try {
-    if (fs.existsSync(heartbeatsPath)) {
-      return JSON.parse(fs.readFileSync(heartbeatsPath, 'utf-8'));
-    }
-  } catch { /* corrupted, start fresh */ }
-  return {};
-}
-
-function saveHeartbeats(heartbeatsPath, heartbeats) {
-  const dir = path.dirname(heartbeatsPath);
-  fs.mkdirSync(dir, { recursive: true });
-  const tmp = `${heartbeatsPath}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(heartbeats, null, 2));
-  fs.renameSync(tmp, heartbeatsPath);
-}
-
-function recordHeartbeat(agentId, heartbeat) {
-  const hbPath = getHeartbeatsPath();
-  const store = loadHeartbeats(hbPath);
-  if (!store[agentId]) store[agentId] = [];
-  store[agentId].push(heartbeat);
-  saveHeartbeats(hbPath, store);
-}
-
-function getAgentHeartbeats(agentId, sinceTimestamp) {
-  const hbPath = getHeartbeatsPath();
-  const store = loadHeartbeats(hbPath);
-  let beats = store[agentId] || [];
-  if (sinceTimestamp) {
-    const since = new Date(sinceTimestamp).getTime();
-    beats = beats.filter(b => new Date(b.timestamp).getTime() > since);
-  }
-  return beats;
-}
-
 // --- Agent Operations ---
 
 function generateAgentId(task) {
@@ -308,7 +230,6 @@ function spawnAgent(args) {
 
     // Add completion report + parent notification instructions
     prompt += `\n\nIMPORTANT — After creating the PR, write a completion report to .claude/agent-reports/${agentId}.md with: task summary, files changed, test results, PR URL, and any issues encountered.`;
-    prompt += `\n\nHEARTBEAT PROTOCOL — Use the send_agent_heartbeat MCP tool to report progress at Fibonacci intervals. Send type=ack immediately when starting, then type=progress at beats 0-8 (1s,2s,4s,7s,12s,20s,33s,54s,88s), and type=complete when done with results.`;
     if (args.parent_agent_id) {
       prompt += `\nThen use the redirect_terminal_agent MCP tool to notify the parent agent (agent_id: "${args.parent_agent_id}") with a brief completion summary including the PR URL.`;
     }
@@ -328,16 +249,6 @@ function spawnAgent(args) {
     registry.agents.push(agent);
     saveRegistry(registryPath, registry);
 
-    // Record spawn ack heartbeat (instant acknowledgment)
-    recordHeartbeat(agentId, {
-      type: 'ack',
-      beatIndex: -1,
-      beatTime: 0,
-      message: '...',
-      metadata: { event: 'spawn' },
-      timestamp: new Date().toISOString(),
-    });
-
     return { agent };
   } catch (err) {
     return { error: err.message || String(err) };
@@ -347,17 +258,8 @@ function spawnAgent(args) {
 function checkAgents() {
   const registryPath = getRegistryPath();
   const registry = loadRegistry(registryPath);
-  const hbPath = getHeartbeatsPath();
-  const hbStore = loadHeartbeats(hbPath);
 
   for (const agent of registry.agents) {
-    // Attach latest heartbeat info for all agents
-    const beats = hbStore[agent.id] || [];
-    if (beats.length > 0) {
-      agent.lastHeartbeat = beats[beats.length - 1];
-      agent.heartbeatCount = beats.length;
-    }
-
     if (agent.status !== 'running') continue;
 
     let alive = false;
@@ -400,66 +302,13 @@ function redirectAgent(args) {
   if (!agent) return { error: `Agent "${args.agent_id}" not found` };
   if (agent.status !== 'running') return { error: `Agent "${args.agent_id}" is not running (status: ${agent.status})` };
 
-  // Instant ack heartbeat — record that the message was received
-  recordHeartbeat(args.agent_id, {
-    type: 'ack',
-    beatIndex: -1,
-    beatTime: 0,
-    message: '...',
-    metadata: { redirectMessage: args.message.slice(0, 100) },
-    timestamp: new Date().toISOString(),
-  });
-
   try {
     const escaped = args.message.replace(/"/g, '\\"');
     execSync(`tmux send-keys -t "${agent.tmuxSession}" "${escaped}" Enter`, { stdio: 'pipe' });
-    return { success: true, heartbeat: 'ack' };
+    return { success: true };
   } catch (err) {
     return { error: err.message || String(err) };
   }
-}
-
-function sendHeartbeat(args) {
-  const registryPath = getRegistryPath();
-  const registry = loadRegistry(registryPath);
-  const agent = registry.agents.find(a => a.id === args.agent_id);
-
-  if (!agent) return { error: `Agent "${args.agent_id}" not found` };
-
-  const beatIndex = args.beat_index ?? -1;
-  const heartbeat = {
-    type: args.type,
-    beatIndex,
-    beatTime: beatIndex >= 0 && beatIndex < FIBONACCI_BEATS.length ? FIBONACCI_BEATS[beatIndex] : 0,
-    message: args.message,
-    metadata: args.metadata || {},
-    timestamp: new Date().toISOString(),
-  };
-
-  recordHeartbeat(args.agent_id, heartbeat);
-
-  // Update agent's last heartbeat in registry for quick status checks
-  agent.lastHeartbeat = heartbeat;
-  saveRegistry(registryPath, registry);
-
-  return { success: true, heartbeat };
-}
-
-function fetchAgentHeartbeats(args) {
-  const registryPath = getRegistryPath();
-  const registry = loadRegistry(registryPath);
-  const agent = registry.agents.find(a => a.id === args.agent_id);
-
-  if (!agent) return { error: `Agent "${args.agent_id}" not found` };
-
-  const beats = getAgentHeartbeats(args.agent_id, args.since_timestamp);
-  return {
-    agentId: args.agent_id,
-    status: agent.status,
-    heartbeats: beats,
-    total: beats.length,
-    fibonacciSchedule: FIBONACCI_BEATS,
-  };
 }
 
 function stopAgent(args) {
@@ -502,7 +351,6 @@ export function getMcpServerSource() {
 /**
  * Terminal Agents MCP Server — Danizee Claude Suite
  * Raw JSON-RPC 2.0 over stdio. Zero external dependencies.
- * Includes Fibonacci-filtered heartbeat support for streaming progress updates.
  */
 import { execSync } from 'child_process';
 import fs from 'fs';
@@ -510,9 +358,7 @@ import path from 'path';
 import { createInterface } from 'readline';
 
 const REGISTRY_PATH = path.join(process.cwd(), '.claude', 'terminal-agents.json');
-const HEARTBEATS_PATH = path.join(process.cwd(), '.claude', 'agent-heartbeats.json');
 const MAX_CONCURRENT = 4;
-const FIBONACCI_BEATS = [1, 2, 4, 7, 12, 20, 33, 54, 88];
 
 function loadRegistry() {
   try { if (fs.existsSync(REGISTRY_PATH)) return JSON.parse(fs.readFileSync(REGISTRY_PATH, 'utf-8')); } catch {}
@@ -524,25 +370,6 @@ function saveRegistry(reg) {
   const tmp = REGISTRY_PATH + '.tmp';
   fs.writeFileSync(tmp, JSON.stringify(reg, null, 2));
   fs.renameSync(tmp, REGISTRY_PATH);
-}
-
-function loadHeartbeats() {
-  try { if (fs.existsSync(HEARTBEATS_PATH)) return JSON.parse(fs.readFileSync(HEARTBEATS_PATH, 'utf-8')); } catch {}
-  return {};
-}
-
-function saveHeartbeats(hb) {
-  fs.mkdirSync(path.dirname(HEARTBEATS_PATH), { recursive: true });
-  const tmp = HEARTBEATS_PATH + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(hb, null, 2));
-  fs.renameSync(tmp, HEARTBEATS_PATH);
-}
-
-function recordHB(agentId, beat) {
-  const store = loadHeartbeats();
-  if (!store[agentId]) store[agentId] = [];
-  store[agentId].push(beat);
-  saveHeartbeats(store);
 }
 
 function genId(task) {
@@ -595,15 +422,12 @@ function handleTool(name, args) {
       if (args.workflow) prompt = 'Run ' + args.workflow + ' for: ' + task + '. When done, commit and create PR with \`gh pr create --fill\`.';
       else prompt += '. When done, commit and create PR with \`gh pr create --fill\`.';
       prompt += '\\n\\nIMPORTANT — After creating the PR, write a completion report to .claude/agent-reports/' + id + '.md with: task summary, files changed, test results, PR URL, and any issues encountered.';
-      prompt += '\\n\\nHEARTBEAT PROTOCOL — Use the send_agent_heartbeat MCP tool to report progress at Fibonacci intervals. Send type=ack immediately, then type=progress at beats 0-8 (1s,2s,4s,7s,12s,20s,33s,54s,88s), and type=complete when done.';
       if (args.parent_agent_id) prompt += '\\nThen use the redirect_terminal_agent MCP tool to notify the parent agent (agent_id: "' + args.parent_agent_id + '") with a brief completion summary including the PR URL.';
       const cmd = 'claude --dangerously-skip-permissions -p ' + JSON.stringify(prompt);
       execSync('tmux new-session -d -s "' + id + '" -c "' + wt + '" \\'' + cmd.replace(/'/g, "'\\\\\\\\'") + "\\'", { stdio: 'pipe' });
       const parentId = args.parent_agent_id || null;
       reg.agents.push({ id, repoPath: rp, worktreePath: wt, branch: br, tmuxSession: id, status: 'running', prompt: args.task, workflow: args.workflow, parentAgentId: parentId, startedAt: new Date().toISOString() });
       saveRegistry(reg);
-      // Record spawn ack heartbeat
-      recordHB(id, { type: 'ack', beatIndex: -1, beatTime: 0, message: '...', metadata: { event: 'spawn' }, timestamp: new Date().toISOString() });
       return { content: [{ type: 'text', text: 'Spawned agent ' + id + ' on branch ' + br + (args.workflow ? ' (workflow: ' + args.workflow + ')' : '') }] };
     } catch (e) { return { content: [{ type: 'text', text: 'Spawn failed: ' + (e.message || e) }], isError: true }; }
   }
@@ -622,13 +446,7 @@ function handleTool(name, args) {
     }
     saveRegistry(reg);
     if (reg.agents.length === 0) return { content: [{ type: 'text', text: 'No terminal agents found.' }] };
-    const hbStore = loadHeartbeats();
-    const fmt = reg.agents.map(a => {
-      const beats = hbStore[a.id] || [];
-      const lastBeat = beats.length > 0 ? beats[beats.length - 1] : null;
-      const hbStatus = lastBeat ? ' | Last heartbeat: ' + lastBeat.type + ' — ' + lastBeat.message.slice(0, 40) : '';
-      return '• [' + a.id + '] ' + a.prompt.slice(0, 60) + '\\n  Status: ' + a.status + ' | Branch: ' + a.branch + (a.pr ? ' | PR: #' + a.pr : '') + (a.hasReport ? ' | Report: available' : '') + (a.workflow ? ' | Workflow: ' + a.workflow : '') + hbStatus;
-    }).join('\\n\\n');
+    const fmt = reg.agents.map(a => '• [' + a.id + '] ' + a.prompt.slice(0, 60) + '\\n  Status: ' + a.status + ' | Branch: ' + a.branch + (a.pr ? ' | PR: #' + a.pr : '') + (a.hasReport ? ' | Report: available' : '') + (a.workflow ? ' | Workflow: ' + a.workflow : '')).join('\\n\\n');
     return { content: [{ type: 'text', text: 'Terminal agents:\\n\\n' + fmt }] };
   }
 
@@ -637,9 +455,7 @@ function handleTool(name, args) {
     const a = reg.agents.find(x => x.id === args.agent_id);
     if (!a) return { content: [{ type: 'text', text: 'Agent not found: ' + args.agent_id }], isError: true };
     if (a.status !== 'running') return { content: [{ type: 'text', text: 'Agent not running (status: ' + a.status + ')' }], isError: true };
-    // Instant ack heartbeat
-    recordHB(args.agent_id, { type: 'ack', beatIndex: -1, beatTime: 0, message: '...', metadata: { redirectMessage: (args.message || '').slice(0, 100) }, timestamp: new Date().toISOString() });
-    try { execSync('tmux send-keys -t "' + a.tmuxSession + '" "' + args.message.replace(/"/g, '\\\\"') + '" Enter', { stdio: 'pipe' }); return { content: [{ type: 'text', text: 'Redirect sent to ' + args.agent_id + ' (ack heartbeat recorded)' }] }; }
+    try { execSync('tmux send-keys -t "' + a.tmuxSession + '" "' + args.message.replace(/"/g, '\\\\"') + '" Enter', { stdio: 'pipe' }); return { content: [{ type: 'text', text: 'Redirect sent to ' + args.agent_id }] }; }
     catch (e) { return { content: [{ type: 'text', text: 'Redirect failed: ' + (e.message || e) }], isError: true }; }
   }
 
@@ -662,35 +478,12 @@ function handleTool(name, args) {
     catch { return { content: [{ type: 'text', text: 'No report found for ' + args.agent_id + '. Expected at: ' + rp }], isError: true }; }
   }
 
-  if (name === 'send_agent_heartbeat') {
-    const reg = loadRegistry();
-    const a = reg.agents.find(x => x.id === args.agent_id);
-    if (!a) return { content: [{ type: 'text', text: 'Agent not found: ' + args.agent_id }], isError: true };
-    const beatIndex = args.beat_index ?? -1;
-    const beat = { type: args.type, beatIndex, beatTime: beatIndex >= 0 && beatIndex < FIBONACCI_BEATS.length ? FIBONACCI_BEATS[beatIndex] : 0, message: args.message, metadata: args.metadata || {}, timestamp: new Date().toISOString() };
-    recordHB(args.agent_id, beat);
-    a.lastHeartbeat = beat; saveRegistry(reg);
-    return { content: [{ type: 'text', text: 'Heartbeat recorded for ' + args.agent_id + ': [' + args.type + '] ' + args.message }] };
-  }
-
-  if (name === 'get_agent_heartbeats') {
-    const reg = loadRegistry();
-    const a = reg.agents.find(x => x.id === args.agent_id);
-    if (!a) return { content: [{ type: 'text', text: 'Agent not found: ' + args.agent_id }], isError: true };
-    const store = loadHeartbeats();
-    let beats = store[args.agent_id] || [];
-    if (args.since_timestamp) { const since = new Date(args.since_timestamp).getTime(); beats = beats.filter(b => new Date(b.timestamp).getTime() > since); }
-    const lines = beats.map(b => '[' + b.type + '] beat=' + b.beatIndex + ' t=' + b.beatTime + 's — ' + b.message).join('\\n');
-    return { content: [{ type: 'text', text: beats.length > 0 ? 'Heartbeats for ' + args.agent_id + ' (' + beats.length + '):\\n' + lines : 'No heartbeats found for ' + args.agent_id }] };
-  }
-
   return { content: [{ type: 'text', text: 'Unknown tool: ' + name }], isError: true };
 }
 
 const TOOLS = ${JSON.stringify(getToolDefinitions(), null, 2)};
 
 function respond(id, result) { process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id, result }) + '\\n'); }
-function notify(method, params) { process.stdout.write(JSON.stringify({ jsonrpc: '2.0', method, params }) + '\\n'); }
 
 const rl = createInterface({ input: process.stdin });
 rl.on('line', (line) => {
@@ -698,7 +491,7 @@ rl.on('line', (line) => {
   try { msg = JSON.parse(line); } catch { return; }
 
   if (msg.method === 'initialize') {
-    respond(msg.id, { protocolVersion: '2024-11-05', capabilities: { tools: {}, notifications: { heartbeat: true } }, serverInfo: { name: 'terminal-agents', version: '2.0.0' } });
+    respond(msg.id, { protocolVersion: '2024-11-05', capabilities: { tools: {} }, serverInfo: { name: 'terminal-agents', version: '1.0.0' } });
   } else if (msg.method === 'notifications/initialized') {
     // no response needed
   } else if (msg.method === 'tools/list') {
@@ -706,10 +499,6 @@ rl.on('line', (line) => {
   } else if (msg.method === 'tools/call') {
     const result = handleTool(msg.params.name, msg.params.arguments || {});
     respond(msg.id, result);
-    // Emit heartbeat notification for streaming progress updates
-    if (msg.params.name === 'send_agent_heartbeat' && !result.isError) {
-      notify('notifications/heartbeat', { agent_id: (msg.params.arguments || {}).agent_id, type: (msg.params.arguments || {}).type, message: (msg.params.arguments || {}).message });
-    }
   } else if (msg.id) {
     respond(msg.id, { error: { code: -32601, message: 'Method not found' } });
   }
@@ -726,8 +515,6 @@ export function executeTool(name, args) {
     case 'redirect_terminal_agent': return redirectAgent(args);
     case 'stop_terminal_agent': return stopAgent(args);
     case 'get_agent_report': return getAgentReport(args);
-    case 'send_agent_heartbeat': return sendHeartbeat(args);
-    case 'get_agent_heartbeats': return fetchAgentHeartbeats(args);
     default: return { error: `Unknown tool: ${name}` };
   }
 }
