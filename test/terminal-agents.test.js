@@ -176,9 +176,9 @@ describe('Terminal Agents MCP server', () => {
     );
   });
 
-  it('should return 5 tool definitions', () => {
+  it('should return 7 tool definitions', () => {
     const tools = mcpModule.getToolDefinitions();
-    assert.equal(tools.length, 5, 'should have 5 tools');
+    assert.equal(tools.length, 7, 'should have 7 tools (5 original + 2 heartbeat)');
   });
 
   it('should include spawn_terminal_agent tool', () => {
