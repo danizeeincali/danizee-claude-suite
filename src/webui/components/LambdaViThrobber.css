@@ -1,0 +1,76 @@
+/* ── λVI Throbber ──────────────────────────────────────────────────── */
+
+.lvi-throbber {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5em;
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Cascadia Code', monospace;
+  user-select: none;
+}
+
+/* ── Characters ───────────────────────────────────────────────────── */
+
+.lvi-throbber__chars {
+  display: inline-flex;
+  letter-spacing: 0.05em;
+}
+
+.lvi-throbber__char {
+  display: inline-block;
+  transition: transform 0.12s ease-in-out, opacity 0.12s ease-in-out;
+}
+
+.lvi-throbber__char--flip {
+  transform: scaleY(0.6);
+  opacity: 0.6;
+}
+
+/* ── Sizes ────────────────────────────────────────────────────────── */
+
+.lvi-throbber--small {
+  font-size: 0.75rem;
+}
+
+.lvi-throbber--small .lvi-throbber__chars {
+  letter-spacing: 0.02em;
+}
+
+.lvi-throbber--medium {
+  font-size: 1rem;
+}
+
+.lvi-throbber--large {
+  font-size: 1.5rem;
+}
+
+.lvi-throbber--large .lvi-throbber__chars {
+  letter-spacing: 0.08em;
+}
+
+/* ── Label ────────────────────────────────────────────────────────── */
+
+.lvi-throbber__label {
+  color: var(--lvi-label-color, #888);
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
+/* ── Screen-reader-only text ──────────────────────────────────────── */
+
+.lvi-throbber__sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Color variants (set via CSS custom properties) ───────────────── */
+
+.lvi-throbber {
+  color: var(--lvi-color, currentColor);
+}

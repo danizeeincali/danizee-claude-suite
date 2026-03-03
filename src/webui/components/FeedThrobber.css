@@ -1,0 +1,17 @@
+/* ── Feed Throbber ────────────────────────────────────────────────── */
+
+.feed-throbber {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  padding: 0.15em 0.4em;
+  font-size: 0.8rem;
+  color: var(--feed-throbber-color, #777);
+  border-left: 2px solid var(--feed-throbber-accent, #c0c0c0);
+  margin-left: 0.25em;
+}
+
+.feed-throbber__action {
+  font-style: italic;
+  white-space: nowrap;
+}
