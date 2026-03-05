@@ -186,6 +186,7 @@ Use the `/w-` prefix for quick workflow invocation:
 | `/w-ralph-goals [idea]` | Interview to build Ralph spec |
 | `/w-ralph-pick [ID]` | Execute a Ralph candidate |
 | `/w-ralph-batch [mode]` | Batch process candidates |
+| `/w-suite-sync` | Sync features from upstream (additive-only) |
 
 **Example:**
 ```
@@ -1260,6 +1261,7 @@ During compound phases, patterns are logged to `.claude/ralph-candidates.md`:
 | Ralph Spec | `/w-ralph-goals` | "ralph goals for [idea]" | Build Ralph prompt |
 | Ralph Pick | `/w-ralph-pick` | "pick candidate RC-001" | Execute queued candidate |
 | Ralph Batch | `/w-ralph-batch` | "batch process candidates" | Batch/overnight runs |
+| Suite Sync | `/w-suite-sync` | "sync from upstream" | Additive-only upstream sync |
 
 ### Key Agents
 
