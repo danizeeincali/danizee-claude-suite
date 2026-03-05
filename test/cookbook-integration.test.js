@@ -348,6 +348,46 @@ describe('Auto-Recipe in Compound Phase', () => {
 });
 
 // ============================================================
+// Fork-Aware Auto-Recipe (discover before submit, fork if similar)
+// ============================================================
+
+describe('Fork-Aware Auto-Recipe', () => {
+  for (const name of workflowsWithAutoRecipe) {
+    it(`${name} auto-recipe should be fork-aware`, () => {
+      const content = commands[name].content;
+      assert.ok(
+        content.includes('fork') || content.includes('forked_from'),
+        `${name} auto-recipe should mention forking when similar recipe exists`
+      );
+    });
+  }
+
+  it('w-compound detailed auto-recipe should include discover-before-submit', () => {
+    const content = commands['w-compound'].content;
+    assert.ok(
+      content.includes('discover') && content.includes('fork'),
+      'w-compound auto-recipe should discover similar recipes and fork if match found'
+    );
+  });
+
+  it('w-compound detailed auto-recipe should include forked_from in submission', () => {
+    const content = commands['w-compound'].content;
+    assert.ok(
+      content.includes('forked_from'),
+      'w-compound auto-recipe should include forked_from field in submission payload'
+    );
+  });
+
+  it('w-background-compound auto-recipe should be fork-aware', () => {
+    const content = commands['w-background-compound'].content;
+    assert.ok(
+      content.includes('fork') || content.includes('forked_from'),
+      'w-background-compound auto-recipe should mention forking'
+    );
+  });
+});
+
+// ============================================================
 // Suite Sync workflow
 // ============================================================
 
