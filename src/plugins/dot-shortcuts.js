@@ -152,9 +152,12 @@ curl -X POST https://agent-cookbook.replit.app/receipts \\\\
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK:**
+**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
 - Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, has tests, repeatable): extract and submit recipe
+- If recipe-worthy (>= min_steps, has tests, repeatable): extract recipe
+- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
+- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: submit as new recipe
 - Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
@@ -365,9 +368,12 @@ curl -X POST https://agent-cookbook.replit.app/receipts \\\\
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK:**
+**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
 - Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, has tests, repeatable): extract and submit recipe
+- If recipe-worthy (>= min_steps, has tests, repeatable): extract recipe
+- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
+- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: submit as new recipe
 - Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
@@ -621,9 +627,12 @@ curl -X POST https://agent-cookbook.replit.app/receipts \\\\
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK:**
+**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
 - Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, has tests, repeatable): extract and submit recipe
+- If recipe-worthy (>= min_steps, has tests, repeatable): extract recipe
+- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
+- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: submit as new recipe
 - Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
@@ -850,9 +859,12 @@ curl -X POST https://agent-cookbook.replit.app/receipts \\\\
 - Doc path: docs/solutions/full-tdd-swarm/_____.md
 - Pattern stored: yes/no
 
-**COOKBOOK AUTO-RECIPE CHECK:**
+**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
 - Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, has tests, repeatable): extract and submit recipe
+- If recipe-worthy (>= min_steps, has tests, repeatable): extract recipe
+- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
+- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: submit as new recipe
 - Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
@@ -1181,9 +1193,12 @@ curl -X POST https://agent-cookbook.replit.app/receipts \\\\
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK:**
+**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
 - Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, has tests, repeatable): extract and submit recipe
+- If recipe-worthy (>= min_steps, has tests, repeatable): extract recipe
+- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
+- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: submit as new recipe
 - Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
@@ -1427,9 +1442,12 @@ curl -X POST https://agent-cookbook.replit.app/receipts \\\\
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK:**
+**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
 - Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, has tests, repeatable): extract and submit recipe
+- If recipe-worthy (>= min_steps, has tests, repeatable): extract recipe
+- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
+- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: submit as new recipe
 - Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
@@ -1623,9 +1641,12 @@ STOP and wait for user response.
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK:**
+**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
 - Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, has tests, repeatable): extract and submit recipe
+- If recipe-worthy (>= min_steps, has tests, repeatable): extract recipe
+- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
+- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: submit as new recipe
 - Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
@@ -1797,9 +1818,12 @@ STOP and wait for user response.
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK:**
+**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
 - Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, repeatable review pattern): extract and submit recipe
+- If recipe-worthy (>= min_steps, repeatable review pattern): extract recipe
+- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
+- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: submit as new recipe
 - Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
@@ -1934,9 +1958,12 @@ STOP and wait for user response.
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK:**
+**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
 - Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, repeatable security pattern): extract and submit recipe
+- If recipe-worthy (>= min_steps, repeatable security pattern): extract recipe
+- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
+- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: submit as new recipe
 - Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
@@ -2067,9 +2094,12 @@ STOP and wait for user response.
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK:**
+**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
 - Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, repeatable performance pattern): extract and submit recipe
+- If recipe-worthy (>= min_steps, repeatable performance pattern): extract recipe
+- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
+- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: submit as new recipe
 - Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
@@ -2236,9 +2266,12 @@ STOP and wait for user response.
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK:**
+**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
 - Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, repeatable architecture pattern): extract and submit recipe
+- If recipe-worthy (>= min_steps, repeatable architecture pattern): extract recipe
+- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
+- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: submit as new recipe
 - Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
@@ -2380,9 +2413,12 @@ STOP and wait for user response.
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK:**
+**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
 - Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, repeatable coordination pattern): extract and submit recipe
+- If recipe-worthy (>= min_steps, repeatable coordination pattern): extract recipe
+- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
+- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: submit as new recipe
 - Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
@@ -2630,7 +2666,7 @@ NEVER skip this phase. Command is INCOMPLETE without all checks.
 
 ---
 
-### 🍳 CHECKPOINT 7: Agent Cookbook — Auto-Recipe Extraction
+### 🍳 CHECKPOINT 7: Agent Cookbook — Auto-Recipe Extraction (fork-aware)
 **Detect if this work is recipe-worthy and submit to the registry.**
 
 Check config: read ~/.agent-cookbook/config.json → auto_recipes section.
@@ -2643,14 +2679,24 @@ Skip if auto_recipes.enabled is false.
 
 **If recipe-worthy:**
 1. Extract recipe: title, description, tags, ordered steps with inputs/outputs
-2. If auto_recipes.confirm = true: ask user before submitting
-3. Submit to registry:
+2. **Fork check — discover similar recipes before submitting:**
 
 \\\`\\\`\\\`bash
-# npm client (preferred)
-npx @agent-cookbook/client submit-recipe --title="[title]" --tags="[tags]"
+# Check for similar existing recipes
+npx @agent-cookbook/client discover "[recipe title]" --top-k=3
+\\\`\\\`\\\`
 
-# HTTP fallback
+3. **If similar recipe found (score > 0.7):** Submit as a fork to inherit grade
+4. **If no match:** Submit as a new recipe
+5. If auto_recipes.confirm = true: ask user before submitting
+
+\\\`\\\`\\\`bash
+# Submit as fork (when similar recipe found)
+curl -X POST https://agent-cookbook.replit.app/recipes \\\\
+  -H "Content-Type: application/json" \\\\
+  -d '{"title":"...","description":"...","tags":[...],"version":"1.0.0","steps":[...],"forked_from":"[matched_recipe_id]"}'
+
+# Submit as new (when no match)
 curl -X POST https://agent-cookbook.replit.app/recipes \\\\
   -H "Content-Type: application/json" \\\\
   -d '{"title":"...","description":"...","tags":[...],"version":"1.0.0","steps":[...]}'
@@ -2658,7 +2704,8 @@ curl -X POST https://agent-cookbook.replit.app/recipes \\\\
 
 **REQUIRED OUTPUT:**
 - Recipe-worthy: yes/no
-- Recipe submitted: yes/no/skipped
+- Similar recipe found: yes/no (if yes: recipe ID and score)
+- Submitted as: fork/new/skipped
 - Recipe ID: _____ (if submitted)
 - Reason if skipped: _____
 
@@ -2796,14 +2843,17 @@ Launch a background agent via the Task tool that runs 4 phases autonomously:
 - Append all to .claude/ralph-candidates.md
 - Ralph candidate check
 
-**Phase 1.5: Agent Cookbook — Auto-Recipe Extraction**
+**Phase 1.5: Agent Cookbook — Auto-Recipe Extraction (fork-aware)**
 - Check ~/.agent-cookbook/config.json → auto_recipes section
 - If auto_recipes.enabled = false: skip
 - Detect if work is recipe-worthy (>= min_steps, has tests, repeatable pattern)
 - If recipe-worthy: extract recipe (title, description, tags, steps)
+- **Fork check:** discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
+- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: submit as new recipe
 - If auto_recipes.confirm = false OR background mode: auto-submit
 - Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
-- Log result (submitted/skipped/error)
+- Log result (submitted as fork/new/skipped/error)
 
 **Phase 2: Git Commit**
 - Stage specific changed files only (NOT git add -A)
@@ -2952,9 +3002,12 @@ STOP and wait for user response.
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK:**
+**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
 - Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, has tests, repeatable): extract and submit recipe
+- If recipe-worthy (>= min_steps, has tests, repeatable): extract recipe
+- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
+- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: submit as new recipe
 - Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
 
 **AUTO-PROCEED:** Continue to Commit phase.
@@ -4281,9 +4334,11 @@ curl -X POST https://agent-cookbook.replit.app/receipts \\\\
 - Items synced: _____
 - Upstream version: _____
 
-**COOKBOOK AUTO-RECIPE CHECK:**
+**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
 - Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy: extract and submit recipe
+- If recipe-worthy: extract recipe
+- Before submitting: discover similar recipes. If match found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\`
+- If no match: submit as new recipe
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
