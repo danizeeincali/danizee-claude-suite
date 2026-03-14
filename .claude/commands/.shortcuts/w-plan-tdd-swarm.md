@@ -1,21 +1,19 @@
-# /w-bg-idea-tdd-swarm
+# /w-plan-tdd-swarm
 
-Background Idea → TDD Swarm - Interview to refine, then full auto-proceed build.
-
-**Philosophy:** The ONLY gate is the interview itself. Once user confirms the refined spec, everything else auto-proceeds through build, test, review, compound, and commit.
+Turn a half-baked idea into a well-built feature through deep interviewing + Full TDD Swarm.
 
 ## Usage
 ```
-/w-bg-idea-tdd-swarm [description or file path]
-/w-bg-idea-tdd-swarm user authentication system
-/w-bg-idea-tdd-swarm .claude/plans/auth-idea.md
+/w-plan-tdd-swarm [description or file path]
+/w-plan-tdd-swarm user authentication system
+/w-plan-tdd-swarm .claude/plans/auth-idea.md
 ```
 
 ---
 
 ## ⚠️ MANDATORY FIRST ACTION
 
-Use TodoWrite NOW to create todos for ALL phases:
+Use TaskCreate NOW to create todos for ALL phases:
 1. Search for past solutions
 2. Interview to refine idea
 3. Save refined spec
@@ -25,18 +23,16 @@ Use TodoWrite NOW to create todos for ALL phases:
 7. Build implementation (tests pass)
 8. Run full review
 9. Compound solution
-10. Git commit
 
-⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+⚠️ VIOLATION: Any action before TaskCreate = restart workflow
 
 ---
 
 ## Rules
 
-- Interview is the ONLY user gate - after confirmation, all phases auto-proceed
+- NEVER skip any phase gate
 - NEVER proceed to Build before all tests exist and FAIL
 - NEVER skip compound phase at the end
-- NEVER skip git commit phase at the end
 - NEVER skip the interview phase - ideas MUST be refined first
 - VIOLATION: Starting implementation without interview = restart workflow
 
@@ -44,7 +40,7 @@ Use TodoWrite NOW to create todos for ALL phases:
 
 ## Execution Protocol
 
-### Phase 0: Search
+### ⛔ CHECKPOINT 0: Search
 
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
@@ -59,11 +55,31 @@ Skip this block for non-UI tasks.
 - List of past solutions (0+ items with memory keys)
 - Relevance assessment for each
 
-**AUTO-PROCEED:** Continue to Interview phase.
+**AUTO-PROCEED:** Continue to next phase.
 
 ---
 
-### Phase 1: Interview (MANDATORY - ONLY USER GATE)
+### 🍳 CHECKPOINT 0.5: Agent Cookbook — Recipe Discovery
+**Search the cookbook registry for existing recipes matching this idea:**
+
+```bash
+# npm client (preferred)
+npx @agent-cookbook/client discover "[idea description]" --top-k=3
+
+# HTTP fallback
+curl -s "https://agent-cookbook.replit.app/discover?q=[idea description]&top_k=3"
+```
+
+**If matching recipes found:** Review steps for applicable patterns. Adapt proven approaches. Note recipe IDs for auto-receipt later.
+**If no matches:** Proceed normally.
+
+**REQUIRED OUTPUT:**
+- Cookbook recipes found: _____ (0+ results)
+- Applicable patterns: _____
+
+---
+
+### ⛔ CHECKPOINT 1: Interview (MANDATORY - NEVER SKIP)
 **Interview Categories:**
 
 **Technical & Architecture**
@@ -93,27 +109,34 @@ Skip this block for non-UI tasks.
 - Refined requirements list
 - Spec file: .claude/plans/YYYY-MM-DD-[name].md
 
+**After interview, PRINT the full spec content inline so the user can review it.**
+Display the complete spec — do not just say "here's the spec" without showing it.
+
 **USER GATE:** Use AskUserQuestion
-- Question: "Interview complete. Here's the refined spec. Proceed to autonomous build?"
+- Question: "Interview complete. Here's the refined spec (printed above). Proceed to Plan?"
 - Options: ["Continue", "Add more questions", "Revise spec"]
 
 STOP and wait for user response.
 
-**After user confirms: ALL remaining phases auto-proceed with no gates.**
-
 ---
 
-### Phase 2: Plan
+### ⛔ CHECKPOINT 2: Plan
 **REQUIRED OUTPUT:**
 - Architecture summary (3-5 bullets)
 - Files to create/modify (list)
 - Approach and rationale
 
-**AUTO-PROCEED:** Continue to Spec phase.
+**Print the full plan inline so the user can review it.**
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Plan complete (printed above). Proceed to Spec?"
+- Options: ["Continue", "Revise plan", "Show more detail"]
+
+STOP and wait for user response.
 
 ---
 
-### Phase 3: Spec
+### ⛔ CHECKPOINT 3: Spec
 **REQUIRED OUTPUT:**
 - Acceptance criteria (numbered list)
 - Test cases (numbered list)
@@ -122,7 +145,7 @@ STOP and wait for user response.
 
 ---
 
-### Phase 4: Tests (BLOCKING GATE)
+### ⛔ CHECKPOINT 4: Tests (BLOCKING GATE)
 **REQUIRED OUTPUT:**
 - Test file paths: _____
 - Test count: _____ tests written
@@ -138,7 +161,7 @@ NEVER proceed to Build until:
 
 ---
 
-### Phase 5: Build
+### ⛔ CHECKPOINT 5: Build
 
 **RuFlo Swarm Execution (optional — for complex builds):**
 If the implementation is complex enough to benefit from parallel agents, initialize a ruflo swarm:
@@ -168,7 +191,7 @@ Skip this block for non-UI tasks.
 
 ---
 
-### Phase 6: Review
+### ⛔ CHECKPOINT 6: Review
 
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
@@ -190,7 +213,36 @@ Skip this block for non-UI tasks.
 
 ---
 
-### Phase 7: Compound (MANDATORY - NEVER SKIP)
+### 🍳 CHECKPOINT 6.5: Agent Cookbook — Auto-Receipt
+**Submit proof-of-execution to the cookbook registry.**
+
+Check config: read ~/.agent-cookbook/config.json → auto_receipts section.
+Skip if auto_receipts.enabled is false.
+
+**Grade calculation:**
+- correctness: 1.0 if all tests pass, 0.0 if any fail
+- test_coverage: coverage percentage if available (0.0-1.0)
+
+**Submit only if:** tests pass AND grade >= auto_receipts.min_grade (default: 0.8)
+
+```bash
+# npm client (preferred)
+npx @agent-cookbook/client submit-receipt --recipe-id=[id] --grade=[grade]
+
+# HTTP fallback
+curl -X POST https://agent-cookbook.replit.app/receipts \
+  -H "Content-Type: application/json" \
+  -d '{"target_id":"[id]","target_type":"recipe","grade":[grade],"timestamp":"[now]"}'
+```
+
+**REQUIRED OUTPUT:**
+- Receipt submitted: yes/no/skipped
+- Grade: _____
+- Reason if skipped: _____
+
+---
+
+### ⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)
 **REQUIRED OUTPUT:**
 - Memory key: project/ideas/_____
 - Doc path: docs/solutions/ideas/_____.md
@@ -201,43 +253,35 @@ Skip this block for non-UI tasks.
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
+**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
+- Check ~/.agent-cookbook/config.json → auto_recipes section
+- If recipe-worthy (>= min_steps, has tests, repeatable): extract recipe
+- Before submitting: discover similar recipes via `npx @agent-cookbook/client discover "[title]" --top-k=3`
+- If similar recipe found (score > 0.7): submit as fork with `"forked_from": "[matched_recipe_id]"` to inherit grade
+- If no match: submit as new recipe
+- Submit via: `npx @agent-cookbook/client submit-recipe` or `curl -X POST https://agent-cookbook.replit.app/recipes`
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
-
-**AUTO-PROCEED:** Continue to Git Commit phase.
-
----
-
-### Phase 8: Git Commit (MANDATORY - NEVER SKIP)
-**REQUIRED OUTPUT:**
-- Commit hash: _____
-- Files committed: _____
-- Branch: _____
-
-Commit all changes with a descriptive message including:
-- Feature description from refined spec
-- Workflow: /w-bg-idea-tdd-swarm
-- Files changed count and tests added count
-- Co-author attribution
-
-NEVER skip this phase. Workflow is INCOMPLETE without commit.
 
 ---
 
 ## Completion Checklist
 
 Before marking workflow complete, verify ALL boxes:
-- [ ] TodoWrite used at start with all 10 phases
+- [ ] TaskCreate used at start with all 9 phases
+- [ ] All checkpoints completed
+- [ ] Checkpoints 4-7 completed (auto-proceed)
 - [ ] Interview conducted with multiple questions
-- [ ] User confirmed refined spec (only gate)
-- [ ] All remaining phases auto-proceeded
 - [ ] Refined spec saved to .claude/plans/
 - [ ] All required outputs generated
-- [ ] Tests failed before build, all pass after
+- [ ] All tests pass
+- [ ] Cookbook discovery completed (CHECKPOINT 0.5)
+- [ ] Cookbook auto-receipt submitted if applicable (CHECKPOINT 6.5)
 - [ ] Compound phase executed
-- [ ] Git commit executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
 - [ ] Ralph candidate check completed
+- [ ] Cookbook auto-recipe check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -250,5 +294,5 @@ Spec: .claude/plans/YYYY-MM-DD-[name].md
 
 ## Example
 ```
-/w-bg-idea-tdd-swarm I want some kind of notification system but I'm not sure exactly what
+/w-plan-tdd-swarm I want some kind of notification system but I'm not sure exactly what
 ```

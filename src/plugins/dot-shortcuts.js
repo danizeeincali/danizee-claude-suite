@@ -49,6 +49,16 @@ Use TodoWrite NOW to create todos for ALL phases:
 ## Execution Protocol
 
 ### ⛔ CHECKPOINT 0: Search
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to screenshot the current state before changes
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+3. Note current UI state for comparison after build
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - List of related patterns (0+ items with memory keys)
 - Relevance assessment for each
@@ -102,6 +112,16 @@ STOP and wait for user response.
 ---
 
 ### ⛔ CHECKPOINT 2: Execution Complete
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to verify the implementation visually
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+3. Compare against pre-change screenshots from Search phase
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - Completed work summary per agent
 - Files created/modified: _____
@@ -143,6 +163,16 @@ curl -X POST https://agent-cookbook.replit.app/receipts \\\\
 ---
 
 ### ⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Final visual verification with agent-browser
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+3. Verify responsive layout, dark mode, accessibility
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - Memory key: project/implementations/_____
 - Doc path: docs/solutions/implementations/_____.md
@@ -237,6 +267,16 @@ Use TodoWrite NOW to create todos for ALL phases:
 ## Execution Protocol
 
 ### ⛔ CHECKPOINT 0: Search
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to screenshot the current state before changes
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+3. Note current UI state for comparison after build
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - List of past solutions (0+ items with memory keys)
 - Relevance assessment for each
@@ -309,6 +349,16 @@ NEVER proceed to Build until:
 ---
 
 ### ⛔ CHECKPOINT 4: Build
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to verify the implementation visually
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+3. Compare against pre-change screenshots from Search phase
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - Implementation file paths: _____
 - Test run result: "All _____ tests PASS"
@@ -318,6 +368,16 @@ NEVER proceed to Build until:
 ---
 
 ### ⛔ CHECKPOINT 5: Review
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Final visual verification with agent-browser
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+3. Verify responsive layout, dark mode, accessibility
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 | Category | Finding | Severity |
 |----------|---------|----------|
@@ -411,25 +471,25 @@ Doc: docs/solutions/full-tdd-swarm/[feature-name].md
 `
     },
 
-    'w-interview-tdd-swarm': {
-      name: 'w-interview-tdd-swarm',
-      description: 'Interview to TDD Swarm - Deep interview refines idea, then Full TDD Swarm builds it',
-      content: `# /w-interview-tdd-swarm
+    'w-plan-tdd-swarm': {
+      name: 'w-plan-tdd-swarm',
+      description: 'Plan to TDD Swarm - Deep interview refines idea, then Full TDD Swarm builds it',
+      content: `# /w-plan-tdd-swarm
 
 Turn a half-baked idea into a well-built feature through deep interviewing + Full TDD Swarm.
 
 ## Usage
 \`\`\`
-/w-interview-tdd-swarm [description or file path]
-/w-interview-tdd-swarm user authentication system
-/w-interview-tdd-swarm .claude/plans/auth-idea.md
+/w-plan-tdd-swarm [description or file path]
+/w-plan-tdd-swarm user authentication system
+/w-plan-tdd-swarm .claude/plans/auth-idea.md
 \`\`\`
 
 ---
 
 ## ⚠️ MANDATORY FIRST ACTION
 
-Use TodoWrite NOW to create todos for ALL phases:
+Use TaskCreate NOW to create todos for ALL phases:
 1. Search for past solutions
 2. Interview to refine idea
 3. Save refined spec
@@ -440,13 +500,13 @@ Use TodoWrite NOW to create todos for ALL phases:
 8. Run full review
 9. Compound solution
 
-⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+⚠️ VIOLATION: Any action before TaskCreate = restart workflow
 
 ---
 
 ## Rules
 
-- NEVER skip checkpoints - each requires user confirmation
+- NEVER skip checkpoints
 - NEVER proceed to Build before all tests exist and FAIL
 - NEVER skip compound phase at the end
 - NEVER skip the interview phase - ideas MUST be refined first
@@ -457,15 +517,21 @@ Use TodoWrite NOW to create todos for ALL phases:
 ## Execution Protocol
 
 ### ⛔ CHECKPOINT 0: Search
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to screenshot the current state before changes
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+3. Note current UI state for comparison after build
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - List of past solutions (0+ items with memory keys)
 - Relevance assessment for each
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Found [N] past solutions. Proceed to Interview or use existing?"
-- Options: ["Proceed to Interview", "Use existing solution", "Show more detail"]
-
-STOP and wait for user response.
+**AUTO-PROCEED:** Continue to next phase.
 
 ---
 
@@ -519,8 +585,11 @@ curl -s "https://agent-cookbook.replit.app/discover?q=[idea description]&top_k=3
 - Refined requirements list
 - Spec file: .claude/plans/YYYY-MM-DD-[name].md
 
+**After interview, PRINT the full spec content inline so the user can review it.**
+Display the complete spec — do not just say "here's the spec" without showing it.
+
 **USER GATE:** Use AskUserQuestion
-- Question: "Interview complete. Here's the refined spec. Proceed to Plan?"
+- Question: "Interview complete. Here's the refined spec (printed above). Proceed to Plan?"
 - Options: ["Continue", "Add more questions", "Revise spec"]
 
 STOP and wait for user response.
@@ -533,8 +602,10 @@ STOP and wait for user response.
 - Files to create/modify (list)
 - Approach and rationale
 
+**Print the full plan inline so the user can review it.**
+
 **USER GATE:** Use AskUserQuestion
-- Question: "Plan complete. Proceed to Spec?"
+- Question: "Plan complete (printed above). Proceed to Spec?"
 - Options: ["Continue", "Revise plan", "Show more detail"]
 
 STOP and wait for user response.
@@ -567,6 +638,27 @@ NEVER proceed to Build until:
 ---
 
 ### ⛔ CHECKPOINT 5: Build
+
+**RuFlo Swarm Execution (optional — for complex builds):**
+If the implementation is complex enough to benefit from parallel agents, initialize a ruflo swarm:
+\\\`\\\`\\\`bash
+npx ruflo@latest swarm init --topology hierarchical --agents 3
+npx ruflo@latest agent spawn --domain core --role coder --task "Implement core feature logic"
+npx ruflo@latest agent spawn --domain support --role tester --task "Verify tests pass with implementation"
+npx ruflo@latest agent spawn --domain support --role reviewer --task "Review implementation quality"
+\\\`\\\`\\\`
+Alternatively, use the Agent tool to spawn parallel agents with \\\`isolation: "worktree"\\\`.
+For simple builds, proceed with serial implementation.
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to verify the implementation visually
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+3. Compare against pre-change screenshots from Search phase
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - Implementation file paths: _____
 - Test run result: "All _____ tests PASS"
@@ -576,6 +668,16 @@ NEVER proceed to Build until:
 ---
 
 ### ⛔ CHECKPOINT 6: Review
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Final visual verification with agent-browser
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+3. Verify responsive layout, dark mode, accessibility
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 | Category | Finding | Severity |
 |----------|---------|----------|
@@ -642,8 +744,8 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 ## Completion Checklist
 
 Before marking workflow complete, verify ALL boxes:
-- [ ] TodoWrite used at start with all 9 phases
-- [ ] Checkpoints 0-3 completed with user confirmation
+- [ ] TaskCreate used at start with all 9 phases
+- [ ] All checkpoints completed
 - [ ] Checkpoints 4-7 completed (auto-proceed)
 - [ ] Interview conducted with multiple questions
 - [ ] Refined spec saved to .claude/plans/
@@ -668,7 +770,7 @@ Spec: .claude/plans/YYYY-MM-DD-[name].md
 
 ## Example
 \`\`\`
-/w-interview-tdd-swarm I want some kind of notification system but I'm not sure exactly what
+/w-plan-tdd-swarm I want some kind of notification system but I'm not sure exactly what
 \`\`\`
 `
     },
@@ -1096,6 +1198,16 @@ Use TodoWrite NOW to create todos for ALL phases:
 ## Execution Protocol
 
 ### ⛔ CHECKPOINT 0: Search
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to screenshot the current state before changes
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+3. Note current UI state for comparison after build
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - List of similar bugs (0+ items with memory keys)
 - Relevance assessment for each
@@ -1143,6 +1255,16 @@ STOP and wait for user response.
 ---
 
 ### ⛔ CHECKPOINT 2: Fix Applied
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to verify the implementation visually
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+3. Compare against pre-change screenshots from Search phase
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - Files modified: _____
 - Changes summary: _____
@@ -1315,6 +1437,16 @@ curl -s "https://agent-cookbook.replit.app/discover?q=[bug/issue description]&to
 ---
 
 ### ⛔ CHECKPOINT 1: Analysis
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to screenshot the current state before changes
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+3. Note current UI state for comparison after build
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - Initial findings summary
 - Hypotheses list (numbered, prioritized)
@@ -1381,6 +1513,16 @@ NEVER proceed to Build until:
 ---
 
 ### ⛔ CHECKPOINT 5: Build
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to verify the implementation visually
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+3. Compare against pre-change screenshots from Search phase
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - Implementation file paths: _____
 - Test run result: "All _____ tests PASS"
@@ -1391,6 +1533,16 @@ NEVER proceed to Build until:
 ---
 
 ### ⛔ CHECKPOINT 6: Review
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Final visual verification with agent-browser
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+3. Verify responsive layout, dark mode, accessibility
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 | Category | Finding | Severity |
 |----------|---------|----------|
@@ -1527,6 +1679,16 @@ Use TodoWrite NOW to create todos for ALL phases:
 ## Execution Protocol
 
 ### ⛔ CHECKPOINT 0: Search
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to screenshot the current state before changes
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+3. Note current UI state for comparison after build
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - List of similar incidents (0+ items with memory keys)
 - Relevance assessment for each
@@ -1574,6 +1736,16 @@ STOP and wait for user response.
 ---
 
 ### ⛔ CHECKPOINT 2: Fix Applied
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to verify the implementation visually
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+3. Compare against pre-change screenshots from Search phase
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - Files modified: _____
 - Changes summary (minimal): _____
@@ -1615,6 +1787,16 @@ curl -X POST https://agent-cookbook.replit.app/receipts \\\\
 ---
 
 ### ⛔ CHECKPOINT 3: Security Review (MANDATORY - NEVER SKIP)
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Final visual verification with agent-browser
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+3. Verify responsive layout, dark mode, accessibility
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 | Check | Status | Notes |
 |-------|--------|-------|
@@ -1735,6 +1917,16 @@ Use TodoWrite NOW to create todos for ALL phases:
 ## Execution Protocol
 
 ### ⛔ CHECKPOINT 0: Search
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to screenshot the current state before changes
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+3. Note current UI state for comparison after build
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - List of past reviews (0+ items with memory keys)
 - Relevance assessment for each
@@ -1748,6 +1940,16 @@ STOP and wait for user response.
 ---
 
 ### ⛔ CHECKPOINT 1: Code Analysis
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to verify the implementation visually
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+3. Compare against pre-change screenshots from Search phase
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 | Category | Finding | Severity |
 |----------|---------|----------|
@@ -1910,6 +2112,16 @@ Use TodoWrite NOW to create todos for ALL phases:
 ## Execution Protocol
 
 ### ⛔ CHECKPOINT 0: Search
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to screenshot the current state before changes
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+3. Note current UI state for comparison after build
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - List of past security findings (0+ items with memory keys)
 - Relevance assessment for each
@@ -1923,6 +2135,16 @@ STOP and wait for user response.
 ---
 
 ### ⛔ CHECKPOINT 1: Scan Complete
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to verify the implementation visually — focus on security-related UI aspects, auth flows, input sanitization display
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+3. Compare against pre-change screenshots from Search phase
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 | Category | Finding | Severity | Location |
 |----------|---------|----------|----------|
@@ -1939,6 +2161,16 @@ STOP and wait for user response.
 ---
 
 ### ⛔ CHECKPOINT 2: Analysis Done
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Final visual verification with agent-browser
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+3. Verify responsive layout, dark mode, accessibility
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - Risk assessment summary
 - Prioritized remediation list (by severity)
@@ -2047,6 +2279,16 @@ Use TodoWrite NOW to create todos for ALL phases:
 ## Execution Protocol
 
 ### ⛔ CHECKPOINT 0: Search
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to screenshot the current state before changes
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+3. Note current UI state for comparison after build
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - List of past optimizations (0+ items with memory keys)
 - Relevance assessment for each
@@ -2060,6 +2302,16 @@ STOP and wait for user response.
 ---
 
 ### ⛔ CHECKPOINT 1: Profiling Done
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to verify the implementation visually
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+3. Compare against pre-change screenshots from Search phase
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 | Category | Finding | Impact | Location |
 |----------|---------|--------|----------|
@@ -2075,6 +2327,16 @@ STOP and wait for user response.
 ---
 
 ### ⛔ CHECKPOINT 2: Analysis Complete
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Final visual verification with agent-browser — focus on performance impact, load times, rendering
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+3. Verify responsive layout, dark mode, accessibility
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - Prioritized recommendations (by impact)
 - Estimated improvement metrics
@@ -2174,6 +2436,16 @@ Use TodoWrite NOW to create todos for ALL phases:
 ## Execution Protocol
 
 ### ⛔ CHECKPOINT 0: Search
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to screenshot the current state before changes
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+3. Note current UI state for comparison after build
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - List of related ADRs (0+ items with memory keys)
 - Relevance assessment for each
@@ -2242,6 +2514,16 @@ STOP and wait for user response.
 ---
 
 ### ⛔ CHECKPOINT 3: Consensus Reached
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Final visual verification with agent-browser
+2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+3. Verify responsive layout, dark mode, accessibility
+
+If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - Recommended design: _____
 - Rationale: _____

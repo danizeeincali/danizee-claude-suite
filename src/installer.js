@@ -10,7 +10,9 @@ import { execSync } from 'child_process';
 import { runConflictChecks } from './utils/conflicts.js';
 import { mergeSettings, removeSettings, readSettings } from './utils/settings.js';
 import { writeWorkflowShortcuts, shortcutsExist } from './utils/shortcuts.js';
-import * as claudeFlow from './plugins/claude-flow.js';
+import * as ruflo from './plugins/ruflo.js';
+// Backward compat alias
+const claudeFlow = ruflo;
 import * as compoundEngineering from './plugins/compound-engineering.js';
 import * as frontendDesign from './plugins/frontend-design.js';
 import * as dotShortcuts from './plugins/dot-shortcuts.js';
@@ -260,7 +262,7 @@ echo "See WORKFLOW-SHORTCUTS.md for complete documentation."
 # Setup Claude Flow MCP Server
 
 echo "Setting up Claude Flow MCP server..."
-npx claude-flow@v3alpha mcp start
+npx ruflo@latest mcp start
 
 echo ""
 echo "MCP server started. You can now use memory and swarm operations."

@@ -48,6 +48,16 @@ Use TodoWrite NOW to create todos for ALL phases:
 ## Execution Protocol
 
 ### Phase 0: Search
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to screenshot the current state before changes
+2. `agent-browser open <url>` → `agent-browser screenshot`
+3. Note current UI state for comparison after build
+
+If agent-browser is not available, prompt: `npx playwright install`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - List of past security findings (0+ items with memory keys)
 - Relevance assessment for each
@@ -57,6 +67,16 @@ Use TodoWrite NOW to create todos for ALL phases:
 ---
 
 ### Phase 1: Scan Complete
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to verify the implementation visually
+2. `agent-browser open <url>` → `agent-browser snapshot -i` → verify elements
+3. Compare against pre-change screenshots from Search phase
+
+If agent-browser is not available, prompt: `npx playwright install`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 | Category | Finding | Severity | Location |
 |----------|---------|----------|----------|
@@ -73,6 +93,16 @@ Use TodoWrite NOW to create todos for ALL phases:
 ---
 
 ### Phase 2: Analysis Done
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Final visual verification with agent-browser
+2. `agent-browser open <url>` → `agent-browser screenshot` → compare before/after
+3. Verify responsive layout, dark mode, accessibility
+
+If agent-browser is not available, prompt: `npx playwright install`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - Risk assessment summary
 - Prioritized remediation list (by severity)

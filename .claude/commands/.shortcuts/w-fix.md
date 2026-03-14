@@ -33,6 +33,16 @@ Use TodoWrite NOW to create todos for ALL phases:
 ## Execution Protocol
 
 ### ⛔ CHECKPOINT 0: Search
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to screenshot the current state before changes
+2. `agent-browser open <url>` → `agent-browser screenshot`
+3. Note current UI state for comparison after build
+
+If agent-browser is not available, prompt: `npx playwright install`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - List of similar bugs (0+ items with memory keys)
 - Relevance assessment for each
@@ -60,6 +70,16 @@ STOP and wait for user response.
 ---
 
 ### ⛔ CHECKPOINT 2: Fix Applied
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to verify the implementation visually
+2. `agent-browser open <url>` → `agent-browser snapshot -i` → verify elements
+3. Compare against pre-change screenshots from Search phase
+
+If agent-browser is not available, prompt: `npx playwright install`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - Files modified: _____
 - Changes summary: _____

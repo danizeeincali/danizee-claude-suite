@@ -3,26 +3,26 @@
     "version": "1.0.0",
     "installedAt": "2026-01-20T04:04:46.006Z",
     "plugins": {
-      "claude-flow": true,
+      "ruflo": true,
       "compound-engineering": true,
       "frontend-design": true
     },
     "updatedAt": "2026-01-20T04:04:46.006Z"
   },
   "mcpServers": {
-    "claude-flow": {
+    "ruflo": {
       "command": "npx",
       "args": [
-        "claude-flow@v3alpha",
+        "ruflo@latest",
         "mcp",
         "start"
       ],
-      "description": "Claude Flow multi-agent orchestration with memory and swarm support"
+      "description": "RuFlo multi-agent orchestration — swarm, memory, consensus, and topology support"
     }
   },
   "permissions": {
     "allow": [
-      "Bash(npx claude-flow:*)",
+      "Bash(npx ruflo:*)",
       "Bash(git worktree:*)",
       "Read(docs/solutions/**)",
       "Write(docs/solutions/**)"
@@ -34,8 +34,8 @@
     "danizee-compound-docs": true
   },
   "plugins": {
-    "claude-flow": {
-      "namespace": "danizee-flow",
+    "ruflo": {
+      "namespace": "danizee-ruflo",
       "swarm": {
         "topologies": [
           "hierarchical",
@@ -43,7 +43,11 @@
           "ring",
           "star"
         ],
-        "defaultTopology": "hierarchical"
+        "defaultTopology": "hierarchical",
+        "defaultAgents": 5,
+        "maxAgents": 15,
+        "domains": ["queen", "security", "core", "integration", "support"],
+        "consensus": ["raft", "byzantine", "gossip", "crdt", "quorum"]
       },
       "memory": {
         "enabled": true,

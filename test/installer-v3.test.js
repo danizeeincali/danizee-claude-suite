@@ -35,8 +35,9 @@ describe('Installer v3 — Coding Mode (default)', () => {
     assert.ok(files.includes('w-swarm.md'));
     assert.ok(files.includes('w-fix.md'));
     // Renamed command
-    assert.ok(files.includes('w-interview-tdd-swarm.md'), 'w-idea-tdd-swarm should be renamed to w-interview-tdd-swarm');
+    assert.ok(files.includes('w-plan-tdd-swarm.md'), 'w-idea-tdd-swarm should be renamed to w-plan-tdd-swarm');
     assert.ok(!files.includes('w-idea-tdd-swarm.md'), 'w-idea-tdd-swarm should no longer exist');
+    assert.ok(!files.some(f => f.includes('interview')), 'old interview name should no longer exist');
     // New command
     assert.ok(files.includes('w-background-compound.md'));
   });
@@ -186,7 +187,7 @@ describe('Installer v3 — Backward Compatibility', () => {
       'w-end.md', 'w-multi-repo.md', 'w-ralph-this.md', 'w-ralph-goals.md',
       'w-ralph-pick.md', 'w-ralph-batch.md',
       // Renamed
-      'w-interview-tdd-swarm.md',
+      'w-plan-tdd-swarm.md',
       // New
       'w-background-compound.md'
     ];

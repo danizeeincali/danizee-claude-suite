@@ -54,6 +54,16 @@ Use TodoWrite NOW to create todos for ALL phases:
 ---
 
 ### Phase 1: Analysis
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to screenshot the current state before changes
+2. `agent-browser open <url>` → `agent-browser screenshot`
+3. Note current UI state for comparison after build
+
+If agent-browser is not available, prompt: `npx playwright install`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - Initial findings summary
 - Hypotheses list (numbered, prioritized)
@@ -107,6 +117,27 @@ NEVER proceed to Build until:
 ---
 
 ### Phase 5: Build
+
+**RuFlo Swarm Execution (optional — for complex fixes):**
+If the fix spans multiple files or requires parallel investigation, initialize a ruflo swarm:
+```bash
+npx ruflo@latest swarm init --topology hierarchical --agents 3
+npx ruflo@latest agent spawn --domain core --role coder --task "Implement the fix"
+npx ruflo@latest agent spawn --domain support --role tester --task "Verify regression tests pass"
+npx ruflo@latest agent spawn --domain security --role security-sentinel --task "Check fix doesn't introduce vulnerabilities"
+```
+Alternatively, use the Agent tool to spawn parallel agents with `isolation: "worktree"`.
+For simple fixes, proceed with serial implementation.
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to verify the implementation visually
+2. `agent-browser open <url>` → `agent-browser snapshot -i` → verify elements
+3. Compare against pre-change screenshots from Search phase
+
+If agent-browser is not available, prompt: `npx playwright install`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 - Implementation file paths: _____
 - Test run result: "All _____ tests PASS"
@@ -117,6 +148,16 @@ NEVER proceed to Build until:
 ---
 
 ### Phase 6: Review
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Final visual verification with agent-browser
+2. `agent-browser open <url>` → `agent-browser screenshot` → compare before/after
+3. Verify responsive layout, dark mode, accessibility
+
+If agent-browser is not available, prompt: `npx playwright install`
+Skip this block for non-UI tasks.
+
 **REQUIRED OUTPUT:**
 | Category | Finding | Severity |
 |----------|---------|----------|
