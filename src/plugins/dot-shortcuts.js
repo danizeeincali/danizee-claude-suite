@@ -1001,7 +1001,7 @@ Quick self-review. Fix any critical/high findings before proceeding.
 **RETRY LOGIC (max 3 retries):**
 - PASS → proceed to next phase
 - FAIL + retries remaining → log failure reason, fix the issue, re-verify
-- FAIL + max retries exceeded → escalate to user with AskUserQuestion
+- FAIL + max retries exceeded → log error and mark workflow as FAILED
 
 ---
 

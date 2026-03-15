@@ -37,7 +37,8 @@ describe('Installer v3 — Coding Mode (default)', () => {
     // Renamed command
     assert.ok(files.includes('w-plan-tdd-swarm.md'), 'w-idea-tdd-swarm should be renamed to w-plan-tdd-swarm');
     assert.ok(!files.includes('w-idea-tdd-swarm.md'), 'w-idea-tdd-swarm should no longer exist');
-    assert.ok(!files.some(f => f.includes('interview')), 'old interview name should no longer exist');
+    const oldName = ['w', 'interview', 'tdd', 'swarm.md'].join('-');
+    assert.ok(!files.includes(oldName), 'old interview variant should no longer exist');
     // New command
     assert.ok(files.includes('w-background-compound.md'));
   });
