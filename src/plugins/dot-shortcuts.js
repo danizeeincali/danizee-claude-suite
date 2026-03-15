@@ -71,22 +71,22 @@ STOP and wait for user response.
 
 ---
 
-### 🍳 CHECKPOINT 0.5: Agent Cookbook — Recipe Discovery
-**Search the cookbook registry for existing recipes matching this task:**
+### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
+**Search the Pi Brain network for existing knowledge matching this task:**
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx @agent-cookbook/client discover "[task description]" --top-k=3
+npx ruvector brain search "[task description]" --top-k=3
 
 # HTTP fallback
-curl -s "https://agent-cookbook.replit.app/discover?q=[task description]&top_k=3"
+curl -s "https://pi.ruv.io/v1/memories/search?q=[task description]&top_k=3"
 \\\`\\\`\\\`
 
-**If matching recipes found:** Review steps for applicable patterns. Adapt proven approaches. Note recipe IDs for auto-receipt later.
+**If matching memories found:** Review steps for applicable patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
 
 **REQUIRED OUTPUT:**
-- Cookbook recipes found: _____ (0+ results)
+- Pi Brain memories found: _____ (0+ results)
 - Applicable patterns: _____
 
 ---
@@ -131,30 +131,30 @@ Skip this block for non-UI tasks.
 
 ---
 
-### 🍳 CHECKPOINT 2.5: Agent Cookbook — Auto-Receipt
-**Submit proof-of-execution to the cookbook registry.**
+### 🧠 CHECKPOINT 2.5: Pi Brain — Auto-Vote
+**Submit proof-of-execution to the Pi Brain network.**
 
-Check config: read ~/.agent-cookbook/config.json → auto_receipts section.
-Skip if auto_receipts.enabled is false.
+Check config: read ~/.ruvector/config.json → auto_votes section.
+Skip if auto_votes.enabled is false.
 
 **Grade calculation:**
 - correctness: 1.0 if all tests pass, 0.0 if any fail
 - test_coverage: coverage percentage if available (0.0-1.0)
 
-**Submit only if:** tests pass AND grade >= auto_receipts.min_grade (default: 0.8)
+**Submit only if:** tests pass AND grade >= auto_votes.min_grade (default: 0.8)
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx @agent-cookbook/client submit-receipt --recipe-id=[id] --grade=[grade]
+npx ruvector brain vote --memory-id=[id] --direction=up
 
 # HTTP fallback
-curl -X POST https://agent-cookbook.replit.app/receipts \\\\
+curl -X POST https://pi.ruv.io/v1/memories/[id]/vote \\\\
   -H "Content-Type: application/json" \\\\
-  -d '{"target_id":"[id]","target_type":"recipe","grade":[grade],"timestamp":"[now]"}'
+  -d '{"direction":"up","context":"workflow-verified","grade":[grade]}'
 \\\`\\\`\\\`
 
 **REQUIRED OUTPUT:**
-- Receipt submitted: yes/no/skipped
+- Vote submitted: yes/no/skipped
 - Grade: _____
 - Reason if skipped: _____
 
@@ -182,13 +182,13 @@ Skip this block for non-UI tasks.
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
-- Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, has tests, repeatable): extract recipe
-- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
-- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: submit as new recipe
-- Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
+**PI BRAIN AUTO-SHARE CHECK:**
+- Check ~/.ruvector/config.json → auto_share section
+- If knowledge-worthy (>= min_steps, has tests, repeatable): extract pattern
+- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
+- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: share as new memory
+- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -201,13 +201,13 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Checkpoints 0-1 completed with user confirmation
 - [ ] Checkpoints 2-3 completed (auto-proceed)
 - [ ] All required outputs generated
-- [ ] Cookbook discovery completed (CHECKPOINT 0.5)
-- [ ] Cookbook auto-receipt submitted if applicable (CHECKPOINT 2.5)
+- [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
+- [ ] Pi Brain auto-vote submitted if applicable (CHECKPOINT 2.5)
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Cookbook auto-recipe check completed
+- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -289,22 +289,22 @@ STOP and wait for user response.
 
 ---
 
-### 🍳 CHECKPOINT 0.5: Agent Cookbook — Recipe Discovery
-**Search the cookbook registry for existing recipes matching this feature:**
+### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
+**Search the Pi Brain network for existing knowledge matching this feature:**
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx @agent-cookbook/client discover "[feature description]" --top-k=3
+npx ruvector brain search "[feature description]" --top-k=3
 
 # HTTP fallback
-curl -s "https://agent-cookbook.replit.app/discover?q=[feature description]&top_k=3"
+curl -s "https://pi.ruv.io/v1/memories/search?q=[feature description]&top_k=3"
 \\\`\\\`\\\`
 
-**If matching recipes found:** Review steps for applicable patterns. Adapt proven approaches. Note recipe IDs for auto-receipt later.
+**If matching memories found:** Review steps for applicable patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
 
 **REQUIRED OUTPUT:**
-- Cookbook recipes found: _____ (0+ results)
+- Pi Brain memories found: _____ (0+ results)
 - Applicable patterns: _____
 
 ---
@@ -389,30 +389,30 @@ Skip this block for non-UI tasks.
 
 ---
 
-### 🍳 CHECKPOINT 5.5: Agent Cookbook — Auto-Receipt
-**Submit proof-of-execution to the cookbook registry.**
+### 🧠 CHECKPOINT 5.5: Pi Brain — Auto-Vote
+**Submit proof-of-execution to the Pi Brain network.**
 
-Check config: read ~/.agent-cookbook/config.json → auto_receipts section.
-Skip if auto_receipts.enabled is false.
+Check config: read ~/.ruvector/config.json → auto_votes section.
+Skip if auto_votes.enabled is false.
 
 **Grade calculation:**
 - correctness: 1.0 if all tests pass, 0.0 if any fail
 - test_coverage: coverage percentage if available (0.0-1.0)
 
-**Submit only if:** tests pass AND grade >= auto_receipts.min_grade (default: 0.8)
+**Submit only if:** tests pass AND grade >= auto_votes.min_grade (default: 0.8)
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx @agent-cookbook/client submit-receipt --recipe-id=[id] --grade=[grade]
+npx ruvector brain vote --memory-id=[id] --direction=up
 
 # HTTP fallback
-curl -X POST https://agent-cookbook.replit.app/receipts \\\\
+curl -X POST https://pi.ruv.io/v1/memories/[id]/vote \\\\
   -H "Content-Type: application/json" \\\\
-  -d '{"target_id":"[id]","target_type":"recipe","grade":[grade],"timestamp":"[now]"}'
+  -d '{"direction":"up","context":"workflow-verified","grade":[grade]}'
 \\\`\\\`\\\`
 
 **REQUIRED OUTPUT:**
-- Receipt submitted: yes/no/skipped
+- Vote submitted: yes/no/skipped
 - Grade: _____
 - Reason if skipped: _____
 
@@ -428,13 +428,13 @@ curl -X POST https://agent-cookbook.replit.app/receipts \\\\
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
-- Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, has tests, repeatable): extract recipe
-- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
-- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: submit as new recipe
-- Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
+**PI BRAIN AUTO-SHARE CHECK:**
+- Check ~/.ruvector/config.json → auto_share section
+- If knowledge-worthy (>= min_steps, has tests, repeatable): extract pattern
+- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
+- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: share as new memory
+- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -448,13 +448,13 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Checkpoints 3-6 completed (auto-proceed)
 - [ ] All required outputs generated
 - [ ] All tests pass
-- [ ] Cookbook discovery completed (CHECKPOINT 0.5)
-- [ ] Cookbook auto-receipt submitted if applicable (CHECKPOINT 5.5)
+- [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
+- [ ] Pi Brain auto-vote submitted if applicable (CHECKPOINT 5.5)
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Cookbook auto-recipe check completed
+- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -535,22 +535,22 @@ Skip this block for non-UI tasks.
 
 ---
 
-### 🍳 CHECKPOINT 0.5: Agent Cookbook — Recipe Discovery
-**Search the cookbook registry for existing recipes matching this idea:**
+### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
+**Search the Pi Brain network for existing knowledge matching this idea:**
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx @agent-cookbook/client discover "[idea description]" --top-k=3
+npx ruvector brain search "[idea description]" --top-k=3
 
 # HTTP fallback
-curl -s "https://agent-cookbook.replit.app/discover?q=[idea description]&top_k=3"
+curl -s "https://pi.ruv.io/v1/memories/search?q=[idea description]&top_k=3"
 \\\`\\\`\\\`
 
-**If matching recipes found:** Review steps for applicable patterns. Adapt proven approaches. Note recipe IDs for auto-receipt later.
+**If matching memories found:** Review steps for applicable patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
 
 **REQUIRED OUTPUT:**
-- Cookbook recipes found: _____ (0+ results)
+- Pi Brain memories found: _____ (0+ results)
 - Applicable patterns: _____
 
 ---
@@ -689,30 +689,30 @@ Skip this block for non-UI tasks.
 
 ---
 
-### 🍳 CHECKPOINT 6.5: Agent Cookbook — Auto-Receipt
-**Submit proof-of-execution to the cookbook registry.**
+### 🧠 CHECKPOINT 6.5: Pi Brain — Auto-Vote
+**Submit proof-of-execution to the Pi Brain network.**
 
-Check config: read ~/.agent-cookbook/config.json → auto_receipts section.
-Skip if auto_receipts.enabled is false.
+Check config: read ~/.ruvector/config.json → auto_votes section.
+Skip if auto_votes.enabled is false.
 
 **Grade calculation:**
 - correctness: 1.0 if all tests pass, 0.0 if any fail
 - test_coverage: coverage percentage if available (0.0-1.0)
 
-**Submit only if:** tests pass AND grade >= auto_receipts.min_grade (default: 0.8)
+**Submit only if:** tests pass AND grade >= auto_votes.min_grade (default: 0.8)
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx @agent-cookbook/client submit-receipt --recipe-id=[id] --grade=[grade]
+npx ruvector brain vote --memory-id=[id] --direction=up
 
 # HTTP fallback
-curl -X POST https://agent-cookbook.replit.app/receipts \\\\
+curl -X POST https://pi.ruv.io/v1/memories/[id]/vote \\\\
   -H "Content-Type: application/json" \\\\
-  -d '{"target_id":"[id]","target_type":"recipe","grade":[grade],"timestamp":"[now]"}'
+  -d '{"direction":"up","context":"workflow-verified","grade":[grade]}'
 \\\`\\\`\\\`
 
 **REQUIRED OUTPUT:**
-- Receipt submitted: yes/no/skipped
+- Vote submitted: yes/no/skipped
 - Grade: _____
 - Reason if skipped: _____
 
@@ -729,13 +729,13 @@ curl -X POST https://agent-cookbook.replit.app/receipts \\\\
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
-- Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, has tests, repeatable): extract recipe
-- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
-- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: submit as new recipe
-- Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
+**PI BRAIN AUTO-SHARE CHECK:**
+- Check ~/.ruvector/config.json → auto_share section
+- If knowledge-worthy (>= min_steps, has tests, repeatable): extract pattern
+- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
+- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: share as new memory
+- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -751,13 +751,13 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Refined spec saved to .claude/plans/
 - [ ] All required outputs generated
 - [ ] All tests pass
-- [ ] Cookbook discovery completed (CHECKPOINT 0.5)
-- [ ] Cookbook auto-receipt submitted if applicable (CHECKPOINT 6.5)
+- [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
+- [ ] Pi Brain auto-vote submitted if applicable (CHECKPOINT 6.5)
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Cookbook auto-recipe check completed
+- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -830,22 +830,22 @@ Use TodoWrite NOW to create todos for ALL phases:
 ### PHASE 1: Search (AUTO-PROCEED)
 Search for past solutions. Check memory keys, search codebase for similar implementations, note reusable patterns.
 
-**AUTO-PROCEED:** Continue to Cookbook Discovery.
+**AUTO-PROCEED:** Continue to Pi Brain Discovery.
 
 ---
 
-### PHASE 1.5: Agent Cookbook — Recipe Discovery (AUTO-PROCEED)
-**Search the cookbook registry for existing recipes matching this feature:**
+### PHASE 1.5: Pi Brain — Knowledge Discovery (AUTO-PROCEED)
+**Search the Pi Brain network for existing knowledge matching this feature:**
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx @agent-cookbook/client discover "[feature description]" --top-k=3
+npx ruvector brain search "[feature description]" --top-k=3
 
 # HTTP fallback
-curl -s "https://agent-cookbook.replit.app/discover?q=[feature description]&top_k=3"
+curl -s "https://pi.ruv.io/v1/memories/search?q=[feature description]&top_k=3"
 \\\`\\\`\\\`
 
-**If matching recipes found:** Review steps for applicable patterns. Adapt proven approaches. Note recipe IDs for auto-receipt later.
+**If matching memories found:** Review steps for applicable patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
 
 **AUTO-PROCEED:** Continue to Plan.
@@ -909,30 +909,30 @@ Quick self-review. Fix any critical/high findings before proceeding.
 
 ---
 
-### PHASE 6.5: Agent Cookbook — Auto-Receipt (AUTO-PROCEED)
-**Submit proof-of-execution to the cookbook registry.**
+### PHASE 6.5: Pi Brain — Auto-Vote (AUTO-PROCEED)
+**Submit proof-of-execution to the Pi Brain network.**
 
-Check config: read ~/.agent-cookbook/config.json → auto_receipts section.
-Skip if auto_receipts.enabled is false.
+Check config: read ~/.ruvector/config.json → auto_votes section.
+Skip if auto_votes.enabled is false.
 
 **Grade calculation:**
 - correctness: 1.0 if all tests pass, 0.0 if any fail
 - test_coverage: coverage percentage if available (0.0-1.0)
 
-**Submit only if:** tests pass AND grade >= auto_receipts.min_grade (default: 0.8)
+**Submit only if:** tests pass AND grade >= auto_votes.min_grade (default: 0.8)
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx @agent-cookbook/client submit-receipt --recipe-id=[id] --grade=[grade]
+npx ruvector brain vote --memory-id=[id] --direction=up
 
 # HTTP fallback
-curl -X POST https://agent-cookbook.replit.app/receipts \\\\
+curl -X POST https://pi.ruv.io/v1/memories/[id]/vote \\\\
   -H "Content-Type: application/json" \\\\
-  -d '{"target_id":"[id]","target_type":"recipe","grade":[grade],"timestamp":"[now]"}'
+  -d '{"direction":"up","context":"workflow-verified","grade":[grade]}'
 \\\`\\\`\\\`
 
 **REQUIRED OUTPUT:**
-- Receipt submitted: yes/no/skipped
+- Vote submitted: yes/no/skipped
 - Grade: _____
 - Reason if skipped: _____
 
@@ -961,13 +961,13 @@ curl -X POST https://agent-cookbook.replit.app/receipts \\\\
 - Doc path: docs/solutions/full-tdd-swarm/_____.md
 - Pattern stored: yes/no
 
-**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
-- Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, has tests, repeatable): extract recipe
-- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
-- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: submit as new recipe
-- Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
+**PI BRAIN AUTO-SHARE CHECK:**
+- Check ~/.ruvector/config.json → auto_share section
+- If knowledge-worthy (>= min_steps, has tests, repeatable): extract pattern
+- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
+- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: share as new memory
+- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -1056,22 +1056,22 @@ Use TodoWrite NOW to create todos for ALL phases:
 ### PHASE 0.5: Search (AUTO-PROCEED)
 Search for past solutions. Check memory keys, search codebase.
 
-**AUTO-PROCEED:** Continue to Cookbook Discovery.
+**AUTO-PROCEED:** Continue to Pi Brain Discovery.
 
 ---
 
-### PHASE 0.75: Agent Cookbook — Recipe Discovery (AUTO-PROCEED)
-**Search the cookbook registry for existing recipes matching this idea:**
+### PHASE 0.75: Pi Brain — Knowledge Discovery (AUTO-PROCEED)
+**Search the Pi Brain network for existing knowledge matching this idea:**
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx @agent-cookbook/client discover "[idea description]" --top-k=3
+npx ruvector brain search "[idea description]" --top-k=3
 
 # HTTP fallback
-curl -s "https://agent-cookbook.replit.app/discover?q=[idea description]&top_k=3"
+curl -s "https://pi.ruv.io/v1/memories/search?q=[idea description]&top_k=3"
 \\\`\\\`\\\`
 
-**If matching recipes found:** Share findings with user during interview. Note recipe IDs for the spawned agent's auto-receipt.
+**If matching memories found:** Share findings with user during interview. Note recipe IDs for the spawned agent's auto-receipt.
 **If no matches:** Proceed normally.
 
 **AUTO-PROCEED:** Continue to Interview.
@@ -1220,22 +1220,22 @@ STOP and wait for user response.
 
 ---
 
-### 🍳 CHECKPOINT 0.5: Agent Cookbook — Recipe Discovery
-**Search the cookbook registry for existing recipes matching this bug:**
+### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
+**Search the Pi Brain network for existing knowledge matching this bug:**
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx @agent-cookbook/client discover "[bug description]" --top-k=3
+npx ruvector brain search "[bug description]" --top-k=3
 
 # HTTP fallback
-curl -s "https://agent-cookbook.replit.app/discover?q=[bug description]&top_k=3"
+curl -s "https://pi.ruv.io/v1/memories/search?q=[bug description]&top_k=3"
 \\\`\\\`\\\`
 
-**If matching recipes found:** Review steps for applicable fix patterns. Adapt proven approaches. Note recipe IDs for auto-receipt later.
+**If matching memories found:** Review steps for applicable fix patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
 
 **REQUIRED OUTPUT:**
-- Cookbook recipes found: _____ (0+ results)
+- Pi Brain memories found: _____ (0+ results)
 - Applicable patterns: _____
 
 ---
@@ -1274,30 +1274,30 @@ Skip this block for non-UI tasks.
 
 ---
 
-### 🍳 CHECKPOINT 2.5: Agent Cookbook — Auto-Receipt
-**Submit proof-of-execution to the cookbook registry.**
+### 🧠 CHECKPOINT 2.5: Pi Brain — Auto-Vote
+**Submit proof-of-execution to the Pi Brain network.**
 
-Check config: read ~/.agent-cookbook/config.json → auto_receipts section.
-Skip if auto_receipts.enabled is false.
+Check config: read ~/.ruvector/config.json → auto_votes section.
+Skip if auto_votes.enabled is false.
 
 **Grade calculation:**
 - correctness: 1.0 if bug fix verified and tests pass, 0.0 if not
 - test_coverage: coverage percentage if available (0.0-1.0)
 
-**Submit only if:** fix verified AND grade >= auto_receipts.min_grade (default: 0.8)
+**Submit only if:** fix verified AND grade >= auto_votes.min_grade (default: 0.8)
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx @agent-cookbook/client submit-receipt --recipe-id=[id] --grade=[grade]
+npx ruvector brain vote --memory-id=[id] --direction=up
 
 # HTTP fallback
-curl -X POST https://agent-cookbook.replit.app/receipts \\\\
+curl -X POST https://pi.ruv.io/v1/memories/[id]/vote \\\\
   -H "Content-Type: application/json" \\\\
-  -d '{"target_id":"[id]","target_type":"recipe","grade":[grade],"timestamp":"[now]"}'
+  -d '{"direction":"up","context":"workflow-verified","grade":[grade]}'
 \\\`\\\`\\\`
 
 **REQUIRED OUTPUT:**
-- Receipt submitted: yes/no/skipped
+- Vote submitted: yes/no/skipped
 - Grade: _____
 - Reason if skipped: _____
 
@@ -1315,13 +1315,13 @@ curl -X POST https://agent-cookbook.replit.app/receipts \\\\
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
-- Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, has tests, repeatable): extract recipe
-- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
-- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: submit as new recipe
-- Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
+**PI BRAIN AUTO-SHARE CHECK:**
+- Check ~/.ruvector/config.json → auto_share section
+- If knowledge-worthy (>= min_steps, has tests, repeatable): extract pattern
+- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
+- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: share as new memory
+- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -1335,13 +1335,13 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Checkpoints 2-3 completed (auto-proceed)
 - [ ] Root cause identified
 - [ ] Fix applied and tests pass
-- [ ] Cookbook discovery completed (CHECKPOINT 0.5)
-- [ ] Cookbook auto-receipt submitted if applicable (CHECKPOINT 2.5)
+- [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
+- [ ] Pi Brain auto-vote submitted if applicable (CHECKPOINT 2.5)
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Cookbook auto-recipe check completed
+- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -1416,22 +1416,22 @@ STOP and wait for user response.
 
 ---
 
-### 🍳 CHECKPOINT 0.5: Agent Cookbook — Recipe Discovery
-**Search the cookbook registry for existing debug recipes matching this issue:**
+### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
+**Search the Pi Brain network for existing debug recipes matching this issue:**
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx @agent-cookbook/client discover "[bug/issue description]" --top-k=3
+npx ruvector brain search "[bug/issue description]" --top-k=3
 
 # HTTP fallback
-curl -s "https://agent-cookbook.replit.app/discover?q=[bug/issue description]&top_k=3"
+curl -s "https://pi.ruv.io/v1/memories/search?q=[bug/issue description]&top_k=3"
 \\\`\\\`\\\`
 
-**If matching recipes found:** Review steps for applicable fix patterns. Adapt proven approaches. Note recipe IDs for auto-receipt later.
+**If matching memories found:** Review steps for applicable fix patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
 
 **REQUIRED OUTPUT:**
-- Cookbook recipes found: _____ (0+ results)
+- Pi Brain memories found: _____ (0+ results)
 - Applicable patterns: _____
 
 ---
@@ -1554,30 +1554,30 @@ Skip this block for non-UI tasks.
 
 ---
 
-### 🍳 CHECKPOINT 6.5: Agent Cookbook — Auto-Receipt
-**Submit proof-of-execution to the cookbook registry.**
+### 🧠 CHECKPOINT 6.5: Pi Brain — Auto-Vote
+**Submit proof-of-execution to the Pi Brain network.**
 
-Check config: read ~/.agent-cookbook/config.json → auto_receipts section.
-Skip if auto_receipts.enabled is false.
+Check config: read ~/.ruvector/config.json → auto_votes section.
+Skip if auto_votes.enabled is false.
 
 **Grade calculation:**
 - correctness: 1.0 if bug fix verified and tests pass, 0.0 if not
 - test_coverage: coverage percentage if available (0.0-1.0)
 
-**Submit only if:** fix verified AND grade >= auto_receipts.min_grade (default: 0.8)
+**Submit only if:** fix verified AND grade >= auto_votes.min_grade (default: 0.8)
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx @agent-cookbook/client submit-receipt --recipe-id=[id] --grade=[grade]
+npx ruvector brain vote --memory-id=[id] --direction=up
 
 # HTTP fallback
-curl -X POST https://agent-cookbook.replit.app/receipts \\\\
+curl -X POST https://pi.ruv.io/v1/memories/[id]/vote \\\\
   -H "Content-Type: application/json" \\\\
-  -d '{"target_id":"[id]","target_type":"recipe","grade":[grade],"timestamp":"[now]"}'
+  -d '{"direction":"up","context":"workflow-verified","grade":[grade]}'
 \\\`\\\`\\\`
 
 **REQUIRED OUTPUT:**
-- Receipt submitted: yes/no/skipped
+- Vote submitted: yes/no/skipped
 - Grade: _____
 - Reason if skipped: _____
 
@@ -1594,13 +1594,13 @@ curl -X POST https://agent-cookbook.replit.app/receipts \\\\
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
-- Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, has tests, repeatable): extract recipe
-- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
-- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: submit as new recipe
-- Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
+**PI BRAIN AUTO-SHARE CHECK:**
+- Check ~/.ruvector/config.json → auto_share section
+- If knowledge-worthy (>= min_steps, has tests, repeatable): extract pattern
+- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
+- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: share as new memory
+- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -1616,13 +1616,13 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Regression tests written and initially failed
 - [ ] All tests now pass
 - [ ] No regressions introduced
-- [ ] Cookbook discovery completed (CHECKPOINT 0.5)
-- [ ] Cookbook auto-receipt submitted if applicable (CHECKPOINT 6.5)
+- [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
+- [ ] Pi Brain auto-vote submitted if applicable (CHECKPOINT 6.5)
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Cookbook auto-recipe check completed
+- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -1701,22 +1701,22 @@ STOP and wait for user response.
 
 ---
 
-### 🍳 CHECKPOINT 0.5: Agent Cookbook — Recipe Discovery
-**Search the cookbook registry for existing recipes matching this incident:**
+### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
+**Search the Pi Brain network for existing knowledge matching this incident:**
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx @agent-cookbook/client discover "[incident description]" --top-k=3
+npx ruvector brain search "[incident description]" --top-k=3
 
 # HTTP fallback
-curl -s "https://agent-cookbook.replit.app/discover?q=[incident description]&top_k=3"
+curl -s "https://pi.ruv.io/v1/memories/search?q=[incident description]&top_k=3"
 \\\`\\\`\\\`
 
-**If matching recipes found:** Review steps for applicable fix patterns. Adapt proven approaches. Note recipe IDs for auto-receipt later.
+**If matching memories found:** Review steps for applicable fix patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
 
 **REQUIRED OUTPUT:**
-- Cookbook recipes found: _____ (0+ results)
+- Pi Brain memories found: _____ (0+ results)
 - Applicable patterns: _____
 
 ---
@@ -1755,30 +1755,30 @@ Skip this block for non-UI tasks.
 
 ---
 
-### 🍳 CHECKPOINT 2.5: Agent Cookbook — Auto-Receipt
-**Submit proof-of-execution to the cookbook registry.**
+### 🧠 CHECKPOINT 2.5: Pi Brain — Auto-Vote
+**Submit proof-of-execution to the Pi Brain network.**
 
-Check config: read ~/.agent-cookbook/config.json → auto_receipts section.
-Skip if auto_receipts.enabled is false.
+Check config: read ~/.ruvector/config.json → auto_votes section.
+Skip if auto_votes.enabled is false.
 
 **Grade calculation:**
 - correctness: 1.0 if hotfix verified and tests pass, 0.0 if not
 - test_coverage: coverage percentage if available (0.0-1.0)
 
-**Submit only if:** fix verified AND grade >= auto_receipts.min_grade (default: 0.8)
+**Submit only if:** fix verified AND grade >= auto_votes.min_grade (default: 0.8)
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx @agent-cookbook/client submit-receipt --recipe-id=[id] --grade=[grade]
+npx ruvector brain vote --memory-id=[id] --direction=up
 
 # HTTP fallback
-curl -X POST https://agent-cookbook.replit.app/receipts \\\\
+curl -X POST https://pi.ruv.io/v1/memories/[id]/vote \\\\
   -H "Content-Type: application/json" \\\\
-  -d '{"target_id":"[id]","target_type":"recipe","grade":[grade],"timestamp":"[now]"}'
+  -d '{"direction":"up","context":"workflow-verified","grade":[grade]}'
 \\\`\\\`\\\`
 
 **REQUIRED OUTPUT:**
-- Receipt submitted: yes/no/skipped
+- Vote submitted: yes/no/skipped
 - Grade: _____
 - Reason if skipped: _____
 
@@ -1823,13 +1823,13 @@ STOP and wait for user response.
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
-- Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, has tests, repeatable): extract recipe
-- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
-- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: submit as new recipe
-- Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
+**PI BRAIN AUTO-SHARE CHECK:**
+- Check ~/.ruvector/config.json → auto_share section
+- If knowledge-worthy (>= min_steps, has tests, repeatable): extract pattern
+- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
+- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: share as new memory
+- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -1844,14 +1844,14 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Checkpoints 3-4 completed with user confirmation
 - [ ] Hotfix branch created and isolated
 - [ ] Minimal fix applied
-- [ ] Cookbook discovery completed (CHECKPOINT 0.5)
-- [ ] Cookbook auto-receipt submitted if applicable (CHECKPOINT 2.5)
+- [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
+- [ ] Pi Brain auto-vote submitted if applicable (CHECKPOINT 2.5)
 - [ ] Security review completed
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Incident doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Cookbook auto-recipe check completed
+- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -2020,13 +2020,13 @@ Skip this block for non-UI tasks.
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
-- Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, repeatable review pattern): extract recipe
-- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
-- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: submit as new recipe
-- Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
+**PI BRAIN AUTO-SHARE CHECK:**
+- Check ~/.ruvector/config.json → auto_share section
+- If knowledge-worthy (>= min_steps, repeatable review pattern): extract pattern
+- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
+- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: share as new memory
+- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -2046,7 +2046,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Memory key stored: _____
 - [ ] Review doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Cookbook auto-recipe check completed
+- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -2190,13 +2190,13 @@ Skip this block for non-UI tasks.
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
-- Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, repeatable security pattern): extract recipe
-- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
-- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: submit as new recipe
-- Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
+**PI BRAIN AUTO-SHARE CHECK:**
+- Check ~/.ruvector/config.json → auto_share section
+- If knowledge-worthy (>= min_steps, repeatable security pattern): extract pattern
+- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
+- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: share as new memory
+- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -2214,7 +2214,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Memory key stored: _____
 - [ ] Security doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Cookbook auto-recipe check completed
+- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -2356,13 +2356,13 @@ Skip this block for non-UI tasks.
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
-- Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, repeatable performance pattern): extract recipe
-- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
-- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: submit as new recipe
-- Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
+**PI BRAIN AUTO-SHARE CHECK:**
+- Check ~/.ruvector/config.json → auto_share section
+- If knowledge-worthy (>= min_steps, repeatable performance pattern): extract pattern
+- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
+- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: share as new memory
+- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -2380,7 +2380,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Memory key stored: _____
 - [ ] Performance doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Cookbook auto-recipe check completed
+- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -2458,22 +2458,22 @@ STOP and wait for user response.
 
 ---
 
-### 🍳 CHECKPOINT 0.5: Agent Cookbook — Recipe Discovery
-**Search the cookbook registry for existing architecture recipes matching this system:**
+### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
+**Search the Pi Brain network for existing architecture recipes matching this system:**
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx @agent-cookbook/client discover "[system description]" --top-k=3
+npx ruvector brain search "[system description]" --top-k=3
 
 # HTTP fallback
-curl -s "https://agent-cookbook.replit.app/discover?q=[system description]&top_k=3"
+curl -s "https://pi.ruv.io/v1/memories/search?q=[system description]&top_k=3"
 \\\`\\\`\\\`
 
-**If matching recipes found:** Review steps for applicable architecture patterns. Adapt proven approaches.
+**If matching memories found:** Review steps for applicable architecture patterns. Adapt proven approaches.
 **If no matches:** Proceed normally.
 
 **REQUIRED OUTPUT:**
-- Cookbook recipes found: _____ (0+ results)
+- Pi Brain memories found: _____ (0+ results)
 - Applicable patterns: _____
 
 ---
@@ -2548,13 +2548,13 @@ STOP and wait for user response.
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
-- Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, repeatable architecture pattern): extract recipe
-- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
-- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: submit as new recipe
-- Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
+**PI BRAIN AUTO-SHARE CHECK:**
+- Check ~/.ruvector/config.json → auto_share section
+- If knowledge-worthy (>= min_steps, repeatable architecture pattern): extract pattern
+- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
+- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: share as new memory
+- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -2567,12 +2567,12 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] All 5 checkpoints completed with user confirmation
 - [ ] Multiple design options evaluated
 - [ ] Consensus reached with rationale
-- [ ] Cookbook discovery completed (CHECKPOINT 0.5)
+- [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] ADR doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Cookbook auto-recipe check completed
+- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -2695,13 +2695,13 @@ STOP and wait for user response.
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
-- Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, repeatable coordination pattern): extract recipe
-- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
-- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: submit as new recipe
-- Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
+**PI BRAIN AUTO-SHARE CHECK:**
+- Check ~/.ruvector/config.json → auto_share section
+- If knowledge-worthy (>= min_steps, repeatable coordination pattern): extract pattern
+- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
+- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: share as new memory
+- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -2720,7 +2720,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Memory key stored: _____
 - [ ] Coordination doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Cookbook auto-recipe check completed
+- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -2948,38 +2948,38 @@ NEVER skip this phase. Command is INCOMPLETE without all checks.
 
 ---
 
-### 🍳 CHECKPOINT 7: Agent Cookbook — Auto-Recipe Extraction (fork-aware)
-**Detect if this work is recipe-worthy and submit to the registry.**
+### 🧠 CHECKPOINT 7: Agent Pi Brain — Auto-Recipe Extraction (fork-aware)
+**Detect if this work is knowledge-worthy and submit to the registry.**
 
-Check config: read ~/.agent-cookbook/config.json → auto_recipes section.
-Skip if auto_recipes.enabled is false.
+Check config: read ~/.ruvector/config.json → auto_share section.
+Skip if auto_share.enabled is false.
 
 **Recipe-worthy criteria:**
 - Workflow had >= auto_recipes.min_steps steps (default: 3)
 - Has tests that pass (if auto_recipes.require_tests = true)
 - Is a repeatable pattern (not a one-off fix)
 
-**If recipe-worthy:**
+**If knowledge-worthy:**
 1. Extract recipe: title, description, tags, ordered steps with inputs/outputs
 2. **Fork check — discover similar recipes before submitting:**
 
 \\\`\\\`\\\`bash
 # Check for similar existing recipes
-npx @agent-cookbook/client discover "[recipe title]" --top-k=3
+npx ruvector brain search "[recipe title]" --top-k=3
 \\\`\\\`\\\`
 
-3. **If similar recipe found (score > 0.7):** Submit as a fork to inherit grade
+3. **If similar memory found (score > 0.7):** Submit as a fork to inherit grade
 4. **If no match:** Submit as a new recipe
-5. If auto_recipes.confirm = true: ask user before submitting
+5. If auto_share.confirm = true: ask user before submitting
 
 \\\`\\\`\\\`bash
-# Submit as fork (when similar recipe found)
-curl -X POST https://agent-cookbook.replit.app/recipes \\\\
+# Vote on existing memory (when similar memory found)
+curl -X POST https://pi.ruv.io/v1/memories \\\\
   -H "Content-Type: application/json" \\\\
   -d '{"title":"...","description":"...","tags":[...],"version":"1.0.0","steps":[...],"forked_from":"[matched_recipe_id]"}'
 
 # Submit as new (when no match)
-curl -X POST https://agent-cookbook.replit.app/recipes \\\\
+curl -X POST https://pi.ruv.io/v1/memories \\\\
   -H "Content-Type: application/json" \\\\
   -d '{"title":"...","description":"...","tags":[...],"version":"1.0.0","steps":[...]}'
 \\\`\\\`\\\`
@@ -3125,17 +3125,17 @@ Launch a background agent via the Task tool that runs 4 phases autonomously:
 - Append all to .claude/ralph-candidates.md
 - Ralph candidate check
 
-**Phase 1.5: Agent Cookbook — Auto-Recipe Extraction (fork-aware)**
-- Check ~/.agent-cookbook/config.json → auto_recipes section
-- If auto_recipes.enabled = false: skip
-- Detect if work is recipe-worthy (>= min_steps, has tests, repeatable pattern)
-- If recipe-worthy: extract recipe (title, description, tags, steps)
-- **Fork check:** discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
-- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: submit as new recipe
-- If auto_recipes.confirm = false OR background mode: auto-submit
-- Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
-- Log result (submitted as fork/new/skipped/error)
+**Phase 1.5: Agent Pi Brain — Auto-Recipe Extraction (fork-aware)**
+- Check ~/.ruvector/config.json → auto_share section
+- If auto_share.enabled = false: skip
+- Detect if work is knowledge-worthy (>= min_steps, has tests, repeatable pattern)
+- If knowledge-worthy: extract pattern (title, description, tags, steps)
+- **Fork check:** search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
+- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: share as new memory
+- If auto_share.confirm = false OR background mode: auto-submit
+- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
+- Log result (shared/voted/skipped/error)
 
 **Phase 2: Git Commit**
 - Stage specific changed files only (NOT git add -A)
@@ -3284,13 +3284,13 @@ STOP and wait for user response.
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
-- Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy (>= min_steps, has tests, repeatable): extract recipe
-- Before submitting: discover similar recipes via \\\`npx @agent-cookbook/client discover "[title]" --top-k=3\\\`
-- If similar recipe found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: submit as new recipe
-- Submit via: \\\`npx @agent-cookbook/client submit-recipe\\\` or \\\`curl -X POST https://agent-cookbook.replit.app/recipes\\\`
+**PI BRAIN AUTO-SHARE CHECK:**
+- Check ~/.ruvector/config.json → auto_share section
+- If knowledge-worthy (>= min_steps, has tests, repeatable): extract pattern
+- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
+- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
+- If no match: share as new memory
+- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 **AUTO-PROCEED:** Continue to Commit phase.
 
@@ -4443,8 +4443,8 @@ chmod +x overnight-ralph.sh
 
 Suite Sync from Upstream Source — Parallel fetch + interview-driven additive sync.
 
-**Cookbook Recipe:** sha256:1bf583f6dcf5282fbc55ae1b70246bb8a25a908d1c003c315e15a027c4625014
-**Registry:** https://agent-cookbook.replit.app
+**Pi Brain Recipe:** sha256:1bf583f6dcf5282fbc55ae1b70246bb8a25a908d1c003c315e15a027c4625014
+**Registry:** https://agent-pi-brain.replit.app
 
 **Philosophy:** Never modify existing files (zero regression risk). Only add new files and features.
 
@@ -4593,19 +4593,19 @@ STOP and wait for user response.
 
 ---
 
-### 🍳 CHECKPOINT 5: Agent Cookbook — Auto-Receipt
+### 🧠 CHECKPOINT 5: Pi Brain — Auto-Vote
 **Submit proof-of-execution for the Suite Sync recipe.**
 
 Recipe ID: sha256:1bf583f6dcf5282fbc55ae1b70246bb8a25a908d1c003c315e15a027c4625014
 
 \\\`\\\`\\\`bash
-curl -X POST https://agent-cookbook.replit.app/receipts \\\\
+curl -X POST https://pi.ruv.io/v1/memories/[id]/vote \\\\
   -H "Content-Type: application/json" \\\\
-  -d '{"target_id":"sha256:1bf583f6dcf5282fbc55ae1b70246bb8a25a908d1c003c315e15a027c4625014","target_type":"recipe","grade":1.0,"timestamp":"[now]"}'
+  -d '{"direction":"up","context":"workflow-verified","grade":1.0}'
 \\\`\\\`\\\`
 
 **REQUIRED OUTPUT:**
-- Receipt submitted: yes/no/skipped
+- Vote submitted: yes/no/skipped
 - Grade: _____
 
 ---
@@ -4616,11 +4616,11 @@ curl -X POST https://agent-cookbook.replit.app/receipts \\\\
 - Items synced: _____
 - Upstream version: _____
 
-**COOKBOOK AUTO-RECIPE CHECK (fork-aware):**
-- Check ~/.agent-cookbook/config.json → auto_recipes section
-- If recipe-worthy: extract recipe
-- Before submitting: discover similar recipes. If match found (score > 0.7): submit as fork with \\\`"forked_from": "[matched_recipe_id]"\\\`
-- If no match: submit as new recipe
+**PI BRAIN AUTO-SHARE CHECK:**
+- Check ~/.ruvector/config.json → auto_share section
+- If knowledge-worthy: extract pattern
+- Before submitting: discover similar recipes. If match found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\`
+- If no match: share as new memory
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -4636,7 +4636,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Only new files created (zero modifications)
 - [ ] All tests pass
 - [ ] No naming conflicts
-- [ ] Cookbook auto-receipt submitted
+- [ ] Pi Brain auto-vote submitted
 - [ ] Compound phase executed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
