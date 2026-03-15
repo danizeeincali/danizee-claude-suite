@@ -127,7 +127,31 @@ Skip this block for non-UI tasks.
 - Files created/modified: _____
 - Test results (if applicable): _____
 
-**AUTO-PROCEED:** Continue to Auto-Receipt phase.
+**AUTO-PROCEED:** Continue to Verification phase.
+
+---
+
+### ✅ VERIFICATION CHECKPOINT — Cross-Method Validation
+**Independent verification of deliverables. Do NOT trust self-reported results.**
+
+**Verification Checks:**
+1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
+2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
+3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+4. **Build Compiles** — Run build command if applicable, verify zero errors
+5. **No Regressions** — Run full test suite to catch regressions beyond new tests
+
+**REQUIRED OUTPUT:**
+- Files verified: _____ / _____ exist
+- Tests re-run: _____ pass / _____ total
+- Git diff matches plan: yes/no
+- Build status: pass/fail/n-a
+- Regressions: none / [list]
+
+**RETRY LOGIC (max 3 retries):**
+- PASS → proceed to next phase
+- FAIL + retries remaining → log failure reason, fix the issue, re-verify
+- FAIL + max retries exceeded → escalate to user with AskUserQuestion
 
 ---
 
@@ -385,7 +409,31 @@ Skip this block for non-UI tasks.
 | Performance | _____ | _____ |
 | Architecture | _____ | _____ |
 
-**AUTO-PROCEED:** Continue to Compound phase.
+**AUTO-PROCEED:** Continue to Verification phase.
+
+---
+
+### ✅ VERIFICATION CHECKPOINT — Cross-Method Validation
+**Independent verification of deliverables. Do NOT trust self-reported results.**
+
+**Verification Checks:**
+1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
+2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
+3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+4. **Build Compiles** — Run build command if applicable, verify zero errors
+5. **No Regressions** — Run full test suite to catch regressions beyond new tests
+
+**REQUIRED OUTPUT:**
+- Files verified: _____ / _____ exist
+- Tests re-run: _____ pass / _____ total
+- Git diff matches plan: yes/no
+- Build status: pass/fail/n-a
+- Regressions: none / [list]
+
+**RETRY LOGIC (max 3 retries):**
+- PASS → proceed to next phase
+- FAIL + retries remaining → log failure reason, fix the issue, re-verify
+- FAIL + max retries exceeded → escalate to user with AskUserQuestion
 
 ---
 
@@ -685,7 +733,31 @@ Skip this block for non-UI tasks.
 | Performance | _____ | _____ |
 | Architecture | _____ | _____ |
 
-**AUTO-PROCEED:** Continue to Compound phase.
+**AUTO-PROCEED:** Continue to Verification phase.
+
+---
+
+### ✅ VERIFICATION CHECKPOINT — Cross-Method Validation
+**Independent verification of deliverables. Do NOT trust self-reported results.**
+
+**Verification Checks:**
+1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
+2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
+3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+4. **Build Compiles** — Run build command if applicable, verify zero errors
+5. **No Regressions** — Run full test suite to catch regressions beyond new tests
+
+**REQUIRED OUTPUT:**
+- Files verified: _____ / _____ exist
+- Tests re-run: _____ pass / _____ total
+- Git diff matches plan: yes/no
+- Build status: pass/fail/n-a
+- Regressions: none / [list]
+
+**RETRY LOGIC (max 3 retries):**
+- PASS → proceed to next phase
+- FAIL + retries remaining → log failure reason, fix the issue, re-verify
+- FAIL + max retries exceeded → escalate to user with AskUserQuestion
 
 ---
 
@@ -905,7 +977,31 @@ Quick self-review. Fix any critical/high findings before proceeding.
 | Performance | _____ | _____ |
 | Architecture | _____ | _____ |
 
-**AUTO-PROCEED:** Continue to Auto-Receipt.
+**AUTO-PROCEED:** Continue to Verification phase.
+
+---
+
+### ✅ VERIFICATION CHECKPOINT — Cross-Method Validation
+**Independent verification of deliverables. Do NOT trust self-reported results.**
+
+**Verification Checks:**
+1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
+2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
+3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+4. **Build Compiles** — Run build command if applicable, verify zero errors
+5. **No Regressions** — Run full test suite to catch regressions beyond new tests
+
+**REQUIRED OUTPUT:**
+- Files verified: _____ / _____ exist
+- Tests re-run: _____ pass / _____ total
+- Git diff matches plan: yes/no
+- Build status: pass/fail/n-a
+- Regressions: none / [list]
+
+**RETRY LOGIC (max 3 retries):**
+- PASS → proceed to next phase
+- FAIL + retries remaining → log failure reason, fix the issue, re-verify
+- FAIL + max retries exceeded → escalate to user with AskUserQuestion
 
 ---
 
@@ -1270,7 +1366,31 @@ Skip this block for non-UI tasks.
 - Changes summary: _____
 - Test results: _____
 
-**AUTO-PROCEED:** Continue to Auto-Receipt phase.
+**AUTO-PROCEED:** Continue to Verification phase.
+
+---
+
+### ✅ VERIFICATION CHECKPOINT — Cross-Method Validation
+**Independent verification of deliverables. Do NOT trust self-reported results.**
+
+**Verification Checks:**
+1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
+2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
+3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+4. **Build Compiles** — Run build command if applicable, verify zero errors
+5. **No Regressions** — Run full test suite to catch regressions beyond new tests
+
+**REQUIRED OUTPUT:**
+- Files verified: _____ / _____ exist
+- Tests re-run: _____ pass / _____ total
+- Git diff matches plan: yes/no
+- Build status: pass/fail/n-a
+- Regressions: none / [list]
+
+**RETRY LOGIC (max 3 retries):**
+- PASS → proceed to next phase
+- FAIL + retries remaining → log failure reason, fix the issue, re-verify
+- FAIL + max retries exceeded → escalate to user with AskUserQuestion
 
 ---
 
@@ -1550,7 +1670,31 @@ Skip this block for non-UI tasks.
 | Performance | _____ | _____ |
 | Regressions | _____ | _____ |
 
-**AUTO-PROCEED:** Continue to Compound phase.
+**AUTO-PROCEED:** Continue to Verification phase.
+
+---
+
+### ✅ VERIFICATION CHECKPOINT — Cross-Method Validation
+**Independent verification of deliverables. Do NOT trust self-reported results.**
+
+**Verification Checks:**
+1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
+2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
+3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+4. **Build Compiles** — Run build command if applicable, verify zero errors
+5. **No Regressions** — Run full test suite to catch regressions beyond new tests
+
+**REQUIRED OUTPUT:**
+- Files verified: _____ / _____ exist
+- Tests re-run: _____ pass / _____ total
+- Git diff matches plan: yes/no
+- Build status: pass/fail/n-a
+- Regressions: none / [list]
+
+**RETRY LOGIC (max 3 retries):**
+- PASS → proceed to next phase
+- FAIL + retries remaining → log failure reason, fix the issue, re-verify
+- FAIL + max retries exceeded → escalate to user with AskUserQuestion
 
 ---
 
@@ -1751,7 +1895,31 @@ Skip this block for non-UI tasks.
 - Changes summary (minimal): _____
 - Test results: _____
 
-**AUTO-PROCEED:** Continue to Auto-Receipt phase.
+**AUTO-PROCEED:** Continue to Verification phase.
+
+---
+
+### ✅ VERIFICATION CHECKPOINT — Cross-Method Validation
+**Independent verification of deliverables. Do NOT trust self-reported results.**
+
+**Verification Checks:**
+1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
+2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
+3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+4. **Build Compiles** — Run build command if applicable, verify zero errors
+5. **No Regressions** — Run full test suite to catch regressions beyond new tests
+
+**REQUIRED OUTPUT:**
+- Files verified: _____ / _____ exist
+- Tests re-run: _____ pass / _____ total
+- Git diff matches plan: yes/no
+- Build status: pass/fail/n-a
+- Regressions: none / [list]
+
+**RETRY LOGIC (max 3 retries):**
+- PASS → proceed to next phase
+- FAIL + retries remaining → log failure reason, fix the issue, re-verify
+- FAIL + max retries exceeded → escalate to user with AskUserQuestion
 
 ---
 
@@ -2006,7 +2174,31 @@ Skip this block for non-UI tasks.
   - Priority: P_
   - Completion tests defined: yes/no
 
-**AUTO-PROCEED:** Continue to Compound phase.
+**AUTO-PROCEED:** Continue to Verification phase.
+
+---
+
+### ✅ VERIFICATION CHECKPOINT — Cross-Method Validation
+**Independent verification of deliverables. Do NOT trust self-reported results.**
+
+**Verification Checks:**
+1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
+2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
+3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+4. **Build Compiles** — Run build command if applicable, verify zero errors
+5. **No Regressions** — Run full test suite to catch regressions beyond new tests
+
+**REQUIRED OUTPUT:**
+- Files verified: _____ / _____ exist
+- Tests re-run: _____ pass / _____ total
+- Git diff matches plan: yes/no
+- Build status: pass/fail/n-a
+- Regressions: none / [list]
+
+**RETRY LOGIC (max 3 retries):**
+- PASS → proceed to next phase
+- FAIL + retries remaining → log failure reason, fix the issue, re-verify
+- FAIL + max retries exceeded → escalate to user with AskUserQuestion
 
 ---
 
@@ -2176,7 +2368,31 @@ Skip this block for non-UI tasks.
 - Prioritized remediation list (by severity)
 - Recommended fixes
 
-**AUTO-PROCEED:** Continue to Compound phase.
+**AUTO-PROCEED:** Continue to Verification phase.
+
+---
+
+### ✅ VERIFICATION CHECKPOINT — Cross-Method Validation
+**Independent verification of deliverables. Do NOT trust self-reported results.**
+
+**Verification Checks:**
+1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
+2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
+3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+4. **Build Compiles** — Run build command if applicable, verify zero errors
+5. **No Regressions** — Run full test suite to catch regressions beyond new tests
+
+**REQUIRED OUTPUT:**
+- Files verified: _____ / _____ exist
+- Tests re-run: _____ pass / _____ total
+- Git diff matches plan: yes/no
+- Build status: pass/fail/n-a
+- Regressions: none / [list]
+
+**RETRY LOGIC (max 3 retries):**
+- PASS → proceed to next phase
+- FAIL + retries remaining → log failure reason, fix the issue, re-verify
+- FAIL + max retries exceeded → escalate to user with AskUserQuestion
 
 ---
 
@@ -2342,7 +2558,31 @@ Skip this block for non-UI tasks.
 - Estimated improvement metrics
 - Implementation suggestions
 
-**AUTO-PROCEED:** Continue to Compound phase.
+**AUTO-PROCEED:** Continue to Verification phase.
+
+---
+
+### ✅ VERIFICATION CHECKPOINT — Cross-Method Validation
+**Independent verification of deliverables. Do NOT trust self-reported results.**
+
+**Verification Checks:**
+1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
+2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
+3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+4. **Build Compiles** — Run build command if applicable, verify zero errors
+5. **No Regressions** — Run full test suite to catch regressions beyond new tests
+
+**REQUIRED OUTPUT:**
+- Files verified: _____ / _____ exist
+- Tests re-run: _____ pass / _____ total
+- Git diff matches plan: yes/no
+- Build status: pass/fail/n-a
+- Regressions: none / [list]
+
+**RETRY LOGIC (max 3 retries):**
+- PASS → proceed to next phase
+- FAIL + retries remaining → log failure reason, fix the issue, re-verify
+- FAIL + max retries exceeded → escalate to user with AskUserQuestion
 
 ---
 
@@ -2535,6 +2775,30 @@ Skip this block for non-UI tasks.
 - Options: ["Continue", "Revisit options", "Show more detail"]
 
 STOP and wait for user response.
+
+---
+
+### ✅ VERIFICATION CHECKPOINT — Cross-Method Validation
+**Independent verification of deliverables. Do NOT trust self-reported results.**
+
+**Verification Checks:**
+1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
+2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
+3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+4. **Build Compiles** — Run build command if applicable, verify zero errors
+5. **No Regressions** — Run full test suite to catch regressions beyond new tests
+
+**REQUIRED OUTPUT:**
+- Files verified: _____ / _____ exist
+- Tests re-run: _____ pass / _____ total
+- Git diff matches plan: yes/no
+- Build status: pass/fail/n-a
+- Regressions: none / [list]
+
+**RETRY LOGIC (max 3 retries):**
+- PASS → proceed to next phase
+- FAIL + retries remaining → log failure reason, fix the issue, re-verify
+- FAIL + max retries exceeded → escalate to user with AskUserQuestion
 
 ---
 

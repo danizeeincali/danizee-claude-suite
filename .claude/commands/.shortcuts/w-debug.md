@@ -178,7 +178,31 @@ Skip this block for non-UI tasks.
 | Performance | _____ | _____ |
 | Regressions | _____ | _____ |
 
-**AUTO-PROCEED:** Continue to Compound phase.
+**AUTO-PROCEED:** Continue to Verification phase.
+
+---
+
+### ✅ VERIFICATION CHECKPOINT — Cross-Method Validation
+**Independent verification of deliverables. Do NOT trust self-reported results.**
+
+**Verification Checks:**
+1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
+2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
+3. **Git Diff Matches Plan** — Compare `git diff --stat` against planned files-to-modify list
+4. **Build Compiles** — Run build command if applicable, verify zero errors
+5. **No Regressions** — Run full test suite to catch regressions beyond new tests
+
+**REQUIRED OUTPUT:**
+- Files verified: _____ / _____ exist
+- Tests re-run: _____ pass / _____ total
+- Git diff matches plan: yes/no
+- Build status: pass/fail/n-a
+- Regressions: none / [list]
+
+**RETRY LOGIC (max 3 retries):**
+- PASS → proceed to next phase
+- FAIL + retries remaining → log failure reason, fix the issue, re-verify
+- FAIL + max retries exceeded → escalate to user with AskUserQuestion
 
 ---
 
