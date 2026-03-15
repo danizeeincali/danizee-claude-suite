@@ -6,7 +6,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { runConflictChecks } from './utils/conflicts.js';
 import { mergeSettings, removeSettings, readSettings } from './utils/settings.js';
 import { writeWorkflowShortcuts, shortcutsExist } from './utils/shortcuts.js';
@@ -79,6 +79,9 @@ export class DaniZeeSuiteInstaller {
 
     // Create helper scripts
     await this.createHelperScripts();
+
+    // Run post-init hook if it exists
+    await this.runPostInitHook();
 
     return {
       success: true,
@@ -273,6 +276,30 @@ echo "MCP server started. You can now use memory and swarm operations."
       mcpSetup,
       { mode: 0o755 }
     );
+  }
+
+  /**
+   * Run post-init hook if .claude/hooks/post-init.sh exists
+   */
+  async runPostInitHook() {
+    const hookPath = path.join(this.claudeDir, 'hooks', 'post-init.sh');
+
+    try {
+      await fs.access(hookPath, fs.constants.X_OK);
+    } catch {
+      // No hook or not executable — skip silently
+      return;
+    }
+
+    try {
+      execFileSync(hookPath, [], {
+        cwd: this.targetDir,
+        stdio: 'pipe',
+        timeout: 30000,
+      });
+    } catch (err) {
+      console.warn(`Warning: post-init hook failed: ${err.message}`);
+    }
   }
 
   /**
