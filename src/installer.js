@@ -19,6 +19,7 @@ import * as dotShortcuts from './plugins/dot-shortcuts.js';
 import * as pmShortcuts from './plugins/pm-shortcuts.js';
 import * as agentCookbook from './plugins/agent-cookbook.js';
 import * as terminalAgents from './plugins/terminal-agents.js';
+import * as autoresearch from './plugins/autoresearch.js';
 
 // Get directory of this file for template resolution
 const __filename = fileURLToPath(import.meta.url);
@@ -202,6 +203,12 @@ export class DaniZeeSuiteInstaller {
 
     // Install Terminal Agents MCP server
     results.push(await terminalAgents.install(this.claudeDir, {
+      dryRun: this.dryRun,
+      targetDir: this.targetDir
+    }));
+
+    // Install Autoresearch skill, command, and hook
+    results.push(await autoresearch.install(this.claudeDir, {
       dryRun: this.dryRun,
       targetDir: this.targetDir
     }));
