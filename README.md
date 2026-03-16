@@ -2,538 +2,310 @@
 
 [![npm version](https://badge.fury.io/js/danizee-claude-suite.svg)](https://www.npmjs.com/package/danizee-claude-suite)
 
-Unified workflow shortcuts for Claude Code that **compound knowledge** - each task makes future tasks easier.
+Unified workflow shortcuts for Claude Code that **compound knowledge** — each task makes future tasks easier.
 
 ## Installation
-
-```bash
-# Install globally
-npm install -g danizee-claude-suite
-
-# Initialize in your project
-cd /path/to/your/project
-danizee-claude-suite init
-```
-
-Or use npx without installing:
 
 ```bash
 npx danizee-claude-suite init
 ```
 
-## Updating
-
-When a new version is released:
+Options:
 
 ```bash
-# Update the npm package globally
-npm update -g danizee-claude-suite
-
-# Update your project's installed workflows
-cd /path/to/your/project
-danizee-claude-suite update
+npx danizee-claude-suite init --force         # Overwrite existing files
+npx danizee-claude-suite init --with-pm       # Include PM workflows
+npx danizee-claude-suite init --without-cookbook  # Skip Agent Cookbook
+npx danizee-claude-suite init --dry-run       # Preview without writing
 ```
-
-The `update` command regenerates all workflow shortcuts and documentation while preserving your existing candidates and solution docs.
 
 ## Requirements
 
-- Node.js >= 20.0.0 (updated for Claude Flow 3.0)
-- GitHub CLI (`gh`) - recommended for PR workflows
-
-## Migrating to v2.0.0 (Claude Flow 3.0)
-
-danizee-claude-suite v2.0.0 uses Claude Flow 3.0 (`claude-flow@v3alpha`).
-
-### For New Installations
-
-```bash
-npm install -g danizee-claude-suite
-cd /path/to/project
-danizee-claude-suite init
-```
-
-### For Existing Installations
-
-**Step 1: Update Node.js to v20+**
-```bash
-node --version  # Should show v20.x.x or higher
-```
-
-**Step 2: Update danizee-claude-suite**
-```bash
-npm update -g danizee-claude-suite
-```
-
-**Step 3: Update your project**
-```bash
-cd /path/to/your/project
-danizee-claude-suite update
-```
-
-**Step 4: Migrate Claude Flow data (if you have existing data)**
-```bash
-# Backup first
-cp -r ./data ./data-backup-v2
-cp -r ./.claude-flow ./.claude-flow-backup-v2
-
-# Check migration status
-npx claude-flow@v3alpha migrate status
-
-# Dry run first
-npx claude-flow@v3alpha migrate run --dry-run
-
-# Execute migration
-npx claude-flow@v3alpha migrate run --from v2
-
-# Verify
-npx claude-flow@v3alpha migrate verify
-
-# Initialize v3 learning
-npx claude-flow@v3alpha hooks pretrain
-npx claude-flow@v3alpha doctor --fix
-```
-
-### Breaking Changes in v2.0.0
-
-| Change | Before | After |
-|--------|--------|-------|
-| Node.js minimum | 18.0.0 | 20.0.0 |
-| Claude Flow package | `claude-flow@alpha` | `claude-flow@v3alpha` |
-| MCP start command | `npx claude-flow@alpha mcp start` | `npx claude-flow@v3alpha mcp start` |
-
-### Rollback
-
-If you need to revert to the previous version:
-```bash
-npm install -g danizee-claude-suite@1.3.1
-danizee-claude-suite update
-```
+- Node.js >= 20.0.0
+- GitHub CLI (`gh`) — recommended for PR workflows
 
 ## How It Works
 
-Every workflow follows the **Search → Execute → Compound** pattern:
+Every workflow follows the **Search → Execute → Verify → Compound** pattern:
 
 ```
-┌─────────────────────────────────────────────────┐
-│  1. SEARCH FIRST                                │
-│     → Check memory for similar past solutions   │
-│     → Show relevant patterns if found           │
-├─────────────────────────────────────────────────┤
-│  2. EXECUTE                                     │
-│     → Run the workflow                          │
-│     → Pause at checkpoints for review           │
-├─────────────────────────────────────────────────┤
-│  3. COMPOUND                                    │
-│     → Store solution pattern in memory          │
-│     → Create/update solution doc                │
-│     → Check for Ralph candidates                │
-└─────────────────────────────────────────────────┘
+ 1. SEARCH — Check memory + Pi Brain for past solutions
+ 2. EXECUTE — Run the workflow with checkpoint gates
+ 3. VERIFY — Cross-method validation (files, tests, git diff, build)
+ 4. COMPOUND — Store solution + Ralph candidates + RC-A candidates
 ```
 
-**Result**: The 2nd time you solve a similar problem, it's faster because the workflow finds and applies your previous solution.
+The second time you solve a similar problem, it's faster because the workflow finds and applies your previous solution.
 
 ## Quick Reference: /w- Shortcuts
 
-All workflows use `/w-` prefix shortcuts:
+### Development
 
 | Shortcut | Description |
 |----------|-------------|
-| `/w-swarm` | Parallel agent build |
-| `/w-tdd-swarm` | Full TDD + Swarm |
-| `/w-idea-tdd-swarm` | Interview → TDD → Swarm |
-| `/w-fix` | Quick bug fix |
-| `/w-debug` | Deep debug → TDD fix |
-| `/w-hotfix` | Critical production fix |
-| `/w-review` | Multi-agent code review |
-| `/w-security` | Security audit |
-| `/w-perf` | Performance audit |
-| `/w-architect` | Hive-mind architecture |
-| `/w-multi-repo` | Cross-repo coordination |
-| `/w-compound` | Ad-hoc knowledge capture |
-| `/w-search` | Search past solutions |
-| `/w-start` | Cold-start session |
-| `/w-end` | End session + compound |
-| `/w-ralph-this` | Ralph Wiggum loop |
-| `/w-ralph-goals` | Build Ralph spec |
-| `/w-ralph-pick` | Execute Ralph candidate |
-| `/w-ralph-batch` | Batch process candidates |
-
-## Workflows by Category
-
-### Development
-
-| Workflow | Command | Best For |
-|----------|---------|----------|
-| Swarm Build | `/w-swarm` | Parallel implementation with coder/tester/reviewer agents |
-| Full TDD Swarm | `/w-tdd-swarm` | Plan → TDD → Swarm → Review combined |
-| Idea to TDD | `/w-idea-tdd-swarm` | Interview refines idea, then Full TDD Swarm builds it |
+| `/w-tdd-swarm` | Full TDD + Swarm — plan, test-first, parallel build, review |
+| `/w-plan-tdd-swarm` | Interview refines idea → Full TDD Swarm builds it |
+| `/w-swarm` | Parallel agents (coder, tester, reviewer) |
+| `/w-autoresearch` | Autonomous experiment loop for measurable optimization |
+| `/w-agent-tdd-swarm` | Gateless TDD for terminal agents (zero user gates, auto-PR) |
+| `/w-agent-interview-swarm` | Interview → spawn gateless terminal agent |
 
 ### Bug Fixes
 
-| Workflow | Command | Best For |
-|----------|---------|----------|
-| Quick Fix | `/w-fix` | Simple bugs - investigate → fix → verify |
-| Deep Debug | `/w-debug` | Complex issues - hypothesis → diagnose → TDD fix |
-| Critical Hotfix | `/w-hotfix` | Production emergencies - isolated branch + security review |
+| Shortcut | Description |
+|----------|-------------|
+| `/w-fix` | Quick fix — investigate → TDD fix → verify |
+| `/w-debug` | Deep debug — hypothesis → diagnose → TDD fix |
+| `/w-hotfix` | Critical production fix — isolated branch + security review |
 
 ### Reviews & Audits
 
-| Workflow | Command | Best For |
-|----------|---------|----------|
-| Full Review | `/w-review` | Comprehensive code review (12+ agents) |
-| Security Audit | `/w-security` | OWASP top 10, auth/authz, data exposure |
-| Performance Audit | `/w-perf` | N+1 queries, memory, bottlenecks |
+| Shortcut | Description |
+|----------|-------------|
+| `/w-review` | Comprehensive code review (12+ specialized agents) |
+| `/w-security` | Security audit — OWASP top 10, auth/authz, data exposure |
+| `/w-perf` | Performance audit — N+1 queries, memory, bottlenecks |
 
 ### Architecture
 
-| Workflow | Command | Best For |
-|----------|---------|----------|
-| Hive Architect | `/w-architect` | Collective intelligence for complex design |
-| Multi-Repo | `/w-multi-repo` | Coordinate changes across repositories |
+| Shortcut | Description |
+|----------|-------------|
+| `/w-architect` | Hive-mind architecture — collective intelligence for complex design |
+| `/w-multi-repo` | Coordinate changes across repositories |
 
 ### Session Management
 
-| Workflow | Command | Best For |
-|----------|---------|----------|
-| Cold Start | `/w-start` | Load project context when `--resume` unavailable |
-| End Session | `/w-end` | Compound knowledge + commit for next session |
+| Shortcut | Description |
+|----------|-------------|
+| `/w-start` | Cold-start session with project context |
+| `/w-end` | End session — compound knowledge + commit |
+| `/w-search` | Search past solutions in memory |
 
-### Pure Ralph (Bash Loop Approach)
+### Compound & Knowledge
 
-Pure Ralph uses external bash orchestration for **fresh context each iteration**:
+| Shortcut | Description |
+|----------|-------------|
+| `/w-compound` | Ad-hoc knowledge capture with auto-QA diagnostics |
+| `/w-background-compound` | Fire-and-forget compound (background agent, auto-push) |
+| `/w-suite-sync` | Sync shortcuts after suite update (additive only) |
 
-| Workflow | Command | Best For |
-|----------|---------|----------|
-| Ralph Init | `/w-ralph-init` | Initialize Ralph structure in project |
-| Ralph This | `/w-ralph-this` | Convert task to IMPLEMENTATION_PLAN.md |
-| Ralph Goals | `/w-ralph-goals` | Interview to build plan + specs |
-| Ralph Pick | `/w-ralph-pick` | Execute a queued candidate |
-| Ralph Batch | `/w-ralph-batch` | Generate overnight bash scripts |
+### Pure Ralph (Bash Loop)
 
-**Key Principle**: Each iteration starts with FRESH context. State passes through `IMPLEMENTATION_PLAN.md` only.
+| Shortcut | Description |
+|----------|-------------|
+| `/w-ralph-init` | Initialize Ralph structure in project |
+| `/w-ralph-this` | Convert current task to implementation plan |
+| `/w-ralph-goals` | Interview → build plan + specs |
+| `/w-ralph-pick` | Execute a queued Ralph candidate |
+| `/w-ralph-batch` | Generate overnight batch scripts |
 
+## Workflow Features
+
+### Verification Checkpoint
+
+Every workflow includes an independent **cross-method validation gate** after implementation:
+
+1. **Files Exist** — verify all claimed file paths exist on disk
+2. **Tests Re-run** — independent re-run (not trusting earlier output)
+3. **Git Diff Matches Plan** — compare `git diff --stat` against planned files
+4. **Build Compiles** — run build command, verify zero errors
+5. **No Regressions** — full test suite to catch regressions
+
+Retry logic: max 3 retries, then escalate to user.
+
+### Pi Brain Integration
+
+Workflows integrate with the [Pi Brain](https://pi.ruv.io) knowledge network at two points:
+
+- **Discovery** (before building) — search for existing knowledge:
+  ```bash
+  npx ruvector brain search "[task description]" --top-k=3
+  ```
+- **Auto-Vote** (after building) — submit proof-of-execution if tests pass
+
+### Agent Browser
+
+UI/frontend workflows include conditional browser checks:
 ```bash
-# Quick start
-/w-ralph-init              # Create Ralph structure
-/w-ralph-this "Build X"    # Generate plan
-
-# Run the loop (in terminal)
-./.claude/ralph/loop.sh
+agent-browser open <url> → agent-browser screenshot  # Before changes
+agent-browser snapshot -i → verify elements           # After build
+agent-browser screenshot → compare before/after       # Final review
 ```
 
-### Utilities
+Skipped for non-UI tasks. Falls back to: `npx playwright install`
 
-| Workflow | Command | Best For |
-|----------|---------|----------|
-| Compound | `/w-compound` | Knowledge capture + auto-generate QA diagnostics |
-| Search | `/w-search` | Find relevant past solutions |
+### Autoresearch
+
+Autonomous experiment loop for measurable optimization:
+
+```bash
+/w-autoresearch optimize test suite runtime    # Free-form objective
+/w-autoresearch RC-A003                        # Run against RC-A candidate
+```
+
+- Runs as background agent, loops forever until paused
+- Git commits winners, reverts losers
+- State in `autoresearch.jsonl`, narrative log in `experiments/worklog.md`
+- Benchmark script outputs `METRIC name=number` lines
 
 ## Ralph Candidates System
 
-During compound phases, patterns suitable for future Ralph loops are logged to `.claude/ralph-candidates.md`:
+During compound phases, three types of candidates are logged to `.claude/ralph-candidates.md`:
 
-```markdown
-## Active Candidates
-| ID | Priority | Name | Source | Completion Tests | Status |
-|----|----------|------|--------|------------------|--------|
-| RC-001 | P1 | API endpoints | /w-compound | 3 tests | ready |
-
-## Active Diagnostics (Auto-generated by /w-compound)
-| ID | Priority | Verifies | Triggers | Status |
-|----|----------|----------|----------|--------|
-| RC-D001 | P2 | getOrderBookDepth exists | RC-F001 | ready |
-
-## Active Fixes (Only run if diagnostic fails)
-| ID | Priority | Restores | Triggered By | Status |
-|----|----------|----------|--------------|--------|
-| RC-F001 | P1 | getOrderBookDepth function | RC-D001 | ready |
-```
-
-**Candidate ID Formats:**
 | Format | Type | Purpose |
 |--------|------|---------|
-| RC-### | General | Standard Ralph candidates |
-| RC-D### | Diagnostic | Verify patterns/code exists |
-| RC-F### | Fix | Restore code if diagnostic fails |
+| `RC-###` | General | Standard Ralph candidates (repeatable patterns) |
+| `RC-D###` | Diagnostic | Verify patterns/code exists |
+| `RC-F###` | Fix | Restore code if diagnostic fails |
+| `RC-A###` | Autoresearch | Measurable optimization targets with KPI + impact score |
 
-**AI-Verifiable Completion Tests:**
-- `File exists: path/to/file`
-- `Pattern: "regex" in file`
-- `Test: npm test -- --grep "name"`
-- `Lint: npm run lint`
-- `Build: npm run build`
+### RC-A Candidates (Autoresearch)
 
-**Batch Processing:**
-```bash
-# Generate overnight script
-/w-ralph-batch --script
-
-# Process by priority
-/w-ralph-batch --priority P1
-
-# Execute all ready candidates
-/w-ralph-batch --all
-
-# Phased execution (P1 → P2 → P3)
-/w-ralph-batch --phased
-
-# Run diagnostics first, fixes only if needed
-/w-ralph-batch --diagnostics
-```
-
-**Diagnostic → Fix Flow:**
-```
-1. Run RC-D### diagnostic command
-2. If STATUS: PASS → log "VERIFIED" → skip paired RC-F###
-3. If STATUS: FAIL → run RC-F### → re-run RC-D### to verify
-4. Report final status (VERIFIED | RESTORED | FAILED)
-```
-
-## Pure Ralph (Bash Loop Methodology)
-
-Pure Ralph is the **fresh context, file-based state** approach to AI development loops:
-
-### Key Differences from Plugin-Style
-
-| Aspect | Plugin-Style | Pure Ralph (Bash Loop) |
-|--------|--------------|------------------------|
-| Context | Accumulates each iteration | Fresh each iteration |
-| Orchestration | Internal hooks | External bash loop |
-| State | In-memory | File-based (IMPLEMENTATION_PLAN.md) |
-| Task scope | Multiple per session | ONE per iteration |
-| Completion | String matching | Plan file + git commit |
-
-### How It Works
-
-```
-┌────────────────────────────────────────────────────────────┐
-│ while [ tasks_remaining ]; do                               │
-│   cat PROMPT.md AGENTS.md IMPLEMENTATION_PLAN.md | claude   │
-│                          ↓                                  │
-│   ┌──────────────────────────────────────────────────────┐ │
-│   │ Fresh Claude reads plan → picks ONE task → executes  │ │
-│   │ → validates → marks done → commits → exits           │ │
-│   └──────────────────────────────────────────────────────┘ │
-│                          ↓                                  │
-│   IMPLEMENTATION_PLAN.md updated (state preserved!)         │
-│ done                                                        │
-└────────────────────────────────────────────────────────────┘
-```
-
-### Project Structure
-
-```
-.claude/ralph/
-├── loop.sh              # Bash orchestrator (run this!)
-├── PROMPT_build.md      # Build mode prompt
-├── PROMPT_plan.md       # Planning mode prompt
-├── AGENTS.md            # Validation commands (customize!)
-└── IMPLEMENTATION_PLAN.md  # Task tracking (shared state)
-
-specs/
-└── *.md                 # Specification files
-```
-
-### Quick Start
-
-```bash
-# 1. Initialize Ralph structure
-/w-ralph-init
-
-# 2. Create implementation plan from a task
-/w-ralph-this "Build authentication with JWT tokens"
-
-# 3. Run the loop (in your terminal, not Claude)
-./.claude/ralph/loop.sh
-
-# Options:
-./.claude/ralph/loop.sh build 50   # Max 50 iterations
-./.claude/ralph/loop.sh plan       # Planning mode
-```
-
-### IMPLEMENTATION_PLAN.md Format
+Discovered automatically in compound phases via static analysis + agent reflection:
 
 ```markdown
-# Implementation Plan
-
-## Status
-- Total tasks: 8
-- Completed: 3
-- Remaining: 5
-
-## Tasks
-- [x] Create auth types in src/types/auth.ts
-- [x] Implement JWT utilities in src/lib/jwt.ts
-- [x] Add login endpoint
-- [ ] Add refresh endpoint       ← Next iteration picks this
-- [ ] Add auth middleware
-- [ ] Write tests for auth flow
-- [ ] Add logout endpoint
-- [ ] Update API documentation
-
-## Discoveries
-- Found existing bcrypt dependency, using that for password hashing
+## RC-A003: Test Suite Runtime Optimization
+**KPI:** test_suite_duration_seconds
+**Baseline:** 45.2s
+**Benchmark:** `time python3 -m pytest tests/ 2>&1 | tail -1`
+**Impact Score:** 7.2 (potential: 8, blast_radius: 3, risk: 2, value: 9)
+**Files in scope:** tests/, src/
+**Constraints:** All tests must still pass
 ```
 
-### Why Fresh Context Matters
+Impact score = weighted composite of potential (0.35), blast_radius (0.15), risk (0.15), value (0.35).
 
-1. **No pollution** - Previous iteration's mistakes don't carry forward
-2. **Clean state** - Each iteration reads the same source of truth
-3. **Backpressure** - Tests/lints reject bad work automatically
-4. **Predictable** - Same input (plan file) = consistent behavior
+## Pure Ralph (Bash Loop)
 
-### Overnight Runs
+Fresh context each iteration. State passes through files only.
 
 ```bash
-# Generate overnight script
-/w-ralph-batch --script
+/w-ralph-init                          # Create structure
+/w-ralph-this "Build authentication"   # Generate plan
+./.claude/ralph/loop.sh                # Run the loop
+./.claude/ralph/loop.sh build 50       # Max 50 iterations
+```
 
-# Run with nohup
-nohup ./overnight-ralph.sh > overnight.log 2>&1 &
+```
+while [ tasks_remaining ]; do
+  cat PROMPT.md AGENTS.md IMPLEMENTATION_PLAN.md | claude
+  # Fresh Claude reads plan → picks ONE task → executes → validates → commits → exits
+  # IMPLEMENTATION_PLAN.md updated (state preserved!)
+done
+```
 
-# Or with screen
-screen -S ralph ./overnight-ralph.sh
+## PM Module (--with-pm)
 
-# Check progress
-tail -f ralph-batch-*.log
+Adds 34 additional workflows for project management:
+
+```bash
+npx danizee-claude-suite init --with-pm
+```
+
+Requires `npm install better-sqlite3` for the SQLite database.
+
+| Category | Workflows |
+|----------|-----------|
+| Action Items | `/w-action`, `/w-action-done`, `/w-action-list`, `/w-action-rebalance` |
+| Standup | `/w-cos` (Chief of Staff daily standup) |
+| Follow-ups | `/w-followup`, `/w-followup-done` |
+| Goals | `/w-goal` |
+| Ideas | `/w-idea`, `/w-idea-refine`, `/w-idea-share` |
+| Knowledge | `/w-knowledge`, `/w-knowledge-search` |
+| Notes & Facts | `/w-notes`, `/w-fact`, `/w-fact-search`, `/w-fact-enrich` |
+| Brainstorm | `/w-ramble`, `/w-ramble-search`, `/w-ramble-refine` |
+| Research | `/w-research`, `/w-doc-review` |
+| Meetings | `/w-meeting-prep` |
+| Projects | `/w-project`, `/w-initiative` |
+| Sharing | `/w-share`, `/w-share-list`, `/w-share-revoke` |
+| Design | `/w-systems-design`, `/w-ui-references`, `/w-ui-references-review` |
+
+Action items use Fibonacci bucket limits (P1: 1, P2: 2, P3: 3, P5: 5, P8: 8, P13: 13) with auto-promotion on completion.
+
+## Post-Init Hooks
+
+The suite runs `.claude/hooks/post-init.sh` after installation if it exists and is executable. Use this to apply project-specific customizations that should survive suite updates.
+
+```bash
+#!/bin/bash
+# Example: .claude/hooks/post-init.sh
+sed -i '' 's/TodoWrite/TaskCreate/g' .claude/commands/.shortcuts/*.md
 ```
 
 ## CLI Commands
 
 ```bash
-# Initialize suite in current project
-danizee-claude-suite init
-
-# Check installation status
-danizee-claude-suite check
-
-# Update existing installation (preserves your data)
-danizee-claude-suite update
-
-# Remove suite completely
-danizee-claude-suite uninstall
-
-# Preview changes without writing (dry run)
-danizee-claude-suite init --dry-run
-
-# Force overwrite existing files
-danizee-claude-suite init --force
+npx danizee-claude-suite init          # Install suite
+npx danizee-claude-suite check         # Verify installation
+npx danizee-claude-suite update        # Update workflows (preserves data)
+npx danizee-claude-suite uninstall     # Remove suite
 ```
 
-| Command | Description |
-|---------|-------------|
-| `init` | Install all workflows, create directories, generate docs |
-| `check` | Verify installation status and show installed components |
-| `update` | Regenerate workflows and docs, preserve ralph-candidates.md and solution docs |
-| `uninstall` | Remove all installed files and directories |
-| `--dry-run` | Preview what will be created without writing files |
-| `--force` | Overwrite existing files without prompting |
+| Flag | Description |
+|------|-------------|
+| `--force` | Overwrite existing files |
+| `--dry-run` | Preview without writing |
+| `--with-pm` | Include PM workflows |
+| `--without-cookbook` | Skip Agent Cookbook |
+| `--keep-settings` | Preserve settings.json on uninstall |
+| `-p, --path <dir>` | Target directory (default: cwd) |
 
 ## What Gets Installed
 
 ```
-your-project/
-├── .claude/
-│   ├── commands/
-│   │   ├── .shortcuts/     # /w- workflow shortcuts
-│   │   ├── workflows/      # plan, work, review, compound
-│   │   ├── coordination/   # swarm-init, agent-spawn, memory-ops
-│   │   └── analysis/       # design, component, layout, theme
-│   ├── ralph/              # Pure Ralph bash loop structure
-│   │   ├── loop.sh         # Bash orchestrator (run this!)
-│   │   ├── PROMPT_build.md # Build mode prompt
-│   │   ├── PROMPT_plan.md  # Planning mode prompt
-│   │   ├── AGENTS.md       # Validation commands
-│   │   └── IMPLEMENTATION_PLAN.md # Task tracking
-│   ├── plans/              # Saved plan files
-│   ├── ralph-candidates.md # Ralph candidate queue
-│   └── settings.json       # Suite configuration
-├── specs/                  # Ralph specification files
-├── docs/
-│   └── solutions/          # Compounded solution docs
-│       ├── features/
-│       ├── bugs/
-│       ├── security/
-│       ├── performance/
-│       ├── architecture/
-│       ├── reviews/
-│       ├── incidents/
-│       ├── ideas/
-│       └── ralph/
-└── WORKFLOW-SHORTCUTS.md   # Complete workflow reference
+.claude/
+├── commands/
+│   ├── .shortcuts/         24 /w- workflow shortcuts
+│   ├── workflows/          plan, work, review, compound
+│   ├── coordination/       swarm-init, agent-spawn, memory-ops
+│   ├── analysis/           design, component, layout, theme
+│   └── autoresearch.md     /autoresearch command
+├── skills/
+│   └── autoresearch/       Autoresearch skill (SKILL.md)
+├── hooks/
+│   └── autoresearch-context.sh
+├── helpers/
+│   ├── quick-start.sh
+│   ├── setup-mcp.sh
+│   └── terminal-agents-mcp.js
+├── ralph/                  Pure Ralph loop structure
+├── plans/                  Interview specs
+├── ralph-candidates.md     Candidate queue
+└── settings.json           Suite configuration
+
+docs/solutions/             Compounded solution docs
+specs/                      Ralph specification files
+WORKFLOW-SHORTCUTS.md       Generated reference
+.mcp.json                   MCP server configuration
 ```
 
-## Memory Namespaces
+## Plugins
 
-| Namespace | Contents |
-|-----------|----------|
-| `project/features/*` | Feature implementations |
-| `project/bugs/*` | Bug fixes |
-| `project/security/*` | Security findings |
-| `project/performance/*` | Performance optimizations |
-| `project/architecture/*` | Design decisions |
-| `project/reviews/*` | Review findings |
-| `project/incidents/*` | Incident responses |
-| `project/ideas/*` | Refined ideas from interviews |
-| `project/ralph/*` | Ralph loop patterns |
-| `project/ralph-specs/*` | Generated Ralph specifications |
+| Plugin | Purpose |
+|--------|---------|
+| **RuFlo** | Multi-agent orchestration, memory, swarm topologies |
+| **Compound Engineering** | Plan, work, review, compound workflows |
+| **Frontend Design** | UI component generation (React/Vue/Svelte) |
+| **Dot Shortcuts** | 24 /w- workflow shortcuts |
+| **PM Shortcuts** | 34 /w- PM workflows (opt-in) |
+| **Agent Cookbook** | Recipe registry integration |
+| **Terminal Agents** | MCP server for tmux + worktree agent orchestration |
+| **Autoresearch** | Autonomous experiment loop skill + hook |
 
-## Included Plugins
+## Checkpoint Gates
 
-### Claude Flow 3.0
-Multi-agent orchestration with memory and swarm support (`claude-flow@v3alpha`).
-- Swarm topologies: hierarchical, mesh, ring, star
-- 54+ specialized agents: coder, tester, reviewer, security-sentinel, performance-oracle, etc.
-- HNSW-indexed memory for 150x faster pattern search
-- ReasoningBank self-learning intelligence
-- 175+ MCP tools for development workflows
-
-### Compound Engineering
-Systematic feature development workflows.
-- Plan: Feature planning with codebase analysis
-- Work: Isolated implementation with worktrees
-- Review: Multi-agent code review
-- Compound: Knowledge storage and learning
-
-### Frontend Design
-UI component generation utilities.
-- Design: Component specifications
-- Component: Framework-specific implementations (React/Vue/Svelte)
-- Layout: Page layouts and grids
-- Theme: Design tokens and theming
-
-## Checkpoint Automation
-
-Workflows use **USER GATE** (requires confirmation) and **AUTO-PROCEED** (continues automatically):
-
-| Phase | Gate Type | Rationale |
-|-------|-----------|-----------|
-| Search | USER GATE | Review past solutions before proceeding |
-| Interview | USER GATE | Ensure requirements are captured |
+| Phase | Gate | Rationale |
+|-------|------|-----------|
+| Search | AUTO-PROCEED | Find past solutions, continue automatically |
+| Pi Brain | AUTO-PROCEED | Knowledge discovery from network |
+| Interview | USER GATE | Ensure requirements captured |
 | Plan | USER GATE | Validate approach before coding |
-| Spec | AUTO-PROCEED | Flows directly to Tests |
-| Tests | AUTO-PROCEED | Blocking rule ensures tests fail first |
+| Spec | AUTO-PROCEED | Flows directly to tests |
+| Tests | AUTO-PROCEED | Blocking rule: tests must fail first |
 | Build | AUTO-PROCEED | Continues after tests pass |
 | Review | AUTO-PROCEED | Automatic code review |
+| Verification | AUTO-PROCEED | Cross-method validation (3 retries) |
 | Compound | AUTO-PROCEED | Mandatory knowledge capture |
-| Analyze Changes | AUTO-PROCEED | Parse git diff for built patterns |
-| Generate Diagnostics | AUTO-PROCEED | Create RC-D### candidates |
-| Generate Fixes | AUTO-PROCEED | Create paired RC-F### candidates |
-
-**Philosophy**: Human gates in planning/context phases, auto-proceed in coding/verification phases.
-
-**Auto-QA Pipeline**: Build → Compound → Auto-generate diagnostics → Ralph batch verifies overnight → Regressions auto-fixed
-
-## Tips
-
-1. **Use /w- shortcuts** - Quick access to all workflows
-2. **Review checkpoint 0** - Past solutions may already solve your problem
-3. **Trust the compound** - Don't skip the final checkpoint
-4. **Log Ralph candidates** - Repeating patterns become future automation
-5. **Batch overnight work** - Use `/w-ralph-batch --script` for unattended runs
-6. **Search first** - `/w-search` before starting if unsure
-7. **Run diagnostics nightly** - `/w-ralph-batch --diagnostics` catches accidental deletions
 
 ## License
 
