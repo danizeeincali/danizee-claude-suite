@@ -76,7 +76,7 @@ STOP and wait for user response.
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx ruvector brain search "[task description]" --top-k=3
+curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[task description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[task description]&top_k=3"
@@ -155,34 +155,6 @@ Skip this block for non-UI tasks.
 
 ---
 
-### 🧠 CHECKPOINT 2.5: Pi Brain — Auto-Vote
-**Submit proof-of-execution to the Pi Brain network.**
-
-Check config: read ~/.ruvector/config.json → auto_votes section.
-Skip if auto_votes.enabled is false.
-
-**Grade calculation:**
-- correctness: 1.0 if all tests pass, 0.0 if any fail
-- test_coverage: coverage percentage if available (0.0-1.0)
-
-**Submit only if:** tests pass AND grade >= auto_votes.min_grade (default: 0.8)
-
-\\\`\\\`\\\`bash
-# npm client (preferred)
-npx ruvector brain vote --memory-id=[id] --direction=up
-
-# HTTP fallback
-curl -X POST https://pi.ruv.io/v1/memories/[id]/vote \\\\
-  -H "Content-Type: application/json" \\\\
-  -d '{"direction":"up","context":"workflow-verified","grade":[grade]}'
-\\\`\\\`\\\`
-
-**REQUIRED OUTPUT:**
-- Vote submitted: yes/no/skipped
-- Grade: _____
-- Reason if skipped: _____
-
-**AUTO-PROCEED:** Continue to Compound phase.
 
 ---
 
@@ -229,13 +201,6 @@ Scan the work just completed for measurable optimization targets:
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
-**PI BRAIN AUTO-SHARE CHECK:**
-- Check ~/.ruvector/config.json → auto_share section
-- If knowledge-worthy (>= min_steps, has tests, repeatable): extract pattern
-- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
-- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: share as new memory
-- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -249,12 +214,10 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Checkpoints 2-3 completed (auto-proceed)
 - [ ] All required outputs generated
 - [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
-- [ ] Pi Brain auto-vote submitted if applicable (CHECKPOINT 2.5)
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -341,7 +304,7 @@ STOP and wait for user response.
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx ruvector brain search "[feature description]" --top-k=3
+curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[feature description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[feature description]&top_k=3"
@@ -460,32 +423,6 @@ Skip this block for non-UI tasks.
 
 ---
 
-### 🧠 CHECKPOINT 5.5: Pi Brain — Auto-Vote
-**Submit proof-of-execution to the Pi Brain network.**
-
-Check config: read ~/.ruvector/config.json → auto_votes section.
-Skip if auto_votes.enabled is false.
-
-**Grade calculation:**
-- correctness: 1.0 if all tests pass, 0.0 if any fail
-- test_coverage: coverage percentage if available (0.0-1.0)
-
-**Submit only if:** tests pass AND grade >= auto_votes.min_grade (default: 0.8)
-
-\\\`\\\`\\\`bash
-# npm client (preferred)
-npx ruvector brain vote --memory-id=[id] --direction=up
-
-# HTTP fallback
-curl -X POST https://pi.ruv.io/v1/memories/[id]/vote \\\\
-  -H "Content-Type: application/json" \\\\
-  -d '{"direction":"up","context":"workflow-verified","grade":[grade]}'
-\\\`\\\`\\\`
-
-**REQUIRED OUTPUT:**
-- Vote submitted: yes/no/skipped
-- Grade: _____
-- Reason if skipped: _____
 
 ---
 
@@ -522,13 +459,6 @@ Scan the work just completed for measurable optimization targets:
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
-**PI BRAIN AUTO-SHARE CHECK:**
-- Check ~/.ruvector/config.json → auto_share section
-- If knowledge-worthy (>= min_steps, has tests, repeatable): extract pattern
-- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
-- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: share as new memory
-- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -543,12 +473,10 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] All required outputs generated
 - [ ] All tests pass
 - [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
-- [ ] Pi Brain auto-vote submitted if applicable (CHECKPOINT 5.5)
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -634,7 +562,7 @@ Skip this block for non-UI tasks.
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx ruvector brain search "[idea description]" --top-k=3
+curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[idea description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[idea description]&top_k=3"
@@ -807,32 +735,6 @@ Skip this block for non-UI tasks.
 
 ---
 
-### 🧠 CHECKPOINT 6.5: Pi Brain — Auto-Vote
-**Submit proof-of-execution to the Pi Brain network.**
-
-Check config: read ~/.ruvector/config.json → auto_votes section.
-Skip if auto_votes.enabled is false.
-
-**Grade calculation:**
-- correctness: 1.0 if all tests pass, 0.0 if any fail
-- test_coverage: coverage percentage if available (0.0-1.0)
-
-**Submit only if:** tests pass AND grade >= auto_votes.min_grade (default: 0.8)
-
-\\\`\\\`\\\`bash
-# npm client (preferred)
-npx ruvector brain vote --memory-id=[id] --direction=up
-
-# HTTP fallback
-curl -X POST https://pi.ruv.io/v1/memories/[id]/vote \\\\
-  -H "Content-Type: application/json" \\\\
-  -d '{"direction":"up","context":"workflow-verified","grade":[grade]}'
-\\\`\\\`\\\`
-
-**REQUIRED OUTPUT:**
-- Vote submitted: yes/no/skipped
-- Grade: _____
-- Reason if skipped: _____
 
 ---
 
@@ -870,13 +772,6 @@ Scan the work just completed for measurable optimization targets:
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
-**PI BRAIN AUTO-SHARE CHECK:**
-- Check ~/.ruvector/config.json → auto_share section
-- If knowledge-worthy (>= min_steps, has tests, repeatable): extract pattern
-- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
-- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: share as new memory
-- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -893,12 +788,10 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] All required outputs generated
 - [ ] All tests pass
 - [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
-- [ ] Pi Brain auto-vote submitted if applicable (CHECKPOINT 6.5)
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -980,7 +873,7 @@ Search for past solutions. Check memory keys, search codebase for similar implem
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx ruvector brain search "[feature description]" --top-k=3
+curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[feature description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[feature description]&top_k=3"
@@ -1074,34 +967,6 @@ Quick self-review. Fix any critical/high findings before proceeding.
 
 ---
 
-### PHASE 6.5: Pi Brain — Auto-Vote (AUTO-PROCEED)
-**Submit proof-of-execution to the Pi Brain network.**
-
-Check config: read ~/.ruvector/config.json → auto_votes section.
-Skip if auto_votes.enabled is false.
-
-**Grade calculation:**
-- correctness: 1.0 if all tests pass, 0.0 if any fail
-- test_coverage: coverage percentage if available (0.0-1.0)
-
-**Submit only if:** tests pass AND grade >= auto_votes.min_grade (default: 0.8)
-
-\\\`\\\`\\\`bash
-# npm client (preferred)
-npx ruvector brain vote --memory-id=[id] --direction=up
-
-# HTTP fallback
-curl -X POST https://pi.ruv.io/v1/memories/[id]/vote \\\\
-  -H "Content-Type: application/json" \\\\
-  -d '{"direction":"up","context":"workflow-verified","grade":[grade]}'
-\\\`\\\`\\\`
-
-**REQUIRED OUTPUT:**
-- Vote submitted: yes/no/skipped
-- Grade: _____
-- Reason if skipped: _____
-
-**AUTO-PROCEED:** Continue to PR.
 
 ---
 
@@ -1126,13 +991,6 @@ curl -X POST https://pi.ruv.io/v1/memories/[id]/vote \\\\
 - Doc path: docs/solutions/full-tdd-swarm/_____.md
 - Pattern stored: yes/no
 
-**PI BRAIN AUTO-SHARE CHECK:**
-- Check ~/.ruvector/config.json → auto_share section
-- If knowledge-worthy (>= min_steps, has tests, repeatable): extract pattern
-- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
-- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: share as new memory
-- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -1230,7 +1088,7 @@ Search for past solutions. Check memory keys, search codebase.
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx ruvector brain search "[idea description]" --top-k=3
+curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[idea description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[idea description]&top_k=3"
@@ -1390,7 +1248,7 @@ STOP and wait for user response.
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx ruvector brain search "[bug description]" --top-k=3
+curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[bug description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[bug description]&top_k=3"
@@ -1463,34 +1321,6 @@ Skip this block for non-UI tasks.
 
 ---
 
-### 🧠 CHECKPOINT 2.5: Pi Brain — Auto-Vote
-**Submit proof-of-execution to the Pi Brain network.**
-
-Check config: read ~/.ruvector/config.json → auto_votes section.
-Skip if auto_votes.enabled is false.
-
-**Grade calculation:**
-- correctness: 1.0 if bug fix verified and tests pass, 0.0 if not
-- test_coverage: coverage percentage if available (0.0-1.0)
-
-**Submit only if:** fix verified AND grade >= auto_votes.min_grade (default: 0.8)
-
-\\\`\\\`\\\`bash
-# npm client (preferred)
-npx ruvector brain vote --memory-id=[id] --direction=up
-
-# HTTP fallback
-curl -X POST https://pi.ruv.io/v1/memories/[id]/vote \\\\
-  -H "Content-Type: application/json" \\\\
-  -d '{"direction":"up","context":"workflow-verified","grade":[grade]}'
-\\\`\\\`\\\`
-
-**REQUIRED OUTPUT:**
-- Vote submitted: yes/no/skipped
-- Grade: _____
-- Reason if skipped: _____
-
-**AUTO-PROCEED:** Continue to Compound phase.
 
 ---
 
@@ -1527,13 +1357,6 @@ Scan the work just completed for measurable optimization targets:
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
-**PI BRAIN AUTO-SHARE CHECK:**
-- Check ~/.ruvector/config.json → auto_share section
-- If knowledge-worthy (>= min_steps, has tests, repeatable): extract pattern
-- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
-- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: share as new memory
-- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -1548,12 +1371,10 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Root cause identified
 - [ ] Fix applied and tests pass
 - [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
-- [ ] Pi Brain auto-vote submitted if applicable (CHECKPOINT 2.5)
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -1633,7 +1454,7 @@ STOP and wait for user response.
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx ruvector brain search "[bug/issue description]" --top-k=3
+curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[bug/issue description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[bug/issue description]&top_k=3"
@@ -1790,32 +1611,6 @@ Skip this block for non-UI tasks.
 
 ---
 
-### 🧠 CHECKPOINT 6.5: Pi Brain — Auto-Vote
-**Submit proof-of-execution to the Pi Brain network.**
-
-Check config: read ~/.ruvector/config.json → auto_votes section.
-Skip if auto_votes.enabled is false.
-
-**Grade calculation:**
-- correctness: 1.0 if bug fix verified and tests pass, 0.0 if not
-- test_coverage: coverage percentage if available (0.0-1.0)
-
-**Submit only if:** fix verified AND grade >= auto_votes.min_grade (default: 0.8)
-
-\\\`\\\`\\\`bash
-# npm client (preferred)
-npx ruvector brain vote --memory-id=[id] --direction=up
-
-# HTTP fallback
-curl -X POST https://pi.ruv.io/v1/memories/[id]/vote \\\\
-  -H "Content-Type: application/json" \\\\
-  -d '{"direction":"up","context":"workflow-verified","grade":[grade]}'
-\\\`\\\`\\\`
-
-**REQUIRED OUTPUT:**
-- Vote submitted: yes/no/skipped
-- Grade: _____
-- Reason if skipped: _____
 
 ---
 
@@ -1853,13 +1648,6 @@ Scan the work just completed for measurable optimization targets:
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
-**PI BRAIN AUTO-SHARE CHECK:**
-- Check ~/.ruvector/config.json → auto_share section
-- If knowledge-worthy (>= min_steps, has tests, repeatable): extract pattern
-- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
-- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: share as new memory
-- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -1876,12 +1664,10 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] All tests now pass
 - [ ] No regressions introduced
 - [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
-- [ ] Pi Brain auto-vote submitted if applicable (CHECKPOINT 6.5)
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -1965,7 +1751,7 @@ STOP and wait for user response.
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx ruvector brain search "[incident description]" --top-k=3
+curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[incident description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[incident description]&top_k=3"
@@ -2038,34 +1824,6 @@ Skip this block for non-UI tasks.
 
 ---
 
-### 🧠 CHECKPOINT 2.5: Pi Brain — Auto-Vote
-**Submit proof-of-execution to the Pi Brain network.**
-
-Check config: read ~/.ruvector/config.json → auto_votes section.
-Skip if auto_votes.enabled is false.
-
-**Grade calculation:**
-- correctness: 1.0 if hotfix verified and tests pass, 0.0 if not
-- test_coverage: coverage percentage if available (0.0-1.0)
-
-**Submit only if:** fix verified AND grade >= auto_votes.min_grade (default: 0.8)
-
-\\\`\\\`\\\`bash
-# npm client (preferred)
-npx ruvector brain vote --memory-id=[id] --direction=up
-
-# HTTP fallback
-curl -X POST https://pi.ruv.io/v1/memories/[id]/vote \\\\
-  -H "Content-Type: application/json" \\\\
-  -d '{"direction":"up","context":"workflow-verified","grade":[grade]}'
-\\\`\\\`\\\`
-
-**REQUIRED OUTPUT:**
-- Vote submitted: yes/no/skipped
-- Grade: _____
-- Reason if skipped: _____
-
-**AUTO-PROCEED:** Continue to Security Review phase.
 
 ---
 
@@ -2129,13 +1887,6 @@ Scan the work just completed for measurable optimization targets:
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
-**PI BRAIN AUTO-SHARE CHECK:**
-- Check ~/.ruvector/config.json → auto_share section
-- If knowledge-worthy (>= min_steps, has tests, repeatable): extract pattern
-- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
-- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: share as new memory
-- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -2151,13 +1902,11 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Hotfix branch created and isolated
 - [ ] Minimal fix applied
 - [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
-- [ ] Pi Brain auto-vote submitted if applicable (CHECKPOINT 2.5)
 - [ ] Security review completed
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Incident doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -2373,13 +2122,6 @@ Scan the work just completed for measurable optimization targets:
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
-**PI BRAIN AUTO-SHARE CHECK:**
-- Check ~/.ruvector/config.json → auto_share section
-- If knowledge-worthy (>= min_steps, repeatable review pattern): extract pattern
-- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
-- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: share as new memory
-- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -2399,7 +2141,6 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Memory key stored: _____
 - [ ] Review doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -2590,13 +2331,6 @@ Scan the work just completed for measurable optimization targets:
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
-**PI BRAIN AUTO-SHARE CHECK:**
-- Check ~/.ruvector/config.json → auto_share section
-- If knowledge-worthy (>= min_steps, repeatable security pattern): extract pattern
-- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
-- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: share as new memory
-- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -2614,7 +2348,6 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Memory key stored: _____
 - [ ] Security doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -2803,13 +2536,6 @@ Scan the work just completed for measurable optimization targets:
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
-**PI BRAIN AUTO-SHARE CHECK:**
-- Check ~/.ruvector/config.json → auto_share section
-- If knowledge-worthy (>= min_steps, repeatable performance pattern): extract pattern
-- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
-- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: share as new memory
-- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -2827,7 +2553,6 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Memory key stored: _____
 - [ ] Performance doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -2910,7 +2635,7 @@ STOP and wait for user response.
 
 \\\`\\\`\\\`bash
 # npm client (preferred)
-npx ruvector brain search "[system description]" --top-k=3
+curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[system description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[system description]&top_k=3"
@@ -3042,13 +2767,6 @@ Scan the work just completed for measurable optimization targets:
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
-**PI BRAIN AUTO-SHARE CHECK:**
-- Check ~/.ruvector/config.json → auto_share section
-- If knowledge-worthy (>= min_steps, repeatable architecture pattern): extract pattern
-- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
-- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: share as new memory
-- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -3066,7 +2784,6 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Memory key stored: _____
 - [ ] ADR doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -3212,13 +2929,6 @@ Scan the work just completed for measurable optimization targets:
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
-**PI BRAIN AUTO-SHARE CHECK:**
-- Check ~/.ruvector/config.json → auto_share section
-- If knowledge-worthy (>= min_steps, repeatable coordination pattern): extract pattern
-- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
-- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: share as new memory
-- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -3237,7 +2947,6 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Memory key stored: _____
 - [ ] Coordination doc created: _____
 - [ ] Ralph candidate check completed
-- [ ] Pi Brain auto-share check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
@@ -3482,7 +3191,7 @@ Skip if auto_share.enabled is false.
 
 \\\`\\\`\\\`bash
 # Check for similar existing recipes
-npx ruvector brain search "[recipe title]" --top-k=3
+curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[recipe title]" --top-k=3
 \\\`\\\`\\\`
 
 3. **If similar memory found (score > 0.7):** Submit as a fork to inherit grade
@@ -3769,11 +3478,11 @@ Launch a background agent via the Task tool that runs 4 phases autonomously:
 - If auto_share.enabled = false: skip
 - Detect if work is knowledge-worthy (>= min_steps, has tests, repeatable pattern)
 - If knowledge-worthy: extract pattern (title, description, tags, steps)
-- **Fork check:** search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
+- **Fork check:** search for similar memories via \\\`curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[title]" --top-k=3\\\`
 - If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
 - If no match: share as new memory
 - If auto_share.confirm = false OR background mode: auto-submit
-- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
+- Submit via: \\\`Pi Brain sharing disabled (read-only mode)\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
 - Log result (shared/voted/skipped/error)
 
 **Phase 2: Git Commit**
@@ -3946,15 +3655,6 @@ Scan the work just completed for measurable optimization targets:
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
-**PI BRAIN AUTO-SHARE CHECK:**
-- Check ~/.ruvector/config.json → auto_share section
-- If knowledge-worthy (>= min_steps, has tests, repeatable): extract pattern
-- Before submitting: search for similar memories via \\\`npx ruvector brain search "[title]" --top-k=3\\\`
-- If similar memory found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\` to inherit grade
-- If no match: share as new memory
-- Submit via: \\\`npx ruvector brain share\\\` or \\\`curl -X POST https://pi.ruv.io/v1/memories\\\`
-
-**AUTO-PROCEED:** Continue to Commit phase.
 
 ---
 
@@ -5255,20 +4955,6 @@ STOP and wait for user response.
 
 ---
 
-### 🧠 CHECKPOINT 5: Pi Brain — Auto-Vote
-**Submit proof-of-execution for the Suite Sync recipe.**
-
-Recipe ID: sha256:1bf583f6dcf5282fbc55ae1b70246bb8a25a908d1c003c315e15a027c4625014
-
-\\\`\\\`\\\`bash
-curl -X POST https://pi.ruv.io/v1/memories/[id]/vote \\\\
-  -H "Content-Type: application/json" \\\\
-  -d '{"direction":"up","context":"workflow-verified","grade":1.0}'
-\\\`\\\`\\\`
-
-**REQUIRED OUTPUT:**
-- Vote submitted: yes/no/skipped
-- Grade: _____
 
 ---
 
@@ -5278,11 +4964,6 @@ curl -X POST https://pi.ruv.io/v1/memories/[id]/vote \\\\
 - Items synced: _____
 - Upstream version: _____
 
-**PI BRAIN AUTO-SHARE CHECK:**
-- Check ~/.ruvector/config.json → auto_share section
-- If knowledge-worthy: extract pattern
-- Before submitting: discover similar recipes. If match found (score > 0.7): vote on existing memory instead of duplicating with \\\`"forked_from": "[matched_recipe_id]"\\\`
-- If no match: share as new memory
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -5298,7 +4979,6 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Only new files created (zero modifications)
 - [ ] All tests pass
 - [ ] No naming conflicts
-- [ ] Pi Brain auto-vote submitted
 - [ ] Compound phase executed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
