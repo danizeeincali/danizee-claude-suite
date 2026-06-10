@@ -45,6 +45,7 @@ The second time you solve a similar problem, it's faster because the workflow fi
 |----------|-------------|
 | `/w-tdd-swarm` | Full TDD + Swarm — plan, test-first, parallel build, review |
 | `/w-plan-tdd-swarm` | Interview refines idea → Full TDD Swarm builds it |
+| `/pt` | Alias for `/w-plan-tdd-swarm` (mobile-friendly shorthand) |
 | `/w-swarm` | Parallel agents (coder, tester, reviewer) |
 | `/w-autoresearch` | Autonomous experiment loop for measurable optimization |
 | `/w-agent-tdd-swarm` | Gateless TDD for terminal agents (zero user gates, auto-PR) |
@@ -87,6 +88,7 @@ The second time you solve a similar problem, it's faster because the workflow fi
 |----------|-------------|
 | `/w-compound` | Ad-hoc knowledge capture with auto-QA diagnostics |
 | `/w-background-compound` | Fire-and-forget compound (background agent, auto-push) |
+| `/bc` | Alias for `/w-background-compound` (mobile-friendly shorthand) |
 | `/w-suite-sync` | Sync shortcuts after suite update (additive only) |
 
 ### Pure Ralph (Bash Loop)

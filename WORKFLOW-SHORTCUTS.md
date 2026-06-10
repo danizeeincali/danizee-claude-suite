@@ -170,7 +170,8 @@ Use the `/w-` prefix for quick workflow invocation:
 | `/w-start [plan-file]` | Cold-start session with project context |
 | `/w-end [category]` | End session - compound and commit |
 | `/w-tdd-swarm [feature]` | Full TDD + Swarm + Review combined (recommended) |
-| `/w-idea-tdd-swarm [idea]` | Deep interview → refine idea → TDD Swarm |
+| `/w-plan-tdd-swarm [idea]` | Deep interview → refine idea → Full TDD Swarm builds it |
+| `/pt [idea]` | Alias for `/w-plan-tdd-swarm` (mobile-friendly shorthand) |
 | `/w-swarm [task]` | Parallel agents for rapid implementation |
 | `/w-fix [bug]` | Quick bug investigation and fix |
 | `/w-debug [issue]` | Debug → diagnose → TDD-swarm fix |
@@ -181,6 +182,8 @@ Use the `/w-` prefix for quick workflow invocation:
 | `/w-architect [system]` | Hive-mind architecture design |
 | `/w-multi-repo [task]` | Cross-repository coordination |
 | `/w-compound` | Store current solution in memory |
+| `/w-background-compound` | Fire-and-forget compound (background agent, auto-push) |
+| `/bc` | Alias for `/w-background-compound` (mobile-friendly shorthand) |
 | `/w-search [query]` | Search past solutions |
 | `/w-ralph-this [prompt]` | Ralph Wiggum iterative loop |
 | `/w-ralph-goals [idea]` | Interview to build Ralph spec |
@@ -428,7 +431,7 @@ mcp__claude-flow__neural_patterns { action: "learn" }
 ### Idea → TDD Swarm
 
 **Say:** "I have an idea for [rough concept]" or "Help me build [half-baked idea]"
-**Slash:** `/w-idea-tdd-swarm [idea]`
+**Slash:** `/w-plan-tdd-swarm [idea]`
 
 **What it does:** Deep interview to refine a half-baked idea, then flows into Full TDD Swarm.
 
@@ -482,7 +485,7 @@ Pattern: interview answers + refined spec + implementation
 
 **Example:**
 ```
-User: /w-idea-tdd-swarm I want some kind of caching layer for the API
+User: /w-plan-tdd-swarm I want some kind of caching layer for the API
 Claude: Let me interview you to refine this idea...
   - What problem does caching solve here? Slow responses? Rate limits?
   - What data needs caching? All endpoints or specific ones?
@@ -1243,7 +1246,7 @@ During compound phases, patterns are logged to `.claude/ralph-candidates.md`:
 | Cold-Start | `/w-start` | "start session with [plan]" | Resume without --resume |
 | End Session | `/w-end` | "end session" | Compound and commit before disconnect |
 | Full TDD Swarm | `/w-tdd-swarm` | "Full TDD Swarm on [X]" | New features (recommended) |
-| Idea → TDD Swarm | `/w-idea-tdd-swarm` | "I have an idea for [X]" | Half-baked ideas → features |
+| Idea → TDD Swarm | `/w-plan-tdd-swarm` | "I have an idea for [X]" | Half-baked ideas → features |
 | Swarm Build | `/w-swarm` | "swarm to build [X]" | Parallel implementation |
 | Full Cycle | - | "full cycle workflow on [X]" | Features without strict TDD |
 | TDD | - | "TDD workflow for [X]" | Simple test-first |
