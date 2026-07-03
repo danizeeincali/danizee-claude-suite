@@ -1,6 +1,6 @@
 {
   "name": "danizee-claude-suite",
-  "version": "4.2.0",
+  "version": "4.3.0",
   "description": "Unified workflow shortcuts for Claude Code with knowledge compounding, PM workflows, Pi Brain integration, and cross-method verification",
   "main": "bin/cli.js",
   "type": "module",

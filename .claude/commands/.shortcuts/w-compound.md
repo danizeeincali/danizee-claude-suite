@@ -11,6 +11,17 @@ Compound This - Captures current context as reusable knowledge AND auto-generate
 
 ---
 
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): `model: fable` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): `model: sonnet` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to `model: opus` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
+
+---
+
 ## ⚠️ MANDATORY EXECUTION
 
 This command MUST complete ALL phases including auto-QA generation.
@@ -34,16 +45,25 @@ This command MUST complete ALL phases including auto-QA generation.
 
 ## Execution Protocol
 
-### ⛔ CHECKPOINT 0: Category Selection
+### ⛔ CHECKPOINT 0: Category Detection
 **REQUIRED OUTPUT:**
 - Category selected: _____
 - Context to capture: _____
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Storing as [category]. Confirm?"
-- Options: ["Continue", "Change category"]
+**AUTO-DETECT:** If argument provided, use it. Otherwise, auto-detect from git diff:
+```bash
+git diff HEAD~1
+```
+Use weighted pattern matching:
+- security (weight 3): injection, vulnerability, sanitize, xss, csrf, auth
+- bug (weight 2): fix, bug, patch, hotfix, error handling, fallback
+- performance (weight 2): cache, optimize, batch, lazy, memoize, throttle
+- architecture (weight 2): refactor, redesign, restructure, migration, rename
+- feature (weight 1): export function, new file mode, CREATE TABLE, add/create/implement
 
-STOP and wait for user response.
+Highest score wins. Default to 'feature' on empty diff.
+
+**AUTO-PROCEED:** Continue to Storage phase.
 
 ---
 
@@ -103,9 +123,9 @@ Run: `git diff --name-only HEAD~1` and `git diff HEAD~1`
 **Verifies**: [description]
 
 **Test Command**:
-\`\`\`bash
+```bash
 grep -n "[pattern]" [file]
-\`\`\`
+```
 
 **AI-Verifiable Output**:
 DIAGNOSTIC: [NAME]
@@ -138,9 +158,9 @@ STATUS: PASS|FAIL
 **Priority**: P1 (critical - restores functionality)
 
 **Pattern to Restore**:
-\`\`\`[language]
+```[language]
 [actual code that was just written]
-\`\`\`
+```
 
 **File**: [path/to/file]
 
@@ -194,6 +214,51 @@ STATUS: PASS|FAIL
 - If yes: ID, priority, tests, status
 
 NEVER skip this phase. Command is INCOMPLETE without all checks.
+
+---
+
+### 🧠 CHECKPOINT 7: Agent Pi Brain — Auto-Recipe Extraction (fork-aware)
+**Detect if this work is knowledge-worthy and submit to the registry.**
+
+Check config: read ~/.ruvector/config.json → auto_share section.
+Skip if auto_share.enabled is false.
+
+**Recipe-worthy criteria:**
+- Workflow had >= auto_recipes.min_steps steps (default: 3)
+- Has tests that pass (if auto_recipes.require_tests = true)
+- Is a repeatable pattern (not a one-off fix)
+
+**If knowledge-worthy:**
+1. Extract recipe: title, description, tags, ordered steps with inputs/outputs
+2. **Fork check — discover similar recipes before submitting:**
+
+```bash
+# Check for similar existing recipes
+curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[recipe title]" --top-k=3
+```
+
+3. **If similar memory found (score > 0.7):** Submit as a fork to inherit grade
+4. **If no match:** Submit as a new recipe
+5. If auto_share.confirm = true: ask user before submitting
+
+```bash
+# Vote on existing memory (when similar memory found)
+curl -X POST https://pi.ruv.io/v1/memories \\
+  -H "Content-Type: application/json" \\
+  -d '{"title":"...","description":"...","tags":[...],"version":"1.0.0","steps":[...],"forked_from":"[matched_recipe_id]"}'
+
+# Submit as new (when no match)
+curl -X POST https://pi.ruv.io/v1/memories \\
+  -H "Content-Type: application/json" \\
+  -d '{"title":"...","description":"...","tags":[...],"version":"1.0.0","steps":[...]}'
+```
+
+**REQUIRED OUTPUT:**
+- Recipe-worthy: yes/no
+- Similar recipe found: yes/no (if yes: recipe ID and score)
+- Submitted as: fork/new/skipped
+- Recipe ID: _____ (if submitted)
+- Reason if skipped: _____
 
 ---
 

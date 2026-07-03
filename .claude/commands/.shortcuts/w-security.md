@@ -9,6 +9,17 @@ Security Audit - OWASP top 10, auth/authz, data exposure analysis.
 
 ---
 
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): `model: fable` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): `model: sonnet` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to `model: opus` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
+
+---
+
 ## ⚠️ MANDATORY FIRST ACTION
 
 Use TodoWrite NOW to create todos for ALL phases:
@@ -70,7 +81,7 @@ STOP and wait for user response.
 
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
-1. Use agent-browser to verify the implementation visually
+1. Use agent-browser to verify the implementation visually — focus on security-related UI aspects, auth flows, input sanitization display
 2. `agent-browser open <url>` → `agent-browser snapshot -i` → verify elements
 3. Compare against pre-change screenshots from Search phase
 
@@ -96,9 +107,9 @@ Skip this block for non-UI tasks.
 
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
-1. Final visual verification with agent-browser — focus on security-related UI
+1. Final visual verification with agent-browser
 2. `agent-browser open <url>` → `agent-browser screenshot` → compare before/after
-3. Verify auth flows, input sanitization display, error handling UX
+3. Verify responsive layout, dark mode, accessibility
 
 If agent-browser is not available, prompt: `npx playwright install`
 Skip this block for non-UI tasks.
@@ -145,6 +156,30 @@ Skip this block for non-UI tasks.
 **RALPH CANDIDATE CHECK (MANDATORY):**
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
+
+**AUTORESEARCH CANDIDATE CHECK (RC-A):**
+Scan the work just completed for measurable optimization targets:
+1. **Static scan:** Analyze git diff for measurable patterns (function runtimes, test duration, bundle size, query counts, memory usage, coverage gaps)
+2. **Agent reflection:** What about this work could be measured and autonomously optimized?
+3. **Impact scoring:** Rate each candidate on 4 dimensions (weighted composite):
+   - potential (0.35): estimated improvement magnitude (1-10)
+   - blast_radius (0.15): files/systems affected, inverted (1-10)
+   - risk (0.15): breaking change likelihood, inverted (1-10)
+   - value (0.35): user/business value of improvement (1-10)
+   - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
+4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
+```
+## RC-A[NNN]: [Title]
+**KPI:** [metric_name]
+**Baseline:** [current value]
+**Benchmark:** `[command to measure]`
+**Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
+**Files in scope:** [paths]
+**Constraints:** [what must not break]
+```
+- RC-A candidates found: yes/no
+- If yes, logged with impact scores to .claude/ralph-candidates.md
+
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 

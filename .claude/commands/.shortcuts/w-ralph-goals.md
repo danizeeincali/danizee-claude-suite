@@ -1,6 +1,14 @@
 # /w-ralph-goals
 
-Ralph Spec Builder - Interactive interview to build an optimal Ralph Wiggum prompt from a rough idea.
+Build a complete Pure Ralph setup from a rough idea through interactive interview.
+
+## What This Does
+
+1. **Interviews you** to understand the idea deeply
+2. **Creates IMPLEMENTATION_PLAN.md** with atomic tasks
+3. **Generates spec files** in specs/ directory
+4. **Configures AGENTS.md** for your project
+5. **Outputs the run command**
 
 ## Usage
 ```
@@ -11,16 +19,28 @@ Ralph Spec Builder - Interactive interview to build an optimal Ralph Wiggum prom
 
 ---
 
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): `model: fable` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): `model: sonnet` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to `model: opus` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
+
+---
+
 ## ⚠️ MANDATORY FIRST ACTION
 
 Use TodoWrite NOW to create todos for ALL phases:
-1. Capture initial idea
-2. Interview for completion criteria
-3. Interview for phases/milestones
-4. Interview for verification
-5. Build Ralph spec
-6. Save spec file
-7. Optionally execute
+1. Capture and clarify initial idea
+2. Interview for acceptance criteria
+3. Interview for architecture decisions
+4. Interview for verification approach
+5. Generate IMPLEMENTATION_PLAN.md
+6. Generate spec files
+7. Configure AGENTS.md
+8. Output run command
 
 ⚠️ VIOLATION: Any action before TodoWrite = restart workflow
 
@@ -30,28 +50,30 @@ Use TodoWrite NOW to create todos for ALL phases:
 
 - NEVER skip interview questions - each is critical
 - NEVER skip checkpoints - each requires user confirmation
-- NEVER skip saving the spec file
 - Ask ONE question at a time using AskUserQuestion
+- Generate ATOMIC tasks (one per Ralph iteration)
 
 ---
 
 ## Interview Categories
 
-**Completion Criteria**
-- What specific output signals the task is complete?
-- How can we automatically verify success?
+**Acceptance Criteria**
+- What does "done" look like?
+- How will we verify each feature works?
 
-**Phases & Milestones**
-- What are the major steps?
-- What order should they happen?
+**Architecture & Approach**
+- What's the high-level design?
+- What files/modules need to be created?
+- What dependencies are needed?
 
-**Self-Correction**
-- What tests should run each iteration?
-- How should failures be handled?
+**Verification**
+- What test framework to use?
+- What commands validate success?
+- What's the build command?
 
-**Safety**
-- What's the max iteration limit?
-- Are there any destructive operations to avoid?
+**Scope & Safety**
+- What's explicitly OUT of scope?
+- Are there any risky operations to avoid?
 
 ---
 
@@ -62,87 +84,171 @@ Use TodoWrite NOW to create todos for ALL phases:
 - Initial idea: _____
 - Context needed: _____
 
-**USER GATE:** Use AskUserQuestion (first interview question)
-- Question: "What specific output signals that [idea] is complete?"
+**USER GATE:** Use AskUserQuestion
+- Question: "What does 'done' look like for [idea]? What's the acceptance criteria?"
 - Options: (free text via "Other")
 
 STOP and wait for user response.
 
 ---
 
-### ⛔ CHECKPOINT 1: Interview Complete
+### ⛔ CHECKPOINT 1: Requirements Clear
+**Continue interviewing (one question at a time):**
+- Architecture approach
+- Key components needed
+- Testing strategy
+- Dependencies
+
 **REQUIRED OUTPUT:**
-- Completion criteria: _____
-- Phases identified: _____
-- Verification methods: _____
-- Max iterations: _____
-- Safety considerations: _____
+- Acceptance criteria: _____
+- Architecture summary: _____
+- Key components: _____
+- Test approach: _____
+- Dependencies: _____
 
 **USER GATE:** Use AskUserQuestion
-- Question: "Interview complete. Proceed to build spec?"
-- Options: ["Continue", "Add more questions"]
+- Question: "Requirements captured. Proceed to generate plan?"
+- Options: ["Generate plan", "Add more details", "Show summary"]
 
 STOP and wait for user response.
 
 ---
 
-### ⛔ CHECKPOINT 2: Spec Built
-**REQUIRED OUTPUT:**
-- Spec preview with all sections
-- Completion promise: _____
-- Phase list: _____
+### ⛔ CHECKPOINT 2: Generate IMPLEMENTATION_PLAN.md
+**Create atomic tasks (ONE task = ONE Ralph iteration):**
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Ralph spec ready. Review and save?"
-- Options: ["Save spec", "Revise spec"]
-
-STOP and wait for user response.
-
----
-
-### ⛔ CHECKPOINT 3: Execute Decision
-**REQUIRED OUTPUT:**
-- Spec saved to: .claude/plans/YYYY-MM-DD-[name]-ralph.md
-
-**USER GATE:** Use AskUserQuestion
-- Question: "Spec saved. Run /w-ralph-this on it now?"
-- Options: ["Execute now", "Later"]
-
-STOP and wait for user response.
-
----
-
-## Output Format
-The generated spec will include:
+**Write to .claude/ralph/IMPLEMENTATION_PLAN.md:**
 ```markdown
-# Ralph Spec: [Name]
+# Implementation Plan: [Name]
 
-## Completion Promise
-Output <promise>COMPLETE</promise> when done.
+## Status
+- Total tasks: N
+- Completed: 0
+- In Progress: 0
+- Remaining: N
 
-## Phases
-1. Phase 1: ...
-2. Phase 2: ...
+## Acceptance Criteria
+[From interview]
 
-## Verification
-- Test 1: ...
-- Test 2: ...
+## Tasks
 
-## Max Iterations: N
+### Phase 1: Setup
+- [ ] Task 1
+  - Verify: [command]
+- [ ] Task 2
+  - Verify: [command]
+
+### Phase 2: Core
+- [ ] Task 3
+...
+
+### Phase N: Polish
+- [ ] Final task
+  - Verify: All tests pass, build succeeds
+
+## Discoveries
+
+<!-- Will be populated during execution -->
 ```
+
+**REQUIRED OUTPUT:**
+- Plan file created: .claude/ralph/IMPLEMENTATION_PLAN.md
+- Total tasks: N
+- Phases: M
+
+**AUTO-PROCEED:** Continue to spec generation.
+
+---
+
+### ⛔ CHECKPOINT 3: Generate Spec Files
+**Create detailed specs in specs/ directory:**
+
+For each major component/feature:
+```markdown
+# Spec: [Component Name]
+
+## Purpose
+[What this component does]
+
+## Interface
+[API/function signatures]
+
+## Behavior
+[Expected behavior, edge cases]
+
+## Tests
+[Test cases to implement]
+```
+
+**REQUIRED OUTPUT:**
+- Spec files created: specs/*.md
+- Components covered: _____
+
+**AUTO-PROCEED:** Continue to AGENTS.md.
+
+---
+
+### ⛔ CHECKPOINT 4: Configure AGENTS.md
+**Detect project type and configure validation:**
+
+**Update .claude/ralph/AGENTS.md with:**
+- Build command
+- Test command
+- Lint command
+- Type check command (if applicable)
+
+**USER GATE:** Use AskUserQuestion
+- Question: "AGENTS.md configured for [project type]. Review commands?"
+- Options: ["Looks good", "Edit commands", "Show AGENTS.md"]
+
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 5: Output Run Command
+**REQUIRED OUTPUT:**
+```
+╔════════════════════════════════════════════════════════════╗
+║  Pure Ralph Setup Complete!                                 ║
+╠════════════════════════════════════════════════════════════╣
+║  Plan: .claude/ralph/IMPLEMENTATION_PLAN.md                 ║
+║  Tasks: N tasks in M phases                                 ║
+║  Specs: K spec files in specs/                              ║
+╠════════════════════════════════════════════════════════════╣
+║  To start the loop:                                         ║
+║                                                             ║
+║    ./.claude/ralph/loop.sh                                  ║
+║                                                             ║
+╚════════════════════════════════════════════════════════════╝
+```
+
+---
 
 ## Completion Checklist
 
-Before marking workflow complete, verify ALL boxes:
-- [ ] TodoWrite used at start with all 7 phases
-- [ ] All interview questions answered
-- [ ] All 4 checkpoints completed with user confirmation
-- [ ] Spec file saved: _____
-- [ ] Execute decision made
+- [ ] TodoWrite used at start
+- [ ] Interview completed (all key questions answered)
+- [ ] IMPLEMENTATION_PLAN.md created with atomic tasks
+- [ ] Spec files created in specs/
+- [ ] AGENTS.md configured
+- [ ] Run command provided to user
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Example
 ```
 /w-ralph-goals I want to build a markdown-to-HTML converter CLI
+
+# Interview extracts:
+# - Should support GitHub-flavored markdown
+# - CLI interface with --input and --output flags
+# - Tests with Jest
+# - TypeScript project
+
+# Generates:
+# - .claude/ralph/IMPLEMENTATION_PLAN.md (12 tasks)
+# - specs/cli-interface.md
+# - specs/markdown-parser.md
+# - specs/html-output.md
+# - Configured AGENTS.md
 ```

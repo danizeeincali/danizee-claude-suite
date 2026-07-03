@@ -9,6 +9,17 @@ Search Solutions - Searches memory and solution docs for relevant past work.
 
 ---
 
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): `model: fable` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): `model: sonnet` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to `model: opus` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
+
+---
+
 ## Execution Protocol
 
 ### ⛔ CHECKPOINT 0: Search Complete

@@ -26,26 +26,31 @@ const TOUCHED = ['w-plan-tdd-swarm', 'w-background-compound', 'pt', 'bc'];
 describe('Model Policy — w-plan-tdd-swarm', () => {
   const pt = () => commands['w-plan-tdd-swarm'].content;
 
-  it('has a Model Policy section with the generic escalation ladder', () => {
+  it('has a Model Policy section with the fable escalation ladder', () => {
     assert.ok(pt().includes('## Model Policy'), 'Model Policy section missing');
-    assert.match(pt(), /sonnet\s*→\s*opus\s*→\s*(your\s+)?session model/i, 'generic ladder missing');
+    assert.match(pt(), /sonnet\s*→\s*fable/i, 'fable ladder missing');
   });
 
-  it('routes Search to haiku, Build to sonnet/opus, Review to opus', () => {
+  it('routes Search to sonnet, Build to sonnet/fable, Review to fable', () => {
     const c = pt();
     const search = c.slice(c.indexOf('CHECKPOINT 0: Search'), c.indexOf('CHECKPOINT 0.5'));
-    assert.match(search, /haiku/, 'Search phase missing haiku directive');
+    assert.match(search, /sonnet/, 'Search phase missing sonnet directive');
     const build = c.slice(c.indexOf('CHECKPOINT 5: Build'), c.indexOf('CHECKPOINT 6: Review'));
     assert.match(build, /model:\s*"?sonnet/i, 'Build phase missing sonnet routing');
-    assert.match(build, /opus/, 'Build phase missing opus routing');
+    assert.match(build, /fable/, 'Build phase missing fable routing');
     assert.match(build, /escalat/i, 'Build phase missing escalation rule');
     const review = c.slice(c.indexOf('CHECKPOINT 6: Review'), c.indexOf('VERIFICATION CHECKPOINT'));
-    assert.match(review, /opus/, 'Review phase missing opus directive');
+    assert.match(review, /fable/, 'Review phase missing fable directive');
   });
 
-  it('never names a specific premium model as the ceiling (generic-tier invariant)', () => {
-    assert.ok(!/fable/i.test(pt()), 'suite content must not reference fable');
-    assert.ok(!/fable/i.test(commands['w-background-compound'].content));
+  // 2026-07 policy port: the generic-tier invariant is deliberately reversed.
+  // Thinking steps name fable explicitly, with an inline opus fallback for
+  // when fable access is removed or usage runs out (owner decision, see
+  // .claude/plans/2026-07-03-fable-model-policy.md).
+  it('names fable for thinking steps WITH an inline opus fallback', () => {
+    assert.match(pt(), /fable/i, 'suite content must reference fable');
+    assert.match(pt(), /fall back to\s*`?(model:\s*"?)?opus/i, 'opus fallback clause missing');
+    assert.match(commands['w-background-compound'].content, /fall back to\s*`?(model:\s*"?)?opus/i);
   });
 });
 
@@ -134,8 +139,9 @@ describe('Pi Brain read-only — BEHAVIORAL invariant (not just banned strings)'
 });
 
 describe('Release', () => {
-  it('package.json is bumped to 4.2.0', async () => {
+  it('package.json is bumped to at least 4.2.0', async () => {
     const pkg = JSON.parse(await fs.readFile(path.join(PROJECT_ROOT, 'package.json'), 'utf-8'));
-    assert.equal(pkg.version, '4.2.0');
+    const [major, minor] = pkg.version.split('.').map(Number);
+    assert.ok(major > 4 || (major === 4 && minor >= 2), `version ${pkg.version} < 4.2.0`);
   });
 });

@@ -16,7 +16,13 @@ export function getCommands() {
       description: 'Swarm Build - Parallel agents for rapid implementation',
       content: `# /w-swarm
 
-Swarm Build - Spawns parallel agents (coder, tester, reviewer) for rapid implementation.
+RuFlo Swarm Build - Spawns parallel agents via ruflo for rapid implementation.
+
+## Prerequisites
+RuFlo must be installed. If not available, run:
+\`\`\`bash
+npx ruflo@latest init
+\`\`\`
 
 ## Usage
 \`\`\`
@@ -25,14 +31,25 @@ Swarm Build - Spawns parallel agents (coder, tester, reviewer) for rapid impleme
 
 ---
 
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
+
+---
+
 ## ⚠️ MANDATORY FIRST ACTION
 
 Use TodoWrite NOW to create todos for ALL phases:
 1. Search for related implementation patterns
-2. Spawn agents with assignments
-3. Execute parallel work
-4. Integrate and verify results
-5. Compound solution
+2. Decompose task and assign agents
+3. Initialize ruflo swarm and spawn agents
+4. Execute parallel work and collect results
+5. Integrate, verify, and compound solution
 
 ⚠️ VIOLATION: Any action before TodoWrite = restart workflow
 
@@ -42,6 +59,7 @@ Use TodoWrite NOW to create todos for ALL phases:
 
 - NEVER skip checkpoints - each requires user confirmation
 - NEVER skip compound phase at the end
+- NEVER skip ruflo swarm initialization — agents must actually spawn
 - VIOLATION: Starting implementation without search = restart workflow
 
 ---
@@ -53,10 +71,10 @@ Use TodoWrite NOW to create todos for ALL phases:
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\`
 3. Note current UI state for comparison after build
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -64,68 +82,103 @@ Skip this block for non-UI tasks.
 - Relevance assessment for each
 
 **USER GATE:** Use AskUserQuestion
-- Question: "Found [N] related patterns. Proceed to Spawn agents or use existing?"
-- Options: ["Proceed to Spawn", "Use existing solution", "Show more detail"]
+- Question: "Found [N] related patterns. Proceed to task decomposition?"
+- Options: ["Proceed", "Use existing solution", "Show more detail"]
 
 STOP and wait for user response.
 
 ---
 
-### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
-**Search the Pi Brain network for existing knowledge matching this task:**
-
-\\\`\\\`\\\`bash
-# npm client (preferred)
-curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[task description]" --top-k=3
-
-# HTTP fallback
-curl -s "https://pi.ruv.io/v1/memories/search?q=[task description]&top_k=3"
-\\\`\\\`\\\`
-
-**If matching memories found:** Review steps for applicable patterns. Adapt proven approaches. Note memory IDs for voting later.
-**If no matches:** Proceed normally.
+### ⛔ CHECKPOINT 1: Task Decomposition & Agent Assignment
+**Analyze the task and break it into parallel work units.**
 
 **REQUIRED OUTPUT:**
-- Pi Brain memories found: _____ (0+ results)
-- Applicable patterns: _____
+- Task decomposition table:
+| Sub-task | Agent Role | Domain | Description |
+|----------|-----------|--------|-------------|
+| _____ | coder | core | _____ |
+| _____ | tester | support | _____ |
+| _____ | reviewer | support | _____ |
 
----
-
-### ⛔ CHECKPOINT 1: Agent Spawn
-**REQUIRED OUTPUT:**
-- Agent assignments table:
-| Agent | Task | Role |
-|-------|------|------|
-| _____ | _____ | coder |
-| _____ | _____ | tester |
-| _____ | _____ | reviewer |
-
-- Swarm topology: _____
-- Coordination strategy: _____
+- Swarm topology: _____ (hierarchical recommended for most tasks)
+- Agent count: _____ (3-5 for simple, 6-15 for complex)
+- Coordination strategy: _____ (queen-led, peer-to-peer, pipeline)
 
 **USER GATE:** Use AskUserQuestion
-- Question: "Agent assignments ready. Proceed to Execute?"
-- Options: ["Continue", "Revise assignments", "Show more detail"]
+- Question: "Task decomposed into [N] sub-tasks across [M] agents. Proceed to spawn swarm?"
+- Options: ["Continue", "Revise assignments", "Add more agents"]
 
 STOP and wait for user response.
 
 ---
 
-### ⛔ CHECKPOINT 2: Execution Complete
+### ⛔ CHECKPOINT 2: RuFlo Swarm Initialization & Execution
+
+**Step 1: Initialize the swarm**
+\`\`\`bash
+npx ruflo@latest swarm init --topology [chosen-topology] --agents [count]
+\`\`\`
+
+**Step 2: Spawn agents for each sub-task**
+For each row in the decomposition table, spawn an agent:
+\`\`\`bash
+npx ruflo@latest agent spawn --domain [domain] --role [role] --task "[description]"
+\`\`\`
+
+Alternatively, use the Agent tool to spawn parallel Claude Code agents:
+\`\`\`
+Agent(role="coder", task="[sub-task description]", isolation="worktree")
+Agent(role="tester", task="[sub-task description]", isolation="worktree")
+Agent(role="reviewer", task="[sub-task description]", isolation="worktree")
+\`\`\`
+
+**Step 3: Monitor progress**
+\`\`\`bash
+npx ruflo@latest swarm status
+\`\`\`
+
+**Step 4: Collect results**
+Wait for all agents to complete. Aggregate their outputs.
 
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to verify the implementation visually
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+2. \`agent-browser open <url>\` → \`agent-browser snapshot -i\` → verify elements
 3. Compare against pre-change screenshots from Search phase
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
+Skip this block for non-UI tasks.
+
+**REQUIRED OUTPUT:**
+- Swarm initialization: success/failure
+- Agents spawned: _____ / _____ total
+- Per-agent results summary:
+| Agent | Status | Files Changed | Key Output |
+|-------|--------|--------------|------------|
+| _____ | _____ | _____ | _____ |
+
+**AUTO-PROCEED:** Continue to Integration phase.
+
+---
+
+### ⛔ CHECKPOINT 3: Integration & Verification
+**Merge all agent outputs into a cohesive result.**
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Final visual verification with agent-browser
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\` → compare before/after
+3. Verify responsive layout, dark mode, accessibility
+
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
 - Completed work summary per agent
 - Files created/modified: _____
-- Test results (if applicable): _____
+- Conflicts resolved: _____
+- Test results: _____
+- Integration verified: yes/no
 
 **AUTO-PROCEED:** Continue to Verification phase.
 
@@ -137,7 +190,7 @@ Skip this block for non-UI tasks.
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -155,24 +208,12 @@ Skip this block for non-UI tasks.
 
 ---
 
-
----
-
-### ⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)
-
-**🌐 BROWSER CHECK (conditional):**
-If this task involves UI, frontend, or visual changes:
-1. Final visual verification with agent-browser
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
-3. Verify responsive layout, dark mode, accessibility
-
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
-Skip this block for non-UI tasks.
-
+### ⛔ CHECKPOINT 4: Compound (MANDATORY - NEVER SKIP)
 **REQUIRED OUTPUT:**
 - Memory key: project/implementations/_____
 - Doc path: docs/solutions/implementations/_____.md
 - Pattern stored: yes/no
+- Swarm metrics: agents used, topology, execution time
 
 **RALPH CANDIDATE CHECK (MANDATORY):**
 - Dev pattern identified for future Ralph loop: yes/no
@@ -189,15 +230,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -211,10 +252,10 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 5 phases
 - [ ] Checkpoints 0-1 completed with user confirmation
-- [ ] Checkpoints 2-3 completed (auto-proceed)
-- [ ] All required outputs generated
-- [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
-- [ ] Compound phase executed
+- [ ] RuFlo swarm initialized (Checkpoint 2)
+- [ ] Agents actually spawned and completed work
+- [ ] Results collected and integrated (Checkpoint 3)
+- [ ] Compound phase executed (Checkpoint 4)
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
 - [ ] Ralph candidate check completed
@@ -250,6 +291,17 @@ Full TDD Swarm - Combines planning + test-first + parallel build + comprehensive
 
 ---
 
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
+
+---
+
 ## ⚠️ MANDATORY FIRST ACTION
 
 Use TodoWrite NOW to create todos for ALL phases:
@@ -281,10 +333,10 @@ Use TodoWrite NOW to create todos for ALL phases:
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\`
 3. Note current UI state for comparison after build
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -302,13 +354,13 @@ STOP and wait for user response.
 ### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
 **Search the Pi Brain network for existing knowledge matching this feature:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # npm client (preferred)
 curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[feature description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[feature description]&top_k=3"
-\\\`\\\`\\\`
+\`\`\`
 
 **If matching memories found:** Review steps for applicable patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
@@ -363,10 +415,10 @@ NEVER proceed to Build until:
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to verify the implementation visually
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+2. \`agent-browser open <url>\` → \`agent-browser snapshot -i\` → verify elements
 3. Compare against pre-change screenshots from Search phase
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -382,10 +434,10 @@ Skip this block for non-UI tasks.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Final visual verification with agent-browser
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\` → compare before/after
 3. Verify responsive layout, dark mode, accessibility
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -405,7 +457,7 @@ Skip this block for non-UI tasks.
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -447,15 +499,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -545,16 +597,21 @@ tool / Workflow \`agent()\` per this table — never let a spawn silently inheri
 
 | Work | Model | Why |
 |---|---|---|
-| Read-only search/sweep fan-outs (Explore) | \`haiku\` | Mechanical discovery; Explore's native default |
-| Medium-judgment searches, doc/compound writing | \`sonnet\` | Near-frontier quality at a fraction of the premium tier cost |
-| Well-scoped builds (file:line targets + failing-test spec exist) | \`sonnet\` | SWE-bench Verified ≈ parity with Opus on scoped agentic coding; TDD harness detects failure cheaply |
-| Hard builds (root-cause unknown, cross-cutting/architectural, migrations, security-sensitive) | \`opus\` | Subtle multi-file reasoning is where the tier gap shows |
-| Adversarial review / verification subagents | \`opus\` | The quality backstop that lets builders run cheap |
-| Frontier-difficulty retry of a failed opus attempt | your session model (last rung only) | Last rung only |
+| Read-only search/sweep fan-outs (Explore) | \`sonnet\` (Sonnet 5) | Execution tier — all non-thinking work runs Sonnet 5 |
+| Medium-judgment searches, doc/compound writing | \`sonnet\` (Sonnet 5) | Near-frontier quality at a fraction of the premium tier cost |
+| Well-scoped builds (file:line targets + failing-test spec exist) | \`sonnet\` (Sonnet 5) | Scoped agentic coding is execution; the TDD harness detects failure cheaply |
+| Hard builds (root-cause unknown, cross-cutting/architectural, migrations, security-sensitive) | \`fable\` (claude-fable-5) | Thinking-required work runs the frontier tier |
+| Adversarial review / verification subagents | \`fable\` (claude-fable-5) | The quality backstop that lets builders run cheap |
+| Planning/architecture subagents, final judgment | \`fable\` (claude-fable-5) | Thinking-required work runs the frontier tier |
+
+**Opus fallback (applies to EVERY \`fable\` routing above):** if fable is unavailable — access
+removed, usage exhausted, or the model errors as not found — fall back to \`opus\`
+(claude-opus-4-8) for that step. Never silently skip the step because fable is missing.
 
 **Escalation ladder (build retries):** on DETECTABLE failure (tests still red, regressions
-introduced, agent stuck or died) the retry runs ONE tier up: sonnet → opus → your session model.
-Never retry the same tier twice; never start a well-scoped build above sonnet "just in case."
+introduced, agent stuck or died) the retry runs ONE tier up: sonnet → fable (substitute opus
+when fable is unavailable). Never retry the same tier twice; never start a well-scoped build
+above sonnet "just in case."
 
 ---
 
@@ -576,7 +633,7 @@ Reach for a workflow ONLY when the task is failing (or will fail) under one of t
 **Default OFF.** First ask: *does this really need more compute? If a regular Claude Code session would finish it in ~five minutes, you don't need a workflow.* Most coding tasks don't need a panel of 5 reviewers.
 
 ### The 6 patterns (compose 2–4 per real task)
-1. **Classify-and-act** — a cheap classifier routes work before doing it (route to Opus only when complexity demands).
+1. **Classify-and-act** — a cheap classifier routes work before doing it (route to fable only when complexity demands).
 2. **Fan-out-and-synthesize** — one agent per enumerable item in \`parallel()\`, then one synthesizer (barrier) merges. The workhorse.
 3. **Adversarial verification** — pair every worker with a separate verifier that knows only the rubric + the artifact, not who made it. Structural fix for self-preference.
 4. **Generate-and-filter** — generate N options, then a verifier rubric kills the weak ones; commit late.
@@ -586,7 +643,7 @@ Reach for a workflow ONLY when the task is failing (or will fail) under one of t
 Mapping: *drift → fan-out · self-preference → adversarial verification · open-ended → loop-until-done · hard-to-score → tournament.*
 
 ### Best practices (non-negotiable when you DO use one)
-- **Set \`opts.model\` on every \`agent()\` call** per the Model Policy table above — \`model: "haiku"\` for read-only sweeps, \`model: "sonnet"\` for scoped workers, \`model: "opus"\` for verifiers/hard reasoning. Omitting it inherits the (premium) session model and silently 3×s the workflow's cost.
+- **Set \`opts.model\` on every \`agent()\` call** per the Model Policy table above — \`model: "sonnet"\` for sweeps and scoped workers (all execution), \`model: "fable"\` for verifiers/hard reasoning (falling back to \`model: "opus"\` if fable is unavailable or usage is exhausted). Omitting it inherits the session model and silently changes the workflow's cost.
 - **\`parallel()\` is a barrier** (waits for all — use when you need every result before the next step). **\`pipeline()\` streams** (each item flows through all stages independently — cheaper/faster). They are NOT interchangeable.
 - **Separate worker and verifier.** One agent never does both the work and judges it — self-preference makes the verifier favor the worker.
 - **Explicit token budget.** State a cap in the prompt ("use 10k tokens"); without one, ambitious workflows balloon 5–10×.
@@ -611,9 +668,10 @@ Only after the user approves do you call the Workflow tool. If they decline, pro
 
 ### ⛔ CHECKPOINT 0: Search
 
-**🤖 MODEL:** spawn search/Explore subagents with \`model: haiku\` (read-only sweeps — Explore's
-native tier); use \`model: sonnet\` only when the search needs real judgment (e.g. tracing a bug's
-data flow). See Model Policy.
+**🤖 MODEL:** spawn search/Explore subagents with \`model: sonnet\` (Sonnet 5 — the execution
+tier for sweeps and discovery); use \`model: fable\` only when the search needs real reasoning
+(e.g. tracing a bug's data flow), falling back to \`model: opus\` if fable is unavailable. See
+Model Policy.
 
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
@@ -757,11 +815,13 @@ A flaky property = a real bug or a bad invariant — fix the code, don't loosen 
 ### ⛔ CHECKPOINT 5: Build
 
 **🤖 MODEL (complexity-routed — see Model Policy):** spawn build subagents with \`model: sonnet\`
-when the work is well-scoped (the Search phase produced file:line targets and the Tests phase wrote
-a clear failing-test spec). Go straight to \`model: opus\` for hard builds: root-cause-unknown bugs,
-cross-cutting/architectural changes, migrations, security-sensitive work. On a DETECTABLE failure
-(tests still red, regressions, agent stuck/died), the retry escalates ONE tier: sonnet → opus →
-your session model — never the same tier twice.
+(Sonnet 5) when the work is well-scoped (the Search phase produced file:line targets and the Tests
+phase wrote a clear failing-test spec). Go straight to \`model: fable\` for hard builds — the
+thinking-required tier: root-cause-unknown bugs, cross-cutting/architectural changes, migrations,
+security-sensitive work — and fall back to \`model: opus\` if fable is unavailable or usage is
+exhausted. On a DETECTABLE failure (tests still red, regressions, agent stuck/died), the retry
+escalates ONE tier: sonnet → fable (substitute opus when fable is unavailable) — never the same
+tier twice.
 
 **Parallel execution (optional — only for genuinely complex/parallel builds):**
 - **Dynamic Workflow (preferred for fan-out builds):** if the build is an enumerable list of independent work items (N callsites, N failing tests, N migrations) — a **fan-out + adversarial-verification** shape — propose a dynamic workflow via the **🚦 HIL gate** (see the Dynamic Workflows section). Use \`parallel()\`/\`pipeline()\` with \`isolation: "worktree"\` per agent so parallel edits don't conflict, and pair each worker with a SEPARATE verifier. Only spawn after HIL approval + a token budget. **Default: serial** — most builds don't need it.
@@ -788,9 +848,11 @@ Skip this block for non-UI tasks.
 
 ### ⛔ CHECKPOINT 6: Review
 
-**🤖 MODEL:** adversarial-review / verification subagents run on \`model: opus\` — they are the
-quality backstop that lets builders run cheaper. The FINAL verification verdict (independent
-re-runs, cross-method checks) is rendered by the main loop on the session model.
+**🤖 MODEL:** adversarial-review / verification subagents run on \`model: fable\` — thinking
+work, and the quality backstop that lets builders run cheaper. If fable is unavailable (access
+removed, usage exhausted, or the model errors), fall back to \`model: opus\`. The FINAL
+verification verdict (independent re-runs, cross-method checks) is rendered by the main loop on
+the session model.
 
 **Workflow escalation (optional):** for a large/adversarial review (many findings, or where self-preferential bias is a risk — you reviewing your own build), propose a dynamic workflow via the **🚦 HIL gate**: a **fan-out** of review dimensions, each finding **adversarially verified** by a SEPARATE agent that knows only the rubric + the finding, not that you wrote it. Default: do the review inline — escalate only when the surface is genuinely large.
 
@@ -929,9 +991,20 @@ Fully Autonomous TDD Swarm — Zero user gates. Designed for terminal agents (tm
 **Philosophy:** Same rigor as /w-tdd-swarm, but fully autonomous. No gates, no stops, auto-PR.
 
 ## Usage
-\\\`\\\`\\\`
+\`\`\`
 /w-agent-tdd-swarm [feature description]
-\\\`\\\`\\\`
+\`\`\`
+
+---
+
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
 
 ---
 
@@ -957,7 +1030,7 @@ Use TodoWrite NOW to create todos for ALL phases:
 - ZERO user gates — this workflow runs fully autonomously
 - NEVER proceed to Build before all tests exist and FAIL
 - NEVER skip compound phase at the end
-- ALWAYS create a PR at the end with \\\`gh pr create --fill\\\`
+- ALWAYS create a PR at the end with \`gh pr create --fill\`
 - ALWAYS commit with descriptive messages
 
 ---
@@ -981,13 +1054,13 @@ Search for past solutions. Check memory keys, search codebase for similar implem
 ### PHASE 1.5: Pi Brain — Knowledge Discovery (AUTO-PROCEED)
 **Search the Pi Brain network for existing knowledge matching this feature:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # npm client (preferred)
 curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[feature description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[feature description]&top_k=3"
-\\\`\\\`\\\`
+\`\`\`
 
 **If matching memories found:** Review steps for applicable patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
@@ -1059,7 +1132,7 @@ Quick self-review. Fix any critical/high findings before proceeding.
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -1082,10 +1155,10 @@ Quick self-review. Fix any critical/high findings before proceeding.
 
 ### PHASE 7: Commit & PR (AUTO-PROCEED)
 **REQUIRED ACTIONS:**
-1. Stage all changes: \\\`git add -A\\\`
+1. Stage all changes: \`git add -A\`
 2. Commit with descriptive message
-3. Push branch: \\\`git push -u origin HEAD\\\`
-4. Create PR: \\\`gh pr create --fill\\\`
+3. Push branch: \`git push -u origin HEAD\`
+4. Create PR: \`gh pr create --fill\`
 
 **REQUIRED OUTPUT:**
 - Commit hash: _____
@@ -1107,7 +1180,7 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 ---
 
 ### PHASE 9: Report & Notify Parent (MANDATORY - NEVER SKIP)
-**Write a completion report** to \\\`.claude/agent-reports/{your-agent-id}.md\\\` containing:
+**Write a completion report** to \`.claude/agent-reports/{your-agent-id}.md\` containing:
 - Task summary (what was built)
 - Files changed (list with brief descriptions)
 - Test results (pass/fail counts)
@@ -1116,10 +1189,10 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Your agent-id was specified in the initial prompt. If unclear, use the branch name.
 
-**If a parent agent was specified in your initial prompt**, use the \\\`redirect_terminal_agent\\\` MCP tool to send:
-\\\`\\\`\\\`
+**If a parent agent was specified in your initial prompt**, use the \`redirect_terminal_agent\` MCP tool to send:
+\`\`\`
 Agent {id} completed. PR: {url}. Report: .claude/agent-reports/{id}.md
-\\\`\\\`\\\`
+\`\`\`
 
 **REQUIRED OUTPUT:**
 - Report path: .claude/agent-reports/_____.md
@@ -1132,7 +1205,7 @@ Agent {id} completed. PR: {url}. Report: .claude/agent-reports/{id}.md
 - [ ] TodoWrite used at start
 - [ ] All 9 phases completed (zero user gates)
 - [ ] Tests written and pass
-- [ ] PR created with \\\`gh pr create --fill\\\`
+- [ ] PR created with \`gh pr create --fill\`
 - [ ] Compound phase executed
 - [ ] Completion report written to .claude/agent-reports/
 - [ ] Parent agent notified (if applicable)
@@ -1149,10 +1222,21 @@ Interview then Spawn Autonomous Agent. Interactive interview refines the idea, t
 **Philosophy:** Humans are best at requirements. Agents are best at execution. Split the work.
 
 ## Usage
-\\\`\\\`\\\`
+\`\`\`
 /w-agent-interview-swarm [description or file path]
 /w-agent-interview-swarm I want some kind of notification system
-\\\`\\\`\\\`
+\`\`\`
+
+---
+
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
 
 ---
 
@@ -1196,13 +1280,13 @@ Search for past solutions. Check memory keys, search codebase.
 ### PHASE 0.75: Pi Brain — Knowledge Discovery (AUTO-PROCEED)
 **Search the Pi Brain network for existing knowledge matching this idea:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # npm client (preferred)
 curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[idea description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[idea description]&top_k=3"
-\\\`\\\`\\\`
+\`\`\`
 
 **If matching memories found:** Share findings with user during interview. Note recipe IDs for the spawned agent's auto-receipt.
 **If no matches:** Proceed normally.
@@ -1249,7 +1333,7 @@ STOP and wait for user response.
 ---
 
 ### PHASE 2: Save Spec (AUTO-PROCEED)
-Save the refined spec to: \\\`.claude/plans/YYYY-MM-DD-[name].md\\\`
+Save the refined spec to: \`.claude/plans/YYYY-MM-DD-[name].md\`
 
 Include: requirements, acceptance criteria, key decisions, user quotes.
 
@@ -1260,21 +1344,21 @@ Include: requirements, acceptance criteria, key decisions, user quotes.
 ### PHASE 3: Spawn Terminal Agent (AUTO-PROCEED)
 **Use the spawn_terminal_agent MCP tool:**
 
-- \\\`repo_path\\\`: Current repository path
-- \\\`task\\\`: The complete refined spec from the interview
-- \\\`workflow\\\`: "/w-agent-tdd-swarm"
-- \\\`parent_agent_id\\\`: Your own tmux session name (so the child can notify you when done)
+- \`repo_path\`: Current repository path
+- \`task\`: The complete refined spec from the interview
+- \`workflow\`: "/w-agent-tdd-swarm"
+- \`parent_agent_id\`: Your own tmux session name (so the child can notify you when done)
 
-To find your own tmux session name, run: \\\`tmux display-message -p '#S'\\\` (if not in tmux, omit parent_agent_id)
+To find your own tmux session name, run: \`tmux display-message -p '#S'\` (if not in tmux, omit parent_agent_id)
 
 **After spawning, report to the user:**
 - Agent ID
 - Branch name
-- The agent will notify you when done via \\\`redirect_terminal_agent\\\`
-- The agent will write a report to \\\`.claude/agent-reports/{agent-id}.md\\\`
-- The agent will create a PR with \\\`gh pr create --fill\\\`
-- To check status manually: \\\`check_terminal_agents\\\` MCP tool
-- To read the report: \\\`get_agent_report\\\` MCP tool
+- The agent will notify you when done via \`redirect_terminal_agent\`
+- The agent will write a report to \`.claude/agent-reports/{agent-id}.md\`
+- The agent will create a PR with \`gh pr create --fill\`
+- To check status manually: \`check_terminal_agents\` MCP tool
+- To read the report: \`get_agent_report\` MCP tool
 
 **REQUIRED OUTPUT:**
 - Agent ID: _____
@@ -1307,6 +1391,17 @@ Quick Fix - Fast investigation → targeted fix → verification.
 
 ---
 
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
+
+---
+
 ## ⚠️ MANDATORY FIRST ACTION
 
 Use TodoWrite NOW to create todos for ALL phases:
@@ -1335,10 +1430,10 @@ Use TodoWrite NOW to create todos for ALL phases:
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\`
 3. Note current UI state for comparison after build
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -1356,13 +1451,13 @@ STOP and wait for user response.
 ### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
 **Search the Pi Brain network for existing knowledge matching this bug:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # npm client (preferred)
 curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[bug description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[bug description]&top_k=3"
-\\\`\\\`\\\`
+\`\`\`
 
 **If matching memories found:** Review steps for applicable fix patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
@@ -1392,10 +1487,10 @@ STOP and wait for user response.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to verify the implementation visually
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+2. \`agent-browser open <url>\` → \`agent-browser snapshot -i\` → verify elements
 3. Compare against pre-change screenshots from Search phase
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -1413,7 +1508,7 @@ Skip this block for non-UI tasks.
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -1455,15 +1550,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -1515,6 +1610,17 @@ Deep Debug → TDD Swarm - Thorough investigation then fix with regression tests
 
 ---
 
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
+
+---
+
 ## ⚠️ MANDATORY FIRST ACTION
 
 Use TodoWrite NOW to create todos for ALL phases:
@@ -1562,13 +1668,13 @@ STOP and wait for user response.
 ### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
 **Search the Pi Brain network for existing debug recipes matching this issue:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # npm client (preferred)
 curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[bug/issue description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[bug/issue description]&top_k=3"
-\\\`\\\`\\\`
+\`\`\`
 
 **If matching memories found:** Review steps for applicable fix patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
@@ -1584,10 +1690,10 @@ curl -s "https://pi.ruv.io/v1/memories/search?q=[bug/issue description]&top_k=3"
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\`
 3. Note current UI state for comparison after build
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -1657,13 +1763,26 @@ NEVER proceed to Build until:
 
 ### ⛔ CHECKPOINT 5: Build
 
+**RuFlo Swarm Execution (optional — for complex fixes):**
+If the fix spans multiple files or requires parallel investigation, initialize a ruflo swarm:
+\`\`\`bash
+npx ruflo@latest swarm init --topology hierarchical --agents 3
+npx ruflo@latest agent spawn --domain core --role coder --task "Implement the fix"
+npx ruflo@latest agent spawn --domain support --role tester --task "Verify regression tests pass"
+npx ruflo@latest agent spawn --domain security --role security-sentinel --task "Check fix doesn't introduce vulnerabilities"
+\`\`\`
+Alternatively, use the Agent tool to spawn parallel agents with \`isolation: "worktree"\` — route
+each per the Model Policy (\`model: sonnet\` for scoped fix work, \`model: fable\` for
+root-cause-unknown reasoning, falling back to \`model: opus\` if fable is unavailable).
+For simple fixes, proceed with serial implementation.
+
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to verify the implementation visually
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+2. \`agent-browser open <url>\` → \`agent-browser snapshot -i\` → verify elements
 3. Compare against pre-change screenshots from Search phase
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -1680,10 +1799,10 @@ Skip this block for non-UI tasks.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Final visual verification with agent-browser
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\` → compare before/after
 3. Verify responsive layout, dark mode, accessibility
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -1703,7 +1822,7 @@ Skip this block for non-UI tasks.
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -1746,15 +1865,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -1809,6 +1928,17 @@ Critical Hotfix - Isolated branch → minimal fix → security-focused review �
 
 ---
 
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
+
+---
+
 ## ⚠️ MANDATORY FIRST ACTION
 
 Use TodoWrite NOW to create todos for ALL phases:
@@ -1838,10 +1968,10 @@ Use TodoWrite NOW to create todos for ALL phases:
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\`
 3. Note current UI state for comparison after build
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -1859,13 +1989,13 @@ STOP and wait for user response.
 ### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
 **Search the Pi Brain network for existing knowledge matching this incident:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # npm client (preferred)
 curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[incident description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[incident description]&top_k=3"
-\\\`\\\`\\\`
+\`\`\`
 
 **If matching memories found:** Review steps for applicable fix patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
@@ -1895,10 +2025,10 @@ STOP and wait for user response.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to verify the implementation visually
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+2. \`agent-browser open <url>\` → \`agent-browser snapshot -i\` → verify elements
 3. Compare against pre-change screenshots from Search phase
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -1916,7 +2046,7 @@ Skip this block for non-UI tasks.
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -1942,10 +2072,10 @@ Skip this block for non-UI tasks.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Final visual verification with agent-browser
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\` → compare before/after
 3. Verify responsive layout, dark mode, accessibility
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -1985,15 +2115,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -2047,6 +2177,17 @@ Full Review - 12+ specialized agents analyze code, security, performance, archit
 
 ---
 
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
+
+---
+
 ## ⚠️ MANDATORY FIRST ACTION
 
 Use TodoWrite NOW to create todos for ALL phases:
@@ -2086,10 +2227,10 @@ Use TodoWrite NOW to create todos for ALL phases:
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\`
 3. Note current UI state for comparison after build
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -2109,10 +2250,10 @@ STOP and wait for user response.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to verify the implementation visually
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+2. \`agent-browser open <url>\` → \`agent-browser snapshot -i\` → verify elements
 3. Compare against pre-change screenshots from Search phase
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -2181,7 +2322,7 @@ Skip this block for non-UI tasks.
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -2220,15 +2361,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -2281,6 +2422,17 @@ Security Audit - OWASP top 10, auth/authz, data exposure analysis.
 
 ---
 
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
+
+---
+
 ## ⚠️ MANDATORY FIRST ACTION
 
 Use TodoWrite NOW to create todos for ALL phases:
@@ -2320,10 +2472,10 @@ Use TodoWrite NOW to create todos for ALL phases:
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\`
 3. Note current UI state for comparison after build
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -2343,10 +2495,10 @@ STOP and wait for user response.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to verify the implementation visually — focus on security-related UI aspects, auth flows, input sanitization display
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+2. \`agent-browser open <url>\` → \`agent-browser snapshot -i\` → verify elements
 3. Compare against pre-change screenshots from Search phase
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -2369,10 +2521,10 @@ Skip this block for non-UI tasks.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Final visual verification with agent-browser
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\` → compare before/after
 3. Verify responsive layout, dark mode, accessibility
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -2390,7 +2542,7 @@ Skip this block for non-UI tasks.
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -2429,15 +2581,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -2488,6 +2640,17 @@ Performance Audit - Bottlenecks, N+1 queries, memory issues, optimization opport
 
 ---
 
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
+
+---
+
 ## ⚠️ MANDATORY FIRST ACTION
 
 Use TodoWrite NOW to create todos for ALL phases:
@@ -2526,10 +2689,10 @@ Use TodoWrite NOW to create todos for ALL phases:
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\`
 3. Note current UI state for comparison after build
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -2549,10 +2712,10 @@ STOP and wait for user response.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to verify the implementation visually
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+2. \`agent-browser open <url>\` → \`agent-browser snapshot -i\` → verify elements
 3. Compare against pre-change screenshots from Search phase
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -2574,10 +2737,10 @@ Skip this block for non-UI tasks.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Final visual verification with agent-browser — focus on performance impact, load times, rendering
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\` → compare before/after
 3. Verify responsive layout, dark mode, accessibility
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -2595,7 +2758,7 @@ Skip this block for non-UI tasks.
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -2634,15 +2797,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -2693,6 +2856,17 @@ Hive-Mind Architecture - Multiple agents collaborate with collective intelligenc
 
 ---
 
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
+
+---
+
 ## ⚠️ MANDATORY FIRST ACTION
 
 Use TodoWrite NOW to create todos for ALL phases:
@@ -2722,10 +2896,10 @@ Use TodoWrite NOW to create todos for ALL phases:
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\`
 3. Note current UI state for comparison after build
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -2743,13 +2917,13 @@ STOP and wait for user response.
 ### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
 **Search the Pi Brain network for existing architecture recipes matching this system:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # npm client (preferred)
 curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[system description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[system description]&top_k=3"
-\\\`\\\`\\\`
+\`\`\`
 
 **If matching memories found:** Review steps for applicable architecture patterns. Adapt proven approaches.
 **If no matches:** Proceed normally.
@@ -2800,10 +2974,10 @@ STOP and wait for user response.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Final visual verification with agent-browser
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\` → compare before/after
 3. Verify responsive layout, dark mode, accessibility
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -2826,7 +3000,7 @@ STOP and wait for user response.
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -2865,15 +3039,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -2921,6 +3095,17 @@ Multi-Repository - Coordinates changes across repos with dependency awareness.
 \`\`\`
 /w-multi-repo [task description]
 \`\`\`
+
+---
+
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
 
 ---
 
@@ -3027,15 +3212,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -3089,6 +3274,17 @@ Compound This - Captures current context as reusable knowledge AND auto-generate
 
 ---
 
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
+
+---
+
 ## ⚠️ MANDATORY EXECUTION
 
 This command MUST complete ALL phases including auto-QA generation.
@@ -3118,9 +3314,9 @@ This command MUST complete ALL phases including auto-QA generation.
 - Context to capture: _____
 
 **AUTO-DETECT:** If argument provided, use it. Otherwise, auto-detect from git diff:
-\\\`\\\`\\\`bash
+\`\`\`bash
 git diff HEAD~1
-\\\`\\\`\\\`
+\`\`\`
 Use weighted pattern matching:
 - security (weight 3): injection, vulnerability, sanitize, xss, csrf, auth
 - bug (weight 2): fix, bug, patch, hotfix, error handling, fallback
@@ -3190,9 +3386,9 @@ Run: \`git diff --name-only HEAD~1\` and \`git diff HEAD~1\`
 **Verifies**: [description]
 
 **Test Command**:
-\\\`\\\`\\\`bash
+\`\`\`bash
 grep -n "[pattern]" [file]
-\\\`\\\`\\\`
+\`\`\`
 
 **AI-Verifiable Output**:
 DIAGNOSTIC: [NAME]
@@ -3225,9 +3421,9 @@ STATUS: PASS|FAIL
 **Priority**: P1 (critical - restores functionality)
 
 **Pattern to Restore**:
-\\\`\\\`\\\`[language]
+\`\`\`[language]
 [actual code that was just written]
-\\\`\\\`\\\`
+\`\`\`
 
 **File**: [path/to/file]
 
@@ -3299,16 +3495,16 @@ Skip if auto_share.enabled is false.
 1. Extract recipe: title, description, tags, ordered steps with inputs/outputs
 2. **Fork check — discover similar recipes before submitting:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # Check for similar existing recipes
 curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[recipe title]" --top-k=3
-\\\`\\\`\\\`
+\`\`\`
 
 3. **If similar memory found (score > 0.7):** Submit as a fork to inherit grade
 4. **If no match:** Submit as a new recipe
 5. If auto_share.confirm = true: ask user before submitting
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # Vote on existing memory (when similar memory found)
 curl -X POST https://pi.ruv.io/v1/memories \\\\
   -H "Content-Type: application/json" \\\\
@@ -3318,7 +3514,7 @@ curl -X POST https://pi.ruv.io/v1/memories \\\\
 curl -X POST https://pi.ruv.io/v1/memories \\\\
   -H "Content-Type: application/json" \\\\
   -d '{"title":"...","description":"...","tags":[...],"version":"1.0.0","steps":[...]}'
-\\\`\\\`\\\`
+\`\`\`
 
 **REQUIRED OUTPUT:**
 - Recipe-worthy: yes/no
@@ -3378,6 +3574,17 @@ Search Solutions - Searches memory and solution docs for relevant past work.
 
 ---
 
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
+
+---
+
 ## Execution Protocol
 
 ### ⛔ CHECKPOINT 0: Search Complete
@@ -3430,11 +3637,22 @@ STOP and wait for user response.
 Autonomous experiment loop. Runs experiments, measures results, keeps winners, discards losers.
 
 ## Usage
-\\\`\\\`\\\`
+\`\`\`
 /w-autoresearch [optimization objective]     # Free-form: describe what to optimize
 /w-autoresearch RC-A003                      # RC-A target: use pre-defined candidate
 /w-autoresearch optimize test suite runtime  # Example: optimize test speed
-\\\`\\\`\\\`
+\`\`\`
+
+---
+
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
 
 ---
 
@@ -3462,7 +3680,7 @@ Gather information for the experiment:
 1. **Objective:** What are we optimizing? (from user argument)
 2. **Primary metric:** What number tells us if we improved? (e.g., test_duration_seconds, bundle_size_kb)
 3. **Direction:** maximize or minimize?
-4. **Benchmark command:** How to measure the metric? Must output \\\`METRIC name=number\\\`
+4. **Benchmark command:** How to measure the metric? Must output \`METRIC name=number\`
 5. **Files in scope:** What can the experiment modify?
 6. **Constraints:** What must NOT break? (e.g., "all tests must still pass")
 
@@ -3472,13 +3690,13 @@ Gather information for the experiment:
 
 ### ⛔ CHECKPOINT 2: Setup
 
-1. Create feature branch: \\\`git checkout -b autoresearch/[goal-slug]\\\`
+1. Create feature branch: \`git checkout -b autoresearch/[goal-slug]\`
 2. Read source files deeply — understand what you're optimizing
-3. Create \\\`autoresearch.md\\\` — session blueprint with objective, metrics, scope, constraints
-4. Create \\\`autoresearch.sh\\\` — benchmark runner (outputs \\\`METRIC name=number\\\`)
+3. Create \`autoresearch.md\` — session blueprint with objective, metrics, scope, constraints
+4. Create \`autoresearch.sh\` — benchmark runner (outputs \`METRIC name=number\`)
 5. Run baseline measurement
-6. Initialize \\\`autoresearch.jsonl\\\` with config header
-7. Create \\\`experiments/worklog.md\\\` for narrative log
+6. Initialize \`autoresearch.jsonl\` with config header
+7. Create \`experiments/worklog.md\` for narrative log
 
 **AUTO-PROCEED:** Continue to Background Dispatch.
 
@@ -3491,18 +3709,18 @@ Launch a background agent that runs the experiment loop autonomously:
 **The loop (runs forever until paused):**
 1. **Think:** Based on worklog and ideas, choose next experiment
 2. **Implement:** Make the code change
-3. **Run:** Execute \\\`./autoresearch.sh\\\`, capture output
-4. **Parse:** Extract \\\`METRIC name=number\\\` lines
+3. **Run:** Execute \`./autoresearch.sh\`, capture output
+4. **Parse:** Extract \`METRIC name=number\` lines
 5. **Evaluate:**
-   - **Keep:** metric improved → \\\`git commit\\\` with Result trailer
-   - **Discard:** metric worse/equal → \\\`git checkout -- .\\\` to revert
+   - **Keep:** metric improved → \`git commit\` with Result trailer
+   - **Discard:** metric worse/equal → \`git checkout -- .\` to revert
    - **Crash:** non-zero exit → log error, revert, try different approach
-6. **Log:** Append result to \\\`autoresearch.jsonl\\\`, update dashboard
+6. **Log:** Append result to \`autoresearch.jsonl\`, update dashboard
 7. **Loop:** Go to step 1
 
 **ERROR HANDLING:** Log errors but NEVER abort. Revert and try a different approach.
 
-**Pausing:** Create \\\`.autoresearch-off\\\` sentinel file, or user sends \\\`/autoresearch off\\\`
+**Pausing:** Create \`.autoresearch-off\` sentinel file, or user sends \`/autoresearch off\`
 
 ---
 
@@ -3510,28 +3728,28 @@ Launch a background agent that runs the experiment loop autonomously:
 
 | File | Purpose |
 |------|---------|
-| \\\`autoresearch.md\\\` | Session blueprint (objective, rules, what's been tried) |
-| \\\`autoresearch.sh\\\` | Benchmark runner (must output METRIC lines) |
-| \\\`autoresearch.jsonl\\\` | Structured state (config + results) |
-| \\\`autoresearch-dashboard.md\\\` | Progress visualization |
-| \\\`autoresearch.ideas.md\\\` | Promising untried optimizations |
-| \\\`experiments/worklog.md\\\` | Narrative experiment log |
+| \`autoresearch.md\` | Session blueprint (objective, rules, what's been tried) |
+| \`autoresearch.sh\` | Benchmark runner (must output METRIC lines) |
+| \`autoresearch.jsonl\` | Structured state (config + results) |
+| \`autoresearch-dashboard.md\` | Progress visualization |
+| \`autoresearch.ideas.md\` | Promising untried optimizations |
+| \`experiments/worklog.md\` | Narrative experiment log |
 
 ## JSONL Protocol
 
 **Config header:**
-\\\`\\\`\\\`json
+\`\`\`json
 {"type": "config", "goal": "...", "primary_metric": "...", "direction": "maximize|minimize", "command": "./autoresearch.sh", "started": "ISO8601"}
-\\\`\\\`\\\`
+\`\`\`
 
 **Result line:**
-\\\`\\\`\\\`json
+\`\`\`json
 {"type": "result", "run": 1, "commit": "abc123", "metric": 0.783, "status": "keep|discard|crash", "timestamp": "ISO8601", "notes": "what changed"}
-\\\`\\\`\\\`
+\`\`\`
 
 ## Example
 
-\\\`\\\`\\\`
+\`\`\`
 # Free-form: optimize test runtime
 /w-autoresearch optimize test suite runtime
 
@@ -3540,7 +3758,7 @@ Launch a background agent that runs the experiment loop autonomously:
 
 # Pause a running experiment
 /autoresearch off
-\\\`\\\`\\\`
+\`\`\`
 `
     },
 
@@ -3561,11 +3779,13 @@ Fire-and-Forget Compound. Auto-detects category and dispatches to a background a
 
 ## Model Policy (token/cost)
 
-This flow is mechanical checklist work with hard verification (git status/log) — it does not need
-the premium session model. **Dispatch the background agent with \`model: sonnet\`** (Agent tool
-\`model\` param). Spawn any extra utility probes (file inventories, greps) with \`model: haiku\`. Only
-the thin pre-flight in the main loop runs on the session model. Never dispatch /bc on the session
-model by silent inheritance.
+This flow is mechanical checklist work with hard verification (git status/log) — it is execution,
+not thinking. **Dispatch the background agent with \`model: sonnet\`** (Sonnet 5, Agent tool
+\`model\` param), and spawn any extra utility probes (file inventories, greps) with \`model: sonnet\`
+too. Reserve \`model: fable\` for steps that genuinely require reasoning; if fable is unavailable
+(access removed or usage exhausted), fall back to \`model: opus\` for that step. Only the thin
+pre-flight in the main loop runs on the session model. Never dispatch /bc on the session model by
+silent inheritance.
 
 ---
 
@@ -3667,6 +3887,17 @@ Default: MASTER_PLAN.md
 
 ---
 
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
+
+---
+
 ## ⚠️ MANDATORY EXECUTION
 
 This command MUST complete all context loading steps. NEVER skip memory search.
@@ -3732,6 +3963,17 @@ Categories: feature, bug, security, performance, architecture, debug
 
 ---
 
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
+
+---
+
 ## ⚠️ MANDATORY EXECUTION
 
 This command MUST complete all steps. NEVER skip compound or commit.
@@ -3776,15 +4018,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -3834,7 +4076,7 @@ STOP and wait for user response.
 \`\`\`
 
 ## Next Session
-Run \\\`/w-start\\\` to load this session's context and continue where you left off.
+Run \`/w-start\` to load this session's context and continue where you left off.
 `
     },
 
@@ -3858,6 +4100,17 @@ Pure Ralph is the bash loop approach to AI development:
 /w-ralph-init
 /w-ralph-init --customize
 \`\`\`
+
+---
+
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
 
 ---
 
@@ -4011,6 +4264,17 @@ Pure Ralph uses a bash loop for fresh context each iteration:
 /w-ralph-this Build a REST API with CRUD endpoints and tests
 /w-ralph-this .claude/plans/feature-spec.md
 \`\`\`
+
+---
+
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
 
 ---
 
@@ -4209,6 +4473,17 @@ Build a complete Pure Ralph setup from a rough idea through interactive intervie
 /w-ralph-goals I want to build a CLI tool
 /w-ralph-goals create a REST API with authentication
 \`\`\`
+
+---
+
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
 
 ---
 
@@ -4453,6 +4728,17 @@ Select and execute a Ralph candidate from .claude/ralph-candidates.md.
 
 ---
 
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
+
+---
+
 ## ⚠️ MANDATORY FIRST ACTION
 
 Use TodoWrite NOW to create todos for ALL phases:
@@ -4647,6 +4933,17 @@ Uses the **Pure Ralph bash loop approach** for batch processing:
 /w-ralph-batch --multi-project    # Multiple project directories
 /w-ralph-batch --diagnostics      # Run diagnostics from ralph-candidates.md
 \`\`\`
+
+---
+
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
 
 ---
 
@@ -4944,10 +5241,21 @@ Suite Sync from Upstream Source — Parallel fetch + interview-driven additive s
 **Philosophy:** Never modify existing files (zero regression risk). Only add new files and features.
 
 ## Usage
-\\\`\\\`\\\`
+\`\`\`
 /w-suite-sync
 /w-suite-sync --source https://github.com/danizeeincali/danizee-claude-suite
-\\\`\\\`\\\`
+\`\`\`
+
+---
+
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): \`model: fable\` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): \`model: sonnet\` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to \`model: opus\` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
 
 ---
 
@@ -4978,7 +5286,7 @@ Use TodoWrite NOW to create todos for ALL phases:
 ### ⛔ CHECKPOINT 0: Fetch Upstream
 **Parallel fetch all content categories from upstream source:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # Clone or fetch upstream
 git clone --depth 1 https://github.com/danizeeincali/danizee-claude-suite /tmp/suite-upstream
 
@@ -4987,7 +5295,7 @@ ls /tmp/suite-upstream/src/plugins/     # Workflow commands
 ls /tmp/suite-upstream/src/lib/         # Library modules
 ls /tmp/suite-upstream/src/templates/   # Templates
 ls /tmp/suite-upstream/docs/            # Documentation
-\\\`\\\`\\\`
+\`\`\`
 
 **REQUIRED OUTPUT:**
 - Upstream version: _____
@@ -5066,9 +5374,9 @@ STOP and wait for user response.
 ### ⛔ CHECKPOINT 4: Verify No Regressions
 **Run existing test suites and checks:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 npm test
-\\\`\\\`\\\`
+\`\`\`
 
 **Additional checks:**
 - Levenshtein similarity check: new command names vs existing (flag conflicts > 0.8)
@@ -5117,10 +5425,10 @@ Before marking workflow complete, verify ALL boxes:
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Example
-\\\`\\\`\\\`
+\`\`\`
 /w-suite-sync
 # Fetches latest upstream, shows what's new, you pick what to sync
-\\\`\\\`\\\`
+\`\`\`
 `
     }
   };

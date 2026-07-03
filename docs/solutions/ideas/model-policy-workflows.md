@@ -2,29 +2,33 @@
 
 ## What is the Model Policy?
 
-The `/w-plan-tdd-swarm` and `/w-background-compound` commands include a **per-step model policy**
-that routes each subagent spawn to the cheapest model that can do the job reliably, while keeping
-the main planning/judgment loop on the session model (which you control).
+Every `w-` workflow includes a **per-step model policy** (v4.3.0, suite-wide): **fable**
+(claude-fable-5) wherever thinking is required, **sonnet** (Sonnet 5) for all execution, and an
+inline **opus fallback** (claude-opus-4-8) for every fable routing — covering the case where
+fable access is removed or usage runs out. The main planning/judgment loop stays on the session
+model (which you control).
 
 ## The Routing Table
 
 | Work | Recommended Model | Rationale |
 |------|-------------------|-----------|
-| Read-only search/sweep fan-outs (Explore) | `haiku` | Mechanical discovery — Explore's native default tier |
-| Medium-judgment searches, doc and compound writing | `sonnet` | Near-frontier quality at ~30% of the premium tier cost |
-| Well-scoped builds (file:line targets + failing-test spec exist) | `sonnet` | SWE-bench Verified: Sonnet 4.6 scores 79.6% vs Opus 4.6 80.8% on scoped agentic coding — near-parity; TDD harness makes failures detectable cheaply |
-| Hard builds (root-cause unknown, cross-cutting, migrations, security-sensitive) | `opus` | Subtle multi-file reasoning is where the tier gap shows |
-| Adversarial review / verification subagents | `opus` | The quality backstop that lets builders run cheap |
-| Frontier-difficulty retry of a failed opus attempt | your session model | Last rung only — only after opus fails |
+| Read-only search/sweep fan-outs (Explore) | `sonnet` (Sonnet 5) | Execution tier — all non-thinking work runs Sonnet 5 |
+| Medium-judgment searches, doc and compound writing | `sonnet` (Sonnet 5) | Near-frontier quality at a fraction of the premium tier cost |
+| Well-scoped builds (file:line targets + failing-test spec exist) | `sonnet` (Sonnet 5) | Scoped agentic coding is execution; the TDD harness makes failures detectable cheaply |
+| Hard builds (root-cause unknown, cross-cutting, migrations, security-sensitive) | `fable` (claude-fable-5) | Thinking-required work runs the frontier tier |
+| Adversarial review / verification subagents | `fable` (claude-fable-5) | The quality backstop that lets builders run cheap |
+| Planning/architecture subagents, final judgment | `fable` (claude-fable-5) | Thinking-required work runs the frontier tier |
 
-**Approximate pricing tiers (relative, not exact):** haiku : sonnet : opus : premium ≈ 1 : 3 : 5 : 10
+**Opus fallback (every fable routing):** if fable is unavailable — access removed, usage
+exhausted, or the model errors as not found — fall back to `opus` (claude-opus-4-8) for that
+step. Never silently skip the step because fable is missing.
 
 ## The Escalation Ladder
 
 On a **detectable failure** (tests still red, regressions introduced, agent stuck or died):
 
 ```
-sonnet → opus → your session model
+sonnet → fable   (substitute opus when fable is unavailable)
 ```
 
 - Escalate ONE tier per retry

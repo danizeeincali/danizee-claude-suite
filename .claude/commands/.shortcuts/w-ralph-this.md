@@ -1,27 +1,45 @@
 # /w-ralph-this
 
-Ralph Wiggum Loop - Iteratively feed a prompt to Claude until a completion signal is detected.
+Convert a task description into a Pure Ralph loop. Creates IMPLEMENTATION_PLAN.md and outputs the command to run.
 
-## What is Ralph Wiggum?
+## What is Pure Ralph?
 
-An iterative AI development methodology - a "simple while loop that repeatedly feeds an AI agent a prompt until completion."
+Pure Ralph uses a bash loop for fresh context each iteration:
+- Each iteration reads IMPLEMENTATION_PLAN.md
+- Picks ONE task, completes it, marks done
+- Commits changes, exits
+- Bash loop restarts with fresh context
+
+**Key difference from plugin-style:** Context doesn't accumulate. State passes through files only.
 
 ## Usage
 ```
-/w-ralph-this [prompt or file path]
-/w-ralph-this "Build a REST API with full test coverage"
-/w-ralph-this .claude/plans/api-spec.md
+/w-ralph-this [task description]
+/w-ralph-this Build a REST API with CRUD endpoints and tests
+/w-ralph-this .claude/plans/feature-spec.md
 ```
+
+---
+
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): `model: fable` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): `model: sonnet` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to `model: opus` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
 
 ---
 
 ## ⚠️ MANDATORY FIRST ACTION
 
 Use TodoWrite NOW to create todos for ALL phases:
-1. Load and validate prompt
-2. Configure iteration parameters
-3. Execute loop (track each iteration)
-4. Compound successful pattern
+1. Parse task/spec into atomic tasks
+2. Create/update IMPLEMENTATION_PLAN.md
+3. Customize AGENTS.md if needed
+4. Output run command
+5. (Optional) Execute loop
 
 ⚠️ VIOLATION: Any action before TodoWrite = restart workflow
 
@@ -29,93 +47,159 @@ Use TodoWrite NOW to create todos for ALL phases:
 
 ## Rules
 
-- NEVER skip checkpoints - each requires user confirmation
-- NEVER exceed max iterations without user confirmation
-- NEVER skip compound phase at the end
-- VIOLATION: Running without completion promise = risk of infinite loop
-
----
-
-## Key Parameters
-- **Max Iterations**: Safety limit (default: 50)
-- **Completion Promise**: String that signals done (e.g., "DONE", "<promise>COMPLETE</promise>")
+- NEVER run the loop internally - output the bash command
+- ALWAYS break tasks into atomic, one-iteration steps
+- ALWAYS include verification for each task
+- NEVER skip IMPLEMENTATION_PLAN.md creation
 
 ---
 
 ## Execution Protocol
 
-### ⛔ CHECKPOINT 0: Load
+### ⛔ CHECKPOINT 0: Parse Task
+**Read input (inline or file) and analyze:**
+
 **REQUIRED OUTPUT:**
-- Input type: file/inline
-- Prompt content: _____
-- Completion promise: _____
-- Max iterations: _____
+- Input type: inline/file
+- Task summary: _____
+- Complexity estimate: simple/medium/complex
+- Estimated tasks: N atomic tasks
 
 **USER GATE:** Use AskUserQuestion
-- Question: "Prompt loaded. Completion signal: [X]. Max: [N]. Start loop?"
-- Options: ["Start loop", "Adjust config", "Show prompt"]
+- Question: "Task: [summary]. ~[N] atomic tasks. Proceed to plan?"
+- Options: ["Create plan", "Refine scope", "Show task breakdown"]
 
 STOP and wait for user response.
 
 ---
 
-### ⛔ CHECKPOINT 1: Each Iteration
-**REQUIRED OUTPUT (per iteration):**
-- Iteration #: _____
-- Progress made: _____
-- Completion signal detected: yes/no
+### ⛔ CHECKPOINT 1: Create Implementation Plan
+**Break into atomic tasks (one per iteration):**
 
-**AUTO-PROCEED:** Continue iterations until completion signal or max reached.
+**Write to .claude/ralph/IMPLEMENTATION_PLAN.md:**
+```markdown
+# Implementation Plan
 
-Only stop for user confirmation if max iterations reached without completion.
+## Status
+- Total tasks: N
+- Completed: 0
+- In Progress: 0
+- Remaining: N
+
+## Tasks
+
+### Phase 1: Foundation
+- [ ] Task 1 description
+  - Verify: [command or check]
+- [ ] Task 2 description
+  - Verify: [command or check]
+
+### Phase 2: Core Implementation
+- [ ] Task 3 description
+...
+
+## Discoveries
+
+<!-- Learnings will be captured here during execution -->
+```
+
+**REQUIRED OUTPUT:**
+- Plan file: .claude/ralph/IMPLEMENTATION_PLAN.md
+- Total tasks: N
+- Phases: _____
+
+**AUTO-PROCEED:** Continue to AGENTS.md check.
 
 ---
 
-### ⛔ CHECKPOINT 2: Completion
-**REQUIRED OUTPUT:**
-- Total iterations: _____
-- Completion signal: _____
-- Final result: _____
+### ⛔ CHECKPOINT 2: Verify AGENTS.md
+**Check AGENTS.md has correct validation commands:**
 
-**AUTO-PROCEED:** Continue to Compound phase.
+**REQUIRED OUTPUT:**
+- AGENTS.md exists: yes/no
+- Build command: _____
+- Test command: _____
+- Lint command: _____
+
+**If commands need updating:**
+**USER GATE:** Use AskUserQuestion
+- Question: "Update AGENTS.md validation commands?"
+- Options: ["Auto-detect", "Manual edit", "Keep current"]
+
+STOP and wait for user response if changes needed.
 
 ---
 
-### ⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)
+### ⛔ CHECKPOINT 3: Output Run Command
+
 **REQUIRED OUTPUT:**
-- Memory key: project/ralph/_____
-- Doc path: docs/solutions/ralph/_____.md
-- Pattern stored: yes/no
+```
+╔════════════════════════════════════════════════════╗
+║  Pure Ralph Ready!                                 ║
+╠════════════════════════════════════════════════════╣
+║  Plan: .claude/ralph/IMPLEMENTATION_PLAN.md        ║
+║  Tasks: N tasks in M phases                        ║
+╠════════════════════════════════════════════════════╣
+║  To start the loop:                                ║
+║                                                    ║
+║    ./.claude/ralph/loop.sh                         ║
+║                                                    ║
+║  Options:                                          ║
+║    ./.claude/ralph/loop.sh build 50   # Max 50    ║
+║    ./.claude/ralph/loop.sh plan       # Plan mode ║
+╚════════════════════════════════════════════════════╝
+```
 
-**RALPH CANDIDATE CHECK (MANDATORY):**
-- Dev pattern identified for future Ralph loop: yes/no
-- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
+**USER GATE:** Use AskUserQuestion
+- Question: "Plan created. Start loop now or run manually later?"
+- Options: ["Run now (will exit session)", "Run manually later", "Show plan"]
 
-NEVER skip this phase. Workflow is INCOMPLETE without compound.
+STOP and wait for user response.
+
+---
+
+### ⛔ CHECKPOINT 4: Execute (if requested)
+**If user chose "Run now":**
+
+Inform user:
+```
+Starting Pure Ralph loop...
+This session will end. The bash loop will orchestrate fresh Claude instances.
+Run this command in your terminal:
+
+  ./.claude/ralph/loop.sh
+
+Or for verbose output:
+  ./.claude/ralph/loop.sh build 999 --verbose
+```
+
+**Do NOT attempt to run loop internally.**
 
 ---
 
 ## Completion Checklist
 
-Before marking workflow complete, verify ALL boxes:
-- [ ] TodoWrite used at start with all 4 phases
-- [ ] Checkpoint 0 completed with user confirmation
-- [ ] Checkpoints 1-3 completed (auto-proceed)
-- [ ] Loop completed successfully OR stopped intentionally
-- [ ] Compound phase executed
-- [ ] Memory key stored: _____
-- [ ] Solution doc created: _____
-- [ ] Ralph candidate check completed
+- [ ] TodoWrite used at start
+- [ ] Task parsed and understood
+- [ ] IMPLEMENTATION_PLAN.md created with atomic tasks
+- [ ] AGENTS.md verified/updated
+- [ ] Run command provided to user
+- [ ] User informed of execution options
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
-## Best For
-- Greenfield projects with clear success criteria
-- Test-driven development cycles
-- Tasks executable overnight/unattended
-- Feature implementation with measurable completion
-
 ## Example
 ```
-/w-ralph-this "Build a CLI tool that converts markdown to HTML. Output <promise>COMPLETE</promise> when all tests pass."
+/w-ralph-this Build authentication with JWT tokens
+
+# Creates plan with tasks like:
+# - [ ] Create auth types in src/types/auth.ts
+# - [ ] Implement JWT utilities in src/lib/jwt.ts
+# - [ ] Add login endpoint
+# - [ ] Add refresh endpoint
+# - [ ] Add auth middleware
+# - [ ] Write tests for auth flow
+
+# Then user runs:
+./.claude/ralph/loop.sh
 ```

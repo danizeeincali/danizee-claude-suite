@@ -12,11 +12,13 @@ Fire-and-Forget Compound. Auto-detects category and dispatches to a background a
 
 ## Model Policy (token/cost)
 
-This flow is mechanical checklist work with hard verification (git status/log) — it does not need
-the premium session model. **Dispatch the background agent with `model: sonnet`** (Agent tool
-`model` param). Spawn any extra utility probes (file inventories, greps) with `model: haiku`. Only
-the thin pre-flight in the main loop runs on the session model. Never dispatch /bc on the session
-model by silent inheritance.
+This flow is mechanical checklist work with hard verification (git status/log) — it is execution,
+not thinking. **Dispatch the background agent with `model: sonnet`** (Sonnet 5, Agent tool
+`model` param), and spawn any extra utility probes (file inventories, greps) with `model: sonnet`
+too. Reserve `model: fable` for steps that genuinely require reasoning; if fable is unavailable
+(access removed or usage exhausted), fall back to `model: opus` for that step. Only the thin
+pre-flight in the main loop runs on the session model. Never dispatch /bc on the session model by
+silent inheritance.
 
 ---
 

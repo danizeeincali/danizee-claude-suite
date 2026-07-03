@@ -9,6 +9,17 @@ Deep Debug → TDD Swarm - Thorough investigation then fix with regression tests
 
 ---
 
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): `model: fable` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): `model: sonnet` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to `model: opus` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
+
+---
+
 ## ⚠️ MANDATORY FIRST ACTION
 
 Use TodoWrite NOW to create todos for ALL phases:
@@ -50,6 +61,26 @@ Use TodoWrite NOW to create todos for ALL phases:
 - Options: ["Proceed to Analysis", "Use existing solution", "Show more detail"]
 
 STOP and wait for user response.
+
+---
+
+### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
+**Search the Pi Brain network for existing debug recipes matching this issue:**
+
+```bash
+# npm client (preferred)
+curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[bug/issue description]" --top-k=3
+
+# HTTP fallback
+curl -s "https://pi.ruv.io/v1/memories/search?q=[bug/issue description]&top_k=3"
+```
+
+**If matching memories found:** Review steps for applicable fix patterns. Adapt proven approaches. Note memory IDs for voting later.
+**If no matches:** Proceed normally.
+
+**REQUIRED OUTPUT:**
+- Pi Brain memories found: _____ (0+ results)
+- Applicable patterns: _____
 
 ---
 
@@ -139,7 +170,9 @@ npx ruflo@latest agent spawn --domain core --role coder --task "Implement the fi
 npx ruflo@latest agent spawn --domain support --role tester --task "Verify regression tests pass"
 npx ruflo@latest agent spawn --domain security --role security-sentinel --task "Check fix doesn't introduce vulnerabilities"
 ```
-Alternatively, use the Agent tool to spawn parallel agents with `isolation: "worktree"`.
+Alternatively, use the Agent tool to spawn parallel agents with `isolation: "worktree"` — route
+each per the Model Policy (`model: sonnet` for scoped fix work, `model: fable` for
+root-cause-unknown reasoning, falling back to `model: opus` if fable is unavailable).
 For simple fixes, proceed with serial implementation.
 
 **🌐 BROWSER CHECK (conditional):**
@@ -206,6 +239,9 @@ Skip this block for non-UI tasks.
 
 ---
 
+
+---
+
 ### ⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)
 **REQUIRED OUTPUT:**
 - Memory key: project/debugging/_____
@@ -216,6 +252,30 @@ Skip this block for non-UI tasks.
 **RALPH CANDIDATE CHECK (MANDATORY):**
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
+
+**AUTORESEARCH CANDIDATE CHECK (RC-A):**
+Scan the work just completed for measurable optimization targets:
+1. **Static scan:** Analyze git diff for measurable patterns (function runtimes, test duration, bundle size, query counts, memory usage, coverage gaps)
+2. **Agent reflection:** What about this work could be measured and autonomously optimized?
+3. **Impact scoring:** Rate each candidate on 4 dimensions (weighted composite):
+   - potential (0.35): estimated improvement magnitude (1-10)
+   - blast_radius (0.15): files/systems affected, inverted (1-10)
+   - risk (0.15): breaking change likelihood, inverted (1-10)
+   - value (0.35): user/business value of improvement (1-10)
+   - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
+4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
+```
+## RC-A[NNN]: [Title]
+**KPI:** [metric_name]
+**Baseline:** [current value]
+**Benchmark:** `[command to measure]`
+**Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
+**Files in scope:** [paths]
+**Constraints:** [what must not break]
+```
+- RC-A candidates found: yes/no
+- If yes, logged with impact scores to .claude/ralph-candidates.md
+
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
@@ -231,6 +291,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Regression tests written and initially failed
 - [ ] All tests now pass
 - [ ] No regressions introduced
+- [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____

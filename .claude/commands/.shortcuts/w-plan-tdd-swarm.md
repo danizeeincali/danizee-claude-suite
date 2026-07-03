@@ -47,16 +47,21 @@ tool / Workflow `agent()` per this table — never let a spawn silently inherit 
 
 | Work | Model | Why |
 |---|---|---|
-| Read-only search/sweep fan-outs (Explore) | `haiku` | Mechanical discovery; Explore's native default |
-| Medium-judgment searches, doc/compound writing | `sonnet` | Near-frontier quality at a fraction of the premium tier cost |
-| Well-scoped builds (file:line targets + failing-test spec exist) | `sonnet` | SWE-bench Verified ≈ parity with Opus on scoped agentic coding; TDD harness detects failure cheaply |
-| Hard builds (root-cause unknown, cross-cutting/architectural, migrations, security-sensitive) | `opus` | Subtle multi-file reasoning is where the tier gap shows |
-| Adversarial review / verification subagents | `opus` | The quality backstop that lets builders run cheap |
-| Frontier-difficulty retry of a failed opus attempt | your session model (last rung only) | Last rung only |
+| Read-only search/sweep fan-outs (Explore) | `sonnet` (Sonnet 5) | Execution tier — all non-thinking work runs Sonnet 5 |
+| Medium-judgment searches, doc/compound writing | `sonnet` (Sonnet 5) | Near-frontier quality at a fraction of the premium tier cost |
+| Well-scoped builds (file:line targets + failing-test spec exist) | `sonnet` (Sonnet 5) | Scoped agentic coding is execution; the TDD harness detects failure cheaply |
+| Hard builds (root-cause unknown, cross-cutting/architectural, migrations, security-sensitive) | `fable` (claude-fable-5) | Thinking-required work runs the frontier tier |
+| Adversarial review / verification subagents | `fable` (claude-fable-5) | The quality backstop that lets builders run cheap |
+| Planning/architecture subagents, final judgment | `fable` (claude-fable-5) | Thinking-required work runs the frontier tier |
+
+**Opus fallback (applies to EVERY `fable` routing above):** if fable is unavailable — access
+removed, usage exhausted, or the model errors as not found — fall back to `opus`
+(claude-opus-4-8) for that step. Never silently skip the step because fable is missing.
 
 **Escalation ladder (build retries):** on DETECTABLE failure (tests still red, regressions
-introduced, agent stuck or died) the retry runs ONE tier up: sonnet → opus → your session model.
-Never retry the same tier twice; never start a well-scoped build above sonnet "just in case."
+introduced, agent stuck or died) the retry runs ONE tier up: sonnet → fable (substitute opus
+when fable is unavailable). Never retry the same tier twice; never start a well-scoped build
+above sonnet "just in case."
 
 ---
 
@@ -78,7 +83,7 @@ Reach for a workflow ONLY when the task is failing (or will fail) under one of t
 **Default OFF.** First ask: *does this really need more compute? If a regular Claude Code session would finish it in ~five minutes, you don't need a workflow.* Most coding tasks don't need a panel of 5 reviewers.
 
 ### The 6 patterns (compose 2–4 per real task)
-1. **Classify-and-act** — a cheap classifier routes work before doing it (route to Opus only when complexity demands).
+1. **Classify-and-act** — a cheap classifier routes work before doing it (route to fable only when complexity demands).
 2. **Fan-out-and-synthesize** — one agent per enumerable item in `parallel()`, then one synthesizer (barrier) merges. The workhorse.
 3. **Adversarial verification** — pair every worker with a separate verifier that knows only the rubric + the artifact, not who made it. Structural fix for self-preference.
 4. **Generate-and-filter** — generate N options, then a verifier rubric kills the weak ones; commit late.
@@ -88,7 +93,7 @@ Reach for a workflow ONLY when the task is failing (or will fail) under one of t
 Mapping: *drift → fan-out · self-preference → adversarial verification · open-ended → loop-until-done · hard-to-score → tournament.*
 
 ### Best practices (non-negotiable when you DO use one)
-- **Set `opts.model` on every `agent()` call** per the Model Policy table above — `model: "haiku"` for read-only sweeps, `model: "sonnet"` for scoped workers, `model: "opus"` for verifiers/hard reasoning. Omitting it inherits the (premium) session model and silently 3×s the workflow's cost.
+- **Set `opts.model` on every `agent()` call** per the Model Policy table above — `model: "sonnet"` for sweeps and scoped workers (all execution), `model: "fable"` for verifiers/hard reasoning (falling back to `model: "opus"` if fable is unavailable or usage is exhausted). Omitting it inherits the session model and silently changes the workflow's cost.
 - **`parallel()` is a barrier** (waits for all — use when you need every result before the next step). **`pipeline()` streams** (each item flows through all stages independently — cheaper/faster). They are NOT interchangeable.
 - **Separate worker and verifier.** One agent never does both the work and judges it — self-preference makes the verifier favor the worker.
 - **Explicit token budget.** State a cap in the prompt ("use 10k tokens"); without one, ambitious workflows balloon 5–10×.
@@ -113,9 +118,10 @@ Only after the user approves do you call the Workflow tool. If they decline, pro
 
 ### ⛔ CHECKPOINT 0: Search
 
-**🤖 MODEL:** spawn search/Explore subagents with `model: haiku` (read-only sweeps — Explore's
-native tier); use `model: sonnet` only when the search needs real judgment (e.g. tracing a bug's
-data flow). See Model Policy.
+**🤖 MODEL:** spawn search/Explore subagents with `model: sonnet` (Sonnet 5 — the execution
+tier for sweeps and discovery); use `model: fable` only when the search needs real reasoning
+(e.g. tracing a bug's data flow), falling back to `model: opus` if fable is unavailable. See
+Model Policy.
 
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
@@ -259,11 +265,13 @@ A flaky property = a real bug or a bad invariant — fix the code, don't loosen 
 ### ⛔ CHECKPOINT 5: Build
 
 **🤖 MODEL (complexity-routed — see Model Policy):** spawn build subagents with `model: sonnet`
-when the work is well-scoped (the Search phase produced file:line targets and the Tests phase wrote
-a clear failing-test spec). Go straight to `model: opus` for hard builds: root-cause-unknown bugs,
-cross-cutting/architectural changes, migrations, security-sensitive work. On a DETECTABLE failure
-(tests still red, regressions, agent stuck/died), the retry escalates ONE tier: sonnet → opus →
-your session model — never the same tier twice.
+(Sonnet 5) when the work is well-scoped (the Search phase produced file:line targets and the Tests
+phase wrote a clear failing-test spec). Go straight to `model: fable` for hard builds — the
+thinking-required tier: root-cause-unknown bugs, cross-cutting/architectural changes, migrations,
+security-sensitive work — and fall back to `model: opus` if fable is unavailable or usage is
+exhausted. On a DETECTABLE failure (tests still red, regressions, agent stuck/died), the retry
+escalates ONE tier: sonnet → fable (substitute opus when fable is unavailable) — never the same
+tier twice.
 
 **Parallel execution (optional — only for genuinely complex/parallel builds):**
 - **Dynamic Workflow (preferred for fan-out builds):** if the build is an enumerable list of independent work items (N callsites, N failing tests, N migrations) — a **fan-out + adversarial-verification** shape — propose a dynamic workflow via the **🚦 HIL gate** (see the Dynamic Workflows section). Use `parallel()`/`pipeline()` with `isolation: "worktree"` per agent so parallel edits don't conflict, and pair each worker with a SEPARATE verifier. Only spawn after HIL approval + a token budget. **Default: serial** — most builds don't need it.
@@ -290,9 +298,11 @@ Skip this block for non-UI tasks.
 
 ### ⛔ CHECKPOINT 6: Review
 
-**🤖 MODEL:** adversarial-review / verification subagents run on `model: opus` — they are the
-quality backstop that lets builders run cheaper. The FINAL verification verdict (independent
-re-runs, cross-method checks) is rendered by the main loop on the session model.
+**🤖 MODEL:** adversarial-review / verification subagents run on `model: fable` — thinking
+work, and the quality backstop that lets builders run cheaper. If fable is unavailable (access
+removed, usage exhausted, or the model errors), fall back to `model: opus`. The FINAL
+verification verdict (independent re-runs, cross-method checks) is rendered by the main loop on
+the session model.
 
 **Workflow escalation (optional):** for a large/adversarial review (many findings, or where self-preferential bias is a risk — you reviewing your own build), propose a dynamic workflow via the **🚦 HIL gate**: a **fan-out** of review dimensions, each finding **adversarially verified** by a SEPARATE agent that knows only the rubric + the finding, not that you wrote it. Default: do the review inline — escalate only when the surface is genuinely large.
 

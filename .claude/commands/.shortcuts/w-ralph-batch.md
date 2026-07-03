@@ -1,338 +1,311 @@
 # /w-ralph-batch
 
-Batch process multiple Ralph candidates sequentially, or generate an overnight script for unattended execution.
-Supports Diagnostic→Fix flow for automated QA verification.
+Generate overnight bash scripts that run Pure Ralph loops on multiple projects or candidates.
+
+## What This Does
+
+Uses the **Pure Ralph bash loop approach** for batch processing:
+- Each candidate/project gets its own Ralph loop
+- Scripts use `.claude/ralph/loop.sh` for execution
+- Fresh context for every iteration
+- State persisted through IMPLEMENTATION_PLAN.md files
 
 ## Usage
 ```
-/w-ralph-batch                    # Interactive mode - process one by one
-/w-ralph-batch --script           # Generate overnight batch script
-/w-ralph-batch --priority P1      # Only process P1 candidates
-/w-ralph-batch --all              # Process all ready candidates sequentially
-/w-ralph-batch --phased           # Execute by priority (P1 → P2 → P3)
-/w-ralph-batch --diagnostics      # Run all diagnostics first, then fixes if needed
+/w-ralph-batch                    # Interactive mode
+/w-ralph-batch --script           # Generate overnight-ralph.sh
+/w-ralph-batch --multi-project    # Multiple project directories
+/w-ralph-batch --diagnostics      # Run diagnostics from ralph-candidates.md
 ```
+
+---
+
+## Model Policy (fable/sonnet)
+
+Route EVERY subagent this workflow spawns by work type — never let a spawn silently inherit the session model:
+
+- **Thinking** (planning, architecture, root-cause analysis, adversarial review/verification, final judgment): `model: fable` (claude-fable-5).
+- **Execution** (everything else — scoped builds, discovery sweeps, doc/compound writing, mechanical work): `model: sonnet` (Sonnet 5).
+- **Opus fallback:** if fable is unavailable (access removed, usage exhausted, or the model errors), fall back to `model: opus` (claude-opus-4-8) for that step.
+- **Escalation on detectable failure:** sonnet → fable (substitute opus when fable is unavailable). Never retry the same tier twice.
 
 ---
 
 ## ⚠️ MANDATORY FIRST ACTION
 
 Use TodoWrite NOW to create todos for ALL phases:
-1. Load candidates from .claude/ralph-candidates.md
-2. Filter by status (ready) and priority (if specified)
-3. Select execution mode
-4. Execute batch or generate script
-5. Update candidate statuses
-6. Generate summary report
+1. Scan for candidates/projects
+2. Configure batch parameters
+3. Generate overnight script
+4. Output execution instructions
 
 ⚠️ VIOLATION: Any action before TodoWrite = restart workflow
 
 ---
 
-## Rules
+## Batch Modes
 
-- NEVER skip checkpoints - each requires user confirmation
-- NEVER execute without reviewing candidate list first
-- NEVER skip status updates after completion
-- ALWAYS generate summary report at end
-- For diagnostics: ALWAYS run RC-D### before paired RC-F###
-
----
-
-## Execution Modes
-
-| Mode | Description | Use Case |
-|------|-------------|----------|
-| Interactive | Process one by one with verification | Supervised execution |
-| Script | Generate overnight-work.sh | Unattended overnight runs |
-| Phased | Execute by priority order | Structured batch processing |
-| All | Process all ready candidates | Quick batch run |
-| Diagnostics | Run diagnostics first, fixes only if needed | QA verification |
-
----
-
-## Candidate Types
-
-| ID Format | Type | Purpose |
-|-----------|------|---------|
-| RC-### | General | Standard Ralph candidates |
-| RC-D### | Diagnostic | Verify patterns/code exists |
-| RC-F### | Fix | Restore code if diagnostic fails |
-
-**Diagnostic→Fix Flow:**
-1. Run RC-D### diagnostic command
-2. If STATUS: PASS → log "VERIFIED" → skip paired RC-F###
-3. If STATUS: FAIL → run RC-F### fix → re-run RC-D### to verify
-4. Report final status
+| Mode | Description | Output |
+|------|-------------|--------|
+| Script | Generate overnight bash script | overnight-ralph.sh |
+| Multi-project | Batch multiple project dirs | overnight-multi.sh |
+| Diagnostics | Process ralph-candidates.md | overnight-diagnostics.sh |
+| Interactive | Select and configure interactively | User choice |
 
 ---
 
 ## Execution Protocol
 
-### ⛔ CHECKPOINT 0: Load & Filter Candidates
+### ⛔ CHECKPOINT 0: Scan Candidates
+**Check for Ralph candidates and projects:**
+
+```bash
+# Check for candidates file
+cat .claude/ralph-candidates.md
+
+# Check for Ralph setup in current project
+ls -la .claude/ralph/
+
+# Check for multi-project config
+ls ../*/.claude/ralph/ 2>/dev/null
+```
+
 **REQUIRED OUTPUT:**
-- Candidates file: .claude/ralph-candidates.md
-- Total candidates: _____
-- Ready candidates: _____
-- Ready diagnostics (RC-D###): _____
-- Ready fixes (RC-F###): _____
-- Filtered candidates (if priority specified): _____
-
-**General Candidates:**
-| ID | Priority | Name | Completion Tests | Status |
-|----|----------|------|------------------|--------|
-| RC-___ | P_ | _____ | ___ tests | ready |
-
-**Diagnostics & Fixes (if any):**
-| Diagnostic | Verifies | Paired Fix | Status |
-|------------|----------|------------|--------|
-| RC-D___ | _____ | RC-F___ | ready |
+- Candidates file exists: yes/no
+- Ready candidates: N (RC-### IDs)
+- Ready diagnostics: N (RC-D### IDs)
+- Ralph setup in current project: yes/no
+- Other projects with Ralph: [list paths]
 
 **USER GATE:** Use AskUserQuestion
-- Question: "Found [N] ready candidates ([X] diagnostics, [Y] fixes, [Z] general). Select execution mode:"
-- Options: ["Interactive (one by one)", "Generate script", "Phased (P1→P2→P3)", "Diagnostics first", "All at once"]
+- Question: "Found [N] candidates, [M] diagnostics, [P] projects. Select mode:"
+- Options: ["Generate overnight script", "Multi-project batch", "Diagnostics only", "Interactive"]
 
 STOP and wait for user response.
 
 ---
 
-### ⛔ CHECKPOINT 1: Mode Configuration
+### ⛔ CHECKPOINT 1: Configure Batch
 
-**For Interactive Mode:**
-- Processing order: by priority (P1 first) or by ID
-- Pause between candidates: yes/no
-- Auto-archive on success: yes/no
+**For Overnight Script:**
+```
+Max iterations per candidate: 50 (default)
+Stop on first failure: no (default)
+Log to file: yes (default)
+Notification on complete: no (default)
+```
 
-**For Script Mode:**
-- Script path: ./overnight-ralph.sh
-- Max iterations per candidate: 50 (default)
-- Include status updates: yes/no
-- Log output to file: yes/no
+**For Multi-Project:**
+```
+Projects to include: [list]
+Order: sequential/parallel
+Shared log file: yes/no
+```
 
-**For Phased Mode:**
-- Phase 1 (P1 Critical): [list IDs]
-- Phase 2 (P2 Important): [list IDs]
-- Phase 3 (P3 Nice-to-have): [list IDs]
-- Completion promises: <promise>P1_COMPLETE</promise>, etc.
-
-**For Diagnostics Mode:**
-- Diagnostic pairs to process: [list RC-D### → RC-F### pairs]
-- Run fixes only on failure: yes (default)
-- Re-verify after fix: yes (default)
-- Processing order: by diagnostic ID
+**For Diagnostics:**
+```
+Run fixes on failure: yes (default)
+Re-verify after fix: yes (default)
+```
 
 **USER GATE:** Use AskUserQuestion
-- Question: "Configuration ready. Proceed with [mode]?"
-- Options: ["Start execution", "Adjust config", "Change mode"]
+- Question: "Configuration ready. Generate script?"
+- Options: ["Generate", "Adjust settings", "Add more projects"]
 
 STOP and wait for user response.
 
 ---
 
-### ⛔ CHECKPOINT 2: Execute/Generate
+### ⛔ CHECKPOINT 2: Generate Script
 
-**Interactive Mode - Per Candidate:**
-1. Load candidate spec
-2. Verify completion tests
-3. Execute Ralph loop (max 50 iterations)
-4. Run completion tests
-5. Update status (complete/in-progress/blocked)
-6. Move to next candidate
-
-**Script Mode - Generate overnight-work.sh:**
+**Generate overnight-ralph.sh:**
 ```bash
 #!/bin/bash
-# Ralph Batch - Generated [DATE]
-# Candidates: [IDs]
-# Total: [N] candidates
+# Pure Ralph Batch - Generated [DATE]
+#
+# This script runs Pure Ralph loops on multiple candidates/projects.
+# Each loop gets FRESH CONTEXT - no accumulation.
 
-set -e  # Exit on error
+set -e
 LOG_FILE="ralph-batch-$(date +%Y%m%d-%H%M%S).log"
 
-echo "Starting Ralph Batch Processing..." | tee -a $LOG_FILE
-echo "Start time: $(date)" | tee -a $LOG_FILE
+log() {
+  echo "[$(date '+%H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
 
-# RC-001: [Name]
-echo "Processing RC-001: [Name]..." | tee -a $LOG_FILE
-claude -p "/w-ralph-this '[spec]'
-Output <promise>RC001_DONE</promise> when all tests pass.
-Max iterations: 50" 2>&1 | tee -a $LOG_FILE
-echo "RC-001 complete: $(date)" | tee -a $LOG_FILE
+log "╔════════════════════════════════════════════════╗"
+log "║  Pure Ralph Batch Starting                      ║"
+log "║  Candidates: [N]                                ║"
+log "║  Log: $LOG_FILE                                 ║"
+log "╚════════════════════════════════════════════════╝"
 
-# RC-002: [Name]
-echo "Processing RC-002: [Name]..." | tee -a $LOG_FILE
-claude -p "/w-ralph-this '[spec]'
-Output <promise>RC002_DONE</promise> when all tests pass.
-Max iterations: 50" 2>&1 | tee -a $LOG_FILE
-echo "RC-002 complete: $(date)" | tee -a $LOG_FILE
+#───────────────────────────────────────────────────────
+# Candidate: RC-001 - [Name]
+#───────────────────────────────────────────────────────
+log ""
+log "Processing RC-001: [Name]..."
 
-echo "Ralph Batch Complete: $(date)" | tee -a $LOG_FILE
-echo "Results logged to: $LOG_FILE"
+# Create/update IMPLEMENTATION_PLAN.md for this candidate
+cat > .claude/ralph/IMPLEMENTATION_PLAN.md << 'PLAN_EOF'
+# Implementation Plan: RC-001
+
+## Status
+- Total tasks: N
+- Completed: 0
+- Remaining: N
+
+## Tasks
+- [ ] Task 1
+- [ ] Task 2
+...
+
+## Discoveries
+PLAN_EOF
+
+# Run the Pure Ralph loop
+./.claude/ralph/loop.sh build 50
+
+log "RC-001 complete: $(date)"
+
+#───────────────────────────────────────────────────────
+# Candidate: RC-002 - [Name]
+#───────────────────────────────────────────────────────
+log ""
+log "Processing RC-002: [Name]..."
+
+# [Similar pattern for each candidate]
+
+log ""
+log "╔════════════════════════════════════════════════╗"
+log "║  Pure Ralph Batch Complete!                     ║"
+log "║  End time: $(date)                              ║"
+log "║  Log: $LOG_FILE                                 ║"
+log "╚════════════════════════════════════════════════╝"
 ```
 
-**Phased Mode - Sequential Priority Execution:**
-```
-# Phase 1: P1 Critical
-Processing RC-001, RC-005...
-Output <promise>P1_COMPLETE</promise>
+**For Multi-Project Script:**
+```bash
+#!/bin/bash
+# Pure Ralph Multi-Project Batch
 
-# Phase 2: P2 Important
-Processing RC-002, RC-003...
-Output <promise>P2_COMPLETE</promise>
+PROJECTS=(
+  "/path/to/project1"
+  "/path/to/project2"
+)
 
-# Phase 3: P3 Nice-to-have
-Processing RC-004...
-Output <promise>P3_COMPLETE</promise>
+for project in "${PROJECTS[@]}"; do
+  echo "═══ Processing: $project ═══"
+  cd "$project"
 
-Output <promise>ALL_PHASES_COMPLETE</promise>
-```
-
-**Diagnostics Mode - Verify & Fix Flow:**
-For each RC-D### diagnostic:
-```
-┌─────────────────────────────────────────────────┐
-│ DIAGNOSTIC: RC-D001 - getOrderBookDepth exists  │
-├─────────────────────────────────────────────────┤
-│ Running: grep -n "export function getOrder..."  │
-│                                                 │
-│ RESULT: PATTERN_FOUND: YES                      │
-│         LOCATION: src/api/depth.ts:42           │
-│         STATUS: PASS                            │
-│                                                 │
-│ → VERIFIED. Skipping RC-F001.                   │
-└─────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────┐
-│ DIAGNOSTIC: RC-D002 - validateOrderParams       │
-├─────────────────────────────────────────────────┤
-│ Running: grep -n "export function validate..."  │
-│                                                 │
-│ RESULT: PATTERN_FOUND: NO                       │
-│         LOCATION: NONE                          │
-│         STATUS: FAIL                            │
-│                                                 │
-│ → Running paired fix: RC-F002                   │
-│ → Fix applied.                                  │
-│ → Re-running diagnostic...                      │
-│ → STATUS: PASS                                  │
-│ → RESTORED.                                     │
-└─────────────────────────────────────────────────┘
+  if [[ -f ".claude/ralph/loop.sh" ]]; then
+    ./.claude/ralph/loop.sh build 50
+  else
+    echo "Warning: No Ralph setup in $project"
+  fi
+done
 ```
 
-**Diagnostic Output Format:**
-```
-DIAGNOSTIC: [NAME]
-PATTERN_FOUND: YES|NO
-LOCATION: [file:line] or NONE
-STATUS: PASS|FAIL
-ACTION: VERIFIED|RESTORED|FAILED
+**For Diagnostics Script:**
+```bash
+#!/bin/bash
+# Pure Ralph Diagnostics
+
+run_diagnostic() {
+  local id="$1"
+  local cmd="$2"
+  local fix_id="$3"
+
+  echo "DIAGNOSTIC: $id"
+  if eval "$cmd"; then
+    echo "STATUS: PASS"
+    echo "ACTION: VERIFIED"
+  else
+    echo "STATUS: FAIL"
+    if [[ -n "$fix_id" ]]; then
+      echo "Running fix: $fix_id"
+      # Run fix via Ralph loop
+      ./.claude/ralph/loop.sh build 10
+      # Re-verify
+      if eval "$cmd"; then
+        echo "ACTION: RESTORED"
+      else
+        echo "ACTION: FAILED"
+      fi
+    fi
+  fi
+}
+
+# RC-D001: [Name] Exists
+run_diagnostic "RC-D001" "grep -q 'pattern' file.ts" "RC-F001"
 ```
 
-**AUTO-PROCEED:** Continue until all candidates processed or script generated.
+**Make executable:**
+```bash
+chmod +x overnight-ralph.sh
+```
+
+**REQUIRED OUTPUT:**
+- Script path: ./overnight-ralph.sh
+- Candidates included: [list]
+- Executable: yes
 
 ---
 
-### ⛔ CHECKPOINT 3: Summary Report
+### ⛔ CHECKPOINT 3: Output Instructions
+
 **REQUIRED OUTPUT:**
-
-**Execution Summary:**
-| Metric | Value |
-|--------|-------|
-| Total candidates | _____ |
-| Processed | _____ |
-| Successful | _____ |
-| Failed/Blocked | _____ |
-| Skipped | _____ |
-
-**General Candidate Results:**
-| ID | Name | Result | Iterations | Notes |
-|----|------|--------|------------|-------|
-| RC-___ | _____ | success/failed/blocked | ___ | _____ |
-
-**Diagnostic Results (if applicable):**
-| Diagnostic | Verifies | Status | Action | Fix Run |
-|------------|----------|--------|--------|---------|
-| RC-D___ | _____ | PASS/FAIL | VERIFIED/RESTORED/FAILED | RC-F___/skipped |
-
-**Diagnostic Summary:**
-| Metric | Count |
-|--------|-------|
-| Total diagnostics run | _____ |
-| Verified (PASS, no fix needed) | _____ |
-| Restored (FAIL → fix → PASS) | _____ |
-| Failed (FAIL → fix → still FAIL) | _____ |
-
-**Script Generated (if applicable):**
-- Path: ./overnight-ralph.sh
-- Chmod: +x applied
-- Run command: `./overnight-ralph.sh`
-
-**Status Updates:**
-- Candidates marked complete: [IDs]
-- Candidates still in-progress: [IDs]
-- Candidates blocked: [IDs]
-- Diagnostics verified: [RC-D### IDs]
-- Diagnostics restored: [RC-D### IDs]
-- Archived: [IDs]
-
-**USER GATE:** Use AskUserQuestion
-- Question: "Batch complete. [X/Y] successful. [Z] diagnostics verified. Next action?"
-- Options: ["Done", "Retry failed", "View details", "Run generated script"]
-
-STOP and wait for user response.
+```
+╔════════════════════════════════════════════════════════════╗
+║  Overnight Script Generated!                                ║
+╠════════════════════════════════════════════════════════════╣
+║  Script: ./overnight-ralph.sh                               ║
+║  Candidates: [N]                                            ║
+║  Max iterations per candidate: 50                           ║
+╠════════════════════════════════════════════════════════════╣
+║  To run overnight:                                          ║
+║                                                             ║
+║    nohup ./overnight-ralph.sh > overnight.log 2>&1 &        ║
+║                                                             ║
+║  Or with screen:                                            ║
+║    screen -S ralph ./overnight-ralph.sh                     ║
+║                                                             ║
+║  Check progress:                                            ║
+║    tail -f ralph-batch-*.log                                ║
+╚════════════════════════════════════════════════════════════╝
+```
 
 ---
 
 ## Completion Checklist
 
-Before marking workflow complete, verify ALL boxes:
-- [ ] TodoWrite used at start with all 6 phases
-- [ ] Checkpoints 0-1 completed with user confirmation
-- [ ] Checkpoint 2 completed (execution/generation)
-- [ ] Checkpoint 3 completed with summary
-- [ ] All candidate statuses updated in .claude/ralph-candidates.md
-- [ ] Successful candidates archived
-- [ ] Diagnostics verified/restored (if applicable)
-- [ ] Summary report generated
+- [ ] TodoWrite used at start
+- [ ] Candidates/projects scanned
+- [ ] Batch parameters configured
+- [ ] overnight-ralph.sh generated
+- [ ] Script made executable
+- [ ] Run instructions provided
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
-
-## Script Output Location
-- Default: ./overnight-ralph.sh
-- Log file: ./ralph-batch-YYYYMMDD-HHMMSS.log
 
 ## Best Practices
 
 **For Overnight Runs:**
-1. Generate script with `/w-ralph-batch --script`
-2. Review generated script
-3. Run `chmod +x overnight-ralph.sh`
-4. Execute before bed: `./overnight-ralph.sh`
-5. Check logs in morning
+1. Generate script: `/w-ralph-batch --script`
+2. Review the generated script
+3. Run with nohup or screen:
+   ```bash
+   nohup ./overnight-ralph.sh > overnight.log 2>&1 &
+   ```
+4. Check logs in morning: `tail -f ralph-batch-*.log`
 
-**For Phased Execution:**
-1. Use `/w-ralph-batch --phased`
-2. Monitor P1 completion first
-3. Review results between phases
-4. Continue or abort as needed
-
-**For Diagnostic Verification:**
-1. Use `/w-ralph-batch --diagnostics` after /w-compound
-2. Verifies patterns built in previous session still exist
-3. Auto-fixes any regressions detected
-4. Run nightly to catch accidental deletions
+**Key Principle:** The script runs `loop.sh` which gives each iteration fresh context. Bad work gets rejected by tests. Good work accumulates in git.
 
 ## Example
 ```
 /w-ralph-batch --script
-# Generates overnight-ralph.sh with all ready candidates
+# Generates overnight-ralph.sh for all ready candidates
 
-/w-ralph-batch --priority P1
-# Only processes P1 (critical) candidates
-
-/w-ralph-batch --phased
-# Executes P1 → P2 → P3 with completion promises
-
-/w-ralph-batch --diagnostics
-# Runs all RC-D### diagnostics, fixes only if needed
+./overnight-ralph.sh
+# Runs all Ralph loops sequentially
+# Each iteration: fresh context, one task, commit, exit
 ```
