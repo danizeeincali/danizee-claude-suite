@@ -187,3 +187,19 @@ STATUS: PASS|FAIL
 - One-off tasks with no repetition pattern
 - Tasks without clear completion signals
 - Non-code tasks
+
+## RC-010: Template↔installed-copy sync guard in installer
+**Status:** ready
+**Priority:** P2
+**Problem:** `.claude/commands/.shortcuts/*.md` drifted from `src/plugins/dot-shortcuts.js` templates for ~5 months in BOTH directions (stale copies + template-only losses like the w-swarm RuFlo block). `test/fable-model-policy.test.js` now locks byte-identity repo-side, but installs into other projects can still go stale.
+**Fix shape:** add a `sync-commands` CLI subcommand + CI check that regenerates copies from `getCommands()` and fails on diff; consider generating copies at install time only.
+**Files in scope:** bin/cli.js, src/installer.js, src/plugins/dot-shortcuts.js, test/
+**Constraints:** byte-identity tests must keep passing; standalone w-bg-* files have no template and must be excluded.
+
+## RC-A010: Test suite duration budget
+**KPI:** npm test wall-clock duration_ms
+**Baseline:** ~800ms (438 passing tests)
+**Benchmark:** `npm test 2>&1 | grep duration_ms | tail -1`
+**Impact Score:** 4.4 (potential: 3, blast_radius: 2, risk: 2, value: 4)
+**Files in scope:** test/*.test.js
+**Constraints:** no test coverage loss; PM tests stay skippable without better-sqlite3
