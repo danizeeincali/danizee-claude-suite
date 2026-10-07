@@ -1,0 +1,61 @@
+{
+  "streams": [
+    {
+      "name": "_meta",
+      "state": "meta",
+      "isolation": "worktree",
+      "created": "2026-10-07T23:44:40.196Z",
+      "tasks": []
+    },
+    {
+      "name": "intake",
+      "state": "queued",
+      "plan": ".claude/plans/2026-10-07-w-bbs.md",
+      "next": "create worktree; write contracts + failing tests for store/intake/status/cli skeleton",
+      "tasks": []
+    },
+    {
+      "name": "fetch",
+      "state": "queued",
+      "plan": ".claude/plans/2026-10-07-w-bbs.md",
+      "next": "fetch.js guards + egress log + clone; stubbed tests",
+      "tasks": []
+    },
+    {
+      "name": "inventory",
+      "state": "queued",
+      "plan": ".claude/plans/2026-10-07-w-bbs.md",
+      "next": "inventory.js schema/cap/brief + verbs",
+      "tasks": []
+    },
+    {
+      "name": "harness-map",
+      "state": "queued",
+      "plan": ".claude/plans/2026-10-07-w-bbs.md",
+      "next": "harness-map.js index + IDF-cosine matchPower + verbs",
+      "tasks": []
+    },
+    {
+      "name": "verdict",
+      "state": "queued",
+      "plan": ".claude/plans/2026-10-07-w-bbs.md",
+      "next": "verdict.js licence policy, legalVerdicts, probe, decide, labels, registry",
+      "tasks": []
+    },
+    {
+      "name": "handoff",
+      "state": "queued",
+      "plan": ".claude/plans/2026-10-07-w-bbs.md",
+      "next": "handoff.js briefs + buildFinishLine + marathon bridge",
+      "tasks": []
+    },
+    {
+      "name": "command-docs",
+      "state": "queued",
+      "plan": ".claude/plans/2026-10-07-w-bbs.md",
+      "next": "plugin installer, w-bbs + bbs commands, docs, README, e2e packaged test",
+      "tasks": []
+    }
+  ],
+  "handoff": null
+}

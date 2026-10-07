@@ -1,7 +1,7 @@
 {
   "ceiling_pct": 70,
   "usage_reading_ttl_minutes": 30,
-  "run_token_budget": 20000000,
+  "run_token_budget": 10000000,
   "helper_budget": {
     "default": 150000,
     "max": 200000
