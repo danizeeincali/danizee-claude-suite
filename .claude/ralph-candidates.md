@@ -9,6 +9,7 @@
 | ID | Priority | Name | Source | Completion Tests | Status |
 |----|----------|------|--------|------------------|--------|
 | RC-001 | P3 | Workflow Variant Generator | /w-idea-tdd-swarm 2026-03-02 | See details below | draft |
+| RC-002 | P2 | Reconcile shortcut generator with committed copies | /pt marathon 2026-10-07 | See details below | draft |
 
 ---
 
@@ -187,3 +188,19 @@ STATUS: PASS|FAIL
 - One-off tasks with no repetition pattern
 - Tasks without clear completion signals
 - Non-code tasks
+
+### RC-002: Reconcile shortcut generator with committed copies
+- **Priority:** P2
+- **Source:** /pt marathon on 2026-10-07
+- **Pattern:** The committed `.claude/commands/.shortcuts/*.md` drifted from `src/plugins/dot-shortcuts.js` (e.g. `w-swarm.md` differs by ~170 lines; `w-debug.md` by ~70). `test/ruflo-integration.test.js` asserts on the committed copies, so regenerating from the generator breaks four tests. One of the two must become the source of truth.
+- **Completion tests:** (1) `node -e "..."` rendering every `getCommands()` entry equals the committed file byte-for-byte, or the committed copies are deleted and tests read `getCommands()`; (2) `npm test` green; (3) `npx danizee-claude-suite update` on this repo is a no-op diff.
+- **Status:** draft
+
+## RC-A001: Tokens per green build step, by model tier
+**KPI:** tokens_per_green (per model, from the marathon helper ledger)
+**Baseline:** none yet — no haiku builder data exists; first `/w-marathon` run establishes it
+**Benchmark:** `node .claude/helpers/marathon/cli.js model-stats --run <run-id>`
+**Impact Score:** 7.6 (potential: 8, blast_radius: 2, risk: 3, value: 8)
+**Files in scope:** .claude/marathon.json (models.build_scoped, routing.scoped_max_files), src/lib/marathon/routing.js
+**Constraints:** Hard categories (security, migration) never route below opus; red tests always retry one tier up before any review; gate semantics unchanged
+

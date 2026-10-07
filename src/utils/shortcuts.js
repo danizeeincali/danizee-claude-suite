@@ -183,6 +183,9 @@ Use the \`/w-\` prefix for quick workflow invocation:
 | \`/w-end [category]\` | End session - compound and commit |
 | \`/w-tdd-swarm [feature]\` | Full TDD + Swarm + Review combined (recommended) |
 | \`/w-plan-tdd-swarm [idea]\` | Deep interview → refine idea → TDD Swarm |
+| \`/w-marathon [finish line]\` | Days-long run with a finish line: status file, wake-up, hard ceiling (alias \`/mt\`) |
+| \`/w-background-compound\` | Background write-up + handoff + prune line; commits, never pushes (alias \`/bc\`) |
+| \`/bcp\` | Same as \`/bc\` with \`--push\`: commit, push and merge |
 | \`/w-swarm [task]\` | Parallel agents for rapid implementation |
 | \`/w-fix [bug]\` | Quick bug investigation and fix |
 | \`/w-debug [issue]\` | Debug → diagnose → TDD-swarm fix |
@@ -531,6 +534,40 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/ideas/[idea]" }
 /compound-engineering:workflows:compound
 \`\`\`
 </details>
+
+---
+
+### Marathon — a run with a finish line
+
+**Say:** "Keep building this until it's done" or "Run this for days"
+**Slash:** \`/w-marathon [finish line]\` · \`/mt\` · \`/w-marathon --resume\` · \`/w-marathon --status\`
+
+**What it does:** One interview, then a loop that keeps going until a measurable finish line is met — with state in files, a wake-up timer, a bar it can't argue with, and a hard ceiling on cost.
+
+**Philosophy:** A task ends when it's done; a finish line keeps producing next steps until the whole thing is true. Anything Claude can forget, lose or talk itself out of lives in a file, a test or a rule it reads every time — never only in chat.
+
+**The eight habits it encodes:**
+1. Finish line, not a task (\`finish-line.json\`: one typed line per check, owner build|human)
+2. Interview once, then "Nothing, go." — the last question until something waits on you
+3. Defaults decided up front (kickoff: done means / may decide alone / ask me before / never)
+4. A bar it can't argue with (tolerance per severity + passes in a row; you own the numbers)
+5. State outside the chat (\`.claude/marathon/<run-id>/status.md\`, rendered by a script)
+6. A wake-up timer (in-session cron + a printed launchd/crontab fallback)
+7. One git worktree per stream
+8. Human jobs on a checklist Claude reads and never retries
+
+**Scripts decide, the model acts:** \`node .claude/helpers/marathon/cli.js <verb>\` — \`init\`, \`status\`, \`gate --stream\`, \`budget\` (any non-zero exit = do not spawn), \`record\` (run, review, finding, finding-fixed, helper, helper-done, measure, escape), \`stream\`, \`route\`, \`model-stats\`, \`seen-twice\`, \`promote\`, \`review-brief\`, \`review-writeup\`, \`resume\`, \`keeplist\`, \`context\`, \`wake\`, \`page\`, \`finish\`. Everything fails closed: an unreadable finish line, a review without counts, an empty measurement — none of them is a pass.
+
+**⚠️ Enforcement:**
+- NEVER spawn a helper after \`cli.js budget\` exits non-zero (2 = ceiling/budget, 1 = broken state)
+- NEVER weaken an assertion; a fresh reviewer checks every fix
+- NEVER retry a \`waitingOnHuman\` line
+- NEVER push or merge without the owner's go (\`/bcp\`)
+
+**Example:**
+\`\`\`
+/w-marathon Ship /bbs in the suite. Two clean reviews per stream, six green e2e runs, under 10M tokens.
+\`\`\`
 
 ---
 
@@ -959,6 +996,19 @@ Claude: What category? (feature/bug/security/performance/architecture)
 User: bug
 Claude: Stored as project/bugs/[auto-named] + created docs/solutions/bugs/[name].md
 \`\`\`
+
+---
+
+### Background Compound (/bc) and Background Compound Push (/bcp)
+
+**Say:** "Compound this in the background"
+**Slash:** \`/w-background-compound [category] [--push]\` · \`/bc\` · \`/bcp\`
+
+**What it does:** A background agent (sonnet) writes the lessons up; the lead writes the handoff (status rows, standing rules, memory), measures the context from the transcript and hands you the right line: nothing under 50%, a ready-to-run \`/compact\` with a generated keep-list between 50% and 80%, \`/clear\` plus the resume line above 80%. Only you can run that line — Claude cannot compact itself.
+
+**\`/bc\` commits and never pushes. \`/bcp\` is the owner's go: it also pushes and merges.**
+
+Two suite hooks make automatic compaction behave the same way: \`PreCompact\` stamps the status file, \`SessionStart(compact)\` prints the resume line.
 
 ---
 
