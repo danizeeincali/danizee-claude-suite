@@ -30,3 +30,14 @@ coverage/
 # Cache
 .cache/
 .npm/
+
+# Marathon wake-up logs
+.claude/marathon/*/wake.log
+
+# RuFlo / RuVector MCP local state (task db, memory, embeddings)
+.swarm/
+.claude-flow/
+ruvector.db
+
+# Marathon: machine-local pointer to the active run
+.claude/marathon/ACTIVE

@@ -25,7 +25,8 @@
       "Bash(npx ruflo:*)",
       "Bash(git worktree:*)",
       "Read(docs/solutions/**)",
-      "Write(docs/solutions/**)"
+      "Write(docs/solutions/**)",
+      "Bash(node .claude/helpers/marathon/cli.js:*)"
     ]
   },
   "features": {
@@ -46,8 +47,20 @@
         "defaultTopology": "hierarchical",
         "defaultAgents": 5,
         "maxAgents": 15,
-        "domains": ["queen", "security", "core", "integration", "support"],
-        "consensus": ["raft", "byzantine", "gossip", "crdt", "quorum"]
+        "domains": [
+          "queen",
+          "security",
+          "core",
+          "integration",
+          "support"
+        ],
+        "consensus": [
+          "raft",
+          "byzantine",
+          "gossip",
+          "crdt",
+          "quorum"
+        ]
       },
       "memory": {
         "enabled": true,
@@ -108,5 +121,28 @@
         "svelte"
       ]
     }
+  },
+  "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/marathon-precompact.sh\""
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/marathon-session-start.sh\""
+          }
+        ]
+      }
+    ]
   }
 }

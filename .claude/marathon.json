@@ -1,0 +1,59 @@
+{
+  "ceiling_pct": 70,
+  "usage_reading_ttl_minutes": 30,
+  "run_token_budget": 20000000,
+  "helper_budget": {
+    "default": 150000,
+    "max": 200000
+  },
+  "max_concurrent_builders": 3,
+  "models": {
+    "build_scoped": "haiku",
+    "build": "sonnet",
+    "build_hard": "opus",
+    "review": "opus",
+    "routine": "haiku",
+    "ladder": [
+      "haiku",
+      "sonnet",
+      "opus",
+      "session"
+    ]
+  },
+  "routing": {
+    "scoped_max_files": 3,
+    "hard_categories": [
+      "security",
+      "migration"
+    ]
+  },
+  "streams": {
+    "isolation": "worktree"
+  },
+  "review": {
+    "backend": "agent",
+    "scope": "diff-since-clean",
+    "reviewers_per_round": 1,
+    "categories": [
+      "correctness",
+      "security",
+      "accessibility",
+      "performance",
+      "facts",
+      "test-quality",
+      "process",
+      "docs",
+      "other"
+    ]
+  },
+  "bc": {
+    "prune_below_pct": 50,
+    "clear_above_pct": 80,
+    "context_window": 1000000,
+    "push": false
+  },
+  "paths": {
+    "runs": ".claude/marathon",
+    "memory": "docs/solutions"
+  }
+}

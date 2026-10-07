@@ -20,6 +20,9 @@ import * as pmShortcuts from './plugins/pm-shortcuts.js';
 import * as agentCookbook from './plugins/agent-cookbook.js';
 import * as terminalAgents from './plugins/terminal-agents.js';
 import * as autoresearch from './plugins/autoresearch.js';
+import * as marathon from './plugins/marathon.js';
+import { checkShadowing } from './lib/marathon/shadow.js';
+import os from 'os';
 
 // Get directory of this file for template resolution
 const __filename = fileURLToPath(import.meta.url);
@@ -37,6 +40,16 @@ export class DaniZeeSuiteInstaller {
     this.keepSettings = options.keepSettings || false;
     this.withPm = options.withPm || false;
     this.withoutCookbook = options.withoutCookbook || false;
+    // User-level commands live here; a same-named file silently shadows a suite command
+    this.homeDir = options.homeDir || os.homedir();
+  }
+
+  /**
+   * Suite command names that a ~/.claude/commands/<name>.md would shadow
+   */
+  async checkShadowing() {
+    const names = Object.keys(dotShortcuts.getCommands());
+    return checkShadowing(path.join(this.homeDir, '.claude', 'commands'), names);
   }
 
   /**
@@ -69,10 +82,11 @@ export class DaniZeeSuiteInstaller {
     // Install Pure Ralph templates
     const ralphResult = await this.installRalphTemplates();
 
-    // Merge settings
+    // Merge settings (marathon hooks registered idempotently)
     await mergeSettings(this.claudeDir, {
       force: this.force,
-      targetDir: this.targetDir
+      targetDir: this.targetDir,
+      hooks: marathon.getHookEntries()
     });
 
     // Generate WORKFLOW-SHORTCUTS.md
@@ -84,12 +98,16 @@ export class DaniZeeSuiteInstaller {
     // Run post-init hook if it exists
     await this.runPostInitHook();
 
+    // Warn about user-level commands that would shadow suite commands
+    const shadowing = await this.checkShadowing();
+
     return {
       success: true,
       plugins: results,
       ralph: ralphResult,
       shortcuts: path.join(this.targetDir, 'WORKFLOW-SHORTCUTS.md'),
-      tools: toolStatus
+      tools: toolStatus,
+      shadowing
     };
   }
 
@@ -209,6 +227,12 @@ export class DaniZeeSuiteInstaller {
 
     // Install Autoresearch skill, command, and hook
     results.push(await autoresearch.install(this.claudeDir, {
+      dryRun: this.dryRun,
+      targetDir: this.targetDir
+    }));
+
+    // Install Marathon helpers, hooks, reviewer kit and rules
+    results.push(await marathon.install(this.claudeDir, {
       dryRun: this.dryRun,
       targetDir: this.targetDir
     }));
@@ -360,8 +384,10 @@ echo "MCP server started. You can now use memory and swarm operations."
         dotShortcuts: false,
         agentCookbook: false,
         pmShortcuts: false,
-        terminalAgents: false
-      }
+        terminalAgents: false,
+        marathon: false
+      },
+      shadowing: []
     };
 
     // Check .claude directory
@@ -396,6 +422,8 @@ echo "MCP server started. You can now use memory and swarm operations."
     status.plugins.agentCookbook = await agentCookbook.isInstalled(this.claudeDir);
     status.plugins.pmShortcuts = await pmShortcuts.isInstalled(this.claudeDir);
     status.plugins.terminalAgents = await terminalAgents.isInstalled(this.claudeDir);
+    status.plugins.marathon = await marathon.isInstalled(this.claudeDir);
+    status.shadowing = await this.checkShadowing();
 
     // Overall status (core plugins only — PM and cookbook are optional)
     status.installed = status.claudeDir &&
@@ -422,6 +450,7 @@ echo "MCP server started. You can now use memory and swarm operations."
     await agentCookbook.uninstall(this.claudeDir);
     await pmShortcuts.uninstall(this.claudeDir);
     await terminalAgents.uninstall(this.claudeDir, { targetDir: this.targetDir });
+    await marathon.uninstall(this.claudeDir);
 
     // Remove settings
     await removeSettings(this.claudeDir, this.keepSettings);

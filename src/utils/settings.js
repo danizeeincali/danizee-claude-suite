@@ -48,6 +48,8 @@ export function getDefaultSettings() {
       allow: [
         'Bash(npx claude-flow:*)',
         'Bash(git worktree:*)',
+        // The marathon loop calls its helper CLI dozens of times unattended; a prompt would stall it.
+        'Bash(node .claude/helpers/marathon/cli.js:*)',
         'Read(docs/solutions/**)',
         'Write(docs/solutions/**)'
       ]
@@ -149,6 +151,45 @@ export async function writeSettings(claudeDir, settings) {
 }
 
 /**
+ * Merge hook entries into an existing `hooks` block without duplicating.
+ * An entry is considered present when any existing entry for the same event
+ * already runs one of its command strings — so `update` is idempotent.
+ */
+export function mergeHooks(existing = {}, additions = {}) {
+  const result = { ...existing };
+
+  for (const [event, entries] of Object.entries(additions)) {
+    const current = Array.isArray(result[event]) ? [...result[event]] : [];
+    for (const entry of entries) {
+      const commands = (entry.hooks || []).map(h => h.command);
+      const present = current.some(e => (e.hooks || []).some(h => commands.includes(h.command)));
+      if (!present) current.push(entry);
+    }
+    result[event] = current;
+  }
+
+  return result;
+}
+
+/**
+ * Remove hook entries by command string — the inverse of mergeHooks.
+ * An event left with no entries is dropped from the block.
+ */
+export function unmergeHooks(existing = {}, removals = {}) {
+  const result = { ...existing };
+
+  for (const [event, entries] of Object.entries(removals)) {
+    if (!Array.isArray(result[event])) continue;
+    const commands = new Set(entries.flatMap(e => (e.hooks || []).map(h => h.command)));
+    const kept = result[event].filter(e => !(e.hooks || []).some(h => commands.has(h.command)));
+    if (kept.length) result[event] = kept;
+    else delete result[event];
+  }
+
+  return result;
+}
+
+/**
  * Merge suite settings with existing settings
  */
 export async function mergeSettings(claudeDir, options = {}) {
@@ -164,6 +205,20 @@ export async function mergeSettings(claudeDir, options = {}) {
   // Merge everything
   let merged = deepMerge(existing, defaultSettings);
   merged.plugins = deepMerge(merged.plugins || {}, allPluginSettings);
+
+  // Permission lists are a union, never a replacement: a project's own allow/deny entries
+  // (e.g. the test command a headless marathon wake-up needs) must survive every update.
+  merged.permissions = merged.permissions || {};
+  for (const list of ['allow', 'deny']) {
+    const user = existing.permissions?.[list] || [];
+    const ours = defaultSettings.permissions?.[list] || [];
+    if (user.length || ours.length) merged.permissions[list] = [...new Set([...user, ...ours])];
+  }
+
+  // Register plugin hooks (idempotent)
+  if (options.hooks) {
+    merged.hooks = mergeHooks(merged.hooks, options.hooks);
+  }
 
   // Update installation timestamp if forcing
   if (options.force) {
@@ -221,6 +276,8 @@ export default {
   getPluginSettings,
   readSettings,
   writeSettings,
+  mergeHooks,
+  unmergeHooks,
   mergeSettings,
   removeSettings,
   validateSettings,

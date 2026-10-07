@@ -7,6 +7,20 @@ import { DaniZeeSuiteInstaller } from '../src/installer.js';
 
 const program = new Command();
 
+/**
+ * A ~/.claude/commands/<name>.md silently wins over the project's .claude/commands copy.
+ * Say so, and show the one-line fix.
+ */
+function printShadowing(shadowing = []) {
+  if (!shadowing.length) return;
+  console.log('');
+  console.log(chalk.yellow(`⚠️  User-level commands shadow suite commands: ${shadowing.map(n => '/' + n).join(', ')}`));
+  console.log(chalk.dim('   ~/.claude/commands/<name>.md is loaded instead of the project copy. Rename or remove:'));
+  for (const name of shadowing) {
+    console.log(chalk.dim(`     mv ~/.claude/commands/${name}.md ~/.claude/commands/${name}-old.md`));
+  }
+}
+
 program
   .name('danizee-claude-suite')
   .description('Unified workflow shortcuts for Claude Code with knowledge compounding')
@@ -47,10 +61,13 @@ program
         }
       }
 
+      printShadowing(result.shadowing);
+
       console.log('\n' + chalk.cyan('Next steps:'));
       console.log('  1. Ensure claude-flow MCP is installed: ' + chalk.yellow('npx claude-flow@v3alpha mcp start'));
       console.log('  2. Review the generated WORKFLOW-SHORTCUTS.md');
       console.log('  3. Try a workflow: ' + chalk.yellow('/w-tdd-swarm [feature]') + ' or ' + chalk.yellow('"Full TDD Swarm on [feature]"'));
+      console.log('  4. For a run that lasts days: ' + chalk.yellow('/w-marathon [finish line]') + ' (alias ' + chalk.yellow('/mt') + ')');
       if (options.withPm) {
         console.log('\n' + chalk.cyan('PM Module:'));
         console.log('  ' + chalk.yellow('/w-cos') + ' — Daily standup');
@@ -88,8 +105,11 @@ program
       console.log(`  ${status.plugins.compoundEngineering ? chalk.green('✓') : chalk.red('✗')} Compound Engineering plugin`);
       console.log(`  ${status.plugins.frontendDesign ? chalk.green('✓') : chalk.red('✗')} Frontend Design plugin`);
       console.log(`  ${status.plugins.dotShortcuts ? chalk.green('✓') : chalk.red('✗')} Workflow Shortcuts (/w-tdd-swarm, /w-swarm, /w-fix, etc.)`);
+      console.log(`  ${status.plugins.marathon ? chalk.green('✓') : chalk.red('✗')} Marathon helpers + hooks (/w-marathon, /bc, /bcp)`);
       console.log(`  ${status.plugins.agentCookbook ? chalk.green('✓') : chalk.dim('○')} Agent Cookbook (optional)`);
       console.log(`  ${status.plugins.pmShortcuts ? chalk.green('✓') : chalk.dim('○')} PM Module (optional, --with-pm)`);
+
+      printShadowing(status.shadowing);
 
       if (!status.installed) {
         console.log('\n' + chalk.yellow('Run `npx danizee-claude-suite init` to install.'));

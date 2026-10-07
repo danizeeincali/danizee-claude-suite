@@ -46,6 +46,8 @@ The second time you solve a similar problem, it's faster because the workflow fi
 | `/w-tdd-swarm` | Full TDD + Swarm — plan, test-first, parallel build, review |
 | `/w-plan-tdd-swarm` | Interview refines idea → Full TDD Swarm builds it |
 | `/pt` | Alias for `/w-plan-tdd-swarm` (mobile-friendly shorthand) |
+| `/w-marathon` | Days-long run with a finish line — status file, wake-up timer, hard cost ceiling |
+| `/mt` | Alias for `/w-marathon` (mobile-friendly shorthand) |
 | `/w-swarm` | Parallel agents (coder, tester, reviewer) |
 | `/w-autoresearch` | Autonomous experiment loop for measurable optimization |
 | `/w-agent-tdd-swarm` | Gateless TDD for terminal agents (zero user gates, auto-PR) |
@@ -87,8 +89,9 @@ The second time you solve a similar problem, it's faster because the workflow fi
 | Shortcut | Description |
 |----------|-------------|
 | `/w-compound` | Ad-hoc knowledge capture with auto-QA diagnostics |
-| `/w-background-compound` | Fire-and-forget compound (background agent, auto-push) |
-| `/bc` | Alias for `/w-background-compound` (mobile-friendly shorthand) |
+| `/w-background-compound` | Fire-and-forget compound — background write-up, handoff, prune line; commits, never pushes |
+| `/bc` | Alias for `/w-background-compound` (commit only) |
+| `/bcp` | Alias for `/w-background-compound --push` (commit, push and merge — the owner's go) |
 | `/w-suite-sync` | Sync shortcuts after suite update (additive only) |
 
 ### Pure Ralph (Bash Loop)
@@ -114,6 +117,130 @@ Every workflow includes an independent **cross-method validation gate** after im
 5. **No Regressions** — full test suite to catch regressions
 
 Retry logic: max 3 retries, then escalate to user.
+
+### Marathon — a run with a finish line
+
+`/w-marathon` (alias `/mt`) keeps Claude building, testing and reviewing for days with only short
+check-ins. It encodes eight habits: a finish line not a task, one interview then "Nothing, go.",
+defaults decided up front, a bar it can't argue with, state saved outside the chat, a wake-up timer,
+one worktree per stream, and a human checklist Claude reads but never retries.
+
+```
+.claude/marathon.json              project config: ceiling_pct, run_token_budget, helper_budget,
+                                   models, streams.isolation, review.*, bc.*
+.claude/marathon/<run-id>/
+├── kickoff.md                     done means / may decide alone / ask me before / never
+├── finish-line.json               one typed line per gate check — the human edits this
+├── checklist.md                   jobs only the owner can do: - [ ] id — label
+├── rules.md                       standing rules (never weaken an assertion, …)
+├── status.md                      rendered by a script after every step — never hand-edited
+├── streams.json                   one row per stream + the last handoff
+├── reviews/<stream>-r<N>-<id>.md  generated from finding rows; refuses when counts ≠ rows
+├── store/*.jsonl                  runs, reviews, findings, helpers, compactions, promotions, measurements
+└── page.html                      read-only view of gate + ledger + streams
+```
+
+**Scripts decide, the model acts.** Everything a model is bad at remembering or counting is a verb
+of `node .claude/helpers/marathon/cli.js`: `init`, `status`, `gate [--stream]` (exit 0 when the
+build gate is met), `budget` (**exit 2 = ceiling or budget hit, exit 1 = invalid input or broken
+state; either way, no spawn**), `record run|review|finding|finding-fixed|helper|helper-done|measure|
+compaction|escape`, `repair`, `unpause`, `stream`, `route`, `model-stats`, `promote`, `seen-twice`,
+`review-brief`, `review-writeup`, `handoff`, `resume`, `keeplist`, `context`, `wake`, `page`,
+`finish`, `shadow-check`. Every verb takes `--run <id>`; without it the ACTIVE run is used.
+
+**Everything fails closed.** `finish-line.json` is schema-checked (owner `build|human`, op
+`is|at_least|at_most`, type `bool|number|percent`, a known source; `passes_in_a_row` must agree
+with the `reviews.streak` line) and an invalid or missing file is a gate that is not met. A review
+needs exactly `{high, medium, low}` as counts and can never carry `pass`; `review-writeup` refuses
+when the counts and the finding rows disagree. A measurement that is empty or null never meets a
+number line. A run without `status=green|red` is rejected. A finding is only ever opened by
+`record finding` and only closed by `record finding-fixed`. A corrupt line in any store table
+blocks the gate and the budget until `cli.js repair` quarantines it (`<table>.jsonl.corrupt`);
+a half-written last line never swallows the next record. The streams file is written under a
+lock, so parallel `stream` calls and the `PreCompact` hook cannot lose a row. Every verb resolves
+the run from the **main checkout**, even when called from inside a stream worktree.
+
+**Reviews see the right code.** A review diffs from the last *certified* point — the HEAD that the
+last completed clean streak certified, else the stream's base recorded at `state=active` — to the
+stream's HEAD. An over round certifies nothing and never narrows the next review, so every round
+of a clean streak judges the same code from a different angle, and the first round covers
+everything the stream added. Lock files and generated assets are excluded, an oversize diff is
+summarised with `--stat`, and an empty diff or a git failure is an error, never a clean brief. A
+review with wrong counts is *replaced* (`record review … replaces=<id>`), never recorded twice.
+
+**A pause is a state, not a timer.** When `budget` exits 2 the run is PAUSED and stays paused —
+through the reading's TTL, through restarts, and the fallback wake-up goes quiet — until a fresh
+reading below the ceiling or `cli.js unpause` after you raise the limit. `status.md` carries a
+"Next for you" line for every state: paused, blocked gate, active stream, next queued stream, all
+done, finished. A run with queued streams is never silent: every wake path names the next stream.
+
+**The ceiling is code.** `budget` refuses when the weekly allowance is at or past `ceiling_pct`, or
+when helper spend — actuals of finished helpers plus stated budgets of running ones — reaches
+`run_token_budget`. A non-numeric reading (`85%`, `12k`) is refused, not ignored. The allowance is
+read with `get_usage` in the desktop app and passed as `--usage-pct`; the reading is kept as a
+timestamped measurement for `usage_reading_ttl_minutes` (30), after which it is `unknown` again —
+so a stale reading never passes the ceiling.
+
+**The gate is yours.** `finish-line.json` holds one typed input per line (`bool` / `number` /
+`percent`, `at_least` / `at_most` / `is`, owner `build` or `human`) and the tolerance (how many
+high / medium / low findings a review may have and still pass, and how many passes in a row). Edit
+it at any time; the next review uses the new numbers. `cli.js gate` reports `failing`,
+`waitingOnHuman`, `buildGateMet` and `gateMet`; a missing check is never a pass.
+
+**Routing is speed × probability.** With a contract and failing tests written first, the test run
+is a near-free error detector, so a cheap builder's miss costs one retry — not a review round.
+`cli.js route` classifies each build step from structural signals (contract? failing tests? how
+many files? which category?) and the config says which tier takes it: scoped → `build_scoped`
+(**haiku**), default → `build` (sonnet), hard — security, migrations, unknown root cause,
+cross-cutting — → `build_hard` (opus). Red tests retry **one tier up, before any review is
+spent** (`models.ladder`: haiku → sonnet → opus → session). Every helper's outcome lands in the
+ledger and `cli.js model-stats` reports first-pass green rate and tokens per green step per
+model, so whether haiku-first pays on your project is a number, not an opinion. Tiers, never
+versions: a new release in a tier is picked up automatically.
+
+**Reviews that pay for themselves.** One fresh `opus` reviewer per round, on the diff since the last certified point, with written severity definitions and a rotating angle
+(`.claude/marathon/reviewer/`). Findings come back as JSON rows with a category; a category seen in
+two reviews is promoted to a test, a scan, a fixture or a rule (`cli.js seen-twice`, `cli.js promote`)
+so no reviewer spends tokens on it again. Problems the owner finds are recorded as escapes.
+
+**Wake-up.** `cli.js wake --cron` gives the in-session schedule (dies with the session, expires in
+seven days); `cli.js wake --fallback` prints a crontab line and a launchd plist that start a fresh
+`claude -p` from the resume line, for runs that must survive a restart. The snippet embeds the
+absolute `node` and `claude` paths found when it was generated (nvm and `~/.local/bin` installs
+are invisible to cron's default `PATH`), logs "claude not found" instead of failing silently, stays
+quiet while a live session has written `status.md` in the last 45 minutes, and is silent once the
+run is PAUSED or finished. It runs headless, so it stops at the first Bash command not in
+`permissions.allow` — the installer allows the helper CLI itself; allow your project's test and
+build commands before relying on it unattended.
+
+### Compaction hooks and `/bc` vs `/bcp`
+
+Only you can run `/compact` or `/clear`; Claude cannot. `/bc` therefore prepares the handoff and
+hands you the line: the lead writes the status rows, standing rules and memory and commits them
+first; then a background `sonnet` agent writes the lessons up and commits only its own files;
+`cli.js context` measures the context from the transcript; under 50% nothing, 50–80% a
+ready-to-run `/compact` with a generated keep-list (`cli.js keeplist`), above 80% `/clear` plus the
+resume line (`cli.js resume`). Both work in a project with no marathon run — the keep-list then
+names `.claude/plans/STATUS.md` and `RULES.md` instead of a run.
+
+`/bc` **never pushes**. `/bcp` is the owner's go: the same flow with `--push`, which pushes the
+branch and merges to main.
+
+The installer registers two hooks in `.claude/settings.json` so automatic compaction behaves the
+same way: `PreCompact` (`.claude/hooks/marathon-precompact.sh`) stamps the status file and records
+the compaction; `SessionStart` with matcher `compact` (`.claude/hooks/marathon-session-start.sh`)
+prints the resume line back into Claude's context. Registration is idempotent — `update` never
+duplicates an entry.
+
+### Shadowed commands
+
+A `~/.claude/commands/<name>.md` is loaded instead of the project's `.claude/commands/.shortcuts/<name>.md`
+with the same name — an old user-level `/bc` silently wins over the suite's. `init` and `check`
+list any such collisions and print the rename to run:
+
+```bash
+mv ~/.claude/commands/bc.md ~/.claude/commands/bc-old.md
+```
 
 ### Pi Brain Integration
 
@@ -265,11 +392,16 @@ npx danizee-claude-suite uninstall     # Remove suite
 ├── skills/
 │   └── autoresearch/       Autoresearch skill (SKILL.md)
 ├── hooks/
-│   └── autoresearch-context.sh
+│   ├── autoresearch-context.sh
+│   ├── marathon-precompact.sh      PreCompact: stamp status, record compaction
+│   └── marathon-session-start.sh   SessionStart(compact): print the resume line
 ├── helpers/
 │   ├── quick-start.sh
 │   ├── setup-mcp.sh
-│   └── terminal-agents-mcp.js
+│   ├── terminal-agents-mcp.js
+│   └── marathon/               cli.js + zero-dep library (gate, budget, store, …)
+├── marathon.json               Marathon config (ceiling, budgets, models, bc thresholds)
+├── marathon/                   Marathon runs (one folder per run-id) + reviewer kit + rules
 ├── ralph/                  Pure Ralph loop structure
 ├── plans/                  Interview specs
 ├── ralph-candidates.md     Candidate queue
@@ -293,6 +425,7 @@ WORKFLOW-SHORTCUTS.md       Generated reference
 | **Agent Cookbook** | Recipe registry integration |
 | **Terminal Agents** | MCP server for tmux + worktree agent orchestration |
 | **Autoresearch** | Autonomous experiment loop skill + hook |
+| **Marathon** | Finish-line runs: helper CLI, JSONL store, gate, budget, compaction hooks, reviewer kit |
 
 ## Checkpoint Gates
 

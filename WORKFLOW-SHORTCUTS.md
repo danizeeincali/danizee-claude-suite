@@ -170,8 +170,10 @@ Use the `/w-` prefix for quick workflow invocation:
 | `/w-start [plan-file]` | Cold-start session with project context |
 | `/w-end [category]` | End session - compound and commit |
 | `/w-tdd-swarm [feature]` | Full TDD + Swarm + Review combined (recommended) |
-| `/w-plan-tdd-swarm [idea]` | Deep interview → refine idea → Full TDD Swarm builds it |
-| `/pt [idea]` | Alias for `/w-plan-tdd-swarm` (mobile-friendly shorthand) |
+| `/w-plan-tdd-swarm [idea]` | Deep interview → refine idea → TDD Swarm |
+| `/w-marathon [finish line]` | Days-long run with a finish line: status file, wake-up, hard ceiling (alias `/mt`) |
+| `/w-background-compound` | Background write-up + handoff + prune line; commits, never pushes (alias `/bc`) |
+| `/bcp` | Same as `/bc` with `--push`: commit, push and merge |
 | `/w-swarm [task]` | Parallel agents for rapid implementation |
 | `/w-fix [bug]` | Quick bug investigation and fix |
 | `/w-debug [issue]` | Debug → diagnose → TDD-swarm fix |
@@ -182,14 +184,12 @@ Use the `/w-` prefix for quick workflow invocation:
 | `/w-architect [system]` | Hive-mind architecture design |
 | `/w-multi-repo [task]` | Cross-repository coordination |
 | `/w-compound` | Store current solution in memory |
-| `/w-background-compound` | Fire-and-forget compound (background agent, auto-push) |
-| `/bc` | Alias for `/w-background-compound` (mobile-friendly shorthand) |
 | `/w-search [query]` | Search past solutions |
-| `/w-ralph-this [prompt]` | Ralph Wiggum iterative loop |
-| `/w-ralph-goals [idea]` | Interview to build Ralph spec |
+| `/w-ralph-init` | Initialize Pure Ralph structure |
+| `/w-ralph-this [task]` | Convert task to IMPLEMENTATION_PLAN.md |
+| `/w-ralph-goals [idea]` | Interview to build Ralph plan + specs |
 | `/w-ralph-pick [ID]` | Execute a Ralph candidate |
-| `/w-ralph-batch [mode]` | Batch process candidates |
-| `/w-suite-sync` | Sync features from upstream (additive-only) |
+| `/w-ralph-batch [mode]` | Generate overnight bash scripts |
 
 **Example:**
 ```
@@ -522,6 +522,40 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/ideas/[idea]" }
 /compound-engineering:workflows:compound
 ```
 </details>
+
+---
+
+### Marathon — a run with a finish line
+
+**Say:** "Keep building this until it's done" or "Run this for days"
+**Slash:** `/w-marathon [finish line]` · `/mt` · `/w-marathon --resume` · `/w-marathon --status`
+
+**What it does:** One interview, then a loop that keeps going until a measurable finish line is met — with state in files, a wake-up timer, a bar it can't argue with, and a hard ceiling on cost.
+
+**Philosophy:** A task ends when it's done; a finish line keeps producing next steps until the whole thing is true. Anything Claude can forget, lose or talk itself out of lives in a file, a test or a rule it reads every time — never only in chat.
+
+**The eight habits it encodes:**
+1. Finish line, not a task (`finish-line.json`: one typed line per check, owner build|human)
+2. Interview once, then "Nothing, go." — the last question until something waits on you
+3. Defaults decided up front (kickoff: done means / may decide alone / ask me before / never)
+4. A bar it can't argue with (tolerance per severity + passes in a row; you own the numbers)
+5. State outside the chat (`.claude/marathon/<run-id>/status.md`, rendered by a script)
+6. A wake-up timer (in-session cron + a printed launchd/crontab fallback)
+7. One git worktree per stream
+8. Human jobs on a checklist Claude reads and never retries
+
+**Scripts decide, the model acts:** `node .claude/helpers/marathon/cli.js <verb>` — `gate`, `budget` (exit 2 = stop spawning), `record`, `seen-twice`, `review-brief`, `resume`, `keeplist`, `context`, `wake`, `page`.
+
+**⚠️ Enforcement:**
+- NEVER spawn a helper after `cli.js budget` exits 2
+- NEVER weaken an assertion; a fresh reviewer checks every fix
+- NEVER retry a `waitingOnHuman` line
+- NEVER push or merge without the owner's go (`/bcp`)
+
+**Example:**
+```
+/w-marathon Ship /bbs in the suite. Two clean reviews per stream, six green e2e runs, under 10M tokens.
+```
 
 ---
 
@@ -953,6 +987,19 @@ Claude: Stored as project/bugs/[auto-named] + created docs/solutions/bugs/[name]
 
 ---
 
+### Background Compound (/bc) and Background Compound Push (/bcp)
+
+**Say:** "Compound this in the background"
+**Slash:** `/w-background-compound [category] [--push]` · `/bc` · `/bcp`
+
+**What it does:** A background agent (sonnet) writes the lessons up; the lead writes the handoff (status rows, standing rules, memory), measures the context from the transcript and hands you the right line: nothing under 50%, a ready-to-run `/compact` with a generated keep-list between 50% and 80%, `/clear` plus the resume line above 80%. Only you can run that line — Claude cannot compact itself.
+
+**`/bc` commits and never pushes. `/bcp` is the owner's go: it also pushes and merges.**
+
+Two suite hooks make automatic compaction behave the same way: `PreCompact` stamps the status file, `SessionStart(compact)` prints the resume line.
+
+---
+
 ### Search Solutions
 
 **Say:** "Search for solutions to [problem]" or "What patterns exist for [category]?"
@@ -971,156 +1018,183 @@ Claude: Found 3 matches:
 
 ---
 
-## Ralph Wiggum Workflows
+## Pure Ralph (Bash Loop Approach)
 
-Iterative AI development methodology - a "simple while loop that repeatedly feeds an AI agent a prompt until completion."
+Pure Ralph uses external bash orchestration for **fresh context each iteration**.
 
-**Core concept:**
-```bash
-while :; do cat PROMPT.md | claude ; done
+### Key Principle
+
+Each iteration starts FRESH - no context pollution. State passes through `IMPLEMENTATION_PLAN.md` only.
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ while [ tasks_remaining ]; do                               │
+│   cat PROMPT.md AGENTS.md IMPLEMENTATION_PLAN.md | claude   │
+│                          ↓                                  │
+│   Fresh Claude reads plan → picks ONE task → executes       │
+│   → validates → marks done → commits → exits                │
+│                          ↓                                  │
+│   IMPLEMENTATION_PLAN.md updated (state preserved!)         │
+│ done                                                        │
+└────────────────────────────────────────────────────────────┘
 ```
 
-**Best for:** Greenfield projects, TDD cycles, overnight automation, measurable completion tasks.
+### Project Structure
+
+```
+.claude/ralph/
+├── loop.sh              # Bash orchestrator (run this!)
+├── PROMPT_build.md      # Build mode prompt
+├── PROMPT_plan.md       # Planning mode prompt
+├── AGENTS.md            # Validation commands (customize!)
+└── IMPLEMENTATION_PLAN.md  # Task tracking (shared state)
+
+specs/
+└── *.md                 # Specification files
+```
+
+### Differences from Plugin-Style
+
+| Aspect | Plugin-Style | Pure Ralph (Bash Loop) |
+|--------|--------------|------------------------|
+| Context | Accumulates | Fresh each iteration |
+| Orchestration | Internal hooks | External bash loop |
+| State | In-memory | File-based (IMPLEMENTATION_PLAN.md) |
+| Task scope | Multiple per session | ONE per iteration |
+| Completion | String matching | Plan file + git commit |
+
+### Quick Start
+
+```bash
+# 1. Initialize Ralph structure
+/w-ralph-init
+
+# 2. Create implementation plan from a task
+/w-ralph-this "Build authentication with JWT tokens"
+
+# 3. Run the loop (in your terminal, not Claude)
+./.claude/ralph/loop.sh
+
+# Options:
+./.claude/ralph/loop.sh build 50   # Max 50 iterations
+./.claude/ralph/loop.sh plan       # Planning mode
+```
+
+---
+
+### Ralph Init
+
+**Say:** "Initialize Ralph" or "Set up Pure Ralph"
+**Slash:** `/w-ralph-init`
+
+**What it does:** Creates the Pure Ralph directory structure in your project.
+
+**Creates:**
+```
+.claude/ralph/loop.sh           # Bash orchestrator
+.claude/ralph/PROMPT_build.md   # Build mode prompt
+.claude/ralph/PROMPT_plan.md    # Planning mode prompt
+.claude/ralph/AGENTS.md         # Validation commands
+.claude/ralph/IMPLEMENTATION_PLAN.md  # Task tracking
+specs/                          # Spec files directory
+```
+
+**Example:**
+```
+/w-ralph-init
+# Creates structure, then:
+./.claude/ralph/loop.sh
+```
 
 ---
 
 ### Ralph This
 
-**Say:** "Ralph this [prompt]" or "Run a Ralph loop on [file]"
-**Slash:** `/w-ralph-this [prompt or file path]`
+**Say:** "Ralph this [task]" or "Create Ralph plan for [task]"
+**Slash:** `/w-ralph-this [task or file path]`
 
-**What it does:** Run a Ralph Wiggum iterative loop on a prompt or file until completion.
+**What it does:** Converts a task into an IMPLEMENTATION_PLAN.md and outputs the command to run.
 
-**Parameters:**
-- **Prompt**: Inline text or path to a .md file
-- **Max Iterations**: Safety limit (default: 10)
-- **Completion Promise**: Exact string that signals done (e.g., "DONE", "ALL_TESTS_PASS")
+**Flow:**
+1. Parse task into atomic steps (one per iteration)
+2. Create/update `IMPLEMENTATION_PLAN.md`
+3. Verify `AGENTS.md` has correct validation commands
+4. Output the bash command to run
+
+**Key difference:** Does NOT run the loop internally - outputs the command for you to run.
 
 **Checkpoints:**
 | # | After | You Review |
 |---|-------|------------|
-| 0 | Load | Prompt content and config |
-| 1 | Each iteration | Progress and state |
-| 2 | Completion | Final result |
-| 3 | Compound | Pattern to store |
+| 0 | Parse | Task breakdown and scope |
+| 1 | Plan | IMPLEMENTATION_PLAN.md created |
+| 2 | Agents | Validation commands verified |
+| 3 | Command | Bash command to run |
 
 **Example:**
 ```
-/w-ralph-this "Build a REST API with full test coverage. When all tests pass, output COMPLETE."
-/w-ralph-this .claude/plans/api-spec.md
+/w-ralph-this Build a REST API with CRUD endpoints and tests
+
+# Creates IMPLEMENTATION_PLAN.md with tasks like:
+# - [ ] Create types in src/types/api.ts
+# - [ ] Implement GET endpoint
+# - [ ] Implement POST endpoint
+# - [ ] Write tests
+# - [ ] Add error handling
+
+# Then run in terminal:
+./.claude/ralph/loop.sh
 ```
-
-<details>
-<summary>Under the hood</summary>
-
-```bash
-# Load prompt
-content = Read(file_path) OR inline prompt
-completionSignal = extract_completion_promise(content)
-maxIterations = 10
-
-# Ralph loop
-for (i = 0; i < maxIterations; i++) {
-  result = Task("executor", content)
-  if (result.contains(completionSignal)) {
-    break  # Done!
-  }
-  # Continue to next iteration
-}
-
-# Compound
-mcp__claude-flow__memory_usage { action: "store", key: "project/ralph/[name]" }
-```
-</details>
 
 ---
 
 ### Ralph Goals
 
-**Say:** "Ralph goals for [rough idea]" or "Build me a Ralph spec for [concept]"
+**Say:** "Ralph goals for [rough idea]" or "Interview me for Ralph"
 **Slash:** `/w-ralph-goals [idea]`
 
-**What it does:** Interactive interview to build an optimal Ralph Wiggum spec from a rough idea.
+**What it does:** Interactive interview to build a complete Ralph setup from a rough idea.
 
-**Interview Flow:**
-1. **Capture Idea** - Get the rough concept
-2. **Interview** - Clarify completion criteria, phases, testing, limits
-3. **Build Spec** - Generate a Ralph-ready prompt
-4. **Save** - Write to `.claude/plans/YYYY-MM-DD-[name]-ralph.md`
-5. **Execute?** - Optionally run `/w-ralph-this` on it
+**Flow:**
+1. **Interview** - Clarify acceptance criteria, architecture, verification
+2. **Generate Plan** - Create IMPLEMENTATION_PLAN.md with atomic tasks
+3. **Generate Specs** - Create spec files in specs/ directory
+4. **Configure AGENTS.md** - Set up validation commands
+5. **Output Command** - Show how to run
 
-**Interview Questions:**
+**Interview Categories:**
 ```
-• What specific output signals that the task is complete?
-• What are the major phases or milestones?
-• How can each phase be automatically verified?
-• What's a reasonable max iteration limit?
-• Should the loop include self-testing cycles?
+• Acceptance Criteria - What does "done" look like?
+• Architecture - What's the high-level design?
+• Verification - How do we test it works?
+• Scope - What's explicitly out of scope?
 ```
 
 **Checkpoints:**
 | # | After | You Review |
 |---|-------|------------|
-| 0 | Idea captured | Initial concept |
-| 1 | Interview | Answers and clarity |
-| 2 | Spec built | Generated Ralph prompt |
-| 3 | Execute? | Option to run immediately |
-
-**Compounds:**
-```
-Memory: project/ralph-specs/[idea-name]
-Doc: .claude/plans/YYYY-MM-DD-[name]-ralph.md
-Pattern: interview answers + optimized prompt
-```
+| 0 | Idea | Initial concept captured |
+| 1 | Interview | Requirements clarified |
+| 2 | Plan | IMPLEMENTATION_PLAN.md created |
+| 3 | Specs | Spec files generated |
+| 4 | Agents | AGENTS.md configured |
+| 5 | Command | Ready to run |
 
 **Example:**
 ```
-User: /w-ralph-goals I want to build a CLI tool
-Claude: Let me help you build a Ralph spec for this...
-  - What signals completion? "All CLI commands work"? "Tests pass"?
-  - What are the phases? Init → Core commands → Help → Tests?
-  - How to verify each phase? Unit tests? Integration tests?
-  - Max iterations? 10? 20?
-  ...
-Claude: [Checkpoint 2] Here's your Ralph spec:
-  ---
-  # CLI Tool Ralph Spec
-  ## Completion Signal: ALL_TESTS_PASS
-  ## Max Iterations: 15
-  ## Prompt:
-  Build a CLI tool with the following commands...
-  When all tests pass, output "ALL_TESTS_PASS"
-  ---
-User: Run it
-Claude: [Executes /w-ralph-this on the spec]
+/w-ralph-goals I want to build a CLI tool for markdown conversion
+
+# Interview extracts requirements
+# Generates:
+#   .claude/ralph/IMPLEMENTATION_PLAN.md (12 tasks)
+#   specs/cli-interface.md
+#   specs/markdown-parser.md
+#   specs/html-output.md
+#   Configured AGENTS.md
+
+# Then run:
+./.claude/ralph/loop.sh
 ```
-
-<details>
-<summary>Under the hood</summary>
-
-```bash
-# Interview
-AskUserQuestion("What signals completion?", options)
-AskUserQuestion("What are the phases?", options)
-AskUserQuestion("How to verify each phase?", options)
-AskUserQuestion("Max iterations?", options)
-AskUserQuestion("Include self-testing?", options)
-
-# Build spec
-prompt = generate_ralph_prompt(answers)
-filename = `YYYY-MM-DD-[name]-ralph.md`
-Write(filename, prompt)
-
-# Execute?
-AskUserQuestion("Run this Ralph spec now?", ["Yes", "No"])
-if (yes) {
-  /w-ralph-this [filename]
-}
-
-# Compound
-mcp__claude-flow__memory_usage { action: "store", key: "project/ralph-specs/[name]" }
-```
-</details>
 
 ---
 
@@ -1129,53 +1203,85 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/ralph-specs/[nam
 **Say:** "Pick Ralph candidate [ID]" or "Execute RC-001"
 **Slash:** `/w-ralph-pick [ID]`
 
-**What it does:** Select and execute a Ralph candidate from the queue.
+**What it does:** Select a Ralph candidate and create its IMPLEMENTATION_PLAN.md for execution.
 
 **Flow:**
 1. **Load Candidates** - Read `.claude/ralph-candidates.md`
 2. **Select** - User picks candidate by ID or priority
-3. **Verify Tests** - Validate completion tests are executable
-4. **Execute** - Run Ralph loop until tests pass
-5. **Update Status** - Mark complete and archive
-
-**Checkpoints:**
-| # | After | You Review |
-|---|-------|------------|
-| 0 | Loaded | Available candidates |
-| 1 | Selected | Candidate details |
-| 2 | Verified | Completion test baseline |
-| 3 | Loop | Execution progress |
-| 4 | Complete | Final results |
+3. **Create Plan** - Generate IMPLEMENTATION_PLAN.md from candidate spec
+4. **Output Command** - Show how to run with loop.sh
 
 **Example:**
 ```
 /w-ralph-pick RC-001
 /w-ralph-pick --priority P1
+
+# Then run:
+./.claude/ralph/loop.sh
 ```
 
 ---
 
 ### Ralph Batch
 
-**Say:** "Batch process Ralph candidates" or "Generate overnight script"
+**Say:** "Generate overnight Ralph script" or "Batch Ralph"
 **Slash:** `/w-ralph-batch [mode]`
 
-**What it does:** Process multiple Ralph candidates or generate overnight scripts.
+**What it does:** Generate overnight bash scripts that run Pure Ralph loops on multiple candidates/projects.
+
+**Uses the bash loop approach:**
+- Each candidate gets its own Ralph loop via `loop.sh`
+- Fresh context for every iteration
+- State persisted through IMPLEMENTATION_PLAN.md files
 
 **Modes:**
 | Mode | Flag | Description |
 |------|------|-------------|
-| Interactive | (default) | Process one by one with verification |
 | Script | `--script` | Generate `overnight-ralph.sh` |
-| Phased | `--phased` | Execute by priority (P1 → P2 → P3) |
-| All | `--all` | Process all ready candidates |
-| Diagnostics | `--diagnostics` | Run diagnostics, fix only if needed |
+| Multi-project | `--multi-project` | Batch multiple project dirs |
+| Diagnostics | `--diagnostics` | Run diagnostics from candidates |
+
+**Generated Script Example:**
+```bash
+#!/bin/bash
+# Pure Ralph Batch - Generated [DATE]
+
+LOG_FILE="ralph-batch-$(date +%Y%m%d-%H%M%S).log"
+
+# Candidate: RC-001
+cat > .claude/ralph/IMPLEMENTATION_PLAN.md << 'EOF'
+# Implementation Plan: RC-001
+...
+EOF
+./.claude/ralph/loop.sh build 50
+
+# Candidate: RC-002
+...
+```
+
+**Running Overnight:**
+```bash
+# Generate script
+/w-ralph-batch --script
+
+# Run with nohup
+nohup ./overnight-ralph.sh > overnight.log 2>&1 &
+
+# Or with screen
+screen -S ralph ./overnight-ralph.sh
+
+# Check progress
+tail -f ralph-batch-*.log
+```
 
 **Example:**
 ```
 /w-ralph-batch --script
-/w-ralph-batch --priority P1
-/w-ralph-batch --diagnostics
+# Generates overnight-ralph.sh with all ready candidates
+
+./overnight-ralph.sh
+# Runs all Ralph loops sequentially
+# Each iteration: fresh context, one task, commit, exit
 ```
 
 ---
@@ -1260,11 +1366,11 @@ During compound phases, patterns are logged to `.claude/ralph-candidates.md`:
 | Multi-Repo | `/w-multi-repo` | "multi-repo workflow for [X]" | Cross-repo changes |
 | Compound This | `/w-compound` | "compound this solution" | Ad-hoc capture |
 | Search Solutions | `/w-search` | "search for solutions to [X]" | Find past work |
-| Ralph Loop | `/w-ralph-this` | "ralph this [prompt]" | Iterative AI loop |
-| Ralph Spec | `/w-ralph-goals` | "ralph goals for [idea]" | Build Ralph prompt |
+| Ralph Init | `/w-ralph-init` | "initialize ralph" | Setup Pure Ralph structure |
+| Ralph This | `/w-ralph-this` | "ralph this [task]" | Create IMPLEMENTATION_PLAN.md |
+| Ralph Goals | `/w-ralph-goals` | "ralph goals for [idea]" | Interview → Plan → Specs |
 | Ralph Pick | `/w-ralph-pick` | "pick candidate RC-001" | Execute queued candidate |
-| Ralph Batch | `/w-ralph-batch` | "batch process candidates" | Batch/overnight runs |
-| Suite Sync | `/w-suite-sync` | "sync from upstream" | Additive-only upstream sync |
+| Ralph Batch | `/w-ralph-batch` | "generate overnight script" | Batch/overnight runs |
 
 ### Key Agents
 
