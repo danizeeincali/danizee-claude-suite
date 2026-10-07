@@ -5,14 +5,22 @@
       "state": "meta",
       "isolation": "worktree",
       "created": "2026-10-07T23:44:40.196Z",
-      "tasks": []
+      "tasks": [],
+      "paused": {
+        "reason": "ceiling: usage 90% ≥ 70%",
+        "ts": "2026-10-07T23:50:34.860Z"
+      }
     },
     {
       "name": "intake",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/plans/2026-10-07-w-bbs.md",
-      "next": "create worktree; write contracts + failing tests for store/intake/status/cli skeleton",
-      "tasks": []
+      "next": "PAUSED at kickoff: weekly allowance 90% ≥ 70% ceiling. On resume: budget check with a fresh reading, then contracts + failing tests",
+      "tasks": [],
+      "isolation": "../claude-suite-intake",
+      "phase": "4.1",
+      "skill": "w-marathon",
+      "base": "f45098f18ee422bd40091219cb9d6ee1f8f065b5"
     },
     {
       "name": "fetch",
