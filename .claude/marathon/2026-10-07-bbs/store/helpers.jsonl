@@ -29,3 +29,5 @@
 {"role":"review","model":"opus","stream":"fetch","budget":150000,"event":"spawn","id":"574f7c34-4664-40c4-aeed-1494102e25a7","ts":"2026-10-08T01:23:42.608Z"}
 {"helper_id":"574f7c34-4664-40c4-aeed-1494102e25a7","tokens":110711,"outcome":"green","event":"done","id":"468d5df9-1f9d-4fb3-b45a-0987b4164ea1","ts":"2026-10-08T01:27:16.699Z"}
 {"role":"fix","model":"opus","stream":"fetch","budget":150000,"event":"spawn","id":"c0d04a21-ca36-4884-a9f9-2923f2d76711","ts":"2026-10-08T01:27:18.240Z"}
+{"role":"review","model":"opus","stream":"fetch","budget":150000,"event":"spawn","id":"890679dd-7455-4902-b223-a50915ba27f6","ts":"2026-10-08T01:31:42.765Z"}
+{"helper_id":"c0d04a21-ca36-4884-a9f9-2923f2d76711","tokens":117570,"outcome":"green","event":"done","id":"81763ed3-1519-4820-898c-6a88eb52344a","ts":"2026-10-08T01:32:08.720Z"}
