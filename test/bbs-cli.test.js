@@ -306,3 +306,66 @@ describe('bbs cli — review r2 regressions', () => {
     await fs.stat(path.join(real, '.claude', 'bbs', 'runs', r.json.runId, 'source.json'));
   });
 });
+
+describe('bbs cli — review r3 regressions', () => {
+  it('stdin and --paste-file with non-UTF-8 bytes give equal identities and byte-identical paste.txt', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-r3-bytes-'));
+    try {
+      const bytes = Buffer.from([0x63, 0x61, 0x66, 0xe9]);
+      const file = path.join(dir, 'in.bin');
+      await fs.writeFile(file, bytes);
+      const a = spawnSync(process.execPath, [CLI, 'intake', '-', '--project', dir, '--run', 'a'], { input: bytes });
+      const b = spawnSync(process.execPath, [CLI, 'intake', '--paste-file', file, '--project', dir, '--run', 'b']);
+      assert.equal(a.status, 0, a.stderr.toString());
+      assert.equal(b.status, 0, b.stderr.toString());
+      const ja = JSON.parse(a.stdout.toString());
+      const jb = JSON.parse(b.stdout.toString());
+      assert.equal(ja.identity, jb.identity);
+      assert.equal(ja.identity, 'sha256:' + createHash('sha256').update(bytes).digest('hex'));
+      for (const id of ['a', 'b']) {
+        const p = await fs.readFile(path.join(dir, '.claude', 'bbs', 'runs', id, 'fetched', 'paste.txt'));
+        assert.ok(p.equals(bytes));
+      }
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('a .claude directory at $HOME is not a project marker; falls back to cwd with a warning', async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-r3-home-'));
+    try {
+      await fs.mkdir(path.join(home, '.claude'));
+      const cwd = path.join(home, 'work', 'nested');
+      await fs.mkdir(cwd, { recursive: true });
+      const env = { ...process.env, HOME: home, PATH: '/nonexistent' };
+      const r = run(cwd, ['intake', '-', '--slug', 'h'], 'pasted', env);
+      assert.equal(r.code, 0, r.err);
+      assert.match(r.err, /warning/i);
+      const real = await fs.realpath(cwd);
+      assert.ok(await fs.stat(path.join(real, '.claude', 'bbs', 'runs')));
+      await assert.rejects(() => fs.stat(path.join(home, '.claude', 'bbs')));
+    } finally { await fs.rm(home, { recursive: true, force: true }); }
+  });
+
+  it('running cli.js through a symlinked directory still dispatches', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-r3-link-'));
+    try {
+      const link = path.join(dir, 'link');
+      await fs.symlink(path.dirname(CLI), link);
+      const r = spawnSync(process.execPath, [path.join(link, 'cli.js'), 'frobnicate'], { cwd: dir, encoding: 'utf-8' });
+      assert.equal(r.status, 1);
+      assert.match(r.stderr, /usage: cli\.js </);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('explicit --run ids are lower-cased', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-r3-case-'));
+    try {
+      const r = run(dir, ['intake', '-', '--project', dir, '--run', 'Foo-Bar'], 'x');
+      assert.equal(r.code, 0, r.err);
+      assert.equal(r.json.runId, 'foo-bar');
+      assert.ok(await fs.stat(path.join(dir, '.claude', 'bbs', 'runs', 'foo-bar')));
+      assert.equal((await fs.readFile(path.join(dir, '.claude', 'bbs', 'ACTIVE'), 'utf-8')).trim(), 'foo-bar');
+      const s = run(dir, ['status', '--project', dir, '--run', 'FOO-BAR']);
+      assert.equal(s.code, 0, s.err);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+});

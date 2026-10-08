@@ -213,3 +213,22 @@ describe('store — review r2 regressions', () => {
     assert.deepEqual(await fs.readdir(path.dirname(f)), ['t.txt']);
   });
 });
+
+describe('bbs store — ACTIVE pointer is written atomically (review r3)', () => {
+  it('a failing ACTIVE write leaves the prior pointer intact', async (t) => {
+    if (process.getuid && process.getuid() === 0) return t.skip('root ignores directory permissions');
+    const dir = await tmp('active-atomic');
+    const bbs = path.join(dir, '.claude', 'bbs');
+    try {
+      await setActiveRun(dir, 'old-run');
+      await fs.chmod(bbs, 0o555);
+      await assert.rejects(() => setActiveRun(dir, 'new-run'));
+      await fs.chmod(bbs, 0o755);
+      assert.equal(await activeRunId(dir), 'old-run');
+      assert.deepEqual((await fs.readdir(bbs)).sort(), ['ACTIVE']);
+    } finally {
+      await fs.chmod(bbs, 0o755).catch(() => {});
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+});

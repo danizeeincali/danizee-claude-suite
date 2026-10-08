@@ -30,7 +30,7 @@ export async function activeRunId(projectDir) {
 export async function setActiveRun(projectDir, runId) {
   const file = activeFile(projectDir);
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, runId + '\n');
+  await writeTextAtomic(file, runId + '\n'); // atomic: a failed write must not wipe the previous pointer
 }
 
 export async function clearActiveRun(projectDir) {

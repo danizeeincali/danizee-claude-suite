@@ -8,7 +8,8 @@
  */
 
 import fs from 'fs/promises';
-import { existsSync } from 'fs';
+import { existsSync, realpathSync } from 'fs';
+import os from 'os';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
@@ -66,9 +67,12 @@ function resolveProjectDir(flags) {
     if (top) return top;
   } catch { /* no git, or not a git checkout: look for a marker instead */ }
   const cwd = process.cwd();
+  let home = path.resolve(os.homedir());
+  try { home = realpathSync(home); } catch { /* keep the unresolved path */ }
   for (let d = cwd; ; d = path.dirname(d)) {
-    if (existsSync(path.join(d, '.claude')) || existsSync(path.join(d, '.git'))) return d;
-    if (path.dirname(d) === d) break;
+    const isHome = d === home; // every Claude Code user has ~/.claude: it is not a project marker
+    if ((!isHome && existsSync(path.join(d, '.claude'))) || existsSync(path.join(d, '.git'))) return d;
+    if (isHome || path.dirname(d) === d) break;
   }
   process.stderr.write(`bbs: warning: no git checkout found, using ${cwd} as the project root (pass --project to override)\n`);
   return cwd;
@@ -77,12 +81,12 @@ function resolveProjectDir(flags) {
 async function readStdin() {
   const chunks = [];
   for await (const c of process.stdin) chunks.push(c);
-  return Buffer.concat(chunks).toString('utf-8');
+  return Buffer.concat(chunks); // raw bytes: identity must match --paste-file for the same input
 }
 
 async function resolveRun(projectDir, flags, cfg) {
   let id;
-  if (typeof flags.run === 'string') id = flags.run;
+  if (typeof flags.run === 'string') id = RUN_ID.test(flags.run) ? flags.run.toLowerCase() : flags.run;
   else {
     id = await activeRunId(projectDir);
     if (!id) fail('no active run — start one with `cli.js intake <source>` or pass --run <id>');
@@ -139,7 +143,14 @@ async function main(argv) {
   await VERBS[verb]({ flags, positional, projectDir, cfg });
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+function isMain() {
+  if (!process.argv[1]) return false;
+  const self = fileURLToPath(import.meta.url);
+  try { return realpathSync(self) === realpathSync(process.argv[1]); }
+  catch { return self === path.resolve(process.argv[1]); }
+}
+
+if (isMain()) {
   main(process.argv.slice(2)).catch((err) => {
     if (err instanceof CliExit) {
       process.stderr.write(err.message.startsWith('usage:') ? err.message + '\n' : `bbs: ${err.message}\n`);

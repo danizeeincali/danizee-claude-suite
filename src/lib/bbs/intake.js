@@ -171,7 +171,7 @@ function gitNote(err) {
 }
 
 export async function intake(projectDir, ref, opts = {}) {
-  const { stdin, pasteFile, as, slug, run, now, git, isGitRepo, onBeforeSource, cfg = DEFAULT_CONFIG } = opts;
+  const { stdin, pasteFile, as, slug, run: runOpt, now, git, isGitRepo, onBeforeSource, cfg = DEFAULT_CONFIG } = opts;
   const type = classifySource(ref, { as, pasteFile });
   let storedRef = type === 'local' ? path.resolve(ref) : String(ref).trim();
   let content;
@@ -182,7 +182,8 @@ export async function intake(projectDir, ref, opts = {}) {
     if (!text.trim()) throw new Error('paste is empty');
     storedRef = 'paste';
   }
-  if (run !== undefined && !RUN_ID.test(run)) throw new Error(`invalid run id "${run}"`);
+  if (runOpt !== undefined && !RUN_ID.test(runOpt)) throw new Error(`invalid run id "${runOpt}"`);
+  const run = runOpt === undefined ? undefined : runOpt.toLowerCase(); // one run on every filesystem
   const { identity, note } = await sourceIdentityDetailed({ type, ref: storedRef, content, git, isGitRepo });
   const known = await lookupSource(projectDir, identity, cfg);
   // claim the run id atomically; from here on, any failure removes the claimed dir
