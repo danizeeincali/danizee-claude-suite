@@ -21,3 +21,4 @@
 {"stream":"verdict","counts":{"high":0,"medium":1,"low":1},"angle":"accessibility","tokens":101609,"commit":"4d9da8c","pass":true,"round":5,"id":"87b87518-e053-4557-bd3a-bd67e084d8ea","ts":"2026-10-08T04:04:23.727Z"}
 {"stream":"verdict","counts":{"high":0,"medium":0,"low":5},"angle":"facts and content","tokens":137714,"commit":"7caf67d","pass":true,"round":6,"id":"7dfef390-1cc2-4515-8615-e1ca8623476f","ts":"2026-10-08T04:14:29.242Z"}
 {"stream":"handoff","counts":{"high":3,"medium":6,"low":2},"angle":"one input method at a time","tokens":120505,"commit":"d1c0b20","pass":false,"round":1,"id":"d055c38c-137a-4213-8155-3041ffeac971","ts":"2026-10-08T04:32:32.526Z"}
+{"stream":"handoff","counts":{"high":0,"medium":4,"low":0},"angle":"failure conditions and error paths","tokens":101591,"commit":"0de3813","pass":false,"round":2,"id":"2dd0287e-30b6-4c96-bb5d-a38e4f82ced5","ts":"2026-10-08T04:43:53.982Z"}
