@@ -12,7 +12,7 @@ import os from 'os';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import {
-  STOP_WORDS, KINDS, STATUSES, tokenize, idf, vectorize, cosine, buildIndex, matchPower, buildMap, mapBrief, recordJudgments, withMapLock
+  STOP_WORDS, KINDS, STATUSES, tokenize, idf, vectorize, cosine, buildIndex, matchPower, buildMap, mapBrief, recordJudgments, withMapLock, withMapLockDetailed, LOCK_STALE_MS, LOCK_REFRESH_MS
 } from '../src/lib/bbs/harness-map.js';
 import { intake } from '../src/lib/bbs/intake.js';
 import { writeInventory, parseJsonOnly } from '../src/lib/bbs/inventory.js';
@@ -678,5 +678,144 @@ describe('harness-map r2 — commit-then-fail, corrupt map, lock, cap accounting
     await buildMap(dir, { run: r2.runId, now });
     const o2 = await recordJudgments(dir, { run: r2.runId, input: JSON.stringify({ judgments: { status: 'missing' } }), now });
     assert.equal(o2.judged, 1, 'a power named judgments judged as an object is the judgment, not a wrapper');
+  });
+});
+
+describe('harness-map r3 — lock ownership, release failure, unicode tokens, package.json bounds', () => {
+  let tmp;
+  before(async () => { tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hr3-')); });
+  after(async () => { await fs.rm(tmp, { recursive: true, force: true }); });
+  const mkRd = () => fs.mkdtemp(path.join(tmp, 'rd-'));
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  it('lock constants: stale 60 s, refresh 20 s', () => {
+    assert.equal(LOCK_STALE_MS, 60000);
+    assert.equal(LOCK_REFRESH_MS, 20000);
+  });
+
+  it('a holder whose fn outlasts the stale window keeps its token (mtime refreshed); a second acquirer sees it fresh and fails', async () => {
+    const rd = await mkRd();
+    const lock = path.join(rd, 'map.lock');
+    let clock = Date.now();
+    const opts = { now: () => clock, staleMs: 100, refreshMs: 10 };
+    let tokenBefore;
+    const holder = withMapLock(rd, async () => {
+      tokenBefore = await fs.readFile(lock, 'utf-8');
+      assert.match(tokenBefore, /^\d+ [0-9a-f]+\n$/);
+      clock += 10000; // far past the stale window
+      await sleep(80); // the refresh fires and stamps the fake "now"
+      await assert.rejects(() => withMapLock(rd, async () => 'second', opts), /locked by another bbs command/);
+      assert.equal(await fs.readFile(lock, 'utf-8'), tokenBefore, 'the holder still owns the lock');
+      return 'held-ok';
+    }, opts);
+    assert.equal(await holder, 'held-ok');
+    await assert.rejects(() => fs.stat(lock), { code: 'ENOENT' });
+  });
+
+  it('a genuinely stale foreign lock is renamed aside (not deleted), ours is created and released, the foreign file survives', async () => {
+    const rd = await mkRd();
+    const lock = path.join(rd, 'map.lock');
+    await fs.writeFile(lock, '4242 foreigntoken\n');
+    const old = new Date(Date.now() - 120000);
+    await fs.utimes(lock, old, old);
+    const out = await withMapLockDetailed(rd, async () => {
+      assert.match(await fs.readFile(lock, 'utf-8'), /^\d+ (?!foreigntoken)[0-9a-f]+\n$/);
+      return 'ran';
+    });
+    assert.equal(out.result, 'ran');
+    assert.equal(out.warning, null);
+    await assert.rejects(() => fs.stat(lock), { code: 'ENOENT' });
+    const asides = (await fs.readdir(rd)).filter(f => f.startsWith('map.lock.stale-'));
+    assert.equal(asides.length, 1);
+    assert.equal(await fs.readFile(path.join(rd, asides[0]), 'utf-8'), '4242 foreigntoken\n');
+  });
+
+  it('release leaves a lock another process took over and returns a warning', async () => {
+    const rd = await mkRd();
+    const lock = path.join(rd, 'map.lock');
+    const out = await withMapLockDetailed(rd, async () => { await fs.writeFile(lock, '1 othertoken\n'); return 'r'; });
+    assert.equal(out.result, 'r');
+    assert.equal(out.warning, 'map.lock was taken over by another process; left in place');
+    assert.equal(await fs.readFile(lock, 'utf-8'), '1 othertoken\n');
+  });
+
+  it('a release failure after fn resolved becomes a warning, not a thrown error; buildMap merges it', async () => {
+    const rd = await mkRd();
+    const rm = async () => { const e = new Error('denied'); e.code = 'EACCES'; throw e; };
+    const out = await withMapLockDetailed(rd, async () => 'done', { rm });
+    assert.equal(out.result, 'done');
+    assert.equal(out.warning, 'could not release map.lock (EACCES)');
+    await assert.rejects(() => withMapLockDetailed(rd, async () => { throw new Error('inner'); }, { rm }), /inner|locked/);
+  });
+
+  it('buildMap and recordJudgments surface the lock warning on their result', async () => {
+    const d = await fs.mkdtemp(path.join(tmp, 'proj-'));
+    await makeHarness(d);
+    const r = await intake(d, '-', { stdin: 'a tool', now, slug: 'r3w' });
+    await writeInventory(d, { run: r.runId, input: JSON.stringify([power()]), now });
+    const rm = async () => { const e = new Error('denied'); e.code = 'EACCES'; throw e; };
+    const out = await buildMap(d, { run: r.runId, now, lockOpts: { rm } });
+    assert.match(out.warning, /could not release map\.lock \(EACCES\)/);
+    await fs.rm(path.join(d, '.claude', 'bbs', 'runs', r.runId, 'map.lock'), { force: true });
+    const j = await recordJudgments(d, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'missing' }), now, lockOpts: { rm } });
+    assert.match(j.warning, /could not release map\.lock \(EACCES\)/);
+  });
+
+  it('buildMap builds the index before taking the lock (the lock is held only for read map.json -> write map.json)', async () => {
+    const d = await fs.mkdtemp(path.join(tmp, 'proj-'));
+    await makeHarness(d);
+    const r = await intake(d, '-', { stdin: 'a tool', now, slug: 'r3x' });
+    await writeInventory(d, { run: r.runId, input: JSON.stringify([power()]), now });
+    // An empty harness fails on the index before any lock is created: no map.lock and no aside files are left behind.
+    const empty = await fs.mkdtemp(path.join(tmp, 'empty-'));
+    const r2 = await intake(empty, '-', { stdin: 'a tool', now, slug: 'r3y' });
+    await writeInventory(empty, { run: r2.runId, input: JSON.stringify([power()]), now });
+    const rd2 = path.join(empty, '.claude', 'bbs', 'runs', r2.runId);
+    // A pre-existing FRESH lock must not matter for an index failure: the index error comes first.
+    await fs.writeFile(path.join(rd2, 'map.lock'), '1 held\n');
+    await assert.rejects(() => buildMap(empty, { run: r2.runId, now }), /harness index is empty/);
+  });
+
+  it('tokenize keeps combining marks (Devanagari) and normalizes NFD to NFC', () => {
+    assert.deepEqual(tokenize('हिंदी अनुवाद translation'), ['हिंदी', 'अनुवाद', 'translation']);
+    assert.deepEqual(tokenize('cafe\u0301'), ['caf\u00e9']);
+  });
+
+  it('an NFD row matches an NFC power with score > 0', () => {
+    const nfd = 'cafe\u0301 menu';
+    const index = { rows: [{ id: 'command:a.md', kind: 'command', name: 'a', path: 'a.md', tokens: tokenize(nfd) }, { id: 'command:b.md', kind: 'command', name: 'b', path: 'b.md', tokens: tokenize('other words') }] };
+    const c = matchPower({ name: 'caf\u00e9', what: '', idea: '' }, index);
+    assert.ok(c.length > 0 && c[0].id === 'command:a.md' && c[0].score > 0, JSON.stringify(c));
+  });
+
+  it('a BOM-prefixed package.json yields its scripts', async () => {
+    const d = await fs.mkdtemp(path.join(tmp, 'bom-'));
+    await fs.mkdir(path.join(d, 'scripts'), { recursive: true });
+    await fs.writeFile(path.join(d, 'scripts', 'a.sh'), '#!/bin/sh\n');
+    await fs.writeFile(path.join(d, 'package.json'), '\uFEFF' + JSON.stringify({ scripts: { build: 'tsc' } }));
+    const idx = await buildIndex(d);
+    assert.ok(idx.rows.some(r => r.id === 'script:package.json#build'));
+    assert.ok(!idx.errors.some(e => e.path === 'package.json'));
+  });
+
+  it('a 2 MiB package.json is refused with ETOOBIG, skipped, and adds no script rows', async () => {
+    const d = await fs.mkdtemp(path.join(tmp, 'big-'));
+    await fs.mkdir(path.join(d, 'scripts'), { recursive: true });
+    await fs.writeFile(path.join(d, 'scripts', 'a.sh'), '#!/bin/sh\n');
+    await fs.writeFile(path.join(d, 'package.json'), JSON.stringify({ scripts: { build: 'tsc' }, pad: 'x'.repeat(2 * 1024 * 1024) }));
+    const idx = await buildIndex(d);
+    assert.ok(idx.errors.some(e => e.path === 'package.json' && e.code === 'ETOOBIG'), JSON.stringify(idx.errors));
+    assert.ok(!idx.rows.some(r => r.path === 'package.json'));
+  });
+
+  it('package.json scripts count toward the script cap accounting', async () => {
+    const d = await fs.mkdtemp(path.join(tmp, 'cap-'));
+    await fs.mkdir(path.join(d, 'scripts'), { recursive: true });
+    await fs.writeFile(path.join(d, 'scripts', 'a.sh'), '#!/bin/sh\n');
+    await fs.writeFile(path.join(d, 'package.json'), JSON.stringify({ scripts: { b1: 'x1', b2: 'x2', b3: 'x3', b4: 'x4' } }));
+    const idx = await buildIndex(d, { capPerKind: 3 });
+    assert.equal(idx.rows.filter(r => r.kind === 'script').length, 3);
+    assert.equal(idx.capped.script, 3);
+    assert.deepEqual(idx.capped_totals.script, { kept: 3, total: 5 });
   });
 });

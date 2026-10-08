@@ -5,6 +5,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
+import { randomBytes } from 'crypto';
 import { DEFAULT_CONFIG } from './config.js';
 import { runDir as runDirOf, readJson, writeJson, moveAsideStale } from './store.js';
 import { RUN_ID, invalidRunId } from './intake.js';
@@ -27,8 +28,8 @@ export const STATUSES = ['have', 'partial', 'missing'];
  * drop stop words and 1-char tokens, keep repeats.
  */
 export function tokenize(text) {
-  const str = String(text ?? '').toLowerCase();
-  const tokens = str.split(/[^\p{L}\p{N}]+/u).filter(t => t && t.length > 1 && !STOP_WORDS.has(t));
+  const str = String(text ?? '').normalize('NFC').toLowerCase();
+  const tokens = str.split(/[^\p{L}\p{M}\p{N}]+/u).filter(t => t && t.length > 1 && !STOP_WORDS.has(t));
   return tokens;
 }
 
@@ -103,36 +104,93 @@ export function cosine(a, b) {
 
 export const PREFIX_BYTES = 64 * 1024;
 export const MAX_PER_KIND = 2000;
+const PKG_MAX_BYTES = 1024 * 1024;
 const STALE_ON_MAP_FORCE = ['verdicts.json', 'handoff.json'];
 
-const LOCK_STALE_MS = 60 * 1000;
+export const LOCK_STALE_MS = 60 * 1000;
+export const LOCK_REFRESH_MS = 20 * 1000;
 
 /**
- * Hold an exclusive run lock (map.lock, created 'wx') for a whole read-modify-write of map.json.
- * A lock older than 60 s is treated as abandoned and removed; a fresh one refuses with a message naming the file.
+ * Hold an exclusive run lock (map.lock, created 'wx') for a read-modify-write of map.json.
+ * The lock file holds `${pid} ${token}`; release removes it only if the token is still ours.
+ * A lock whose mtime is older than staleMs is abandoned: it is renamed aside (never deleted), the renamed content is checked
+ * against what was stat'ed, and ours is created. While fn runs the lock's mtime is refreshed every refreshMs.
+ * Returns { result, warning } (warning is null when the release was clean).
  */
-export async function withMapLock(runDir, fn, { now = () => Date.now() } = {}) {
+export async function withMapLockDetailed(runDir, fn, { now = () => Date.now(), staleMs = LOCK_STALE_MS, refreshMs = LOCK_REFRESH_MS, rm = (p, o) => fs.rm(p, o) } = {}) {
   const lockPath = path.join(runDir, 'map.lock');
   const held = () => new Error('map.json is locked by another bbs command (map.lock); remove it if none is running');
-  let fh;
-  for (let attempt = 0; attempt < 2 && !fh; attempt++) {
+  const token = randomBytes(12).toString('hex');
+  const mine = `${process.pid} ${token}\n`;
+  let acquired = false;
+  for (let attempt = 0; attempt < 3 && !acquired; attempt++) {
+    let fh;
     try {
       fh = await fs.open(lockPath, 'wx');
     } catch (err) {
       if (err.code !== 'EEXIST') throw err;
-      let st;
-      try { st = await fs.stat(lockPath); } catch (e) { if (e.code === 'ENOENT') continue; throw e; }
-      if (attempt === 0 && now() - st.mtimeMs > LOCK_STALE_MS) { await fs.rm(lockPath, { force: true }); continue; }
-      throw held();
+      let st, seen;
+      try {
+        st = await fs.stat(lockPath);
+        seen = await fs.readFile(lockPath, 'utf-8');
+      } catch (e) { if (e.code === 'ENOENT') continue; throw e; }
+      if (!(now() - st.mtimeMs > staleMs)) throw held();
+      const aside = `${lockPath}.stale-${token}`;
+      try { await fs.rename(lockPath, aside); } catch (e) { if (e.code === 'ENOENT') continue; throw e; }
+      let got = null;
+      try { got = await fs.readFile(aside, 'utf-8'); } catch { /* unreadable: treat as a mismatch */ }
+      if (got !== seen) {
+        // We moved someone else's fresh lock aside: put it back if the path is still free, then retry.
+        try { await fs.link(aside, lockPath); await fs.rm(aside, { force: true }); } catch { /* best effort */ }
+      }
+      continue;
     }
+    try { await fh.writeFile(mine); } finally { await fh.close(); }
+    acquired = true;
   }
-  if (!fh) throw held();
+  if (!acquired) throw held();
+
+  const timer = setInterval(() => {
+    const t = new Date(now());
+    fs.utimes(lockPath, t, t).catch(() => {});
+  }, refreshMs);
+  timer.unref();
+  let result;
   try {
-    await fh.close();
-    return await fn();
-  } finally {
-    await fs.rm(lockPath, { force: true });
+    result = await fn();
+  } catch (err) {
+    clearInterval(timer);
+    try { await releaseLock(lockPath, token, rm); } catch { /* the verb's own error wins */ }
+    throw err;
   }
+  clearInterval(timer);
+  let warning = null;
+  try {
+    warning = await releaseLock(lockPath, token, rm);
+  } catch (err) {
+    warning = `could not release map.lock (${err.code ?? 'error'})`;
+  }
+  return { result, warning };
+}
+
+/** Remove map.lock only if it still carries our token. Returns a warning string when it was taken over, else null. */
+async function releaseLock(lockPath, token, rm) {
+  const takenOver = 'map.lock was taken over by another process; left in place';
+  let content;
+  try {
+    content = await fs.readFile(lockPath, 'utf-8');
+  } catch (err) {
+    if (err.code === 'ENOENT') return takenOver;
+    throw err;
+  }
+  if (content.trim().split(' ')[1] !== token) return takenOver;
+  await rm(lockPath, { force: true });
+  return null;
+}
+
+/** withMapLockDetailed, returning only fn's result (the release warning is dropped; use the detailed form to see it). */
+export async function withMapLock(runDir, fn, opts) {
+  return (await withMapLockDetailed(runDir, fn, opts)).result;
 }
 
 /** Re-render status.md after map.json is committed; never throws. Returns { warning } (null when fine). */
@@ -270,26 +328,43 @@ export async function buildIndex(projectDir, { maxLines = 80, maxPerKind = MAX_P
     await addRows('module', capList('module', [...lib, ...plugins]), f => path.basename(f, '.js'));
   }
 
-  await addRows('script', capList('script', await collect(P('scripts'), { recursive: true, accept: any })), f => path.basename(f));
-
-  // package.json scripts
-  let pkgContent = null;
+  // Scripts: files under scripts/ and package.json scripts share one cap (ordered by id path).
+  const scriptFiles = await collect(P('scripts'), { recursive: true, accept: any });
+  const pkgScripts = [];
   try {
-    pkgContent = await fs.readFile(P('package.json'), 'utf-8');
+    const pst = await fs.stat(P('package.json'));
+    if (pst.size > PKG_MAX_BYTES) {
+      errors.push({ path: 'package.json', code: 'ETOOBIG' });
+    } else {
+      const pkgContent = (await fs.readFile(P('package.json'), 'utf-8')).replace(/^\uFEFF/, '');
+      try {
+        const pkg = JSON.parse(pkgContent);
+        if (pkg.scripts && typeof pkg.scripts === 'object') {
+          for (const [scriptName, scriptCmd] of Object.entries(pkg.scripts)) pkgScripts.push({ scriptName, scriptCmd: String(scriptCmd) });
+        }
+      } catch {
+        errors.push({ path: 'package.json', code: 'EJSON' });
+      }
+    }
   } catch (err) {
     if (err.code !== 'ENOENT') errors.push({ path: 'package.json', code: err.code });
   }
-  if (pkgContent !== null) {
-    try {
-      const pkg = JSON.parse(pkgContent);
-      if (pkg.scripts && typeof pkg.scripts === 'object') {
-        for (const [scriptName, scriptCmd] of Object.entries(pkg.scripts)) {
-          const text = (scriptName + '\n' + scriptCmd).toLowerCase();
-          rows.push({ id: `script:package.json#${scriptName}`, kind: 'script', name: scriptName, path: 'package.json', text, tokens: tokenize(text) });
-        }
-      }
-    } catch {
-      errors.push({ path: 'package.json', code: 'EJSON' });
+  {
+    const items = [
+      ...scriptFiles.map(f => ({ key: rel(f), file: f })),
+      ...pkgScripts.map(p => ({ key: `package.json#${p.scriptName}`, pkg: p }))
+    ];
+    items.sort((x, y) => (x.key < y.key ? -1 : x.key > y.key ? 1 : 0));
+    if (items.length > cap) {
+      capped.script = cap;
+      cappedTotals.script = { kept: cap, total: items.length };
+      items.length = cap;
+    }
+    await addRows('script', items.filter(i => i.file).map(i => i.file), f => path.basename(f));
+    for (const { pkg } of items) {
+      if (!pkg) continue;
+      const text = (pkg.scriptName + '\n' + pkg.scriptCmd).toLowerCase();
+      rows.push({ id: `script:package.json#${pkg.scriptName}`, kind: 'script', name: pkg.scriptName, path: 'package.json', text, tokens: tokenize(text) });
     }
   }
 
@@ -366,7 +441,7 @@ export function matchPower(power, index, { k = 5 } = {}) {
  * Build the harness-map: index the harness, compute candidates for each power, write map.json.
  * Returns { runId, indexed, byKind, powers, judgments_dropped, next }.
  */
-export async function buildMap(projectDir, { run, now, force = false, cfg = DEFAULT_CONFIG }) {
+export async function buildMap(projectDir, { run, now, force = false, cfg = DEFAULT_CONFIG, lockOpts }) {
   if (!RUN_ID.test(run)) {
     throw new Error(invalidRunId(run));
   }
@@ -380,7 +455,10 @@ export async function buildMap(projectDir, { run, now, force = false, cfg = DEFA
   const first = await readJson(powersPath);
   if (!first || !Array.isArray(first.powers)) throw noPowers();
 
-  return withMapLock(runDirPath, async () => {
+  // The index does not read map.json: build it before the lock so the lock covers only read map.json -> write map.json.
+  const index = await buildIndex(projectDir);
+
+  const { result: built, warning: lockWarning } = await withMapLockDetailed(runDirPath, async () => {
   const powers = await readJson(powersPath);
   if (!powers || !Array.isArray(powers.powers)) throw noPowers();
 
@@ -398,8 +476,6 @@ export async function buildMap(projectDir, { run, now, force = false, cfg = DEFA
     throw new Error('map.json already has judgments — pass --force to rebuild (they will be dropped)');
   }
 
-  // Build the index
-  const index = await buildIndex(projectDir);
   const ts = now().toISOString();
   const source = await readJson(path.join(runDirPath, 'source.json'));
 
@@ -450,7 +526,14 @@ export async function buildMap(projectDir, { run, now, force = false, cfg = DEFA
     next: unread ? null : 'map',
     ...(warning ? { warning } : {})
   };
-  });
+  }, lockOpts);
+  return mergeWarning(built, lockWarning);
+}
+
+/** Add a lock-release warning to a verb result, joining it with any warning already there. */
+function mergeWarning(result, lockWarning) {
+  if (!lockWarning) return result;
+  return { ...result, warning: result.warning ? `${result.warning}; ${lockWarning}` : lockWarning };
 }
 
 /**
@@ -531,7 +614,7 @@ export async function mapBrief(projectDir, { run }, cfg = DEFAULT_CONFIG) {
  * String form allows any status (tool=null); object form requires tool for have/partial.
  * Returns { runId, judged, remaining, next }.
  */
-export async function recordJudgments(projectDir, { run, input, now, force = false, cfg = DEFAULT_CONFIG, label = 'input' }) {
+export async function recordJudgments(projectDir, { run, input, now, force = false, cfg = DEFAULT_CONFIG, label = 'input', lockOpts }) {
   if (!RUN_ID.test(run)) {
     throw new Error(invalidRunId(run));
   }
@@ -544,7 +627,7 @@ export async function recordJudgments(projectDir, { run, input, now, force = fal
   const first = await readJson(mapPath);
   if (!first || !first.candidates) throw noMap();
 
-  return withMapLock(runDirPath, async () => {
+  const { result: recorded, warning: lockWarning } = await withMapLockDetailed(runDirPath, async () => {
   const map = await readJson(mapPath);
   if (!map || !map.candidates) throw noMap();
 
@@ -642,5 +725,6 @@ export async function recordJudgments(projectDir, { run, input, now, force = fal
     next: unread ? null : remaining.length === 0 ? 'verdict' : 'map',
     ...(warning ? { warning } : {})
   };
-  });
+  }, lockOpts);
+  return mergeWarning(recorded, lockWarning);
 }
