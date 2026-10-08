@@ -43,10 +43,10 @@
       "name": "harness-map",
       "state": "active",
       "plan": ".claude/plans/2026-10-07-w-bbs.md",
-      "next": "builder for harness-map.js + map verb against test/bbs-harness-map.test.js; review r1 with --base 945e873",
+      "next": "review round 1 (opus) on 945e873..HEAD (includes inventory r3 fixes)",
       "tasks": [],
       "isolation": "../claude-suite-harness-map",
-      "phase": "4.3",
+      "phase": "4.5",
       "base": "b920b727db653837ddf5e49928f1dd5782c2d42b"
     },
     {
