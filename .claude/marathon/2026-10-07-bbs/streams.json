@@ -41,12 +41,12 @@
     },
     {
       "name": "harness-map",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/plans/2026-10-07-w-bbs.md",
-      "next": "opus fix for review r4 (symlinked roots); then unit run, close, merge; fix reviewed in verdict r1 via --base f449196",
+      "next": "closed: 4 reviews (r3, r4 clean), 22 findings fixed; r4 fix (f449196..45e70fc) reviewed in verdict r1 via --base f449196",
       "tasks": [],
       "isolation": "../claude-suite-harness-map",
-      "phase": "4.7",
+      "phase": "done",
       "base": "b920b727db653837ddf5e49928f1dd5782c2d42b"
     },
     {
