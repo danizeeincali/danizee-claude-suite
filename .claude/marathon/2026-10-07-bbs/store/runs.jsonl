@@ -33,3 +33,6 @@
 {"kind":"unit","status":"green","stream":"handoff","commit":"c6743bb","id":"c3f40457-d9b1-4834-8120-b676b69ba4de","ts":"2026-10-08T05:08:03.025Z"}
 {"kind":"unit","status":"green","stream":"command-docs","commit":"2e409ab","id":"f1bafb9f-4472-4ac1-bc76-7eb8b9f8f6c4","ts":"2026-10-08T05:14:28.725Z"}
 {"kind":"e2e","status":"green","stream":"command-docs","commit":"2e409ab","id":"9b78ceb1-a572-479b-bca5-8ee703d497ff","ts":"2026-10-08T05:14:28.826Z"}
+{"kind":"e2e","status":"green","stream":"command-docs","commit":"2e409ab","id":"36575426-e9df-466c-8af3-69f014531d8b","ts":"2026-10-08T13:45:47.040Z"}
+{"kind":"e2e","status":"green","stream":"command-docs","commit":"2e409ab","id":"1b3734b0-830a-4238-947d-434f743393da","ts":"2026-10-08T13:45:47.143Z"}
+{"kind":"e2e","status":"green","stream":"command-docs","commit":"2e409ab","id":"89d39575-b989-4e77-baf5-32181234b42b","ts":"2026-10-08T13:45:47.243Z"}
