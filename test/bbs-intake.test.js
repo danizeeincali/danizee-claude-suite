@@ -232,6 +232,13 @@ describe('intake — intake()', () => {
     await assert.rejects(() => intake(dir, '-', { stdin: 'x', now, run: 'bad/run' }), /run id/i);
   });
 
+  it('an empty paste names which input was empty', async () => {
+    await assert.rejects(() => intake(dir, '-', { stdin: '  \n', now }), (e) => e.message === 'paste is empty (stdin)');
+    const pf = path.join(dir, 'blank.txt');
+    await fs.writeFile(pf, '   ');
+    await assert.rejects(() => intake(dir, '-', { pasteFile: pf, now }), (e) => e.message === `paste is empty (--paste-file ${pf})`);
+  });
+
   it('a second intake moves ACTIVE to the new run', async () => {
     const r = await intake(dir, '-', { stdin: 'second', now, slug: 'second' });
     assert.equal(await activeRunId(dir), r.runId);

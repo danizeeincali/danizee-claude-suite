@@ -16,20 +16,20 @@ import { fileURLToPath } from 'url';
 
 import { loadConfig } from './config.js';
 import { runDir as runDirOf, runsDir as runsDirOf, activeRunId } from './store.js';
-import { intake, RUN_ID } from './intake.js';
-import { loadState, nextStep, summary, renderStatusFile, renderStatusSafe } from './status.js';
+import { intake, RUN_ID, invalidRunId } from './intake.js';
+import { loadState, nextStep, summary, renderStatusSafe } from './status.js';
 
 class CliExit extends Error {
   constructor(message, code) { super(message); this.code = code; }
 }
 
-const INTAKE_USAGE = 'usage: cli.js intake <source> [--paste-file <p>] [--as repo|url|local|paste] [--slug <s>] [--run <id>] [--project <dir>]';
+const INTAKE_USAGE = 'usage: cli.js intake <source|-> [--paste-file <p>] [--as repo|url|local|paste] [--slug <s>] [--run <id>] [--project <dir>]';
 
 /** Flags each verb accepts: value flags need a value, boolean flags take none. */
 const FLAGS = {
-  intake: { value: ['run', 'project', 'as', 'slug', 'paste-file'], bool: [], usage: INTAKE_USAGE },
-  status: { value: ['run', 'project'], bool: ['next'], usage: 'usage: cli.js status [--run <id>] [--next] [--project <dir>]' },
-  report: { value: ['run', 'project'], bool: [], usage: 'usage: cli.js report [--run <id>] [--project <dir>]' }
+  intake: { value: ['run', 'project', 'as', 'slug', 'paste-file'], bool: [], positionals: 1, usage: INTAKE_USAGE },
+  status: { value: ['run', 'project'], bool: ['next'], positionals: 0, usage: 'usage: cli.js status [--run <id>] [--next] [--project <dir>]' },
+  report: { value: ['run', 'project'], bool: [], positionals: 0, usage: 'usage: cli.js report [--run <id>] [--project <dir>]' }
 };
 
 function parseArgs(argv) {
@@ -52,7 +52,12 @@ function parseArgs(argv) {
       } else {
         fail(`${spec.usage}\n  unknown flag --${name}`);
       }
-    } else positional.push(a);
+    } else {
+      if (spec && positional.length >= spec.positionals) {
+        fail(`${spec.usage}\n  unexpected argument "${a}"${spec.positionals === 0 ? ' (use --run <id>)' : ''}`);
+      }
+      positional.push(a);
+    }
   }
   return { verb, flags, positional };
 }
@@ -91,11 +96,18 @@ async function resolveRun(projectDir, flags, cfg) {
     id = await activeRunId(projectDir);
     if (!id) fail('no active run — start one with `cli.js intake <source>` or pass --run <id>');
   }
-  if (!RUN_ID.test(id)) fail(`invalid run id "${id}"`);
+  if (!RUN_ID.test(id)) fail(invalidRunId(id));
   const dir = runDirOf(projectDir, id, cfg);
-  if (!path.resolve(dir).startsWith(path.resolve(runsDirOf(projectDir, cfg)) + path.sep)) fail(`invalid run id "${id}"`);
-  try { await fs.stat(dir); } catch { fail(`unknown run "${id}"`); }
+  if (!path.resolve(dir).startsWith(path.resolve(runsDirOf(projectDir, cfg)) + path.sep)) fail(invalidRunId(id));
+  try { await fs.stat(dir); } catch {
+    const rel = path.relative(projectDir, runsDirOf(projectDir, cfg)).split(path.sep).join('/');
+    fail(`unknown run "${id}" — no directory under ${rel}/; omit --run to use the active run`);
+  }
   return { id, dir };
+}
+
+function warnStatusWrite(id, err) {
+  process.stderr.write(`bbs: warning: could not write ${id}/status.md (${err.code || err.message})\n`);
 }
 
 const VERBS = {
@@ -118,16 +130,17 @@ const VERBS = {
   },
 
   async status({ flags, projectDir, cfg }) {
-    const { dir } = await resolveRun(projectDir, flags, cfg);
+    const { id, dir } = await resolveRun(projectDir, flags, cfg);
     const { md, writeError } = await renderStatusSafe(dir);
-    if (writeError) process.stderr.write(`bbs: warning: could not write status.md (${writeError.code || writeError.message})\n`);
+    if (writeError) warnStatusWrite(id, writeError);
     if (flags.next) out(nextStep(await loadState(dir)));
     else process.stdout.write(md);
   },
 
   async report({ flags, projectDir, cfg }) {
-    const { dir } = await resolveRun(projectDir, flags, cfg);
-    await renderStatusFile(dir);
+    const { id, dir } = await resolveRun(projectDir, flags, cfg);
+    const { writeError } = await renderStatusSafe(dir);
+    if (writeError) warnStatusWrite(id, writeError);
     const s = summary(await loadState(dir));
     out(`found=${s.found} approved=${s.approved} skipped=${s.skip} buy=${s.buy} marathon=${s.marathon || 'none'}`);
   }
@@ -136,7 +149,8 @@ const VERBS = {
 async function main(argv) {
   const { verb, flags, positional } = parseArgs(argv);
   if (!Object.hasOwn(VERBS, verb)) {
-    fail(`usage: cli.js <${Object.keys(VERBS).join('|')}> [--run <id>] [flags]`);
+    const lines = Object.keys(VERBS).map(v => '  ' + (FLAGS[v] ? FLAGS[v].usage.replace(/^usage: /, '') : `cli.js ${v}`));
+    fail([`usage: cli.js <${Object.keys(VERBS).join('|')}> ...`, ...lines, '  <source> may be - to read a paste from stdin'].join('\n'));
   }
   const projectDir = resolveProjectDir(flags);
   const cfg = await loadConfig(projectDir);

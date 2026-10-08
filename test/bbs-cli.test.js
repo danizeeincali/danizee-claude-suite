@@ -78,7 +78,7 @@ describe('bbs cli — intake, status, report', () => {
   it('intake with no source → exit 1 and usage', () => {
     const r = run(dir, ['intake']);
     assert.equal(r.code, 1);
-    assert.match(r.err, /usage: cli\.js intake <source>/);
+    assert.match(r.err, /usage: cli\.js intake <source\|->/);
   });
 
   it('intake of pasted stdin → JSON result, run dir, ACTIVE, status.md', async () => {
@@ -179,7 +179,7 @@ describe('bbs cli — review r1 regressions', () => {
     for (const id of ['../x', '../../..', '..', '.', 'a/b']) {
       const r = run(dir, ['status', '--run', id]);
       assert.equal(r.code, 1, id);
-      assert.equal(r.err, `bbs: invalid run id "${id}"\n`, id);
+      assert.equal(r.err, `bbs: invalid run id "${id}" (letters, digits and -, up to 81 chars, starting with a letter or digit)\n`, id);
       assert.equal(r.out, '', id);
     }
     assert.equal(await exists(path.join(dir, '.claude', 'bbs', 'x', 'status.md')), false);
@@ -191,7 +191,7 @@ describe('bbs cli — review r1 regressions', () => {
   it("status --run '' is refused (it must not render the runs dir)", async () => {
     const r = run(dir, ['status', '--run', '']);
     assert.equal(r.code, 1);
-    assert.equal(r.err, 'bbs: invalid run id ""\n');
+    assert.equal(r.err, 'bbs: invalid run id "" (letters, digits and -, up to 81 chars, starting with a letter or digit)\n');
     assert.equal(await exists(path.join(runs(), 'status.md')), false);
   });
 
@@ -203,7 +203,7 @@ describe('bbs cli — review r1 regressions', () => {
         for (const verb of ['status', 'report']) {
           const r = run(dir, [verb]);
           assert.equal(r.code, 1, `${verb} ${bad}`);
-          assert.equal(r.err, `bbs: invalid run id "${bad}"\n`, `${verb} ${bad}`);
+          assert.equal(r.err, `bbs: invalid run id "${bad}" (letters, digits and -, up to 81 chars, starting with a letter or digit)\n`, `${verb} ${bad}`);
           assert.equal(r.out, '');
         }
       }
@@ -280,7 +280,7 @@ describe('bbs cli — review r2 regressions', () => {
       const r = run(proj, ['status', '--project', proj]);
       assert.equal(r.code, 0, r.err);
       assert.match(r.out, /^# bbs /);
-      assert.match(r.err, /bbs: warning: could not write status\.md \(EACCES\)/);
+      assert.match(r.err, new RegExp(`bbs: warning: could not write ${r1.json.runId}/status\\.md \\(EACCES\\)`));
     } finally { await fs.chmod(runPath, 0o755); }
   });
 
@@ -406,5 +406,92 @@ describe('bbs cli — review r4 regressions', () => {
       assert.match(r.err, /paths\.runs "\.\.\/escaped" must stay under \.claude\/bbs/);
       await assert.rejects(() => fs.stat(path.join(dir, 'escaped')));
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe('bbs cli — review r5 regressions', () => {
+  let dir;
+  let runId;
+  const runs = () => path.join(dir, '.claude', 'bbs', 'runs');
+  before(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-cli-r5-'));
+    const r = run(dir, ['intake', '-', '--slug', 'r5'], 'seed');
+    assert.equal(r.code, 0, r.err);
+    runId = r.json.runId;
+  });
+  after(async () => { await fs.chmod(dir, 0o755).catch(() => {}); await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('stray positionals are refused: status first / report x / intake a.txt extra', async () => {
+    const r2 = run(dir, ['intake', '-', '--slug', 'other'], 'second');
+    assert.equal(r2.code, 0, r2.err);
+    const before = (await fs.readdir(runs())).sort();
+    const s = run(dir, ['status', runId]);
+    assert.equal(s.code, 1);
+    assert.equal(s.out, '');
+    assert.doesNotMatch(s.out, /# bbs/);
+    assert.equal(s.err, 'usage: cli.js status [--run <id>] [--next] [--project <dir>]\n  unexpected argument "' + runId + '" (use --run <id>)\n');
+    const rep = run(dir, ['report', 'x']);
+    assert.equal(rep.code, 1);
+    assert.equal(rep.out, '');
+    assert.equal(rep.err, 'usage: cli.js report [--run <id>] [--project <dir>]\n  unexpected argument "x" (use --run <id>)\n');
+    const i = run(dir, ['intake', 'a.txt', 'extra'], '');
+    assert.equal(i.code, 1);
+    assert.equal(i.out, '');
+    assert.match(i.err, /^usage: cli\.js intake <source\|->/);
+    assert.match(i.err, /\n {2}unexpected argument "extra"\n$/);
+    assert.deepEqual((await fs.readdir(runs())).sort(), before, 'no run was created');
+  });
+
+  it('run-id errors name the rule and the next step', async () => {
+    const bad = run(dir, ['status', '--run', 'a/b']);
+    assert.equal(bad.code, 1);
+    assert.equal(bad.err, 'bbs: invalid run id "a/b" (letters, digits and -, up to 81 chars, starting with a letter or digit)\n');
+    const unk = run(dir, ['status', '--run', 'nope']);
+    assert.equal(unk.code, 1);
+    assert.equal(unk.err, 'bbs: unknown run "nope" — no directory under .claude/bbs/runs/; omit --run to use the active run\n');
+    const dup = run(dir, ['intake', '-', '--run', runId], 'again');
+    assert.equal(dup.code, 1);
+    assert.equal(dup.err, `bbs: run "${runId}" already exists — pick another --run or omit it\n`);
+  });
+
+  it('top-level usage lists every verb with its flags and the - stdin source', () => {
+    const r = run(dir, ['frobnicate']);
+    assert.equal(r.code, 1);
+    const lines = r.err.split('\n');
+    assert.equal(lines[0], 'usage: cli.js <intake|status|report> ...');
+    assert.ok(r.err.includes('  cli.js intake <source|-> [--paste-file <p>] [--as repo|url|local|paste] [--slug <s>] [--run <id>] [--project <dir>]\n'), r.err);
+    assert.ok(r.err.includes('  cli.js status [--run <id>] [--next] [--project <dir>]\n'), r.err);
+    assert.ok(r.err.includes('  cli.js report [--run <id>] [--project <dir>]\n'), r.err);
+    assert.ok(r.err.endsWith('  <source> may be - to read a paste from stdin\n'), r.err);
+    const i = run(dir, ['intake']);
+    assert.match(i.err, /^usage: cli\.js intake <source\|-> /);
+  });
+
+  it('an empty paste names its input', async () => {
+    const a = run(dir, ['intake', '-'], '   \n');
+    assert.equal(a.code, 1);
+    assert.equal(a.err, 'bbs: paste is empty (stdin)\n');
+    const pf = path.join(dir, 'empty-paste.txt');
+    await fs.writeFile(pf, '  ');
+    const b = run(dir, ['intake', '--paste-file', pf]);
+    assert.equal(b.code, 1);
+    assert.equal(b.err, `bbs: paste is empty (--paste-file ${pf})\n`);
+  });
+
+  it('report on a read-only run dir prints the line, warns naming <run>/status.md, exits 0', async () => {
+    if (process.getuid && process.getuid() === 0) return; // root ignores modes
+    const proj = await fs.mkdtemp(path.join(dir, 'ro-'));
+    const r1 = run(proj, ['intake', '-', '--slug', 'ro', '--project', proj], 'text');
+    assert.equal(r1.code, 0, r1.err);
+    const runPath = path.join(proj, '.claude', 'bbs', 'runs', r1.json.runId);
+    await fs.chmod(runPath, 0o555);
+    try {
+      const r = run(proj, ['report', '--project', proj]);
+      assert.equal(r.code, 0, r.err);
+      assert.match(r.out, /^found=\d+ approved=\d+ skipped=\d+ buy=\d+ marathon=/);
+      assert.equal(r.err, `bbs: warning: could not write ${r1.json.runId}/status.md (EACCES)\n`);
+      const s = run(proj, ['status', '--project', proj]);
+      assert.equal(s.err, `bbs: warning: could not write ${r1.json.runId}/status.md (EACCES)\n`);
+    } finally { await fs.chmod(runPath, 0o755); }
   });
 });

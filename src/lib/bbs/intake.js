@@ -15,6 +15,7 @@ import { renderStatusFile, loadState, nextStep } from './status.js';
 const TYPES = ['repo', 'url', 'local', 'paste'];
 const FORGES = new Set(['github.com', 'gitlab.com', 'bitbucket.org', 'codeberg.org']);
 export const RUN_ID = /^[a-z0-9][a-z0-9-]{0,80}$/i;
+export const invalidRunId = (id) => `invalid run id "${id}" (letters, digits and -, up to 81 chars, starting with a letter or digit)`;
 const HOST_LIKE = /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/|$)/i;
 const HINT = 'use --as paste or a full URL';
 const SKIP_DIRS = new Set(['.git', 'node_modules']);
@@ -193,7 +194,7 @@ export async function claimRunDir(projectDir, { slug, run, now = () => new Date(
   if (run !== undefined) {
     const dir = runDirOf(projectDir, run, cfg);
     try { await fs.mkdir(dir); } catch (err) {
-      if (err.code === 'EEXIST') throw new Error(`run "${run}" already exists`);
+      if (err.code === 'EEXIST') throw new Error(`run "${run}" already exists — pick another --run or omit it`);
       throw err;
     }
     return { runId: run, dir };
@@ -279,10 +280,10 @@ export async function intake(projectDir, ref, opts = {}) {
     // a paste file is kept as raw bytes: identity and paste.txt match the file exactly
     content = pasteFile ? await fs.readFile(pasteFile) : (stdin ?? (ref === '-' ? '' : String(ref)));
     const text = Buffer.isBuffer(content) ? content.toString('utf-8') : content;
-    if (!text.trim()) throw new Error('paste is empty');
+    if (!text.trim()) throw new Error(`paste is empty (${pasteFile ? `--paste-file ${pasteFile}` : 'stdin'})`);
     storedRef = 'paste';
   }
-  if (runOpt !== undefined && !RUN_ID.test(runOpt)) throw new Error(`invalid run id "${runOpt}"`);
+  if (runOpt !== undefined && !RUN_ID.test(runOpt)) throw new Error(invalidRunId(runOpt));
   const run = runOpt === undefined ? undefined : runOpt.toLowerCase(); // one run on every filesystem
   const { identity, note } = await sourceIdentityDetailed({ type, ref: storedRef, content, git, isGitRepo });
   const known = await lookupSource(projectDir, identity, cfg);
