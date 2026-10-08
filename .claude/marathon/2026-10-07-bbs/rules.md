@@ -61,3 +61,8 @@ Add a rule the second time something goes wrong.
   names its cause and the file or input involved; a missing tool, a non-object config or an
   unresolvable project root is an error (or a stderr warning naming the fallback), never a quiet
   default that moves state somewhere the user does not expect.
+- **Nothing the user did not name is read, and nothing secret is kept** (`security`, reviews
+  intake-r1 + intake-r4). Every path, run id and config value is checked to sit under its root
+  before use; `git` runs with an explicit directory and a scrubbed environment (no `GIT_DIR`,
+  `GIT_WORK_TREE`, `GIT_CONFIG_*`); a source ref is redacted (userinfo removed, token-like query
+  values masked) before it is printed, persisted or logged.
