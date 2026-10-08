@@ -51,12 +51,12 @@
     },
     {
       "name": "verdict",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/plans/2026-10-07-w-bbs.md",
-      "next": "sonnet fix round for review r6 (5 low: buy reason, docstrings, powers_ts guard, repair hint); then unit run, close, merge; fixes reviewed in handoff r1 via --base 7caf67d",
+      "next": "closed: 6 reviews (r5, r6 clean), 26 findings fixed; r6 fixes (7caf67d..723c14d) reviewed in handoff r1 via --base 7caf67d",
       "tasks": [],
       "isolation": "../claude-suite-verdict",
-      "phase": "4.7",
+      "phase": "done",
       "base": "ca41ddadde486a9d997f873f87f261a1651d09df"
     },
     {

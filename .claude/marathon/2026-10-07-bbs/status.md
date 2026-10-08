@@ -1,11 +1,11 @@
 # Marathon 2026-10-07-bbs
 
 - State: RUNNING
-- Budget: 5,483,509 / 10,000,000 tokens
+- Budget: 5,437,151 / 10,000,000 tokens
 - Allowance: 95% (ceiling 98%)
 - Gate (run-wide, all streams): 2/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "verdict" (next: sonnet fix round for review r6 (5 low: buy reason, docstrings, powers_ts guard, repair hint); then unit run, close, merge; fixes reviewed in handoff r1 via --base 7caf67d) — /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
+- Next for you: Next stream "handoff": create its worktree (`git worktree add ../<repo>-handoff -b marathon/2026-10-07-bbs/handoff`) and activate it with `cli.js stream handoff state=active isolation=<path>`, then /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
 
 ## Streams
 
@@ -15,7 +15,7 @@
 | fetch | ../claude-suite-fetch | .claude/plans/2026-10-07-w-bbs.md | done | clean 2/2 | done | closed: 3 reviews (r2, r3 clean), 18 findings fixed; r3 fixes (952736d..eeebb82) reviewed in inventory r1 via --base 952736d |  | 0 |
 | inventory | ../claude-suite-inventory | .claude/plans/2026-10-07-w-bbs.md | done | clean 2/2 | done | closed: 3 reviews (r2, r3 clean), 25 findings fixed; r3 fixes (945e873..9905a37) reviewed in harness-map r1 via --base 945e873 |  | 0 |
 | harness-map | ../claude-suite-harness-map | .claude/plans/2026-10-07-w-bbs.md | done | clean 2/2 | done | closed: 4 reviews (r3, r4 clean), 22 findings fixed; r4 fix (f449196..45e70fc) reviewed in verdict r1 via --base f449196 |  | 0 |
-| verdict | ../claude-suite-verdict | .claude/plans/2026-10-07-w-bbs.md | active | clean 2/2 | 4.7 | sonnet fix round for review r6 (5 low: buy reason, docstrings, powers_ts guard, repair hint); then unit run, close, merge; fixes reviewed in handoff r1 via --base 7caf67d |  | 0 |
+| verdict | ../claude-suite-verdict | .claude/plans/2026-10-07-w-bbs.md | done | clean 2/2 | done | closed: 6 reviews (r5, r6 clean), 26 findings fixed; r6 fixes (7caf67d..723c14d) reviewed in handoff r1 via --base 7caf67d |  | 0 |
 | handoff |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | handoff.js briefs + buildFinishLine + marathon bridge |  | 0 |
 | command-docs |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | plugin installer, w-bbs + bbs commands, docs, README, e2e packaged test |  | 0 |
 
@@ -24,7 +24,7 @@
 | Line | Owner | Status | Actual | Target |
 |---|---|---|---|---|
 | Green end-to-end runs in a row | build | failing | 0 | at_least 6 |
-| Green unit runs in a row | build | met | 26 | at_least 3 |
+| Green unit runs in a row | build | met | 27 | at_least 3 |
 | Clean reviews in a row | build | met | 2 | at_least 2 |
 | High findings in the latest review | build | met | 0 | at_most 0 |
 | Open high findings | build | met | 0 | at_most 0 |
