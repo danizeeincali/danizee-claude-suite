@@ -1,17 +1,17 @@
 # Marathon 2026-10-07-bbs
 
 - State: RUNNING
-- Budget: 733,866 / 10,000,000 tokens
+- Budget: 814,383 / 10,000,000 tokens
 - Allowance: 91% (ceiling 95%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "intake" (next: fix round for review r3 (4 medium, 1 low); then unit run + review r4) — /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
+- Next for you: Continue stream "intake" (next: review round 4 (opus, angle 4: three safety probes) on the same intake code) — /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
 
 ## Streams
 
 | Stream | Isolation | Plan | State | Gate | Phase | Next | Tasks | Escapes |
 |---|---|---|---|---|---|---|---|---|
-| intake | ../claude-suite-intake | .claude/plans/2026-10-07-w-bbs.md | active | clean 0/2 | /w-marathon · 4.7 | fix round for review r3 (4 medium, 1 low); then unit run + review r4 |  | 0 |
+| intake | ../claude-suite-intake | .claude/plans/2026-10-07-w-bbs.md | active | clean 0/2 | /w-marathon · 4.5 | review round 4 (opus, angle 4: three safety probes) on the same intake code |  | 0 |
 | fetch |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | fetch.js guards + egress log + clone; stubbed tests |  | 0 |
 | inventory |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | inventory.js schema/cap/brief + verbs |  | 0 |
 | harness-map |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | harness-map.js index + IDF-cosine matchPower + verbs |  | 0 |
@@ -24,7 +24,7 @@
 | Line | Owner | Status | Actual | Target |
 |---|---|---|---|---|
 | Green end-to-end runs in a row | build | failing | 0 | at_least 6 |
-| Green unit runs in a row | build | met | 3 | at_least 3 |
+| Green unit runs in a row | build | met | 4 | at_least 3 |
 | Clean reviews in a row | build | failing | 0 | at_least 2 |
 | High findings in the latest review | build | met | 0 | at_most 0 |
 | Open high findings | build | met | 0 | at_most 0 |
