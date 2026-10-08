@@ -81,3 +81,5 @@
 {"role":"review","model":"opus","stream":"verdict","budget":150000,"event":"spawn","id":"b2a4a153-1ed0-4d0f-b33b-c4d8acce83a6","ts":"2026-10-08T03:02:14.707Z"}
 {"helper_id":"b2a4a153-1ed0-4d0f-b33b-c4d8acce83a6","tokens":109167,"outcome":"green","event":"done","id":"6cc1eae9-6a66-4416-a40c-106c44e9ed77","ts":"2026-10-08T03:05:22.082Z"}
 {"role":"fix","model":"opus","stream":"verdict","budget":200000,"event":"spawn","id":"00d0eede-ba8b-4396-88db-1d9789aa1989","ts":"2026-10-08T03:05:23.128Z"}
+{"helper_id":"00d0eede-ba8b-4396-88db-1d9789aa1989","tokens":122921,"outcome":"green","event":"done","id":"9295f7e3-e99f-40c3-88a2-daa455ef84dc","ts":"2026-10-08T03:10:49.744Z"}
+{"role":"review","model":"opus","stream":"verdict","budget":150000,"event":"spawn","id":"f2f1836e-59a7-4d25-868f-f09b81e2cb80","ts":"2026-10-08T03:10:50.528Z"}
