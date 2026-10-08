@@ -4,6 +4,7 @@
  */
 
 import fs from 'fs/promises';
+import { constants as FS } from 'fs';
 import path from 'path';
 import { randomBytes } from 'crypto';
 import { DEFAULT_CONFIG } from './config.js';
@@ -206,9 +207,12 @@ async function renderAfterCommit(runDirPath) {
   }
 }
 
-/** Read at most PREFIX_BYTES of a file (bounded, via a FileHandle). */
-async function readPrefix(filePath) {
-  const fh = await fs.open(filePath, 'r');
+/**
+ * Read at most PREFIX_BYTES of a file (bounded, via a FileHandle). Opened with O_NOFOLLOW, so a file swapped for a
+ * symlink after the directory was listed fails with ELOOP instead of being followed.
+ */
+export async function readPrefix(filePath) {
+  const fh = await fs.open(filePath, FS.O_RDONLY | FS.O_NOFOLLOW);
   try {
     const buf = Buffer.alloc(PREFIX_BYTES);
     const { bytesRead } = await fh.read(buf, 0, PREFIX_BYTES, 0);
@@ -219,9 +223,35 @@ async function readPrefix(filePath) {
 }
 
 /**
+ * Check that `relPath` stays inside `projectDir`: every component is lstat'ed from projectDir down.
+ * A symlinked component → { ok: false, path: <relative path of that component> }; a missing component →
+ * { ok: true, missing: true } (the path simply does not exist); otherwise { ok: true }. Other lstat errors throw.
+ */
+export async function insideProject(projectDir, relPath) {
+  const parts = String(relPath).split(/[\\/]+/).filter(Boolean);
+  let cur = projectDir;
+  for (let i = 0; i < parts.length; i++) {
+    if (parts[i] === '..' || parts[i] === '.') throw new Error(`insideProject: ${relPath} is not a plain relative path`);
+    cur = path.join(cur, parts[i]);
+    let st;
+    try {
+      st = await fs.lstat(cur);
+    } catch (err) {
+      if (err.code === 'ENOENT' || err.code === 'ENOTDIR') return { ok: true, missing: true };
+      throw err;
+    }
+    if (st.isSymbolicLink()) return { ok: false, path: parts.slice(0, i + 1).join('/') };
+  }
+  return { ok: true };
+}
+
+/**
  * Index the harness: commands, skills, helpers, hooks, modules, and scripts.
  * Scope: skills exactly .claude/skills/<dir>/SKILL.md; hooks exactly .claude/hooks/*.sh; plugins exactly src/plugins/*.js;
  * commands, helpers, src/lib and scripts recursive. SKIP_DIRS and symlinks are skipped (symlinks are reported).
+ * Every index root and package.json is checked component by component from projectDir (the root and each parent);
+ * a symlinked root or parent is never followed: it is reported once as { path, code: 'SYMLINK' } and skipped. Files are
+ * opened with O_NOFOLLOW, so one swapped for a symlink after listing is reported as SYMLINK too.
  * Only the first 64 KiB of a file is read; at most maxPerKind (alias capPerKind) rows per kind: the lexicographically first
  * are kept, `capped[kind]` is the cap and `capped_totals[kind]` = { kept, total } says how many files were found.
  * Returns { rows, byKind, errors, capped, project } sorted by id; throws if empty.
@@ -234,6 +264,20 @@ export async function buildIndex(projectDir, { maxLines = 80, maxPerKind = MAX_P
   const capped = {};
   const cappedTotals = {};
   const rel = (p) => path.relative(projectDir, p).split(path.sep).join('/');
+  const symlinkSeen = new Set();
+  const reportSymlink = (p) => { if (!symlinkSeen.has(p)) { symlinkSeen.add(p); errors.push({ path: p, code: 'SYMLINK' }); } };
+  // A root may be walked only when it and every parent up to projectDir is a real directory entry (no symlink).
+  const rootUsable = async (absRoot) => {
+    let chk;
+    try {
+      chk = await insideProject(projectDir, rel(absRoot));
+    } catch (err) {
+      errors.push({ path: rel(absRoot), code: err.code ?? 'EINSIDE' });
+      return false;
+    }
+    if (!chk.ok) { reportSymlink(chk.path); return false; }
+    return !chk.missing;
+  };
 
   // List a directory: files matching `accept(name)` (and, when `recursive`, files in subdirectories).
   // `dirFilter(name)` limits which subdirectories are entered. Entries are sorted so the cap is deterministic.
@@ -251,7 +295,7 @@ export async function buildIndex(projectDir, { maxLines = 80, maxPerKind = MAX_P
     const sub = [];
     for (const ent of entries) {
       const full = path.join(dir, ent.name);
-      if (ent.isSymbolicLink()) { errors.push({ path: rel(full), code: 'SYMLINK' }); continue; }
+      if (ent.isSymbolicLink()) { reportSymlink(rel(full)); continue; }
       if (ent.isDirectory()) {
         if (ent.name === 'node_modules' || ent.name === '.git' || SKIP_DIRS.has(ent.name)) continue;
         if (recursive || subdirs) sub.push(full);
@@ -266,6 +310,7 @@ export async function buildIndex(projectDir, { maxLines = 80, maxPerKind = MAX_P
   // total is known; capList then keeps the lexicographically first `cap` and records kept/total.
   const collect = async (root, opts) => {
     const out = [];
+    if (!(await rootUsable(root))) return out;
     const visit = async (dir) => {
       const listed = await listFiles(dir, opts);
       for (const f of listed.found) out.push(f);
@@ -290,7 +335,8 @@ export async function buildIndex(projectDir, { maxLines = 80, maxPerKind = MAX_P
       try {
         content = await readPrefix(filePath);
       } catch (err) {
-        errors.push({ path: rel(filePath), code: err.code });
+        if (err.code === 'ELOOP') reportSymlink(rel(filePath));
+        else errors.push({ path: rel(filePath), code: err.code });
         return;
       }
       const name = nameOf(filePath);
@@ -309,7 +355,7 @@ export async function buildIndex(projectDir, { maxLines = 80, maxPerKind = MAX_P
   // Skills: exactly .claude/skills/<dir>/SKILL.md
   {
     const skillsRoot = P('.claude', 'skills');
-    const top = await listFiles(skillsRoot, { recursive: false, subdirs: true, accept: () => false });
+    const top = (await rootUsable(skillsRoot)) ? await listFiles(skillsRoot, { recursive: false, subdirs: true, accept: () => false }) : { sub: [] };
     const files = [];
     for (const d of top.sub ?? []) {
       const inner = await listFiles(d, { recursive: false, subdirs: false, accept: n => n === 'SKILL.md' });
@@ -331,12 +377,19 @@ export async function buildIndex(projectDir, { maxLines = 80, maxPerKind = MAX_P
   // Scripts: files under scripts/ and package.json scripts share one cap (ordered by id path).
   const scriptFiles = await collect(P('scripts'), { recursive: true, accept: any });
   const pkgScripts = [];
-  try {
-    const pst = await fs.stat(P('package.json'));
+  if (await rootUsable(P('package.json'))) try {
+    const fh = await fs.open(P('package.json'), FS.O_RDONLY | FS.O_NOFOLLOW);
+    let pst, raw;
+    try {
+      pst = await fh.stat();
+      if (pst.size <= PKG_MAX_BYTES) raw = await fh.readFile('utf-8');
+    } finally {
+      await fh.close();
+    }
     if (pst.size > PKG_MAX_BYTES) {
       errors.push({ path: 'package.json', code: 'ETOOBIG' });
     } else {
-      const pkgContent = (await fs.readFile(P('package.json'), 'utf-8')).replace(/^\uFEFF/, '');
+      const pkgContent = raw.replace(/^\uFEFF/, '');
       try {
         const pkg = JSON.parse(pkgContent);
         if (pkg.scripts && typeof pkg.scripts === 'object') {
@@ -347,7 +400,8 @@ export async function buildIndex(projectDir, { maxLines = 80, maxPerKind = MAX_P
       }
     }
   } catch (err) {
-    if (err.code !== 'ENOENT') errors.push({ path: 'package.json', code: err.code });
+    if (err.code === 'ELOOP') reportSymlink('package.json');
+    else if (err.code !== 'ENOENT') errors.push({ path: 'package.json', code: err.code });
   }
   {
     const items = [

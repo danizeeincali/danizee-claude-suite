@@ -12,7 +12,7 @@ import os from 'os';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import {
-  STOP_WORDS, KINDS, STATUSES, tokenize, idf, vectorize, cosine, buildIndex, matchPower, buildMap, mapBrief, recordJudgments, withMapLock, withMapLockDetailed, LOCK_STALE_MS, LOCK_REFRESH_MS
+  STOP_WORDS, KINDS, STATUSES, tokenize, idf, vectorize, cosine, buildIndex, matchPower, buildMap, mapBrief, recordJudgments, withMapLock, withMapLockDetailed, LOCK_STALE_MS, LOCK_REFRESH_MS, insideProject, readPrefix
 } from '../src/lib/bbs/harness-map.js';
 import { intake } from '../src/lib/bbs/intake.js';
 import { writeInventory, parseJsonOnly } from '../src/lib/bbs/inventory.js';
@@ -817,5 +817,115 @@ describe('harness-map r3 — lock ownership, release failure, unicode tokens, pa
     assert.equal(idx.rows.filter(r => r.kind === 'script').length, 3);
     assert.equal(idx.capped.script, 3);
     assert.deepEqual(idx.capped_totals.script, { kept: 3, total: 5 });
+  });
+});
+
+describe('harness-map r4 — symlinked index roots and parents are refused, never followed out of the project', () => {
+  let tmp;
+  before(async () => { tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hr4-')); });
+  after(async () => { await fs.rm(tmp, { recursive: true, force: true }); });
+
+  // A project (the fake harness) plus an outside directory holding a secret and a script.
+  const setup = async () => {
+    const base = await fs.mkdtemp(path.join(tmp, 'p-'));
+    const proj = path.join(base, 'proj');
+    const outside = path.join(base, 'outside');
+    await fs.mkdir(proj, { recursive: true });
+    await makeHarness(proj);
+    await fs.mkdir(outside, { recursive: true });
+    await fs.writeFile(path.join(outside, 'id_rsa'), '-----BEGIN OPENSSH PRIVATE KEY-----\nsecretsecret\n');
+    await fs.writeFile(path.join(outside, 'h.sh'), '#!/bin/sh\n# outside hook\n');
+    await fs.writeFile(path.join(outside, 'x.md'), '# outside command\n');
+    await fs.writeFile(path.join(outside, 'x.js'), '// outside helper\n');
+    return { proj, outside };
+  };
+  const swapForLink = async (proj, rel, target) => {
+    await fs.rm(path.join(proj, rel), { recursive: true, force: true });
+    await fs.symlink(target, path.join(proj, rel));
+  };
+  const noSecret = (idx) => assert.ok(!idx.rows.some(r => /secretsecret|outside/.test(r.text)), 'nothing from outside is indexed');
+
+  it('the fake harness with no symlinked roots still indexes 12 rows and reports no SYMLINK', async () => {
+    const { proj } = await setup();
+    const idx = await buildIndex(proj);
+    assert.equal(idx.rows.length, 12);
+    assert.ok(!idx.errors.some(e => e.code === 'SYMLINK'), JSON.stringify(idx.errors));
+  });
+
+  it('a symlinked scripts/ → no script:scripts/… rows, exactly one SYMLINK error for scripts', async () => {
+    const { proj, outside } = await setup();
+    await swapForLink(proj, 'scripts', outside);
+    const idx = await buildIndex(proj);
+    assert.ok(!idx.rows.some(r => r.id.startsWith('script:scripts/')), JSON.stringify(idx.rows.map(r => r.id)));
+    assert.deepEqual(idx.errors.filter(e => e.code === 'SYMLINK'), [{ path: 'scripts', code: 'SYMLINK' }]);
+    assert.ok(idx.rows.some(r => r.id === 'script:package.json#test'), 'package.json scripts are still indexed');
+    noSecret(idx);
+  });
+
+  it('a symlinked .claude → no command/skill/helper/hook rows, exactly one SYMLINK error for .claude', async () => {
+    const { proj, outside } = await setup();
+    await fs.mkdir(path.join(outside, 'commands'), { recursive: true });
+    await fs.mkdir(path.join(outside, 'hooks'), { recursive: true });
+    await fs.mkdir(path.join(outside, 'helpers'), { recursive: true });
+    await fs.mkdir(path.join(outside, 'skills', 's'), { recursive: true });
+    await fs.writeFile(path.join(outside, 'commands', 'x.md'), '# outside command\n');
+    await fs.writeFile(path.join(outside, 'hooks', 'h.sh'), '# outside hook\n');
+    await fs.writeFile(path.join(outside, 'helpers', 'x.js'), '// outside helper\n');
+    await fs.writeFile(path.join(outside, 'skills', 's', 'SKILL.md'), '# outside skill\n');
+    await swapForLink(proj, '.claude', outside);
+    const idx = await buildIndex(proj);
+    for (const k of ['command', 'skill', 'helper', 'hook']) assert.ok(!idx.rows.some(r => r.kind === k), `no ${k} rows`);
+    assert.deepEqual(idx.errors.filter(e => e.code === 'SYMLINK'), [{ path: '.claude', code: 'SYMLINK' }]);
+    noSecret(idx);
+  });
+
+  it('a symlinked .claude/hooks → no hook rows, one SYMLINK error for .claude/hooks; other .claude roots still indexed', async () => {
+    const { proj, outside } = await setup();
+    await swapForLink(proj, '.claude/hooks', outside);
+    const idx = await buildIndex(proj);
+    assert.ok(!idx.rows.some(r => r.kind === 'hook'));
+    assert.deepEqual(idx.errors.filter(e => e.code === 'SYMLINK'), [{ path: '.claude/hooks', code: 'SYMLINK' }]);
+    assert.equal(idx.rows.filter(r => r.kind === 'command').length, 2);
+    noSecret(idx);
+  });
+
+  it('a symlinked src/lib and src (parent) are refused with the symlinked component named', async () => {
+    const { proj, outside } = await setup();
+    await swapForLink(proj, 'src/lib', outside);
+    let idx = await buildIndex(proj);
+    assert.ok(!idx.rows.some(r => r.path.startsWith('src/lib/')));
+    assert.deepEqual(idx.errors.filter(e => e.code === 'SYMLINK'), [{ path: 'src/lib', code: 'SYMLINK' }]);
+    const p2 = await setup();
+    await swapForLink(p2.proj, 'src', p2.outside);
+    idx = await buildIndex(p2.proj);
+    assert.ok(!idx.rows.some(r => r.kind === 'module'));
+    assert.deepEqual(idx.errors.filter(e => e.code === 'SYMLINK'), [{ path: 'src', code: 'SYMLINK' }]);
+  });
+
+  it('a symlinked package.json → no script:package.json#… rows and a SYMLINK error for package.json', async () => {
+    const { proj, outside } = await setup();
+    await fs.writeFile(path.join(outside, 'package.json'), JSON.stringify({ scripts: { leak: 'cat ~/.ssh/id_rsa' } }));
+    await swapForLink(proj, 'package.json', path.join(outside, 'package.json'));
+    const idx = await buildIndex(proj);
+    assert.ok(!idx.rows.some(r => r.id.startsWith('script:package.json#')), JSON.stringify(idx.rows.map(r => r.id)));
+    assert.deepEqual(idx.errors.filter(e => e.code === 'SYMLINK'), [{ path: 'package.json', code: 'SYMLINK' }]);
+    assert.ok(idx.rows.some(r => r.id === 'script:scripts/check-drift.sh'), 'scripts/ files are still indexed');
+  });
+
+  it('insideProject: a symlinked component → { ok:false, path }; a missing component → { ok:true, missing:true }; a real path → { ok:true }', async () => {
+    const { proj, outside } = await setup();
+    await swapForLink(proj, '.claude', outside);
+    assert.deepEqual(await insideProject(proj, '.claude/hooks'), { ok: false, path: '.claude' });
+    assert.deepEqual(await insideProject(proj, 'nope/deeper'), { ok: true, missing: true });
+    assert.deepEqual(await insideProject(proj, 'src/lib'), { ok: true });
+    assert.deepEqual(await insideProject(proj, 'package.json'), { ok: true });
+  });
+
+  it('readPrefix opens with O_NOFOLLOW: a file swapped for a symlink fails with ELOOP instead of being read', async () => {
+    const { proj, outside } = await setup();
+    const link = path.join(proj, 'scripts', 'swapped.sh');
+    await fs.symlink(path.join(outside, 'id_rsa'), link);
+    await assert.rejects(readPrefix(link), (err) => err.code === 'ELOOP');
+    assert.match(await readPrefix(path.join(proj, 'scripts', 'check-drift.sh')), /config hash/);
   });
 });
