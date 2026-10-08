@@ -1,17 +1,17 @@
 # Marathon 2026-10-07-bbs
 
 - State: RUNNING
-- Budget: 641,333 / 10,000,000 tokens
+- Budget: 733,866 / 10,000,000 tokens
 - Allowance: 91% (ceiling 95%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "intake" (next: review round 3 (opus, angle 3) on the same intake code) — /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
+- Next for you: Continue stream "intake" (next: fix round for review r3 (4 medium, 1 low); then unit run + review r4) — /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
 
 ## Streams
 
 | Stream | Isolation | Plan | State | Gate | Phase | Next | Tasks | Escapes |
 |---|---|---|---|---|---|---|---|---|
-| intake | ../claude-suite-intake | .claude/plans/2026-10-07-w-bbs.md | active | clean 0/2 | /w-marathon · 4.5 | review round 3 (opus, angle 3) on the same intake code |  | 0 |
+| intake | ../claude-suite-intake | .claude/plans/2026-10-07-w-bbs.md | active | clean 0/2 | /w-marathon · 4.7 | fix round for review r3 (4 medium, 1 low); then unit run + review r4 |  | 0 |
 | fetch |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | fetch.js guards + egress log + clone; stubbed tests |  | 0 |
 | inventory |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | inventory.js schema/cap/brief + verbs |  | 0 |
 | harness-map |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | harness-map.js index + IDF-cosine matchPower + verbs |  | 0 |

@@ -9,3 +9,5 @@
 {"role":"fix","model":"sonnet","stream":"intake","budget":150000,"event":"spawn","id":"0c174130-06dc-4b79-b8fa-868065698117","ts":"2026-10-08T00:51:46.565Z"}
 {"helper_id":"0c174130-06dc-4b79-b8fa-868065698117","tokens":88437,"outcome":"green","event":"done","id":"10f44c0f-7bc8-4ecf-b01d-d08e3ec0dab1","ts":"2026-10-08T00:54:24.689Z"}
 {"role":"review","model":"opus","stream":"intake","budget":150000,"event":"spawn","id":"782d058e-f73d-4dc7-aa3b-3898ba7e7a6a","ts":"2026-10-08T00:54:25.612Z"}
+{"helper_id":"782d058e-f73d-4dc7-aa3b-3898ba7e7a6a","tokens":92533,"outcome":"green","event":"done","id":"b05cbcd3-e029-4ae7-891d-984c83bf34ef","ts":"2026-10-08T00:56:31.168Z"}
+{"role":"fix","model":"sonnet","stream":"intake","budget":150000,"event":"spawn","id":"fbd31a96-8c3c-4577-b5bf-cb4f38d439cd","ts":"2026-10-08T00:56:32.134Z"}
