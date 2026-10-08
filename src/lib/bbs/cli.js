@@ -276,6 +276,7 @@ const VERBS = {
     if (flags.evidence !== undefined && flags.probe === undefined) fail(`${usage}\n  --evidence goes with --probe`);
     const probe = flags.probe !== undefined ? powerPair(flags, 'probe', '<power>=<clean|found|incomplete>', usage) : null;
     const decide = flags.decide !== undefined ? powerPair(flags, 'decide', '<power>=<verdict>', usage) : null;
+    const sandboxOverride = sandboxFromEnv(); // checked before anything runs, whatever the mode
 
     const { id, dir } = await resolveRun(projectDir, flags, cfg);
     const force = !!flags.force;
@@ -304,12 +305,13 @@ const VERBS = {
       } else if (flags.table) {
         // A view: print the recorded table when there is one, so viewing never re-runs the sandbox check
         const existing = force ? null : await readJson(path.join(dir, 'verdicts.json'));
-        const table = existing && existing.rows ? verdictTable(existing.rows)
-          : (await computeVerdicts(projectDir, { run: id, sandbox: sandboxFromEnv(), now, force, cfg })).table;
-        out(table);
+        if (existing && existing.rows) { out(verdictTable(existing.rows)); return; }
+        const computed = await computeVerdicts(projectDir, { run: id, sandbox: useSandboxOverride(sandboxOverride), now, force, cfg });
+        out(computed.table);
+        if (computed.warning) process.stderr.write(`bbs: warning: ${computed.warning}\n`);
         return;
       } else {
-        result = await computeVerdicts(projectDir, { run: id, sandbox: sandboxFromEnv(), now, force, cfg });
+        result = await computeVerdicts(projectDir, { run: id, sandbox: useSandboxOverride(sandboxOverride), now, force, cfg });
       }
       out(result);
       if (result.warning) process.stderr.write(`bbs: warning: ${result.warning}\n`);
@@ -332,13 +334,21 @@ function powerPair(flags, name, shape, usage) {
   return [v.slice(0, at), v.slice(at + 1)];
 }
 
-/** BBS_SANDBOX=present|absent overrides sandbox detection; unset → undefined (detect). */
+/**
+ * BBS_SANDBOX=absent marks the sandbox missing (the safe direction); unset or empty → undefined (real detection).
+ * Any other value — `present` above all — exits 1: the sandbox can be assumed missing, never present.
+ */
 function sandboxFromEnv() {
   const v = process.env.BBS_SANDBOX;
   if (v === undefined || v === '') return undefined;
-  if (v === 'present') return { present: true, kind: 'env', reason: 'BBS_SANDBOX=present' };
   if (v === 'absent') return { present: false, kind: null, reason: 'no sandbox on this machine: BBS_SANDBOX=absent' };
-  fail(`BBS_SANDBOX must be present or absent, got "${v}"`);
+  fail('BBS_SANDBOX may only be "absent" (the sandbox can be assumed missing, never present); unset it to run real detection');
+}
+
+/** The override as passed to computeVerdicts, with a stderr warning each time it replaces detection. */
+function useSandboxOverride(override) {
+  if (override) process.stderr.write('bbs: warning: sandbox detection overridden by BBS_SANDBOX=absent\n');
+  return override;
 }
 
 async function main(argv) {

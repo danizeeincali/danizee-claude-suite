@@ -336,3 +336,269 @@ describe('verdict — cli verb', () => {
     assert.match(again.json.reuse_from, /-c1$/);
   });
 });
+
+// ---------------------------------------------------------------------------------------------------------------
+// Review r1 (ff26cdf4) regressions: grouped SPDX expressions, BBS_SANDBOX, sandbox.required_for_use, probe evidence,
+// and the input shapes and switches the contract names.
+
+describe('verdict r1 — SPDX expressions with precedence and grouping', () => {
+  const cfg = DEFAULT_CONFIG;
+  it('a parenthesised OR beside an AND binds as a group: strictest of AND, most permissive of OR', () => {
+    assert.equal(licenceClass('(MIT OR Apache-2.0) AND Proprietary', cfg), 'commercial');
+    assert.equal(licenceClass('(MIT OR GPL-3.0) AND BUSL-1.1', cfg), 'commercial');
+    assert.equal(licenceClass('GPL-3.0 AND (MIT OR Apache-2.0)', cfg), 'copyleft');
+  });
+
+  it('nested groups evaluate over the tree; AND binds tighter than OR without parentheses', () => {
+    assert.equal(licenceClass('((MIT OR GPL-3.0) AND (Apache-2.0 OR BSD-3-Clause)) OR Proprietary', cfg), 'permissive');
+    assert.equal(licenceClass('((MIT OR GPL-3.0) AND (GPL-2.0 OR Proprietary)) OR BUSL-1.1', cfg), 'copyleft');
+    assert.equal(licenceClass('((MIT AND GPL-3.0) OR (Proprietary AND MIT))', cfg), 'copyleft');
+    assert.equal(licenceClass('MIT OR GPL-3.0 AND Proprietary', cfg), 'permissive', 'MIT OR (GPL-3.0 AND Proprietary)');
+    assert.equal(licenceClass('Proprietary AND MIT OR GPL-3.0', cfg), 'copyleft', '(Proprietary AND MIT) OR GPL-3.0');
+  });
+
+  it('unbalanced parentheses or a parse error → none; OR/AND are case-insensitive; WITH <exception> is ignored', () => {
+    for (const bad of ['(MIT', 'MIT)', '(MIT OR Apache-2.0', 'MIT OR', 'AND MIT', 'MIT AND AND GPL-3.0', '()', 'MIT GPL-3.0', 'MIT WITH', 'MIT OR (', 'MIT, Apache-2.0']) {
+      assert.equal(licenceClass(bad, cfg), 'none', bad);
+    }
+    assert.equal(licenceClass('mit or gpl-3.0', cfg), 'permissive');
+    assert.equal(licenceClass('Proprietary and MIT', cfg), 'commercial');
+    assert.equal(licenceClass('GPL-2.0-only WITH Classpath-exception-2.0', cfg), 'copyleft');
+    assert.equal(licenceClass('(GPL-2.0-or-later WITH Classpath-exception-2.0) OR MIT', cfg), 'permissive');
+    assert.equal(licenceClass('Apache-2.0 WITH LLVM-exception AND Proprietary', cfg), 'commercial');
+    assert.equal(licenceClass('(MIT OR Apache-2.0) AND All Rights Reserved', cfg), 'commercial', '"all rights reserved" anywhere is commercial');
+  });
+
+  it('a none part: ignored under OR unless all parts are none; under AND it makes the AND none unless another part is copyleft or commercial', () => {
+    assert.equal(licenceClass('WTFPL OR GPL-3.0', cfg), 'copyleft');
+    assert.equal(licenceClass('WTFPL OR Foo-1.0', cfg), 'none');
+    assert.equal(licenceClass('MIT AND WTFPL', cfg), 'none');
+    assert.equal(licenceClass('GPL-3.0 AND WTFPL', cfg), 'copyleft');
+    assert.equal(licenceClass('WTFPL AND Proprietary', cfg), 'commercial');
+  });
+
+  it('a grouped licence with a binding proprietary term never makes `use` legal', async () => {
+    const d = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-vspdx-'));
+    try {
+      await makeHarness(d);
+      const r = await intake(d, '-', { stdin: 'spdx tool', now, slug: 'spdx' });
+      await writeInventory(d, { run: r.runId, input: JSON.stringify([power({ licence: '(MIT OR Apache-2.0) AND Proprietary' })]), now });
+      await buildMap(d, { run: r.runId, now });
+      await recordJudgments(d, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'missing' }), now });
+      const out = await computeVerdicts(d, { run: r.runId, sandbox, now });
+      assert.equal(out.rows['drift-monitor'].licence_class, 'commercial');
+      assert.deepEqual(out.rows['drift-monitor'].legal, ['rebuild', 'buy', 'skip']);
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+});
+
+describe('verdict r1 — library: sandbox.required_for_use, probe evidence, probe --force clearing a decision', () => {
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-vr1-')); await makeHarness(dir); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+  const runDir = (id) => path.join(dir, '.claude', 'bbs', 'runs', id);
+  const CFG_WARNING = 'sandbox.required_for_use=false in .claude/bbs.json is ignored — use always requires a sandbox';
+
+  async function prepared(slug, powers, judgments) {
+    const r = await intake(dir, '-', { stdin: 'r1 tool ' + slug, now, slug });
+    await writeInventory(dir, { run: r.runId, input: JSON.stringify(powers), now });
+    await buildMap(dir, { run: r.runId, now });
+    await recordJudgments(dir, { run: r.runId, input: JSON.stringify(judgments), now });
+    return r;
+  }
+
+  it('legalVerdicts ignores a requireSandbox:false option: use always needs a present sandbox', () => {
+    const r = legalVerdicts(power(), { judgment: { status: 'missing' }, licenceClass: 'permissive', sandbox: noSandbox, probe: 'clean', requireSandbox: false });
+    assert.deepEqual(r.legal, ['rebuild', 'skip']);
+    assert.match(r.removed[0].reason, /no sandbox/i);
+  });
+
+  it('sandbox.required_for_use:false in the config still removes `use` without a sandbox and records a warning naming .claude/bbs.json', async () => {
+    const r = await prepared('rfu', [power()], { 'drift-monitor': 'missing' });
+    const cfg = { ...DEFAULT_CONFIG, sandbox: { required_for_use: false } };
+    const out = await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now, cfg });
+    assert.deepEqual(out.rows['drift-monitor'].legal, ['rebuild', 'skip']);
+    assert.ok(out.rows['drift-monitor'].removed.some(x => x.verdict === 'use' && /no sandbox/i.test(x.reason)));
+    assert.deepEqual(out.warnings, [CFG_WARNING]);
+    assert.ok(out.warning.includes(CFG_WARNING));
+    await recordProbe(dir, { run: r.runId, power: 'drift-monitor', result: 'clean', now, cfg });
+    await assert.rejects(() => recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now, cfg }), (e) => e instanceof PolicyRefused);
+    const plain = await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now });
+    assert.equal(plain.warnings, undefined, 'the default config records no warning');
+  });
+
+  it('probe evidence is stripped of control characters, URL credentials and token values are redacted, and it is capped at 2048 chars', async () => {
+    const r = await prepared('evid', [power(), power({ name: 'b' }), power({ name: 'c' })], { 'drift-monitor': 'missing', b: 'missing', c: 'missing' });
+    await computeVerdicts(dir, { run: r.runId, sandbox, now });
+    const p = await recordProbe(dir, { run: r.runId, power: 'drift-monitor', result: 'found', evidence: 'src/a.js:3 posts to https://u:p@h/x?token=abc\x07\x1b[31m and\nline two', now });
+    const vj = await readJson(path.join(runDir(r.runId), 'verdicts.json'));
+    for (const ev of [p.probe.evidence, vj.rows['drift-monitor'].probe.evidence]) {
+      assert.ok(!ev.includes('abc'), ev);
+      assert.ok(!ev.includes('u:p'), ev);
+      assert.ok(!/[\x00-\x09\x0b-\x1f\x7f]/.test(ev), 'no control characters except \\n');
+      assert.match(ev, /https:\/\/h\/x\?token=<redacted>/);
+      assert.match(ev, /and\nline two$/);
+    }
+    const atCap = await recordProbe(dir, { run: r.runId, power: 'b', result: 'found', evidence: 'a'.repeat(2048), now });
+    assert.equal(atCap.probe.evidence, 'a'.repeat(2048), 'N = 2048 is kept whole');
+    const over = await recordProbe(dir, { run: r.runId, power: 'c', result: 'found', evidence: 'a'.repeat(2049), now });
+    assert.equal(over.probe.evidence, 'a'.repeat(2048) + ' …[truncated]', 'N + 1 is truncated');
+  });
+
+  it('probe --force clean → found clears a recorded `use` decision with a warning; labels.jsonl is history and is left untouched', async () => {
+    const r = await prepared('clr', [power()], { 'drift-monitor': 'missing' });
+    await computeVerdicts(dir, { run: r.runId, sandbox, now });
+    await recordProbe(dir, { run: r.runId, power: 'drift-monitor', result: 'clean', now });
+    await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now });
+    const labelsFile = path.join(runDir(r.runId), 'labels.jsonl');
+    const labelsBefore = await fs.readFile(labelsFile);
+    await assert.rejects(() => recordProbe(dir, { run: r.runId, power: 'drift-monitor', result: 'found', now }), /already probed.*--force/);
+    const p = await recordProbe(dir, { run: r.runId, power: 'drift-monitor', result: 'found', evidence: 'opens a socket', now, force: true });
+    assert.match(p.warning, /decision use for drift-monitor is no longer legal and was cleared/);
+    assert.equal(p.decision, null);
+    const vj = await readJson(path.join(runDir(r.runId), 'verdicts.json'));
+    assert.equal(vj.rows['drift-monitor'].decision, null);
+    assert.deepEqual(vj.decisions, {});
+    assert.deepEqual(vj.rows['drift-monitor'].legal, ['rebuild', 'skip']);
+    assert.ok((await fs.readFile(labelsFile)).equals(labelsBefore), 'labels.jsonl byte-identical');
+  });
+});
+
+describe('verdict r1 — cli verb input shapes and switches', () => {
+  const dirs = [];
+  after(async () => { for (const d of dirs) await fs.rm(d, { recursive: true, force: true }); });
+  function cli(d, args, input, env = {}) {
+    const base = { ...process.env };
+    delete base.BBS_SANDBOX;
+    const r = spawnSync(process.execPath, [CLI, ...args, '--project', d], { cwd: d, encoding: 'utf-8', input, env: { ...base, ...env } });
+    let json = null;
+    try { json = JSON.parse(r.stdout); } catch {}
+    return { code: r.status, out: r.stdout, err: r.stderr, json };
+  }
+  async function project(slug, powers, judgments, { compute = true, sb = noSandbox } = {}) {
+    const d = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-vr1cli-'));
+    dirs.push(d);
+    await makeHarness(d);
+    const r = await intake(d, '-', { stdin: 'cli tool ' + slug, now, slug });
+    await writeInventory(d, { run: r.runId, input: JSON.stringify(powers), now });
+    await buildMap(d, { run: r.runId, now });
+    await recordJudgments(d, { run: r.runId, input: JSON.stringify(judgments), now });
+    if (compute) await computeVerdicts(d, { run: r.runId, sandbox: sb, now });
+    const rd = path.join(d, '.claude', 'bbs', 'runs', r.runId);
+    return { d, run: r.runId, verdicts: path.join(rd, 'verdicts.json'), labels: path.join(rd, 'labels.jsonl') };
+  }
+  const SANDBOX_ONLY_ABSENT = 'bbs: BBS_SANDBOX may only be "absent" (the sandbox can be assumed missing, never present); unset it to run real detection';
+
+  it('BBS_SANDBOX=present (or any value but absent) exits 1 naming the rule; absent overrides detection with a stderr warning', async () => {
+    const p = await project('env', [power()], { 'drift-monitor': 'missing' }, { compute: false });
+    for (const v of ['present', 'yes', 'PRESENT']) {
+      for (const args of [['verdict'], ['verdict', '--table'], ['verdict', '--table', '--force']]) {
+        const r = cli(p.d, [...args, '--run', p.run], undefined, { BBS_SANDBOX: v });
+        assert.equal(r.code, 1, `${v} ${args.join(' ')}`);
+        assert.equal(r.err.trim(), SANDBOX_ONLY_ABSENT);
+      }
+    }
+    await assert.rejects(() => fs.stat(p.verdicts), { code: 'ENOENT' }, 'a refused BBS_SANDBOX writes nothing');
+    const a = cli(p.d, ['verdict', '--run', p.run], undefined, { BBS_SANDBOX: 'absent' });
+    assert.equal(a.code, 0, a.err);
+    assert.match(a.err, /^bbs: warning: sandbox detection overridden by BBS_SANDBOX=absent$/m);
+    assert.equal(a.json.sandbox.present, false);
+    assert.deepEqual(a.json.rows['drift-monitor'].legal, ['rebuild', 'skip']);
+  });
+
+  it('sandbox.required_for_use:false in .claude/bbs.json is ignored with a stderr warning naming the file', async () => {
+    const p = await project('rfu', [power()], { 'drift-monitor': 'missing' }, { compute: false });
+    await fs.writeFile(path.join(p.d, '.claude', 'bbs.json'), JSON.stringify({ sandbox: { required_for_use: false } }));
+    const r = cli(p.d, ['verdict', '--run', p.run], undefined, { BBS_SANDBOX: 'absent' });
+    assert.equal(r.code, 0, r.err);
+    assert.deepEqual(r.json.rows['drift-monitor'].legal, ['rebuild', 'skip']);
+    assert.match(r.err, /bbs: warning: .*sandbox\.required_for_use=false in \.claude\/bbs\.json is ignored — use always requires a sandbox/);
+  });
+
+  it('--from <file>, --from - (stdin) and a missing --from file', async () => {
+    const p = await project('from', [power(), power({ name: 'b' })], { 'drift-monitor': 'missing', b: 'missing' });
+    const file = path.join(p.d, 'decisions.json');
+    await fs.writeFile(file, JSON.stringify({ 'drift-monitor': 'rebuild' }));
+    const f = cli(p.d, ['verdict', '--from', file, '--run', p.run]);
+    assert.equal(f.code, 0, f.err);
+    assert.equal(f.json.decided, 1);
+    assert.deepEqual(f.json.remaining, ['b']);
+    const missing = path.join(p.d, 'nope.json');
+    const m = cli(p.d, ['verdict', '--from', missing, '--run', p.run]);
+    assert.equal(m.code, 1);
+    assert.equal(m.err.trim(), `bbs: file not found: ${missing}`);
+    const s = cli(p.d, ['verdict', '--from', '-', '--run', p.run], JSON.stringify({ decisions: { b: 'skip' } }));
+    assert.equal(s.code, 0, s.err);
+    assert.equal(s.json.decided, 2);
+    assert.equal(s.json.next, 'handoff');
+    const labels = await readJsonl(p.labels);
+    assert.deepEqual(labels.map(l => [l.power, l.verdict]), [['drift-monitor', 'rebuild'], ['b', 'skip']]);
+    const badStdin = cli(p.d, ['verdict', '--from', '-', '--run', p.run, '--force'], 'not json');
+    assert.equal(badStdin.code, 1);
+    assert.match(badStdin.err, /--from - \(stdin\)/);
+  });
+
+  it('--evidence without --probe is a usage error (exit 1)', async () => {
+    const p = await project('ev', [power()], { 'drift-monitor': 'missing' });
+    const before = await fs.readFile(p.verdicts);
+    const r = cli(p.d, ['verdict', '--evidence', 'x', '--run', p.run]);
+    assert.equal(r.code, 1);
+    assert.match(r.err, /^usage: cli\.js verdict/);
+    assert.match(r.err, /--evidence goes with --probe/);
+    assert.ok((await fs.readFile(p.verdicts)).equals(before));
+  });
+
+  it('--table after a probe changed legality shows the new legal set; --table --force recomputes', async () => {
+    const p = await project('tbl', [power()], { 'drift-monitor': 'missing' }, { sb: sandbox });
+    const t0 = cli(p.d, ['verdict', '--table', '--run', p.run]);
+    assert.equal(t0.code, 0, t0.err);
+    assert.match(t0.out, /\| drift-monitor \| missing \| MIT \(permissive\) \| rebuild, use, skip \|/);
+    const pr = cli(p.d, ['verdict', '--probe', 'drift-monitor=found', '--evidence', 'posts to https://u:p@h/x?token=abc', '--run', p.run]);
+    assert.equal(pr.code, 0, pr.err);
+    assert.ok(!pr.out.includes('abc') && !pr.out.includes('u:p'), 'printed evidence is redacted');
+    assert.ok(!(await fs.readFile(p.verdicts, 'utf-8')).includes('abc'), 'stored evidence is redacted');
+    const t1 = cli(p.d, ['verdict', '--table', '--run', p.run]);
+    assert.equal(t1.code, 0, t1.err);
+    assert.match(t1.out, /\| drift-monitor \| missing \| MIT \(permissive\) \| rebuild, skip \| rebuild \| — \| use removed: network probe found/);
+    const t2 = cli(p.d, ['verdict', '--table', '--force', '--run', p.run], undefined, { BBS_SANDBOX: 'absent' });
+    assert.equal(t2.code, 0, t2.err);
+    assert.match(t2.out, /\| rebuild, skip \| rebuild \| — \| use removed: no sandbox on this machine: BBS_SANDBOX=absent \|/);
+    assert.ok(!/probe found/.test(t2.out), '--force dropped the probe and recomputed');
+    assert.equal((await readJson(p.verdicts)).rows['drift-monitor'].probe, null);
+  });
+
+  it('a refused --decide (and a refused --from with one illegal entry) leaves verdicts.json and labels.jsonl byte-identical', async () => {
+    const p = await project('ref', [power(), power({ name: 'b' })], { 'drift-monitor': 'missing', b: 'missing' });
+    assert.equal(cli(p.d, ['verdict', '--decide', 'b=skip', '--run', p.run]).code, 0);
+    const vBefore = await fs.readFile(p.verdicts);
+    const lBefore = await fs.readFile(p.labels);
+    const r = cli(p.d, ['verdict', '--decide', 'drift-monitor=use', '--run', p.run]);
+    assert.equal(r.code, 2);
+    assert.match(r.err, /^bbs: refused: /);
+    const file = path.join(p.d, 'mixed.json');
+    await fs.writeFile(file, JSON.stringify({ 'drift-monitor': 'rebuild', b: 'buy' }));
+    const m = cli(p.d, ['verdict', '--from', file, '--force', '--run', p.run]);
+    assert.equal(m.code, 2);
+    assert.ok((await fs.readFile(p.verdicts)).equals(vBefore), 'verdicts.json byte-identical');
+    assert.ok((await fs.readFile(p.labels)).equals(lBefore), 'labels.jsonl byte-identical');
+  });
+});
+
+describe('verdict r1 — cli --table that recomputes names ignored config on stderr', () => {
+  it('--table --force with sandbox.required_for_use:false prints the table and the warning', async () => {
+    const d = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-vr1tbl-'));
+    try {
+      await makeHarness(d);
+      const r = await intake(d, '-', { stdin: 'tbl tool', now, slug: 'tblw' });
+      await writeInventory(d, { run: r.runId, input: JSON.stringify([power()]), now });
+      await buildMap(d, { run: r.runId, now });
+      await recordJudgments(d, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'missing' }), now });
+      await fs.writeFile(path.join(d, '.claude', 'bbs.json'), JSON.stringify({ sandbox: { required_for_use: false } }));
+      const env = { ...process.env, BBS_SANDBOX: 'absent' };
+      const t = spawnSync(process.execPath, [CLI, 'verdict', '--table', '--force', '--run', r.runId, '--project', d], { cwd: d, encoding: 'utf-8', env });
+      assert.equal(t.status, 0, t.stderr);
+      assert.match(t.stdout, /\| drift-monitor \| missing \| MIT \(permissive\) \| rebuild, skip \|/);
+      assert.match(t.stderr, /bbs: warning: .*sandbox\.required_for_use=false in \.claude\/bbs\.json is ignored/);
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+});

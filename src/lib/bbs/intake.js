@@ -92,6 +92,13 @@ export function redactRef(ref) {
   return text;
 }
 
+const URL_IN_TEXT = /https?:\/\/[^\s<>"'`]+/gi;
+
+/** Redact every http(s) URL inside free text with redactRef (userinfo removed, token-like query values masked). */
+export function redactUrlsInText(text) {
+  return String(text ?? '').replace(URL_IN_TEXT, (u) => redactRef(u));
+}
+
 /**
  * Whether <ref>/.git is a git dir that stays inside ref. Returns true, false (no .git at all),
  * or { outside: reason } when .git is a symlink or a gitdir/commondir file resolves elsewhere.

@@ -9,7 +9,7 @@ import path from 'path';
 import { spawnSync } from 'child_process';
 import { DEFAULT_CONFIG, LICENCE_CLASSES } from './config.js';
 import { runDir as runDirOf, readJson, writeJson, appendJsonl, appendRegistry } from './store.js';
-import { RUN_ID, invalidRunId } from './intake.js';
+import { RUN_ID, invalidRunId, redactUrlsInText } from './intake.js';
 import { parseJsonOnly } from './inventory.js';
 import { withMapLockDetailed } from './harness-map.js';
 import { renderStatusSafe } from './status.js';
@@ -49,19 +49,73 @@ function classifyOne(id, cfg) {
   return 'none';
 }
 
-/** Classify an SPDX-ish licence string: permissive | copyleft | commercial | none. */
+const SPDX_ID = /^[A-Za-z0-9.+-]+$/;
+const SPDX_KEYWORD = /^(and|or|with)$/i;
+
+/** Tokens of an SPDX expression: '(' | ')' | words. Null when a word holds a character SPDX ids never use. */
+function spdxTokens(text) {
+  const tokens = text.replace(/[()]/g, ' $& ').split(/\s+/).filter(Boolean);
+  return tokens.every(t => t === '(' || t === ')' || SPDX_ID.test(t)) ? tokens : null;
+}
+
+/**
+ * Recursive descent over `expr := and ( OR and )*`, `and := atom ( AND atom )*`,
+ * `atom := '(' expr ')' | ID [ WITH ID ]` — AND binds tighter than OR, parentheses group, a WITH exception is ignored.
+ * Evaluates while parsing:
+ *   OR  → the most permissive part (permissive > copyleft > commercial); none parts are ignored unless every part is none.
+ *   AND → the most restrictive part (commercial > copyleft > none > permissive): every term binds, so a copyleft or
+ *         commercial part wins, and an unknown (none) part beside only permissive parts makes the whole AND none.
+ * Throws on any parse error (unbalanced parentheses, a dangling operator, two ids in a row).
+ */
+function evalSpdx(tokens, cfg) {
+  let i = 0;
+  const peek = () => tokens[i];
+  const isKw = (t, kw) => typeof t === 'string' && t.toLowerCase() === kw;
+  const expect = (cond, what) => { if (!cond) throw new Error(`SPDX parse error: ${what} at token ${i}`); };
+  function atom() {
+    const t = peek();
+    expect(t !== undefined, 'unexpected end');
+    if (t === '(') {
+      i++;
+      const v = expr();
+      expect(peek() === ')', 'missing )');
+      i++;
+      return v;
+    }
+    expect(t !== ')' && !SPDX_KEYWORD.test(t), `unexpected ${JSON.stringify(t)}`);
+    i++;
+    if (isKw(peek(), 'with')) {
+      i++;
+      const ex = peek();
+      expect(ex !== undefined && ex !== '(' && ex !== ')' && !SPDX_KEYWORD.test(ex), 'WITH needs an exception id');
+      i++;
+    }
+    return classifyOne(t, cfg);
+  }
+  function and() {
+    const parts = [atom()];
+    while (isKw(peek(), 'and')) { i++; parts.push(atom()); }
+    return RESTRICTIVENESS.find(c => parts.includes(c));
+  }
+  function expr() {
+    const parts = [and()];
+    while (isKw(peek(), 'or')) { i++; parts.push(and()); }
+    return PERMISSIVENESS.find(c => parts.includes(c)) ?? 'none';
+  }
+  const v = expr();
+  expect(i === tokens.length, `unexpected ${JSON.stringify(peek())}`);
+  return v;
+}
+
+/** Classify an SPDX licence expression: permissive | copyleft | commercial | none (unparseable or unrecognised → none). */
 export function licenceClass(licence, cfg = DEFAULT_CONFIG) {
   if (typeof licence !== 'string') return 'none';
-  const text = licence.replace(/[()]/g, ' ').trim();
+  const text = licence.trim();
   if (!text || text.toLowerCase() === 'unknown') return 'none';
-  if (/all[\s-]+rights[\s-]+reserved/i.test(text)) return 'commercial';
-  const alternatives = text.split(/\s+OR\s+/i).map(alt => {
-    const parts = alt.split(/\s+AND\s+/i).map(p => classifyOne(p, cfg));
-    if (parts.length === 1) return parts[0];
-    return RESTRICTIVENESS.find(c => parts.includes(c)); // all terms bind: the strictest wins
-  });
-  if (alternatives.length === 1) return alternatives[0];
-  return PERMISSIVENESS.find(c => alternatives.includes(c)) ?? 'none'; // pick any one: the most permissive known wins
+  if (/all[\s-]+rights[\s-]+reserved/i.test(text)) return 'commercial'; // anywhere in the string: the whole licence is commercial
+  const tokens = spdxTokens(text);
+  if (!tokens) return 'none';
+  try { return evalSpdx(tokens, cfg); } catch { return 'none'; }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -124,7 +178,11 @@ const PROBE_REASON = {
   incomplete: 'network probe incomplete: a hidden network call cannot be ruled out'
 };
 
-export function legalVerdicts(power, { judgment, licenceClass: cls, sandbox, probe, requireSandbox = true } = {}) {
+/**
+ * `use` always requires a present sandbox: safety first, our rules always win. There is no option to turn this off;
+ * a `sandbox.required_for_use: false` in .claude/bbs.json is ignored with a warning (sandboxConfigWarnings).
+ */
+export function legalVerdicts(power, { judgment, licenceClass: cls, sandbox, probe } = {}) {
   if (!LICENCE_CLASSES.includes(cls)) {
     throw new Error(`licence class must be one of ${LICENCE_CLASSES.join('|')}, got ${JSON.stringify(cls)}`);
   }
@@ -137,7 +195,7 @@ export function legalVerdicts(power, { judgment, licenceClass: cls, sandbox, pro
   if (cls === 'commercial' || movesDataOff(power)) allowed.add('buy');
   if (cls === 'permissive') {
     const why = [];
-    if (requireSandbox && !sandbox?.present) why.push(sandbox?.reason || 'no sandbox on this machine: the sandbox check did not run');
+    if (!sandbox?.present) why.push(sandbox?.reason || 'no sandbox on this machine: the sandbox check did not run');
     if (probe === 'found' || probe === 'incomplete') why.push(PROBE_REASON[probe]);
     if (why.length) removed.push({ verdict: 'use', reason: why.join('; ') });
     else allowed.add('use');
@@ -216,8 +274,8 @@ async function readVerdicts(file) {
 }
 
 /** Recompute legal/removed/needs_probe/default of one row in place; clears a decision the policy no longer allows. */
-function recomputeRow(row, power, sandbox, cfg) {
-  const opts = { judgment: row.judgment, licenceClass: row.licence_class, sandbox, probe: row.probe?.result ?? null, requireSandbox: cfg?.sandbox?.required_for_use !== false };
+function recomputeRow(row, power, sandbox) {
+  const opts = { judgment: row.judgment, licenceClass: row.licence_class, sandbox, probe: row.probe?.result ?? null };
   const { legal, removed, needs_probe } = legalVerdicts(power, opts);
   row.legal = legal;
   row.removed = removed;
@@ -229,6 +287,29 @@ function recomputeRow(row, power, sandbox, cfg) {
     return `decision ${was} for ${power.name} is no longer legal and was cleared`;
   }
   return null;
+}
+
+export const SANDBOX_CONFIG_IGNORED = 'sandbox.required_for_use=false in .claude/bbs.json is ignored — use always requires a sandbox';
+
+/** Config settings that try to loosen a rule that cannot change: each is ignored and named in a warning. */
+function sandboxConfigWarnings(cfg) {
+  return cfg?.sandbox?.required_for_use === false ? [SANDBOX_CONFIG_IGNORED] : [];
+}
+
+export const EVIDENCE_MAX_CHARS = 2048;
+const EVIDENCE_TRUNCATED = ' …[truncated]';
+
+/**
+ * Probe evidence as stored and printed: a string with control characters stripped (newlines kept), every http(s) URL
+ * redacted with intake's redactRef, then capped at EVIDENCE_MAX_CHARS. Redaction runs before the cap so a URL cut at
+ * the cap can never expose credentials the full URL would have had masked. Empty → null.
+ */
+export function sanitizeEvidence(text) {
+  if (text == null) return null;
+  const clean = String(text).replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/g, '');
+  if (!clean.trim()) return null;
+  const red = redactUrlsInText(clean);
+  return red.length > EVIDENCE_MAX_CHARS ? red.slice(0, EVIDENCE_MAX_CHARS) + EVIDENCE_TRUNCATED : red;
 }
 
 const nextOf = (rows, unread) => unread ? null : Object.values(rows).every(r => r.decision) ? 'handoff' : 'verdict';
@@ -255,7 +336,7 @@ export async function computeVerdicts(projectDir, { run, sandbox, now = () => ne
       if (!/^corrupt JSON in /.test(err.message) || !force) throw new Error(`${err.message} — pass --force to rebuild it (probes and decisions are dropped)`);
     }
     const dropped = { probes: 0, decisions: 0 };
-    const warnings = [];
+    const warnings = sandboxConfigWarnings(cfg);
     const rows = {};
     for (const power of list) {
       const old = existing?.rows?.[power.name];
@@ -273,7 +354,7 @@ export async function computeVerdicts(projectDir, { run, sandbox, now = () => ne
         probe: force ? null : oldProbe,
         decision: force ? null : (VERDICTS.includes(oldDecision) ? oldDecision : null)
       };
-      const w = recomputeRow(row, power, sb, cfg);
+      const w = recomputeRow(row, power, sb);
       if (w) warnings.push(w);
       rows[power.name] = row;
     }
@@ -281,7 +362,8 @@ export async function computeVerdicts(projectDir, { run, sandbox, now = () => ne
     // verdicts.json last: it is what marks the step's state
     await writeJson(p.verdicts, { run, source_identity: source.identity, sandbox: sb, rows, decisions, ts: now().toISOString() });
     const { warning, unread } = await renderAfterCommit(p.dir);
-    const w = joinWarnings(...warnings, warning);
+    if (warning) warnings.push(warning);
+    const w = joinWarnings(...warnings);
     return {
       runId: run,
       sandbox: sb,
@@ -290,7 +372,7 @@ export async function computeVerdicts(projectDir, { run, sandbox, now = () => ne
       needs_probe: Object.keys(rows).filter(n => rows[n].needs_probe),
       dropped,
       next: nextOf(rows, unread),
-      ...(w ? { warning: w } : {})
+      ...(w ? { warning: w, warnings } : {})
     };
   }, lockOpts);
   return withWarning(result, lockWarning);
@@ -318,14 +400,14 @@ export async function recordProbe(projectDir, { run, power, result, evidence, no
     if (row.probe && !force) throw new Error(`${power} already probed — pass --force to replace`);
     const byName = await powersByName(p.dir);
     const pw = byName.get(power) || { name: power };
-    row.probe = { result, evidence: typeof evidence === 'string' && evidence.trim() ? evidence : null, ts: now().toISOString() };
+    row.probe = { result, evidence: sanitizeEvidence(evidence), ts: now().toISOString() };
     row.decision = vj.decisions[power] ?? row.decision ?? null;
-    const cleared = recomputeRow(row, pw, vj.sandbox, cfg);
+    const cleared = recomputeRow(row, pw, vj.sandbox);
     if (row.decision) vj.decisions[power] = row.decision; else delete vj.decisions[power];
     vj.ts = now().toISOString();
     await writeJson(p.verdicts, vj);
     const { warning, unread } = await renderAfterCommit(p.dir);
-    const w = joinWarnings(cleared, warning);
+    const w = joinWarnings(...sandboxConfigWarnings(cfg), cleared, warning);
     return { runId: run, power, ...row, next: nextOf(vj.rows, unread), ...(w ? { warning: w } : {}) };
   }, lockOpts);
   return withWarning(out, lockWarning);
