@@ -33,10 +33,10 @@
       "name": "inventory",
       "state": "active",
       "plan": ".claude/plans/2026-10-07-w-bbs.md",
-      "next": "review round 3 (opus, older environments) on 952736d..HEAD; clean → close stream",
+      "next": "sonnet fix round for review r3 (1 medium, 5 low); then unit run, close, merge; fixes reviewed in harness-map r1 via --base 945e873",
       "tasks": [],
       "isolation": "../claude-suite-inventory",
-      "phase": "4.5",
+      "phase": "4.7",
       "base": "27efdb1788d02499fde6963a10115e990c91b1d2"
     },
     {
