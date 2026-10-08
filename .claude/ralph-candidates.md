@@ -343,3 +343,142 @@ STATUS: PASS|FAIL
 2. Test: RC-D012 returns STATUS: PASS
 
 **Status**: ready (only runs if RC-D012 fails)
+
+---
+
+### RC-D013: Every subprocess in bbs scrubs its environment and is covered by the egress check
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Diagnostic
+**Verifies**: HTTP-level egress checks do not cover subprocess transports; fetch review r1 found git following redirects and git-lfs smudge fetching from repo-chosen hosts, both invisible to `checkHost`
+
+**Test Command**:
+```bash
+grep -nE "execFile(Sync)?\(|spawn(Sync)?\(|exec(Sync)?\(" src/lib/bbs/*.js
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: SUBPROCESS_EGRESS
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F013 if STATUS: FAIL
+**Priority**: P1
+**Status**: ready
+
+### RC-F013: Scripted scan of child_process calls in src/lib/bbs
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Conditional Fix
+**Triggered By**: RC-D013 failure
+**Priority**: P1
+
+**Pattern to Restore**:
+```javascript
+// test/bbs-subprocess.test.js: list every child_process call in src/lib/bbs and assert each
+// passes an env built by a scrubbing helper (empty HOME/XDG, no GIT_CONFIG_*) and, for git,
+// the redirect/filter/protocol -c flags
+```
+
+**File**: test/bbs-subprocess.test.js
+
+**Completion Tests**:
+1. Pattern: the scan lists every child_process call and fails on an unscrubbed one
+2. Test: RC-D013 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D013 fails)
+
+---
+
+### RC-D014: DNS rebinding gap between host check and connect remains
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Diagnostic
+**Verifies**: `fetch.js` resolves the host in `checkHost` and connects separately; the spec documents the rebinding gap as not fixed
+
+**Test Command**:
+```bash
+grep -nE "dispatcher|connect:|lookup" src/lib/bbs/fetch.js
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: PINNED_ADDRESS
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F014 if STATUS: FAIL
+**Priority**: P3
+**Status**: ready
+
+### RC-F014: Pin the resolved address with a custom dispatcher once undici is allowed
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Conditional Fix
+**Triggered By**: RC-D014 failure
+**Priority**: P3
+
+**Pattern to Restore**:
+```javascript
+// connect to the address checkHost validated (custom dispatcher with a fixed lookup),
+// so check and connect cannot resolve differently; blocked today by the zero-dependency rule
+```
+
+**File**: src/lib/bbs/fetch.js
+
+**Completion Tests**:
+1. Pattern: the connection uses the validated address; a lookup that changes between calls cannot reach a private host
+2. Test: RC-D014 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D014 fails; needs an owner decision on the zero-dependency rule)
+
+---
+
+### RC-D015: Old-git behaviour of clone settings is tested, not assumed
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Diagnostic
+**Verifies**: a git config switch that exists only from a newer git (`GIT_CONFIG_GLOBAL`, 2.32) silently fails on older systems; fetch review r3 found it
+
+**Test Command**:
+```bash
+grep -nE "GIT_CONFIG_GLOBAL|HOME|XDG_CONFIG_HOME" src/lib/bbs/fetch.js test/bbs-fetch.test.js
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: CLONE_ENV_PORTABLE
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F015 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+### RC-F015: Assert HOME and XDG_CONFIG_HOME are scratch dirs in the clone-env test
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Conditional Fix
+**Triggered By**: RC-D015 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// cloneEnv sets HOME and XDG_CONFIG_HOME to an empty temp dir in addition to GIT_CONFIG_*,
+// and the clone-env test asserts both
+```
+
+**File**: src/lib/bbs/fetch.js
+
+**Completion Tests**:
+1. Pattern: clone-env test asserts HOME and XDG_CONFIG_HOME are empty temp dirs
+2. Test: RC-D015 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D015 fails)
