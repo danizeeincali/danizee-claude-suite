@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
  * bbs helper CLI — `node cli.js <verb> [flags]`.
- * Verbs here: intake · status · report. Later streams add fetch, inventory, map, verdict, handoff
+ * Verbs here: intake · fetch · status · report. Later streams add inventory, map, verdict, handoff
  * by registering them in VERBS.
  *
- * Exit codes: 0 ok · 1 invalid input / broken state · 2 reserved for policy refusals.
+ * Exit codes: 0 ok · 1 invalid input / broken state · 2 policy refusals (egress refused).
  */
 
 import fs from 'fs/promises';
@@ -18,6 +18,7 @@ import { loadConfig } from './config.js';
 import { runDir as runDirOf, runsDir as runsDirOf, activeRunId } from './store.js';
 import { intake, RUN_ID, invalidRunId } from './intake.js';
 import { loadState, nextStep, summary, renderStatusSafe } from './status.js';
+import { fetchRun, EgressRefused } from './fetch.js';
 
 class CliExit extends Error {
   constructor(message, code) { super(message); this.code = code; }
@@ -28,6 +29,7 @@ const INTAKE_USAGE = 'usage: cli.js intake <source|-> [--paste-file <p>] [--as r
 /** Flags each verb accepts: value flags need a value, boolean flags take none. */
 const FLAGS = {
   intake: { value: ['run', 'project', 'as', 'slug', 'paste-file'], bool: [], positionals: 1, usage: INTAKE_USAGE },
+  fetch: { value: ['run', 'project', 'max-bytes', 'max-links'], bool: [], positionals: 0, usage: 'usage: cli.js fetch [--run <id>] [--max-bytes <n>] [--max-links <n>] [--project <dir>]' },
   status: { value: ['run', 'project'], bool: ['next'], positionals: 0, usage: 'usage: cli.js status [--run <id>] [--next] [--project <dir>]' },
   report: { value: ['run', 'project'], bool: [], positionals: 0, usage: 'usage: cli.js report [--run <id>] [--project <dir>]' }
 };
@@ -113,6 +115,17 @@ function warnStatusWrite(id, err) {
   process.stderr.write(`bbs: warning: could not write ${id}/status.md (${err.code || err.message})\n`);
 }
 
+/** A --flag value that must be a positive integer; undefined when the flag is absent. */
+function positiveInt(flags, name, usage) {
+  const v = flags[name];
+  if (v === undefined) return undefined;
+  const n = Number(v);
+  if (typeof v !== 'string' || !/^[1-9][0-9]*$/.test(v) || !Number.isSafeInteger(n)) {
+    fail(`${usage}\n  --${name} must be a positive integer, got "${v}"`);
+  }
+  return n;
+}
+
 const VERBS = {
   async intake({ flags, positional, projectDir, cfg }) {
     const source = positional.find(p => typeof p === 'string');
@@ -130,6 +143,19 @@ const VERBS = {
       cfg
     });
     out(result);
+  },
+
+  async fetch({ flags, projectDir, cfg }) {
+    const usage = FLAGS.fetch.usage;
+    const maxBytes = positiveInt(flags, 'max-bytes', usage);
+    const maxUrls = positiveInt(flags, 'max-links', usage);
+    const { id, dir } = await resolveRun(projectDir, flags, cfg);
+    try {
+      out(await fetchRun(projectDir, { run: id, cfg, maxBytes, maxUrls }));
+    } finally {
+      const { writeError } = await renderStatusSafe(dir);
+      if (writeError) warnStatusWrite(id, writeError);
+    }
   },
 
   async status({ flags, projectDir, cfg }) {
@@ -169,7 +195,10 @@ function isMain() {
 
 if (isMain()) {
   main(process.argv.slice(2)).catch((err) => {
-    if (err instanceof CliExit) {
+    if (err instanceof EgressRefused || err?.code === 'EGRESS_REFUSED') {
+      process.stderr.write(`bbs: refused: ${err.message}\n`);
+      process.exitCode = 2;
+    } else if (err instanceof CliExit) {
       process.stderr.write(err.message.startsWith('usage:') ? err.message + '\n' : `bbs: ${err.message}\n`);
       process.exitCode = err.code;
     } else {

@@ -4,6 +4,7 @@
 
 import path from 'path';
 import { readJson, readJsonl, writeTextAtomic } from './store.js';
+import { egressLine } from './fetch.js';
 
 export const STEPS = ['intake', 'fetch', 'inventory', 'map', 'verdict', 'handoff'];
 
@@ -53,10 +54,6 @@ export function renderStatus(state) {
   const s = state.source;
   const next = nextStep(state);
   const sum = summary(state);
-  const egress = state.egress || [];
-  const requests = egress.filter(e => e && (e.kind === 'http' || e.kind === 'git'));
-  const hosts = [...new Set(requests.map(e => e.host).filter(Boolean))];
-  const bytesIn = egress.reduce((n, e) => n + (Number(e.bytes_in) || 0), 0);
   const lines = [`# bbs ${state.run}`, ''];
   if (s) {
     lines.push(`- Source: ${s.type} ${esc(s.ref)}${s.reuse_from ? ` (reuses ${s.reuse_from})` : ''}`);
@@ -65,7 +62,7 @@ export function renderStatus(state) {
     lines.push('- Source: none');
     lines.push('- Identity: none');
   }
-  lines.push(`- Egress: requests=${requests.length} bytes_in=${bytesIn} bodies_sent=0 hosts=${hosts.length ? hosts.join(',') : 'none'}${state.egress_corrupt > 0 ? ` (${state.egress_corrupt} corrupt rows skipped)` : ''}`);
+  lines.push(`- Egress: ${egressLine(state.egress || [])}${state.egress_corrupt > 0 ? ` (${state.egress_corrupt} corrupt rows skipped)` : ''}`);
   if (next === 'done') {
     lines.push(sum.marathon ? `- Next: done — /w-marathon --resume ${sum.marathon}` : '- Next: done');
   } else {
