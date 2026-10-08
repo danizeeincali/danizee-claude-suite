@@ -40,3 +40,6 @@
 {"helper_id":"6f3888e6-5709-4bf6-bed9-5de2d03ce259","tokens":91456,"outcome":"green","event":"done","id":"9b60088c-a12a-4f0a-903d-bad0e74e4b59","ts":"2026-10-08T01:43:05.807Z"}
 {"role":"routine","model":"sonnet","stream":"fetch","budget":100000,"event":"spawn","id":"2a5281f4-f0fb-412a-8448-75c4f366d3d9","ts":"2026-10-08T01:44:57.753Z"}
 {"role":"build","model":"haiku","stream":"inventory","budget":150000,"event":"spawn","id":"b970f3ca-f660-408c-98e0-d8d1b28cdb2b","ts":"2026-10-08T01:45:55.552Z"}
+{"helper_id":"b970f3ca-f660-408c-98e0-d8d1b28cdb2b","tokens":141036,"outcome":"green","event":"done","id":"cf57542e-0a0d-4d5a-9d95-9307635910ff","ts":"2026-10-08T01:56:27.336Z"}
+{"helper_id":"2a5281f4-f0fb-412a-8448-75c4f366d3d9","tokens":75028,"outcome":"green","event":"done","id":"7dc1a2ad-6307-4fc1-869d-eb5e438d685a","ts":"2026-10-08T01:56:27.422Z"}
+{"role":"review","model":"opus","stream":"inventory","budget":150000,"event":"spawn","id":"531d56aa-d3d5-4f7f-9e27-d7c25c4546a0","ts":"2026-10-08T01:56:27.701Z"}
