@@ -7,6 +7,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 import os from 'os';
 import { spawnSync } from 'child_process';
@@ -510,5 +511,129 @@ describe('handoff — review r1 regressions', () => {
     assert.ok(!why.includes('IDEA-TEXT'), 'why buy does not repeat the idea');
     assert.match(why, /commercial/);
     assert.match(why, /uploads usage to the vendor/);
+  });
+});
+
+describe('handoff — review r2 regressions', () => {
+  const exists = (p) => fs.stat(p).then(() => true, () => false);
+  const bbsRun = (d, id) => path.join(d, '.claude', 'bbs', 'runs', id);
+  const marathonCli = (d) => path.join(d, '.claude', 'helpers', 'marathon', 'cli.js');
+  const realRunner = (d, onCall = () => {}) => (args, cwd) => {
+    onCall(args);
+    const r = spawnSync(process.execPath, [marathonCli(d), ...args], { cwd, encoding: 'utf-8' });
+    if (r.status !== 0) { const e = new Error(r.stderr || `exit ${r.status}`); e.stderr = r.stderr; throw e; }
+    return r.stdout;
+  };
+  const activeOf = async (d) => (await fs.readFile(path.join(d, '.claude', 'marathon', 'ACTIVE'), 'utf-8')).trim();
+  const rowsOf = async (d, id) => {
+    const s = await readJson(path.join(d, '.claude', 'marathon', id, 'streams.json'));
+    return (s.streams || s).filter(x => x.name !== '_meta');
+  };
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hor2-')); await makeHarness(dir, { withMarathon: true }); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('[medium] init printing non-JSON is refused naming what it printed and the ACTIVE pointer; ACTIVE goes back to its prior value', async () => {
+    const prior = await decided(dir, 'prior', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+    const pOut = await buildHandoff(dir, { run: prior.runId, now, marathon: true });
+    const r = await decided(dir, 'nojson', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+    const real = realRunner(dir);
+    const runner = (args, cwd) => { if (args[0] === 'init') { real(args, cwd); return 'not json'; } return real(args, cwd); };
+    await assert.rejects(() => buildHandoff(dir, { run: r.runId, now, marathon: true, marathonRunner: runner }),
+      /marathon init printed no JSON \(not json\) — check \.claude\/marathon\/ACTIVE/);
+    assert.equal(await activeOf(dir), pOut.marathonRun, 'ACTIVE is back where it was');
+    assert.equal(await exists(path.join(bbsRun(dir, r.runId), 'handoff.json')), false);
+  });
+
+  for (const file of ['finish-line.json', 'streams.json']) {
+    it(`[medium] a corrupt ${file} in the marathon run: refused without --force (ACTIVE restored, nothing written); with --force it is moved aside and the hand-off completes`, async () => {
+      const slug = `corrupt-${file.split('.')[0]}`;
+      const r = await decided(dir, slug, [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+      const real = realRunner(dir);
+      let mDir;
+      const runner = (args, cwd) => {
+        const o = real(args, cwd);
+        if (args[0] === 'init') { mDir = path.join(dir, '.claude', 'marathon', JSON.parse(o).runId); require_corrupt(mDir); }
+        return o;
+      };
+      const require_corrupt = (d) => fsSync.writeFileSync(path.join(d, file), '{ not json');
+      const before0 = await activeOf(dir);
+      await assert.rejects(() => buildHandoff(dir, { run: r.runId, now, marathon: true, marathonRunner: runner }),
+        new RegExp(`${file.replace('.', '\\.')}.*(corrupt|not valid JSON).*--force`, 's'));
+      assert.equal(await activeOf(dir), before0, 'a refusal leaves ACTIVE where it was');
+      assert.equal(await exists(path.join(bbsRun(dir, r.runId), 'handoff.json')), false);
+      // a fresh run (init cannot reuse a run whose streams.json is already corrupt), forced
+      const r2 = await decided(dir, `${slug}-f`, [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+      const out = await buildHandoff(dir, { run: r2.runId, now, marathon: true, force: true, marathonRunner: runner });
+      const names = await fs.readdir(mDir);
+      assert.ok(names.some(n => n.startsWith(`${file}.stale-`) && n.endsWith('.json')), `corrupt ${file} was moved aside: ${names}`);
+      assert.deepEqual(validateFinishLine(await readJson(path.join(mDir, 'finish-line.json'))), []);
+      assert.deepEqual((await rowsOf(dir, out.marathonRun)).map(s => s.name), ['drift-monitor']);
+    });
+  }
+
+  it('[medium] a forced refill blocks the stream rows of powers no longer rebuild/use, deletes their briefs/memos, and lists both in the result and handoff.json', async () => {
+    const two = [power(), power({ name: 'budget guard', idea: 'ceiling check' })];
+    const r = await decided(dir, 'refill', two, { 'drift-monitor': 'missing', 'budget guard': 'missing' }, { 'drift-monitor': 'rebuild', 'budget guard': 'rebuild' });
+    const first = await buildHandoff(dir, { run: r.runId, now, marathon: true });
+    const briefBG = path.join(bbsRun(dir, r.runId), 'briefs', 'budget-guard.md');
+    assert.equal(await exists(briefBG), true);
+    await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'budget guard': 'skip' }), now, force: true });
+    const out = await buildHandoff(dir, { run: r.runId, now, marathon: true, force: true });
+    assert.equal(out.marathonRun, first.marathonRun);
+    const rows = await rowsOf(dir, out.marathonRun);
+    const bg = rows.find(s => s.name === 'budget-guard');
+    assert.equal(bg.state, 'blocked');
+    assert.match(bg.next, /dropped by a forced hand-off refill on .*: this power is now skip/);
+    assert.equal(rows.find(s => s.name === 'drift-monitor').state, 'queued');
+    assert.equal(await exists(briefBG), false, 'stale brief deleted');
+    assert.deepEqual(out.stale_streams, ['budget-guard']);
+    assert.deepEqual(out.removed_files, [`.claude/bbs/runs/${r.runId}/briefs/budget-guard.md`]);
+    const hj = await readJson(path.join(bbsRun(dir, r.runId), 'handoff.json'));
+    assert.deepEqual(hj.stale_streams, ['budget-guard']);
+    assert.deepEqual(hj.removed_files, out.removed_files);
+  });
+
+  it('[medium] a forced refill with no approved power blocks every row of the previous marathon run and names that run in the note', async () => {
+    const r = await decided(dir, 'refill0', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+    const first = await buildHandoff(dir, { run: r.runId, now, marathon: true });
+    await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'skip' }), now, force: true });
+    const out = await buildHandoff(dir, { run: r.runId, now, marathon: true, force: true });
+    const rows = await rowsOf(dir, first.marathonRun);
+    assert.deepEqual(rows.map(s => s.state), ['blocked']);
+    assert.ok(out.note.includes(first.marathonRun), out.note);
+    assert.deepEqual(out.stale_streams, ['drift-monitor']);
+    assert.equal((await readJson(path.join(bbsRun(dir, r.runId), 'handoff.json'))).note, out.note);
+  });
+
+  it('[medium] a null tolerance limit (unlimited, as the marathon gate allows) is accepted and passed through to finish-line.json; a bad passes_in_a_row names the file', async () => {
+    const d = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hotol2-'));
+    try {
+      await makeHarness(d, { withMarathon: true });
+      const ex = path.join(d, '.claude', 'marathon', 'finish-line.example.json');
+      await fs.writeFile(ex, JSON.stringify({ tolerance: { high: 0, medium: 1, low: null, passes_in_a_row: 2 }, lines: [] }));
+      const r = await decided(d, 'nulltol', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+      const out = await buildHandoff(d, { run: r.runId, now, marathon: true });
+      const fl = await readJson(path.join(d, '.claude', 'marathon', out.marathonRun, 'finish-line.json'));
+      assert.deepEqual(fl.tolerance, { high: 0, medium: 1, low: null, passes_in_a_row: 2 });
+      assert.deepEqual(validateFinishLine(fl), []);
+      assert.equal(buildFinishLine([], { tolerance: { high: null, medium: null, low: null, passes_in_a_row: 1 } }).tolerance.high, null);
+      assert.throws(() => buildFinishLine([], { tolerance: { high: -1, medium: 0, low: 0, passes_in_a_row: 1 } }), /tolerance\.high/);
+      assert.throws(() => buildFinishLine([], { tolerance: { high: 0, medium: 0, low: 0, passes_in_a_row: 0 } }), /passes_in_a_row/);
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+
+  it('[medium] buildHandoff runs under the run lock: with map.lock held it fails with the locked error and writes nothing', async () => {
+    const r = await decided(dir, 'locked', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+    const rd = bbsRun(dir, r.runId);
+    await fs.writeFile(path.join(rd, 'map.lock'), `${process.pid} held\n`);
+    try {
+      await assert.rejects(() => buildHandoff(dir, { run: r.runId, now }), /map\.json is locked by another bbs command/);
+      assert.equal(await exists(path.join(rd, 'handoff.json')), false);
+      assert.equal(await exists(path.join(rd, 'briefs')), false, 'no brief written');
+    } finally { await fs.rm(path.join(rd, 'map.lock'), { force: true }); }
+    await buildHandoff(dir, { run: r.runId, now });
+    assert.equal(await exists(path.join(rd, 'handoff.json')), true);
+    assert.equal(await exists(path.join(rd, 'map.lock')), false, 'the lock is released');
   });
 });

@@ -14,7 +14,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { execFileSync } from 'child_process';
-import { readJson, writeJson, writeTextAtomic, runDir as runDirOf } from './store.js';
+import { readJson, writeJson, writeTextAtomic, runDir as runDirOf, moveAsideStale, withMapLockDetailed } from './store.js';
 import { validateFinishLine } from '../marathon/gate.js';
 import { loadConfig as loadMarathonConfig, activeRunId as marathonActiveRun, setActiveRun as setMarathonActiveRun } from '../marathon/config.js';
 import { renderStatusSafe } from './status.js';
@@ -59,10 +59,12 @@ function checkIdBase(checkName) {
  * byPower maps each approved power's name to exactly its own five lines.
  */
 export function buildFinishLine(powers, { tolerance }) {
-  if (!tolerance || typeof tolerance.high !== 'number' || typeof tolerance.medium !== 'number' ||
-      typeof tolerance.low !== 'number' || !Number.isInteger(tolerance.passes_in_a_row)) {
-    throw new Error('tolerance must have numeric high, medium, low and passes_in_a_row');
-  }
+  const limit = (v) => v === null || (Number.isInteger(v) && v >= 0);
+  const bad = !tolerance || typeof tolerance !== 'object' ? ['tolerance must be an object'] : [
+    ...['high', 'medium', 'low'].filter(k => !limit(tolerance[k])).map(k => `tolerance.${k} must be a non-negative integer or null for unlimited (got ${JSON.stringify(tolerance[k]) ?? 'nothing'})`),
+    ...(Number.isInteger(tolerance.passes_in_a_row) && tolerance.passes_in_a_row >= 1 ? [] : [`tolerance.passes_in_a_row must be a positive integer (got ${JSON.stringify(tolerance.passes_in_a_row) ?? 'nothing'})`])
+  ];
+  if (bad.length) throw new Error(bad.join('; '));
 
   const approved = Array.isArray(powers) ?
     powers.filter(p => ['rebuild', 'use'].includes(p.verdict)) :
@@ -377,10 +379,34 @@ function checkInit(initData, projectDir, runsRoot) {
  * force: replace handoff.json and refill a marathon run that already holds a hand-off.
  * marathonRunner: injectable (args, cwd) => stdout for testing, default execFileSync of the marathon CLI.
  */
-export async function buildHandoff(projectDir, { run, now, force, marathon, marathonRunner, cfg } = {}) {
+export async function buildHandoff(projectDir, opts = {}) {
+  const cfg = opts.cfg || await loadConfig(projectDir);
+  const runDir = runDirOf(projectDir, opts.run, cfg);
+  // Everything runs under the run lock verdict/map hold: verdicts.json, powers.json and handoff.json are read and
+  // written inside it, so a concurrent verdict --from or handoff cannot interleave.
+  const { result, warning } = await withMapLockDetailed(runDir, () => buildHandoffLocked(projectDir, runDir, { ...opts, cfg }));
+  return warning ? { ...result, warning } : result;
+}
+
+async function claimJson(file, data) {
+  const text = JSON.stringify(data, null, 2) + '\n';
+  const tmp = `${file}.${Math.random().toString(16).slice(2)}.tmp`;
+  try {
+    await fs.writeFile(tmp, text);
+    try { await fs.link(tmp, file); }
+    catch (err) {
+      if (err.code === 'EEXIST') throw new Error('handoff.json exists — pass --force to replace it (it appeared while this hand-off was running)');
+      if (!['EPERM', 'ENOTSUP', 'ENOSYS', 'EXDEV', 'EACCES'].includes(err.code)) throw err;
+      let fh;
+      try { fh = await fs.open(file, 'wx'); }
+      catch (e) { if (e.code === 'EEXIST') throw new Error('handoff.json exists — pass --force to replace it (it appeared while this hand-off was running)'); throw e; }
+      try { await fh.writeFile(text); await fh.sync(); } finally { await fh.close(); }
+    }
+  } finally { await fs.rm(tmp, { force: true }); }
+}
+
+async function buildHandoffLocked(projectDir, runDir, { run, now, force, marathon, marathonRunner, cfg }) {
   if (typeof now !== 'function') now = () => new Date();
-  if (!cfg) cfg = await loadConfig(projectDir);
-  const runDir = runDirOf(projectDir, run, cfg);
 
   // Check that verdicts are recorded
   const verdicts = await readJson(path.join(runDir, 'verdicts.json'));
@@ -435,7 +461,13 @@ export async function buildHandoff(projectDir, { run, now, force, marathon, mara
   const flFile = { tolerance: finishLine.tolerance, lines: finishLine.lines };
 
   // Marathon preflight, before any write
-  const useMarathon = marathon && approved.length > 0;
+  let prevMarathonRun = null; // forced hand-off with nothing approved: the run the previous hand-off filled
+  if (force && marathon && approved.length === 0) {
+    let prev = null;
+    try { prev = await readJson(handoffPath); } catch { /* unreadable old handoff.json: it is replaced below */ }
+    if (typeof prev?.marathonRun === 'string' && MARATHON_RUN_ID.test(prev.marathonRun)) prevMarathonRun = prev.marathonRun;
+  }
+  const useMarathon = marathon && (approved.length > 0 || prevMarathonRun !== null);
   let marathonCliPath = null;
   let runsRoot = null;
   let mcfg = null;
@@ -480,6 +512,9 @@ export async function buildHandoff(projectDir, { run, now, force, marathon, mara
   // Marathon integration
   let marathonRun = null;
   let resume_line = null;
+  let stale_streams = [];
+  let removed_files = [];
+  let note = approved.length === 0 ? 'no approved power — nothing to hand off to a marathon run' : null;
 
   if (useMarathon) {
     if (!marathonRunner) {
@@ -487,28 +522,91 @@ export async function buildHandoff(projectDir, { run, now, force, marathon, mara
         cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000
       });
     }
-
-    const prevActive = await marathonActiveRun(projectDir, mcfg);
-    let initData;
-    try {
-      initData = JSON.parse(marathonRunner(['init', marathonSlug(run)], projectDir));
-    } catch (err) {
-      throw new Error(`marathon: ${firstLine(err)}`);
-    }
-    const { runId: mRun, dir: mDir } = checkInit(initData, projectDir, runsRoot);
-    const mRel = posix(path.relative(projectDir, mDir));
-
-    // A run that already holds a hand-off is refilled only with force
-    const oldFl = await readJson(path.join(mDir, 'finish-line.json'));
-    const oldStreams = await readJson(path.join(mDir, 'streams.json'));
-    const oldRows = (Array.isArray(oldStreams) ? oldStreams : (oldStreams?.streams || [])).filter(s => s?.name !== '_meta');
-    const holds = oldRows.length > 0 || (Array.isArray(oldFl?.lines) && oldFl.lines.some(l => HANDOFF_LINE.test(String(l?.id))));
-    if (holds && !force) {
-      if (prevActive !== mRun) {
-        if (prevActive) await setMarathonActiveRun(projectDir, prevActive, mcfg);
-        else await fs.rm(path.join(runsRoot, 'ACTIVE'), { force: true });
+    const verdictNow = (slug) => {
+      const hit = allPowers.find(p => slugPower(p.name) === slug);
+      return hit ? verdicts.rows[hit.name].decision : 'no longer in powers.json';
+    };
+    // Block (the marathon CLI has no remove verb) every row of `dir` whose name is not in `keep`
+    const blockStale = async (id, rows, keep) => {
+      const ts = now().toISOString();
+      const names = [];
+      for (const row of rows) {
+        if (keep.has(row.name)) continue;
+        marathonRunner(['stream', row.name, '--run', id, 'state=blocked', `next=dropped by a forced hand-off refill on ${ts}: this power is now ${verdictNow(row.name)}`], projectDir);
+        names.push(row.name);
       }
-      throw new Error(`marathon run ${mRun} already holds a hand-off — pass --force to refill it or pick another source slug`);
+      return names;
+    };
+    const rowsOfStreams = (st) => (Array.isArray(st) ? st : (st?.streams || [])).filter(r => r?.name !== '_meta');
+
+    if (approved.length === 0) {
+      // forced hand-off with nothing approved: the run the previous hand-off filled must not keep queued streams
+      const pDir = path.join(runsRoot, prevMarathonRun);
+      let rows = [];
+      try { rows = rowsOfStreams(await readJson(path.join(pDir, 'streams.json'))); }
+      catch (err) { throw new Error(`marathon run ${prevMarathonRun} (from the previous hand-off): ${firstLine(err)} — its stream rows were not blocked; fix or remove it, then re-run with --force`); }
+      try { stale_streams = await blockStale(prevMarathonRun, rows, new Set()); }
+      catch (err) { throw new Error(`marathon: ${firstLine(err)} — the previous hand-off's run ${prevMarathonRun} is only partly blocked; re-run with --force`); }
+      note = `no approved power — nothing to hand off to a marathon run; the previous hand-off's run ${prevMarathonRun} had ${stale_streams.length} stream${stale_streams.length === 1 ? '' : 's'} blocked` +
+        ' (a forced refill drops them); its finish-line.json is unchanged — close or remove that run';
+    } else {
+    const prevActive = await marathonActiveRun(projectDir, mcfg);
+    const restoreActive = async () => {
+      const now0 = await marathonActiveRun(projectDir, mcfg);
+      if (now0 === prevActive) return;
+      if (prevActive) await setMarathonActiveRun(projectDir, prevActive, mcfg);
+      else await fs.rm(path.join(runsRoot, 'ACTIVE'), { force: true });
+    };
+    const activeWas = () => (prevActive ? `restored to ${prevActive}` : 'cleared');
+    let mRun = null;
+    let mDir = null;
+    let mRel = null;
+    let oldRows;
+    try {
+      // From here init may have moved ACTIVE: every failure before the guarded block restores it and says so
+      let raw;
+      try { raw = marathonRunner(['init', marathonSlug(run)], projectDir); }
+      catch (err) { throw new Error(`marathon: ${firstLine(err)}`); }
+      let initData;
+      try { initData = JSON.parse(raw); }
+      catch { initData = undefined; }
+      if (initData === undefined) {
+        const shown = String(raw).trim().slice(0, 80);
+        await restoreActive();
+        throw new Error(`marathon init printed no JSON (${shown}) — check .claude/marathon/ACTIVE (it was ${activeWas()})`);
+      }
+      try { ({ runId: mRun, dir: mDir } = checkInit(initData, projectDir, runsRoot)); }
+      catch (err) { await restoreActive(); throw new Error(`${err.message} — ACTIVE was ${activeWas()}; check .claude/marathon/ACTIVE`); }
+      mRel = posix(path.relative(projectDir, mDir));
+
+      // A run that already holds a hand-off is refilled only with force; an unreadable file counts as held under force
+      const corrupt = [];
+      const looseRead = async (name) => {
+        try { return await readJson(path.join(mDir, name)); }
+        catch (err) {
+          if (!String(err.message).startsWith('corrupt JSON in ')) throw err;
+          corrupt.push(name);
+          return null;
+        }
+      };
+      const oldFl = await looseRead('finish-line.json');
+      const oldStreams = await looseRead('streams.json');
+      oldRows = rowsOfStreams(oldStreams);
+      if (corrupt.length && !force) {
+        await restoreActive();
+        throw new Error(`marathon run ${mRun}: ${corrupt.join(' and ')} is not valid JSON — pass --force to move it aside as <name>.stale-<ts>.json and refill the run (ACTIVE was ${activeWas()})`);
+      }
+      const holds = corrupt.length > 0 || oldRows.length > 0 || (Array.isArray(oldFl?.lines) && oldFl.lines.some(l => HANDOFF_LINE.test(String(l?.id))));
+      if (holds && !force) {
+        await restoreActive();
+        throw new Error(`marathon run ${mRun} already holds a hand-off — pass --force to refill it or pick another source slug`);
+      }
+      if (corrupt.length) await moveAsideStale(mDir, corrupt, now);
+    } catch (err) {
+      if (mRun && !String(err.message).includes('ACTIVE')) {
+        throw new Error(`marathon: ${firstLine(err)} — marathon run ${mRun} was created and is ACTIVE but incomplete — re-run cli.js handoff --marathon --force to refill it, or remove ${mRel}`);
+      }
+      throw err;
     }
 
     try {
@@ -533,18 +631,30 @@ export async function buildHandoff(projectDir, { run, now, force, marathon, mara
       for (const p of outputPowers) {
         marathonRunner(['stream', p.slug, '--run', mRun, 'state=queued', `plan=${p.brief_path}`, 'next=read the brief, write the contract and failing tests'], projectDir);
       }
+      if (force) stale_streams = await blockStale(mRun, oldRows, new Set(outputPowers.map(p => p.slug)));
     } catch (err) {
       throw new Error(`marathon: ${firstLine(err)} — marathon run ${mRun} was created and is ACTIVE but incomplete — re-run cli.js handoff --marathon --force to refill it, or remove ${mRel}`);
     }
 
     marathonRun = mRun;
     resume_line = `/w-marathon --resume ${marathonRun}`;
+    }
   }
 
-  const note = approved.length === 0 ? 'no approved power — nothing to hand off to a marathon run' : null;
+  // A forced refill leaves no brief or memo of a power that is no longer rebuild/use/buy in this hand-off
+  if (force) {
+    const keep = { briefs: new Set(outputPowers.map(p => `${p.slug}.md`)), memos: new Set(memos.map(m => `${m.slug}.md`)) };
+    for (const [dirName, dirPath] of [['briefs', briefsDir], ['memos', memosDir]]) {
+      for (const f of (await fs.readdir(dirPath)).sort()) {
+        if (!f.endsWith('.md') || keep[dirName].has(f)) continue;
+        await fs.rm(path.join(dirPath, f), { force: true });
+        removed_files.push(posix(path.relative(projectDir, path.join(dirPath, f))));
+      }
+    }
+  }
 
-  // handoff.json LAST: it marks the step as done
-  await writeJson(handoffPath, {
+  // handoff.json LAST: it marks the step as done. Claimed exclusively unless forced: nothing may have created it meanwhile.
+  const handoffDoc = {
     run,
     source: source || null,
     marathonRun,
@@ -553,8 +663,11 @@ export async function buildHandoff(projectDir, { run, now, force, marathon, mara
     skipped,
     finish_line: flFile,
     note,
+    ...(force ? { stale_streams, removed_files } : {}),
     ts: now().toISOString()
-  });
+  };
+  if (force) await writeJson(handoffPath, handoffDoc);
+  else await claimJson(handoffPath, handoffDoc);
 
   await renderStatusSafe(runDir);
 
@@ -566,6 +679,7 @@ export async function buildHandoff(projectDir, { run, now, force, marathon, mara
     memos,
     skipped,
     note,
+    ...(force ? { stale_streams, removed_files } : {}),
     next: 'done'
   };
 }
