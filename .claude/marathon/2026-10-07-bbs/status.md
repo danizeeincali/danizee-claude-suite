@@ -1,17 +1,17 @@
 # Marathon 2026-10-07-bbs
 
 - State: RUNNING
-- Budget: 1,100,209 / 10,000,000 tokens
+- Budget: 1,184,786 / 10,000,000 tokens
 - Allowance: 91% (ceiling 95%)
 - Gate (run-wide, all streams): 2/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "intake" (next: fix round for review r5 (1 medium, 4 low); then unit run + review r6 covering the fixes; close stream when clean) — /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
+- Next for you: Continue stream "intake" (next: review round 6 (opus, angle 6: facts) covers the r5 fixes; clean → close stream, merge to main, start fetch) — /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
 
 ## Streams
 
 | Stream | Isolation | Plan | State | Gate | Phase | Next | Tasks | Escapes |
 |---|---|---|---|---|---|---|---|---|
-| intake | ../claude-suite-intake | .claude/plans/2026-10-07-w-bbs.md | active | clean 2/2 | /w-marathon · 4.7 | fix round for review r5 (1 medium, 4 low); then unit run + review r6 covering the fixes; close stream when clean |  | 0 |
+| intake | ../claude-suite-intake | .claude/plans/2026-10-07-w-bbs.md | active | clean 2/2 | /w-marathon · 4.5 | review round 6 (opus, angle 6: facts) covers the r5 fixes; clean → close stream, merge to main, start fetch |  | 0 |
 | fetch |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | fetch.js guards + egress log + clone; stubbed tests |  | 0 |
 | inventory |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | inventory.js schema/cap/brief + verbs |  | 0 |
 | harness-map |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | harness-map.js index + IDF-cosine matchPower + verbs |  | 0 |
@@ -24,7 +24,7 @@
 | Line | Owner | Status | Actual | Target |
 |---|---|---|---|---|
 | Green end-to-end runs in a row | build | failing | 0 | at_least 6 |
-| Green unit runs in a row | build | met | 5 | at_least 3 |
+| Green unit runs in a row | build | met | 6 | at_least 3 |
 | Clean reviews in a row | build | met | 2 | at_least 2 |
 | High findings in the latest review | build | met | 0 | at_most 0 |
 | Open high findings | build | met | 0 | at_most 0 |
