@@ -20,3 +20,4 @@
 {"stream":"verdict","counts":{"high":0,"medium":3,"low":1},"angle":"the three safety probes: egress, secrets, sandbox escape","tokens":106209,"commit":"1d5572f","pass":false,"round":4,"id":"2b48b0cf-406d-41c9-860d-be6a20331643","ts":"2026-10-08T03:53:20.947Z"}
 {"stream":"verdict","counts":{"high":0,"medium":1,"low":1},"angle":"accessibility","tokens":101609,"commit":"4d9da8c","pass":true,"round":5,"id":"87b87518-e053-4557-bd3a-bd67e084d8ea","ts":"2026-10-08T04:04:23.727Z"}
 {"stream":"verdict","counts":{"high":0,"medium":0,"low":5},"angle":"facts and content","tokens":137714,"commit":"7caf67d","pass":true,"round":6,"id":"7dfef390-1cc2-4515-8615-e1ca8623476f","ts":"2026-10-08T04:14:29.242Z"}
+{"stream":"handoff","counts":{"high":3,"medium":6,"low":2},"angle":"one input method at a time","tokens":120505,"commit":"d1c0b20","pass":false,"round":1,"id":"d055c38c-137a-4213-8155-3041ffeac971","ts":"2026-10-08T04:32:32.526Z"}

@@ -112,3 +112,5 @@
 {"helper_id":"fa489fcd-de24-4090-84b8-2cb6973dd77a","tokens":160494,"outcome":"green","event":"done","id":"628192e2-b13d-4e7a-ac17-54e92d73ffa1","ts":"2026-10-08T04:28:26.470Z"}
 {"helper_id":"919cdf52-096c-4a6b-b6a4-1491be241049","tokens":85798,"outcome":"green","event":"done","id":"d33651dc-2bff-4463-84b8-6145c13f6ac7","ts":"2026-10-08T04:28:26.561Z"}
 {"role":"review","model":"opus","stream":"handoff","budget":150000,"event":"spawn","id":"7a85080c-72c9-4590-b673-a0411cdc9b24","ts":"2026-10-08T04:28:26.887Z"}
+{"helper_id":"7a85080c-72c9-4590-b673-a0411cdc9b24","tokens":120505,"outcome":"green","event":"done","id":"71afb327-8bed-45ac-9dc3-2ed0b46cbec0","ts":"2026-10-08T04:32:32.437Z"}
+{"role":"fix","model":"opus","stream":"handoff","budget":200000,"event":"spawn","id":"5c3dc61d-706b-4cd7-99c4-ceea0e75f82f","ts":"2026-10-08T04:32:34.171Z"}

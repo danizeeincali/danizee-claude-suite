@@ -63,10 +63,10 @@
       "name": "handoff",
       "state": "active",
       "plan": ".claude/plans/2026-10-07-w-bbs.md",
-      "next": "review round 1 (opus) on 7caf67d..HEAD (includes verdict r6 fixes)",
+      "next": "opus fix round for review r1 (3 high: undecided powers, marathon slug, brief path; 6 medium; 2 low); then unit run + review r2",
       "tasks": [],
       "isolation": "../claude-suite-handoff",
-      "phase": "4.5",
+      "phase": "4.7",
       "base": "7330fb7cbc0cefb7c3a640ca7f6f7159afb5fb9e"
     },
     {
