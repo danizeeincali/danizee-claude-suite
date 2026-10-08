@@ -256,7 +256,7 @@ describe('verdict — computeVerdicts, recordProbe, recordDecisions', () => {
     const r = await prepared('v7', [power()], { 'drift-monitor': 'missing' });
     await computeVerdicts(dir, { run: r.runId, sandbox, now });
     await recordProbe(dir, { run: r.runId, power: 'drift-monitor', result: 'clean', now });
-    await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now });
+    await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now, sandbox });
     const again = await computeVerdicts(dir, { run: r.runId, sandbox, now });
     assert.equal(again.rows['drift-monitor'].probe.result, 'clean');
     assert.equal(again.rows['drift-monitor'].decision, 'use');
@@ -452,7 +452,7 @@ describe('verdict r1 — library: sandbox.required_for_use, probe evidence, prob
     const r = await prepared('clr', [power()], { 'drift-monitor': 'missing' });
     await computeVerdicts(dir, { run: r.runId, sandbox, now });
     await recordProbe(dir, { run: r.runId, power: 'drift-monitor', result: 'clean', now });
-    await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now });
+    await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now, sandbox });
     const labelsFile = path.join(runDir(r.runId), 'labels.jsonl');
     const labelsBefore = await fs.readFile(labelsFile);
     await assert.rejects(() => recordProbe(dir, { run: r.runId, power: 'drift-monitor', result: 'found', now }), /already probed.*--force/);
@@ -641,7 +641,7 @@ describe('verdict r2 — registry, repair, powers_ts, corrupt verdicts.json, dup
     const r = await prepared('clrreg', [power(), power({ name: 'b' })], { 'drift-monitor': 'missing', b: 'missing' });
     await computeVerdicts(dir, { run: r.runId, sandbox, now });
     await recordProbe(dir, { run: r.runId, power: 'drift-monitor', result: 'clean', now });
-    await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'use', b: 'rebuild' }), now });
+    await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'use', b: 'rebuild' }), now, sandbox });
     const full = await lookupSource(dir, r.identity);
     assert.deepEqual(full.decisions, { 'drift-monitor': 'use', b: 'rebuild' });
     assert.equal(full.complete, true);
@@ -663,7 +663,7 @@ describe('verdict r2 — registry, repair, powers_ts, corrupt verdicts.json, dup
     const r = await prepared('clrsb', [power()], { 'drift-monitor': 'missing' });
     await computeVerdicts(dir, { run: r.runId, sandbox, now });
     await recordProbe(dir, { run: r.runId, power: 'drift-monitor', result: 'clean', now });
-    await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now });
+    await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now, sandbox });
     const failing = async () => { throw new Error('disk full'); };
     const out = await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now, appendRegistryImpl: failing });
     assert.equal(out.rows['drift-monitor'].decision, null);
@@ -681,7 +681,7 @@ describe('verdict r2 — registry, repair, powers_ts, corrupt verdicts.json, dup
     const a = await prepared('wsb', [power()], { 'drift-monitor': 'missing' });
     await computeVerdicts(dir, { run: a.runId, sandbox, now });
     await recordProbe(dir, { run: a.runId, power: 'drift-monitor', result: 'clean', now });
-    await recordDecisions(dir, { run: a.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now });
+    await recordDecisions(dir, { run: a.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now, sandbox });
     await computeVerdicts(dir, { run: a.runId, sandbox: noSandbox, now });
     let w = await withdrawals(a.runId);
     assert.equal(w.length, 1);
@@ -861,7 +861,9 @@ describe('verdict r2 — sandbox reasons', () => {
 
   it('docker stderr in the reason is stripped of control characters and capped at SANDBOX_STDERR_MAX_CHARS (200)', async () => {
     assert.equal(SANDBOX_STDERR_MAX_CHARS, 200);
-    const dockerSays = (stderr) => detectSandbox({ exec: (cmd) => { if (cmd === 'docker') return { status: 1, stderr }; return enoent(); }, platform: 'darwin' });
+    // r4 decision (lead, 2026-10-07): only `docker info` fails here; `context inspect` is ENOENT (no contexts),
+    // so a generic inspect failure can fail CLOSED without this test standing in the way.
+    const dockerSays = (stderr) => detectSandbox({ exec: (cmd, args) => { if (cmd === 'docker' && args[0] === 'info') return { status: 1, stderr }; return enoent(); }, platform: 'darwin', env: {} });
     const dirty = await dockerSays('\u001b[31mCannot connect\u0007 to the daemon\u001b[0m\nsecond line');
     assert.ok(!CONTROL.test(dirty.reason), dirty.reason);
     assert.match(dirty.reason, /docker is not running \(\[31mCannot connect to the daemon\[0m\)/);
@@ -994,5 +996,188 @@ describe('verdict r3 — Unicode format characters and code-point cuts', () => {
     assert.ok(!LONE_SURROGATE.test(cut), JSON.stringify(cut.slice(-20)));
     assert.equal(cut, 'a'.repeat(2047) + '\u{1F600} …[truncated]');
     assert.equal(sanitizeEvidence('a'.repeat(2047) + '\u{1F600}'), 'a'.repeat(2047) + '\u{1F600}');
+  });
+});
+
+describe('verdict r4 — the `use` gate re-derives the row and re-checks the sandbox inside the lock', () => {
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-vr4-')); await makeHarness(dir); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+  const runDir = (id) => path.join(dir, '.claude', 'bbs', 'runs', id);
+  const noMit = { ...DEFAULT_CONFIG, licences: { ...DEFAULT_CONFIG.licences, permissive: DEFAULT_CONFIG.licences.permissive.filter(x => x !== 'MIT') } };
+
+  async function probedClean(slug, powers = [power()], judgments = { 'drift-monitor': 'missing' }) {
+    const r = await intake(dir, '-', { stdin: 'r4 tool ' + slug, now, slug });
+    await writeInventory(dir, { run: r.runId, input: JSON.stringify(powers), now });
+    await buildMap(dir, { run: r.runId, now });
+    await recordJudgments(dir, { run: r.runId, input: JSON.stringify(judgments), now });
+    await computeVerdicts(dir, { run: r.runId, sandbox, now });
+    for (const p of powers) await recordProbe(dir, { run: r.runId, power: p.name, result: 'clean', now, sandbox });
+    return r;
+  }
+
+  it('a stored present sandbox is not trusted: an injected absent check refuses use, updates vj.sandbox and recomputes the rows', async () => {
+    const r = await probedClean('stale');
+    const before = await readJson(path.join(runDir(r.runId), 'verdicts.json'));
+    assert.deepEqual(before.rows['drift-monitor'].legal, ['rebuild', 'use', 'skip'], 'the stored row lists use');
+    await assert.rejects(() => recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now, sandbox: noSandbox }),
+      (e) => e instanceof PolicyRefused && /use is not legal for drift-monitor/.test(e.message));
+    const vj = await readJson(path.join(runDir(r.runId), 'verdicts.json'));
+    assert.deepEqual(vj.sandbox, noSandbox, 'vj.sandbox updated from the fresh check');
+    assert.deepEqual(vj.rows['drift-monitor'].legal, ['rebuild', 'skip']);
+    assert.equal(vj.rows['drift-monitor'].decision, null);
+    assert.deepEqual(vj.decisions, {});
+  });
+
+  it('without an injected sandbox the fresh check runs detectSandbox (exec injected): docker gone → use refused', async () => {
+    const r = await probedClean('detect');
+    const gone = () => { throw Object.assign(new Error('spawnSync docker ENOENT'), { code: 'ENOENT' }); };
+    await assert.rejects(() => recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now, exec: gone }), (e) => e instanceof PolicyRefused);
+    const vj = await readJson(path.join(runDir(r.runId), 'verdicts.json'));
+    assert.equal(vj.sandbox.present, false);
+    assert.match(vj.sandbox.reason, /docker is not installed|docker daemon is remote/, 'the reason comes from detectSandbox (DOCKER_HOST, when set, is read from the real env)');
+    const ok = (cmd, args) => (cmd === 'docker' && args[0] === 'info') || (cmd === 'docker' && args[0] === 'context') ? { status: 0, stdout: 'unix:///var/run/docker.sock\n', stderr: '' } : gone();
+    // vj.sandbox is now absent: use stays refused even when the machine has a sandbox again, until cli.js verdict recomputes
+    await assert.rejects(() => recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now, exec: ok }), (e) => e instanceof PolicyRefused);
+  });
+
+  it('a fresh present check that differs from the stored one is recorded: use accepted and sandbox_changed: true', async () => {
+    const r = await probedClean('changed');
+    const unshare = { present: true, kind: 'unshare', reason: 'unshare is available' };
+    const out = await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now, sandbox: unshare });
+    assert.equal(out.sandbox_changed, true);
+    assert.equal(out.decided, 1);
+    const vj = await readJson(path.join(runDir(r.runId), 'verdicts.json'));
+    assert.deepEqual(vj.sandbox, unshare);
+    assert.equal(vj.decisions['drift-monitor'], 'use');
+    const same = await probedClean('same');
+    const out2 = await recordDecisions(dir, { run: same.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now, sandbox });
+    assert.equal(out2.sandbox_changed, undefined, 'an unchanged sandbox is not reported as changed');
+  });
+
+  it('an absent fresh check clears a `use` already recorded on another row, with a withdrawal label naming the sandbox', async () => {
+    const r = await probedClean('other', [power(), power({ name: 'b' })], { 'drift-monitor': 'missing', b: 'missing' });
+    await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now, sandbox });
+    await assert.rejects(() => recordDecisions(dir, { run: r.runId, input: JSON.stringify({ b: 'use' }), now, sandbox: noSandbox }), (e) => e instanceof PolicyRefused);
+    const vj = await readJson(path.join(runDir(r.runId), 'verdicts.json'));
+    assert.equal(vj.rows['drift-monitor'].decision, null);
+    assert.deepEqual(vj.decisions, {});
+    const w = (await readJsonl(path.join(runDir(r.runId), 'labels.jsonl'))).filter(l => l.withdrawn != null);
+    assert.equal(w.length, 1);
+    assert.equal(w[0].power, 'drift-monitor');
+    assert.equal(w[0].withdrawn, 'use');
+    assert.match(w[0].reason, /no sandbox/);
+  });
+
+  it('the licence class is re-derived from the current cfg: MIT moved out of permissive → use refused (recordDecisions) and removed (recordProbe)', async () => {
+    const r = await probedClean('lic');
+    await assert.rejects(() => recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now, sandbox, cfg: noMit }),
+      (e) => e instanceof PolicyRefused && /use is not legal/.test(e.message));
+    const vj = await readJson(path.join(runDir(r.runId), 'verdicts.json'));
+    assert.equal(vj.rows['drift-monitor'].licence_class, 'none');
+    const r2 = await probedClean('lic2');
+    const p = await recordProbe(dir, { run: r2.runId, power: 'drift-monitor', result: 'clean', now, force: true, cfg: noMit, sandbox });
+    assert.equal(p.licence_class, 'none');
+    assert.deepEqual(p.legal, ['rebuild', 'skip']);
+  });
+
+  it('cli: --decide use against a stale present verdicts.json with BBS_SANDBOX=absent exits 2 and records the absent sandbox', async () => {
+    const r = await probedClean('cli');
+    const base = { ...process.env };
+    delete base.BBS_SANDBOX;
+    const c = spawnSync(process.execPath, [CLI, 'verdict', '--decide', 'drift-monitor=use', '--run', r.runId, '--project', dir], { cwd: dir, encoding: 'utf-8', env: { ...base, BBS_SANDBOX: 'absent' } });
+    assert.equal(c.status, 2, c.stderr);
+    assert.match(c.stderr, /^bbs: refused: /m);
+    const vj = await readJson(path.join(runDir(r.runId), 'verdicts.json'));
+    assert.equal(vj.sandbox.present, false);
+    assert.match(vj.sandbox.reason, /BBS_SANDBOX=absent/);
+  });
+});
+
+describe('verdict r4 — a WITH exception is classified', () => {
+  it('a permission-granting exception keeps the base class; a restrictive one never yields permissive', () => {
+    const cfg = DEFAULT_CONFIG;
+    assert.equal(licenceClass('Apache-2.0 WITH LLVM-exception', cfg), 'permissive');
+    assert.equal(licenceClass('apache-2.0 with llvm-EXCEPTION', cfg), 'permissive', 'the allowlist is case-insensitive');
+    assert.equal(licenceClass('GPL-2.0-only WITH Classpath-exception-2.0', cfg), 'copyleft');
+    assert.equal(licenceClass('Apache-2.0 WITH Commons-Clause', cfg), 'none');
+    assert.equal(licenceClass('MIT WITH GPL-3.0', cfg), 'copyleft');
+    assert.equal(licenceClass('MIT WITH Proprietary', cfg), 'commercial');
+    assert.equal(licenceClass('GPL-3.0 WITH Commons-Clause', cfg), 'copyleft');
+    assert.equal(licenceClass('(Apache-2.0 WITH Commons-Clause) OR GPL-3.0', cfg), 'copyleft');
+  });
+});
+
+describe('verdict r4 — a failed docker context inspect is not a local endpoint', () => {
+  const enoent = () => { throw Object.assign(new Error('spawnSync x ENOENT'), { code: 'ENOENT' }); };
+  const withInspect = (inspect) => {
+    const calls = [];
+    const exec = (cmd, args) => {
+      calls.push([cmd, ...args]);
+      if (cmd !== 'docker') return enoent();
+      if (args[0] === 'context') return inspect();
+      return { status: 0, stderr: '' };
+    };
+    return { calls, exec };
+  };
+
+  it('inspect timed out → absent naming the timeout; docker info is never run', async () => {
+    const { calls, exec } = withInspect(() => { throw Object.assign(new Error('spawnSync docker ETIMEDOUT'), { code: 'ETIMEDOUT' }); });
+    const out = await detectSandbox({ exec, platform: 'darwin', env: {} });
+    assert.equal(out.present, false);
+    assert.equal(out.reason, 'docker context inspect timed out (5 s timeout) — not treating the daemon as local');
+    assert.ok(!calls.some(c => c[1] === 'info'), JSON.stringify(calls));
+  });
+
+  it('inspect failing to spawn (EACCES) → absent naming the error; docker info is never run', async () => {
+    const { calls, exec } = withInspect(() => { throw Object.assign(new Error('spawnSync docker EACCES'), { code: 'EACCES' }); });
+    const out = await detectSandbox({ exec, platform: 'darwin', env: {} });
+    assert.equal(out.present, false);
+    assert.equal(out.reason, 'docker context inspect failed (EACCES) — not treating the daemon as local');
+    assert.ok(!calls.some(c => c[1] === 'info'), JSON.stringify(calls));
+  });
+
+  it('inspect exits non-zero with a generic error → absent naming the sanitised stderr line; docker info is never run', async () => {
+    const { calls, exec } = withInspect(() => ({ status: 1, stdout: '', stderr: 'error: context "remote" does not exist at tcp://admin:pw@10.0.0.9:2376/x\nmore' }));
+    const out = await detectSandbox({ exec, platform: 'darwin', env: {} });
+    assert.equal(out.present, false);
+    assert.equal(out.kind, null);
+    assert.equal(out.reason, 'docker context inspect failed (error: context "remote" does not exist at tcp://10.0.0.9:2376) — not treating the daemon as local');
+    assert.ok(!calls.some(c => c[1] === 'info'), JSON.stringify(calls));
+    const silent = withInspect(() => ({ status: 3, stdout: '', stderr: '' }));
+    const out2 = await detectSandbox({ exec: silent.exec, platform: 'darwin', env: {} });
+    assert.equal(out2.reason, 'docker context inspect failed (exit 3) — not treating the daemon as local');
+    assert.ok(!silent.calls.some(c => c[1] === 'info'));
+  });
+
+  it('inspect unknown to this docker (no contexts) → proceeds to docker info', async () => {
+    for (const stderr of ["docker: 'context' is not a docker command.", 'unknown flag: --format', 'Error: unknown command "context" for "podman"']) {
+      const { calls, exec } = withInspect(() => ({ status: 1, stdout: '', stderr }));
+      const out = await detectSandbox({ exec, platform: 'darwin', env: {} });
+      assert.deepEqual(out, { present: true, kind: 'docker', reason: 'docker info succeeded' }, stderr);
+      assert.ok(calls.some(c => c[1] === 'info'));
+    }
+  });
+});
+
+describe('verdict r4 — sandbox stderr is redacted before it is stored', () => {
+  const enoent = () => { throw Object.assign(new Error('spawnSync x ENOENT'), { code: 'ENOENT' }); };
+  it('a home path becomes ~, URL credentials are masked, a remote endpoint in stderr keeps only scheme + host', async () => {
+    const infoSays = (stderr, platform = 'darwin', unshare = enoent) => detectSandbox({
+      exec: (cmd, args) => { if (cmd === 'docker' && args[0] === 'info') return { status: 1, stderr }; if (cmd === 'unshare') return unshare(); return enoent(); },
+      platform, env: {}, homedir: '/Users/me'
+    });
+    const a = await infoSays('Cannot connect to the Docker daemon at unix:///Users/me/.docker/run/docker.sock. Is the docker daemon running?');
+    assert.ok(a.reason.includes('~/.docker'), a.reason);
+    assert.ok(!a.reason.includes('/Users/me'), a.reason);
+    const b = await infoSays('error during connect: tcp://admin:s3cret@10.0.0.5:2376/v1.45/info: refused; see https://u:p@h.example/x?token=abc');
+    assert.ok(!b.reason.includes('s3cret') && !b.reason.includes('admin'), b.reason);
+    assert.ok(!b.reason.includes('u:p') && !b.reason.includes('abc'), b.reason);
+    assert.ok(b.reason.includes('tcp://10.0.0.5:2376'), b.reason);
+    const c = await infoSays('x', 'linux', () => ({ status: 1, stderr: 'unshare: cannot open /Users/me/.config/x: Permission denied' }));
+    assert.ok(c.reason.includes('~/.config/x'), c.reason);
+    assert.ok(!c.reason.includes('/Users/me'), c.reason);
+    const d = await infoSays('no such file /Users/meow/x');
+    assert.ok(d.reason.includes('/Users/meow/x'), 'only the home directory itself is replaced, not a prefix of another name');
   });
 });

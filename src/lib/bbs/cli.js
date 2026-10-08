@@ -284,7 +284,7 @@ const VERBS = {
     try {
       let result;
       if (probe) {
-        result = await recordProbe(projectDir, { run: id, power: probe[0], result: probe[1], evidence: flags.evidence, now, force, cfg });
+        result = await recordProbe(projectDir, { run: id, power: probe[0], result: probe[1], evidence: flags.evidence, now, force, cfg, sandbox: useSandboxOverride(sandboxOverride) });
       } else if (decide || typeof flags.from === 'string') {
         let input;
         let label = 'decisions';
@@ -301,7 +301,7 @@ const VERBS = {
           }
           label = `--from ${flags.from}`;
         }
-        result = await recordDecisions(projectDir, { run: id, input, now, force, cfg, label });
+        result = await recordDecisions(projectDir, { run: id, input, now, force, cfg, label, sandbox: useSandboxOverride(sandboxOverride) });
       } else if (flags.table) {
         // A view: print the recorded table when there is one, so viewing never re-runs the sandbox check
         const existing = force ? null : await readJson(path.join(dir, 'verdicts.json'));

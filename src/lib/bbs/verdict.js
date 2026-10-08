@@ -5,6 +5,7 @@
  * without a permissive licence, a sandbox on this machine and a clean network probe.
  */
 
+import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { DEFAULT_CONFIG, LICENCE_CLASSES } from './config.js';
@@ -48,6 +49,27 @@ function classifyOne(id, cfg) {
   return 'none';
 }
 
+/**
+ * SPDX exceptions that only grant extra permission: `X WITH <one of these>` keeps the class of X. Matched case-insensitively.
+ * Any other exception never makes an expression more permissive than its base (see withException).
+ */
+export const PERMISSIVE_EXCEPTIONS = ['LLVM-exception', 'Classpath-exception-2.0', 'GCC-exception-2.0', 'GCC-exception-3.1',
+  'Autoconf-exception-2.0', 'Autoconf-exception-3.0', 'Bison-exception-2.2', 'Font-exception-2.0', 'OpenJDK-assembly-exception-1.0',
+  'Universal-FOSS-exception-1.0', 'Linux-syscall-note', '389-exception', 'WxWindows-exception-3.1', 'mif-exception', 'u-boot-exception-2.0'];
+const PERMISSIVE_EXCEPTION_SET = new Set(PERMISSIVE_EXCEPTIONS.map(x => x.toLowerCase()));
+const stricter = (a, b) => RESTRICTIVENESS.find(c => c === a || c === b);
+
+/**
+ * `base WITH exception`: an allowlisted exception keeps the base class; an exception that is itself a commercial or
+ * copyleft licence (Commons-Clause would be, if configured) → the stricter of that and the base; anything else →
+ * the stricter of the base and none, so an unknown exception can never leave the expression permissive.
+ */
+function withException(baseClass, exception, cfg) {
+  if (PERMISSIVE_EXCEPTION_SET.has(exception.toLowerCase())) return baseClass;
+  const ex = classifyOne(exception, cfg);
+  return stricter(baseClass, ex === 'commercial' || ex === 'copyleft' ? ex : 'none');
+}
+
 const SPDX_ID = /^[A-Za-z0-9.+-]+$/;
 const SPDX_KEYWORD = /^(and|or|with)$/i;
 
@@ -59,7 +81,8 @@ function spdxTokens(text) {
 
 /**
  * Recursive descent over `expr := and ( OR and )*`, `and := atom ( AND atom )*`,
- * `atom := '(' expr ')' | ID [ WITH ID ]` — AND binds tighter than OR, parentheses group, a WITH exception is ignored.
+ * `atom := '(' expr ')' | ID [ WITH ID ]` — AND binds tighter than OR, parentheses group, a WITH exception is classified
+ * by withException (an allowlisted permission-granting exception keeps the base class; any other never yields permissive).
  * Evaluates while parsing:
  *   OR  → the most permissive part (permissive > copyleft > commercial); none parts are ignored unless every part is none.
  *   AND → the most restrictive part (commercial > copyleft > none > permissive): every term binds, so a copyleft or
@@ -88,6 +111,7 @@ function evalSpdx(tokens, cfg) {
       const ex = peek();
       expect(ex !== undefined && ex !== '(' && ex !== ')' && !SPDX_KEYWORD.test(ex), 'WITH needs an exception id');
       i++;
+      return withException(classifyOne(t, cfg), ex, cfg);
     }
     return classifyOne(t, cfg);
   }
@@ -150,11 +174,42 @@ function capCodePoints(text, max, marker) {
   return cps.length > max ? cps.slice(0, max).join('') + marker : text;
 }
 
-/** First non-blank stderr line, control and format characters stripped, capped at SANDBOX_STDERR_MAX_CHARS code points. */
-function stderrLine(stderr) {
+/**
+ * Where the home directory may appear in a stderr line: os.homedir() (or the injected homedir) and $HOME when different.
+ * '/' and '' never count (replacing them would rewrite every path).
+ */
+function homeDirs({ homedir = os.homedir(), env = process.env } = {}) {
+  const out = [];
+  for (const h of [homedir, env?.HOME]) {
+    if (typeof h !== 'string') continue;
+    const t = h.replace(/[\\/]+$/, '');
+    if (t.length > 1 && !out.includes(t)) out.push(t);
+  }
+  return out.sort((a, b) => b.length - a.length);
+}
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const SCHEME_TOKEN = /\b[a-z][a-z0-9+.-]*:\/\/[^\s'"<>]*/gi;
+
+/**
+ * A stderr line as stored in sandbox.reason: http(s) URLs redacted (redactUrlsInText), the home directory replaced
+ * with ~ (only the directory itself, never a prefix of a longer name), and every other <scheme>://… token except a
+ * local unix:// or npipe:// socket path cut to scheme + host[:port] by redactDockerEndpoint (userinfo, path and query dropped).
+ */
+export function sanitizeStderr(line, opts = {}) {
+  let t = redactUrlsInText(String(line ?? ''));
+  for (const h of homeDirs(opts)) t = t.replace(new RegExp(`${escapeRe(h)}(?=$|[\\/\\s:;,'")\\]]|\\.(?![\\w-]))`, 'g'), '~');
+  return t.replace(SCHEME_TOKEN, (tok) => LOCAL_DOCKER.test(tok) ? tok : redactDockerEndpoint(tok));
+}
+
+/**
+ * First non-blank stderr line, control and format characters stripped, sanitised (sanitizeStderr) and then capped at
+ * SANDBOX_STDERR_MAX_CHARS code points — redaction runs before the cap so a cut can never expose what it would have masked.
+ */
+function stderrLine(stderr, san) {
   const text = Buffer.isBuffer(stderr) ? stderr.toString('utf-8') : String(stderr ?? '');
   const line = text.split(/\r?\n/).map(l => l.replace(CONTROL_CHARS, '').trim()).find(Boolean) || '';
-  return capCodePoints(line, SANDBOX_STDERR_MAX_CHARS, STDERR_TRUNCATED);
+  return capCodePoints(sanitizeStderr(line, san), SANDBOX_STDERR_MAX_CHARS, STDERR_TRUNCATED);
 }
 
 /** Run exec and normalise the outcome to { ok, code, status, stderr, stdout }. */
@@ -169,23 +224,23 @@ function probeCommand(exec, cmd, args, opts) {
 
 const TIMEOUT_TEXT = `${SANDBOX_TIMEOUT_MS / 1000} s timeout`;
 
-function dockerWhy(d) {
+function dockerWhy(d, san) {
   if (d.code === 'ENOENT') return 'docker is not installed';
   if (d.code === 'ETIMEDOUT') return `docker info timed out (${TIMEOUT_TEXT})`;
   if (typeof d.status === 'number') {
-    const line = stderrLine(d.stderr);
+    const line = stderrLine(d.stderr, san);
     return `docker is not running${line ? ` (${line})` : ''}`;
   }
   return `docker info failed (${d.code || d.message || 'unknown error'})`;
 }
 
 /** Why `unshare --user --map-root-user true` did not count; `u` is null off linux (where unshare never counts). */
-function unshareWhy(u) {
+function unshareWhy(u, san) {
   if (u === null) return 'unshare only counts on linux';
   if (u.code === 'ENOENT') return 'unshare is not installed';
   if (u.code === 'ETIMEDOUT') return `unshare timed out (${TIMEOUT_TEXT})`;
   if (typeof u.status === 'number') {
-    const line = stderrLine(u.stderr);
+    const line = stderrLine(u.stderr, san);
     return `unshare refused user namespaces${line ? ` (${line})` : ` (exit ${u.status})`}`;
   }
   return `unshare failed (${u.code || u.message || 'unknown error'})`;
@@ -211,34 +266,55 @@ function dockerEnv(env) {
   return out;
 }
 
+/** A failed `docker context inspect` that only means this docker has no contexts (an old docker, a podman shim). */
+const INSPECT_UNSUPPORTED = /unknown (command|flag)|is not a docker command|context.*not (supported|recognized)/i;
+
 /**
- * Where the docker CLI points: { local: true } or { local: false, endpoint }. Called only when DOCKER_HOST is unset or
- * local (a remote DOCKER_HOST is decided by detectSandbox without running docker). The current context's endpoint (`docker context inspect`) must be unix:// or npipe://. An empty or failing inspect (a docker
- * without contexts) falls back to DOCKER_HOST, which at that point is unset or local, so it counts as local.
+ * Where the docker CLI points: { local: true }, { local: false, endpoint } or { failed: reason }. Called only when
+ * DOCKER_HOST is unset or local (a remote DOCKER_HOST is decided by detectSandbox without running docker). The current
+ * context's endpoint (`docker context inspect`) must be unix:// or npipe://; an empty answer falls back to DOCKER_HOST,
+ * which at that point is unset or local. A failed inspect fails closed: it counts as local only when stderr says the
+ * context command is unknown (INSPECT_UNSUPPORTED) or docker is not installed (ENOENT: docker info cannot run either);
+ * a timeout, a spawn error or any other non-zero exit is { failed } and docker info is never run.
  */
-function dockerEndpoint(exec, envForDocker) {
+function dockerEndpoint(exec, envForDocker, san) {
   const ctx = probeCommand(exec, 'docker', ['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}'], { env: envForDocker, capture: true });
-  const endpoint = ctx.ok ? String(ctx.stdout ?? '').trim() : '';
-  if (endpoint && !LOCAL_DOCKER.test(endpoint)) return { local: false, endpoint };
-  return { local: true };
+  if (ctx.ok) {
+    const endpoint = String(ctx.stdout ?? '').trim();
+    if (endpoint && !LOCAL_DOCKER.test(endpoint)) return { local: false, endpoint };
+    return { local: true };
+  }
+  if (ctx.code === 'ENOENT') return { local: true };
+  const NOT_LOCAL = 'not treating the daemon as local';
+  if (ctx.code === 'ETIMEDOUT') return { failed: `docker context inspect timed out (${TIMEOUT_TEXT}) — ${NOT_LOCAL}` };
+  const raw = Buffer.isBuffer(ctx.stderr) ? ctx.stderr.toString('utf-8') : String(ctx.stderr ?? '');
+  if (typeof ctx.status === 'number' && INSPECT_UNSUPPORTED.test(raw)) return { local: true };
+  const line = stderrLine(ctx.stderr, san);
+  const why = line || (typeof ctx.status === 'number' ? `exit ${ctx.status}` : ctx.code || ctx.message || 'unknown error');
+  return { failed: `docker context inspect failed (${why}) — ${NOT_LOCAL}` };
 }
 
 /**
  * docker counts only when `docker info` succeeds against a daemon on this machine (unix:// or npipe://): a remote
  * daemon (DOCKER_HOST or a docker context pointing at tcp://, ssh://, …) is not a sandbox here. unshare counts on linux.
  * Order (safety first): DOCKER_HOST is checked first (no subprocess for a remote one), then `docker context inspect`,
- * then `docker info` only when the endpoint is local — a remote daemon is never contacted.
+ * then `docker info` only when the endpoint is known to be local — a remote daemon is never contacted, and a failed
+ * inspect (timeout, any error but "unknown command") is not taken as local. Every stderr line kept in the reason is
+ * sanitised (sanitizeStderr: URLs redacted, the home directory as ~); homedir is injectable for tests.
  */
-export async function detectSandbox({ exec = defaultExec, platform = process.platform, env = process.env } = {}) {
+export async function detectSandbox({ exec = defaultExec, platform = process.platform, env = process.env, homedir = os.homedir() } = {}) {
+  const san = { homedir, env };
   const envForDocker = dockerEnv(env);
   let remote = null;
   if (env.DOCKER_HOST && !LOCAL_DOCKER.test(env.DOCKER_HOST)) remote = env.DOCKER_HOST;
   let docker = null;
+  let inspectFailed = null;
   if (remote === null) {
-    const ep = dockerEndpoint(exec, envForDocker);
-    if (!ep.local) remote = ep.endpoint;
+    const ep = dockerEndpoint(exec, envForDocker, san);
+    if (ep.failed) inspectFailed = ep.failed;
+    else if (!ep.local) remote = ep.endpoint;
   }
-  if (remote === null) {
+  if (remote === null && inspectFailed === null) {
     docker = probeCommand(exec, 'docker', ['info'], { env: envForDocker });
     if (docker.ok) return { present: true, kind: 'docker', reason: 'docker info succeeded' };
   }
@@ -249,9 +325,10 @@ export async function detectSandbox({ exec = defaultExec, platform = process.pla
   }
   if (remote !== null) {
     const reason = `docker daemon is remote (${redactDockerEndpoint(remote)}) — not a sandbox on this machine`;
-    return { present: false, kind: null, reason: u === null ? reason : `${reason} and ${unshareWhy(u)}` };
+    return { present: false, kind: null, reason: u === null ? reason : `${reason} and ${unshareWhy(u, san)}` };
   }
-  return { present: false, kind: null, reason: `no sandbox on this machine: ${dockerWhy(docker)} and ${unshareWhy(u)}` };
+  if (inspectFailed !== null) return { present: false, kind: null, reason: u === null ? inspectFailed : `${inspectFailed} and ${unshareWhy(u, san)}` };
+  return { present: false, kind: null, reason: `no sandbox on this machine: ${dockerWhy(docker, san)} and ${unshareWhy(u, san)}` };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -383,6 +460,41 @@ function recomputeRow(row, power, sandbox) {
 
 /** Why recomputeRow last cleared a row's decision (read by the clearing paths for the withdrawal label). */
 const clearedWhy = new WeakMap();
+
+/**
+ * Re-derive a stored row from the CURRENT power and cfg (licence, licence_class) and recompute it against vj.sandbox,
+ * keeping row.decision and vj.decisions in step. Returns recomputeRow's warning when a decision was cleared.
+ */
+function rederiveRow(vj, name, pw, cfg) {
+  const row = vj.rows[name];
+  row.licence = pw.licence ?? 'unknown';
+  row.licence_class = licenceClass(pw.licence, cfg);
+  row.decision = vj.decisions[name] ?? row.decision ?? null;
+  const cleared = recomputeRow(row, pw, vj.sandbox);
+  if (row.decision) vj.decisions[name] = row.decision; else delete vj.decisions[name];
+  return cleared;
+}
+
+const sandboxKey = (sb) => JSON.stringify([sb?.present === true, sb?.kind ?? null, sb?.reason ?? null]);
+
+/**
+ * The fresh sandbox check behind every accepted `use`: the injected sandbox (tests, BBS_SANDBOX=absent) or detectSandbox.
+ * When it differs from vj.sandbox, vj.sandbox is replaced and every row is re-derived (clearing decisions that became
+ * illegal; their names and reasons are added to `reasons`/`warnings`). Returns { fresh, changed }.
+ */
+async function refreshSandbox(vj, byName, cfg, { sandbox, exec }, reasons, warnings) {
+  const fresh = sandbox ?? await detectSandbox(exec ? { exec } : {});
+  if (sandboxKey(fresh) === sandboxKey(vj.sandbox)) return { fresh, changed: false };
+  vj.sandbox = fresh;
+  for (const name of Object.keys(vj.rows)) {
+    const w = rederiveRow(vj, name, byName.get(name) || { name }, cfg);
+    if (w) { warnings.push(w); reasons.set(name, clearedWhy.get(vj.rows[name])); }
+  }
+  return { fresh, changed: true };
+}
+
+/** A `use` passes the gate only on a re-derived row that lists it after a clean probe, with the stored AND the fresh sandbox present. */
+const useGatesStored = (vj, row) => row.legal.includes('use') && !row.needs_probe && row.probe?.result === 'clean' && vj.sandbox?.present === true;
 
 export const SANDBOX_CONFIG_IGNORED = 'sandbox.required_for_use=false in .claude/bbs.json is ignored — use always requires a sandbox';
 
@@ -599,7 +711,7 @@ function withWarning(result, extra) {
   return { ...result, warning: joinWarnings(result.warning, extra) };
 }
 
-export async function recordProbe(projectDir, { run, power, result, evidence, now = () => new Date(), force = false, cfg = DEFAULT_CONFIG, lockOpts, appendRegistryImpl = appendRegistry, appendLabel = appendJsonl } = {}) {
+export async function recordProbe(projectDir, { run, power, result, evidence, now = () => new Date(), force = false, cfg = DEFAULT_CONFIG, lockOpts, appendRegistryImpl = appendRegistry, appendLabel = appendJsonl, sandbox, exec } = {}) {
   const p = runPaths(projectDir, run, cfg);
   await readVerdicts(p.verdicts); // fail fast, before the lock
   const { result: out, warning: lockWarning } = await withMapLockDetailed(p.dir, async () => {
@@ -611,16 +723,20 @@ export async function recordProbe(projectDir, { run, power, result, evidence, no
     const byName = await currentPowers(p.dir, vj);
     const pw = byName.get(power) || { name: power };
     row.probe = { result, evidence: sanitizeEvidence(evidence), ts: now().toISOString() };
-    row.decision = vj.decisions[power] ?? row.decision ?? null;
-    const cleared = recomputeRow(row, pw, vj.sandbox);
-    if (row.decision) vj.decisions[power] = row.decision; else delete vj.decisions[power];
+    // Re-derived from the current powers.json and cfg licence class, never trusted from the stored row.
+    const cleared = rederiveRow(vj, power, pw, cfg);
+    const reasons = new Map(cleared ? [[power, clearedWhy.get(row)]] : []);
+    const refreshWarnings = [];
+    let sandboxChanged = false;
+    // A `use` kept on this row stands only on a fresh sandbox check.
+    if (row.decision === 'use') ({ changed: sandboxChanged } = await refreshSandbox(vj, byName, cfg, { sandbox, exec }, reasons, refreshWarnings));
     vj.ts = now().toISOString();
     await writeJson(p.verdicts, vj);
-    const labelWarning = await withdrawLabels(p, run, vj, new Map(cleared ? [[power, clearedWhy.get(row)]] : []), appendLabel);
+    const labelWarning = await withdrawLabels(p, run, vj, reasons, appendLabel);
     const regWarning = await supersedeRegistry(projectDir, p, run, vj, cfg, appendRegistryImpl);
     const { warning, unread } = await renderAfterCommit(p.dir);
-    const w = joinWarnings(...sandboxConfigWarnings(cfg), cleared, labelWarning, regWarning, warning);
-    return { runId: run, power, ...row, next: nextOf(vj.rows, unread), ...(w ? { warning: w } : {}) };
+    const w = joinWarnings(...sandboxConfigWarnings(cfg), cleared, ...refreshWarnings, labelWarning, regWarning, warning);
+    return { runId: run, power, ...row, next: nextOf(vj.rows, unread), ...(sandboxChanged ? { sandbox_changed: true } : {}), ...(w ? { warning: w } : {}) };
   }, lockOpts);
   return withWarning(out, lockWarning);
 }
@@ -636,7 +752,7 @@ function labelRecorded(labels, power, verdict) {
 }
 
 export async function recordDecisions(projectDir, { run, input, now = () => new Date(), force = false, cfg = DEFAULT_CONFIG, label = 'decisions', lockOpts,
-  appendRegistryImpl = appendRegistry, appendLabel = appendJsonl } = {}) {
+  appendRegistryImpl = appendRegistry, appendLabel = appendJsonl, sandbox, exec } = {}) {
   const p = runPaths(projectDir, run, cfg);
   await readVerdicts(p.verdicts);
   const { result: out, warning: lockWarning } = await withMapLockDetailed(p.dir, async () => {
@@ -653,37 +769,79 @@ export async function recordDecisions(projectDir, { run, input, now = () => new 
     const decisions = isWrapper ? parsed.decisions : parsed;
     if (!isPlain(decisions)) throw new Error(`JSON only — ${label} must be an object of power → verdict`);
     if (!Object.keys(decisions).length) throw new Error(`${label} names no power — expected an object of power → verdict`);
-    await currentPowers(p.dir, vj);
-
-    // Validate everything before anything is written. A decision identical to the recorded one is a repair, not a change.
-    const changed = [];
-    const repeated = [];
+    const byName = await currentPowers(p.dir, vj);
     for (const [name, v] of Object.entries(decisions)) {
       if (!Object.hasOwn(vj.rows, name)) throw new Error(`unknown power "${name}"`);
       if (!VERDICTS.includes(v)) throw new Error(`${name}: verdict must be one of ${VERDICTS.join('|')}, got ${JSON.stringify(v)}`);
-      const row = vj.rows[name];
-      if (v === 'use' && row.needs_probe) {
-        throw new PolicyRefused(`use needs a clean network probe for ${name} first (cli.js verdict --probe ${name}=clean|found|incomplete)`);
-      }
-      if (!row.legal.includes(v)) throw new PolicyRefused(`${v} is not legal for ${name}: legal verdicts are ${row.legal.join(', ')}`);
-      const had = vj.decisions[name] ?? row.decision;
-      if (had === v) { repeated.push(name); continue; }
-      if (had && !force) throw new Error(`${name} already decided — pass --force to change it`);
-      changed.push(name);
     }
 
+    // The stored rows are never trusted: each named row is re-derived from the current powers.json and cfg licence
+    // class, and a `use` that passes the stored gates is checked against a fresh sandbox check.
     const ts = now().toISOString();
+    const before = JSON.stringify(vj);
+    const reasons = new Map(); // power → why its decision was withdrawn by the refresh
+    const warnings = [];
+    for (const name of Object.keys(decisions)) {
+      const w = rederiveRow(vj, name, byName.get(name) || { name }, cfg);
+      if (w) { warnings.push(w); reasons.set(name, clearedWhy.get(vj.rows[name])); }
+    }
+    let fresh = null;
+    let sandboxChanged = false;
+    if (Object.entries(decisions).some(([n, v]) => v === 'use' && useGatesStored(vj, vj.rows[n]))) {
+      ({ fresh, changed: sandboxChanged } = await refreshSandbox(vj, byName, cfg, { sandbox, exec }, reasons, warnings));
+    }
+    const refreshed = JSON.stringify(vj) !== before;
+    if (refreshed) vj.ts = ts;
+    /** Commit what the refresh corrected (sandbox, licence class, cleared decisions) with its withdrawal labels and registry row. */
+    const commitRefresh = async () => {
+      await writeJson(p.verdicts, vj);
+      if (reasons.size) {
+        const lw = await withdrawLabels(p, run, vj, reasons, appendLabel);
+        if (lw) warnings.push(lw);
+        const rw = await supersedeRegistry(projectDir, p, run, vj, cfg, appendRegistryImpl);
+        if (rw) warnings.push(rw);
+      }
+    };
+
+    // Validate everything before the decisions are written. A decision identical to the recorded one is a repair, not a change.
+    const changed = [];
+    const repeated = [];
+    try {
+      for (const [name, v] of Object.entries(decisions)) {
+        const row = vj.rows[name];
+        if (v === 'use' && row.needs_probe) {
+          throw new PolicyRefused(`use needs a clean network probe for ${name} first (cli.js verdict --probe ${name}=clean|found|incomplete)`);
+        }
+        if (!row.legal.includes(v)) {
+          const now_ = sandboxChanged ? ` — the sandbox check now says: ${vj.sandbox.reason}; verdicts.json was updated` : '';
+          throw new PolicyRefused(`${v} is not legal for ${name}: legal verdicts are ${row.legal.join(', ')}${now_}`);
+        }
+        if (v === 'use' && !(useGatesStored(vj, row) && fresh?.present === true)) {
+          throw new PolicyRefused(`use is not legal for ${name}: it needs a clean probe, a recorded sandbox and a fresh sandbox check on this machine`);
+        }
+        const had = vj.decisions[name] ?? row.decision;
+        if (had === v) { repeated.push(name); continue; }
+        if (had && !force) throw new Error(`${name} already decided — pass --force to change it`);
+        changed.push(name);
+      }
+    } catch (err) {
+      if (refreshed) {
+        await commitRefresh();
+        await renderAfterCommit(p.dir);
+      }
+      throw err;
+    }
+
     if (changed.length) {
       for (const name of changed) {
         vj.rows[name].decision = decisions[name];
         vj.decisions[name] = decisions[name];
       }
       vj.ts = ts;
-      await writeJson(p.verdicts, vj);
     }
+    if (changed.length || refreshed) await commitRefresh();
 
     // verdicts.json is committed: nothing below may fail the verb. Every append is repairable by resubmitting the same input.
-    const warnings = [];
     let toLabel = changed;
     if (repeated.length) {
       try {
@@ -723,6 +881,7 @@ export async function recordDecisions(projectDir, { run, input, now = () => new 
       remaining,
       next: unread ? null : remaining.length ? 'verdict' : 'handoff',
       registry_written,
+      ...(sandboxChanged ? { sandbox_changed: true } : {}),
       ...(w ? { warning: w } : {})
     };
   }, lockOpts);
