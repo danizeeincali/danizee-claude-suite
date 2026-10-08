@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
  * bbs helper CLI — `node cli.js <verb> [flags]`.
- * Verbs here: intake · fetch · status · report. Later streams add inventory, map, verdict, handoff
+ * Verbs here: intake · fetch · inventory · map · verdict · status · report. Later streams add handoff
  * by registering them in VERBS.
  *
- * Exit codes: 0 ok · 1 invalid input / broken state · 2 policy refusals (egress refused).
+ * Exit codes: 0 ok · 1 invalid input / broken state · 2 policy refusals (egress refused, illegal verdict).
  */
 
 import fs from 'fs/promises';
@@ -21,6 +21,7 @@ import { loadState, nextStep, summary, renderStatusSafe } from './status.js';
 import { fetchRun, EgressRefused } from './fetch.js';
 import { writeInventory, inventoryBrief, listSourceFiles } from './inventory.js';
 import { buildMap, mapBrief, recordJudgments } from './harness-map.js';
+import { computeVerdicts, recordProbe, recordDecisions, verdictTable, PolicyRefused } from './verdict.js';
 
 class CliExit extends Error {
   constructor(message, code) { super(message); this.code = code; }
@@ -35,7 +36,8 @@ const FLAGS = {
   status: { value: ['run', 'project'], bool: ['next'], positionals: 0, usage: 'usage: cli.js status [--run <id>] [--next] [--project <dir>]' },
   report: { value: ['run', 'project'], bool: [], positionals: 0, usage: 'usage: cli.js report [--run <id>] [--project <dir>]' },
   inventory: { value: ['from', 'run', 'project'], bool: ['brief', 'force'], positionals: 0, usage: 'usage: cli.js inventory (--brief | --from <file|->) [--force] [--run <id>] [--project <dir>]' },
-  map: { value: ['from', 'run', 'project'], bool: ['brief', 'force'], positionals: 0, usage: 'usage: cli.js map [--brief | --from <file|->] [--force] [--run <id>] [--project <dir>]' }
+  map: { value: ['from', 'run', 'project'], bool: ['brief', 'force'], positionals: 0, usage: 'usage: cli.js map [--brief | --from <file|->] [--force] [--run <id>] [--project <dir>]' },
+  verdict: { value: ['probe', 'evidence', 'decide', 'from', 'run', 'project'], bool: ['table', 'force'], positionals: 0, usage: 'usage: cli.js verdict [--table | --probe <power>=<clean|found|incomplete> [--evidence <text>] | --decide <power>=<verdict> | --from <file|->] [--force] [--run <id>] [--project <dir>]' }
 };
 
 function parseArgs(argv) {
@@ -265,8 +267,79 @@ const VERBS = {
       } catch { /* the original error is the one to report */ }
       throw err;
     }
+  },
+
+  async verdict({ flags, projectDir, cfg }) {
+    const usage = FLAGS.verdict.usage;
+    const modes = ['table', 'probe', 'decide', 'from'].filter(m => flags[m] !== undefined);
+    if (modes.length > 1) fail(`${usage}\n  verdict takes at most one of --table, --probe, --decide or --from (got ${modes.map(m => '--' + m).join(', ')})`);
+    if (flags.evidence !== undefined && flags.probe === undefined) fail(`${usage}\n  --evidence goes with --probe`);
+    const probe = flags.probe !== undefined ? powerPair(flags, 'probe', '<power>=<clean|found|incomplete>', usage) : null;
+    const decide = flags.decide !== undefined ? powerPair(flags, 'decide', '<power>=<verdict>', usage) : null;
+
+    const { id, dir } = await resolveRun(projectDir, flags, cfg);
+    const force = !!flags.force;
+    const now = () => new Date();
+    try {
+      let result;
+      if (probe) {
+        result = await recordProbe(projectDir, { run: id, power: probe[0], result: probe[1], evidence: flags.evidence, now, force, cfg });
+      } else if (decide || typeof flags.from === 'string') {
+        let input;
+        let label = 'decisions';
+        if (decide) {
+          input = JSON.stringify({ [decide[0]]: decide[1] });
+          label = `--decide ${flags.decide}`;
+        } else if (flags.from === '-') {
+          input = (await readStdin()).toString('utf-8');
+          label = '--from - (stdin)';
+        } else {
+          try { input = await fs.readFile(flags.from, 'utf-8'); } catch (err) {
+            if (err.code === 'ENOENT') fail(`file not found: ${flags.from}`);
+            fail(`could not read ${flags.from}: ${err.message}`);
+          }
+          label = `--from ${flags.from}`;
+        }
+        result = await recordDecisions(projectDir, { run: id, input, now, force, cfg, label });
+      } else if (flags.table) {
+        // A view: print the recorded table when there is one, so viewing never re-runs the sandbox check
+        const existing = force ? null : await readJson(path.join(dir, 'verdicts.json'));
+        const table = existing && existing.rows ? verdictTable(existing.rows)
+          : (await computeVerdicts(projectDir, { run: id, sandbox: sandboxFromEnv(), now, force, cfg })).table;
+        out(table);
+        return;
+      } else {
+        result = await computeVerdicts(projectDir, { run: id, sandbox: sandboxFromEnv(), now, force, cfg });
+      }
+      out(result);
+      if (result.warning) process.stderr.write(`bbs: warning: ${result.warning}\n`);
+    } catch (err) {
+      // The verb failed: re-render status so it names the real state. On success the library already rendered once.
+      try {
+        const { writeError } = await renderStatusSafe(dir);
+        if (writeError) warnStatusWrite(id, writeError);
+      } catch { /* the original error is the one to report */ }
+      throw err;
+    }
   }
 };
+
+/** Split a `<power>=<value>` flag value at its last `=`; fail naming the expected shape. */
+function powerPair(flags, name, shape, usage) {
+  const v = flags[name];
+  const at = typeof v === 'string' ? v.lastIndexOf('=') : -1;
+  if (at <= 0 || at === v.length - 1) fail(`${usage}\n  --${name} needs ${shape}, got "${v}"`);
+  return [v.slice(0, at), v.slice(at + 1)];
+}
+
+/** BBS_SANDBOX=present|absent overrides sandbox detection; unset → undefined (detect). */
+function sandboxFromEnv() {
+  const v = process.env.BBS_SANDBOX;
+  if (v === undefined || v === '') return undefined;
+  if (v === 'present') return { present: true, kind: 'env', reason: 'BBS_SANDBOX=present' };
+  if (v === 'absent') return { present: false, kind: null, reason: 'no sandbox on this machine: BBS_SANDBOX=absent' };
+  fail(`BBS_SANDBOX must be present or absent, got "${v}"`);
+}
 
 async function main(argv) {
   const { verb, flags, positional } = parseArgs(argv);
@@ -291,7 +364,7 @@ function isMain() {
 
 if (isMain()) {
   main(process.argv.slice(2)).catch((err) => {
-    if (err instanceof EgressRefused || err?.code === 'EGRESS_REFUSED') {
+    if (err instanceof EgressRefused || err?.code === 'EGRESS_REFUSED' || err instanceof PolicyRefused || err?.code === 'POLICY_REFUSED') {
       process.stderr.write(`bbs: refused: ${err.message}\n`);
       process.exitCode = 2;
     } else if (err instanceof CliExit) {

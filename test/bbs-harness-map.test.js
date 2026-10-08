@@ -300,7 +300,7 @@ describe('harness-map — cli verb', () => {
   it('usage lists map with [--brief | --from <file|->] [--force]; map before inventory fails naming inventory', () => {
     const u = run(dir, ['nope']);
     assert.match(u.err, /cli\.js map \[--brief \| --from <file\|->\] \[--force\] \[--run <id>\] \[--project <dir>\]/);
-    assert.match(u.err, /usage: cli\.js <intake\|fetch\|inventory\|map\|status\|report> \.\.\./);
+    assert.match(u.err, /usage: cli\.js <intake\|fetch\|inventory\|map\|verdict\|status\|report> \.\.\./);
     run(dir, ['intake', '-', '--slug', 'c1'], 'a tool');
     const early = run(dir, ['map']);
     assert.equal(early.code, 1);
