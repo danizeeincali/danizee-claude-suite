@@ -250,14 +250,20 @@ const VERBS = {
         const label = flags.from === '-' ? '--from - (stdin)' : `--from ${flags.from}`;
         const result = await recordJudgments(projectDir, { run: id, input, now: () => new Date(), force: !!flags.force, cfg, label });
         out(result);
+        if (result.warning) process.stderr.write(`bbs: warning: ${result.warning}\n`);
       } else {
         // Build the map
         const result = await buildMap(projectDir, { run: id, now: () => new Date(), force: !!flags.force, cfg });
         out(result);
+        if (result.warning) process.stderr.write(`bbs: warning: ${result.warning}\n`);
       }
-    } finally {
-      const { writeError } = await renderStatusSafe(dir);
-      if (writeError) warnStatusWrite(id, writeError);
+    } catch (err) {
+      // The verb failed: re-render status so it names the real state. On success the library already rendered once.
+      try {
+        const { writeError } = await renderStatusSafe(dir);
+        if (writeError) warnStatusWrite(id, writeError);
+      } catch { /* the original error is the one to report */ }
+      throw err;
     }
   }
 };

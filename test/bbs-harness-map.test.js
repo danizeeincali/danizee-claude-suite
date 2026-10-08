@@ -12,7 +12,7 @@ import os from 'os';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import {
-  STOP_WORDS, KINDS, STATUSES, tokenize, idf, vectorize, cosine, buildIndex, matchPower, buildMap, mapBrief, recordJudgments
+  STOP_WORDS, KINDS, STATUSES, tokenize, idf, vectorize, cosine, buildIndex, matchPower, buildMap, mapBrief, recordJudgments, withMapLock
 } from '../src/lib/bbs/harness-map.js';
 import { intake } from '../src/lib/bbs/intake.js';
 import { writeInventory, parseJsonOnly } from '../src/lib/bbs/inventory.js';
@@ -558,5 +558,125 @@ describe('harness-map r1 — cli: --from <file>, fenced file, map --force', () =
     assert.equal(m.code, 0, m.err);
     const idx = await readJson(path.join(dir, '.claude', 'bbs', 'runs', runId, 'harness-index.json'));
     assert.ok(idx.errors.some(e => e.path === '.claude/commands/pk.md' && e.code === 'SYMLINK'));
+  });
+});
+
+describe('harness-map r2 — commit-then-fail, corrupt map, lock, cap accounting, wrapper', () => {
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hr2-')); await makeHarness(dir); spawnSync('git', ['init', '-q', '.'], { cwd: dir }); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+  const runDirOf = (r) => path.join(dir, '.claude', 'bbs', 'runs', r.runId);
+  async function runWithPowers(slug, powers) {
+    const r = await intake(dir, '-', { stdin: 'a tool', now, slug });
+    await writeInventory(dir, { run: r.runId, input: JSON.stringify(powers), now });
+    return r;
+  }
+  function cli(args, input) {
+    const r = spawnSync(process.execPath, [CLI, ...args], { cwd: dir, encoding: 'utf-8', input });
+    let json = null;
+    try { json = JSON.parse(r.stdout); } catch {}
+    return { code: r.status, out: r.stdout, err: r.stderr, json };
+  }
+
+  it('buildMap with a corrupt verdicts.json still succeeds: map.json is written, next is null, the warning names the unreadable file', async () => {
+    const r = await runWithPowers('r2a', [power()]);
+    await fs.writeFile(path.join(runDirOf(r), 'verdicts.json'), '{broken');
+    const out = await buildMap(dir, { run: r.runId, now });
+    assert.equal(out.next, null);
+    assert.match(out.warning, /map\.json written but .*verdicts\.json.* could not be read/);
+    assert.ok((await readJson(path.join(runDirOf(r), 'map.json'))).candidates);
+  });
+
+  it('recordJudgments with a corrupt verdicts.json records the judgment and warns instead of failing', async () => {
+    const r = await runWithPowers('r2b', [power()]);
+    await buildMap(dir, { run: r.runId, now });
+    await fs.writeFile(path.join(runDirOf(r), 'verdicts.json'), '{broken');
+    const out = await recordJudgments(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'missing' }), now });
+    assert.equal(out.judged, 1);
+    assert.equal(out.next, null);
+    assert.match(out.warning, /map\.json written but .*verdicts\.json.* could not be read/);
+    assert.equal((await readJson(path.join(runDirOf(r), 'map.json'))).judgments['drift-monitor'].status, 'missing');
+  });
+
+  it('cli map with a corrupt verdicts.json exits 0, prints the JSON and exactly one warning on stderr', async () => {
+    const r = cli(['intake', '-', '--slug', 'r2c'], 'a tool');
+    assert.equal(r.code, 0, r.err);
+    assert.equal(cli(['inventory', '--from', '-'], JSON.stringify([power()])).code, 0);
+    const id = (await fs.readdir(path.join(dir, '.claude', 'bbs', 'runs'))).find(n => n.includes('r2c'));
+    await fs.writeFile(path.join(dir, '.claude', 'bbs', 'runs', id, 'verdicts.json'), '{broken');
+    const m = cli(['map']);
+    assert.equal(m.code, 0, m.err);
+    assert.equal(m.json.next, null);
+    assert.match(m.json.warning, /verdicts\.json/);
+    assert.equal(m.err.split('bbs: warning:').length - 1, 1, m.err);
+    assert.match(m.err, /bbs: warning: map\.json written but/);
+    const j = cli(['map', '--from', '-'], JSON.stringify({ 'drift-monitor': 'missing' }));
+    assert.equal(j.code, 0, j.err);
+    assert.equal(j.err.split('bbs: warning:').length - 1, 1, j.err);
+  });
+
+  it('a truncated map.json: without --force the error says --force rebuilds it; with --force it is moved aside and rebuilt', async () => {
+    const r = await runWithPowers('r2d', [power()]);
+    await buildMap(dir, { run: r.runId, now });
+    const mapPath = path.join(runDirOf(r), 'map.json');
+    await fs.writeFile(mapPath, '{"candidates": {');
+    await assert.rejects(() => buildMap(dir, { run: r.runId, now }), /corrupt JSON.*map\.json.*pass --force to rebuild it/);
+    const out = await buildMap(dir, { run: r.runId, now, force: true });
+    assert.equal(out.judgments_dropped, 0);
+    assert.ok(out.stale_moved.includes('map.json'), JSON.stringify(out.stale_moved));
+    assert.ok((await readJson(mapPath)).candidates);
+    const files = await fs.readdir(runDirOf(r));
+    assert.ok(files.some(f => /^map\.json\.stale-.*\.json$/.test(f)), files.join(','));
+  });
+
+  it('withMapLock: a held lock refuses with the lock message, a stale (>60 s) lock is released, the lock is removed afterwards', async () => {
+    const rd = await fs.mkdtemp(path.join(dir, 'lock-'));
+    const lock = path.join(rd, 'map.lock');
+    await fs.writeFile(lock, 'held');
+    await assert.rejects(() => withMapLock(rd, async () => 'x'), /map\.json is locked by another bbs command \(map\.lock\); remove it if none is running/);
+    const old = new Date(Date.now() - 120000);
+    await fs.utimes(lock, old, old);
+    assert.equal(await withMapLock(rd, async () => 'ran'), 'ran');
+    await assert.rejects(() => fs.stat(lock), { code: 'ENOENT' });
+    await assert.rejects(() => withMapLock(rd, async () => { throw new Error('inner'); }), /inner/);
+    await assert.rejects(() => fs.stat(lock), { code: 'ENOENT' }, 'released even when fn throws');
+  });
+
+  it('buildMap and recordJudgments refuse while map.lock is held and leave map.json untouched', async () => {
+    const r = await runWithPowers('r2e', [power()]);
+    await buildMap(dir, { run: r.runId, now });
+    const mapPath = path.join(runDirOf(r), 'map.json');
+    const before = await fs.readFile(mapPath, 'utf-8');
+    await fs.writeFile(path.join(runDirOf(r), 'map.lock'), 'held');
+    await assert.rejects(() => buildMap(dir, { run: r.runId, now, force: true }), /locked by another bbs command/);
+    await assert.rejects(() => recordJudgments(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'missing' }), now }), /locked by another bbs command/);
+    assert.equal(await fs.readFile(mapPath, 'utf-8'), before);
+  });
+
+  it('cap accounting: with cap 2 and 5 files, the first two in sorted order are kept and the total is recorded', async () => {
+    const d = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-cap-'));
+    try {
+      for (const n of ['e', 'b', 'a', 'd', 'c']) {
+        await fs.mkdir(path.join(d, '.claude', 'commands'), { recursive: true });
+        await fs.writeFile(path.join(d, '.claude', 'commands', `${n}.md`), `# ${n}\n`);
+      }
+      const idx = await buildIndex(d, { capPerKind: 2 });
+      assert.deepEqual(idx.rows.filter(r => r.kind === 'command').map(r => r.name), ['a', 'b']);
+      assert.equal(idx.capped.command, 2);
+      assert.deepEqual(idx.capped_totals.command, { kept: 2, total: 5 });
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+
+  it('a power named "judgments" can be judged as a bare missing; a real wrapper still unwraps', async () => {
+    const r = await runWithPowers('r2f', [power({ name: 'judgments', what: 'records judgments', idea: 'store them' })]);
+    await buildMap(dir, { run: r.runId, now });
+    const out = await recordJudgments(dir, { run: r.runId, input: JSON.stringify({ judgments: 'missing' }), now });
+    assert.equal(out.judged, 1);
+    const map = await readJson(path.join(runDirOf(r), 'map.json'));
+    assert.equal(map.judgments.judgments.status, 'missing');
+    const r2 = await runWithPowers('r2g', [power({ name: 'judgments', what: 'records judgments', idea: 'store them' })]);
+    await buildMap(dir, { run: r2.runId, now });
+    const o2 = await recordJudgments(dir, { run: r2.runId, input: JSON.stringify({ judgments: { status: 'missing' } }), now });
+    assert.equal(o2.judged, 1, 'a power named judgments judged as an object is the judgment, not a wrapper');
   });
 });

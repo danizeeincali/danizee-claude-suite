@@ -105,6 +105,49 @@ export const PREFIX_BYTES = 64 * 1024;
 export const MAX_PER_KIND = 2000;
 const STALE_ON_MAP_FORCE = ['verdicts.json', 'handoff.json'];
 
+const LOCK_STALE_MS = 60 * 1000;
+
+/**
+ * Hold an exclusive run lock (map.lock, created 'wx') for a whole read-modify-write of map.json.
+ * A lock older than 60 s is treated as abandoned and removed; a fresh one refuses with a message naming the file.
+ */
+export async function withMapLock(runDir, fn, { now = () => Date.now() } = {}) {
+  const lockPath = path.join(runDir, 'map.lock');
+  const held = () => new Error('map.json is locked by another bbs command (map.lock); remove it if none is running');
+  let fh;
+  for (let attempt = 0; attempt < 2 && !fh; attempt++) {
+    try {
+      fh = await fs.open(lockPath, 'wx');
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+      let st;
+      try { st = await fs.stat(lockPath); } catch (e) { if (e.code === 'ENOENT') continue; throw e; }
+      if (attempt === 0 && now() - st.mtimeMs > LOCK_STALE_MS) { await fs.rm(lockPath, { force: true }); continue; }
+      throw held();
+    }
+  }
+  if (!fh) throw held();
+  try {
+    await fh.close();
+    return await fn();
+  } finally {
+    await fs.rm(lockPath, { force: true });
+  }
+}
+
+/** Re-render status.md after map.json is committed; never throws. Returns { warning } (null when fine). */
+async function renderAfterCommit(runDirPath) {
+  try {
+    const { writeError } = await renderStatusSafe(runDirPath);
+    if (writeError) return { warning: `map.json written but status.md could not be written: ${writeError.message}` };
+    return { warning: null };
+  } catch (err) {
+    const m = /corrupt JSON in (.+?): /.exec(err.message);
+    const file = err.path ? path.basename(err.path) : m ? path.basename(m[1]) : 'a status input';
+    return { warning: `map.json written but ${file} could not be read: ${err.message}`, unread: true };
+  }
+}
+
 /** Read at most PREFIX_BYTES of a file (bounded, via a FileHandle). */
 async function readPrefix(filePath) {
   const fh = await fs.open(filePath, 'r');
@@ -121,14 +164,17 @@ async function readPrefix(filePath) {
  * Index the harness: commands, skills, helpers, hooks, modules, and scripts.
  * Scope: skills exactly .claude/skills/<dir>/SKILL.md; hooks exactly .claude/hooks/*.sh; plugins exactly src/plugins/*.js;
  * commands, helpers, src/lib and scripts recursive. SKIP_DIRS and symlinks are skipped (symlinks are reported).
- * Only the first 64 KiB of a file is read; at most maxPerKind rows per kind (the cap hit is recorded in `capped`).
+ * Only the first 64 KiB of a file is read; at most maxPerKind (alias capPerKind) rows per kind: the lexicographically first
+ * are kept, `capped[kind]` is the cap and `capped_totals[kind]` = { kept, total } says how many files were found.
  * Returns { rows, byKind, errors, capped, project } sorted by id; throws if empty.
  */
-export async function buildIndex(projectDir, { maxLines = 80, maxPerKind = MAX_PER_KIND } = {}) {
+export async function buildIndex(projectDir, { maxLines = 80, maxPerKind = MAX_PER_KIND, capPerKind } = {}) {
+  const cap = capPerKind ?? maxPerKind;
   const rows = [];
   const byKind = {};
   const errors = [];
   const capped = {};
+  const cappedTotals = {};
   const rel = (p) => path.relative(projectDir, p).split(path.sep).join('/');
 
   // List a directory: files matching `accept(name)` (and, when `recursive`, files in subdirectories).
@@ -158,22 +204,26 @@ export async function buildIndex(projectDir, { maxLines = 80, maxPerKind = MAX_P
     return { found, sub };
   };
 
-  // Collect file paths for one kind, depth-first in sorted order, stopping once the cap is reached.
-  const collect = async (kind, root, opts) => {
+  // Collect every file path for one kind (paths only, nothing is read), sorted. The walk goes on past the cap so the
+  // total is known; capList then keeps the lexicographically first `cap` and records kept/total.
+  const collect = async (root, opts) => {
     const out = [];
     const visit = async (dir) => {
       const listed = await listFiles(dir, opts);
       for (const f of listed.found) out.push(f);
-      if (out.length > maxPerKind) return;
-      for (const d of listed.sub) {
-        if (out.length > maxPerKind) return;
-        await visit(d);
-      }
+      for (const d of listed.sub) await visit(d);
     };
     await visit(root);
-    out.sort();
-    if (out.length > maxPerKind) { capped[kind] = maxPerKind; out.length = maxPerKind; }
     return out;
+  };
+  const capList = (kind, files) => {
+    files.sort();
+    if (files.length > cap) {
+      capped[kind] = cap;
+      cappedTotals[kind] = { kept: cap, total: files.length };
+      files.length = cap;
+    }
+    return files;
   };
 
   const addRows = async (kind, files, nameOf) => {
@@ -196,7 +246,7 @@ export async function buildIndex(projectDir, { maxLines = 80, maxPerKind = MAX_P
   const P = (...parts) => path.join(projectDir, ...parts);
   const any = () => true;
 
-  await addRows('command', await collect('command', P('.claude', 'commands'), { recursive: true, accept: n => n.endsWith('.md') }), f => path.basename(f, '.md'));
+  await addRows('command', capList('command', await collect(P('.claude', 'commands'), { recursive: true, accept: n => n.endsWith('.md') })), f => path.basename(f, '.md'));
 
   // Skills: exactly .claude/skills/<dir>/SKILL.md
   {
@@ -207,24 +257,20 @@ export async function buildIndex(projectDir, { maxLines = 80, maxPerKind = MAX_P
       const inner = await listFiles(d, { recursive: false, subdirs: false, accept: n => n === 'SKILL.md' });
       files.push(...(inner.found ?? []));
     }
-    files.sort();
-    if (files.length > maxPerKind) { capped.skill = maxPerKind; files.length = maxPerKind; }
-    await addRows('skill', files, f => path.basename(path.dirname(f)));
+    await addRows('skill', capList('skill', files), f => path.basename(path.dirname(f)));
   }
 
-  await addRows('helper', await collect('helper', P('.claude', 'helpers'), { recursive: true, accept: n => n.endsWith('.js') }), f => path.basename(f, '.js'));
-  await addRows('hook', await collect('hook', P('.claude', 'hooks'), { recursive: false, accept: n => n.endsWith('.sh') }), f => path.basename(f, '.sh'));
+  await addRows('helper', capList('helper', await collect(P('.claude', 'helpers'), { recursive: true, accept: n => n.endsWith('.js') })), f => path.basename(f, '.js'));
+  await addRows('hook', capList('hook', await collect(P('.claude', 'hooks'), { recursive: false, accept: n => n.endsWith('.sh') })), f => path.basename(f, '.sh'));
 
   // Modules: src/lib/** (recursive) and src/plugins/*.js (depth 1), capped together
   {
-    const lib = await collect('module', P('src', 'lib'), { recursive: true, accept: n => n.endsWith('.js') });
-    const plugins = await collect('module', P('src', 'plugins'), { recursive: false, accept: n => n.endsWith('.js') });
-    const files = [...lib, ...plugins].sort();
-    if (files.length > maxPerKind) { capped.module = maxPerKind; files.length = maxPerKind; }
-    await addRows('module', files, f => path.basename(f, '.js'));
+    const lib = await collect(P('src', 'lib'), { recursive: true, accept: n => n.endsWith('.js') });
+    const plugins = await collect(P('src', 'plugins'), { recursive: false, accept: n => n.endsWith('.js') });
+    await addRows('module', capList('module', [...lib, ...plugins]), f => path.basename(f, '.js'));
   }
 
-  await addRows('script', await collect('script', P('scripts'), { recursive: true, accept: any }), f => path.basename(f));
+  await addRows('script', capList('script', await collect(P('scripts'), { recursive: true, accept: any })), f => path.basename(f));
 
   // package.json scripts
   let pkgContent = null;
@@ -258,7 +304,7 @@ export async function buildIndex(projectDir, { maxLines = 80, maxPerKind = MAX_P
     throw new Error('harness index is empty — run from the project root (no commands, skills, helpers, hooks, modules or scripts found)');
   }
 
-  return { rows, byKind, errors, capped, project: projectDir };
+  return { rows, byKind, errors, capped, capped_totals: cappedTotals, project: projectDir };
 }
 
 /**
@@ -329,14 +375,25 @@ export async function buildMap(projectDir, { run, now, force = false, cfg = DEFA
   const powersPath = path.join(runDirPath, 'powers.json');
   const mapPath = path.join(runDirPath, 'map.json');
 
-  // Ensure powers.json exists
-  const powers = await readJson(powersPath);
-  if (!powers || !Array.isArray(powers.powers)) {
-    throw new Error('inventory first — powers.json is missing; run cli.js inventory --from');
-  }
+  // Ensure powers.json exists (checked before the lock so a missing run keeps its own message)
+  const noPowers = () => new Error('inventory first — powers.json is missing; run cli.js inventory --from');
+  const first = await readJson(powersPath);
+  if (!first || !Array.isArray(first.powers)) throw noPowers();
 
-  // Check if map.json already has judgments (and !force)
-  const existingMap = await readJson(mapPath);
+  return withMapLock(runDirPath, async () => {
+  const powers = await readJson(powersPath);
+  if (!powers || !Array.isArray(powers.powers)) throw noPowers();
+
+  // Check if map.json already has judgments (and !force); a corrupt map.json can be rebuilt only with --force
+  let existingMap = null;
+  let corruptMap = false;
+  try {
+    existingMap = await readJson(mapPath);
+  } catch (err) {
+    if (!/^corrupt JSON in /.test(err.message)) throw err;
+    if (!force) throw new Error(`${err.message} — pass --force to rebuild it`);
+    corruptMap = true;
+  }
   if (existingMap && existingMap.judgments && Object.keys(existingMap.judgments).length > 0 && !force) {
     throw new Error('map.json already has judgments — pass --force to rebuild (they will be dropped)');
   }
@@ -355,7 +412,7 @@ export async function buildMap(projectDir, { run, now, force = false, cfg = DEFA
   const judgmentsCounted = existingMap?.judgments ? Object.keys(existingMap.judgments).length : 0;
 
   // Later steps were built on the judgments being dropped: move them aside BEFORE the new map lands; put them back on failure.
-  const stale_moved = force ? await moveAsideStale(runDirPath, STALE_ON_MAP_FORCE, () => new Date(ts)) : [];
+  const stale_moved = force ? await moveAsideStale(runDirPath, corruptMap ? [...STALE_ON_MAP_FORCE, 'map.json'] : STALE_ON_MAP_FORCE, () => new Date(ts)) : [];
   try {
     // harness-index.json (without text/tokens)
     await writeJson(path.join(runDirPath, 'harness-index.json'), {
@@ -364,6 +421,7 @@ export async function buildMap(projectDir, { run, now, force = false, cfg = DEFA
       byKind: index.byKind,
       errors: index.errors,
       capped: index.capped,
+      capped_totals: index.capped_totals,
       rows: index.rows.map(r => ({ id: r.id, kind: r.kind, name: r.name, path: r.path }))
     });
     // map.json last: it is what marks the step as done
@@ -378,7 +436,8 @@ export async function buildMap(projectDir, { run, now, force = false, cfg = DEFA
     throw err;
   }
 
-  const { writeError } = await renderStatusSafe(runDirPath);
+  // map.json is committed: nothing below may fail the verb
+  const { warning, unread } = await renderAfterCommit(runDirPath);
 
   return {
     runId: run,
@@ -388,9 +447,10 @@ export async function buildMap(projectDir, { run, now, force = false, cfg = DEFA
     judgments_dropped: judgmentsCounted,
     index_errors: index.errors.length,
     stale_moved: [...stale_moved],
-    next: 'map',
-    ...(writeError ? { warning: `map.json written but status.md could not be written: ${writeError.message}` } : {})
+    next: unread ? null : 'map',
+    ...(warning ? { warning } : {})
   };
+  });
 }
 
 /**
@@ -479,15 +539,25 @@ export async function recordJudgments(projectDir, { run, input, now, force = fal
   const runDirPath = runDirOf(projectDir, run, cfg);
   const mapPath = path.join(runDirPath, 'map.json');
 
-  // Ensure map.json exists
-  const map = await readJson(mapPath);
-  if (!map || !map.candidates) {
-    throw new Error('map.json is missing — run cli.js map first');
-  }
+  // Ensure map.json exists (checked before the lock so a missing run keeps its own message)
+  const noMap = () => new Error('map.json is missing — run cli.js map first');
+  const first = await readJson(mapPath);
+  if (!first || !first.candidates) throw noMap();
 
-  // Parse input (fence-tolerant, shared with inventory); accept { judgments: {...} } or a bare object
+  return withMapLock(runDirPath, async () => {
+  const map = await readJson(mapPath);
+  if (!map || !map.candidates) throw noMap();
+
+  const powers = await readJson(path.join(runDirPath, 'powers.json'));
+  const powerNames = new Set(powers.powers.map(p => p.name));
+
+  // Parse input (fence-tolerant, shared with inventory); accept { judgments: {...} } or a bare object.
+  // Unwrap only when judgments is the sole key, a plain object, and no power is named "judgments".
   const parsed = parseJsonOnly(input, { label });
-  const judgments = parsed?.judgments ?? parsed;
+  const isPlain = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const isWrapper = isPlain(parsed) && Object.keys(parsed).length === 1 && Object.hasOwn(parsed, 'judgments')
+    && isPlain(parsed.judgments) && !powerNames.has('judgments');
+  const judgments = isWrapper ? parsed.judgments : parsed;
   if (judgments === null || typeof judgments !== 'object' || Array.isArray(judgments)) {
     throw new Error(`JSON only — ${label} must be an object of power → judgment`);
   }
@@ -495,9 +565,6 @@ export async function recordJudgments(projectDir, { run, input, now, force = fal
   // Validate and normalize each judgment
   const normalized = {};
   const ts = now().toISOString();
-  const powers = await readJson(path.join(runDirPath, 'powers.json'));
-  const powerNames = new Set(powers.powers.map(p => p.name));
-
   for (const [powerName, judgment] of Object.entries(judgments)) {
     if (!powerNames.has(powerName)) {
       throw new Error(`unknown power "${powerName}"`);
@@ -563,7 +630,7 @@ export async function recordJudgments(projectDir, { run, input, now, force = fal
     throw err;
   }
 
-  const { writeError } = await renderStatusSafe(runDirPath);
+  const { warning, unread } = await renderAfterCommit(runDirPath);
 
   const remaining = Array.from(powerNames).filter(n => !map.judgments[n]).sort();
 
@@ -572,7 +639,8 @@ export async function recordJudgments(projectDir, { run, input, now, force = fal
     judged: Object.keys(map.judgments).length,
     remaining,
     stale_moved: [...stale_moved],
-    next: remaining.length === 0 ? 'verdict' : 'map',
-    ...(writeError ? { warning: `map.json written but status.md could not be written: ${writeError.message}` } : {})
+    next: unread ? null : remaining.length === 0 ? 'verdict' : 'map',
+    ...(warning ? { warning } : {})
   };
+  });
 }
