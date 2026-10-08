@@ -13,7 +13,8 @@
 
 import fs from 'fs/promises';
 import path from 'path';
-import { execFileSync } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { readJson, writeJson, writeTextAtomic, runDir as runDirOf, moveAsideStale, withMapLockDetailed } from './store.js';
 import { validateFinishLine } from '../marathon/gate.js';
 import { loadConfig as loadMarathonConfig, activeRunId as marathonActiveRun, setActiveRun as setMarathonActiveRun } from '../marathon/config.js';
@@ -303,6 +304,8 @@ export const MARATHON_RUN_ID = /^[A-Za-z0-9][A-Za-z0-9-]{0,80}$/;
 const HANDOFF_LINE = /^(?:tests_green|egress_zero)_/;
 const KICKOFF_SECTIONS = ['Done means', 'You may decide on your own', 'Ask me before', 'Never'];
 
+const execFileP = promisify(execFile);
+const MARATHON_CALL_TIMEOUT_MS = 30000; // well under LOCK_STALE_MS - LOCK_REFRESH_MS
 const posix = (p) => p.split(path.sep).join('/');
 const firstLine = (err) => String(err?.stderr || err?.message || err).split('\n')[0];
 
@@ -377,30 +380,37 @@ function checkInit(initData, projectDir, runsRoot) {
  * Orchestrate the handoff: rebuild/use powers become briefs, buy becomes memos, skips are listed.
  * When marathon=true, init a marathon run, write finish-line, kickoff, stream rows, then handoff.json last.
  * force: replace handoff.json and refill a marathon run that already holds a hand-off.
- * marathonRunner: injectable (args, cwd) => stdout for testing, default execFileSync of the marathon CLI.
+ * marathonRunner: injectable (args, cwd) => stdout (or a Promise of it) for testing, default async execFile of the marathon CLI.
+ * Every call is [verb, '--project', <projectDir>, ...rest]: a linked worktree must not be mapped to the main checkout.
+ * lockOpts: passed to the run lock (tests shorten its stale and refresh windows).
  */
 export async function buildHandoff(projectDir, opts = {}) {
   const cfg = opts.cfg || await loadConfig(projectDir);
   const runDir = runDirOf(projectDir, opts.run, cfg);
   // Everything runs under the run lock verdict/map hold: verdicts.json, powers.json and handoff.json are read and
   // written inside it, so a concurrent verdict --from or handoff cannot interleave.
-  const { result, warning } = await withMapLockDetailed(runDir, () => buildHandoffLocked(projectDir, runDir, { ...opts, cfg }));
+  const { result, warning } = await withMapLockDetailed(runDir, () => buildHandoffLocked(projectDir, runDir, { ...opts, cfg }), opts.lockOpts);
   return warning ? { ...result, warning } : result;
 }
 
-async function claimJson(file, data) {
+export async function claimJson(file, data, ops = {}) {
+  const link = ops.link || fs.link.bind(fs);
+  const open = ops.open || fs.open.bind(fs);
   const text = JSON.stringify(data, null, 2) + '\n';
   const tmp = `${file}.${Math.random().toString(16).slice(2)}.tmp`;
   try {
     await fs.writeFile(tmp, text);
-    try { await fs.link(tmp, file); }
+    try { await link(tmp, file); }
     catch (err) {
       if (err.code === 'EEXIST') throw new Error('handoff.json exists — pass --force to replace it (it appeared while this hand-off was running)');
       if (!['EPERM', 'ENOTSUP', 'ENOSYS', 'EXDEV', 'EACCES'].includes(err.code)) throw err;
       let fh;
-      try { fh = await fs.open(file, 'wx'); }
+      try { fh = await open(file, 'wx'); }
       catch (e) { if (e.code === 'EEXIST') throw new Error('handoff.json exists — pass --force to replace it (it appeared while this hand-off was running)'); throw e; }
-      try { await fh.writeFile(text); await fh.sync(); } finally { await fh.close(); }
+      // this call created the file: a failed write must not leave a partial handoff.json that reads as done
+      try { await fh.writeFile(text); await fh.sync(); }
+      catch (e) { try { await fh.close(); } catch { /* the write error wins */ } fh = null; await fs.rm(file, { force: true }); throw e; }
+      finally { if (fh) await fh.close(); }
     }
   } finally { await fs.rm(tmp, { force: true }); }
 }
@@ -518,10 +528,13 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
 
   if (useMarathon) {
     if (!marathonRunner) {
-      marathonRunner = (args, cwd) => execFileSync(process.execPath, [marathonCliPath, ...args], {
-        cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000
-      });
+      // async, so the run lock's refresh timer keeps firing while the marathon CLI works
+      marathonRunner = async (args, cwd) => (await execFileP(process.execPath, [marathonCliPath, ...args], {
+        cwd, encoding: 'utf-8', timeout: MARATHON_CALL_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024
+      })).stdout;
     }
+    const projectAbs = path.resolve(projectDir);
+    const mcall = async (verb, ...rest) => marathonRunner([verb, '--project', projectAbs, ...rest], projectDir);
     const verdictNow = (slug) => {
       const hit = allPowers.find(p => slugPower(p.name) === slug);
       return hit ? verdicts.rows[hit.name].decision : 'no longer in powers.json';
@@ -532,7 +545,7 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
       const names = [];
       for (const row of rows) {
         if (keep.has(row.name)) continue;
-        marathonRunner(['stream', row.name, '--run', id, 'state=blocked', `next=dropped by a forced hand-off refill on ${ts}: this power is now ${verdictNow(row.name)}`], projectDir);
+        await mcall('stream', row.name, '--run', id, 'state=blocked', `next=dropped by a forced hand-off refill on ${ts}: this power is now ${verdictNow(row.name)}`);
         names.push(row.name);
       }
       return names;
@@ -558,6 +571,7 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
       else await fs.rm(path.join(runsRoot, 'ACTIVE'), { force: true });
     };
     const activeWas = () => (prevActive ? `restored to ${prevActive}` : 'cleared');
+    const likelyRunDir = posix(path.relative(projectDir, path.join(runsRoot, `${new Date().toISOString().slice(0, 10)}-${marathonSlug(run)}`)));
     let mRun = null;
     let mDir = null;
     let mRel = null;
@@ -565,8 +579,13 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
     try {
       // From here init may have moved ACTIVE: every failure before the guarded block restores it and says so
       let raw;
-      try { raw = marathonRunner(['init', marathonSlug(run)], projectDir); }
-      catch (err) { throw new Error(`marathon: ${firstLine(err)}`); }
+      try { raw = await mcall('init', marathonSlug(run)); }
+      catch (err) {
+        let restored;
+        try { await restoreActive(); restored = `ACTIVE was restored to ${prevActive || 'cleared'}`; }
+        catch (e) { restored = `ACTIVE could NOT be restored (${firstLine(e)}) — it may point at the half-made run; check .claude/marathon/ACTIVE (it was ${prevActive || 'unset'})`; }
+        throw new Error(`marathon: ${firstLine(err)} — ${restored}; a run dir ${likelyRunDir} may have been created and may need removing`);
+      }
       let initData;
       try { initData = JSON.parse(raw); }
       catch { initData = undefined; }
@@ -576,7 +595,11 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
         throw new Error(`marathon init printed no JSON (${shown}) — check .claude/marathon/ACTIVE (it was ${activeWas()})`);
       }
       try { ({ runId: mRun, dir: mDir } = checkInit(initData, projectDir, runsRoot)); }
-      catch (err) { await restoreActive(); throw new Error(`${err.message} — ACTIVE was ${activeWas()}; check .claude/marathon/ACTIVE`); }
+      catch (err) {
+        await restoreActive();
+        const left = typeof initData?.runDir === 'string' ? initData.runDir : typeof initData?.runId === 'string' ? initData.runId : likelyRunDir;
+        throw new Error(`${err.message} — ACTIVE was ${activeWas()}; check .claude/marathon/ACTIVE; a run dir ${left} may have been created and may need removing`);
+      }
       mRel = posix(path.relative(projectDir, mDir));
 
       // A run that already holds a hand-off is refilled only with force; an unreadable file counts as held under force
@@ -629,7 +652,7 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
       await writeTextAtomic(kickoffPath, kickoff);
 
       for (const p of outputPowers) {
-        marathonRunner(['stream', p.slug, '--run', mRun, 'state=queued', `plan=${p.brief_path}`, 'next=read the brief, write the contract and failing tests'], projectDir);
+        await mcall('stream', p.slug, '--run', mRun, 'state=queued', `plan=${p.brief_path}`, 'next=read the brief, write the contract and failing tests');
       }
       if (force) stale_streams = await blockStale(mRun, oldRows, new Set(outputPowers.map(p => p.slug)));
     } catch (err) {

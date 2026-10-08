@@ -10,17 +10,18 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
 import os from 'os';
-import { spawnSync } from 'child_process';
+import { spawnSync, execFile } from 'child_process';
+import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import {
-  CHECKS, slugPower, buildFinishLine, renderBrief, renderMemo, buildHandoff, evidenceLocations
+  CHECKS, slugPower, buildFinishLine, renderBrief, renderMemo, buildHandoff, evidenceLocations, claimJson, marathonSlug
 } from '../src/lib/bbs/handoff.js';
 import { validateFinishLine } from '../src/lib/marathon/gate.js';
 import { intake } from '../src/lib/bbs/intake.js';
 import { writeInventory } from '../src/lib/bbs/inventory.js';
 import { buildMap, recordJudgments } from '../src/lib/bbs/harness-map.js';
 import { computeVerdicts, recordDecisions, POWERS_CHANGED } from '../src/lib/bbs/verdict.js';
-import { readJson } from '../src/lib/bbs/store.js';
+import { readJson, withMapLock } from '../src/lib/bbs/store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(__dirname);
@@ -635,5 +636,136 @@ describe('handoff — review r2 regressions', () => {
     await buildHandoff(dir, { run: r.runId, now });
     assert.equal(await exists(path.join(rd, 'handoff.json')), true);
     assert.equal(await exists(path.join(rd, 'map.lock')), false, 'the lock is released');
+  });
+});
+
+describe('handoff — review r3 regressions', () => {
+  const exists = (p) => fs.stat(p).then(() => true, () => false);
+  const bbsRun = (d, id) => path.join(d, '.claude', 'bbs', 'runs', id);
+  const marathonCli = (d) => path.join(d, '.claude', 'helpers', 'marathon', 'cli.js');
+  const realRunner = (d, onCall = () => {}) => (args, cwd) => {
+    onCall(args);
+    const r = spawnSync(process.execPath, [marathonCli(d), ...args], { cwd, encoding: 'utf-8' });
+    if (r.status !== 0) { const e = new Error(r.stderr || `exit ${r.status}`); e.stderr = r.stderr; throw e; }
+    return r.stdout;
+  };
+  const todayStr = () => new Date().toISOString().slice(0, 10);
+  const D = [{ 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' }];
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hor3-')); await makeHarness(dir, { withMarathon: true }); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('[medium] from a linked git worktree every marathon call passes --project <worktree>: the run lands under the worktree\'s .claude/marathon, the main checkout\'s is untouched', async () => {
+    const main = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hor3-main-'));
+    const wt = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hor3-wt-')), 'checkout');
+    try {
+      await makeHarness(main, { withMarathon: true });
+      const g = (...a) => { const r = spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { cwd: main, encoding: 'utf-8' }); assert.equal(r.status, 0, r.stderr); };
+      g('add', '-A'); g('commit', '-q', '-m', 'harness'); g('worktree', 'add', '-q', wt);
+      assert.equal(await exists(path.join(wt, '.claude', 'helpers', 'marathon', 'cli.js')), true);
+      const r = await decided(wt, 'wt', [power()], ...D);
+      const calls = [];
+      const real = realRunner(wt, a => calls.push(a));
+      const out = await buildHandoff(wt, { run: r.runId, now, marathon: true, marathonRunner: real });
+      for (const a of calls) {
+        const i = a.indexOf('--project');
+        assert.ok(i > 0, `--project in ${a.join(' ')}`);
+        assert.equal(a[i + 1], wt);
+      }
+      assert.ok(calls.some(a => a[0] === 'init') && calls.some(a => a[0] === 'stream'));
+      assert.equal(await exists(path.join(wt, '.claude', 'marathon', out.marathonRun, 'finish-line.json')), true);
+      assert.equal(await exists(path.join(wt, '.claude', 'marathon', out.marathonRun, 'kickoff.md')), true);
+      assert.equal(await exists(path.join(main, '.claude', 'marathon', out.marathonRun)), false, 'main checkout has no such run');
+      assert.deepEqual((await fs.readdir(path.join(main, '.claude', 'marathon'))).sort(), ['finish-line.example.json', 'rules.md']);
+      assert.equal(await exists(path.join(bbsRun(wt, r.runId), 'handoff.json')), true);
+    } finally {
+      spawnSync('git', ['worktree', 'remove', '--force', wt], { cwd: main });
+      await fs.rm(main, { recursive: true, force: true });
+      await fs.rm(path.dirname(wt), { recursive: true, force: true });
+    }
+  });
+
+  it('[medium] the default runner is async and each call stays under the stale window: an async injected runner awaited 50 ms per call across 3 powers keeps the lock (staleMs 120, refreshMs 30)', async () => {
+    const r = await decided(dir, 'asyncrun', [power({ name: 'one' }), power({ name: 'two' }), power({ name: 'three' })],
+      { one: 'missing', two: 'missing', three: 'missing' }, { one: 'rebuild', two: 'rebuild', three: 'rebuild' });
+    const rd = bbsRun(dir, r.runId);
+    const execFileP = promisify(execFile);
+    const sleep = (ms) => new Promise(res => setTimeout(res, ms));
+    let steals = 0;
+    let calls = 0;
+    const runner = async (args, cwd) => {
+      calls++;
+      await sleep(50);
+      // a rival command trying to take the lock mid-run must still find it held (fresh), never stale
+      if (calls >= 3) { try { await withMapLock(rd, async () => {}); steals++; } catch { /* held: good */ } }
+      return (await execFileP(process.execPath, [marathonCli(dir), ...args], { cwd, encoding: 'utf-8' })).stdout;
+    };
+    const out = await buildHandoff(dir, { run: r.runId, now, marathon: true, marathonRunner: runner, lockOpts: { staleMs: 120, refreshMs: 30 } });
+    assert.equal(out.warning, undefined, 'the lock is still ours at the end');
+    assert.equal(steals, 0);
+    assert.equal(calls, 4);
+    assert.equal(out.powers.length, 3);
+  });
+
+  it('[medium] a failed init restores ACTIVE (prior value, or cleared) and names the run dir init may have created', async () => {
+    const activeFile = path.join(dir, '.claude', 'marathon', 'ACTIVE');
+    const real = realRunner(dir);
+    const failAfterInit = (args, cwd) => { if (args[0] === 'init') { real(args, cwd); const e = new Error('spawnSync ETIMEDOUT'); e.stderr = 'init timed out\nsecond line'; throw e; } return real(args, cwd); };
+    const prior = await decided(dir, 'initfail-prior', [power()], ...D);
+    const pOut = await buildHandoff(dir, { run: prior.runId, now, marathon: true });
+    const r = await decided(dir, 'initfail', [power()], ...D);
+    await assert.rejects(() => buildHandoff(dir, { run: r.runId, now, marathon: true, marathonRunner: failAfterInit }), (err) => {
+      const rel = `.claude/marathon/${todayStr()}-${marathonSlug(r.runId)}`;
+      assert.match(err.message, /^marathon: init timed out — ACTIVE was restored to /);
+      assert.ok(err.message.includes(`restored to ${pOut.marathonRun};`), err.message);
+      assert.ok(err.message.includes(`a run dir ${rel} may have been created and may need removing`), err.message);
+      assert.ok(!err.message.includes('second line'));
+      return true;
+    });
+    assert.equal((await fs.readFile(activeFile, 'utf-8')).trim(), pOut.marathonRun, 'ACTIVE is back');
+    assert.equal(await exists(path.join(bbsRun(dir, r.runId), 'handoff.json')), false);
+    // no prior ACTIVE: cleared
+    const bare = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hor3-bare-'));
+    try {
+      await makeHarness(bare, { withMarathon: true });
+      const r2 = await decided(bare, 'initfail2', [power()], ...D);
+      const real2 = realRunner(bare);
+      const fail2 = (args, cwd) => { if (args[0] === 'init') { real2(args, cwd); throw Object.assign(new Error('x'), { stderr: 'boom' }); } return real2(args, cwd); };
+      await assert.rejects(() => buildHandoff(bare, { run: r2.runId, now, marathon: true, marathonRunner: fail2 }), /marathon: boom — ACTIVE was restored to cleared; a run dir \S+ may have been created and may need removing/);
+      assert.equal(await exists(path.join(bare, '.claude', 'marathon', 'ACTIVE')), false, 'ACTIVE cleared');
+    } finally { await fs.rm(bare, { recursive: true, force: true }); }
+  });
+
+  it('[low] claimJson: when the no-hard-link fallback fails mid-write it removes the file it created; an existing file is left alone', async () => {
+    const d = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hor3-claim-'));
+    try {
+      const file = path.join(d, 'handoff.json');
+      const noLink = async () => { throw Object.assign(new Error('no links'), { code: 'EPERM' }); };
+      const realOpen = fs.open.bind(fs);
+      const failingOpen = async (f, flags) => {
+        const fh = await realOpen(f, flags);
+        return { writeFile: async () => { await fh.writeFile('{"par'); throw Object.assign(new Error('disk full'), { code: 'ENOSPC' }); }, sync: () => fh.sync(), close: () => fh.close() };
+      };
+      await assert.rejects(() => claimJson(file, { a: 1 }, { link: noLink, open: failingOpen }), /disk full/);
+      assert.equal(await exists(file), false, 'no partial handoff.json left behind');
+      assert.deepEqual(await fs.readdir(d), [], 'no temp file left either');
+      // a pre-existing file is refused and not removed
+      await fs.writeFile(file, '{"keep":true}');
+      await assert.rejects(() => claimJson(file, { a: 1 }, { link: noLink, open: failingOpen }), /handoff\.json exists/);
+      assert.equal(await fs.readFile(file, 'utf-8'), '{"keep":true}');
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+
+  it('[low] a refused init output names the run dir it may have left behind: the raw runDir when given, else the likely <runs>/<today>-bbs-<slug>', async () => {
+    const r = await decided(dir, 'refused', [power()], ...D);
+    const outside = () => JSON.stringify({ runId: 'fine', runDir: 'elsewhere/fine' });
+    await assert.rejects(() => buildHandoff(dir, { run: r.runId, now, marathon: true, marathonRunner: outside }),
+      /elsewhere\/fine.*may need removing/s);
+    const nothing = () => JSON.stringify({});
+    await assert.rejects(() => buildHandoff(dir, { run: r.runId, now, marathon: true, marathonRunner: nothing }), (err) => {
+      assert.ok(err.message.includes(`.claude/marathon/${todayStr()}-${marathonSlug(r.runId)}`), err.message);
+      assert.match(err.message, /may need removing/);
+      return true;
+    });
   });
 });
