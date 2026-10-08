@@ -1,7 +1,7 @@
 # Marathon 2026-10-07-bbs
 
 - State: RUNNING
-- Budget: 4,899,261 / 10,000,000 tokens
+- Budget: 4,888,747 / 10,000,000 tokens
 - Allowance: 95% (ceiling 98%)
 - Gate (run-wide, all streams): 1/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
