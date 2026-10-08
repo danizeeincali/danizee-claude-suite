@@ -63,10 +63,10 @@
       "name": "handoff",
       "state": "active",
       "plan": ".claude/plans/2026-10-07-w-bbs.md",
-      "next": "sonnet fix round for review r2 (4 medium: post-init recovery, forced refill cleanup, null tolerance, handoff under the lock); then unit run + review r3",
+      "next": "review round 3 (opus, older environments) on 7caf67d..HEAD",
       "tasks": [],
       "isolation": "../claude-suite-handoff",
-      "phase": "4.7",
+      "phase": "4.5",
       "base": "7330fb7cbc0cefb7c3a640ca7f6f7159afb5fb9e"
     },
     {
