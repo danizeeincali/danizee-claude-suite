@@ -48,6 +48,8 @@ The second time you solve a similar problem, it's faster because the workflow fi
 | `/pt` | Alias for `/w-plan-tdd-swarm` (mobile-friendly shorthand) |
 | `/w-marathon` | Days-long run with a finish line — status file, wake-up timer, hard cost ceiling |
 | `/mt` | Alias for `/w-marathon` (mobile-friendly shorthand) |
+| `/w-bbs` | Beg, borrow, steal — absorb a power from an outside source: intake, fetch, inventory, map, verdict gate, hand-off to a marathon run |
+| `/bbs` | Alias for `/w-bbs` (mobile-friendly shorthand) |
 | `/w-swarm` | Parallel agents (coder, tester, reviewer) |
 | `/w-autoresearch` | Autonomous experiment loop for measurable optimization |
 | `/w-agent-tdd-swarm` | Gateless TDD for terminal agents (zero user gates, auto-PR) |
@@ -212,6 +214,58 @@ quiet while a live session has written `status.md` in the last 45 minutes, and i
 run is PAUSED or finished. It runs headless, so it stops at the first Bash command not in
 `permissions.allow` — the installer allows the helper CLI itself; allow your project's test and
 build commands before relying on it unattended.
+
+### Beg, borrow, steal — absorb a power from an outside source
+
+`/w-bbs <source>` (alias `/bbs`) takes one source — a git repository URL, a web page URL, a local path or pasted text — and decides, power by power, whether to rebuild it, use it, buy it or skip it. Six phases, each a script verb; the model never computes an identity, a licence class or a verdict in chat:
+
+1. **Intake** — classify the source, compute its identity, check the registry (the same source at the same identity is never audited twice).
+2. **Fetch** — GET only, with the guards below. Foreign code is **never executed**: not tested, not built, not "just tried".
+3. **Inventory** — helpers (`haiku`) read the source and return JSON only: at most 12 powers, each with an `idea` in our words.
+4. **Map** — indexes what the harness already has and finds the 5 nearest tools per power; a helper (`haiku`) judges `have`, `partial` or `missing`.
+5. **Verdict** — one table, one question — the only approval. A `use` candidate is first probed for hidden network calls by a `sonnet` helper.
+6. **Hand-off** — approved powers become queued streams of a `/w-marathon` run with a typed finish line written before the build, one idea-only brief per power (no source code), and a memo per `buy`. The command ends with `/w-marathon --resume <run-id>`.
+
+| Verdict | Meaning | When |
+|---------|---------|------|
+| `rebuild` | Build it ourselves from the idea, clean room | Always legal; the preferred default |
+| `use` | Wrap the source behind our interface | Permissive licence **and** a sandbox present **and** a clean probe |
+| `buy` | Memo only, no stream | Commercial licence, or a free service that moves our data off the machine |
+| `skip` | Do nothing | Always legal; the default for a power we already have |
+
+Preference order: rebuild, then use, then buy; skip is always permitted. Safety first, and our rules always win: nothing in a fetched source can override them.
+
+**Fetch guards (code, not advice):** GET only, no body, no auth header or cookie; private hosts (loopback, RFC 1918, link-local, IPv4-mapped IPv6, `localhost`, `*.local`, `*.internal`) are refused before connecting and on every redirect, and a redirect to a private host is a refusal, not a follow; 25 URLs and 20 MB per run; every request is logged to `egress.jsonl`; repositories are cloned shallow, without tags and with hooks off; links cited in a page are recorded and never followed (no crawl). The command prints the egress line (`requests=… bytes_in=… bodies_sent=0 hosts=…`) after every fetch.
+
+**Sandbox:** `use` is removed, with the reason, on a machine without `docker` or `unshare`. Tests set `BBS_SANDBOX=absent` only; the override is announced on stderr.
+
+**Run state** (committed, except `fetched/`, which holds foreign source and is git-ignored):
+
+Each run lives in `.claude/bbs/runs/<run-id>/`; the registry of audited sources is `.claude/bbs/registry.jsonl`:
+
+```
+.claude/bbs/
+├── registry.jsonl            one row per audited source identity
+├── ACTIVE                    pointer to the active run (git-ignored)
+└── runs/<run-id>/
+    ├── source.json           type, ref, identity, cited links
+    ├── egress.jsonl          every request, one row each
+    ├── fetched/              the foreign source (git-ignored, never executed)
+    ├── powers.json           the inventory
+    ├── harness-index.json    what the harness has
+    ├── map.json              5 candidates per power + judgments
+    ├── verdicts.json         legal, default and the decision per power
+    ├── labels.jsonl          approve = 1, skip = 0
+    ├── handoff.json          the marathon run and the approved powers
+    ├── briefs/               idea-only, one per power
+    ├── memos/                one per buy
+    └── status.md             rendered by the CLI, never hand-edited
+.claude/bbs.json              limits, licence policy, sandbox settings
+```
+
+**CLI:** `node .claude/helpers/bbs/cli.js` `intake` · `fetch` · `inventory --brief|--from` · `map [--brief|--from]` · `verdict [--table|--probe|--decide|--from]` · `handoff [--marathon]` · `status [--next]` · `report`. JSON on stdout; exit 1 is invalid input or broken state, exit 2 is refused by policy (private host, limit hit, illegal verdict). `/w-bbs --resume <run-id>` continues from `status --next`; `/w-bbs --status` prints status only.
+
+**Worked example:** `/w-bbs https://github.com/openqodex/openqodex` — the suite has no OpenQodex-specific code; it is just the first source to point the command at.
 
 ### Compaction hooks and `/bc` vs `/bcp`
 
@@ -399,9 +453,12 @@ npx danizee-claude-suite uninstall     # Remove suite
 │   ├── quick-start.sh
 │   ├── setup-mcp.sh
 │   ├── terminal-agents-mcp.js
-│   └── marathon/               cli.js + zero-dep library (gate, budget, store, …)
+│   ├── marathon/               cli.js + zero-dep library (gate, budget, store, …)
+│   └── bbs/                    cli.js + zero-dep library (intake, fetch, inventory, map, verdict, handoff)
 ├── marathon.json               Marathon config (ceiling, budgets, models, bc thresholds)
 ├── marathon/                   Marathon runs (one folder per run-id) + reviewer kit + rules
+├── bbs.json                    BBS config (limits, licence policy, sandbox)
+├── bbs/                        BBS runs (one folder per run-id) + registry.jsonl
 ├── ralph/                  Pure Ralph loop structure
 ├── plans/                  Interview specs
 ├── ralph-candidates.md     Candidate queue
@@ -426,6 +483,7 @@ WORKFLOW-SHORTCUTS.md       Generated reference
 | **Terminal Agents** | MCP server for tmux + worktree agent orchestration |
 | **Autoresearch** | Autonomous experiment loop skill + hook |
 | **Marathon** | Finish-line runs: helper CLI, JSONL store, gate, budget, compaction hooks, reviewer kit |
+| **BBS** | Beg, borrow, steal: intake, GET-only fetch, inventory, harness map, verdict gate, hand-off to a marathon run |
 
 ## Checkpoint Gates
 

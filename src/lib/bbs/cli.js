@@ -320,12 +320,14 @@ const VERBS = {
         if (existing && existing.rows) { out(verdictTable(existing.rows)); return; }
         const computed = await computeVerdicts(projectDir, { run: id, sandbox: useSandboxOverride(sandboxOverride), now, force, cfg });
         out(computed.table);
+        warnSandboxOverride(sandboxOverride);
         if (computed.warning) process.stderr.write(`bbs: warning: ${computed.warning}\n`);
         return;
       } else {
         result = await computeVerdicts(projectDir, { run: id, sandbox: useSandboxOverride(sandboxOverride), now, force, cfg });
       }
       out(result);
+      warnSandboxOverride(sandboxOverride);
       if (result.warning) process.stderr.write(`bbs: warning: ${result.warning}\n`);
     } catch (err) {
       // The verb failed: re-render status so it names the real state. On success the library already rendered once.
@@ -357,10 +359,16 @@ function sandboxFromEnv() {
   fail('BBS_SANDBOX may only be "absent" (the sandbox can be assumed missing, never present); unset it to run real detection');
 }
 
-/** The override as passed to computeVerdicts, with a stderr warning each time it replaces detection. */
+/**
+ * The override as passed to computeVerdicts. The stderr warning is written by warnSandboxOverride once the verb
+ * has succeeded, so a refusal (exit 2) starts its stderr with `bbs: refused:` and nothing before it.
+ */
 function useSandboxOverride(override) {
-  if (override) process.stderr.write('bbs: warning: sandbox detection overridden by BBS_SANDBOX=absent\n');
   return override;
+}
+
+function warnSandboxOverride(override) {
+  if (override) process.stderr.write('bbs: warning: sandbox detection overridden by BBS_SANDBOX=absent\n');
 }
 
 async function main(argv) {
