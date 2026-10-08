@@ -1219,3 +1219,57 @@ describe('verdict r4 — sandbox stderr is redacted before it is stored', () => 
     assert.ok(d.reason.includes('/Users/meow/x'), 'only the home directory itself is replaced, not a prefix of another name');
   });
 });
+
+describe('verdict r6 — buy cause, powers_ts without ts, repair hint per input', () => {
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-vr6-')); await makeHarness(dir); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+  const runDir = (id) => path.join(dir, '.claude', 'bbs', 'runs', id);
+  async function prepared(slug, powers, judgments) {
+    const r = await intake(dir, '-', { stdin: 'r6 tool ' + slug, now, slug });
+    await writeInventory(dir, { run: r.runId, input: JSON.stringify(powers), now });
+    await buildMap(dir, { run: r.runId, now });
+    await recordJudgments(dir, { run: r.runId, input: JSON.stringify(judgments), now });
+    return r;
+  }
+
+  it('--decide x=buy on a permissive on-machine power is refused with the cause; the table keeps its rows unchanged', async () => {
+    const r = await prepared('buycause', [power()], { 'drift-monitor': 'missing' });
+    const out = await computeVerdicts(dir, { run: r.runId, sandbox, now });
+    const why = out.rows['drift-monitor'].not_legal_why;
+    assert.equal(why.buy, 'licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine');
+    assert.deepEqual(out.rows['drift-monitor'].removed, [], 'removed is unchanged: the buy cause lives in not_legal_why');
+    await assert.rejects(() => recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'buy' }), now, sandbox }),
+      (e) => e instanceof PolicyRefused && e.message.includes('buy is not legal for drift-monitor: licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine; legal verdicts are'));
+  });
+
+  it('a hand-edited powers.json without ts is refused by computeVerdicts with a ts-specific message, and the guard compares null to null', async () => {
+    const r = await prepared('nots', [power()], { 'drift-monitor': 'missing' });
+    await computeVerdicts(dir, { run: r.runId, sandbox, now });
+    const rd = runDir(r.runId);
+    const pj = await readJson(path.join(rd, 'powers.json'));
+    delete pj.ts;
+    await fs.writeFile(path.join(rd, 'powers.json'), JSON.stringify(pj));
+    await assert.rejects(() => computeVerdicts(dir, { run: r.runId, sandbox, now }),
+      { message: 'powers.json has no ts — re-run cli.js inventory --from <file> --force' });
+    // a verdicts.json that recorded no ts (powers_ts null) matches a powers.json without one: no false "changed"
+    const vj = await readJson(path.join(rd, 'verdicts.json'));
+    vj.powers_ts = null;
+    await fs.writeFile(path.join(rd, 'verdicts.json'), JSON.stringify(vj));
+    const ok = await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'rebuild' }), now });
+    assert.equal(ok.decided, 1);
+  });
+
+  it('a failed label append after --decide / --from names the input that was used', async () => {
+    const r = await prepared('hint', [power()], { 'drift-monitor': 'missing' });
+    await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now });
+    const failing = async () => { throw new Error('EIO labels'); };
+    const input = JSON.stringify({ 'drift-monitor': 'rebuild' });
+    const a = await recordDecisions(dir, { run: r.runId, input, now, label: '--decide drift-monitor=rebuild', appendLabel: failing });
+    assert.ok(a.warning.includes('EIO labels — re-run cli.js verdict --decide drift-monitor=rebuild to append the missing rows'), a.warning);
+    const b = await recordDecisions(dir, { run: r.runId, input, now, label: '--from - (stdin)', appendLabel: failing });
+    assert.ok(b.warning.includes('EIO labels — resubmit the same input on cli.js verdict --from - to append the missing rows'), b.warning);
+    const c = await recordDecisions(dir, { run: r.runId, input, now, label: '--from d.json', appendLabel: failing });
+    assert.ok(c.warning.includes('EIO labels — re-run cli.js verdict --from d.json to append the missing rows'), c.warning);
+  });
+});

@@ -1,8 +1,9 @@
 /**
  * bbs verdict — which verdicts are legal for each power (licence policy, harness judgment, sandbox check, network probe),
  * the default, one table, and the recorded decisions with their labels (approve = 1, skip = 0).
- * Two rules cannot change: safety first; our rules always win. `use` is never a default and is never legal
- * without a permissive licence, a sandbox on this machine and a clean network probe.
+ * Two rules cannot change: safety first; our rules always win. `use` is never a default, and a `use` decision is
+ * accepted only with a permissive licence, a sandbox on this machine and a clean network probe (before the probe it is
+ * listed as legal with needs_probe true).
  */
 
 import os from 'os';
@@ -193,8 +194,8 @@ const SCHEME_TOKEN = /\b[a-z][a-z0-9+.-]*:\/\/[^\s'"<>]*/gi;
 
 /**
  * A stderr line as stored in sandbox.reason: http(s) URLs redacted (redactUrlsInText), the home directory replaced
- * with ~ (only the directory itself, never a prefix of a longer name), and every other <scheme>://… token except a
- * local unix:// or npipe:// socket path cut to scheme + host[:port] by redactDockerEndpoint (userinfo, path and query dropped).
+ * with ~ (only the directory itself, never a prefix of a longer name), and every <scheme>://… token (http(s) included)
+ * except a local unix:// or npipe:// socket path cut to scheme + host[:port] by redactDockerEndpoint (userinfo, path and query dropped).
  */
 export function sanitizeStderr(line, opts = {}) {
   let t = redactUrlsInText(String(line ?? ''));
@@ -360,7 +361,9 @@ export function legalVerdicts(power, { judgment, licenceClass: cls, sandbox, pro
   void judgment; // the judgment shapes the default, not what is legal
   const allowed = new Set(['rebuild', 'skip']);
   const removed = [];
+  const not_legal_why = {};
   if (cls === 'commercial' || movesDataOff(power)) allowed.add('buy');
+  else not_legal_why.buy = `licence ${cls} — buy is legal only for a commercial licence or a power that sends data off the machine`;
   if (cls === 'permissive') {
     const why = [];
     if (!sandbox?.present) why.push(sandbox?.reason || 'no sandbox on this machine: the sandbox check did not run');
@@ -370,8 +373,9 @@ export function legalVerdicts(power, { judgment, licenceClass: cls, sandbox, pro
   } else {
     removed.push({ verdict: 'use', reason: `licence ${cls} — use is legal only for a permissive licence` });
   }
+  if (removed.length) not_legal_why.use = removed[0].reason;
   const legal = VERDICTS.filter(v => allowed.has(v));
-  return { legal, removed, needs_probe: legal.includes('use') && probe == null };
+  return { legal, removed, not_legal_why, needs_probe: legal.includes('use') && probe == null };
 }
 
 export function defaultVerdict(power, opts = {}) {
@@ -448,9 +452,10 @@ async function readVerdicts(file) {
 /** Recompute legal/removed/needs_probe/default of one row in place; clears a decision the policy no longer allows. */
 function recomputeRow(row, power, sandbox) {
   const opts = { judgment: row.judgment, licenceClass: row.licence_class, sandbox, probe: row.probe?.result ?? null };
-  const { legal, removed, needs_probe } = legalVerdicts(power, opts);
+  const { legal, removed, not_legal_why, needs_probe } = legalVerdicts(power, opts);
   row.legal = legal;
   row.removed = removed;
+  row.not_legal_why = not_legal_why;
   row.needs_probe = needs_probe;
   row.default = defaultVerdict(power, opts);
   if (row.decision && (!legal.includes(row.decision) || (row.decision === 'use' && needs_probe))) {
@@ -526,14 +531,20 @@ export function sanitizeEvidence(text) {
 const nextOf = (rows, unread) => unread ? null : Object.values(rows).every(r => r.decision) ? 'handoff' : 'verdict';
 
 export const POWERS_CHANGED = 'powers.json changed since the verdicts were computed — run cli.js verdict first';
-const REPAIR_HINT = 're-run cli.js verdict --from <same file> to append the missing rows';
+/** The repair hint names the input that was used: --decide and --from <path> are re-run as given, stdin is resubmitted. */
+function repairHint(label) {
+  if (typeof label === 'string' && label.startsWith('--decide ')) return `re-run cli.js verdict ${label} to append the missing rows`;
+  if (typeof label === 'string' && label.startsWith('--from - ')) return 'resubmit the same input on cli.js verdict --from - to append the missing rows';
+  if (typeof label === 'string' && label.startsWith('--from ')) return `re-run cli.js verdict ${label} to append the missing rows`;
+  return 're-run cli.js verdict --from <same file> to append the missing rows';
+}
 
 /** Read powers.json (inside the lock) and refuse when it is not the one verdicts.json was computed from. */
 async function currentPowers(dir, vj) {
   const powers = await readJson(path.join(dir, 'powers.json'));
   if (!powers || !Array.isArray(powers.powers)) throw new Error('inventory first — powers.json is missing');
   if (!Object.hasOwn(vj, 'powers_ts')) throw new Error('verdicts.json does not record which powers.json it was computed from (no powers_ts) — run cli.js verdict first');
-  if (vj.powers_ts !== powers.ts) throw new Error(POWERS_CHANGED);
+  if ((vj.powers_ts ?? null) !== (powers.ts ?? null)) throw new Error(POWERS_CHANGED);
   return new Map(powers.powers.map(x => [x.name, x]));
 }
 
@@ -644,6 +655,7 @@ export async function computeVerdicts(projectDir, { run, sandbox, now = () => ne
     const pj = await readJson(path.join(p.dir, 'powers.json'));
     const list = pj?.powers;
     if (!Array.isArray(list)) throw new Error('inventory first — powers.json is missing; run cli.js inventory --from, then cli.js map');
+    if (pj.ts == null) throw new Error('powers.json has no ts — re-run cli.js inventory --from <file> --force');
     const missing = list.map(x => x.name).filter(n => !map.judgments[n]);
     if (missing.length) throw new Error(`judgments missing for: ${missing.join(', ')} — record them with cli.js map --from`);
     const source = await readJson(path.join(p.dir, 'source.json'));
@@ -675,7 +687,7 @@ export async function computeVerdicts(projectDir, { run, sandbox, now = () => ne
         licence: power.licence ?? 'unknown',
         licence_class: licenceClass(power.licence, cfg),
         judgment: map.judgments[power.name],
-        legal: [], default: null, removed: [], needs_probe: false,
+        legal: [], default: null, removed: [], not_legal_why: {}, needs_probe: false,
         probe: force ? null : oldProbe,
         decision: force ? null : (VERDICTS.includes(oldDecision) ? oldDecision : null)
       };
@@ -758,6 +770,7 @@ function labelRecorded(labels, power, verdict) {
 export async function recordDecisions(projectDir, { run, input, now = () => new Date(), force = false, cfg = DEFAULT_CONFIG, label = 'decisions', lockOpts,
   appendRegistryImpl = appendRegistry, appendLabel = appendJsonl, sandbox, exec } = {}) {
   const p = runPaths(projectDir, run, cfg);
+  const REPAIR_HINT = repairHint(label);
   await readVerdicts(p.verdicts);
   const { result: out, warning: lockWarning } = await withMapLockDetailed(p.dir, async () => {
     const vj = await readVerdicts(p.verdicts);
@@ -818,7 +831,7 @@ export async function recordDecisions(projectDir, { run, input, now = () => new 
         }
         if (!row.legal.includes(v)) {
           const now_ = sandboxChanged ? ` — the sandbox check now says: ${vj.sandbox.reason}; verdicts.json was updated` : '';
-          const cause = row.removed?.find(x => x.verdict === v)?.reason;
+          const cause = row.removed?.find(x => x.verdict === v)?.reason ?? row.not_legal_why?.[v];
           throw new PolicyRefused(`${v} is not legal for ${name}: ${cause ? `${cause}; ` : ''}legal verdicts are ${row.legal.join(', ')} — choose one of them with cli.js verdict --decide ${name}=<verdict>${now_}`);
         }
         if (v === 'use' && !(useGatesStored(vj, row) && fresh?.present === true)) {
