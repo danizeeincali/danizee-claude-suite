@@ -119,3 +119,65 @@ export async function lookupSource(projectDir, identity, cfg = DEFAULT_CONFIG) {
   for (let i = rows.length - 1; i >= 0; i--) if (rows[i] && rows[i].identity === identity) return rows[i];
   return null;
 }
+
+/** Claim a `<name>.stale-<stamp>[-<hex>].json` path that does not exist yet (created empty, then renamed over). */
+async function claimStaleName(dir, name, stamp) {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const suffix = attempt === 0 ? '' : `-${randomBytes(3).toString('hex')}`;
+    const to = path.join(dir, `${name}.stale-${stamp}${suffix}.json`);
+    try {
+      await (await fs.open(to, 'wx')).close();
+      return to;
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw new Error(`could not move ${name} aside before --force: ${err.message}`);
+    }
+  }
+  throw new Error(`could not find a free stale name for ${name} before --force`);
+}
+
+/**
+ * Move each existing `names` file in `dir` to `<name>.stale-<ts>.json`, claiming the stale target exclusively.
+ * Returns the moved names (an array with a non-enumerable `restore()` that puts them back and returns
+ * { restored, notRestored }). If a move fails part-way, what was moved is restored and the error names both lists.
+ */
+export async function moveAsideStale(dir, names, now = () => new Date(), { rename = fs.rename } = {}) {
+  const stamp = now().toISOString().replace(/:/g, '-');
+  const moved = []; // { name, from, to }
+  const movedNames = [];
+  const restore = async () => {
+    const restored = [];
+    const notRestored = [];
+    for (const m of [...moved].reverse()) {
+      try { await rename(m.to, m.from); restored.unshift(m.name); } catch { notRestored.unshift(m.name); }
+    }
+    return { restored, notRestored };
+  };
+  try {
+    for (const name of names) {
+      const from = path.join(dir, name);
+      try {
+        await fs.lstat(from);
+      } catch (err) {
+        if (err.code === 'ENOENT') continue;
+        throw new Error(`could not move ${from} aside before --force: ${err.message}`);
+      }
+      const to = await claimStaleName(dir, name, stamp);
+      try {
+        await rename(from, to);
+      } catch (err) {
+        await fs.rm(to, { force: true });
+        if (err.code === 'ENOENT') continue;
+        throw new Error(`could not move ${from} aside before --force: ${err.message}`);
+      }
+      moved.push({ name, from, to });
+      movedNames.push(name);
+    }
+  } catch (err) {
+    const { restored, notRestored } = await restore();
+    let msg = `${err.message}; stale_moved so far: [${movedNames.join(', ')}]; restored: [${restored.join(', ')}]`;
+    if (notRestored.length) msg += `; NOT restored (still named *.stale-*): [${notRestored.join(', ')}]`;
+    throw new Error(msg);
+  }
+  Object.defineProperty(movedNames, 'restore', { value: restore, enumerable: false });
+  return movedNames;
+}

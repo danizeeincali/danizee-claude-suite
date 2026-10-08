@@ -7,7 +7,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { randomBytes } from 'crypto';
 import { DEFAULT_CONFIG } from './config.js';
-import { runDir as runDirOf, runsDir as runsDirOf, readJson, writeTextAtomic } from './store.js';
+import { runDir as runDirOf, runsDir as runsDirOf, readJson, writeTextAtomic, moveAsideStale } from './store.js';
 import { RUN_ID, invalidRunId } from './intake.js';
 import { loadState, nextStep, renderStatusSafe } from './status.js';
 
@@ -158,39 +158,39 @@ export function validatePower(p, i) {
  */
 const FENCE_RE = /^\s*```[a-zA-Z]*[ \t]*\r?\n([\s\S]*?)\r?\n?\s*```\s*$/;
 
+/**
+ * Parse model output that must be JSON only: a string (fence-tolerant: tag case, trailing blanks, CRLF, trailing
+ * newline) or a Buffer; non-strings are returned as they are. Errors name the input by `label`.
+ */
+export function parseJsonOnly(input, { label = 'input' } = {}) {
+  if (Buffer.isBuffer(input)) input = input.toString('utf-8');
+  if (typeof input !== 'string') return input;
+  let text = input.trim();
+
+  // Strip a markdown fence: opening at the start (any tag case, trailing blanks, CRLF), closing at the END
+  const fenced = FENCE_RE.exec(text);
+  if (fenced) text = fenced[1];
+  text = text.trim();
+
+  if (!text) {
+    throw new Error(`JSON only — ${label} is empty`);
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    // JSON.stringify escapes control characters, so binary input cannot print raw bytes
+    const preview = text.slice(0, 60);
+    throw new Error(`JSON only — ${label} is not JSON; got: ${JSON.stringify(preview)}`);
+  }
+}
+
 export function parseInventory(input, { maxPowers = 12, label = 'input' } = {}) {
   if (!Number.isInteger(maxPowers) || maxPowers <= 0) {
     throw new Error('maxPowers must be a positive integer');
   }
 
-  let data;
-
-  if (Buffer.isBuffer(input)) {
-    input = input.toString('utf-8');
-  }
-
-  if (typeof input === 'string') {
-    let text = input.trim();
-
-    // Strip a markdown fence: opening at the start (any tag case, trailing blanks, CRLF), closing at the END
-    const fenced = FENCE_RE.exec(text);
-    if (fenced) text = fenced[1];
-    text = text.trim();
-
-    if (!text) {
-      throw new Error(`JSON only — ${label} is empty`);
-    }
-
-    try {
-      data = JSON.parse(text);
-    } catch (err) {
-      // JSON.stringify escapes control characters, so binary input cannot print raw bytes
-      const preview = text.slice(0, 60);
-      throw new Error(`JSON only — ${label} is not JSON; got: ${JSON.stringify(preview)}`);
-    }
-  } else {
-    data = input;
-  }
+  const data = parseJsonOnly(input, { label });
 
   // Accept bare array or { powers: [...], none_found?: string }
   let powers = null;
@@ -587,21 +587,6 @@ async function claimExclusive(file, content, { link = fs.link } = {}) {
   }
 }
 
-/** Claim a `<name>.stale-<ts>[-<hex>].json` path that does not exist yet (created empty, then renamed over). */
-async function claimStaleName(runDirectory, name, stamp) {
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const suffix = attempt === 0 ? '' : `-${randomBytes(3).toString('hex')}`;
-    const to = path.join(runDirectory, `${name}.stale-${stamp}${suffix}.json`);
-    try {
-      await (await fs.open(to, 'wx')).close();
-      return to;
-    } catch (err) {
-      if (err.code !== 'EEXIST') throw new Error(`could not move ${name} aside before --force: ${err.message}`);
-    }
-  }
-  throw new Error(`could not find a free stale name for ${name} before --force`);
-}
-
 /**
  * Write the inventory powers.json file. Resolves run dir, loads source.json, parses input,
  * validates, checks for overwrites, and writes atomically.
@@ -643,40 +628,16 @@ export async function writeInventory(projectDir, { run, input, force = false, no
   };
   const text = JSON.stringify(powersData, null, 2) + '\n'; // serialise first: a failure leaves nothing behind
 
-  const stale_moved = [];
+  let stale_moved = [];
   if (force) {
     // Later steps were built for the replaced powers: move them aside BEFORE the new powers.json lands.
     // Each stale name is claimed exclusively; if anything fails, what was moved is put back.
-    const stamp = ts.replace(/:/g, '-');
-    const moved = []; // { name, from, to }
+    stale_moved = await moveAsideStale(runDirectory, STALE_ON_FORCE, () => new Date(ts), { rename });
     try {
-      for (const name of STALE_ON_FORCE) {
-        const from = path.join(runDirectory, name);
-        try {
-          await fs.lstat(from);
-        } catch (err) {
-          if (err.code === 'ENOENT') continue;
-          throw new Error(`could not move ${from} aside before --force: ${err.message}`);
-        }
-        const to = await claimStaleName(runDirectory, name, stamp);
-        try {
-          await rename(from, to);
-        } catch (err) {
-          await fs.rm(to, { force: true });
-          if (err.code === 'ENOENT') continue;
-          throw new Error(`could not move ${from} aside before --force: ${err.message}`);
-        }
-        moved.push({ name, from, to });
-        stale_moved.push(name);
-      }
       await writeTextAtomic(powersFile, text);
     } catch (err) {
-      const restored = [];
-      const notRestored = [];
-      for (const m of moved.reverse()) {
-        try { await rename(m.to, m.from); restored.push(m.name); } catch { notRestored.push(m.name); }
-      }
-      let msg = `${err.message}; stale_moved so far: [${stale_moved.join(', ')}]; restored: [${restored.reverse().join(', ')}]`;
+      const { restored, notRestored } = await stale_moved.restore();
+      let msg = `${err.message}; stale_moved so far: [${stale_moved.join(', ')}]; restored: [${restored.join(', ')}]`;
       if (notRestored.length) msg += `; NOT restored (still named *.stale-*): [${notRestored.join(', ')}]`;
       throw new Error(msg);
     }

@@ -20,6 +20,7 @@ import { intake, RUN_ID, invalidRunId } from './intake.js';
 import { loadState, nextStep, summary, renderStatusSafe } from './status.js';
 import { fetchRun, EgressRefused } from './fetch.js';
 import { writeInventory, inventoryBrief, listSourceFiles } from './inventory.js';
+import { buildMap, mapBrief, recordJudgments } from './harness-map.js';
 
 class CliExit extends Error {
   constructor(message, code) { super(message); this.code = code; }
@@ -33,7 +34,8 @@ const FLAGS = {
   fetch: { value: ['run', 'project', 'max-bytes', 'max-links'], bool: [], positionals: 0, usage: 'usage: cli.js fetch [--run <id>] [--max-bytes <n>] [--max-links <n>] [--project <dir>]' },
   status: { value: ['run', 'project'], bool: ['next'], positionals: 0, usage: 'usage: cli.js status [--run <id>] [--next] [--project <dir>]' },
   report: { value: ['run', 'project'], bool: [], positionals: 0, usage: 'usage: cli.js report [--run <id>] [--project <dir>]' },
-  inventory: { value: ['from', 'run', 'project'], bool: ['brief', 'force'], positionals: 0, usage: 'usage: cli.js inventory (--brief | --from <file|->) [--force] [--run <id>] [--project <dir>]' }
+  inventory: { value: ['from', 'run', 'project'], bool: ['brief', 'force'], positionals: 0, usage: 'usage: cli.js inventory (--brief | --from <file|->) [--force] [--run <id>] [--project <dir>]' },
+  map: { value: ['from', 'run', 'project'], bool: ['brief', 'force'], positionals: 0, usage: 'usage: cli.js map [--brief | --from <file|->] [--force] [--run <id>] [--project <dir>]' }
 };
 
 function parseArgs(argv) {
@@ -216,6 +218,53 @@ const VERBS = {
 
     const { writeError } = await renderStatusSafe(dir);
     if (writeError) warnStatusWrite(id, writeError);
+  },
+
+  async map({ flags, projectDir, cfg }) {
+    const usage = FLAGS.map.usage;
+    const hasBrief = !!flags.brief;
+    const hasFrom = typeof flags.from === 'string';
+    if (hasBrief && hasFrom) fail(`${usage}\n  map needs at most one of --brief or --from <file|->`);
+
+    const { id, dir } = await resolveRun(projectDir, flags, cfg);
+
+    try {
+      if (hasBrief) {
+        // Print the brief for the user to judge
+        const brief = await mapBrief(projectDir, { run: id }, cfg);
+        process.stdout.write(brief + '\n');
+      } else if (hasFrom) {
+        // Read judgments from file and record them
+        let input;
+        if (flags.from === '-') {
+          const buf = await readStdin();
+          input = buf.toString('utf-8');
+        } else {
+          try {
+            input = await fs.readFile(flags.from, 'utf-8');
+          } catch (err) {
+            if (err.code === 'ENOENT') fail(`file not found: ${flags.from}`);
+            fail(`could not read ${flags.from}: ${err.message}`);
+          }
+        }
+        const label = flags.from === '-' ? '--from - (stdin)' : `--from ${flags.from}`;
+        const result = await recordJudgments(projectDir, { run: id, input, now: () => new Date(), force: !!flags.force, cfg, label });
+        out(result);
+        if (result.warning) process.stderr.write(`bbs: warning: ${result.warning}\n`);
+      } else {
+        // Build the map
+        const result = await buildMap(projectDir, { run: id, now: () => new Date(), force: !!flags.force, cfg });
+        out(result);
+        if (result.warning) process.stderr.write(`bbs: warning: ${result.warning}\n`);
+      }
+    } catch (err) {
+      // The verb failed: re-render status so it names the real state. On success the library already rendered once.
+      try {
+        const { writeError } = await renderStatusSafe(dir);
+        if (writeError) warnStatusWrite(id, writeError);
+      } catch { /* the original error is the one to report */ }
+      throw err;
+    }
   }
 };
 
