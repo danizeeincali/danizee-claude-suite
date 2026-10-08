@@ -573,3 +573,141 @@ STATUS: PASS|FAIL
 2. Test: RC-D017 returns STATUS: PASS
 
 **Status**: ready (only runs if RC-D017 fails)
+
+---
+
+### RC-D018: Every weighting/ranking contract test fails when the feature is deleted
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Diagnostic
+**Verifies**: the lead's name-x3 test in `test/bbs-harness-map.test.js` used inputs that tokenise to nothing, so it passed at 1x, 3x and 9x (review harness-map-r1, high + test-quality)
+
+**Test Command**:
+```bash
+# mutation check: set the name boost to 1 (and to 9) in src/lib/bbs/harness-map.js, run the harness-map tests, expect red each time
+sed -i.bak 's/boost: 3/boost: 1/' src/lib/bbs/harness-map.js && node --test test/bbs-harness-map.test.js; mv src/lib/bbs/harness-map.js.bak src/lib/bbs/harness-map.js
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: MUTATION_RED
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F018 if STATUS: FAIL (tests stayed green with the boost changed)
+**Priority**: P2
+**Status**: ready
+
+### RC-F018: Pin a numeric score with a competing pair, and add a mutation check to the contract step
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Conditional Fix
+**Triggered By**: RC-D018 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// weighting test: a name-only candidate vs a body-only candidate at a 3:1 ratio, asserting the exact rounded score;
+// contract step: delete or neutralise the feature once and require red before committing the contract
+```
+
+**File**: test/bbs-harness-map.test.js
+
+**Completion Tests**:
+1. Pattern: the name-weight test asserts a pinned score and fails at boost 1 and at boost 9
+2. Test: RC-D018 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D018 fails)
+
+---
+
+### RC-D019: Every read-modify-write of bbs run state uses one lock helper with an ownership token
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Diagnostic
+**Verifies**: lock files without a pid+token and a token-checked release let a slow run delete a second run's lock (review harness-map-r3, medium); the helper `withMapLockDetailed` is private to `harness-map.js`
+
+**Test Command**:
+```bash
+grep -nE "'wx'|\.lock" src/lib/bbs/*.js | grep -v "src/lib/bbs/store.js"
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: ONE_LOCK_HELPER
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F019 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+### RC-F019: Lift withMapLock into store.js as the one lock helper for every bbs step
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Conditional Fix
+**Triggered By**: RC-D019 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// store.js exports withRunLock(runDir, name, fn, opts): 'wx' create, `${pid} ${token}`, mtime refresh, stale break by rename + token check,
+// release only if the token is ours; verdict/handoff/map all call it
+```
+
+**File**: src/lib/bbs/store.js
+
+**Completion Tests**:
+1. Pattern: no module other than store.js creates a `.lock` file
+2. Test: RC-D019 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D019 fails)
+
+---
+
+### RC-D020: Every filesystem root a module indexes is lstat-checked, not only the entries inside it
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Diagnostic
+**Verifies**: `listFiles` skipped symlinked entries but the roots and their parents were followed out of the project (review harness-map-r4, security)
+
+**Test Command**:
+```bash
+node --test test/bbs-harness-map.test.js --test-name-pattern "symlink"
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: ROOT_SYMLINK_REFUSED
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F020 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+### RC-F020: A shared safe-root walker in store.js reports SYMLINK for any root or parent
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Conditional Fix
+**Triggered By**: RC-D020 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// lstat each root and every parent up to projectDir; a symlink -> errors {path, code:'SYMLINK'} and skip; open files with O_NOFOLLOW
+```
+
+**File**: src/lib/bbs/store.js
+
+**Completion Tests**:
+1. Pattern: intake and inventory walkers use the same root check as harness-map
+2. Test: RC-D020 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D020 fails)
