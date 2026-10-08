@@ -1,11 +1,11 @@
 # Marathon 2026-10-07-bbs
 
-- State: PAUSED (budget)
-- Budget: 4,354,837 / 10,000,000 tokens
-- Allowance: 95% (ceiling 95%)
+- State: RUNNING
+- Budget: 4,554,837 / 10,000,000 tokens
+- Allowance: 95% (ceiling 98%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: PAUSED — raise ceiling_pct / run_token_budget in .claude/marathon.json or wait for the allowance, then `cli.js unpause` (or `cli.js budget --usage-pct <fresh reading>`) and /w-marathon --resume 2026-10-07-bbs.
+- Next for you: Continue stream "verdict" (next: opus fix round for review r2 (7 findings); then unit run + review r3) — /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
 
 ## Streams
 
@@ -15,7 +15,7 @@
 | fetch | ../claude-suite-fetch | .claude/plans/2026-10-07-w-bbs.md | done | clean 2/2 | done | closed: 3 reviews (r2, r3 clean), 18 findings fixed; r3 fixes (952736d..eeebb82) reviewed in inventory r1 via --base 952736d |  | 0 |
 | inventory | ../claude-suite-inventory | .claude/plans/2026-10-07-w-bbs.md | done | clean 2/2 | done | closed: 3 reviews (r2, r3 clean), 25 findings fixed; r3 fixes (945e873..9905a37) reviewed in harness-map r1 via --base 945e873 |  | 0 |
 | harness-map | ../claude-suite-harness-map | .claude/plans/2026-10-07-w-bbs.md | done | clean 2/2 | done | closed: 4 reviews (r3, r4 clean), 22 findings fixed; r4 fix (f449196..45e70fc) reviewed in verdict r1 via --base f449196 |  | 0 |
-| verdict | ../claude-suite-verdict | .claude/plans/2026-10-07-w-bbs.md | active | clean 0/2 | 4.7 | PAUSED at the 95% ceiling. On resume: budget check; fix round for review r2 (3 medium: cleared decisions vs registry/labels, idempotent append repair, inventory --force under map.lock; 4 low); then unit run + review r3 |  | 0 |
+| verdict | ../claude-suite-verdict | .claude/plans/2026-10-07-w-bbs.md | active | clean 0/2 | 4.7 | opus fix round for review r2 (7 findings); then unit run + review r3 |  | 0 |
 | handoff |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | handoff.js briefs + buildFinishLine + marathon bridge |  | 0 |
 | command-docs |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | plugin installer, w-bbs + bbs commands, docs, README, e2e packaged test |  | 0 |
 

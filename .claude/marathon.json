@@ -1,5 +1,5 @@
 {
-  "ceiling_pct": 95,
+  "ceiling_pct": 98,
   "usage_reading_ttl_minutes": 30,
   "run_token_budget": 10000000,
   "helper_budget": {
