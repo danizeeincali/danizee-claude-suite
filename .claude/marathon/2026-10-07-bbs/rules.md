@@ -50,3 +50,14 @@ Add a rule the second time something goes wrong.
   worktree is created. Nothing is pushed.
 - Every `src/lib/bbs/*` module has a test file; every CLI verb has an e2e path through the
   installed copy.
+
+## Promoted from reviews (seen twice)
+
+- **Claim atomically, commit last** (`correctness`, reviews intake-r1 + intake-r2). Any run, file or
+  id that two processes could create is claimed with an exclusive operation (`mkdir` without
+  `recursive`, `open` with `wx`, tmp-file + `rename`), and the file that marks a step as done is
+  written **last**. A half-made run must never read as complete; a check-then-write gap is a defect.
+- **Fail loudly, never fall back silently** (`other`, reviews intake-r1 + intake-r2). Every failure
+  names its cause and the file or input involved; a missing tool, a non-object config or an
+  unresolvable project root is an error (or a stderr warning naming the fallback), never a quiet
+  default that moves state somewhere the user does not expect.

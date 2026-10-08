@@ -1,0 +1,2 @@
+{"category":"correctness","kind":"rule","ref":".claude/marathon/2026-10-07-bbs/rules.md#claim-atomically-commit-last","area":null,"id":"232dbc98-c4c0-47e6-8562-e06c7e3dfbe1","ts":"2026-10-08T00:51:46.182Z"}
+{"category":"other","kind":"rule","ref":".claude/marathon/2026-10-07-bbs/rules.md#fail-loudly-never-fall-back-silently","area":null,"id":"3c4dbb9b-191f-48eb-a94a-b87371eb8080","ts":"2026-10-08T00:51:46.255Z"}
