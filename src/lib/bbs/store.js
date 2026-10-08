@@ -192,10 +192,12 @@ export const LOCK_REFRESH_MS = 20 * 1000;
  * Hold an exclusive run lock (map.lock, created 'wx') for a read-modify-write of map.json.
  * The lock file holds `${pid} ${token}`; release removes it only if the token is still ours.
  * A lock whose mtime is older than staleMs is abandoned: it is renamed aside (never deleted), the renamed content is checked
- * against what was stat'ed, and ours is created. While fn runs the lock's mtime is refreshed every refreshMs.
+ * against what was stat'ed, and ours is created. On a mismatch the moved file is put back with rename (only when map.lock
+ * is free; hard links are never used) and the held error is thrown — naming the aside file if it could not be put back.
+ * While fn runs the lock's mtime is refreshed every refreshMs.
  * Returns { result, warning } (warning is null when the release was clean).
  */
-export async function withMapLockDetailed(runDir, fn, { now = () => Date.now(), staleMs = LOCK_STALE_MS, refreshMs = LOCK_REFRESH_MS, rm = (p, o) => fs.rm(p, o) } = {}) {
+export async function withMapLockDetailed(runDir, fn, { now = () => Date.now(), staleMs = LOCK_STALE_MS, refreshMs = LOCK_REFRESH_MS, rm = (p, o) => fs.rm(p, o), rename = (a, b) => fs.rename(a, b) } = {}) {
   const lockPath = path.join(runDir, 'map.lock');
   const held = () => new Error('map.json is locked by another bbs command (map.lock); remove it if none is running');
   const token = randomBytes(12).toString('hex');
@@ -214,12 +216,19 @@ export async function withMapLockDetailed(runDir, fn, { now = () => Date.now(), 
       } catch (e) { if (e.code === 'ENOENT') continue; throw e; }
       if (!(now() - st.mtimeMs > staleMs)) throw held();
       const aside = `${lockPath}.stale-${token}`;
-      try { await fs.rename(lockPath, aside); } catch (e) { if (e.code === 'ENOENT') continue; throw e; }
+      try { await rename(lockPath, aside); } catch (e) { if (e.code === 'ENOENT') continue; throw e; }
       let got = null;
       try { got = await fs.readFile(aside, 'utf-8'); } catch { /* unreadable: treat as a mismatch */ }
       if (got !== seen) {
-        // We moved someone else's fresh lock aside: put it back if the path is still free, then retry.
-        try { await fs.link(aside, lockPath); await fs.rm(aside, { force: true }); } catch { /* best effort */ }
+        // We moved someone else's fresh lock aside. Put it back with rename (no hard links needed) only if the path is
+        // still free, then stop: never retry, so a foreign lock is never replaced by ours. If the path is occupied or the
+        // rename fails, the aside file is named in the error so a human can sort it out.
+        const leftAside = new Error(`${held().message} (a lock file was left aside at ${path.basename(aside)})`);
+        let free = false;
+        try { await fs.lstat(lockPath); } catch (e) { if (e.code === 'ENOENT') free = true; }
+        if (!free) throw leftAside;
+        try { await rename(aside, lockPath); } catch { throw leftAside; }
+        throw held();
       }
       continue;
     }

@@ -125,28 +125,43 @@ const SANDBOX_TIMEOUT_MS = 5000;
 export const SANDBOX_STDERR_MAX_CHARS = 200;
 const STDERR_TRUNCATED = ' …[truncated]';
 
-/** Run a detection command: nothing is read from stdin, stdout is discarded, only stderr is kept for the reason. */
-export function defaultExec(cmd, args, { spawn = spawnSync } = {}) {
-  const r = spawn(cmd, args, { timeout: SANDBOX_TIMEOUT_MS, stdio: ['ignore', 'ignore', 'pipe'], encoding: 'utf-8' });
+/**
+ * Run a detection command: nothing is read from stdin, stdout is discarded (piped and returned only with capture: true,
+ * for `docker context inspect`), only stderr is kept for the reason. env, when given, replaces the inherited environment.
+ */
+export function defaultExec(cmd, args, { spawn = spawnSync, env, capture = false } = {}) {
+  const opts = { timeout: SANDBOX_TIMEOUT_MS, stdio: ['ignore', capture ? 'pipe' : 'ignore', 'pipe'], encoding: 'utf-8' };
+  if (env) opts.env = env;
+  const r = spawn(cmd, args, opts);
   if (r.error) throw r.error;
-  return { status: r.status, stderr: r.stderr };
+  return capture ? { status: r.status, stdout: r.stdout, stderr: r.stderr } : { status: r.status, stderr: r.stderr };
 }
 
-/** Control characters except \n: stripped from probe evidence (sanitizeEvidence) and from sandbox stderr lines. */
-const CONTROL_CHARS = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/g;
+/**
+ * Stripped from probe evidence (sanitizeEvidence), sandbox stderr lines and docker endpoints: C0/C1 control characters
+ * except \n, every Unicode format character (\p{Cf}: bidi overrides and isolates, zero-width characters, BOM) and the
+ * line/paragraph separators U+2028/U+2029.
+ */
+const CONTROL_CHARS = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u2028\u2029]|\p{Cf}/gu;
 
-/** First non-blank stderr line, control characters stripped, capped at SANDBOX_STDERR_MAX_CHARS. */
+/** Cut text at max code points (never inside a surrogate pair), appending marker when anything was cut. */
+function capCodePoints(text, max, marker) {
+  const cps = Array.from(text);
+  return cps.length > max ? cps.slice(0, max).join('') + marker : text;
+}
+
+/** First non-blank stderr line, control and format characters stripped, capped at SANDBOX_STDERR_MAX_CHARS code points. */
 function stderrLine(stderr) {
   const text = Buffer.isBuffer(stderr) ? stderr.toString('utf-8') : String(stderr ?? '');
   const line = text.split(/\r?\n/).map(l => l.replace(CONTROL_CHARS, '').trim()).find(Boolean) || '';
-  return line.length > SANDBOX_STDERR_MAX_CHARS ? line.slice(0, SANDBOX_STDERR_MAX_CHARS) + STDERR_TRUNCATED : line;
+  return capCodePoints(line, SANDBOX_STDERR_MAX_CHARS, STDERR_TRUNCATED);
 }
 
-/** Run exec and normalise the outcome to { ok, code, status, stderr }. */
-function probeCommand(exec, cmd, args) {
+/** Run exec and normalise the outcome to { ok, code, status, stderr, stdout }. */
+function probeCommand(exec, cmd, args, opts) {
   try {
-    const r = exec(cmd, args) || {};
-    return { ok: r.status === 0, status: r.status, stderr: r.stderr };
+    const r = (opts ? exec(cmd, args, opts) : exec(cmd, args)) || {};
+    return { ok: r.status === 0, status: r.status, stderr: r.stderr, stdout: r.stdout };
   } catch (err) {
     return { ok: false, code: err?.code, status: typeof err?.status === 'number' ? err.status : undefined, stderr: err?.stderr, message: err?.message };
   }
@@ -176,13 +191,65 @@ function unshareWhy(u) {
   return `unshare failed (${u.code || u.message || 'unknown error'})`;
 }
 
-export async function detectSandbox({ exec = defaultExec, platform = process.platform } = {}) {
-  const docker = probeCommand(exec, 'docker', ['info']);
-  if (docker.ok) return { present: true, kind: 'docker', reason: 'docker info succeeded' };
+const LOCAL_DOCKER = /^(unix|npipe):\/\//i;
+
+/** A docker endpoint as shown in a reason: scheme + host[:port] only; userinfo, path and query are dropped. */
+export function redactDockerEndpoint(endpoint) {
+  const text = String(endpoint ?? '').replace(CONTROL_CHARS, '').trim();
+  const m = /^([a-z][a-z0-9+.-]*:\/\/)?([^/?#]*)/i.exec(text);
+  let authority = m[2];
+  const at = authority.lastIndexOf('@');
+  if (at >= 0) authority = authority.slice(at + 1);
+  return capCodePoints((m[1] || '') + authority, SANDBOX_STDERR_MAX_CHARS, STDERR_TRUNCATED);
+}
+
+/** The environment docker runs with: no CLI hints, and never an SSH askpass helper (an ssh:// endpoint must not prompt). */
+function dockerEnv(env) {
+  const out = { ...env, DOCKER_CLI_HINTS: 'false' };
+  delete out.SSH_ASKPASS;
+  delete out.SSH_ASKPASS_REQUIRE;
+  return out;
+}
+
+/**
+ * Where the docker CLI points: { local: true } or { local: false, endpoint }. Called only when DOCKER_HOST is unset or
+ * local (a remote DOCKER_HOST is decided by detectSandbox without running docker). The current context's endpoint (`docker context inspect`) must be unix:// or npipe://. An empty or failing inspect (a docker
+ * without contexts) falls back to DOCKER_HOST, which at that point is unset or local, so it counts as local.
+ */
+function dockerEndpoint(exec, envForDocker) {
+  const ctx = probeCommand(exec, 'docker', ['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}'], { env: envForDocker, capture: true });
+  const endpoint = ctx.ok ? String(ctx.stdout ?? '').trim() : '';
+  if (endpoint && !LOCAL_DOCKER.test(endpoint)) return { local: false, endpoint };
+  return { local: true };
+}
+
+/**
+ * docker counts only when `docker info` succeeds against a daemon on this machine (unix:// or npipe://): a remote
+ * daemon (DOCKER_HOST or a docker context pointing at tcp://, ssh://, …) is not a sandbox here. unshare counts on linux.
+ * Order (safety first): DOCKER_HOST is checked first (no subprocess for a remote one), then `docker context inspect`,
+ * then `docker info` only when the endpoint is local — a remote daemon is never contacted.
+ */
+export async function detectSandbox({ exec = defaultExec, platform = process.platform, env = process.env } = {}) {
+  const envForDocker = dockerEnv(env);
+  let remote = null;
+  if (env.DOCKER_HOST && !LOCAL_DOCKER.test(env.DOCKER_HOST)) remote = env.DOCKER_HOST;
+  let docker = null;
+  if (remote === null) {
+    const ep = dockerEndpoint(exec, envForDocker);
+    if (!ep.local) remote = ep.endpoint;
+  }
+  if (remote === null) {
+    docker = probeCommand(exec, 'docker', ['info'], { env: envForDocker });
+    if (docker.ok) return { present: true, kind: 'docker', reason: 'docker info succeeded' };
+  }
   let u = null;
   if (platform === 'linux') {
     u = probeCommand(exec, 'unshare', ['--user', '--map-root-user', 'true']);
     if (u.ok) return { present: true, kind: 'unshare', reason: 'unshare is available' };
+  }
+  if (remote !== null) {
+    const reason = `docker daemon is remote (${redactDockerEndpoint(remote)}) — not a sandbox on this machine`;
+    return { present: false, kind: null, reason: u === null ? reason : `${reason} and ${unshareWhy(u)}` };
   }
   return { present: false, kind: null, reason: `no sandbox on this machine: ${dockerWhy(docker)} and ${unshareWhy(u)}` };
 }
@@ -328,8 +395,8 @@ export const EVIDENCE_MAX_CHARS = 2048;
 const EVIDENCE_TRUNCATED = ' …[truncated]';
 
 /**
- * Probe evidence as stored and printed: a string with control characters stripped (newlines kept), every http(s) URL
- * redacted with intake's redactRef, then capped at EVIDENCE_MAX_CHARS. Redaction runs before the cap so a URL cut at
+ * Probe evidence as stored and printed: a string with control and format characters stripped (newlines kept), every
+ * http(s) URL redacted with intake's redactRef, then capped at EVIDENCE_MAX_CHARS code points. Redaction runs before the cap so a URL cut at
  * the cap can never expose credentials the full URL would have had masked. Empty → null.
  */
 export function sanitizeEvidence(text) {
@@ -337,7 +404,7 @@ export function sanitizeEvidence(text) {
   const clean = String(text).replace(CONTROL_CHARS, '');
   if (!clean.trim()) return null;
   const red = redactUrlsInText(clean);
-  return red.length > EVIDENCE_MAX_CHARS ? red.slice(0, EVIDENCE_MAX_CHARS) + EVIDENCE_TRUNCATED : red;
+  return capCodePoints(red, EVIDENCE_MAX_CHARS, EVIDENCE_TRUNCATED);
 }
 
 const nextOf = (rows, unread) => unread ? null : Object.values(rows).every(r => r.decision) ? 'handoff' : 'verdict';

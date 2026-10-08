@@ -14,7 +14,7 @@ import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import {
   VERDICTS, PROBES, PolicyRefused, licenceClass, detectSandbox, legalVerdicts, defaultVerdict, verdictTable,
-  computeVerdicts, recordProbe, recordDecisions, defaultExec, SANDBOX_STDERR_MAX_CHARS
+  computeVerdicts, recordProbe, recordDecisions, defaultExec, SANDBOX_STDERR_MAX_CHARS, sanitizeEvidence
 } from '../src/lib/bbs/verdict.js';
 import { DEFAULT_CONFIG } from '../src/lib/bbs/config.js';
 import { intake } from '../src/lib/bbs/intake.js';
@@ -66,9 +66,12 @@ describe('verdict — detectSandbox', () => {
   it('docker present and `docker info` exits 0 → present; docker missing or failing and no unshare → absent with a reason; unshare on linux → present', async () => {
     const calls = [];
     const exec = (cmd, args) => { calls.push([cmd, ...args]); if (cmd === 'docker') return { status: 0 }; throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }); };
-    const ok = await detectSandbox({ exec, platform: 'darwin' });
+    const ok = await detectSandbox({ exec, platform: 'darwin', env: {} });
     assert.deepEqual(ok, { present: true, kind: 'docker', reason: 'docker info succeeded' });
-    assert.deepEqual(calls[0], ['docker', 'info']);
+    // r3 decision (lead, 2026-10-07): safety first — the endpoint is inspected BEFORE any daemon is contacted,
+    // so a remote context never receives `docker info`. An empty inspect answer with DOCKER_HOST unset counts as local.
+    assert.deepEqual(calls[0].slice(0, 3), ['docker', 'context', 'inspect']);
+    assert.deepEqual(calls[1], ['docker', 'info']);
     const noDocker = await detectSandbox({ exec: () => { throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' }); }, platform: 'darwin' });
     assert.equal(noDocker.present, false);
     assert.equal(noDocker.kind, null);
@@ -887,5 +890,109 @@ describe('verdict r2 — sandbox reasons', () => {
     assert.ok(!CONTROL.test(refused.reason));
     const mac = await detectSandbox({ exec: enoent, platform: 'darwin' });
     assert.match(mac.reason, /and unshare only counts on linux$/);
+  });
+});
+
+describe('verdict r3 — a remote docker daemon is not a sandbox on this machine', () => {
+  const enoent = () => { throw Object.assign(new Error('spawnSync x ENOENT'), { code: 'ENOENT' }); };
+  const recorder = (inspectOut, { infoStatus = 0, inspectThrows = false } = {}) => {
+    const calls = [];
+    const exec = (cmd, args, opts) => {
+      calls.push({ argv: [cmd, ...args], opts });
+      if (cmd !== 'docker') return enoent();
+      if (args[0] === 'context') { if (inspectThrows) return enoent(); return { status: 0, stdout: inspectOut, stderr: '' }; }
+      if (args[0] === 'info') return { status: infoStatus, stderr: '' };
+      return enoent();
+    };
+    return { calls, exec };
+  };
+
+  it('DOCKER_HOST=tcp://10.0.0.5:2375 \u2192 absent with the remote reason (host kept), docker info never asked', async () => {
+    const { calls, exec } = recorder('unix:///var/run/docker.sock\n');
+    const out = await detectSandbox({ exec, platform: 'darwin', env: { DOCKER_HOST: 'tcp://10.0.0.5:2375' } });
+    assert.deepEqual(out, { present: false, kind: null, reason: 'docker daemon is remote (tcp://10.0.0.5:2375) — not a sandbox on this machine' });
+    assert.ok(!calls.some(c => c.argv[0] === 'docker' && c.argv[1] === 'info'), JSON.stringify(calls));
+  });
+
+  it('DOCKER_HOST=ssh://user@h \u2192 absent, the userinfo is redacted from the reason', async () => {
+    const { calls, exec } = recorder('');
+    const out = await detectSandbox({ exec, platform: 'darwin', env: { DOCKER_HOST: 'ssh://user:pw@h' } });
+    assert.equal(out.present, false);
+    assert.equal(out.kind, null);
+    assert.equal(out.reason, 'docker daemon is remote (ssh://h) — not a sandbox on this machine');
+    assert.ok(!out.reason.includes('user@') && !out.reason.includes('pw'), out.reason);
+    assert.ok(!calls.some(c => c.argv[1] === 'info'));
+  });
+
+  it('DOCKER_HOST unset and a remote docker context \u2192 absent with the redacted context endpoint', async () => {
+    const { calls, exec } = recorder('ssh://deploy@build.example:22\n');
+    const out = await detectSandbox({ exec, platform: 'darwin', env: {} });
+    assert.equal(out.present, false);
+    assert.equal(out.reason, 'docker daemon is remote (ssh://build.example:22) — not a sandbox on this machine');
+    assert.deepEqual(calls.map(c => c.argv.slice(0, 3)), [['docker', 'context', 'inspect']], 'a remote context never receives docker info');
+  });
+
+  it('DOCKER_HOST unset, context endpoint unix:///var/run/docker.sock and docker info ok \u2192 present; docker gets DOCKER_CLI_HINTS=false and no SSH_ASKPASS', async () => {
+    const { calls, exec } = recorder('unix:///var/run/docker.sock\n');
+    const out = await detectSandbox({ exec, platform: 'darwin', env: { PATH: '/usr/bin', SSH_ASKPASS: '/bin/askpass', SSH_ASKPASS_REQUIRE: 'force' } });
+    assert.deepEqual(out, { present: true, kind: 'docker', reason: 'docker info succeeded' });
+    const inspect = calls.find(c => c.argv[1] === 'context');
+    assert.deepEqual(inspect.argv, ['docker', 'context', 'inspect', '--format', '{{.Endpoints.docker.Host}}']);
+    assert.deepEqual(calls.map(c => c.argv[1]), ['context', 'info'], 'inspect runs before info');
+    for (const c of calls.filter(c => c.argv[0] === 'docker')) {
+      assert.equal(c.opts.env.DOCKER_CLI_HINTS, 'false');
+      assert.equal(c.opts.env.PATH, '/usr/bin');
+      assert.ok(!('SSH_ASKPASS' in c.opts.env) && !('SSH_ASKPASS_REQUIRE' in c.opts.env));
+    }
+  });
+
+  it('DOCKER_HOST=unix:// or npipe:// is local; an empty or failing context inspect with DOCKER_HOST unset counts as local', async () => {
+    for (const env of [{ DOCKER_HOST: 'unix:///run/user/1000/docker.sock' }, { DOCKER_HOST: 'npipe:////./pipe/docker_engine' }]) {
+      const { exec } = recorder('');
+      assert.equal((await detectSandbox({ exec, platform: 'darwin', env })).present, true, JSON.stringify(env));
+    }
+    assert.equal((await detectSandbox({ exec: recorder('').exec, platform: 'darwin', env: {} })).present, true);
+    assert.equal((await detectSandbox({ exec: recorder('', { inspectThrows: true }).exec, platform: 'darwin', env: {} })).present, true);
+  });
+
+  it('defaultExec passes env through, keeps stdin and stdout ignored for docker info, and pipes stdout only when asked to capture it', () => {
+    const seen = [];
+    const spawn = (cmd, args, opts) => { seen.push(opts); return { status: 0, stdout: 'unix:///x\n', stderr: '' }; };
+    defaultExec('docker', ['info'], { spawn, env: { A: '1' } });
+    assert.deepEqual(seen[0].stdio, ['ignore', 'ignore', 'pipe']);
+    assert.deepEqual(seen[0].env, { A: '1' });
+    const r = defaultExec('docker', ['context', 'inspect'], { spawn, capture: true });
+    assert.deepEqual(seen[1].stdio, ['ignore', 'pipe', 'pipe']);
+    assert.equal(seen[1].timeout, 5000);
+    assert.equal(r.stdout, 'unix:///x\n');
+  });
+});
+
+describe('verdict r3 — Unicode format characters and code-point cuts', () => {
+  const enoent = () => { throw Object.assign(new Error('spawnSync x ENOENT'), { code: 'ENOENT' }); };
+  const dockerSays = (stderr) => detectSandbox({ exec: (cmd, args) => { if (cmd === 'docker' && args[0] === 'info') return { status: 1, stderr }; return enoent(); }, platform: 'darwin', env: {} });
+  const LONE_SURROGATE = /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/;
+
+  it('a U+202E (bidi override), U+200B, U+2028 and U+2029 in docker stderr are stripped from the reason', async () => {
+    const out = await dockerSays('Cannot \u202Econnect\u200B to\u2028 the\u2029 daemon\u2066x\u2069');
+    assert.ok(!/[\u202A-\u202E\u2066-\u2069\u200B\u2028\u2029]/.test(out.reason), JSON.stringify(out.reason));
+    assert.match(out.reason, /docker is not running \(Cannot connect to the daemonx\)/);
+  });
+
+  it('an emoji at the 200-char boundary of a stderr line is not split: no lone surrogate in the stored JSON', async () => {
+    const out = await dockerSays('e'.repeat(199) + '\u{1F600}' + 'tail');
+    assert.ok(!LONE_SURROGATE.test(out.reason), JSON.stringify(out.reason));
+    assert.ok(out.reason.includes('e'.repeat(199) + '\u{1F600} …[truncated]'), out.reason);
+    assert.ok(!/\\ud[89a-f][0-9a-f]{2}/i.test(JSON.stringify(out.reason)));
+    const whole = await dockerSays('e'.repeat(199) + '\u{1F600}');
+    assert.ok(whole.reason.includes(`(${'e'.repeat(199)}\u{1F600})`), '200 code points are kept whole');
+  });
+
+  it('sanitizeEvidence strips U+202E / U+2028 / U+2029 (keeping \\n) and cuts by code point', () => {
+    assert.equal(sanitizeEvidence('a\u202Eb\u2028c\u2029d\ne\uFEFF'), 'abcd\ne');
+    const cut = sanitizeEvidence('a'.repeat(2047) + '\u{1F600}' + 'zz');
+    assert.ok(!LONE_SURROGATE.test(cut), JSON.stringify(cut.slice(-20)));
+    assert.equal(cut, 'a'.repeat(2047) + '\u{1F600} …[truncated]');
+    assert.equal(sanitizeEvidence('a'.repeat(2047) + '\u{1F600}'), 'a'.repeat(2047) + '\u{1F600}');
   });
 });
