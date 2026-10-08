@@ -17,7 +17,7 @@ export const SIZE = ['small', 'medium', 'large'];
 export const NAME_MAX = 80;
 export const IDEA_MAX = 1200;
 
-const NAME_RE = /^[\p{L}\p{N}][\p{L}\p{N} ._-]{0,79}$/u;
+const NAME_RE = /^[\p{L}\p{N}][\p{L}\p{M}\p{N} ._-]{0,79}$/u;
 const RESERVED_NAMES = ['__proto__', 'constructor', 'prototype'];
 // C0, DEL, C1 and the Unicode line/paragraph separators
 const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
@@ -178,7 +178,7 @@ export function parseInventory(input, { maxPowers = 12, label = 'input' } = {}) 
     text = text.trim();
 
     if (!text) {
-      throw new Error('JSON only — got empty input');
+      throw new Error(`JSON only — ${label} is empty`);
     }
 
     try {
@@ -280,11 +280,12 @@ export function isSecretName(name) {
 
 /**
  * List files in the source. Source must be fetched and identity not pending.
- * Returns { root, files: [{ path, size }], total, truncated, licence_file, omitted_secret, errors: [{ path, code }] }.
+ * Returns { root, files: [{ path, size }], total, truncated, licence_file, omitted_secret, unlisted, errors: [{ path, code, note? }] }.
+ * File names that are not valid UTF-8 are not listed or counted in `total`: they appear under `errors` as EILSEQ and in `unlisted`.
  * The root must exist and be a directory; unreadable subdirectories are collected in `errors`.
- * Symlinks and SKIP_DIRS (.git, node_modules, build/vendor/cache dirs) are skipped; an empty root is an error; secret-like files are counted, never listed.
+ * Symlinks and SKIP_DIRS directories (.git, node_modules, build/vendor/cache dirs) are skipped; an empty root is an error; secret-like files are counted, never listed.
  */
-export async function listSourceFiles(runDir, source, { maxFiles = 500 } = {}) {
+export async function listSourceFiles(runDir, source, { maxFiles = 500, readdir = fs.readdir, lstat = fs.lstat, platform = process.platform } = {}) {
   if (!source || source.fetched !== true) {
     throw new Error('source must be fetched before inventory');
   }
@@ -311,35 +312,51 @@ export async function listSourceFiles(runDir, source, { maxFiles = 500 } = {}) {
   const errors = [];
   let omitted_secret = 0;
   let total = 0;
+  let unlisted = 0;
 
-  async function walk(dir, prefix) {
+  // SKIP_DIRS names a directory, never a file; macOS and Windows file systems ignore case by default.
+  const foldCase = platform === 'darwin' || platform === 'win32';
+  const skipSet = foldCase ? new Set([...SKIP_DIRS].map(n => n.toLowerCase())) : SKIP_DIRS;
+  const isSkippedDir = (name) => skipSet.has(foldCase ? name.toLowerCase() : name);
+  // Paths are Buffers so that names that are not valid UTF-8 still name the real file.
+  const joinBuf = (dirBuf, nameBuf) => Buffer.concat([dirBuf, Buffer.from(path.sep), nameBuf]);
+  const escapeBytes = (buf) => Array.from(buf, (b) => (b >= 0x20 && b < 0x7f && b !== 0x5c ? String.fromCharCode(b) : `\\x${b.toString(16).padStart(2, '0')}`)).join('');
+  const byName = (x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0);
+
+  async function walk(dirBuf, prefix) {
     let entries;
     try {
-      entries = await fs.readdir(dir, { withFileTypes: true });
+      entries = await readdir(dirBuf, { withFileTypes: true, encoding: 'buffer' });
     } catch (err) {
       errors.push({ path: prefix || '.', code: err.code || 'UNKNOWN' });
       return;
     }
-    entries.sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0));
 
     const dirs = [];
     const files = [];
     const unknown = [];
     for (const entry of entries) {
-      if (SKIP_DIRS.has(entry.name)) continue;
-      const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
-      const item = { entry, fullPath: path.join(dir, entry.name), relPath };
+      const nameBuf = Buffer.isBuffer(entry.name) ? entry.name : Buffer.from(entry.name, 'utf8');
+      const name = nameBuf.toString('utf8');
       if (entry.isSymbolicLink()) continue;
-      if (entry.isDirectory()) dirs.push(item);
+      if (!Buffer.from(name, 'utf8').equals(nameBuf)) {
+        // Not valid UTF-8: it cannot be shown or handed to the helper faithfully, so say so instead of dropping it.
+        const shown = escapeBytes(nameBuf);
+        errors.push({ path: prefix ? `${prefix}/${shown}` : shown, code: 'EILSEQ', note: 'non-UTF-8 file name' });
+        unlisted++;
+        continue;
+      }
+      const item = { entry, name, fullPath: joinBuf(dirBuf, nameBuf), relPath: prefix ? `${prefix}/${name}` : name };
+      if (entry.isDirectory()) { if (!isSkippedDir(name)) dirs.push(item); }
       else if (entry.isFile()) files.push(item);
       else unknown.push(item); // Dirent type unknown on this filesystem: lstat decides
     }
 
     await Promise.all(unknown.map(async (item) => {
       try {
-        const st = await fs.lstat(item.fullPath);
+        const st = await lstat(item.fullPath);
         if (st.isSymbolicLink()) return;
-        if (st.isDirectory()) dirs.push(item);
+        if (st.isDirectory()) { if (!isSkippedDir(item.name)) dirs.push(item); }
         else if (st.isFile()) files.push(item);
       } catch (err) {
         errors.push({ path: item.relPath, code: err.code || 'UNKNOWN' });
@@ -347,18 +364,18 @@ export async function listSourceFiles(runDir, source, { maxFiles = 500 } = {}) {
     }));
     // Visit in name order, files and directories interleaved, so the first maxFiles found are the
     // lexicographically first paths; consecutive files are sized in parallel.
-    const ordered = [...dirs.map(i => ({ ...i, dir: true })), ...files].sort((x, y) => (x.entry.name < y.entry.name ? -1 : x.entry.name > y.entry.name ? 1 : 0));
+    const ordered = [...dirs.map(i => ({ ...i, dir: true })), ...files].sort(byName);
 
     async function flush(batch) {
       const listed = batch.filter(f => {
-        if (isSecretName(f.entry.name)) { omitted_secret++; return false; }
+        if (isSecretName(f.name)) { omitted_secret++; return false; }
         return true;
       });
       // Only files still within the cap need a size (one lstat each, in parallel); the rest are just counted.
       const room = Math.max(0, maxFiles - all.length);
       const sized = await Promise.all(listed.slice(0, room).map(async (f) => {
         try {
-          return { f, size: (await fs.lstat(f.fullPath)).size };
+          return { f, size: (await lstat(f.fullPath)).size };
         } catch (err) {
           errors.push({ path: f.relPath, code: err.code || 'UNKNOWN' });
           return null;
@@ -368,11 +385,11 @@ export async function listSourceFiles(runDir, source, { maxFiles = 500 } = {}) {
         if (!r) continue;
         total++;
         all.push({ path: r.f.relPath, size: r.size });
-        if (LICENCE_RE.test(r.f.entry.name)) licences.push(r.f.relPath);
+        if (LICENCE_RE.test(r.f.name)) licences.push(r.f.relPath);
       }
       for (const f of listed.slice(room)) {
         total++;
-        if (LICENCE_RE.test(f.entry.name)) licences.push(f.relPath);
+        if (LICENCE_RE.test(f.name)) licences.push(f.relPath);
       }
     }
 
@@ -389,7 +406,7 @@ export async function listSourceFiles(runDir, source, { maxFiles = 500 } = {}) {
     await flush(batch);
   }
 
-  await walk(root, '');
+  await walk(Buffer.from(root), '');
 
   if (total === 0) {
     throw new Error(omitted_secret > 0
@@ -410,6 +427,7 @@ export async function listSourceFiles(runDir, source, { maxFiles = 500 } = {}) {
     truncated: total > maxFiles,
     licence_file: licences[0] || null,
     omitted_secret,
+    unlisted,
     errors
   };
 }
@@ -442,7 +460,7 @@ export function inventoryBrief({ source, files, maxPowers }) {
   }
   if (Array.isArray(files.errors) && files.errors.length > 0) {
     lines.push('### Could not read\n');
-    for (const e of files.errors) lines.push(`- ${e.path} (${e.code})`);
+    for (const e of files.errors) lines.push(`- ${e.path} (${e.code}${e.note ? `: ${e.note}` : ''})`);
     lines.push('');
   }
 
@@ -467,7 +485,7 @@ export function inventoryBrief({ source, files, maxPowers }) {
   lines.push('');
 
   lines.push('### Field rules\n');
-  lines.push(`- \`name\`: ≤ ${NAME_MAX} characters, one line of letters, digits, space, ".", "_" and "-"`);
+  lines.push(`- \`name\`: ≤ ${NAME_MAX} characters, one line of letters (combining marks allowed after the first character), digits, space, ".", "_" and "-"`);
   lines.push('- `what`: a one-line description in our words');
   lines.push('- `evidence`: where in the source this capability lives (file:line, URL, etc.)');
   lines.push('- `dependencies`: array of strings (e.g., `["node:fs", "@babel/parser"]`)');
@@ -522,11 +540,27 @@ async function claimExclusive(file, content, { link = fs.link } = {}) {
   const tmp = `${file}.${randomBytes(6).toString('hex')}.tmp`;
   let useWx = false;
   try {
-    await fs.writeFile(tmp, content, { flag: 'wx' });
+    const th = await fs.open(tmp, 'wx');
+    try {
+      await th.writeFile(content);
+      await th.sync(); // powers.json must never appear zero-length after a crash
+    } finally {
+      await th.close();
+    }
     try {
       await link(tmp, file);
     } catch (err) {
-      if (err.code === 'EEXIST') throw new Error(EXISTS_MSG);
+      if (err.code === 'EEXIST') {
+        // On NFS a link() whose reply was lost reports EEXIST although it created the name: nlink 2 means ours.
+        let st;
+        try {
+          st = await fs.lstat(tmp);
+        } catch (statErr) {
+          throw new Error(`could not tell whether ${path.basename(file)} was created (link said it exists, ${statErr.message})`);
+        }
+        if (st.nlink >= 2) return;
+        throw new Error(EXISTS_MSG);
+      }
       if (!NO_LINK_CODES.has(err.code)) throw err;
       useWx = true;
     }

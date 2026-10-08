@@ -773,3 +773,136 @@ describe('inventory — review r2 regressions', () => {
     } finally { await fs.rm(cdir, { recursive: true, force: true }); }
   });
 });
+
+describe('inventory — review r3 regressions', () => {
+  let dir;
+  function run(cwd, args, input) {
+    const r = spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: 'utf-8', input });
+    let json = null;
+    try { json = JSON.parse(r.stdout); } catch {}
+    return { code: r.status, out: r.stdout, err: r.stderr, json };
+  }
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-invr3-')); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+  const runDirOf = (p) => path.join(dir, '.claude', 'bbs', 'runs', p.runId);
+  async function localRun(name, build) {
+    const src = path.join(dir, name);
+    await fs.mkdir(src, { recursive: true });
+    await build(src);
+    const r = await intake(dir, src, { now, isGitRepo: () => false, slug: name });
+    const runDir = path.join(dir, '.claude', 'bbs', 'runs', r.runId);
+    return { src, runDir, source: await readJson(path.join(runDir, 'source.json')) };
+  }
+
+  it('a non-UTF-8 file name is listed under errors as EILSEQ, counted in unlisted, never ENOENT, and left out of total', async () => {
+    const s = await localRun('badname', async (src) => {
+      await fs.writeFile(path.join(src, 'a.txt'), 'a');
+      await fs.writeFile(path.join(src, 'b.txt'), 'bb');
+    });
+    const bad = Buffer.from([0x63, 0x61, 0x66, 0xe9, 0x2e, 0x74, 0x78, 0x74]); // caf\xe9.txt in latin1
+    const lstatted = [];
+    const readdir = async (d, o) => {
+      const real = await fs.readdir(d, o);
+      if (Buffer.from(d).toString() !== s.src) return real;
+      return [...real, { name: bad, isSymbolicLink: () => false, isDirectory: () => false, isFile: () => true }];
+    };
+    const lstat = async (p) => { lstatted.push(p); return fs.lstat(p); };
+    const files = await listSourceFiles(s.runDir, s.source, { readdir, lstat });
+    assert.deepEqual(files.files.map(f => f.path), ['a.txt', 'b.txt']);
+    assert.equal(files.total, 2);
+    assert.equal(files.unlisted, 1);
+    assert.equal(files.errors.length, 1);
+    assert.equal(files.errors[0].code, 'EILSEQ');
+    assert.match(files.errors[0].path, /caf\\xe9\.txt/);
+    assert.match(files.errors[0].note, /non-UTF-8 file name/);
+    assert.ok(!files.errors.some(e => e.code === 'ENOENT'));
+    const brief = inventoryBrief({ source: s.source, files, maxPowers: 12 });
+    assert.match(brief, /Could not read/);
+    assert.match(brief, /caf\\xe9\.txt \(EILSEQ/);
+  });
+
+  it('a clean tree reports unlisted 0', async () => {
+    const s = await localRun('cleanunl', async (src) => { await fs.writeFile(path.join(src, 'a.txt'), 'a'); });
+    assert.equal((await listSourceFiles(s.runDir, s.source)).unlisted, 0);
+  });
+
+  it('SKIP_DIRS applies to directories only: a file named build is listed, a directory dist is skipped', async () => {
+    const s = await localRun('skipfile', async (src) => {
+      await fs.writeFile(path.join(src, 'build'), 'make');
+      await fs.mkdir(path.join(src, 'dist'));
+      await fs.writeFile(path.join(src, 'dist', 'out.js'), 'x');
+      await fs.writeFile(path.join(src, 'vendor'), 'v');
+    });
+    const files = await listSourceFiles(s.runDir, s.source);
+    assert.deepEqual(files.files.map(f => f.path), ['build', 'vendor']);
+  });
+
+  it('SKIP_DIRS match is case-insensitive on macOS/Windows and case-sensitive elsewhere', async () => {
+    const s = await localRun('skipcase', async (src) => {
+      await fs.writeFile(path.join(src, 'a.txt'), 'a');
+      await fs.mkdir(path.join(src, 'Node_Modules'));
+      await fs.writeFile(path.join(src, 'Node_Modules', 'x.js'), 'x');
+    });
+    const mac = await listSourceFiles(s.runDir, s.source, { platform: 'darwin' });
+    assert.deepEqual(mac.files.map(f => f.path), ['a.txt']);
+    const win = await listSourceFiles(s.runDir, s.source, { platform: 'win32' });
+    assert.deepEqual(win.files.map(f => f.path), ['a.txt']);
+    const linux = await listSourceFiles(s.runDir, s.source, { platform: 'linux' });
+    assert.deepEqual(linux.files.map(f => f.path), ['Node_Modules/x.js', 'a.txt'].sort((x, y) => x.localeCompare(y)));
+  });
+
+  it('NFS lost reply: a link that succeeded but threw EEXIST counts as committed (nlink 2); a real existing file still gets the --force error', async () => {
+    const p = await intake(dir, '-', { stdin: 'nfs', now, slug: 'nfs' });
+    const link = async (a, b) => { await fs.link(a, b); const e = new Error('file exists'); e.code = 'EEXIST'; throw e; };
+    const out = await writeInventory(dir, { run: p.runId, input: JSON.stringify([power()]), now, link });
+    assert.equal(out.found, 1);
+    assert.equal((await readJson(path.join(runDirOf(p), 'powers.json'))).powers.length, 1);
+    assert.deepEqual((await fs.readdir(runDirOf(p))).filter(n => n.endsWith('.tmp')), []);
+    await assert.rejects(() => writeInventory(dir, { run: p.runId, input: JSON.stringify([power()]), now }), /powers\.json exists — pass --force to replace it/);
+    const eexist = async () => { const e = new Error('file exists'); e.code = 'EEXIST'; throw e; };
+    await assert.rejects(() => writeInventory(dir, { run: p.runId, input: JSON.stringify([power()]), now, link: eexist }), /powers\.json exists — pass --force to replace it/);
+  });
+
+  it('the hard-link path syncs the tmp file before linking', async () => {
+    const p = await intake(dir, '-', { stdin: 'sync', now, slug: 'sync' });
+    const events = [];
+    const realOpen = fs.open;
+    const mock = await import('node:test');
+    const m = mock.mock.method(fs, 'open', async (...args) => {
+      const h = await realOpen.apply(fs, args);
+      const sync = h.sync.bind(h);
+      h.sync = async () => { events.push('sync'); return sync(); };
+      return h;
+    });
+    try {
+      const link = async (a, b) => { events.push('link'); return fs.link(a, b); };
+      await writeInventory(dir, { run: p.runId, input: JSON.stringify([power()]), now, link });
+    } finally { m.mock.restore(); }
+    assert.deepEqual(events, ['sync', 'link']);
+  });
+
+  it('an empty input names the input: parseInventory label, empty stdin, and an empty --from file', async () => {
+    assert.throws(() => parseInventory('  ', { label: '--from x.json' }), /JSON only — --from x\.json is empty/);
+    assert.throws(() => parseInventory('```json\n\n```'), /JSON only — input is empty/);
+    const cdir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-invr3e-'));
+    try {
+      assert.equal(run(cdir, ['intake', '-', '--slug', 'em'], 'pasted').code, 0);
+      const a = run(cdir, ['inventory', '--from', '-'], '');
+      assert.equal(a.code, 1);
+      assert.match(a.err, /--from - \(stdin\) is empty/);
+      const f = path.join(cdir, 'empty.json');
+      await fs.writeFile(f, '');
+      const b = run(cdir, ['inventory', '--from', f]);
+      assert.equal(b.code, 1);
+      assert.ok(b.err.includes(`--from ${f} is empty`), b.err);
+    } finally { await fs.rm(cdir, { recursive: true, force: true }); }
+  });
+
+  it('a name in a script with combining marks is accepted and stored NFC; a leading mark is still refused', () => {
+    const p = validatePower(power({ name: 'हिन्दी' }), 0);
+    assert.equal(p.name, 'हिन्दी'.normalize('NFC'));
+    assert.equal(p.name, p.name.normalize('NFC'));
+    assert.throws(() => validatePower(power({ name: '́abc' }), 0), /powers\[0\]\.name/);
+    assert.match(inventoryBrief({ source: { type: 'local', ref: 'x', identity: 'i' }, files: { root: '/r', files: [], total: 0, errors: [] }, maxPowers: 12 }), /combining marks/);
+  });
+});
