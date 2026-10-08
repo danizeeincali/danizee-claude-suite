@@ -280,7 +280,10 @@ export async function intake(projectDir, ref, opts = {}) {
     // a paste file is kept as raw bytes: identity and paste.txt match the file exactly
     content = pasteFile ? await fs.readFile(pasteFile) : (stdin ?? (ref === '-' ? '' : String(ref)));
     const text = Buffer.isBuffer(content) ? content.toString('utf-8') : content;
-    if (!text.trim()) throw new Error(`paste is empty (${pasteFile ? `--paste-file ${pasteFile}` : 'stdin'})`);
+    if (!text.trim()) {
+      const where = pasteFile ? `--paste-file ${pasteFile}` : (stdin !== undefined || ref === '-') ? 'stdin' : 'the source argument';
+      throw new Error(`paste is empty (${where})`);
+    }
     storedRef = 'paste';
   }
   if (runOpt !== undefined && !RUN_ID.test(runOpt)) throw new Error(invalidRunId(runOpt));

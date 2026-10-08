@@ -237,6 +237,8 @@ describe('intake — intake()', () => {
     const pf = path.join(dir, 'blank.txt');
     await fs.writeFile(pf, '   ');
     await assert.rejects(() => intake(dir, '-', { pasteFile: pf, now }), (e) => e.message === `paste is empty (--paste-file ${pf})`);
+    // r6: an all-whitespace positional with --as paste was never read from stdin
+    await assert.rejects(() => intake(dir, '   ', { as: 'paste', now }), (e) => e.message === 'paste is empty (the source argument)');
   });
 
   it('a second intake moves ACTIVE to the new run', async () => {

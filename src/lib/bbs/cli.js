@@ -91,7 +91,8 @@ async function readStdin() {
 
 async function resolveRun(projectDir, flags, cfg) {
   let id;
-  if (typeof flags.run === 'string') id = RUN_ID.test(flags.run) ? flags.run.toLowerCase() : flags.run;
+  const fromFlag = typeof flags.run === 'string';
+  if (fromFlag) id = RUN_ID.test(flags.run) ? flags.run.toLowerCase() : flags.run;
   else {
     id = await activeRunId(projectDir);
     if (!id) fail('no active run — start one with `cli.js intake <source>` or pass --run <id>');
@@ -101,7 +102,9 @@ async function resolveRun(projectDir, flags, cfg) {
   if (!path.resolve(dir).startsWith(path.resolve(runsDirOf(projectDir, cfg)) + path.sep)) fail(invalidRunId(id));
   try { await fs.stat(dir); } catch {
     const rel = path.relative(projectDir, runsDirOf(projectDir, cfg)).split(path.sep).join('/');
-    fail(`unknown run "${id}" — no directory under ${rel}/; omit --run to use the active run`);
+    if (fromFlag) fail(`unknown run "${id}" — no directory under ${rel}/; omit --run to use the active run`);
+    const activeRel = path.relative(projectDir, path.join(runsDirOf(projectDir, cfg), '..', 'ACTIVE')).split(path.sep).join('/');
+    fail(`active run "${id}" (from ${activeRel}) has no directory under ${rel}/; start one with \`cli.js intake <source>\` or pass --run <id>`);
   }
   return { id, dir };
 }

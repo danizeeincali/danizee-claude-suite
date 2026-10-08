@@ -449,6 +449,15 @@ describe('bbs cli — review r5 regressions', () => {
     const unk = run(dir, ['status', '--run', 'nope']);
     assert.equal(unk.code, 1);
     assert.equal(unk.err, 'bbs: unknown run "nope" — no directory under .claude/bbs/runs/; omit --run to use the active run\n');
+    // r6: a stale ACTIVE must not tell the user to omit --run (they already did)
+    const stale = run(dir, ['intake', '-', '--slug', 'stale'], 'gone soon');
+    assert.equal(stale.code, 0, stale.err);
+    await fs.rm(path.join(runs(), stale.json.runId), { recursive: true });
+    for (const verb of ['status', 'report']) {
+      const r = run(dir, [verb]);
+      assert.equal(r.code, 1, verb);
+      assert.equal(r.err, `bbs: active run "${stale.json.runId}" (from .claude/bbs/ACTIVE) has no directory under .claude/bbs/runs/; start one with \`cli.js intake <source>\` or pass --run <id>\n`, verb);
+    }
     const dup = run(dir, ['intake', '-', '--run', runId], 'again');
     assert.equal(dup.code, 1);
     assert.equal(dup.err, `bbs: run "${runId}" already exists — pick another --run or omit it\n`);
