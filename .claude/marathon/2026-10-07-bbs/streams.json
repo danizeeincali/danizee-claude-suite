@@ -6,7 +6,10 @@
       "isolation": "worktree",
       "created": "2026-10-07T23:44:40.196Z",
       "tasks": [],
-      "paused": null
+      "paused": {
+        "reason": "ceiling: usage 98% ≥ 98%",
+        "ts": "2026-10-08T05:14:28.916Z"
+      }
     },
     {
       "name": "intake",
@@ -73,10 +76,10 @@
       "name": "command-docs",
       "state": "active",
       "plan": ".claude/plans/2026-10-07-w-bbs.md",
-      "next": "builder for src/plugins/bbs.js, installer wiring, w-bbs + bbs commands, shortcuts/README docs against the four contracts; review r1 with --base fe069a5",
+      "next": "PAUSED at the 98% ceiling. On resume: budget check; review round 1 (opus) on fe069a5..HEAD (includes handoff r5 fixes); then fixes/rounds until two clean; then run test/bbs-e2e.test.js six times recording kind=e2e, record measure packaged=true, close, merge, /bc, run-wide gate, finish",
       "tasks": [],
       "isolation": "../claude-suite-command-docs",
-      "phase": "4.3",
+      "phase": "4.5",
       "base": "2664d95b23fb9a1be3ff39984a849dda0dec2225"
     }
   ],

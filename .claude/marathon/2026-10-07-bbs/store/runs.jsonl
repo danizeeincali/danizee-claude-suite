@@ -31,3 +31,5 @@
 {"kind":"unit","status":"green","stream":"handoff","commit":"12da973","id":"f59b25a6-2aea-421a-b1f0-c7ae2fa96f2d","ts":"2026-10-08T04:55:34.163Z"}
 {"kind":"unit","status":"green","stream":"handoff","commit":"fe069a5","id":"6d3aead2-d594-4f78-9226-21390df3a5ab","ts":"2026-10-08T05:01:00.443Z"}
 {"kind":"unit","status":"green","stream":"handoff","commit":"c6743bb","id":"c3f40457-d9b1-4834-8120-b676b69ba4de","ts":"2026-10-08T05:08:03.025Z"}
+{"kind":"unit","status":"green","stream":"command-docs","commit":"2e409ab","id":"f1bafb9f-4472-4ac1-bc76-7eb8b9f8f6c4","ts":"2026-10-08T05:14:28.725Z"}
+{"kind":"e2e","status":"green","stream":"command-docs","commit":"2e409ab","id":"9b78ceb1-a572-479b-bca5-8ee703d497ff","ts":"2026-10-08T05:14:28.826Z"}
