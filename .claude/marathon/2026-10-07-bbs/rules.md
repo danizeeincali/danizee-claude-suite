@@ -85,3 +85,6 @@ Add a rule the second time something goes wrong.
   it changes behaviour, not only that it parses; every input shape the contract names (each source
   type, symlinks, fenced/CRLF input, stdin vs file) has its own case. A test that passes when the
   feature is deleted is a missing test.
+- **Walk only what you will use** (`performance`, reviews inventory-r1 + inventory-r2). A file walk
+  skips vendor and build directories, uses the directory entry's type before any `lstat`, batches
+  per directory, and stops collecting once the cap is reached (counting the rest). Sort, then slice.
