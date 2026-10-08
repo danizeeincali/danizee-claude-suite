@@ -5,3 +5,4 @@
 {"stream":"intake","counts":{"high":0,"medium":1,"low":4},"angle":"accessibility","tokens":91308,"commit":"55e8bb2","pass":true,"round":5,"id":"7ef7d811-19f0-45fb-ac15-af2711f1c1b7","ts":"2026-10-08T01:08:02.790Z"}
 {"stream":"intake","counts":{"high":0,"medium":2,"low":0},"angle":"facts and content","tokens":79686,"commit":"497e7cf","pass":true,"round":6,"id":"d85e685b-f180-4a24-a80c-c7efce195fb7","ts":"2026-10-08T01:14:19.832Z"}
 {"stream":"fetch","counts":{"high":2,"medium":5,"low":3},"angle":"one input method at a time","tokens":110711,"commit":"582fcdb","pass":false,"round":1,"id":"44f23eec-7530-4d37-ab7b-694515f450b3","ts":"2026-10-08T01:27:16.798Z"}
+{"stream":"fetch","counts":{"high":0,"medium":2,"low":3},"angle":"failure conditions and error paths","tokens":98613,"commit":"d099877","pass":true,"round":2,"id":"dfe6fbb7-b42e-4b86-9a42-aca5f825b022","ts":"2026-10-08T01:34:34.024Z"}

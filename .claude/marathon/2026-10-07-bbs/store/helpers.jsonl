@@ -31,3 +31,5 @@
 {"role":"fix","model":"opus","stream":"fetch","budget":150000,"event":"spawn","id":"c0d04a21-ca36-4884-a9f9-2923f2d76711","ts":"2026-10-08T01:27:18.240Z"}
 {"role":"review","model":"opus","stream":"fetch","budget":150000,"event":"spawn","id":"890679dd-7455-4902-b223-a50915ba27f6","ts":"2026-10-08T01:31:42.765Z"}
 {"helper_id":"c0d04a21-ca36-4884-a9f9-2923f2d76711","tokens":117570,"outcome":"green","event":"done","id":"81763ed3-1519-4820-898c-6a88eb52344a","ts":"2026-10-08T01:32:08.720Z"}
+{"helper_id":"890679dd-7455-4902-b223-a50915ba27f6","tokens":98613,"outcome":"green","event":"done","id":"c3a078dd-7528-4e84-a2c8-0aabf83297a6","ts":"2026-10-08T01:34:33.938Z"}
+{"role":"fix","model":"sonnet","stream":"fetch","budget":150000,"event":"spawn","id":"e0ab6221-0151-4f8b-a057-be58ab3aa823","ts":"2026-10-08T01:34:34.834Z"}
