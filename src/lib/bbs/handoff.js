@@ -162,6 +162,9 @@ const NEVER = [
   '- Never copy source code from the source'
 ];
 
+/** One Done-means bullet: the check id, then its label without the "<slug>: " prefix the finish line carries. */
+const doneBullet = (line, slug, indent = '') => `${indent}- ${line.id} — ${String(line.label).startsWith(`${slug}: `) ? String(line.label).slice(slug.length + 2) : line.label}`;
+
 /**
  * Render a brief for a power (rebuild or use verdict): idea, provenance, judgment, finish line, kickoff lines.
  * ctx: { source, row, lines, decided_at }
@@ -223,7 +226,7 @@ export function renderBrief(power, ctx) {
   md.push('');
   md.push('Done means');
   for (const line of lines) {
-    md.push(`- ${power.name}: ${line.label}`);
+    md.push(doneBullet(line, slug));
   }
   md.push('');
 
@@ -239,7 +242,7 @@ export function renderBrief(power, ctx) {
   md.push(...NEVER);
   if (row.removed && Array.isArray(row.removed)) {
     for (const rem of row.removed) {
-      md.push(`- Never execute (${rem.reason})`);
+      md.push(`- Never run the upstream code (${rem.verdict || 'use'} was removed: ${rem.reason})`);
     }
   }
   md.push('');
@@ -364,7 +367,7 @@ async function loadTolerance(projectDir) {
 /** Refuse unless verdicts.json was computed from the current powers.json and every power has a decision. */
 async function decidedPowers(runDir, verdicts) {
   const powers = await readJson(path.join(runDir, 'powers.json'));
-  if (!powers || !Array.isArray(powers.powers)) throw new Error('inventory first — powers.json is missing');
+  if (!powers || !Array.isArray(powers.powers)) throw new Error(`inventory first — powers.json is missing (cli.js inventory --brief --run ${path.basename(runDir)})`);
   if (!Object.hasOwn(verdicts, 'powers_ts')) throw new Error('verdicts.json does not record which powers.json it was computed from (no powers_ts) — run cli.js verdict first');
   if ((verdicts.powers_ts ?? null) !== (powers.ts ?? null)) throw new Error(POWERS_CHANGED);
   const undecided = powers.powers.filter(p => !VERDICTS.includes(verdicts.rows[p.name]?.decision)).map(p => p.name);
@@ -427,11 +430,12 @@ export async function claimJson(file, data, ops = {}) {
 
 async function buildHandoffLocked(projectDir, runDir, { run, now, force, marathon, marathonRunner, cfg }) {
   if (typeof now !== 'function') now = () => new Date();
+  const rerun = `cli.js handoff --marathon --force --run ${path.basename(runDir)}`;
 
   // Check that verdicts are recorded
   const verdicts = await readJson(path.join(runDir, 'verdicts.json'));
   if (!verdicts || !verdicts.rows || typeof verdicts.rows !== 'object') {
-    throw new Error('verdict step must complete first — every power needs a decision');
+    throw new Error(`verdict step must complete first — every power needs a decision (cli.js verdict --table --run ${path.basename(runDir)})`);
   }
 
   // Check that handoff doesn't already exist (unless --force)
@@ -439,7 +443,7 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
   if (!force) {
     try {
       await fs.stat(handoffPath);
-      throw new Error('handoff.json exists — pass --force to replace it');
+      throw new Error(`handoff.json exists at ${posix(path.relative(projectDir, handoffPath))} — pass --force (cli.js handoff --force --run ${path.basename(runDir)})`);
     } catch (err) {
       if (err.code !== 'ENOENT') throw err;
     }
@@ -503,7 +507,7 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
     try {
       await fs.stat(marathonCliPath);
     } catch {
-      throw new Error(`marathon helpers are absent (${cfg.paths.marathon_cli}) — install the suite`);
+      throw new Error(`marathon helpers are absent (${cfg.paths.marathon_cli}) — install the suite (npx danizee-claude-suite init)`);
     }
     mcfg = await loadMarathonConfig(projectDir);
     runsRoot = path.resolve(projectDir, mcfg.paths.runs);
@@ -542,6 +546,7 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
   let stale_streams = [];
   let removed_files = [];
   const skipped_files = [];
+  const staleGroups = []; // [{ run, names, closeHint }]: the runs whose streams were blocked, not removed
   let note = approved.length === 0 ? 'no approved power — nothing to hand off to a marathon run' : null;
 
   if (useMarathon) {
@@ -575,11 +580,12 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
       const pDir = path.join(runsRoot, prevMarathonRun);
       let rows = [];
       try { rows = rowsOfStreams(await readJson(path.join(pDir, 'streams.json'))); }
-      catch (err) { throw new Error(`marathon run ${prevMarathonRun} (from the previous hand-off): ${firstLine(err)} — its stream rows were not blocked; fix or remove it, then re-run with --force`); }
+      catch (err) { throw new Error(`marathon run ${prevMarathonRun} (from the previous hand-off): ${firstLine(err)} — its stream rows were not blocked; fix or remove it, then re-run ${rerun}`); }
       try { stale_streams = await blockStale(prevMarathonRun, rows, new Set()); }
-      catch (err) { throw new Error(`marathon: ${firstLine(err)} — the previous hand-off's run ${prevMarathonRun} is only partly blocked; re-run with --force`); }
+      catch (err) { throw new Error(`marathon: ${firstLine(err)} — the previous hand-off's run ${prevMarathonRun} is only partly blocked; re-run ${rerun}`); }
       note = `no approved power — nothing to hand off to a marathon run; the previous hand-off's run ${prevMarathonRun} had ${stale_streams.length} stream${stale_streams.length === 1 ? '' : 's'} blocked` +
-        ' (a forced refill drops them); its finish-line.json is unchanged — close or remove that run';
+        ` (a forced refill drops them); its finish-line.json is unchanged — close it with node ${cfg.paths.marathon_cli} finish --run ${prevMarathonRun}, or remove it`;
+      staleGroups.push({ run: prevMarathonRun, names: stale_streams, closeHint: true });
     } else {
     const prevActive = await marathonActiveRun(projectDir, mcfg);
     const restoreActive = async () => {
@@ -635,17 +641,17 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
       oldRows = rowsOfStreams(oldStreams);
       if (corrupt.length && !force) {
         await restoreActive();
-        throw new Error(`marathon run ${mRun}: ${corrupt.join(' and ')} is not valid JSON — pass --force to move it aside as <name>.stale-<ts>.json and refill the run (ACTIVE was ${activeWas()})`);
+        throw new Error(`marathon run ${mRun}: ${corrupt.join(' and ')} is not valid JSON — pass --force to move it aside as <name>.stale-<ts>.json and refill the run (ACTIVE was ${activeWas()}; command: ${rerun})`);
       }
       const holds = corrupt.length > 0 || oldRows.length > 0 || (Array.isArray(oldFl?.lines) && oldFl.lines.some(l => HANDOFF_LINE.test(String(l?.id))));
       if (holds && !force) {
         await restoreActive();
-        throw new Error(`marathon run ${mRun} already holds a hand-off — pass --force to refill it or pick another source slug`);
+        throw new Error(`marathon run ${mRun} already holds a hand-off — pass --force to refill it or pick another source slug (${rerun}; ACTIVE was ${activeWas()})`);
       }
       if (corrupt.length) await moveAsideStale(mDir, corrupt, now);
     } catch (err) {
       if (mRun && !String(err.message).includes('ACTIVE')) {
-        throw new Error(`marathon: ${firstLine(err)} — marathon run ${mRun} was created and is ACTIVE but incomplete — re-run cli.js handoff --marathon --force to refill it, or remove ${mRel}`);
+        throw new Error(`marathon: ${firstLine(err)} — marathon run ${mRun} was created and is ACTIVE but incomplete — re-run cli.js handoff --marathon --force to refill it, or remove ${mRel} — full command: ${rerun}`);
       }
       throw err;
     }
@@ -661,7 +667,7 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
       for (const p of outputPowers) sourceLines.push(`- Brief (${p.name}): ${p.brief_path}`);
       for (const m of memos) sourceLines.push(`- Buy memo (${m.name}): ${posix(path.relative(projectDir, path.join(runDir, m.memo)))}`);
       const kickoff = fillKickoff(seeded, {
-        'Done means': approved.map(p => `- ${p.name}: ${finishLine.byPower[p.name].map(l => l.label).join(', ')}`),
+        'Done means': approved.flatMap(p => [`- ${p.name}: 5 checks below`, ...finishLine.byPower[p.name].map(l => doneBullet(l, slugPower(p.name), '  '))]),
         'You may decide on your own': MAY_DECIDE,
         'Ask me before': ASK_BEFORE,
         'Never': NEVER,
@@ -672,9 +678,27 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
       for (const p of outputPowers) {
         await mcall('stream', p.slug, '--run', mRun, 'state=queued', `plan=${p.brief_path}`, 'next=read the brief, write the contract and failing tests');
       }
-      if (force) stale_streams = await blockStale(mRun, oldRows, new Set(outputPowers.map(p => p.slug)));
+      if (force) {
+        stale_streams = await blockStale(mRun, oldRows, new Set(outputPowers.map(p => p.slug)));
+        if (stale_streams.length) staleGroups.push({ run: mRun, names: [...stale_streams] });
+        // A later-day refill creates a new run: the run the previous hand-off filled keeps its queued streams unless blocked here
+        const pr = prev?.marathonRun;
+        if (typeof pr === 'string' && MARATHON_RUN_ID.test(pr) && pr !== mRun) {
+          const pDir = path.join(runsRoot, pr);
+          if (await fs.stat(pDir).then(st => st.isDirectory(), () => false)) {
+            let pRows;
+            try { pRows = rowsOfStreams(await readJson(path.join(pDir, 'streams.json'))); }
+            catch (err) { throw new Error(`marathon run ${pr} (from the previous hand-off): ${firstLine(err)} — its stream rows were not blocked; fix or remove it, then re-run ${rerun}`); }
+            const blocked = await blockStale(pr, pRows, new Set());
+            if (blocked.length) {
+              stale_streams.push(...blocked.map(n => `${pr}/${n}`));
+              staleGroups.push({ run: pr, names: blocked, closeHint: true });
+            }
+          }
+        }
+      }
     } catch (err) {
-      throw new Error(`marathon: ${firstLine(err)} — marathon run ${mRun} was created and is ACTIVE but incomplete — re-run cli.js handoff --marathon --force to refill it, or remove ${mRel}`);
+      throw new Error(`marathon: ${firstLine(err)} — marathon run ${mRun} was created and is ACTIVE but incomplete — re-run cli.js handoff --marathon --force to refill it, or remove ${mRel} — full command: ${rerun}`);
     }
 
     marathonRun = mRun;
@@ -710,6 +734,16 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
       removed_files.push(rel);
     }
   }
+
+  // One sentence per non-empty list, so nobody has to guess what the bare lists mean
+  const sentences = [
+    ...staleGroups.map(g => `streams blocked in ${g.run}, not removed: ${g.names.join(', ')}${g.closeHint ? ` (close that run with node ${cfg.paths.marathon_cli} finish --run ${g.run})` : ''}`),
+    ...(removed_files.length ? [`brief/memo files deleted: ${removed_files.join(', ')}`] : []),
+    ...(skipped_files.length ? [`left in place for manual review (not a regular <dir>/<name>.md): ${skipped_files.join(', ')}`] : [])
+  ];
+  const noteHas = (t) => note != null && note.includes(t);
+  const extra = sentences.filter(t => !noteHas(t));
+  if (extra.length) note = [note, ...extra].filter(Boolean).join('. ');
 
   // handoff.json LAST: it marks the step as done. Claimed exclusively unless forced: nothing may have created it meanwhile.
   const handoffDoc = {

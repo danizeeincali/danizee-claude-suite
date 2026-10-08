@@ -846,3 +846,131 @@ describe('handoff — review r4 regressions', () => {
     assert.equal(await exists(path.join(bbsRun(dir, r.runId), 'handoff.json')), false);
   });
 });
+
+describe('handoff — review r5 regressions', () => {
+  const exists = (p) => fs.stat(p).then(() => true, () => false);
+  const bbsRun = (d, id) => path.join(d, '.claude', 'bbs', 'runs', id);
+  const marathonCli = (d) => path.join(d, '.claude', 'helpers', 'marathon', 'cli.js');
+  const realRunner = (d) => (args, cwd) => {
+    const r = spawnSync(process.execPath, [marathonCli(d), ...args], { cwd, encoding: 'utf-8' });
+    if (r.status !== 0) { const e = new Error(r.stderr || `exit ${r.status}`); e.stderr = r.stderr; throw e; }
+    return r.stdout;
+  };
+  const rowsOf = async (d, id) => {
+    const s = await readJson(path.join(d, '.claude', 'marathon', id, 'streams.json'));
+    return (s.streams || s).filter(x => x.name !== '_meta');
+  };
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hor5-')); await makeHarness(dir, { withMarathon: true }); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('[medium] a forced refill on a later day blocks the previous marathon run\'s queued streams, lists them as <run>/<name>, and the note names the old run', async () => {
+    const two = [power(), power({ name: 'budget guard', idea: 'ceiling check' })];
+    const r = await decided(dir, 'r5prev', two, { 'drift-monitor': 'missing', 'budget guard': 'missing' }, { 'drift-monitor': 'rebuild', 'budget guard': 'rebuild' });
+    const first = await buildHandoff(dir, { run: r.runId, now, marathon: true });
+    const oldId = '2020-01-01-bbs-r5prev';
+    await fs.rename(path.join(dir, '.claude', 'marathon', first.marathonRun), path.join(dir, '.claude', 'marathon', oldId));
+    const hjPath = path.join(bbsRun(dir, r.runId), 'handoff.json');
+    const hj0 = await readJson(hjPath);
+    await fs.writeFile(hjPath, JSON.stringify({ ...hj0, marathonRun: oldId }));
+    await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'budget guard': 'skip' }), now, force: true });
+    const out = await buildHandoff(dir, { run: r.runId, now, marathon: true, force: true });
+    assert.equal(out.marathonRun, first.marathonRun);
+    const oldRows = await rowsOf(dir, oldId);
+    assert.deepEqual(oldRows.map(s => [s.name, s.state]), [['drift-monitor', 'blocked'], ['budget-guard', 'blocked']]);
+    assert.deepEqual((await rowsOf(dir, out.marathonRun)).map(s => [s.name, s.state]), [['drift-monitor', 'queued']]);
+    assert.deepEqual(out.stale_streams, [`${oldId}/drift-monitor`, `${oldId}/budget-guard`]);
+    assert.ok(out.note.includes(oldId), out.note);
+    assert.match(out.note, new RegExp(`streams blocked in ${oldId}, not removed: drift-monitor, budget-guard`));
+    assert.deepEqual((await readJson(hjPath)).stale_streams, out.stale_streams);
+  });
+
+  it('[low] stale_streams / removed_files / skipped_files are explained in note (result and handoff.json), and status.md shows the note in the handoff row and as a Note line', async () => {
+    const three = [power(), power({ name: 'budget guard', idea: 'ceiling check' }), power({ name: 'x', idea: 'x idea' })];
+    const J = { 'drift-monitor': 'missing', 'budget guard': 'missing', x: 'missing' };
+    const r = await decided(dir, 'r5note', three, J, { 'drift-monitor': 'rebuild', 'budget guard': 'rebuild', x: 'rebuild' });
+    const first = await buildHandoff(dir, { run: r.runId, now, marathon: true });
+    const rd = bbsRun(dir, r.runId);
+    const xBrief = path.join(rd, 'briefs', 'x.md');
+    await fs.rm(xBrief);
+    await fs.mkdir(xBrief);
+    await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'budget guard': 'skip', x: 'skip' }), now, force: true });
+    const out = await buildHandoff(dir, { run: r.runId, now, marathon: true, force: true });
+    assert.match(out.note, new RegExp(`streams blocked in ${first.marathonRun}, not removed: budget-guard, x`));
+    assert.match(out.note, new RegExp(`brief/memo files deleted: \\.claude/bbs/runs/${r.runId}/briefs/budget-guard\\.md`));
+    assert.match(out.note, new RegExp(`left in place for manual review \\(not a regular <dir>/<name>\\.md\\): \\.claude/bbs/runs/${r.runId}/briefs/x\\.md`));
+    const hj = await readJson(path.join(rd, 'handoff.json'));
+    assert.equal(hj.note, out.note);
+    const status = await fs.readFile(path.join(rd, 'status.md'), 'utf-8');
+    assert.ok(status.includes(`- Note: ${out.note}`), status);
+    assert.match(status, /\| handoff \| done \|[^\n]*brief\/memo files deleted/);
+    assert.match(status, /- Summary: [^\n]*\n- Note: /);
+  });
+
+  it('[low] status renders handoff.note in the handoff Detail cell and as a Note line after Summary; no note, no Note line', async () => {
+    const { renderStatus } = await import('../src/lib/bbs/status.js');
+    const base = {
+      run: 'r', source: { type: 'paste', ref: 'x', identity: 'sha256:a', fetched: true }, egress: [],
+      powers: { powers: [{ name: 'p' }] }, map: { judgments: { p: {} } }, verdicts: { decisions: { p: 'rebuild' } }
+    };
+    const withNote = renderStatus({ ...base, handoff: { marathonRun: '2026-10-07-bbs-p', powers: [], note: 'a | b note' } });
+    assert.match(withNote, /\| handoff \| done \|[^\n]*2026-10-07-bbs-p[^\n]*a \\\| b note/);
+    assert.match(withNote, /- Summary: [^\n]*\n- Note: a \| b note\n/);
+    const without = renderStatus({ ...base, handoff: { marathonRun: '2026-10-07-bbs-p', powers: [], note: null } });
+    assert.ok(!without.includes('- Note:'));
+  });
+
+  it('[low] refusals name the exact next command with --run <bbs run>', async () => {
+    const a = await intake(dir, '-', { stdin: 'x', now, slug: 'r5a' });
+    await assert.rejects(() => buildHandoff(dir, { run: a.runId, now }), (e) => e.message.includes(`verdict step must complete first — every power needs a decision (cli.js verdict --table --run ${a.runId})`));
+    await fs.writeFile(path.join(bbsRun(dir, a.runId), 'verdicts.json'), JSON.stringify({ rows: {}, powers_ts: null }));
+    await assert.rejects(() => buildHandoff(dir, { run: a.runId, now }), (e) => e.message.includes(`inventory first — powers.json is missing (cli.js inventory --brief --run ${a.runId})`));
+    const b = await decided(dir, 'r5b', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+    await buildHandoff(dir, { run: b.runId, now });
+    await assert.rejects(() => buildHandoff(dir, { run: b.runId, now }),
+      (e) => e.message.includes(`handoff.json exists at .claude/bbs/runs/${b.runId}/handoff.json — pass --force (cli.js handoff --force --run ${b.runId})`));
+    // re-run hints carry --run
+    const real = realRunner(dir);
+    const c = await decided(dir, 'r5c', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+    await assert.rejects(() => buildHandoff(dir, { run: c.runId, now, marathon: true, marathonRunner: (args, cwd) => { if (args[0] === 'stream') throw new Error('boom'); return real(args, cwd); } }),
+      (e) => e.message.includes(`cli.js handoff --marathon --force --run ${c.runId}`));
+    const d1 = await decided(dir, 'r5d', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+    await buildHandoff(dir, { run: d1.runId, now, marathon: true });
+    await fs.rm(path.join(bbsRun(dir, d1.runId), 'handoff.json'));
+    await assert.rejects(() => buildHandoff(dir, { run: d1.runId, now, marathon: true }),
+      (e) => e.message.includes('already holds a hand-off') && e.message.includes(`cli.js handoff --marathon --force --run ${d1.runId}`));
+  });
+
+  it('[low] absent marathon helpers say how to install them; the no-approved note names the finish command for the previous run', async () => {
+    const d = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hor5b-'));
+    try {
+      await makeHarness(d);
+      const r = await decided(d, 'r5h', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+      await assert.rejects(() => buildHandoff(d, { run: r.runId, now, marathon: true }), /marathon helpers are absent \(\.claude\/helpers\/marathon\/cli\.js\) — install the suite \(npx danizee-claude-suite init\)/);
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+    const r = await decided(dir, 'r5fin', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+    const first = await buildHandoff(dir, { run: r.runId, now, marathon: true });
+    await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'skip' }), now, force: true });
+    const out = await buildHandoff(dir, { run: r.runId, now, marathon: true, force: true });
+    assert.ok(out.note.includes(`node .claude/helpers/marathon/cli.js finish --run ${first.marathonRun}`), out.note);
+  });
+
+  it('[low] brief and kickoff wording: a removed verdict reads as a full sentence; Done means prints one bullet per check with its id and without the slug prefix', async () => {
+    const lines = buildFinishLine([{ name: 'drift-monitor', verdict: 'rebuild' }], { tolerance: { high: 0, medium: 2, low: 5, passes_in_a_row: 2 } }).lines.slice(0, 5);
+    const row = { licence: 'MIT', licence_class: 'permissive', judgment: null, decision: 'rebuild', probe: null, removed: [{ verdict: 'use', reason: 'no sandbox on this machine' }] };
+    const md = renderBrief(power(), { source: null, row, lines, decided_at: '2026-10-07T12:00:00.000Z' });
+    assert.ok(md.includes('- Never run the upstream code (use was removed: no sandbox on this machine)'), md);
+    assert.ok(!md.includes('- Never execute (no sandbox'));
+    for (const l of lines) {
+      const label = l.label.replace(/^drift-monitor: /, '');
+      assert.ok(md.includes(`- ${l.id} — ${label}`), `${l.id}\n${md}`);
+    }
+    assert.ok(!md.includes('drift-monitor: drift-monitor:'));
+    assert.ok(!/^- drift-monitor: drift-monitor/m.test(md));
+    const r = await decided(dir, 'r5k', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+    const out = await buildHandoff(dir, { run: r.runId, now, marathon: true });
+    const kickoff = await fs.readFile(path.join(dir, '.claude', 'marathon', out.marathonRun, 'kickoff.md'), 'utf-8');
+    assert.match(kickoff, /## Done means\n- drift-monitor: 5 checks below\n/);
+    for (const l of lines) assert.ok(kickoff.includes(`\n  - ${l.id} — ${l.label.replace(/^drift-monitor: /, '')}\n`), kickoff);
+  });
+});

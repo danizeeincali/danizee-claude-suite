@@ -76,13 +76,15 @@ export function renderStatus(state) {
     inventory: state.powers ? `${sum.found} powers (${sum.not_inventoried} not inventoried)` : '',
     map: state.map ? `${Object.keys(state.map.judgments || {}).length} judged` : '',
     verdict: state.verdicts ? `${sum.approved} approved, ${sum.skip} skipped, ${sum.undecided} undecided` : '',
-    handoff: sum.marathon ? esc(sum.marathon) : ''
+    handoff: [sum.marathon, state.handoff?.note].filter(Boolean).map(esc).join(' — ')
   };
   STEPS.forEach((step, i) => {
     const st = i < at ? 'done' : i === at ? 'next' : 'pending';
     lines.push(`| ${step} | ${st} | ${st === 'done' ? detail[step] : ''} |`);
   });
-  lines.push('', `- Summary: found=${sum.found} approved=${sum.approved} skipped=${sum.skip} buy=${sum.buy} marathon=${sum.marathon || 'none'}`, '');
+  lines.push('', `- Summary: found=${sum.found} approved=${sum.approved} skipped=${sum.skip} buy=${sum.buy} marathon=${sum.marathon || 'none'}`);
+  if (state.handoff?.note) lines.push(`- Note: ${state.handoff.note}`);
+  lines.push('');
   return lines.join('\n');
 }
 
