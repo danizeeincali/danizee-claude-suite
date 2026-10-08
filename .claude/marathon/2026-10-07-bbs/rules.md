@@ -80,3 +80,8 @@ Add a rule the second time something goes wrong.
   status line says which input, file or pointer it is about (stdin vs file vs argument; a flag vs
   ACTIVE), and dates, limits and formats quoted in text are read from the same constant the code
   enforces, never retyped.
+- **A test proves the boundary and the switch** (`test-quality`, reviews fetch-r1 + inventory-r1).
+  Every limit is tested at N (passes) and N+1 (refused); every flag or option has a test showing
+  it changes behaviour, not only that it parses; every input shape the contract names (each source
+  type, symlinks, fenced/CRLF input, stdin vs file) has its own case. A test that passes when the
+  feature is deleted is a missing test.

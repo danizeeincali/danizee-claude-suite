@@ -2,3 +2,4 @@
 {"category":"other","kind":"rule","ref":".claude/marathon/2026-10-07-bbs/rules.md#fail-loudly-never-fall-back-silently","area":null,"id":"3c4dbb9b-191f-48eb-a94a-b87371eb8080","ts":"2026-10-08T00:51:46.255Z"}
 {"category":"security","kind":"rule","ref":".claude/marathon/2026-10-07-bbs/rules.md#nothing-the-user-did-not-name","area":null,"id":"52c4ff1f-3f87-46ba-95ea-27af43dbe7da","ts":"2026-10-08T01:01:26.727Z"}
 {"category":"facts","kind":"rule","ref":".claude/marathon/2026-10-07-bbs/rules.md#every-message-names-the-real-state","area":null,"id":"a0af7e18-d752-4fac-9e01-89572ab8f8f0","ts":"2026-10-08T01:14:48.551Z"}
+{"category":"test-quality","kind":"rule","ref":".claude/marathon/2026-10-07-bbs/rules.md#a-test-proves-the-boundary-and-the-switch","area":null,"id":"c19799a8-93dc-4190-83fa-de01583616e5","ts":"2026-10-08T02:00:36.833Z"}
