@@ -1,17 +1,17 @@
 # Marathon 2026-10-07-bbs
 
-- State: PAUSED (budget)
+- State: RUNNING
 - Budget: 0 / 10,000,000 tokens
-- Allowance: 90% (ceiling 70%)
+- Allowance: 91% (ceiling 95%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: PAUSED — raise ceiling_pct / run_token_budget in .claude/marathon.json or wait for the allowance, then `cli.js unpause` (or `cli.js budget --usage-pct <fresh reading>`) and /w-marathon --resume 2026-10-07-bbs.
+- Next for you: Continue stream "intake" (next: contracts + failing tests for store/config/intake/status/cli skeleton, then route builders) — /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
 
 ## Streams
 
 | Stream | Isolation | Plan | State | Gate | Phase | Next | Tasks | Escapes |
 |---|---|---|---|---|---|---|---|---|
-| intake | ../claude-suite-intake | .claude/plans/2026-10-07-w-bbs.md | active | clean 0/2 | /w-marathon · 4.1 | PAUSED at kickoff: weekly allowance 90% ≥ 70% ceiling. On resume: budget check with a fresh reading, then contracts + failing tests |  | 0 |
+| intake | ../claude-suite-intake | .claude/plans/2026-10-07-w-bbs.md | active | clean 0/2 | /w-marathon · 4.3 | contracts + failing tests for store/config/intake/status/cli skeleton, then route builders |  | 0 |
 | fetch |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | fetch.js guards + egress log + clone; stubbed tests |  | 0 |
 | inventory |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | inventory.js schema/cap/brief + verbs |  | 0 |
 | harness-map |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | harness-map.js index + IDF-cosine matchPower + verbs |  | 0 |

@@ -37,7 +37,7 @@ Spec: `.claude/plans/2026-10-07-w-bbs.md`.
 
 ## Budget
 - Run token budget: 10,000,000
-- Usage ceiling: 70% of the weekly allowance, checked before every fan-out
+- Usage ceiling: 95% (raised from 70% by the owner, 2026-10-07) of the weekly allowance, checked before every fan-out
 - Helper budget: 150,000 (max 200,000)
 
 ## Models
