@@ -401,9 +401,13 @@ function harnessCell(judgment) {
 export function verdictTable(rows) {
   const lines = ['| Power | Harness | Licence | Legal | Default | Decision | Why |', '| --- | --- | --- | --- | --- | --- | --- |'];
   for (const [name, r] of Object.entries(rows || {})) {
-    const why = (r.removed || []).map(x => `${x.verdict} removed: ${x.reason}`).join('; ');
+    const whys = (r.removed || []).map(x => `${x.verdict} removed: ${x.reason}`);
+    if (r.needs_probe) whys.push(`use needs a clean network probe (cli.js verdict --probe ${name}=clean|found|incomplete)`);
+    if (r.probe?.result) whys.push(`probe: ${r.probe.result}`);
+    const why = whys.join('; ');
+    const legal = (r.legal || []).map(v => (v === 'use' && r.needs_probe ? 'use (probe first)' : v)).join(', ');
     lines.push(`| ${[name, harnessCell(r.judgment), `${r.licence ?? 'unknown'} (${r.licence_class ?? 'none'})`,
-      (r.legal || []).join(', '), r.default ?? '', r.decision || '—', why].map(cell).join(' | ')} |`);
+      legal, r.default ?? '', r.decision || '—', why].map(cell).join(' | ')} |`);
   }
   return lines.join('\n');
 }
@@ -810,14 +814,15 @@ export async function recordDecisions(projectDir, { run, input, now = () => new 
       for (const [name, v] of Object.entries(decisions)) {
         const row = vj.rows[name];
         if (v === 'use' && row.needs_probe) {
-          throw new PolicyRefused(`use needs a clean network probe for ${name} first (cli.js verdict --probe ${name}=clean|found|incomplete)`);
+          throw new PolicyRefused(`use needs a clean network probe for ${name} first (cli.js verdict --probe ${name}=clean|found|incomplete); legal verdicts are ${row.legal.join(', ')}`);
         }
         if (!row.legal.includes(v)) {
           const now_ = sandboxChanged ? ` — the sandbox check now says: ${vj.sandbox.reason}; verdicts.json was updated` : '';
-          throw new PolicyRefused(`${v} is not legal for ${name}: legal verdicts are ${row.legal.join(', ')}${now_}`);
+          const cause = row.removed?.find(x => x.verdict === v)?.reason;
+          throw new PolicyRefused(`${v} is not legal for ${name}: ${cause ? `${cause}; ` : ''}legal verdicts are ${row.legal.join(', ')} — choose one of them with cli.js verdict --decide ${name}=<verdict>${now_}`);
         }
         if (v === 'use' && !(useGatesStored(vj, row) && fresh?.present === true)) {
-          throw new PolicyRefused(`use is not legal for ${name}: it needs a clean probe, a recorded sandbox and a fresh sandbox check on this machine`);
+          throw new PolicyRefused(`use is not legal for ${name}: it needs a clean probe, a recorded sandbox and a fresh sandbox check on this machine; legal verdicts are ${row.legal.join(', ')} — choose one of them with cli.js verdict --decide ${name}=<verdict>`);
         }
         const had = vj.decisions[name] ?? row.decision;
         if (had === v) { repeated.push(name); continue; }

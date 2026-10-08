@@ -153,6 +153,22 @@ describe('verdict — legalVerdicts and defaultVerdict', () => {
     assert.match(md, /\| a\\\|b \| missing \| unknown \(none\) \| rebuild, skip \| rebuild \| skip \|/);
     assert.ok(!md.includes('undefined'));
   });
+
+  it('verdictTable marks an unprobed `use` and shows a recorded probe result', () => {
+    const base = { licence: 'MIT', licence_class: 'permissive', judgment: { status: 'missing', tool: null }, default: 'rebuild', decision: null };
+    const md = verdictTable({
+      unprobed: { ...base, legal: ['rebuild', 'use', 'skip'], removed: [], needs_probe: true, probe: null },
+      withreason: { ...base, legal: ['rebuild', 'use', 'skip'], removed: [{ verdict: 'buy', reason: 'nothing to buy' }], needs_probe: true, probe: null },
+      probed: { ...base, legal: ['rebuild', 'use', 'skip'], removed: [], needs_probe: false, probe: { result: 'clean' } }
+    });
+    const line = (n) => md.split('\n').find(l => l.startsWith(`| ${n} |`));
+    assert.match(line('unprobed'), /\| rebuild, use \(probe first\), skip \|/);
+    assert.match(line('unprobed'), /use needs a clean network probe \(cli\.js verdict --probe unprobed=clean\\\|found\\\|incomplete\) \|$/);
+    assert.match(line('withreason'), /buy removed: nothing to buy; use needs a clean network probe/);
+    assert.match(line('probed'), /\| rebuild, use, skip \|/);
+    assert.match(line('probed'), /probe: clean \|$/);
+    assert.ok(!line('probed').includes('probe first'));
+  });
 });
 
 describe('verdict — computeVerdicts, recordProbe, recordDecisions', () => {
@@ -207,6 +223,19 @@ describe('verdict — computeVerdicts, recordProbe, recordDecisions', () => {
     await assert.rejects(() => recordProbe(dir, { run: r.runId, power: 'nope', result: 'clean', now }), /unknown power "nope"/);
     await assert.rejects(() => recordProbe(dir, { run: r.runId, power: 'drift-monitor', result: 'maybe', now }), /clean\|found\|incomplete/);
     await assert.rejects(() => recordProbe(dir, { run: r.runId, power: 'drift-monitor', result: 'clean', now }), /already probed.*--force/);
+  });
+
+  it('refusals name the cause, the legal choices and the next command', async () => {
+    const r = await prepared('v5b', [power(), power({ name: 'exporter', licence: 'GPL-3.0', what: 'exports data', idea: 'csv dump' })], { 'drift-monitor': 'missing', exporter: 'missing' });
+    await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now });
+    await assert.rejects(() => recordDecisions(dir, { run: r.runId, input: JSON.stringify({ exporter: 'use' }), now }),
+      (e) => e instanceof PolicyRefused && /use is not legal for exporter: licence copyleft — use is legal only for a permissive licence; legal verdicts are .*choose one of them with cli\.js verdict --decide exporter=<verdict>/.test(e.message));
+    await assert.rejects(() => recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now }),
+      (e) => e instanceof PolicyRefused && /no sandbox on this machine.*choose one of them with cli\.js verdict --decide drift-monitor=<verdict>/.test(e.message));
+    const r2 = await prepared('v5c', [power()], { 'drift-monitor': 'missing' });
+    await computeVerdicts(dir, { run: r2.runId, sandbox, now });
+    await assert.rejects(() => recordDecisions(dir, { run: r2.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now }),
+      (e) => e instanceof PolicyRefused && /use needs a clean network probe for drift-monitor first \(cli\.js verdict --probe drift-monitor=clean\|found\|incomplete\); legal verdicts are rebuild, use, skip/.test(e.message));
   });
 
   it('recordDecisions accepts only legal verdicts (PolicyRefused otherwise), writes labels (approve 1 / skip 0), and appends the registry row when every power is decided', async () => {
@@ -566,7 +595,10 @@ describe('verdict r1 — cli verb input shapes and switches', () => {
     const p = await project('tbl', [power()], { 'drift-monitor': 'missing' }, { sb: sandbox });
     const t0 = cli(p.d, ['verdict', '--table', '--run', p.run]);
     assert.equal(t0.code, 0, t0.err);
-    assert.match(t0.out, /\| drift-monitor \| missing \| MIT \(permissive\) \| rebuild, use, skip \|/);
+    // r5 decision (lead, 2026-10-07): an unprobed `use` is marked in the approval table, so nobody picks it blind.
+    assert.match(t0.out, /\| drift-monitor \| missing \| MIT \(permissive\) \| rebuild, use \(probe first\), skip \|/);
+    // the table escapes pipes as \| so the hint reads clean\|found\|incomplete in the markdown cell
+    assert.match(t0.out, /use needs a clean network probe \(cli\.js verdict --probe drift-monitor=clean\\\|found\\\|incomplete\)/);
     const pr = cli(p.d, ['verdict', '--probe', 'drift-monitor=found', '--evidence', 'posts to https://u:p@h/x?token=abc', '--run', p.run]);
     assert.equal(pr.code, 0, pr.err);
     assert.ok(!pr.out.includes('abc') && !pr.out.includes('u:p'), 'printed evidence is redacted');
@@ -1067,6 +1099,12 @@ describe('verdict r4 — the `use` gate re-derives the row and re-checks the san
     assert.equal(w[0].power, 'drift-monitor');
     assert.equal(w[0].withdrawn, 'use');
     assert.match(w[0].reason, /no sandbox/);
+  });
+
+  it('the defensive gate refusal also names the legal verdicts and the next command', async () => {
+    const r = await probedClean('gate3');
+    await assert.rejects(() => recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now, sandbox: { present: 'yes', kind: 'docker', reason: 'odd' } }),
+      (e) => e instanceof PolicyRefused && /^use is not legal for drift-monitor: it needs a clean probe.*; legal verdicts are .* — choose one of them with cli\.js verdict --decide drift-monitor=<verdict>/.test(e.message));
   });
 
   it('the licence class is re-derived from the current cfg: MIT moved out of permissive → use refused (recordDecisions) and removed (recordProbe)', async () => {
