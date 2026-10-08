@@ -1,0 +1,7 @@
+{
+  "powers": [
+    { "name": "drift-monitor", "what": "Detects config drift between runs", "evidence": "src/a.js:2", "dependencies": [], "data_needed": "none", "network": "none", "size": "small", "licence": "MIT", "idea": "Hash the effective config at the start of each run and compare it with the hash from the previous run; report a drift when they differ." },
+    { "name": "usage-exporter", "what": "Uploads run counts to a vendor dashboard", "evidence": "src/b.js:2", "dependencies": [], "data_needed": "uploads run counts to the vendor cloud", "network": "outbound", "size": "small", "licence": "MIT", "idea": "Collect per-run counters and send them to an external dashboard for charts." },
+    { "name": "changed-files-list", "what": "Lists the files a diff touches for a reviewer", "evidence": "src/c.js:2", "dependencies": [], "data_needed": "none", "network": "none", "size": "small", "licence": "MIT", "idea": "Read a unified diff and return the paths it adds or changes so a reviewer can start from the list." }
+  ]
+}
