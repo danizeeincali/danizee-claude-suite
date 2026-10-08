@@ -93,3 +93,7 @@ Add a rule the second time something goes wrong.
   a stale pointer, an argument that was dropped — is visible in the approval table, the status
   file and the usage text, in the same words the refusal will use. A refusal names the cause, the
   legal choices and the next command.
+- **A docstring is a claim about the code and is checked like one** (`docs`, reviews verdict-r6 +
+  handoff-r1). Module headers, docstrings and the spec say exactly what the code enforces, where
+  files live and what a value means; when the code changes, the sentence changes in the same
+  commit. A reviewer may cite a stale sentence as a defect.

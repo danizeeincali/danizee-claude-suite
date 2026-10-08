@@ -5,3 +5,4 @@
 {"category":"test-quality","kind":"rule","ref":".claude/marathon/2026-10-07-bbs/rules.md#a-test-proves-the-boundary-and-the-switch","area":null,"id":"c19799a8-93dc-4190-83fa-de01583616e5","ts":"2026-10-08T02:00:36.833Z"}
 {"category":"performance","kind":"rule","ref":".claude/marathon/2026-10-07-bbs/rules.md#walk-only-what-you-will-use","area":null,"id":"9f880216-d252-4617-b3b1-4e3e3b5cf90b","ts":"2026-10-08T02:07:32.633Z"}
 {"category":"accessibility","kind":"rule","ref":".claude/marathon/2026-10-07-bbs/rules.md#the-table-the-human-approves-shows-every-state","area":null,"id":"f5065e34-a69c-48af-99fa-fd9579fc6366","ts":"2026-10-08T04:04:50.870Z"}
+{"category":"docs","kind":"rule","ref":".claude/marathon/2026-10-07-bbs/rules.md#a-docstring-is-a-claim-about-the-code","area":null,"id":"5c07bcc7-d166-4bb9-943f-ad3924989d0f","ts":"2026-10-08T04:33:17.912Z"}
