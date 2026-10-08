@@ -8,6 +8,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
 import os from 'os';
 import { createHash } from 'crypto';
@@ -170,6 +171,57 @@ describe('fetch — fetchUrl', () => {
     await assert.rejects(() => fetchUrl('https://e.com/slow', { fetchImpl: never, lookup: publicLookup, timeoutMs: 20, onEgress: (r) => log.push(r) }), /timeout|abort/i);
     assert.equal(log.length, 1);
     assert.ok(log[0].refused);
+    assert.equal(egressSummary(log).requests, 1, 'a timed-out request was sent, so it counts');
+  });
+
+  const chain = (n) => {
+    const t = {};
+    for (let i = 0; i < n; i++) t[`https://a.example.com/c${i}`] = { status: 302, headers: { location: `/c${i + 1}` } };
+    t[`https://a.example.com/c${n}`] = { body: 'end', headers: { 'content-type': 'text/plain' } };
+    return t;
+  };
+
+  it('redirect boundary: a 5-redirect chain succeeds with exactly 6 requests; a 6-redirect chain is refused with a refused row for the next hop', async () => {
+    const calls = [];
+    const r = await fetchUrl('https://a.example.com/c0', { fetchImpl: fakeFetch(chain(5), calls), lookup: publicLookup, maxRedirects: 5, onEgress: () => {} });
+    assert.equal(r.body.toString(), 'end');
+    assert.equal(calls.length, 6);
+    const calls2 = [];
+    const log = [];
+    await assert.rejects(() => fetchUrl('https://a.example.com/c0', { fetchImpl: fakeFetch(chain(6), calls2), lookup: publicLookup, maxRedirects: 5, onEgress: (x) => log.push(x) }),
+      (e) => e instanceof EgressRefused && /redirect/i.test(e.message));
+    assert.equal(calls2.length, 6, 'the 7th url is never requested');
+    const last = log[log.length - 1];
+    assert.ok(last.refused && /redirect/i.test(last.refused), 'the refusal is logged');
+    assert.equal(last.url, 'https://a.example.com/c6', 'the refused row names the hop that was not followed');
+    assert.equal(last.status, null);
+    assert.equal(last.bytes_in, 0);
+  });
+
+  it('byte boundary: a body of exactly maxBytes succeeds and maxBytes+1 is refused — via content-length and via streaming', async () => {
+    const withLen = (n) => fakeFetch({ 'https://e.com/b': { body: 'z'.repeat(n), headers: { 'content-length': String(n), 'content-type': 'text/plain' } } });
+    const noLen = (n) => fakeFetch({ 'https://e.com/b': { body: 'z'.repeat(n), headers: { 'content-type': 'text/plain' } } });
+    for (const mk of [withLen, noLen]) {
+      const ok = await fetchUrl('https://e.com/b', { fetchImpl: mk(50), lookup: publicLookup, maxBytes: 50, onEgress: () => {} });
+      assert.equal(ok.body.length, 50);
+      await assert.rejects(() => fetchUrl('https://e.com/b', { fetchImpl: mk(51), lookup: publicLookup, maxBytes: 50, onEgress: () => {} }),
+        (e) => e instanceof EgressRefused && /bytes/i.test(e.message));
+    }
+  });
+
+  it('maxRequests caps every hop: with an allowance of 1 and one redirect, exactly 1 request is sent and the next hop is refused (max_urls)', async () => {
+    const calls = [];
+    const log = [];
+    await assert.rejects(() => fetchUrl('https://a.example.com/c0', { fetchImpl: fakeFetch(chain(1), calls), lookup: publicLookup, maxRequests: 1, onEgress: (x) => log.push(x) }),
+      (e) => e instanceof EgressRefused && /max_urls/.test(e.message));
+    assert.equal(calls.length, 1);
+    assert.equal(log.length, 2);
+    assert.ok(log[1].refused && /max_urls/.test(log[1].refused));
+    assert.equal(log[1].status, null);
+    assert.equal(log[1].bytes_in, 0);
+    const none = [];
+    await assert.rejects(() => fetchUrl('https://a.example.com/c0', { fetchImpl: fakeFetch(chain(0), none), lookup: publicLookup, maxRequests: 0, onEgress: () => {} }), /max_urls/);
+    assert.equal(none.length, 0);
   });
 });
 
@@ -220,6 +272,90 @@ describe('fetch — cloneRepo', () => {
     assert.equal(log[0].kind, 'git');
     assert.equal(log[0].host, 'github.com');
     assert.equal(log[0].bytes_out, 0);
+    // r1 hardening: no redirects, no credential helper, no lfs filters, only https/ssh transports, no submodules
+    const configs = clone.filter((_, k) => clone[k - 1] === '-c');
+    for (const want of ['http.followRedirects=false', 'credential.helper=', 'filter.lfs.smudge=', 'filter.lfs.process=',
+      'filter.lfs.required=false', 'protocol.allow=never', 'protocol.https.allow=always', 'protocol.ssh.allow=always']) {
+      assert.ok(configs.includes(want), `clone sets -c ${want}`);
+    }
+    assert.ok(clone.includes('--no-recurse-submodules'));
+    assert.ok(clone.indexOf('--') > clone.lastIndexOf('-c'), 'every option comes before --');
+    const env = calls[0].env;
+    assert.equal(env.GIT_LFS_SKIP_SMUDGE, '1');
+    assert.equal(env.GIT_CONFIG_NOSYSTEM, '1');
+    assert.equal(env.GIT_CONFIG_GLOBAL, '/dev/null');
+    assert.match(env.GIT_SSH_COMMAND, /BatchMode=yes/);
+    assert.match(env.GIT_SSH_COMMAND, /StrictHostKeyChecking=accept-new/);
+  });
+
+  it('refuses http:// and git:// (and any non https/ssh/scp ref) with a refused git row and no git call', async () => {
+    for (const ref of ['http://github.com/a/b.git', 'git://github.com/a/b.git', 'ftp://github.com/a/b']) {
+      const calls = [];
+      const log = [];
+      const git = (args) => { calls.push(args); return ''; };
+      await assert.rejects(() => cloneRepo(ref, '/tmp/x', { git, lookup: publicLookup, onEgress: (r) => log.push(r) }),
+        (e) => e instanceof EgressRefused && /scheme/i.test(e.message), ref);
+      assert.equal(calls.length, 0, `${ref}: git never ran`);
+      assert.equal(log.length, 1, `${ref}: one row`);
+      assert.equal(log[0].kind, 'git');
+      assert.ok(log[0].refused && /scheme/i.test(log[0].refused));
+      assert.equal(log[0].status, null);
+      assert.equal(log[0].bytes_in, 0);
+    }
+    for (const ref of ['ssh://git@github.com/a/b.git', 'git@github.com:a/b.git']) {
+      const calls = [];
+      const git = (args) => { calls.push(args); return args[0] === 'rev-parse' ? 'abcdef1234567890abcdef1234567890abcdef12\n' : ''; };
+      const dest = path.join(os.tmpdir(), `bbs-clone-ok-${Date.now()}-${Math.random().toString(16).slice(2)}`);
+      await cloneRepo(ref, dest, { git, lookup: publicLookup, onEgress: () => {} });
+      assert.equal(calls[0][0], 'clone', `${ref} is accepted`);
+    }
+  });
+
+  it('passes a timeout (10x timeoutMs) to the git runner for the clone; the default runner turns a timeout into an error naming it', async () => {
+    const seen = [];
+    const git = (args, cwd, env, opts) => { seen.push({ args, opts }); return args[0] === 'rev-parse' ? 'abcdef1234567890abcdef1234567890abcdef12\n' : ''; };
+    const dest = path.join(os.tmpdir(), `bbs-clone-to-${Date.now()}`);
+    await cloneRepo('https://github.com/a/b.git', dest, { git, lookup: publicLookup, onEgress: () => {}, timeoutMs: 1234 });
+    assert.equal(seen[0].opts?.timeout, 12340);
+    assert.equal(seen[1].opts?.timeout, 1234);
+    const { runGit } = await import('../src/lib/bbs/fetch.js');
+    const execSeen = [];
+    const exec = (cmd, args, o) => { execSeen.push(o); const e = new Error('spawnSync git ETIMEDOUT'); e.code = 'ETIMEDOUT'; throw e; };
+    assert.throws(() => runGit(['clone', 'x'], '/tmp', {}, { timeout: 50, exec }), /timeout/i);
+    assert.equal(execSeen[0].timeout, 50);
+    const execSig = () => { const e = new Error('killed'); e.signal = 'SIGTERM'; throw e; };
+    assert.throws(() => runGit(['clone', 'x'], '/tmp', {}, { timeout: 50, exec: execSig }), /timeout/i);
+  });
+
+  it('measures the cloned tree (including .git) as bytes_in, and refuses and removes a clone over the remaining byte allowance', async () => {
+    const git = (args) => {
+      if (args[0] === 'clone') {
+        const dest = args[args.length - 1];
+        fsSync.mkdirSync(path.join(dest, '.git'), { recursive: true });
+        fsSync.writeFileSync(path.join(dest, 'README'), 'x'.repeat(100));
+        fsSync.writeFileSync(path.join(dest, '.git', 'pack'), 'y'.repeat(50));
+        return '';
+      }
+      return 'abcdef1234567890abcdef1234567890abcdef12\n';
+    };
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-clone-bytes-'));
+    try {
+      const log = [];
+      await cloneRepo('https://github.com/a/b.git', path.join(base, 'ok'), { git, lookup: publicLookup, onEgress: (r) => log.push(r), maxBytes: 150 });
+      assert.equal(log.length, 1);
+      assert.equal(log[0].bytes_in, 150, 'README + .git/pack');
+      assert.ok(!log[0].refused);
+      const log2 = [];
+      const big = path.join(base, 'big');
+      await assert.rejects(() => cloneRepo('https://github.com/a/b.git', big, { git, lookup: publicLookup, onEgress: (r) => log2.push(r), maxBytes: 149 }),
+        (e) => e instanceof EgressRefused && /bytes/i.test(e.message));
+      await assert.rejects(() => fs.stat(big), 'the over-size clone is removed');
+      assert.equal(log2.length, 1);
+      assert.equal(log2[0].bytes_in, 150);
+      assert.ok(log2[0].refused && /bytes/i.test(log2[0].refused));
+    } finally {
+      await fs.rm(base, { recursive: true, force: true });
+    }
   });
 
   it('refuses a private clone host before running git, and never executes anything from the clone', async () => {
@@ -250,6 +386,22 @@ describe('fetch — egress summary and line', () => {
     assert.deepEqual(egressSummary(rows), { requests: 3, bytes_in: 15, bodies_sent: 0, hosts: ['a.com', 'b.com'], refused: 1 });
     assert.equal(egressLine(rows), 'requests=3 bytes_in=15 bodies_sent=0 hosts=a.com,b.com');
     assert.equal(egressLine([]), 'requests=0 bytes_in=0 bodies_sent=0 hosts=none');
+  });
+
+  it('a pre-connect refusal (status null, bytes_in 0) is a refusal, not a request; transport errors and timeouts were sent', () => {
+    const rows = [
+      { kind: 'http', host: 'a.com', status: 200, bytes_in: 10, bytes_out: 0 },
+      { kind: 'http', host: 'evil.com', status: null, bytes_in: 0, bytes_out: 0, refused: 'host evil.com is a private address' },
+      { kind: 'git', host: 'g.com', status: null, bytes_in: 0, bytes_out: 0, refused: 'scheme git:// is not cloned' }
+    ];
+    assert.deepEqual(egressSummary(rows), { requests: 1, bytes_in: 10, bodies_sent: 0, hosts: ['a.com'], refused: 2 });
+    assert.equal(egressLine(rows), 'requests=1 bytes_in=10 bodies_sent=0 hosts=a.com');
+    const sent = [
+      { kind: 'http', host: 'a.com', status: null, bytes_in: 0, bytes_out: 0, error: 'ECONNRESET' },
+      { kind: 'http', host: 'b.com', status: null, bytes_in: 0, bytes_out: 0, sent: true, refused: 'timeout after 20 ms fetching https://b.com/' },
+      { kind: 'git', host: 'c.com', status: null, bytes_in: 0, bytes_out: 0, error: 'fatal: repository not found' }
+    ];
+    assert.equal(egressSummary(sent).requests, 3);
   });
 });
 
@@ -351,6 +503,62 @@ describe('fetch — fetchRun', () => {
     await assert.rejects(() => fetchRun(dir, { run: j.runId, cfg, fetchImpl: fakeFetch({}, calls2), lookup: publicLookup, now }), (e) => e instanceof EgressRefused && /max_urls|links|requests/i.test(e.message));
     assert.equal(calls2.length, 0);
   });
+
+  it('a url whose credential-like query value intake redacted is refused (EgressRefused, refused row), never fetched', async () => {
+    const i = await intake(dir, 'https://docs.example.com/p?key=intro', { now, slug: 'red' });
+    const calls = [];
+    await assert.rejects(() => fetchRun(dir, { run: i.runId, fetchImpl: fakeFetch({}, calls), lookup: publicLookup, now }),
+      (e) => e instanceof EgressRefused && /credential-like query value that intake redacted/.test(e.message) && /re-run cli\.js intake/.test(e.message));
+    assert.equal(calls.length, 0);
+    const runDir = path.join(dir, '.claude', 'bbs', 'runs', i.runId);
+    const egress = await readJsonl(path.join(runDir, 'egress.jsonl'));
+    assert.ok(egress.some(e => e.refused && /redacted/.test(e.refused) && e.status === null && e.bytes_in === 0));
+    assert.equal((await readJson(path.join(runDir, 'source.json'))).fetched, false);
+  });
+
+  it('maxBytes and maxUrls override a larger cfg limit', async () => {
+    const big = { ...(await import('../src/lib/bbs/config.js')).DEFAULT_CONFIG, limits: { max_urls: 25, max_bytes: 1000000, max_powers: 12, max_redirects: 5, timeout_ms: 1000 } };
+    const i = await intake(dir, 'https://ovb.example.com/', { now, slug: 'ovb' });
+    await assert.rejects(() => fetchRun(dir, { run: i.runId, cfg: big, maxBytes: 5, fetchImpl: fakeFetch({ 'https://ovb.example.com/': { body: 'x'.repeat(6), headers: { 'content-type': 'text/plain' } } }), lookup: publicLookup, now }),
+      (e) => e instanceof EgressRefused && /bytes/i.test(e.message));
+    const j = await intake(dir, 'https://ovu.example.com/', { now, slug: 'ovu' });
+    const { appendJsonl } = await import('../src/lib/bbs/store.js');
+    await appendJsonl(path.join(dir, '.claude', 'bbs', 'runs', j.runId, 'egress.jsonl'), { kind: 'http', method: 'GET', url: 'https://x/', host: 'x', status: 200, bytes_in: 1, bytes_out: 0 });
+    const calls = [];
+    await assert.rejects(() => fetchRun(dir, { run: j.runId, cfg: big, maxUrls: 1, fetchImpl: fakeFetch({}, calls), lookup: publicLookup, now }),
+      (e) => e instanceof EgressRefused && /max_urls/.test(e.message));
+    assert.equal(calls.length, 0);
+  });
+
+  it('maxUrls 1 with one redirect: exactly 1 request is sent and the run is refused (max_urls); a pre-connect refusal does not use up the allowance', async () => {
+    const i = await intake(dir, 'https://one.example.com/a', { now, slug: 'one' });
+    const calls = [];
+    const f = fakeFetch({ 'https://one.example.com/a': { status: 302, headers: { location: '/b' } }, 'https://one.example.com/b': { body: 'b' } }, calls);
+    await assert.rejects(() => fetchRun(dir, { run: i.runId, maxUrls: 1, fetchImpl: f, lookup: publicLookup, now }), (e) => e instanceof EgressRefused && /max_urls/.test(e.message));
+    assert.equal(calls.length, 1);
+    const k = await intake(dir, 'https://two.example.com/', { now, slug: 'two' });
+    const { appendJsonl } = await import('../src/lib/bbs/store.js');
+    await appendJsonl(path.join(dir, '.claude', 'bbs', 'runs', k.runId, 'egress.jsonl'), { kind: 'http', method: 'GET', url: 'https://two.example.com/', host: 'two.example.com', status: null, bytes_in: 0, bytes_out: 0, refused: 'network disabled by BBS_NO_NETWORK' });
+    const r = await fetchRun(dir, { run: k.runId, maxUrls: 1, fetchImpl: fakeFetch({ 'https://two.example.com/': { body: 'ok', headers: { 'content-type': 'text/plain' } } }), lookup: publicLookup, now });
+    assert.equal(r.identity, sha('ok'));
+    assert.match(r.egress_line, /^requests=1 /);
+  });
+
+  it('repo: the clone gets the remaining byte allowance and cfg timeout; an over-size clone is refused and fetched/ removed', async () => {
+    const i = await intake(dir, 'https://github.com/a/big', { now, slug: 'rbig' });
+    const seen = [];
+    const git = (args, cwd, env, opts) => {
+      seen.push({ args, opts });
+      if (args[0] === 'clone') { const d = args[args.length - 1]; fsSync.mkdirSync(d, { recursive: true }); fsSync.writeFileSync(path.join(d, 'f'), 'q'.repeat(20)); return ''; }
+      return 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n';
+    };
+    await assert.rejects(() => fetchRun(dir, { run: i.runId, git, lookup: publicLookup, now, maxBytes: 10 }), (e) => e instanceof EgressRefused && /bytes/i.test(e.message));
+    assert.equal(seen[0].opts?.timeout, 300000, 'clone timeout is 10x the 30 s default');
+    const runDir = path.join(dir, '.claude', 'bbs', 'runs', i.runId);
+    await assert.rejects(() => fs.readdir(path.join(runDir, 'fetched')));
+    const egress = await readJsonl(path.join(runDir, 'egress.jsonl'));
+    assert.ok(egress.some(e => e.kind === 'git' && e.bytes_in === 20 && e.refused));
+  });
 });
 
 describe('fetch — cli verb', () => {
@@ -417,5 +625,24 @@ describe('fetch — cli verb', () => {
       assert.equal(r.code, 1, bad.join(' '));
       assert.match(r.err, /positive integer/);
     }
+  });
+
+  it('--max-bytes 5 against a run that already read 10 bytes refuses with exit 2 before any request', async () => {
+    const u = run(dir, ['intake', 'https://mbx.example.com/', '--slug', 'mbx']);
+    assert.equal(u.code, 0, u.err);
+    const egressFile = path.join(dir, '.claude', 'bbs', 'runs', u.json.runId, 'egress.jsonl');
+    const { appendJsonl } = await import('../src/lib/bbs/store.js');
+    await appendJsonl(egressFile, { kind: 'http', method: 'GET', url: 'https://mbx.example.com/old', host: 'mbx.example.com', status: 200, bytes_in: 10, bytes_out: 0 });
+    const f = run(dir, ['fetch', '--run', u.json.runId, '--max-bytes', '5'], undefined, { BBS_NO_NETWORK: '' });
+    assert.equal(f.code, 2, f.err);
+    assert.match(f.err, /^bbs: refused: .*bytes/);
+    const egress = await readJsonl(egressFile);
+    assert.equal(egress.length, 2);
+    const last = egress[1];
+    assert.ok(last.refused && /max_bytes/.test(last.refused), 'refused on the byte allowance');
+    assert.equal(last.status, null, 'pre-connect: nothing was sent');
+    assert.equal(last.bytes_in, 0);
+    const source = await readJson(path.join(dir, '.claude', 'bbs', 'runs', u.json.runId, 'source.json'));
+    assert.equal(source.fetched, false);
   });
 });

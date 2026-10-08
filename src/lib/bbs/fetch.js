@@ -147,7 +147,7 @@ async function discard(res) {
 export async function fetchUrl(url, opts = {}) {
   const {
     fetchImpl = globalThis.fetch, lookup = defaultLookup, maxBytes = 20 * 1024 * 1024,
-    maxRedirects = 5, timeoutMs = 30000, onEgress = () => {}, now = () => new Date()
+    maxRedirects = 5, maxRequests = Infinity, timeoutMs = 30000, onEgress = () => {}, now = () => new Date()
   } = opts;
   const row = async (current, extra) => {
     await onEgress({ ts: now().toISOString(), kind: 'http', method: 'GET', url: current.href, host: normHost(current.hostname), status: null, bytes_in: 0, bytes_out: 0, ...extra });
@@ -166,6 +166,7 @@ export async function fetchUrl(url, opts = {}) {
     };
     if (!/^https?:$/.test(current.protocol)) await refuse(`unsupported scheme "${current.protocol}"`);
     if (current.username || current.password) await refuse('urls with credentials are not fetched');
+    if (hops.length >= maxRequests) await refuse(`max_urls reached: the remaining allowance of ${maxRequests} request(s) is used up`);
     try { await checkHost(current.hostname, { lookup }); } catch (err) {
       if (err instanceof EgressRefused) await refuse(err.message);
       throw err;
@@ -182,7 +183,7 @@ export async function fetchUrl(url, opts = {}) {
           headers: { 'user-agent': USER_AGENT, accept: ACCEPT }
         });
       } catch (err) {
-        if (controller.signal.aborted) { await row(current, { refused: timeoutMsg }); throw new Error(timeoutMsg); }
+        if (controller.signal.aborted) { await row(current, { sent: true, refused: timeoutMsg }); throw new Error(timeoutMsg); }
         await row(current, { error: err.message });
         throw new Error(`request to ${current.href} failed: ${err.message}`);
       }
@@ -194,7 +195,11 @@ export async function fetchUrl(url, opts = {}) {
         if (!loc) throw new Error(`redirect ${status} from ${current.href} has no Location header`);
         let next;
         try { next = new URL(loc, current); } catch { throw new Error(`redirect ${status} from ${current.href} has an invalid Location "${loc}"`); }
-        if (++redirects > maxRedirects) throw new EgressRefused(`too many redirects (more than ${maxRedirects}) starting at ${hops[0]}`);
+        if (++redirects > maxRedirects) {
+          const msg = `too many redirects (more than ${maxRedirects}) starting at ${hops[0]}`;
+          await row(next, { refused: msg });
+          throw new EgressRefused(msg);
+        }
         current = next;
         continue;
       }
@@ -217,7 +222,7 @@ export async function fetchUrl(url, opts = {}) {
         for (;;) {
           let chunk;
           try { chunk = await reader.read(); } catch (err) {
-            if (controller.signal.aborted) { await row(current, { status, bytes_in: total, refused: timeoutMsg }); throw new Error(timeoutMsg); }
+            if (controller.signal.aborted) { await row(current, { status, bytes_in: total, sent: true, refused: timeoutMsg }); throw new Error(timeoutMsg); }
             await row(current, { status, bytes_in: total, error: err.message });
             throw new Error(`reading ${current.href} failed: ${err.message}`);
           }
@@ -269,9 +274,49 @@ export function extractLinks(text, base) {
 
 // ---------------------------------------------------------------- git
 
-function defaultGit(args, cwd, env) {
-  return execFileSync('git', args, { cwd, env, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
+/** The default git runner: execFileSync with a timeout; a timeout becomes an Error that says so. */
+export function runGit(args, cwd, env, { timeout, exec = execFileSync } = {}) {
+  try {
+    return exec('git', args, { cwd, env, timeout, killSignal: 'SIGTERM', encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (err) {
+    if (err?.code === 'ETIMEDOUT' || err?.signal === 'SIGTERM') {
+      const e = new Error(`git ${args[0]} timeout after ${timeout} ms`);
+      e.stderr = e.message;
+      throw e;
+    }
+    throw err;
+  }
 }
+const defaultGit = runGit;
+
+/** Env for clone and rev-parse: scrubbed, no system/global config, no lfs smudge, no prompts. */
+function cloneEnv() {
+  return {
+    ...scrubbedGitEnv(),
+    GIT_TERMINAL_PROMPT: '0',
+    GIT_LFS_SKIP_SMUDGE: '1',
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_CONFIG_GLOBAL: '/dev/null',
+    GIT_SSH_COMMAND: 'ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new'
+  };
+}
+
+/** Sum of file sizes under dir (recursive, .git included, symlinks not followed). Missing dir → 0. */
+async function treeBytes(dir) {
+  let st;
+  try { st = await fs.lstat(dir); } catch (err) { if (err.code === 'ENOENT') return 0; throw err; }
+  if (!st.isDirectory()) return st.isFile() ? st.size : 0;
+  let total = 0;
+  for (const ent of await fs.readdir(dir, { withFileTypes: true })) {
+    const p = path.join(dir, ent.name);
+    if (ent.isDirectory()) total += await treeBytes(p);
+    else if (ent.isFile()) total += (await fs.lstat(p)).size;
+  }
+  return total;
+}
+
+const CLONE_SCHEME = /^(https|ssh):\/\//i;
+const SCP_REF = /^[^@\s/:]+@(\[[^\]\s]+\]|[^:\s/]+):(?!\/\/)/;
 
 function firstLine(err) {
   const raw = (err?.stderr ? String(err.stderr) : '').trim() || String(err?.message || 'unknown error').trim();
@@ -279,38 +324,55 @@ function firstLine(err) {
 }
 
 /** Shallow, tagless clone with hooks off and prompts off; returns { sha } of HEAD. */
-export async function cloneRepo(ref, dest, { git = defaultGit, lookup = defaultLookup, onEgress = () => {}, now = () => new Date() } = {}) {
+export async function cloneRepo(ref, dest, {
+  git = defaultGit, lookup = defaultLookup, onEgress = () => {}, now = () => new Date(), timeoutMs = 30000, maxBytes = Infinity
+} = {}) {
   const text = String(ref ?? '').trim();
   const host = text.startsWith('-') ? null : hostOfRef(text);
-  if (!host) throw new Error(`unsupported repo ref "${text}" — scheme must be https, http, ssh, git or scp-style user@host:path`);
   const row = async (extra) => {
     await onEgress({ ts: now().toISOString(), kind: 'git', method: 'GET', url: text, host, status: null, bytes_in: 0, bytes_out: 0, ...extra });
   };
+  if (!host || !(CLONE_SCHEME.test(text) || SCP_REF.test(text))) {
+    const msg = `unsupported repo ref scheme in "${text}" — only https://, ssh:// and scp-style user@host:path are cloned`;
+    await row({ refused: msg });
+    throw new EgressRefused(msg);
+  }
   try { await checkHost(host, { lookup }); } catch (err) {
     if (err instanceof EgressRefused) await row({ refused: err.message });
     throw err;
   }
   const hooksDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hooks-'));
-  const env = scrubbedGitEnv();
+  const env = cloneEnv();
   try {
-    const args = ['clone', '--depth', '1', '--no-tags', '-c', `core.hooksPath=${hooksDir}`, '--', text, dest];
+    const args = ['clone', '--depth', '1', '--no-tags', '--no-recurse-submodules',
+      '-c', `core.hooksPath=${hooksDir}`, '-c', 'http.followRedirects=false', '-c', 'credential.helper=',
+      '-c', 'filter.lfs.smudge=', '-c', 'filter.lfs.process=', '-c', 'filter.lfs.required=false',
+      '-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always', '-c', 'protocol.ssh.allow=always',
+      '--', text, dest];
     try {
-      git(args, path.dirname(path.resolve(dest)), env);
+      await git(args, path.dirname(path.resolve(dest)), env, { timeout: timeoutMs * 10 });
     } catch (err) {
       await fs.rm(dest, { recursive: true, force: true });
       const line = firstLine(err);
       await row({ error: line });
       throw new Error(`git clone failed: ${line}`);
     }
+    const bytes = await treeBytes(dest);
+    if (bytes > maxBytes) {
+      await fs.rm(dest, { recursive: true, force: true });
+      const msg = `clone of ${bytes} bytes exceeds the remaining allowance of ${maxBytes} bytes`;
+      await row({ status: 0, bytes_in: bytes, refused: msg });
+      throw new EgressRefused(msg);
+    }
     let sha;
     try {
-      sha = String(git(['rev-parse', 'HEAD'], dest, env)).trim();
+      sha = String(await git(['rev-parse', 'HEAD'], dest, env, { timeout: timeoutMs })).trim();
       if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(sha)) throw new Error(`unexpected HEAD "${sha.slice(0, 80)}"`);
     } catch (err) {
       await fs.rm(dest, { recursive: true, force: true });
       throw new Error(`git rev-parse HEAD failed after clone: ${firstLine(err)}`);
     }
-    await row({ status: 0 });
+    await row({ status: 0, bytes_in: bytes });
     return { sha };
   } finally {
     await fs.rm(hooksDir, { recursive: true, force: true });
@@ -319,7 +381,13 @@ export async function cloneRepo(ref, dest, { git = defaultGit, lookup = defaultL
 
 // ---------------------------------------------------------------- egress summary
 
-const isRequest = (e) => !!e && (e.kind === 'http' || e.kind === 'git');
+/**
+ * A row is a request only when something was sent: it has a status, read bytes, carries a transport
+ * error or the sent flag (timeouts), or is a git row that was not refused before connecting.
+ */
+export const isRequest = (e) => !!e && (e.kind === 'http' || e.kind === 'git') && (
+  typeof e.status === 'number' || Number(e.bytes_in) > 0 || !!e.error || e.sent === true || (e.kind === 'git' && !e.refused)
+);
 
 export function egressSummary(rows) {
   const list = (rows || []).filter(e => e && typeof e === 'object');
@@ -389,6 +457,9 @@ export async function fetchRun(projectDir, opts = {}) {
       await onEgress({ kind, method: 'GET', url: source.ref, host: hostOfRef(source.ref), status: null, bytes_in: 0, bytes_out: 0, refused: msg });
       throw new EgressRefused(msg);
     };
+    if (/<redacted>|%3Credacted%3E/i.test(String(source.ref))) {
+      await refuseRow('the named URL carried a credential-like query value that intake redacted — re-run cli.js intake with the URL without it');
+    }
     const realNetwork = type === 'url' ? (!fetchImpl || !lookup) : (!git || !lookup);
     if (process.env.BBS_NO_NETWORK && realNetwork) await refuseRow('network disabled by BBS_NO_NETWORK');
     const rows = await readJsonl(egressFile);
@@ -397,6 +468,8 @@ export async function fetchRun(projectDir, opts = {}) {
     const byteLimit = maxBytes ?? cfg.limits?.max_bytes ?? DEFAULT_CONFIG.limits.max_bytes;
     if (used.requests >= urlLimit) await refuseRow(`max_urls reached: this run already made ${used.requests} of ${urlLimit} requests`);
     const remaining = byteLimit - used.bytes_in;
+    const remainingUrls = urlLimit - used.requests;
+    const timeoutMs = cfg.limits?.timeout_ms ?? DEFAULT_CONFIG.limits?.timeout_ms ?? 30000;
     if (remaining <= 0) await refuseRow(`max_bytes reached: this run already read ${used.bytes_in} of ${byteLimit} bytes`);
 
     // claim fetched/ atomically: a second concurrent fetch (or a crashed one) fails loudly
@@ -410,7 +483,7 @@ export async function fetchRun(projectDir, opts = {}) {
       if (type === 'url') {
         const r = await fetchUrl(source.ref, {
           fetchImpl: fetchImpl || globalThis.fetch, lookup: lookup || defaultLookup, maxBytes: remaining,
-          maxRedirects: cfg.limits?.max_redirects ?? 5, timeoutMs: cfg.limits?.timeout_ms ?? 30000, onEgress, now
+          maxRedirects: cfg.limits?.max_redirects ?? 5, maxRequests: remainingUrls, timeoutMs, onEgress, now
         });
         const ext = EXT[r.contentType] || 'bin';
         files = [`fetched/1.${ext}`];
@@ -419,7 +492,7 @@ export async function fetchRun(projectDir, opts = {}) {
         const cited = ext === 'bin' ? [] : extractLinks(r.body.toString('utf-8'), r.finalUrl);
         extraSource = { final_url: r.finalUrl, cited };
       } else {
-        const { sha } = await cloneRepo(source.ref, path.join(fetchedDir, 'repo'), { git: git || defaultGit, lookup: lookup || defaultLookup, onEgress, now });
+        const { sha } = await cloneRepo(source.ref, path.join(fetchedDir, 'repo'), { git: git || defaultGit, lookup: lookup || defaultLookup, onEgress, now, timeoutMs, maxBytes: remaining });
         identity = 'git:' + sha;
         files = ['fetched/repo'];
         extraSource = {};
