@@ -711,3 +711,183 @@ STATUS: PASS|FAIL
 2. Test: RC-D020 returns STATUS: PASS
 
 **Status**: ready (only runs if RC-D020 fails)
+
+---
+
+### RC-D021: A safety gate never trusts a stored file; every use decision path re-checks fresh
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Diagnostic
+**Verifies**: recordDecisions and recordProbe accepted `use` from stored `legal`/`sandbox` in verdicts.json (review verdict-r4, medium security)
+
+**Test Command**:
+```bash
+grep -n "detectSandbox\|recomputeRow" src/lib/bbs/verdict.js; # every --decide and use path must call both inside withMapLockDetailed
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: FRESH_CHECK_ON_USE_PATH
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F021 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+### RC-F021: A scan that greps every --decide/use path for a fresh check under the lock
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Conditional Fix
+**Triggered By**: RC-D021 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// inside the lock: row = recomputeRow(power, cfg); sandbox = detectSandbox(); require row.legal.includes('use') && sandbox.present && probe === 'clean'
+```
+
+**File**: src/lib/bbs/verdict.js
+
+**Completion Tests**:
+1. Pattern: every path that can record `use` calls recomputeRow and a fresh detectSandbox under the lock; a stale-file test is refused with exit 2
+2. Test: RC-D021 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D021 fails)
+
+---
+
+### RC-D022: SPDX expressions are an attack surface; a fixture table pins each expression to its class
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Diagnostic
+**Verifies**: grouped OR beside AND, `WITH` exceptions and unknown ids classified permissive (reviews verdict-r1 high, verdict-r4 medium)
+
+**Test Command**:
+```bash
+node --test test/bbs-verdict.test.js --test-name-pattern='licence class table'; # expect the table test present and green
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: SPDX_FIXTURE_TABLE
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F022 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+### RC-F022: A fixture table of expressions with expected classes, run through licenceClass
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Conditional Fix
+**Triggered By**: RC-D022 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// table: ['(MIT OR Apache-2.0) AND Proprietary','commercial'], ['GPL-3.0 AND (MIT OR Apache-2.0)','copyleft'], ['Apache-2.0 WITH Commons-Clause','none'], ['Apache-2.0 WITH LLVM-exception','permissive'], ['(MIT','none']
+```
+
+**File**: test/bbs-verdict.test.js
+
+**Completion Tests**:
+1. Pattern: the table covers precedence, grouping, allowlisted and unlisted WITH exceptions, unbalanced input, empty and unknown; deleting the parser turns it red
+2. Test: RC-D022 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D022 fails)
+
+---
+
+### RC-D023: Environment, config and endpoint checks fail toward refusal, with the failure branch tested
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Diagnostic
+**Verifies**: BBS_SANDBOX=present, config required_for_use:false and a failed docker context inspect each opened `use` (reviews verdict-r1, verdict-r4)
+
+**Test Command**:
+```bash
+grep -n "BBS_SANDBOX\|required_for_use\|context inspect" src/lib/bbs/verdict.js src/lib/bbs/cli.js; # each hit must be absent-only, ignored-with-warning, or present:false on failure
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: FAIL_CLOSED_SWITCHES
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F023 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+### RC-F023: Switches only move toward safe; a failed or timed-out endpoint check reports present:false
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Conditional Fix
+**Triggered By**: RC-D023 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// BBS_SANDBOX: honour 'absent', refuse 'present' (exit 1); required_for_use:false ignored + stderr warning; inspect timeout/non-zero => {present:false, reason}
+```
+
+**File**: src/lib/bbs/verdict.js
+
+**Completion Tests**:
+1. Pattern: tests cover inspect timeout, inspect non-zero, DOCKER_HOST tcp:// and ssh://, BBS_SANDBOX=present and config false
+2. Test: RC-D023 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D023 fails)
+
+---
+
+### RC-D024: Clearing a decision appends a withdrawal row; append-only logs never leave a stale claim
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Diagnostic
+**Verifies**: labels.jsonl and registry.jsonl kept claiming `use` after verdicts.json cleared the decision (review verdict-r2, medium correctness)
+
+**Test Command**:
+```bash
+node --test test/bbs-verdict.test.js --test-name-pattern='withdraw|supersed'; # expect green
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: WITHDRAWAL_ROW
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F024 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+### RC-F024: Every code path that nulls a decision with a label behind it appends withdrawal and superseding rows
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Conditional Fix
+**Triggered By**: RC-D024 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// on clear: appendLabel({power, verdict, label: 0, withdrawn: true}); appendRegistry({..., superseded: true}); repair is idempotent
+```
+
+**File**: src/lib/bbs/verdict.js
+
+**Completion Tests**:
+1. Pattern: probe --force found and sandbox-gone recompute both append rows; lookupSource no longer returns use
+2. Test: RC-D024 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D024 fails)
