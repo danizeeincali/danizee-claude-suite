@@ -91,3 +91,5 @@
 {"helper_id":"214513ea-9d28-4f11-b34d-b0bb36e21dea","tokens":157578,"outcome":"green","event":"done","id":"10910f70-9d30-4917-a4ef-e7fee1b2779f","ts":"2026-10-08T03:41:04.683Z"}
 {"helper_id":"ec781694-da2b-4d6f-a7d3-11de6d1c24b6","tokens":111846,"outcome":"green","event":"done","id":"5f29c953-95af-4c00-bf57-886b9ecfba58","ts":"2026-10-08T03:43:59.170Z"}
 {"role":"fix","model":"opus","stream":"verdict","budget":150000,"event":"spawn","id":"71f5e0c0-5a1f-4a70-addd-f94f33fe81c9","ts":"2026-10-08T03:43:59.903Z"}
+{"helper_id":"71f5e0c0-5a1f-4a70-addd-f94f33fe81c9","tokens":125000,"outcome":"green","event":"done","id":"caba6597-3c48-4a8b-95f5-2ec16dadbe8c","ts":"2026-10-08T03:50:12.782Z"}
+{"role":"review","model":"opus","stream":"verdict","budget":150000,"event":"spawn","id":"92a3e400-d14e-4c5f-8c22-4f6e231b8d39","ts":"2026-10-08T03:50:13.356Z"}
