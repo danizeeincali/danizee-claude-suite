@@ -88,3 +88,8 @@ Add a rule the second time something goes wrong.
 - **Walk only what you will use** (`performance`, reviews inventory-r1 + inventory-r2). A file walk
   skips vendor and build directories, uses the directory entry's type before any `lstat`, batches
   per directory, and stops collecting once the cap is reached (counting the rest). Sort, then slice.
+- **The table the human approves shows every state the code knows** (`accessibility`, reviews
+  intake-r5 + verdict-r5). Anything that will make a later command refuse — a probe still needed,
+  a stale pointer, an argument that was dropped — is visible in the approval table, the status
+  file and the usage text, in the same words the refusal will use. A refusal names the cause, the
+  legal choices and the next command.

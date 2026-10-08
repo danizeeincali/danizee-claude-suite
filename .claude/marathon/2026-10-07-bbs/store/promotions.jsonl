@@ -4,3 +4,4 @@
 {"category":"facts","kind":"rule","ref":".claude/marathon/2026-10-07-bbs/rules.md#every-message-names-the-real-state","area":null,"id":"a0af7e18-d752-4fac-9e01-89572ab8f8f0","ts":"2026-10-08T01:14:48.551Z"}
 {"category":"test-quality","kind":"rule","ref":".claude/marathon/2026-10-07-bbs/rules.md#a-test-proves-the-boundary-and-the-switch","area":null,"id":"c19799a8-93dc-4190-83fa-de01583616e5","ts":"2026-10-08T02:00:36.833Z"}
 {"category":"performance","kind":"rule","ref":".claude/marathon/2026-10-07-bbs/rules.md#walk-only-what-you-will-use","area":null,"id":"9f880216-d252-4617-b3b1-4e3e3b5cf90b","ts":"2026-10-08T02:07:32.633Z"}
+{"category":"accessibility","kind":"rule","ref":".claude/marathon/2026-10-07-bbs/rules.md#the-table-the-human-approves-shows-every-state","area":null,"id":"f5065e34-a69c-48af-99fa-fd9579fc6366","ts":"2026-10-08T04:04:50.870Z"}
