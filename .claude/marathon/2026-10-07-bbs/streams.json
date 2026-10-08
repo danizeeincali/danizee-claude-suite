@@ -43,10 +43,10 @@
       "name": "harness-map",
       "state": "active",
       "plan": ".claude/plans/2026-10-07-w-bbs.md",
-      "next": "review round 3 (opus, older environments) on 945e873..HEAD",
+      "next": "sonnet fix round for review r3 (1 medium: lock ownership; 3 low); then unit run + review r4 (second clean closes)",
       "tasks": [],
       "isolation": "../claude-suite-harness-map",
-      "phase": "4.5",
+      "phase": "4.7",
       "base": "b920b727db653837ddf5e49928f1dd5782c2d42b"
     },
     {
