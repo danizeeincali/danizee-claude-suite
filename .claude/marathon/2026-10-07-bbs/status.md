@@ -5,7 +5,7 @@
 - Allowance: 97% (ceiling 98%)
 - Gate (run-wide, all streams): 2/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Next stream "command-docs": create its worktree (`git worktree add ../<repo>-command-docs -b marathon/2026-10-07-bbs/command-docs`) and activate it with `cli.js stream command-docs state=active isolation=<path>`, then /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
+- Next for you: Continue stream "command-docs" (next: builder for src/plugins/bbs.js, installer wiring, w-bbs + bbs commands, shortcuts/README docs against the four contracts; review r1 with --base fe069a5) — /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
 
 ## Streams
 
@@ -17,7 +17,7 @@
 | harness-map | ../claude-suite-harness-map | .claude/plans/2026-10-07-w-bbs.md | done | clean 2/2 | done | closed: 4 reviews (r3, r4 clean), 22 findings fixed; r4 fix (f449196..45e70fc) reviewed in verdict r1 via --base f449196 |  | 0 |
 | verdict | ../claude-suite-verdict | .claude/plans/2026-10-07-w-bbs.md | done | clean 2/2 | done | closed: 6 reviews (r5, r6 clean), 26 findings fixed; r6 fixes (7caf67d..723c14d) reviewed in handoff r1 via --base 7caf67d |  | 0 |
 | handoff | ../claude-suite-handoff | .claude/plans/2026-10-07-w-bbs.md | done | clean 2/2 | done | closed: 5 reviews (r4, r5 clean), 27 findings fixed; r5 fixes (fe069a5..c6743bb) reviewed in command-docs r1 via --base fe069a5 |  | 0 |
-| command-docs |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | plugin installer, w-bbs + bbs commands, docs, README, e2e packaged test |  | 0 |
+| command-docs | ../claude-suite-command-docs | .claude/plans/2026-10-07-w-bbs.md | active | clean 0/2 | 4.3 | builder for src/plugins/bbs.js, installer wiring, w-bbs + bbs commands, shortcuts/README docs against the four contracts; review r1 with --base fe069a5 |  | 0 |
 
 ## Finish line
 

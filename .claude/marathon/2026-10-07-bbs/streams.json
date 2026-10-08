@@ -71,10 +71,13 @@
     },
     {
       "name": "command-docs",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/plans/2026-10-07-w-bbs.md",
-      "next": "plugin installer, w-bbs + bbs commands, docs, README, e2e packaged test",
-      "tasks": []
+      "next": "builder for src/plugins/bbs.js, installer wiring, w-bbs + bbs commands, shortcuts/README docs against the four contracts; review r1 with --base fe069a5",
+      "tasks": [],
+      "isolation": "../claude-suite-command-docs",
+      "phase": "4.3",
+      "base": "2664d95b23fb9a1be3ff39984a849dda0dec2225"
     }
   ],
   "handoff": null
