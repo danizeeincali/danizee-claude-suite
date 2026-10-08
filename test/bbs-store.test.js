@@ -275,4 +275,19 @@ describe('bbs config — review r4 regressions: paths stay under .claude/bbs', (
       assert.equal((await loadConfig(dir)).paths.marathon_cli, 'tools/cli.js');
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
+
+  it('paths.marathon_cli resolving outside the project is refused (handoff r4); one that stays inside passes', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-config-r4c-'));
+    try {
+      await fs.mkdir(path.join(dir, '.claude'), { recursive: true });
+      const file = path.join(dir, '.claude', 'bbs.json');
+      for (const value of ['../../elsewhere/cli.js', '..', 'tools/../../cli.js', '.']) {
+        await fs.writeFile(file, JSON.stringify({ paths: { marathon_cli: value } }));
+        await assert.rejects(() => loadConfig(dir),
+          (err) => err.message === `invalid config in ${file}: paths.marathon_cli "${value}" must stay under the project`, value);
+      }
+      await fs.writeFile(file, JSON.stringify({ paths: { marathon_cli: 'tools/../cli.js' } }));
+      assert.equal((await loadConfig(dir)).paths.marathon_cli, 'tools/../cli.js');
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
 });

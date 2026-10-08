@@ -319,7 +319,7 @@ describe('verdict — cli verb', () => {
   it('usage lists verdict with [--table | --probe <power>=<result> [--evidence <t>] | --decide <power>=<verdict> | --from <file|->] [--force]; BBS_SANDBOX overrides detection', () => {
     const u = run(dir, ['nope']);
     assert.match(u.err, /cli\.js verdict \[--table \| --probe <power>=<clean\|found\|incomplete> \[--evidence <text>\] \| --decide <power>=<verdict> \| --from <file\|->\] \[--force\] \[--run <id>\] \[--project <dir>\]/);
-    assert.match(u.err, /usage: cli\.js <intake\|fetch\|inventory\|map\|verdict\|status\|report> \.\.\./);
+    assert.match(u.err, /usage: cli\.js <intake\|fetch\|inventory\|map\|verdict\|handoff\|status\|report> \.\.\./);
     const v = run(dir, ['verdict'], undefined, { BBS_SANDBOX: 'absent' });
     assert.equal(v.code, 0, v.err);
     assert.equal(v.json.sandbox.present, false);

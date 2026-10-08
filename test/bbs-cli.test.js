@@ -467,7 +467,7 @@ describe('bbs cli — review r5 regressions', () => {
     const r = run(dir, ['frobnicate']);
     assert.equal(r.code, 1);
     const lines = r.err.split('\n');
-    assert.equal(lines[0], 'usage: cli.js <intake|fetch|inventory|map|verdict|status|report> ...');
+    assert.equal(lines[0], 'usage: cli.js <intake|fetch|inventory|map|verdict|handoff|status|report> ...');
     assert.ok(r.err.includes('  cli.js fetch [--run <id>] [--max-bytes <n>] [--max-links <n>] [--project <dir>]\n'), r.err);
     assert.ok(r.err.includes('  cli.js intake <source|-> [--paste-file <p>] [--as repo|url|local|paste] [--slug <s>] [--run <id>] [--project <dir>]\n'), r.err);
     assert.ok(r.err.includes('  cli.js status [--run <id>] [--next] [--project <dir>]\n'), r.err);

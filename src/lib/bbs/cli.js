@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * bbs helper CLI — `node cli.js <verb> [flags]`.
- * Verbs here: intake · fetch · inventory · map · verdict · status · report. Later streams add handoff
+ * Verbs here: intake · fetch · inventory · map · verdict · handoff · status · report. Later streams add verbs
  * by registering them in VERBS.
  *
  * Exit codes: 0 ok · 1 invalid input / broken state · 2 policy refusals (egress refused, illegal verdict).
@@ -22,6 +22,7 @@ import { fetchRun, EgressRefused } from './fetch.js';
 import { writeInventory, inventoryBrief, listSourceFiles } from './inventory.js';
 import { buildMap, mapBrief, recordJudgments } from './harness-map.js';
 import { computeVerdicts, recordProbe, recordDecisions, verdictTable, PolicyRefused } from './verdict.js';
+import { buildHandoff } from './handoff.js';
 
 class CliExit extends Error {
   constructor(message, code) { super(message); this.code = code; }
@@ -37,7 +38,8 @@ const FLAGS = {
   report: { value: ['run', 'project'], bool: [], positionals: 0, usage: 'usage: cli.js report [--run <id>] [--project <dir>]' },
   inventory: { value: ['from', 'run', 'project'], bool: ['brief', 'force'], positionals: 0, usage: 'usage: cli.js inventory (--brief | --from <file|->) [--force] [--run <id>] [--project <dir>]' },
   map: { value: ['from', 'run', 'project'], bool: ['brief', 'force'], positionals: 0, usage: 'usage: cli.js map [--brief | --from <file|->] [--force] [--run <id>] [--project <dir>]' },
-  verdict: { value: ['probe', 'evidence', 'decide', 'from', 'run', 'project'], bool: ['table', 'force'], positionals: 0, usage: 'usage: cli.js verdict [--table | --probe <power>=<clean|found|incomplete> [--evidence <text>] | --decide <power>=<verdict> | --from <file|->] [--force] [--run <id>] [--project <dir>]' }
+  verdict: { value: ['probe', 'evidence', 'decide', 'from', 'run', 'project'], bool: ['table', 'force'], positionals: 0, usage: 'usage: cli.js verdict [--table | --probe <power>=<clean|found|incomplete> [--evidence <text>] | --decide <power>=<verdict> | --from <file|->] [--force] [--run <id>] [--project <dir>]' },
+  handoff: { value: ['run', 'project'], bool: ['marathon', 'force'], positionals: 0, usage: 'usage: cli.js handoff [--marathon] [--force] [--run <id>] [--project <dir>]' }
 };
 
 function parseArgs(argv) {
@@ -266,6 +268,16 @@ const VERBS = {
         if (writeError) warnStatusWrite(id, writeError);
       } catch { /* the original error is the one to report */ }
       throw err;
+    }
+  },
+
+  async handoff({ flags, projectDir, cfg }) {
+    const { id, dir } = await resolveRun(projectDir, flags, cfg);
+    try {
+      out(await buildHandoff(projectDir, { run: id, now: () => new Date(), force: !!flags.force, marathon: !!flags.marathon, cfg }));
+    } finally {
+      const { writeError } = await renderStatusSafe(dir);
+      if (writeError) warnStatusWrite(id, writeError);
     }
   },
 
