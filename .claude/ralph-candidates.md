@@ -891,3 +891,144 @@ STATUS: PASS|FAIL
 2. Test: RC-D024 returns STATUS: PASS
 
 **Status**: ready (only runs if RC-D024 fails)
+
+---
+
+### RC-D025: Every spawn of another suite CLI passes an explicit --project
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Diagnostic
+**Verifies**: from a linked git worktree, marathon init/stream hit the main checkout's dir while handoff wrote into the worktree (review handoff-r3, medium correctness)
+
+**Test Command**:
+```bash
+node --test test/bbs-handoff.test.js --test-name-pattern='worktree|project'; # expect green
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: EXPLICIT_PROJECT_ON_BRIDGE
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F025 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+---
+
+### RC-F025: Grep every spawn of a suite CLI for --project
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Conditional Fix
+**Triggered By**: RC-D025 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// every marathonRunner(...) / execFile(marathon_cli, ...) call includes ['--project', projectDir]
+```
+
+**File**: src/lib/bbs/handoff.js
+
+**Completion Tests**:
+1. Pattern: a scan over src/ finds no spawn of a suite CLI without --project
+2. Test: RC-D025 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D025 fails)
+
+---
+
+### RC-D026: Contracts drafted before the previous stream closes drift from the merged main
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Diagnostic
+**Verifies**: the handoff contract draft needed two lead fixes (bare `have`, missing verdict compute) and still produced three r1 highs (slug rule, brief path, undecided powers)
+
+**Test Command**:
+```bash
+node --test test/bbs-<stream>.test.js; # run the draft contract against merged main before the stream starts
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: CONTRACT_RUNS_AGAINST_MAIN
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F026 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+---
+
+### RC-F026: Run the draft contract against the merged main, and list each cross-stream input shape, before the stream starts
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Conditional Fix
+**Triggered By**: RC-D026 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```
+Before activating a stream: merge the previous stream, `node --test` the draft contract, fix input shapes it assumed, then commit it.
+```
+
+**File**: .claude/marathon/<run>/drafts/
+
+**Completion Tests**:
+1. Pattern: the contract commit follows the previous stream's merge
+2. Test: RC-D026 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D026 fails)
+
+---
+
+### RC-D027: A forced refill touches only files the previous hand-off recorded
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Diagnostic
+**Verifies**: cleanup deleted every .md in briefs/ and memos/ including user-written files (review handoff-r4, medium correctness)
+
+**Test Command**:
+```bash
+node --test test/bbs-handoff.test.js --test-name-pattern='foreign|force'; # expect green
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: CLEANUP_OWN_FILES_ONLY
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F027 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+---
+
+### RC-F027: Delete only paths listed in the previous record, skip non-regular entries
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Conditional Fix
+**Triggered By**: RC-D027 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// for (const f of prev.files) if (!keep.has(f) && (await lstat(f)).isFile()) await rm(f); else skipped.push(f)
+```
+
+**File**: src/lib/bbs/handoff.js
+
+**Completion Tests**:
+1. Pattern: a foreign briefs/notes.md and a directory named x.md survive --force
+2. Test: RC-D027 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D027 fails)
