@@ -64,3 +64,6 @@
 {"helper_id":"0e997115-8a91-4c72-8a7a-cb82b56d1eab","tokens":125028,"outcome":"green","event":"done","id":"5ef4f15d-5ac0-4eee-842b-8d2868e35855","ts":"2026-10-08T02:39:10.685Z"}
 {"role":"review","model":"opus","stream":"harness-map","budget":150000,"event":"spawn","id":"a9bcca29-a3b6-4322-b251-a3e0dd04ed1e","ts":"2026-10-08T02:39:11.971Z"}
 {"helper_id":"a9bcca29-a3b6-4322-b251-a3e0dd04ed1e","tokens":106350,"outcome":"green","event":"done","id":"a7b3a98b-c31b-4e30-a8d9-7975a6f580aa","ts":"2026-10-08T02:41:30.683Z"}
+{"role":"fix","model":"sonnet","stream":"harness-map","budget":150000,"event":"spawn","id":"d9f42929-922a-4457-8f6b-95e6ce0fcd7b","ts":"2026-10-08T02:41:42.902Z"}
+{"helper_id":"d9f42929-922a-4457-8f6b-95e6ce0fcd7b","tokens":104325,"outcome":"green","event":"done","id":"fa3c7a35-9aca-4e5f-a082-bd2af2b66884","ts":"2026-10-08T02:45:05.647Z"}
+{"role":"review","model":"opus","stream":"harness-map","budget":150000,"event":"spawn","id":"d6ba7975-a95b-4fab-b72d-28d2515b0421","ts":"2026-10-08T02:45:06.474Z"}
