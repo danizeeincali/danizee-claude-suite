@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * bbs helper CLI — `node cli.js <verb> [flags]`.
- * Verbs here: intake · fetch · inventory · map · verdict · status · report. Later streams add handoff
+ * Verbs here: intake · fetch · inventory · map · verdict · handoff · status · report. Later streams add verbs
  * by registering them in VERBS.
  *
  * Exit codes: 0 ok · 1 invalid input / broken state · 2 policy refusals (egress refused, illegal verdict).

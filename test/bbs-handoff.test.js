@@ -12,13 +12,13 @@ import os from 'os';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import {
-  CHECKS, slugPower, buildFinishLine, renderBrief, renderMemo, buildHandoff
+  CHECKS, slugPower, buildFinishLine, renderBrief, renderMemo, buildHandoff, evidenceLocations
 } from '../src/lib/bbs/handoff.js';
 import { validateFinishLine } from '../src/lib/marathon/gate.js';
 import { intake } from '../src/lib/bbs/intake.js';
 import { writeInventory } from '../src/lib/bbs/inventory.js';
 import { buildMap, recordJudgments } from '../src/lib/bbs/harness-map.js';
-import { computeVerdicts, recordDecisions } from '../src/lib/bbs/verdict.js';
+import { computeVerdicts, recordDecisions, POWERS_CHANGED } from '../src/lib/bbs/verdict.js';
 import { readJson } from '../src/lib/bbs/store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -309,5 +309,206 @@ describe('handoff — cli verb', () => {
     const pos = run(dir, ['handoff', 'extra']);
     assert.equal(pos.code, 1);
     assert.match(pos.err, /unexpected argument "extra"/);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Review handoff-r1 regressions — one per finding, written red before the fix.
+
+describe('handoff — review r1 regressions', () => {
+  const TOL = { high: 0, medium: 2, low: 5, passes_in_a_row: 2 };
+  const exists = (p) => fs.stat(p).then(() => true, () => false);
+  const bbsRun = (d, id) => path.join(d, '.claude', 'bbs', 'runs', id);
+  const marathonCli = (d) => path.join(d, '.claude', 'helpers', 'marathon', 'cli.js');
+  /** The real installed marathon CLI, as the default runner calls it; `onCall` sees every argv first. */
+  const realRunner = (d, onCall = () => {}) => (args, cwd) => {
+    onCall(args);
+    const r = spawnSync(process.execPath, [marathonCli(d), ...args], { cwd, encoding: 'utf-8' });
+    if (r.status !== 0) { const e = new Error(r.stderr || `exit ${r.status}`); e.stderr = r.stderr; throw e; }
+    return r.stdout;
+  };
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hor1-')); await makeHarness(dir, { withMarathon: true }); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('[high] refuses while any power has no decision, naming the undecided power and the --decide command; writes no handoff.json', async () => {
+    const r = await decided(dir, 'u1', [power(), power({ name: 'budget guard', idea: 'ceiling check' })],
+      { 'drift-monitor': 'missing', 'budget guard': 'missing' }, { 'drift-monitor': 'rebuild' });
+    await assert.rejects(() => buildHandoff(dir, { run: r.runId, now }),
+      /^Error: verdict first — undecided powers: budget guard \(cli\.js verdict --decide <power>=<verdict>\)$/);
+    assert.equal(await exists(path.join(bbsRun(dir, r.runId), 'handoff.json')), false);
+    assert.equal(await exists(path.join(bbsRun(dir, r.runId), 'briefs')), false, 'nothing written before the refusal');
+  });
+
+  it('[high] refuses when powers.json changed since the verdicts were computed (powers_ts mismatch)', async () => {
+    const r = await decided(dir, 'u2', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+    const pj = path.join(bbsRun(dir, r.runId), 'powers.json');
+    const powers = await readJson(pj);
+    await fs.writeFile(pj, JSON.stringify({ ...powers, ts: '2030-01-01T00:00:00.000Z' }));
+    await assert.rejects(() => buildHandoff(dir, { run: r.runId, now }), (err) => err.message === POWERS_CHANGED);
+    assert.equal(await exists(path.join(bbsRun(dir, r.runId), 'handoff.json')), false);
+  });
+
+  it('[high] the marathon slug is the bbs run id minus its date prefix: two sources sharing a last segment get distinct marathon runs', async () => {
+    const a = await decided(dir, 'claude-suite', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+    const b = await decided(dir, 'other-suite', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+    const outA = await buildHandoff(dir, { run: a.runId, now, marathon: true });
+    const outB = await buildHandoff(dir, { run: b.runId, now, marathon: true });
+    assert.match(outA.marathonRun, /^\d{4}-\d{2}-\d{2}-bbs-claude-suite$/);
+    assert.match(outB.marathonRun, /^\d{4}-\d{2}-\d{2}-bbs-other-suite$/);
+    assert.notEqual(outA.marathonRun, outB.marathonRun);
+    const kA = await fs.readFile(path.join(dir, '.claude', 'marathon', outA.marathonRun, 'kickoff.md'), 'utf-8');
+    assert.ok(kA.includes(a.runId) && !kA.includes(b.runId), 'the first run still names only its own source');
+  });
+
+  it('[high] a marathon run that already holds a hand-off is refused without --force (ACTIVE restored) and refilled with --force', async () => {
+    const r = await decided(dir, 'twice', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+    const first = await buildHandoff(dir, { run: r.runId, now, marathon: true });
+    await fs.rm(path.join(bbsRun(dir, r.runId), 'handoff.json'));
+    const other = await decided(dir, 'elsewhere', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+    const otherOut = await buildHandoff(dir, { run: other.runId, now, marathon: true });
+    const activeFile = path.join(dir, '.claude', 'marathon', 'ACTIVE');
+    await assert.rejects(() => buildHandoff(dir, { run: r.runId, now, marathon: true }),
+      new RegExp(`marathon run ${first.marathonRun} already holds a hand-off — pass --force to refill it or pick another source slug`));
+    assert.equal(await exists(path.join(bbsRun(dir, r.runId), 'handoff.json')), false);
+    assert.equal((await fs.readFile(activeFile, 'utf-8')).trim(), otherOut.marathonRun, 'a refusal leaves ACTIVE where it was');
+    const again = await buildHandoff(dir, { run: r.runId, now, marathon: true, force: true });
+    assert.equal(again.marathonRun, first.marathonRun);
+    const streams = await readJson(path.join(dir, '.claude', 'marathon', first.marathonRun, 'streams.json'));
+    assert.deepEqual((streams.streams || streams).filter(s => s.name !== '_meta').map(s => s.name), ['drift-monitor']);
+  });
+
+  it('[high] the queued stream plan is a project-relative path that exists; kickoff.md names the bbs run, its dir and each brief under ## Source', async () => {
+    const r = await decided(dir, 'plan', [power(), power({ name: 'budget guard', idea: 'ceiling check' })],
+      { 'drift-monitor': 'missing', 'budget guard': 'missing' }, { 'drift-monitor': 'rebuild', 'budget guard': 'rebuild' });
+    const out = await buildHandoff(dir, { run: r.runId, now, marathon: true });
+    const mDir = path.join(dir, '.claude', 'marathon', out.marathonRun);
+    const streams = await readJson(path.join(mDir, 'streams.json'));
+    const rows = (streams.streams || streams).filter(s => s.name !== '_meta');
+    assert.equal(rows[0].plan, `.claude/bbs/runs/${r.runId}/briefs/drift-monitor.md`);
+    await fs.stat(path.join(dir, rows[0].plan));
+    await fs.stat(path.join(dir, rows[1].plan));
+    const kickoff = await fs.readFile(path.join(mDir, 'kickoff.md'), 'utf-8');
+    const src = kickoff.slice(kickoff.indexOf('## Source'));
+    assert.ok(kickoff.indexOf('## Source') > kickoff.indexOf('## Never'), '## Source follows ## Never');
+    assert.ok(src.includes(r.runId));
+    assert.ok(src.includes(`.claude/bbs/runs/${r.runId}`));
+    assert.ok(src.includes(rows[0].plan) && src.includes(rows[1].plan));
+  });
+
+  it('[medium] a failure after marathon init names the ACTIVE half-filled run and the recovery; --force then refills it', async () => {
+    const r = await decided(dir, 'half', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+    const real = realRunner(dir);
+    const failOnStream = (args, cwd) => { if (args[0] === 'stream') throw new Error('stream exploded'); return real(args, cwd); };
+    let runId;
+    await assert.rejects(() => buildHandoff(dir, { run: r.runId, now, marathon: true, marathonRunner: failOnStream }), (err) => {
+      const m = /marathon run (\S+) was created and is ACTIVE but incomplete — re-run cli\.js handoff --marathon --force to refill it, or remove \.claude\/marathon\/(\S+)/.exec(err.message);
+      assert.ok(m, err.message);
+      assert.equal(m[1], m[2]);
+      assert.match(err.message, /stream exploded/, 'the cause is named');
+      runId = m[1];
+      return true;
+    });
+    assert.match(runId, /-bbs-half$/);
+    assert.equal(await exists(path.join(bbsRun(dir, r.runId), 'handoff.json')), false);
+    const out = await buildHandoff(dir, { run: r.runId, now, marathon: true, force: true });
+    assert.equal(out.marathonRun, runId);
+  });
+
+  it('[medium] slug collisions across rebuild, use and buy are refused before anything is written, naming both powers', async () => {
+    const r = await decided(dir, 'coll', [power({ name: 'X Y', licence: 'Commercial' }), power({ name: 'x-y', licence: 'Commercial' })],
+      { 'X Y': 'missing', 'x-y': 'missing' }, { 'X Y': 'buy', 'x-y': 'buy' });
+    await assert.rejects(() => buildHandoff(dir, { run: r.runId, now }), /slug collision: "X Y" and "x-y" both slug to x-y/);
+    assert.equal(await exists(path.join(bbsRun(dir, r.runId), 'memos')), false);
+    assert.equal(await exists(path.join(bbsRun(dir, r.runId), 'handoff.json')), false);
+    const mixed = await decided(dir, 'coll2', [power({ name: 'X Y' }), power({ name: 'x-y', licence: 'Commercial' })],
+      { 'X Y': 'missing', 'x-y': 'missing' }, { 'X Y': 'rebuild', 'x-y': 'buy' });
+    await assert.rejects(() => buildHandoff(dir, { run: mixed.runId, now }), /slug collision: "X Y" and "x-y"/);
+    assert.equal(await exists(path.join(bbsRun(dir, mixed.runId), 'briefs')), false);
+  });
+
+  it('[medium] per-power lines are exact: powers "b" and "a_b" never share checks (buildFinishLine.byPower, briefs, handoff.json)', async () => {
+    const fl = buildFinishLine([{ name: 'b', verdict: 'rebuild' }, { name: 'a_b', verdict: 'rebuild' }], { tolerance: TOL });
+    assert.deepEqual(Object.keys(fl), ['tolerance', 'lines', 'byPower']);
+    assert.deepEqual(fl.byPower.b.map(l => l.id), ['tests_green_b', 'egress_zero_b', 'six_sigma_b', 'callers_b', 'packaged_b']);
+    assert.deepEqual(fl.byPower.a_b.map(l => l.id), ['tests_green_a_b', 'egress_zero_a_b', 'six_sigma_a_b', 'callers_a_b', 'packaged_a_b']);
+    const r = await decided(dir, 'ab', [power({ name: 'b' }), power({ name: 'a_b' })], { b: 'missing', a_b: 'missing' }, { b: 'rebuild', a_b: 'rebuild' });
+    const out = await buildHandoff(dir, { run: r.runId, now });
+    const pb = out.powers.find(p => p.name === 'b');
+    assert.deepEqual(pb.lines.map(l => l.id), ['tests_green_b', 'egress_zero_b', 'six_sigma_b', 'callers_b', 'packaged_b']);
+    const brief = await fs.readFile(path.join(bbsRun(dir, r.runId), 'briefs', 'b.md'), 'utf-8');
+    assert.ok(!brief.includes('tests_green_a_b'), 'b\'s brief does not list a_b\'s checks');
+  });
+
+  it('[medium] evidence: only location tokens are kept, under a labelled Provenance bullet; code before the location never lands', () => {
+    assert.deepEqual(evidenceLocations('return a+b; src/x.js:3'), ['src/x.js:3']);
+    assert.deepEqual(evidenceLocations('src/a.js:1-4 and src/a.js:1-4, see https://x.test/p'), ['src/a.js:1-4', 'https://x.test/p']);
+    assert.deepEqual(evidenceLocations('const x = 1; y()'), []);
+    const ctx = { source: null, row: { licence_class: 'permissive', decision: 'rebuild' }, lines: [], decided_at: 'now' };
+    const md = renderBrief(power({ evidence: 'return a+b; src/x.js:3' }), ctx);
+    assert.ok(!md.includes('return a+b'), 'code before the location is stripped');
+    const prov = md.slice(md.indexOf('## Provenance'), md.indexOf('## What we have'));
+    assert.match(prov, /\n- Evidence: src\/x\.js:3\n/);
+    assert.match(renderBrief(power({ evidence: 'function f(){}' }), ctx), /\n- Evidence: \(no location given\)\n/);
+  });
+
+  it('[medium] the marathon run dir comes from init and is validated: a runId of ../../evil is refused and nothing is written; every stream call passes --run', async () => {
+    const r = await decided(dir, 'evil', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+    const evil = () => JSON.stringify({ runId: '../../evil', runDir: '.claude/marathon/../../evil' });
+    await assert.rejects(() => buildHandoff(dir, { run: r.runId, now, marathon: true, marathonRunner: evil }), /marathon.*\.\.\/\.\.\/evil/);
+    assert.equal(await exists(path.join(dir, 'evil')), false);
+    assert.equal(await exists(path.join(dir, '..', 'evil')), false);
+    assert.equal(await exists(path.join(bbsRun(dir, r.runId), 'handoff.json')), false);
+    const outside = () => JSON.stringify({ runId: 'fine', runDir: 'elsewhere/fine' });
+    await assert.rejects(() => buildHandoff(dir, { run: r.runId, now, marathon: true, marathonRunner: outside }), /elsewhere\/fine.*\.claude\/marathon/);
+    assert.equal(await exists(path.join(dir, 'elsewhere')), false);
+    const calls = [];
+    const out = await buildHandoff(dir, { run: r.runId, now, marathon: true, marathonRunner: realRunner(dir, a => calls.push(a)) });
+    const streamCalls = calls.filter(a => a[0] === 'stream');
+    assert.equal(streamCalls.length, 1);
+    for (const a of streamCalls) assert.deepEqual(a.slice(a.indexOf('--run'), a.indexOf('--run') + 2), ['--run', out.marathonRun]);
+  });
+
+  it('[medium] tolerance file: absent → default; corrupt → error naming the file; invalid tolerance → error prefixed with the file path', async () => {
+    const d = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hotol-'));
+    try {
+      await makeHarness(d);
+      const r = await decided(d, 't1', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+      const out = await buildHandoff(d, { run: r.runId, now });
+      assert.deepEqual((await readJson(path.join(bbsRun(d, r.runId), 'handoff.json'))).finish_line.tolerance, TOL, 'absent file → default');
+      assert.equal(out.next, 'done');
+      const ex = path.join(d, '.claude', 'marathon', 'finish-line.example.json');
+      await fs.mkdir(path.dirname(ex), { recursive: true });
+      await fs.writeFile(ex, '{ not json');
+      await assert.rejects(() => buildHandoff(d, { run: r.runId, now, force: true }), /corrupt JSON in .*finish-line\.example\.json/);
+      await fs.writeFile(ex, JSON.stringify({ tolerance: { high: 0 }, lines: [] }));
+      await assert.rejects(() => buildHandoff(d, { run: r.runId, now, force: true }), /^Error: .*finish-line\.example\.json: tolerance/);
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+
+  it('[low] kickoff.md keeps init\'s title, Budget and Models; fills the four sections in place; ## Source comes after ## Never', async () => {
+    const r = await decided(dir, 'kick', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+    const out = await buildHandoff(dir, { run: r.runId, now, marathon: true });
+    const kickoff = await fs.readFile(path.join(dir, '.claude', 'marathon', out.marathonRun, 'kickoff.md'), 'utf-8');
+    assert.match(kickoff, new RegExp(`^# Kickoff — ${out.marathonRun}\n`));
+    assert.match(kickoff, /## Budget\n- Run token budget: /);
+    assert.match(kickoff, /## Models\n- Lead: /);
+    const heads = kickoff.split('\n').filter(l => l.startsWith('## '));
+    assert.deepEqual(heads, ['## Done means', '## You may decide on your own', '## Ask me before', '## Never', '## Source', '## Budget', '## Models']);
+    assert.ok(!/\n- \n/.test(kickoff), 'no empty "- " placeholder is left');
+  });
+
+  it('[low] the buy memo names source ref, run, network and licence; "why buy" comes from the licence class / data reason, never the idea text', () => {
+    const src = { type: 'repo', ref: 'https://github.com/a/b', identity: 'git:abc', run: '2026-10-07-b' };
+    const md = renderMemo(power({ name: 'exporter', licence: 'Commercial', network: 'outbound', data_needed: 'uploads usage to the vendor', idea: 'IDEA-TEXT' }),
+      { source: src, row: { licence_class: 'commercial', decision: 'buy' } });
+    assert.match(md, /https:\/\/github\.com\/a\/b/);
+    assert.match(md, /2026-10-07-b/);
+    assert.match(md, /Network: outbound/);
+    assert.match(md, /Commercial \(commercial\)/);
+    const why = md.slice(md.indexOf('## Why buy'), md.indexOf('\n## ', md.indexOf('## Why buy') + 1));
+    assert.ok(!why.includes('IDEA-TEXT'), 'why buy does not repeat the idea');
+    assert.match(why, /commercial/);
+    assert.match(why, /uploads usage to the vendor/);
   });
 });

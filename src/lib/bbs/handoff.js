@@ -1,8 +1,14 @@
 /**
  * bbs handoff — approved powers become marathon streams with finish lines and briefs.
- * Approved (rebuild/use/buy) powers: one brief per rebuild/use, one memo per buy, skip listed.
- * Finish line written before the build; when marathon=true, a separate /w-marathon run queues each stream.
- * Kickoff and briefs show the five checks per power; memos show licence and data; both redact source.
+ * Refused unless every power in powers.json has a decision in verdicts.json and verdicts.json was computed from the
+ * current powers.json (powers_ts). Approved powers: one brief per rebuild/use in <bbs run>/briefs/, one memo per buy in
+ * <bbs run>/memos/, skips listed; slug collisions across rebuild, use and buy are refused before anything is written.
+ * The finish line (five checks per rebuild/use power plus three standard lines) is written before the build.
+ * When marathon=true, `cli.js init bbs-<bbs run id minus its YYYY-MM-DD- prefix>` creates the marathon run; its id and
+ * run dir come from init and must sit under the marathon runs dir; a run that already holds a hand-off is refused
+ * unless force. Then finish-line.json, kickoff.md (four sections filled in place, plus ## Source) and one queued stream
+ * per power (plan = the project-relative brief path) are written; handoff.json is written last.
+ * Briefs carry the idea in our words and only location tokens from the evidence — never source code.
  */
 
 import fs from 'fs/promises';
@@ -10,8 +16,11 @@ import path from 'path';
 import { execFileSync } from 'child_process';
 import { readJson, writeJson, writeTextAtomic, runDir as runDirOf } from './store.js';
 import { validateFinishLine } from '../marathon/gate.js';
+import { loadConfig as loadMarathonConfig, activeRunId as marathonActiveRun, setActiveRun as setMarathonActiveRun } from '../marathon/config.js';
 import { renderStatusSafe } from './status.js';
 import { loadConfig } from './config.js';
+import { VERDICTS, POWERS_CHANGED } from './verdict.js';
+import { redactRef } from './intake.js';
 
 // The five checks per power, written in the finish line before the build
 export const CHECKS = ['tests_green', 'egress_zero', 'six_sigma_claim', 'callers_ge_1', 'packaged_check'];
@@ -46,7 +55,8 @@ function checkIdBase(checkName) {
 /**
  * Build a finish line with five checks per approved power plus three standard lines.
  * Powers with verdict 'rebuild', 'use', or 'buy' are approved.
- * Returns { tolerance, lines } that passes validateFinishLine.
+ * Returns { tolerance, lines, byPower } where { tolerance, lines } passes validateFinishLine and
+ * byPower maps each approved power's name to exactly its own five lines.
  */
 export function buildFinishLine(powers, { tolerance }) {
   if (!tolerance || typeof tolerance.high !== 'number' || typeof tolerance.medium !== 'number' ||
@@ -59,6 +69,7 @@ export function buildFinishLine(powers, { tolerance }) {
     [];
   const slugs = new Map();
   const lines = [];
+  const byPower = {};
 
   // Build lines for each approved power
   for (const power of approved) {
@@ -69,6 +80,7 @@ export function buildFinishLine(powers, { tolerance }) {
     slugs.set(slug, power.name);
 
     // Five checks per power
+    const own = [];
     for (const check of CHECKS) {
       const idBase = checkIdBase(check);
       const id = `${idBase}_${slug}`;
@@ -87,7 +99,9 @@ export function buildFinishLine(powers, { tolerance }) {
         line = { id, label: `${slug}: packaged check passes`, type: 'bool', op: 'is', value: true, owner: 'build', source: `measure:packaged_${slug}` };
       }
       lines.push(line);
+      own.push(line);
     }
+    byPower[power.name] = own;
   }
 
   // Add standard lines
@@ -97,23 +111,43 @@ export function buildFinishLine(powers, { tolerance }) {
     { id: 'open_high', label: 'Open high findings', type: 'number', op: 'at_most', value: 0, owner: 'build', source: 'findings.open:high' }
   );
 
-  const fl = { tolerance, lines };
-  const errors = validateFinishLine(fl);
+  const errors = validateFinishLine({ tolerance, lines });
   if (errors.length) throw new Error(errors[0]);
-  return fl;
+  return { tolerance, lines, byPower };
 }
 
+const LOCATION = /(?:[\w./-]+\.[A-Za-z0-9]+(?::\d+(?:-\d+)?)?)|https?:\/\/\S+/g;
+
 /**
- * Strip anything after the first location marker from an evidence string.
- * Keep location (e.g., 'src/drift.js:12') but drop code after ' — ' or from first backtick/(/{
+ * The location tokens in an evidence string (path.ext, path.ext:line, path.ext:a-b, http(s) URLs), deduped in order.
+ * Nothing else from the string is kept: a brief never carries source code.
  */
-function stripEvidenceCode(evidence) {
-  if (!evidence) return '';
-  const s = String(evidence);
-  // Split on common separators for code
-  const stripped = s.split(/[—\n`({]/)[0];
-  return stripped.trim();
+export function evidenceLocations(text) {
+  if (text == null) return [];
+  return [...new Set(String(text).match(LOCATION) || [])];
 }
+
+const evidenceBullet = (evidence) => {
+  const locs = evidenceLocations(evidence);
+  return `- Evidence: ${locs.length ? locs.join(', ') : '(no location given)'}`;
+};
+
+const sourceLabel = (source) => `${source.type}${source.ref ? ' ' + redactRef(source.ref) : ''}`;
+
+// Kickoff lines shared by every brief and the marathon kickoff.md
+const MAY_DECIDE = [
+  '- How to structure the code behind each power\'s interface, within its brief',
+  '- Test names, fixtures and file layout'
+];
+const ASK_BEFORE = [
+  '- Adding a dependency',
+  '- Any network call, account, purchase or signature',
+  '- Changing a finish line'
+];
+const NEVER = [
+  '- Never execute fetched foreign code',
+  '- Never copy source code from the source'
+];
 
 /**
  * Render a brief for a power (rebuild or use verdict): idea, provenance, judgment, finish line, kickoff lines.
@@ -135,7 +169,7 @@ export function renderBrief(power, ctx) {
   // Provenance section
   md.push('## Provenance');
   if (source) {
-    md.push(`- Source: ${source.type} ${source.ref}`);
+    md.push(`- Source: ${sourceLabel(source)}`);
     // Redact identity to just a prefix if it looks like a git hash (keep 8 chars after git: prefix)
     let ident = source.identity;
     if (ident && ident.startsWith('git:') && ident.length > 11) {
@@ -147,6 +181,7 @@ export function renderBrief(power, ctx) {
   md.push(`- Verdict: ${row.decision}`);
   if (source && source.run) md.push(`- Run: ${source.run}`);
   md.push(`- Decided: ${decided_at}`);
+  md.push(evidenceBullet(power.evidence));
   md.push('');
 
   // What we have section
@@ -180,16 +215,15 @@ export function renderBrief(power, ctx) {
   md.push('');
 
   md.push('You may decide on your own');
-  md.push('- ');
+  md.push(...MAY_DECIDE);
   md.push('');
 
   md.push('Ask me before');
-  md.push('- ');
+  md.push(...ASK_BEFORE);
   md.push('');
 
   md.push('Never');
-  md.push('- Never execute fetched foreign code');
-  md.push('- Never copy source code from the source');
+  md.push(...NEVER);
   if (row.removed && Array.isArray(row.removed)) {
     for (const rem of row.removed) {
       md.push(`- Never execute (${rem.reason})`);
@@ -210,20 +244,26 @@ export function renderBrief(power, ctx) {
     }
   }
 
-  // Add evidence location (if available, after stripping code)
-  if (power.evidence) {
-    const loc = stripEvidenceCode(power.evidence);
-    if (loc) md.push(`${loc}`);
-  }
-
   return md.join('\n');
 }
 
 /**
- * Render a memo for a power (buy verdict): what it is, why buy, data, licence.
+ * Render a memo for a power (buy verdict): what it is, why buy (from the licence class and the data it sends off the
+ * machine, never the idea text), data, licence, provenance (source ref, run, network, evidence locations).
+ * ctx: { source, row }
  */
 export function renderMemo(power, ctx) {
-  const { row } = ctx;
+  const { row, source } = ctx;
+
+  const why = [];
+  if (row.licence_class === 'commercial') {
+    why.push(`- The licence is commercial (${power.licence}): rebuilding from it or using it here is not legal, so it is bought, not built.`);
+  }
+  const data = typeof power.data_needed === 'string' ? power.data_needed.trim() : '';
+  if (power.network === 'outbound' && data && data.toLowerCase() !== 'none') {
+    why.push(`- It sends data off the machine (${data}): a vendor holds that data whichever way it is run.`);
+  }
+  if (!why.length) why.push('- Chosen at the verdict step; neither a commercial licence nor outbound data is recorded for it.');
 
   const md = [];
   md.push(`# ${power.name} — buy memo`);
@@ -232,13 +272,21 @@ export function renderMemo(power, ctx) {
   md.push(power.what || '');
   md.push('');
   md.push('## Why buy');
-  md.push(power.idea || '');
+  md.push(...why);
   md.push('');
   md.push('## Data');
   md.push(power.data_needed || 'none');
   md.push('');
   md.push(`## Licence`);
   md.push(`${power.licence} (${row.licence_class})`);
+  md.push('');
+  md.push('## Provenance');
+  if (source) {
+    md.push(`- Source: ${sourceLabel(source)}`);
+    if (source.run) md.push(`- Run: ${source.run}`);
+  }
+  md.push(`- Network: ${power.network || 'none recorded'}`);
+  md.push(evidenceBullet(power.evidence));
   md.push('');
   md.push('## Account and signing');
   md.push('- No account was created');
@@ -248,10 +296,86 @@ export function renderMemo(power, ctx) {
   return md.join('\n');
 }
 
+/** The marathon run id shape this bridge accepts from `cli.js init` (letters, digits and dashes, starting alnum). */
+export const MARATHON_RUN_ID = /^[A-Za-z0-9][A-Za-z0-9-]{0,80}$/;
+const HANDOFF_LINE = /^(?:tests_green|egress_zero)_/;
+const KICKOFF_SECTIONS = ['Done means', 'You may decide on your own', 'Ask me before', 'Never'];
+
+const posix = (p) => p.split(path.sep).join('/');
+const firstLine = (err) => String(err?.stderr || err?.message || err).split('\n')[0];
+
+/** The marathon slug for a bbs run: `bbs-` + the run id with its leading `YYYY-MM-DD-` removed. */
+export function marathonSlug(run) {
+  return `bbs-${String(run).replace(/^\d{4}-\d{2}-\d{2}-/, '')}`;
+}
+
 /**
- * Orchestrate the handoff: approve powers become briefs, buy becomes memos.
+ * Fill kickoff.md in place: replace the bodies of the four seeded sections, add or replace `## Source` right after
+ * `## Never`, keep every other section (title, Budget, Models) as init wrote it. Throws naming a missing section.
+ */
+export function fillKickoff(text, bodies, file = 'kickoff.md') {
+  const blocks = [{ head: null, body: [] }];
+  for (const line of String(text).replace(/\r\n/g, '\n').split('\n')) {
+    if (line.startsWith('## ')) blocks.push({ head: line.slice(3).trim(), body: [] });
+    else blocks[blocks.length - 1].body.push(line);
+  }
+  for (const name of KICKOFF_SECTIONS) {
+    if (!blocks.some(b => b.head === name)) throw new Error(`${file} has no "## ${name}" section — marathon init seeds it; restore it`);
+  }
+  const out = blocks.filter(b => b.head !== 'Source');
+  const neverAt = out.findIndex(b => b.head === 'Never');
+  out.splice(neverAt + 1, 0, { head: 'Source', body: [] });
+  const md = [];
+  for (const b of out) {
+    if (b.head === null) { md.push(...b.body); continue; }
+    md.push(`## ${b.head}`);
+    if (Object.hasOwn(bodies, b.head)) md.push(...bodies[b.head], '');
+    else md.push(...b.body);
+  }
+  return md.join('\n').replace(/\n*$/, '\n');
+}
+
+/** Read the example tolerance: default only when the file is absent; a corrupt or tolerance-less file is an error. */
+async function loadTolerance(projectDir) {
+  const examplePath = path.join(projectDir, '.claude', 'marathon', 'finish-line.example.json');
+  const example = await readJson(examplePath); // null when absent; throws `corrupt JSON in <file>` otherwise
+  if (example === null) return { tolerance: { high: 0, medium: 2, low: 5, passes_in_a_row: 2 }, from: null };
+  if (typeof example !== 'object' || Array.isArray(example) || example.tolerance === undefined) {
+    throw new Error(`${examplePath}: tolerance is missing — add { "tolerance": { high, medium, low, passes_in_a_row } } or remove the file`);
+  }
+  return { tolerance: example.tolerance, from: examplePath };
+}
+
+/** Refuse unless verdicts.json was computed from the current powers.json and every power has a decision. */
+async function decidedPowers(runDir, verdicts) {
+  const powers = await readJson(path.join(runDir, 'powers.json'));
+  if (!powers || !Array.isArray(powers.powers)) throw new Error('inventory first — powers.json is missing');
+  if (!Object.hasOwn(verdicts, 'powers_ts')) throw new Error('verdicts.json does not record which powers.json it was computed from (no powers_ts) — run cli.js verdict first');
+  if ((verdicts.powers_ts ?? null) !== (powers.ts ?? null)) throw new Error(POWERS_CHANGED);
+  const undecided = powers.powers.filter(p => !VERDICTS.includes(verdicts.rows[p.name]?.decision)).map(p => p.name);
+  if (undecided.length) throw new Error(`verdict first — undecided powers: ${undecided.join(', ')} (cli.js verdict --decide <power>=<verdict>)`);
+  return powers.powers;
+}
+
+/** Validate what `cli.js init` printed: a well-formed run id whose run dir is exactly <marathon runs dir>/<id>. */
+function checkInit(initData, projectDir, runsRoot) {
+  const runId = initData?.runId;
+  if (typeof runId !== 'string' || !MARATHON_RUN_ID.test(runId)) {
+    throw new Error(`marathon: init returned an invalid run id ${JSON.stringify(runId)} — expected letters, digits and dashes (${MARATHON_RUN_ID})`);
+  }
+  const want = path.join(runsRoot, runId);
+  const got = typeof initData.runDir === 'string' ? path.resolve(projectDir, initData.runDir) : null;
+  if (got !== want) {
+    throw new Error(`marathon: init returned run dir ${JSON.stringify(initData.runDir)} for run ${runId} — expected ${posix(path.relative(projectDir, want))} under the marathon runs dir`);
+  }
+  return { runId, dir: want };
+}
+
+/**
+ * Orchestrate the handoff: rebuild/use powers become briefs, buy becomes memos, skips are listed.
  * When marathon=true, init a marathon run, write finish-line, kickoff, stream rows, then handoff.json last.
- * marathonRunner: injectable function for testing, default execFileSync
+ * force: replace handoff.json and refill a marathon run that already holds a hand-off.
+ * marathonRunner: injectable (args, cwd) => stdout for testing, default execFileSync of the marathon CLI.
  */
 export async function buildHandoff(projectDir, { run, now, force, marathon, marathonRunner, cfg } = {}) {
   if (typeof now !== 'function') now = () => new Date();
@@ -275,47 +399,60 @@ export async function buildHandoff(projectDir, { run, now, force, marathon, mara
     }
   }
 
-  // Load related data
+  const allPowers = await decidedPowers(runDir, verdicts);
   const source = await readJson(path.join(runDir, 'source.json'));
-  const powers = await readJson(path.join(runDir, 'powers.json'));
-
-  // Build the decision map from verdicts.rows
-  const decisions = {};
-  for (const [powerName, row] of Object.entries(verdicts.rows || {})) {
-    if (row && row.decision) {
-      decisions[powerName] = row.decision;
-    }
-  }
 
   // Separate powers by decision
-  const approved = []; // Only rebuild and use go into the finish line
-  const allApproved = []; // rebuild, use, and buy for output
+  const approved = []; // rebuild and use go into the finish line
+  const allApproved = []; // rebuild, use and buy
   const skipped = [];
-  for (const power of (powers?.powers || [])) {
-    const decision = decisions[power.name];
-    if (['rebuild', 'use'].includes(decision)) {
-      const powerWithVerd = { ...power, verdict: decision };
-      approved.push(powerWithVerd);
-      allApproved.push(powerWithVerd);
-    } else if (decision === 'buy') {
-      allApproved.push({ ...power, verdict: decision });
-    } else if (decision === 'skip') {
-      skipped.push(power.name);
+  for (const power of allPowers) {
+    const decision = verdicts.rows[power.name].decision;
+    if (decision === 'skip') skipped.push(power.name);
+    else {
+      const p = { ...power, verdict: decision };
+      allApproved.push(p);
+      if (decision !== 'buy') approved.push(p);
     }
   }
 
-  // Get tolerance from the project example if it exists
-  let tolerance = { high: 0, medium: 2, low: 5, passes_in_a_row: 2 };
-  const examplePath = path.join(projectDir, '.claude', 'marathon', 'finish-line.example.json');
-  try {
-    const example = await readJson(examplePath);
-    if (example && example.tolerance) tolerance = example.tolerance;
-  } catch {
-    // use default tolerance
+  // Slug collisions across rebuild, use and buy — before anything is written
+  const bySlug = new Map();
+  for (const power of allApproved) {
+    const slug = slugPower(power.name);
+    if (bySlug.has(slug)) throw new Error(`slug collision: "${bySlug.get(slug)}" and "${power.name}" both slug to ${slug} — rename one in powers.json`);
+    bySlug.set(slug, power.name);
   }
 
-  // Build finish line
-  const finishLine = buildFinishLine(approved, { tolerance });
+  const { tolerance, from: toleranceFile } = await loadTolerance(projectDir);
+  let finishLine;
+  try {
+    finishLine = buildFinishLine(approved, { tolerance });
+  } catch (err) {
+    if (toleranceFile) throw new Error(`${toleranceFile}: ${err.message}`);
+    throw err;
+  }
+  const flFile = { tolerance: finishLine.tolerance, lines: finishLine.lines };
+
+  // Marathon preflight, before any write
+  const useMarathon = marathon && approved.length > 0;
+  let marathonCliPath = null;
+  let runsRoot = null;
+  let mcfg = null;
+  if (useMarathon) {
+    marathonCliPath = path.join(projectDir, cfg.paths.marathon_cli);
+    try {
+      await fs.stat(marathonCliPath);
+    } catch {
+      throw new Error(`marathon helpers are absent (${cfg.paths.marathon_cli}) — install the suite`);
+    }
+    mcfg = await loadMarathonConfig(projectDir);
+    runsRoot = path.resolve(projectDir, mcfg.paths.runs);
+    const rel = path.relative(path.resolve(projectDir), runsRoot);
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) {
+      throw new Error(`marathon: paths.runs ${JSON.stringify(mcfg.paths.runs)} in .claude/marathon.json must stay inside the project`);
+    }
+  }
 
   // Write briefs and memos
   const briefsDir = path.join(runDir, 'briefs');
@@ -323,157 +460,102 @@ export async function buildHandoff(projectDir, { run, now, force, marathon, mara
   await fs.mkdir(briefsDir, { recursive: true });
   await fs.mkdir(memosDir, { recursive: true });
 
+  const briefRel = (slug) => posix(path.relative(projectDir, path.join(briefsDir, `${slug}.md`)));
   const outputPowers = [];
+  const memos = [];
   for (const power of allApproved) {
     const slug = slugPower(power.name);
-    const verdictRow = verdicts.rows[power.name] || {};
-
-    // Get the relevant finish line rows (5 per power)
-    const powerLines = finishLine.lines.filter(l =>
-      l.id.endsWith(`_${slug}`) && !['clean_reviews', 'latest_high', 'open_high'].includes(l.id)
-    );
-
-    if (power.verdict === 'rebuild' || power.verdict === 'use') {
-      // Write brief
-      const briefPath = path.join(briefsDir, `${slug}.md`);
-      const brief = renderBrief(power, {
-        source,
-        row: verdictRow,
-        lines: powerLines,
-        decided_at: now().toISOString()
-      });
-      await writeTextAtomic(briefPath, brief + '\n');
-      outputPowers.push({
-        name: power.name,
-        slug,
-        verdict: power.verdict,
-        brief: `briefs/${slug}.md`,
-        lines: powerLines
-      });
-    }
-
+    const verdictRow = verdicts.rows[power.name];
     if (power.verdict === 'buy') {
-      // Write memo
-      const memoPath = path.join(memosDir, `${slug}.md`);
-      const memo = renderMemo(power, { row: verdictRow });
-      await writeTextAtomic(memoPath, memo + '\n');
+      await writeTextAtomic(path.join(memosDir, `${slug}.md`), renderMemo(power, { source, row: verdictRow }) + '\n');
+      memos.push({ name: power.name, slug, memo: `memos/${slug}.md` });
+      continue;
     }
+    const powerLines = finishLine.byPower[power.name];
+    const brief = renderBrief(power, { source, row: verdictRow, lines: powerLines, decided_at: now().toISOString() });
+    await writeTextAtomic(path.join(briefsDir, `${slug}.md`), brief + '\n');
+    outputPowers.push({ name: power.name, slug, verdict: power.verdict, brief: `briefs/${slug}.md`, brief_path: briefRel(slug), lines: powerLines });
   }
 
   // Marathon integration
   let marathonRun = null;
   let resume_line = null;
 
-  if (marathon && approved.length > 0) {
-    // Check that marathon CLI exists
-    const marathonCliPath = path.join(projectDir, cfg.paths.marathon_cli);
-    try {
-      await fs.stat(marathonCliPath);
-    } catch {
-      throw new Error(`marathon helpers are absent (${cfg.paths.marathon_cli}) — install the suite`);
-    }
-
-    // Default marathonRunner if not provided
+  if (useMarathon) {
     if (!marathonRunner) {
-      marathonRunner = (args, cwd) => {
-        const result = execFileSync(process.execPath, [marathonCliPath, ...args], {
-          cwd,
-          encoding: 'utf-8',
-          stdio: ['ignore', 'pipe', 'pipe'],
-          timeout: 60000
-        });
-        return result;
-      };
-    }
-
-    // Get the source slug from the run id
-    const runIdSlug = run.split('-').pop();
-    const initSlug = `bbs-${runIdSlug}`;
-
-    try {
-      // Call marathon init
-      const initOutput = marathonRunner(['init', initSlug], projectDir);
-      const initData = JSON.parse(initOutput);
-      marathonRun = initData.runId;
-
-      // Write finish-line.json to the marathon run
-      const marathonRunDir = path.join(projectDir, '.claude', 'marathon', marathonRun);
-      await writeJson(path.join(marathonRunDir, 'finish-line.json'), finishLine);
-
-      // Build kickoff.md content
-      const kickoffLines = [];
-      kickoffLines.push('## Done means');
-      for (const power of approved) {
-        const slug = slugPower(power.name);
-        const powerLines = finishLine.lines.filter(l => l.id.endsWith(`_${slug}`) && !['clean_reviews', 'latest_high', 'open_high'].includes(l.id));
-        const labels = powerLines.map(l => l.label).join(', ');
-        kickoffLines.push(`- ${power.name}: ${labels}`);
-      }
-      kickoffLines.push('');
-      kickoffLines.push('## You may decide on your own');
-      kickoffLines.push('- ');
-      kickoffLines.push('');
-      kickoffLines.push('## Ask me before');
-      kickoffLines.push('- ');
-      kickoffLines.push('');
-      kickoffLines.push('## Never');
-      kickoffLines.push('- Never execute fetched foreign code');
-      kickoffLines.push('- Never copy source code from the source');
-      kickoffLines.push('');
-      kickoffLines.push(`Source: ${source?.type || 'paste'}`);
-
-      const kickoffContent = kickoffLines.join('\n');
-      await writeTextAtomic(path.join(marathonRunDir, 'kickoff.md'), kickoffContent + '\n');
-
-      // Queue streams for each power
-      for (const power of approved) {
-        const slug = slugPower(power.name);
-        const streamName = slug;
-        const briefPath = `briefs/${slug}.md`;
-
-        marathonRunner(
-          ['stream', streamName, 'state=queued', `plan=${briefPath}`, 'next=read the brief, write the contract and failing tests'],
-          projectDir
-        );
-      }
-
-      resume_line = `/w-marathon --resume ${marathonRun}`;
-    } catch (err) {
-      const msg = err.stderr || err.message || String(err);
-      throw new Error(`marathon: ${msg}`.split('\n')[0]);
-    }
-  }
-
-  // Write handoff.json (LAST)
-  const memos = [];
-  for (const power of allApproved) {
-    if (power.verdict === 'buy') {
-      const slug = slugPower(power.name);
-      memos.push({
-        name: power.name,
-        slug,
-        memo: `memos/${slug}.md`
+      marathonRunner = (args, cwd) => execFileSync(process.execPath, [marathonCliPath, ...args], {
+        cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 60000
       });
     }
+
+    const prevActive = await marathonActiveRun(projectDir, mcfg);
+    let initData;
+    try {
+      initData = JSON.parse(marathonRunner(['init', marathonSlug(run)], projectDir));
+    } catch (err) {
+      throw new Error(`marathon: ${firstLine(err)}`);
+    }
+    const { runId: mRun, dir: mDir } = checkInit(initData, projectDir, runsRoot);
+    const mRel = posix(path.relative(projectDir, mDir));
+
+    // A run that already holds a hand-off is refilled only with force
+    const oldFl = await readJson(path.join(mDir, 'finish-line.json'));
+    const oldStreams = await readJson(path.join(mDir, 'streams.json'));
+    const oldRows = (Array.isArray(oldStreams) ? oldStreams : (oldStreams?.streams || [])).filter(s => s?.name !== '_meta');
+    const holds = oldRows.length > 0 || (Array.isArray(oldFl?.lines) && oldFl.lines.some(l => HANDOFF_LINE.test(String(l?.id))));
+    if (holds && !force) {
+      if (prevActive !== mRun) {
+        if (prevActive) await setMarathonActiveRun(projectDir, prevActive, mcfg);
+        else await fs.rm(path.join(runsRoot, 'ACTIVE'), { force: true });
+      }
+      throw new Error(`marathon run ${mRun} already holds a hand-off — pass --force to refill it or pick another source slug`);
+    }
+
+    try {
+      await writeJson(path.join(mDir, 'finish-line.json'), flFile);
+
+      const kickoffPath = path.join(mDir, 'kickoff.md');
+      let seeded;
+      try { seeded = await fs.readFile(kickoffPath, 'utf-8'); }
+      catch (err) { throw new Error(`${mRel}/kickoff.md is unreadable (${err.code || err.message}) — marathon init seeds it`); }
+      const sourceLines = [`- Source: ${source ? sourceLabel(source) : 'unknown (source.json is missing)'}`, `- bbs run: ${run}`, `- bbs run dir: ${posix(path.relative(projectDir, runDir))}`];
+      for (const p of outputPowers) sourceLines.push(`- Brief (${p.name}): ${p.brief_path}`);
+      for (const m of memos) sourceLines.push(`- Buy memo (${m.name}): ${posix(path.relative(projectDir, path.join(runDir, m.memo)))}`);
+      const kickoff = fillKickoff(seeded, {
+        'Done means': approved.map(p => `- ${p.name}: ${finishLine.byPower[p.name].map(l => l.label).join(', ')}`),
+        'You may decide on your own': MAY_DECIDE,
+        'Ask me before': ASK_BEFORE,
+        'Never': NEVER,
+        'Source': sourceLines
+      }, `${mRel}/kickoff.md`);
+      await writeTextAtomic(kickoffPath, kickoff);
+
+      for (const p of outputPowers) {
+        marathonRunner(['stream', p.slug, '--run', mRun, 'state=queued', `plan=${p.brief_path}`, 'next=read the brief, write the contract and failing tests'], projectDir);
+      }
+    } catch (err) {
+      throw new Error(`marathon: ${firstLine(err)} — marathon run ${mRun} was created and is ACTIVE but incomplete — re-run cli.js handoff --marathon --force to refill it, or remove ${mRel}`);
+    }
+
+    marathonRun = mRun;
+    resume_line = `/w-marathon --resume ${marathonRun}`;
   }
 
   const note = approved.length === 0 ? 'no approved power — nothing to hand off to a marathon run' : null;
 
-  const handoffData = {
+  // handoff.json LAST: it marks the step as done
+  await writeJson(handoffPath, {
     run,
     source: source || null,
     marathonRun,
     powers: outputPowers,
     memos,
     skipped,
-    finish_line: finishLine,
+    finish_line: flFile,
     note,
     ts: now().toISOString()
-  };
+  });
 
-  await writeJson(handoffPath, handoffData);
-
-  // Re-render status
   await renderStatusSafe(runDir);
 
   return {
