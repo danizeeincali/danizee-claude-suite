@@ -1,17 +1,17 @@
 # Marathon 2026-10-07-bbs
 
 - State: RUNNING
-- Budget: 1,184,786 / 10,000,000 tokens
+- Budget: 1,114,472 / 10,000,000 tokens
 - Allowance: 91% (ceiling 95%)
-- Gate (run-wide, all streams): 2/2 clean reviews — build gate not met, full gate not met
+- Gate (run-wide, all streams): 3/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "intake" (next: review round 6 (opus, angle 6: facts) covers the r5 fixes; clean → close stream, merge to main, start fetch) — /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
+- Next for you: Next stream "fetch": create its worktree (`git worktree add ../<repo>-fetch -b marathon/2026-10-07-bbs/fetch`) and activate it with `cli.js stream fetch state=active isolation=<path>`, then /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
 
 ## Streams
 
 | Stream | Isolation | Plan | State | Gate | Phase | Next | Tasks | Escapes |
 |---|---|---|---|---|---|---|---|---|
-| intake | ../claude-suite-intake | .claude/plans/2026-10-07-w-bbs.md | active | clean 2/2 | /w-marathon · 4.5 | review round 6 (opus, angle 6: facts) covers the r5 fixes; clean → close stream, merge to main, start fetch |  | 0 |
+| intake | ../claude-suite-intake | .claude/plans/2026-10-07-w-bbs.md | done | clean 3/2 | /w-marathon · done | closed: 6 reviews (r4–r6 clean), 28 findings fixed; r6 fixes (497e7cf..5921405) reviewed in fetch r1 via --base 497e7cf |  | 0 |
 | fetch |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | fetch.js guards + egress log + clone; stubbed tests |  | 0 |
 | inventory |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | inventory.js schema/cap/brief + verbs |  | 0 |
 | harness-map |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | harness-map.js index + IDF-cosine matchPower + verbs |  | 0 |
@@ -24,8 +24,8 @@
 | Line | Owner | Status | Actual | Target |
 |---|---|---|---|---|
 | Green end-to-end runs in a row | build | failing | 0 | at_least 6 |
-| Green unit runs in a row | build | met | 6 | at_least 3 |
-| Clean reviews in a row | build | met | 2 | at_least 2 |
+| Green unit runs in a row | build | met | 7 | at_least 3 |
+| Clean reviews in a row | build | met | 3 | at_least 2 |
 | High findings in the latest review | build | met | 0 | at_most 0 |
 | Open high findings | build | met | 0 | at_most 0 |
 | Helpers that blew their budget | build | met | 0 | at_most 4 |

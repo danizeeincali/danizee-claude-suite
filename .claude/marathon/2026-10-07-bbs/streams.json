@@ -10,12 +10,12 @@
     },
     {
       "name": "intake",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/plans/2026-10-07-w-bbs.md",
-      "next": "review round 6 (opus, angle 6: facts) covers the r5 fixes; clean → close stream, merge to main, start fetch",
+      "next": "closed: 6 reviews (r4–r6 clean), 28 findings fixed; r6 fixes (497e7cf..5921405) reviewed in fetch r1 via --base 497e7cf",
       "tasks": [],
       "isolation": "../claude-suite-intake",
-      "phase": "4.5",
+      "phase": "done",
       "skill": "w-marathon",
       "base": "f45098f18ee422bd40091219cb9d6ee1f8f065b5"
     },
