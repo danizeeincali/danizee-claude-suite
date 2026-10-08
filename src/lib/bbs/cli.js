@@ -8,6 +8,7 @@
  */
 
 import fs from 'fs/promises';
+import { existsSync } from 'fs';
 import path from 'path';
 import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
@@ -15,7 +16,7 @@ import { fileURLToPath } from 'url';
 import { loadConfig } from './config.js';
 import { runDir as runDirOf, runsDir as runsDirOf, activeRunId } from './store.js';
 import { intake, RUN_ID } from './intake.js';
-import { loadState, nextStep, summary, renderStatusFile } from './status.js';
+import { loadState, nextStep, summary, renderStatusFile, renderStatusSafe } from './status.js';
 
 class CliExit extends Error {
   constructor(message, code) { super(message); this.code = code; }
@@ -63,8 +64,14 @@ function resolveProjectDir(flags) {
   try {
     const top = execFileSync('git', ['rev-parse', '--show-toplevel'], { cwd: process.cwd(), encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     if (top) return top;
-  } catch { /* not a git checkout */ }
-  return process.cwd();
+  } catch { /* no git, or not a git checkout: look for a marker instead */ }
+  const cwd = process.cwd();
+  for (let d = cwd; ; d = path.dirname(d)) {
+    if (existsSync(path.join(d, '.claude')) || existsSync(path.join(d, '.git'))) return d;
+    if (path.dirname(d) === d) break;
+  }
+  process.stderr.write(`bbs: warning: no git checkout found, using ${cwd} as the project root (pass --project to override)\n`);
+  return cwd;
 }
 
 async function readStdin() {
@@ -108,7 +115,8 @@ const VERBS = {
 
   async status({ flags, projectDir, cfg }) {
     const { dir } = await resolveRun(projectDir, flags, cfg);
-    const md = await renderStatusFile(dir);
+    const { md, writeError } = await renderStatusSafe(dir);
+    if (writeError) process.stderr.write(`bbs: warning: could not write status.md (${writeError.code || writeError.message})\n`);
     if (flags.next) out(nextStep(await loadState(dir)));
     else process.stdout.write(md);
   },

@@ -158,3 +158,29 @@ describe('status — review r1 regressions', () => {
     assert.match(md, /- Egress: requests=2 bytes_in=16 bodies_sent=0 hosts=github\.com,e\.x\n/);
   });
 });
+
+describe('status — review r2 regressions', () => {
+  it('loadState reports egress_corrupt and skips a null egress row; renderStatus shows the count', async () => {
+    const d = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-st-null-'));
+    try {
+      await writeJson(path.join(d, 'source.json'), base.source);
+      await fs.writeFile(path.join(d, 'egress.jsonl'), 'null\n{"kind":"http","host":"a.b","bytes_in":3}\nnot json\n');
+      const state = await loadState(d);
+      assert.equal(state.egress.length, 1);
+      assert.equal(state.egress_corrupt, 2);
+      const md = renderStatus(state);
+      assert.match(md, /bytes_in=3 .*\(2 corrupt rows skipped\)\n/);
+      assert.equal((await loadState(path.join(d, 'nowhere'))).egress_corrupt, 0);
+      assert.doesNotMatch(renderStatus({ ...base, egress_corrupt: 0 }), /corrupt/);
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+
+  it('renderStatusFile writes atomically (no tmp left behind)', async () => {
+    const d = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-st-atomic-'));
+    try {
+      await writeJson(path.join(d, 'source.json'), base.source);
+      await statusMod.renderStatusFile(d);
+      assert.deepEqual((await fs.readdir(d)).sort(), ['source.json', 'status.md']);
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+});

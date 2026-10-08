@@ -2,9 +2,8 @@
  * bbs status — step ordering, run summary and the status.md rendering.
  */
 
-import fs from 'fs/promises';
 import path from 'path';
-import { readJson, readJsonl } from './store.js';
+import { readJson, readJsonl, writeTextAtomic } from './store.js';
 
 export const STEPS = ['intake', 'fetch', 'inventory', 'map', 'verdict', 'handoff'];
 
@@ -66,7 +65,7 @@ export function renderStatus(state) {
     lines.push('- Source: none');
     lines.push('- Identity: none');
   }
-  lines.push(`- Egress: requests=${requests.length} bytes_in=${bytesIn} bodies_sent=0 hosts=${hosts.length ? hosts.join(',') : 'none'}`);
+  lines.push(`- Egress: requests=${requests.length} bytes_in=${bytesIn} bodies_sent=0 hosts=${hosts.length ? hosts.join(',') : 'none'}${state.egress_corrupt > 0 ? ` (${state.egress_corrupt} corrupt rows skipped)` : ''}`);
   if (next === 'done') {
     lines.push(sum.marathon ? `- Next: done — /w-marathon --resume ${sum.marathon}` : '- Next: done');
   } else {
@@ -92,10 +91,12 @@ export function renderStatus(state) {
 
 export async function loadState(runDir) {
   const j = (f) => readJson(path.join(runDir, f), null);
+  const egress = await readJsonl(path.join(runDir, 'egress.jsonl'), { report: true });
   return {
     run: path.basename(runDir),
     source: await j('source.json'),
-    egress: await readJsonl(path.join(runDir, 'egress.jsonl')),
+    egress: egress.rows,
+    egress_corrupt: egress.corrupt,
     powers: await j('powers.json'),
     map: await j('map.json'),
     verdicts: await j('verdicts.json'),
@@ -106,7 +107,17 @@ export async function loadState(runDir) {
 export async function renderStatusFile(runDir) {
   const state = await loadState(runDir);
   const md = renderStatus(state);
-  await fs.mkdir(runDir, { recursive: true });
-  await fs.writeFile(path.join(runDir, 'status.md'), md);
+  await writeTextAtomic(path.join(runDir, 'status.md'), md);
   return md;
+}
+
+/** Like renderStatusFile but never throws on a write failure: returns { md, writeError }. */
+export async function renderStatusSafe(runDir) {
+  const md = renderStatus(await loadState(runDir));
+  try {
+    await writeTextAtomic(path.join(runDir, 'status.md'), md);
+    return { md, writeError: null };
+  } catch (err) {
+    return { md, writeError: err };
+  }
 }

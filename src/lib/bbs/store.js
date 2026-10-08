@@ -49,7 +49,11 @@ export async function readJson(file, fallback = null) {
 }
 
 export async function writeJson(file, data) {
-  const text = JSON.stringify(data, null, 2) + '\n'; // serialise first: a failure leaves nothing behind
+  await writeTextAtomic(file, JSON.stringify(data, null, 2) + '\n'); // serialise first: a failure leaves nothing behind
+}
+
+/** Write text or raw bytes via tmp+rename so readers never see a partial file. */
+export async function writeTextAtomic(file, text) {
   await fs.mkdir(path.dirname(file), { recursive: true });
   const tmp = `${file}.${randomBytes(6).toString('hex')}.tmp`;
   try {
@@ -89,7 +93,10 @@ export async function readJsonl(file, { report = false } = {}) {
   let corrupt = 0;
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue;
-    try { rows.push(JSON.parse(line)); } catch { corrupt++; }
+    try {
+      const row = JSON.parse(line);
+      if (row !== null && typeof row === 'object' && !Array.isArray(row)) rows.push(row); else corrupt++;
+    } catch { corrupt++; }
   }
   return report ? { rows, corrupt } : rows;
 }
@@ -109,6 +116,6 @@ export async function appendRegistry(projectDir, row, cfg = DEFAULT_CONFIG) {
 export async function lookupSource(projectDir, identity, cfg = DEFAULT_CONFIG) {
   if (!identity || identity === 'pending') return null;
   const rows = await readJsonl(registryPath(projectDir, cfg));
-  for (let i = rows.length - 1; i >= 0; i--) if (rows[i].identity === identity) return rows[i];
+  for (let i = rows.length - 1; i >= 0; i--) if (rows[i] && rows[i].identity === identity) return rows[i];
   return null;
 }

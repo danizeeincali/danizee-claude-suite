@@ -9,7 +9,7 @@ import path from 'path';
 import { createHash } from 'crypto';
 import { execFileSync } from 'child_process';
 import { DEFAULT_CONFIG } from './config.js';
-import { runDir as runDirOf, setActiveRun, writeJson, appendJsonl, lookupSource } from './store.js';
+import { runDir as runDirOf, runsDir, setActiveRun, activeRunId, clearActiveRun, writeJson, writeTextAtomic, appendJsonl, lookupSource } from './store.js';
 import { renderStatusFile, loadState, nextStep } from './status.js';
 
 const TYPES = ['repo', 'url', 'local', 'paste'];
@@ -22,7 +22,7 @@ const SKIP_DIRS = new Set(['.git', 'node_modules']);
 const sha = (data) => 'sha256:' + createHash('sha256').update(data).digest('hex');
 
 function defaultGit(args, cwd) {
-  return execFileSync('git', args, { cwd, encoding: 'utf-8' });
+  return execFileSync('git', args, { cwd, encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
 }
 
 export function classifySource(ref, { exists = existsSync, as, pasteFile } = {}) {
@@ -89,6 +89,31 @@ export async function runIdFor(projectDir, slug, { now = () => new Date(), cfg =
   return id;
 }
 
+/**
+ * Claim a run directory atomically (mkdir without recursive). Auto slug: try -2, -3, ... on EEXIST.
+ * Explicit run id: EEXIST is an error. Returns { runId, dir }.
+ */
+export async function claimRunDir(projectDir, { slug, run, now = () => new Date(), cfg = DEFAULT_CONFIG } = {}) {
+  await fs.mkdir(runsDir(projectDir, cfg), { recursive: true });
+  if (run !== undefined) {
+    const dir = runDirOf(projectDir, run, cfg);
+    try { await fs.mkdir(dir); } catch (err) {
+      if (err.code === 'EEXIST') throw new Error(`run "${run}" already exists`);
+      throw err;
+    }
+    return { runId: run, dir };
+  }
+  const d = now();
+  const base = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${slug}`;
+  for (let n = 1; ; n++) {
+    const runId = n === 1 ? base : `${base}-${n}`;
+    const dir = runDirOf(projectDir, runId, cfg);
+    try { await fs.mkdir(dir); return { runId, dir }; } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+    }
+  }
+}
+
 async function exists(p) {
   try { await fs.stat(p); return true; } catch { return false; }
 }
@@ -111,18 +136,42 @@ async function manifest(root) {
   return lines.map(([p, s]) => `${p}\t${s}`).join('\n') + '\n';
 }
 
-export async function sourceIdentity({ type, ref, content, git = defaultGit, isGitRepo = (d) => existsSync(path.join(d, '.git')) }) {
+export async function sourceIdentity(args) {
+  return (await sourceIdentityDetailed(args)).identity;
+}
+
+/** Like sourceIdentity, plus a `note` when a git failure forced the manifest fallback. */
+export async function sourceIdentityDetailed({ type, ref, content, git = defaultGit, isGitRepo = (d) => existsSync(path.join(d, '.git')) }) {
+  const id = async () => {
   if (type === 'paste') return sha(content ?? '');
   if (type === 'url' || type === 'repo') return 'pending';
   if (type !== 'local') throw new Error(`unknown source type "${type}"`);
   const st = await fs.stat(ref);
   if (!st.isDirectory()) return sha(await fs.readFile(ref));
-  if (isGitRepo(ref)) return 'git:' + String(git(['rev-parse', 'HEAD'], ref)).trim();
+  if (isGitRepo(ref)) {
+    try {
+      const head = String(git(['rev-parse', 'HEAD'], ref)).trim();
+      if (!head) throw new Error('empty output');
+      return 'git:' + head;
+    } catch (err) {
+      note = gitNote(err);
+    }
+  }
   return sha(await manifest(ref));
+  };
+  let note;
+  const identity = await id();
+  return note ? { identity, note } : { identity };
+}
+
+function gitNote(err) {
+  const raw = (err.stderr ? String(err.stderr) : '') || (err.code === 'ENOENT' ? 'git not installed' : err.message || 'unknown error');
+  const reason = raw.trim().split('\n')[0].replace(/^fatal:\s*/i, '').slice(0, 80) || 'unknown error';
+  return `git HEAD unavailable (${reason}); identity is a file manifest`;
 }
 
 export async function intake(projectDir, ref, opts = {}) {
-  const { stdin, pasteFile, as, slug, run, now, git, isGitRepo, cfg = DEFAULT_CONFIG } = opts;
+  const { stdin, pasteFile, as, slug, run, now, git, isGitRepo, onBeforeSource, cfg = DEFAULT_CONFIG } = opts;
   const type = classifySource(ref, { as, pasteFile });
   let storedRef = type === 'local' ? path.resolve(ref) : String(ref).trim();
   let content;
@@ -133,38 +182,42 @@ export async function intake(projectDir, ref, opts = {}) {
     if (!text.trim()) throw new Error('paste is empty');
     storedRef = 'paste';
   }
-  let runId;
-  if (run !== undefined) {
-    if (!RUN_ID.test(run)) throw new Error(`invalid run id "${run}"`);
-    if (await exists(runDirOf(projectDir, run, cfg))) throw new Error(`run "${run}" already exists`);
-    runId = run;
-  } else {
-    runId = await runIdFor(projectDir, slug ? (clean(slug) || 'source') : slugFor(type, type === 'paste' ? ref : storedRef), { now, cfg });
-  }
-  const identity = await sourceIdentity({ type, ref: storedRef, content, git, isGitRepo });
+  if (run !== undefined && !RUN_ID.test(run)) throw new Error(`invalid run id "${run}"`);
+  const { identity, note } = await sourceIdentityDetailed({ type, ref: storedRef, content, git, isGitRepo });
   const known = await lookupSource(projectDir, identity, cfg);
-  const dir = runDirOf(projectDir, runId, cfg);
-  const source = {
-    run: runId, type, ref: storedRef, identity,
-    fetched: type === 'paste' || type === 'local',
-    reuse_from: known ? known.run : null,
-    cited: [],
-    ts: (now ? now() : new Date()).toISOString()
-  };
-  await writeJson(path.join(dir, 'source.json'), source);
-  if (type === 'paste') {
-    await fs.mkdir(path.join(dir, 'fetched'), { recursive: true });
-    await fs.writeFile(path.join(dir, 'fetched', 'paste.txt'), content);
+  // claim the run id atomically; from here on, any failure removes the claimed dir
+  const slugName = slug ? (clean(slug) || 'source') : slugFor(type, type === 'paste' ? ref : storedRef);
+  const { runId, dir } = await claimRunDir(projectDir, { slug: slugName, run, now, cfg });
+  let source;
+  const priorActive = await activeRunId(projectDir);
+  try {
+    source = {
+      run: runId, type, ref: storedRef, identity,
+      fetched: type === 'paste' || type === 'local',
+      reuse_from: known ? known.run : null,
+      cited: [],
+      ts: (now ? now() : new Date()).toISOString()
+    };
+    if (note) source.identity_note = note;
+    if (type === 'paste') await writeTextAtomic(path.join(dir, 'fetched', 'paste.txt'), content);
+    if (type === 'paste' || type === 'local') {
+      // nothing to fetch: record the zero-egress row so the fetch step is truly done
+      await appendJsonl(path.join(dir, 'egress.jsonl'), {
+        ts: source.ts, kind: 'none', method: null, url: null, host: null, status: null,
+        bytes_in: 0, bytes_out: 0, note: `nothing to fetch: ${type} source`
+      });
+    }
+    if (onBeforeSource) await onBeforeSource(dir);
+    await writeJson(path.join(dir, 'source.json'), source); // commit marker: written last
+    await setActiveRun(projectDir, runId);
+    await renderStatusFile(dir);
+  } catch (err) {
+    await fs.rm(dir, { recursive: true, force: true });
+    if ((await activeRunId(projectDir)) === runId) {
+      if (priorActive) await setActiveRun(projectDir, priorActive); else await clearActiveRun(projectDir);
+    }
+    throw err;
   }
-  if (type === 'paste' || type === 'local') {
-    // nothing to fetch: record the zero-egress row so the fetch step is truly done
-    await appendJsonl(path.join(dir, 'egress.jsonl'), {
-      ts: source.ts, kind: 'none', method: null, url: null, host: null, status: null,
-      bytes_in: 0, bytes_out: 0, note: `nothing to fetch: ${type} source`
-    });
-  }
-  await setActiveRun(projectDir, runId);
-  await renderStatusFile(dir);
   return {
     runId,
     runDir: path.relative(projectDir, dir),
@@ -174,7 +227,8 @@ export async function intake(projectDir, ref, opts = {}) {
     identity_pending: identity === 'pending',
     known: !!known,
     reuse_from: source.reuse_from,
-    next: nextStep(await loadState(dir))
+    next: nextStep(await loadState(dir)),
+    ...(note ? { note } : {})
   };
 }
 

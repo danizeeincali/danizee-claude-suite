@@ -9,6 +9,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { createHash } from 'crypto';
+import { spawn } from 'child_process';
+import { fileURLToPath } from 'url';
 import { classifySource, slugFor, sourceIdentity, runIdFor, intake } from '../src/lib/bbs/intake.js';
 import { readJson, activeRunId, appendRegistry } from '../src/lib/bbs/store.js';
 
@@ -335,5 +337,77 @@ describe('intake — review r1 regressions', () => {
     const status = await fs.readFile(path.join(dir, '.claude', 'bbs', 'runs', p.runId, 'status.md'), 'utf-8');
     assert.match(status, /- Egress: requests=0 bytes_in=0 bodies_sent=0 hosts=none\n/);
     assert.match(status, /\| fetch \| done \|/);
+  });
+});
+
+describe('intake — review r2 regressions', () => {
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-r2-')); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+  const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'lib', 'bbs', 'cli.js');
+
+  it('6 parallel intakes with the same slug get 6 distinct run ids, each with its own matching source.json', async () => {
+    const proj = await fs.mkdtemp(path.join(dir, 'par-'));
+    const runOne = (i) => new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [CLI, 'intake', '-', '--slug', 'same', '--project', proj], { stdio: ['pipe', 'pipe', 'pipe'] });
+      let out = '', err = '';
+      child.stdout.on('data', (d) => { out += d; });
+      child.stderr.on('data', (d) => { err += d; });
+      child.on('close', (code) => code === 0 ? resolve({ json: JSON.parse(out), text: `paste-${i}` }) : reject(new Error(err)));
+      child.stdin.end(`paste-${i}`);
+    });
+    const results = await Promise.all([0, 1, 2, 3, 4, 5].map(runOne));
+    const ids = results.map(r => r.json.runId);
+    assert.equal(new Set(ids).size, 6, ids.join(','));
+    for (const r of results) {
+      const src = await readJson(path.join(proj, '.claude', 'bbs', 'runs', r.json.runId, 'source.json'));
+      assert.equal(src.run, r.json.runId);
+      assert.equal(src.identity, r.json.identity);
+      assert.equal(src.identity, sha(r.text));
+    }
+  });
+
+  it('a failure after the claim removes the run dir and leaves ACTIVE unchanged', async () => {
+    const proj = await fs.mkdtemp(path.join(dir, 'fail-'));
+    const first = await intake(proj, '-', { stdin: 'one', slug: 'keep' });
+    await assert.rejects(() => intake(proj, '-', {
+      stdin: 'two', slug: 'boom', onBeforeSource: () => { throw new Error('injected'); }
+    }), /injected/);
+    assert.equal(await activeRunId(proj), first.runId);
+    const entries = await fs.readdir(path.join(proj, '.claude', 'bbs', 'runs'));
+    assert.deepEqual(entries, [first.runId]);
+  });
+
+  it('source.json is written last: when it fails, paste.txt and egress.jsonl were already complete and the run is removed', async () => {
+    const proj = await fs.mkdtemp(path.join(dir, 'order-'));
+    let seen;
+    await assert.rejects(() => intake(proj, '-', {
+      stdin: 'ordered', slug: 'ord',
+      onBeforeSource: async (runDir) => {
+        seen = {
+          paste: await fs.readFile(path.join(runDir, 'fetched', 'paste.txt'), 'utf-8'),
+          egress: (await fs.readFile(path.join(runDir, 'egress.jsonl'), 'utf-8')).trim().split('\n').length,
+          source: await fs.stat(path.join(runDir, 'source.json')).then(() => true, () => false)
+        };
+        throw new Error('stop');
+      }
+    }), /stop/);
+    assert.deepEqual(seen, { paste: 'ordered', egress: 1, source: false });
+  });
+
+  it('a git failure (no commits / no git) falls back to the manifest identity with a note', async () => {
+    const proj = await fs.mkdtemp(path.join(dir, 'git-'));
+    const src = path.join(proj, 'src-dir');
+    await fs.mkdir(src);
+    await fs.writeFile(path.join(src, 'a.txt'), 'hello');
+    const git = () => { throw new Error('fatal: ambiguous argument HEAD'); };
+    const r = await intake(proj, src, { git, isGitRepo: () => true, slug: 'nogit' });
+    assert.match(r.identity, /^sha256:/);
+    assert.match(r.note, /^git HEAD unavailable \(.+\); identity is a file manifest$/);
+    const sj = await readJson(path.join(proj, '.claude', 'bbs', 'runs', r.runId, 'source.json'));
+    assert.equal(sj.identity_note, r.note);
+    const ok = await intake(proj, src, { git: () => 'abc123\n', isGitRepo: () => true, slug: 'withgit' });
+    assert.equal(ok.identity, 'git:abc123');
+    assert.equal(ok.note, undefined);
   });
 });

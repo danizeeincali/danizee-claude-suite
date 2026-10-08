@@ -17,8 +17,8 @@ const ROOT = path.dirname(__dirname);
 const CLI = path.join(ROOT, 'src', 'lib', 'bbs', 'cli.js');
 const sha = (s) => 'sha256:' + createHash('sha256').update(s).digest('hex');
 
-function run(cwd, args, input) {
-  const r = spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: 'utf-8', input });
+function run(cwd, args, input, env) {
+  const r = spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: 'utf-8', input, ...(env ? { env } : {}) });
   let json = null;
   try { json = JSON.parse(r.stdout); } catch {}
   return { code: r.status, out: r.stdout, err: r.stderr, json };
@@ -261,5 +261,48 @@ describe('bbs cli — review r1 regressions', () => {
     assert.equal(ok.json.identity, sha('from the file'));
     const alone = run(dir, ['intake', '--paste-file', pf, '--slug', 'pfalone']);
     assert.equal(alone.code, 0, alone.err);
+  });
+});
+
+describe('bbs cli — review r2 regressions', () => {
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-cli-r2-')); });
+  after(async () => { await fs.chmod(dir, 0o755).catch(() => {}); await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('status on a read-only run dir still prints the markdown, warns on stderr, exits 0', async () => {
+    const proj = await fs.mkdtemp(path.join(dir, 'ro-'));
+    const r1 = run(proj, ['intake', '-', '--slug', 'ro', '--project', proj], 'text');
+    assert.equal(r1.code, 0, r1.err);
+    const runPath = path.join(proj, '.claude', 'bbs', 'runs', r1.json.runId);
+    await fs.chmod(runPath, 0o555);
+    try {
+      if (process.getuid && process.getuid() === 0) return; // root ignores modes
+      const r = run(proj, ['status', '--project', proj]);
+      assert.equal(r.code, 0, r.err);
+      assert.match(r.out, /^# bbs /);
+      assert.match(r.err, /bbs: warning: could not write status\.md \(EACCES\)/);
+    } finally { await fs.chmod(runPath, 0o755); }
+  });
+
+  it('without git, the project root is the nearest ancestor with .claude, silently', async () => {
+    const root = await fs.mkdtemp(path.join(dir, 'marker-'));
+    await fs.mkdir(path.join(root, '.claude'));
+    const sub = path.join(root, 'a', 'b');
+    await fs.mkdir(sub, { recursive: true });
+    const real = await fs.realpath(root);
+    const r = run(sub, ['intake', '-', '--slug', 'walk'], 'text', { ...process.env, PATH: '/nonexistent' });
+    assert.equal(r.code, 0, r.err);
+    assert.doesNotMatch(r.err, /no git checkout found/);
+    await fs.stat(path.join(real, '.claude', 'bbs', 'runs', r.json.runId, 'source.json'));
+    await assert.rejects(() => fs.stat(path.join(sub, '.claude')));
+  });
+
+  it('without git and without any marker, falls back to cwd and warns on stderr', async () => {
+    const lone = await fs.mkdtemp(path.join(dir, 'lone-'));
+    const real = await fs.realpath(lone);
+    const r = run(lone, ['intake', '-', '--slug', 'lone'], 'text', { ...process.env, PATH: '/nonexistent' });
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.err, /bbs: warning: no git checkout found, using .+ as the project root \(pass --project to override\)/);
+    await fs.stat(path.join(real, '.claude', 'bbs', 'runs', r.json.runId, 'source.json'));
   });
 });

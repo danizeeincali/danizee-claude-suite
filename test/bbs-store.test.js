@@ -11,7 +11,7 @@ import os from 'os';
 import {
   runsDir, runDir, activeRunId, setActiveRun, clearActiveRun,
   appendJsonl, readJsonl, readJson, writeJson,
-  registryPath, lookupSource, appendRegistry
+  registryPath, lookupSource, appendRegistry, writeTextAtomic
 } from '../src/lib/bbs/store.js';
 import { DEFAULT_CONFIG, loadConfig, LICENCE_CLASSES } from '../src/lib/bbs/config.js';
 
@@ -182,5 +182,34 @@ describe('bbs config — review r1 regressions', () => {
         await assert.rejects(() => loadConfig(dir), (err) => err.message === `invalid config in ${file}: expected an object`, raw);
       }
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe('store — review r2 regressions', () => {
+  it('readJsonl keeps only plain-object rows; null, arrays and scalars count as corrupt', async () => {
+    const d = await tmp('nullrow');
+    const f = path.join(d, 'x.jsonl');
+    await fs.writeFile(f, '{"a":1}\nnull\n[1]\n5\n"s"\n{"b":2}\n');
+    const r = await readJsonl(f, { report: true });
+    assert.deepEqual(r.rows, [{ a: 1 }, { b: 2 }]);
+    assert.equal(r.corrupt, 4);
+    assert.deepEqual(await readJsonl(f), [{ a: 1 }, { b: 2 }]);
+  });
+
+  it('lookupSource ignores non-object registry rows', async () => {
+    const d = await tmp('nullreg');
+    await fs.mkdir(path.dirname(registryPath(d)), { recursive: true });
+    await fs.writeFile(registryPath(d), 'null\n{"identity":"sha256:z","type":"paste","run":"r1"}\nnull\n');
+    assert.equal((await lookupSource(d, 'sha256:z')).run, 'r1');
+  });
+
+  it('writeTextAtomic writes the exact bytes via tmp+rename and leaves no tmp file', async () => {
+    const d = await tmp('atomic');
+    const f = path.join(d, 'sub', 't.txt');
+    await writeTextAtomic(f, Buffer.from([0xff, 0x00, 0x41]));
+    assert.deepEqual([...await fs.readFile(f)], [0xff, 0x00, 0x41]);
+    await writeTextAtomic(f, 'text');
+    assert.equal(await fs.readFile(f, 'utf-8'), 'text');
+    assert.deepEqual(await fs.readdir(path.dirname(f)), ['t.txt']);
   });
 });
