@@ -197,7 +197,8 @@ describe('handoff — buildHandoff without marathon', () => {
     const done = await decided(dir, 'h3', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
     await buildHandoff(dir, { run: done.runId, now });
     await assert.rejects(() => buildHandoff(dir, { run: done.runId, now }), /handoff\.json exists.*--force/);
-    const skipAll = await decided(dir, 'h4', [power()], { 'drift-monitor': 'have' }, { 'drift-monitor': 'skip' });
+    // a `have` judgment must name the candidate that has it (harness-map r1)
+    const skipAll = await decided(dir, 'h4', [power()], { 'drift-monitor': { status: 'have', tool: 'command:.claude/commands/.shortcuts/w-review.md', why: 'the review command already checks drift' } }, { 'drift-monitor': 'skip' });
     const out = await buildHandoff(dir, { run: skipAll.runId, now, marathon: true });
     assert.equal(out.marathonRun, null);
     assert.match(out.note, /no approved power/i);
@@ -266,8 +267,8 @@ describe('handoff — buildHandoff with the marathon bridge', () => {
 
 describe('handoff — cli verb', () => {
   let dir;
-  function run(cwd, args, input) {
-    const r = spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: 'utf-8', input });
+  function run(cwd, args, input, env = {}) {
+    const r = spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: 'utf-8', input, env: { ...process.env, BBS_SANDBOX: 'absent', ...env } });
     let json = null;
     try { json = JSON.parse(r.stdout); } catch {}
     return { code: r.status, out: r.stdout, err: r.stderr, json };
@@ -292,6 +293,8 @@ describe('handoff — cli verb', () => {
   });
 
   it('handoff --marathon after the decisions creates the marathon run, prints the resume line, and report names the run', () => {
+    const computed = run(dir, ['verdict']);
+    assert.equal(computed.code, 0, computed.err);
     const v = run(dir, ['verdict', '--decide', 'drift-monitor=rebuild']);
     assert.equal(v.code, 0, v.err);
     const h = run(dir, ['handoff', '--marathon']);
