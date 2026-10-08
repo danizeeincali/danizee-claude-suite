@@ -482,3 +482,94 @@ STATUS: PASS|FAIL
 2. Test: RC-D015 returns STATUS: PASS
 
 **Status**: ready (only runs if RC-D015 fails)
+
+---
+
+### RC-D016: "In our words" is checked against a fixture corpus, not only a heuristic
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Diagnostic
+**Verifies**: the `idea` prose check in inventory is a heuristic; inventory review r1 found it refused short prose and accepted real code, so it needs a table of accepted and refused ideas
+
+**Test Command**:
+```bash
+grep -nE "accepted|refused" test/bbs-inventory.test.js | grep -iE "idea|prose|code" | head
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: IDEA_CORPUS_PRESENT
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F016 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+### RC-F016: Add an accepted/refused ideas fixture table to the inventory tests
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Conditional Fix
+**Triggered By**: RC-D016 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// one table: [idea text, expected 'accept'|'refuse'] covering one-line lowercase prose,
+// multi-line prose, JS, Python, a fenced block after a prose line; the check runs over the whole table
+```
+
+**File**: test/bbs-inventory.test.js
+
+**Completion Tests**:
+1. Pattern: a single table drives both accepted and refused cases for the `idea` check
+2. Test: RC-D016 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D016 fails)
+
+---
+
+### RC-D017: Lead-written contract tests pass `node --check` before they are committed
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Diagnostic
+**Verifies**: contracts written by the lead can carry syntax slips that the builder then has to fix (inventory: an `await` inside a non-async arrow in `test/bbs-inventory.test.js`, fixed in cc5665c)
+
+**Test Command**:
+```bash
+for f in test/bbs-*.test.js; do node --check "$f" || echo "SYNTAX FAIL $f"; done
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: CONTRACT_TESTS_PARSE
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F017 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+### RC-F017: Run `node --check` on the test file in the contract-commit step
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Conditional Fix
+**Triggered By**: RC-D017 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```bash
+# contract step: node --check test/<stream>.test.js && git commit  (a failing check blocks the commit)
+```
+
+**File**: .claude/commands/w-marathon.md
+
+**Completion Tests**:
+1. Pattern: the contract-commit step runs `node --check` on every test file it commits
+2. Test: RC-D017 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D017 fails)
