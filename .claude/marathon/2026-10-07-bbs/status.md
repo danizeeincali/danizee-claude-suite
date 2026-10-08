@@ -1,17 +1,17 @@
 # Marathon 2026-10-07-bbs
 
 - State: RUNNING
-- Budget: 0 / 10,000,000 tokens
+- Budget: 249,202 / 10,000,000 tokens
 - Allowance: 91% (ceiling 95%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "intake" (next: contracts + failing tests for store/config/intake/status/cli skeleton, then route builders) — /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
+- Next for you: Continue stream "intake" (next: review round 1 (opus) on the intake diff; then findings/fix or round 2) — /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
 
 ## Streams
 
 | Stream | Isolation | Plan | State | Gate | Phase | Next | Tasks | Escapes |
 |---|---|---|---|---|---|---|---|---|
-| intake | ../claude-suite-intake | .claude/plans/2026-10-07-w-bbs.md | active | clean 0/2 | /w-marathon · 4.3 | contracts + failing tests for store/config/intake/status/cli skeleton, then route builders |  | 0 |
+| intake | ../claude-suite-intake | .claude/plans/2026-10-07-w-bbs.md | active | clean 0/2 | /w-marathon · 4.5 | review round 1 (opus) on the intake diff; then findings/fix or round 2 |  | 0 |
 | fetch |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | fetch.js guards + egress log + clone; stubbed tests |  | 0 |
 | inventory |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | inventory.js schema/cap/brief + verbs |  | 0 |
 | harness-map |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | harness-map.js index + IDF-cosine matchPower + verbs |  | 0 |
@@ -24,7 +24,7 @@
 | Line | Owner | Status | Actual | Target |
 |---|---|---|---|---|
 | Green end-to-end runs in a row | build | failing | 0 | at_least 6 |
-| Green unit runs in a row | build | failing | 0 | at_least 3 |
+| Green unit runs in a row | build | failing | 1 | at_least 3 |
 | Clean reviews in a row | build | failing | 0 | at_least 2 |
 | High findings in the latest review | build | failing | — | at_most 0 |
 | Open high findings | build | met | 0 | at_most 0 |

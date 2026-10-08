@@ -12,10 +12,10 @@
       "name": "intake",
       "state": "active",
       "plan": ".claude/plans/2026-10-07-w-bbs.md",
-      "next": "contracts + failing tests for store/config/intake/status/cli skeleton, then route builders",
+      "next": "review round 1 (opus) on the intake diff; then findings/fix or round 2",
       "tasks": [],
       "isolation": "../claude-suite-intake",
-      "phase": "4.3",
+      "phase": "4.5",
       "skill": "w-marathon",
       "base": "f45098f18ee422bd40091219cb9d6ee1f8f065b5"
     },

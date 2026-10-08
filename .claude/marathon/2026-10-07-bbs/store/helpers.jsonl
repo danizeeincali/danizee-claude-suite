@@ -1,0 +1,3 @@
+{"role":"build","model":"sonnet","stream":"intake","budget":150000,"event":"spawn","id":"79af96ff-9869-4043-ab14-d01763ed8311","ts":"2026-10-08T00:37:15.134Z"}
+{"helper_id":"79af96ff-9869-4043-ab14-d01763ed8311","tokens":99202,"outcome":"green","event":"done","id":"1959b58c-38e5-446b-a387-b53b8551f2d4","ts":"2026-10-08T00:40:12.689Z"}
+{"role":"review","model":"opus","stream":"intake","budget":150000,"event":"spawn","id":"4114d86c-a3a1-434f-a8a2-11f5de46e1f2","ts":"2026-10-08T00:40:54.435Z"}
