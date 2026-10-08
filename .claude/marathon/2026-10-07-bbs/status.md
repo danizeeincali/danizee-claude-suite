@@ -5,14 +5,14 @@
 - Allowance: 91% (ceiling 95%)
 - Gate (run-wide, all streams): 3/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Next stream "fetch": create its worktree (`git worktree add ../<repo>-fetch -b marathon/2026-10-07-bbs/fetch`) and activate it with `cli.js stream fetch state=active isolation=<path>`, then /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
+- Next for you: Continue stream "fetch" (next: budget check; contracts + failing tests for fetch.js (guards, egress log, clone) and the fetch verb; review r1 with --base 497e7cf) — /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
 
 ## Streams
 
 | Stream | Isolation | Plan | State | Gate | Phase | Next | Tasks | Escapes |
 |---|---|---|---|---|---|---|---|---|
 | intake | ../claude-suite-intake | .claude/plans/2026-10-07-w-bbs.md | done | clean 3/2 | /w-marathon · done | closed: 6 reviews (r4–r6 clean), 28 findings fixed; r6 fixes (497e7cf..5921405) reviewed in fetch r1 via --base 497e7cf |  | 0 |
-| fetch |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | fetch.js guards + egress log + clone; stubbed tests |  | 0 |
+| fetch | ../claude-suite-fetch | .claude/plans/2026-10-07-w-bbs.md | active | clean 0/2 | 4.1 | budget check; contracts + failing tests for fetch.js (guards, egress log, clone) and the fetch verb; review r1 with --base 497e7cf |  | 0 |
 | inventory |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | inventory.js schema/cap/brief + verbs |  | 0 |
 | harness-map |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | harness-map.js index + IDF-cosine matchPower + verbs |  | 0 |
 | verdict |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | verdict.js licence policy, legalVerdicts, probe, decide, labels, registry |  | 0 |
