@@ -63,10 +63,10 @@
       "name": "handoff",
       "state": "active",
       "plan": ".claude/plans/2026-10-07-w-bbs.md",
-      "next": "fix round for review r3 (3 medium: --project on marathon calls, async runner under the lock, init failure restores ACTIVE; 2 low); then unit run + review r4",
+      "next": "review round 4 (opus, safety probes) on 7caf67d..HEAD",
       "tasks": [],
       "isolation": "../claude-suite-handoff",
-      "phase": "4.7",
+      "phase": "4.5",
       "base": "7330fb7cbc0cefb7c3a640ca7f6f7159afb5fb9e"
     },
     {
