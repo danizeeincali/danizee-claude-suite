@@ -76,3 +76,6 @@
 {"helper_id":"92ce5092-293c-4aa1-bf0c-3aaaf728cff1","tokens":85801,"outcome":"green","event":"done","id":"81408dc3-fc1c-4777-8f24-6811a8b7892c","ts":"2026-10-08T02:56:56.198Z"}
 {"role":"build","model":"opus","stream":"verdict","budget":150000,"event":"spawn","id":"7c200a4e-e63e-4a0b-88ed-4a20e5c99930","ts":"2026-10-08T02:58:15.111Z"}
 {"role":"routine","model":"sonnet","stream":"harness-map","budget":100000,"event":"spawn","id":"2f4e16d3-f12d-43ba-a026-94e798e49181","ts":"2026-10-08T02:58:15.205Z"}
+{"helper_id":"7c200a4e-e63e-4a0b-88ed-4a20e5c99930","tokens":123947,"outcome":"green","event":"done","id":"cbe880f5-14ce-42f5-8f31-c5cd9662799e","ts":"2026-10-08T03:02:14.344Z"}
+{"helper_id":"2f4e16d3-f12d-43ba-a026-94e798e49181","tokens":81171,"outcome":"green","event":"done","id":"fcddef23-daa7-4a27-9d48-cdcd522f8a4b","ts":"2026-10-08T03:02:14.431Z"}
+{"role":"review","model":"opus","stream":"verdict","budget":150000,"event":"spawn","id":"b2a4a153-1ed0-4d0f-b33b-c4d8acce83a6","ts":"2026-10-08T03:02:14.707Z"}
