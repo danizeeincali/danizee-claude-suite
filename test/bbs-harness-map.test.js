@@ -300,7 +300,7 @@ describe('harness-map — cli verb', () => {
   it('usage lists map with [--brief | --from <file|->] [--force]; map before inventory fails naming inventory', () => {
     const u = run(dir, ['nope']);
     assert.match(u.err, /cli\.js map \[--brief \| --from <file\|->\] \[--force\] \[--run <id>\] \[--project <dir>\]/);
-    assert.match(u.err, /usage: cli\.js <intake\|fetch\|inventory\|map\|status\|report> \.\.\./);
+    assert.match(u.err, /usage: cli\.js <intake\|fetch\|inventory\|map\|verdict\|status\|report> \.\.\./);
     run(dir, ['intake', '-', '--slug', 'c1'], 'a tool');
     const early = run(dir, ['map']);
     assert.equal(early.code, 1);
@@ -927,5 +927,72 @@ describe('harness-map r4 — symlinked index roots and parents are refused, neve
     await fs.symlink(path.join(outside, 'id_rsa'), link);
     await assert.rejects(readPrefix(link), (err) => err.code === 'ELOOP');
     assert.match(await readPrefix(path.join(proj, 'scripts', 'check-drift.sh')), /config hash/);
+  });
+});
+
+describe('verdict r3 — stale-break restore never steals a fresh lock (no hard links needed)', () => {
+  let tmp;
+  before(async () => { tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-vr3lock-')); });
+  after(async () => { await fs.rm(tmp, { recursive: true, force: true }); });
+  const mkRd = () => fs.mkdtemp(path.join(tmp, 'rd-'));
+  const eperm = async () => { const e = new Error('operation not permitted'); e.code = 'EPERM'; throw e; };
+  // A stale lock A is replaced by a fresh lock B between our stat/read and our rename-aside.
+  const staleThenRace = async (rd, { thenOccupy } = {}) => {
+    const lock = path.join(rd, 'map.lock');
+    await fs.writeFile(lock, '111 staleA\n');
+    const old = new Date(Date.now() - 120000);
+    await fs.utimes(lock, old, old);
+    let raced = false;
+    const rename = async (from, to) => {
+      if (!raced && from === lock) {
+        raced = true;
+        await fs.writeFile(lock, '222 freshB\n'); // B broke the stale lock first and holds a fresh one
+        await fs.rename(from, to);
+        if (thenOccupy) await fs.writeFile(lock, '333 freshC\n');
+        return;
+      }
+      return fs.rename(from, to);
+    };
+    return { lock, rename };
+  };
+
+  it('link throwing EPERM: the foreign fresh lock is put back with rename, fn never runs, the held error is thrown', async () => {
+    const rd = await mkRd();
+    const { lock, rename } = await staleThenRace(rd);
+    let ran = false;
+    await assert.rejects(() => withMapLock(rd, async () => { ran = true; return 'x'; }, { link: eperm, rename }),
+      /map\.json is locked by another bbs command \(map\.lock\); remove it if none is running/);
+    assert.equal(ran, false, 'a foreign fresh lock must never be replaced by ours');
+    assert.equal(await fs.readFile(lock, 'utf-8'), '222 freshB\n');
+    assert.deepEqual((await fs.readdir(rd)).filter(f => f.startsWith('map.lock.stale-')), []);
+  });
+
+  it('path occupied after the aside: no retry, the held error names the aside file, both locks are kept', async () => {
+    const rd = await mkRd();
+    const { lock, rename } = await staleThenRace(rd, { thenOccupy: true });
+    let ran = false;
+    const err = await withMapLock(rd, async () => { ran = true; }, { link: eperm, rename }).then(() => null, e => e);
+    assert.ok(err, 'must reject');
+    assert.equal(ran, false);
+    const asides = (await fs.readdir(rd)).filter(f => f.startsWith('map.lock.stale-'));
+    assert.equal(asides.length, 1);
+    assert.equal(err.message, `map.json is locked by another bbs command (map.lock); remove it if none is running (a lock file was left aside at ${asides[0]})`);
+    assert.equal(await fs.readFile(lock, 'utf-8'), '333 freshC\n');
+    assert.equal(await fs.readFile(path.join(rd, asides[0]), 'utf-8'), '222 freshB\n');
+  });
+
+  it('restore rename failing: no retry, the held error names the aside file, the aside file survives', async () => {
+    const rd = await mkRd();
+    const { lock, rename: raceRename } = await staleThenRace(rd);
+    const rename = async (from, to) => { if (to === lock) return eperm(); return raceRename(from, to); };
+    let ran = false;
+    const err = await withMapLock(rd, async () => { ran = true; }, { link: eperm, rename }).then(() => null, e => e);
+    assert.ok(err, 'must reject');
+    assert.equal(ran, false);
+    const asides = (await fs.readdir(rd)).filter(f => f.startsWith('map.lock.stale-'));
+    assert.equal(asides.length, 1);
+    assert.match(err.message, /locked by another bbs command/);
+    assert.ok(err.message.endsWith(`(a lock file was left aside at ${asides[0]})`), err.message);
+    assert.equal(await fs.readFile(path.join(rd, asides[0]), 'utf-8'), '222 freshB\n');
   });
 });

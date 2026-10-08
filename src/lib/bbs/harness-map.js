@@ -6,9 +6,8 @@
 import fs from 'fs/promises';
 import { constants as FS } from 'fs';
 import path from 'path';
-import { randomBytes } from 'crypto';
 import { DEFAULT_CONFIG } from './config.js';
-import { runDir as runDirOf, readJson, writeJson, moveAsideStale } from './store.js';
+import { runDir as runDirOf, readJson, writeJson, moveAsideStale, withMapLockDetailed } from './store.js';
 import { RUN_ID, invalidRunId } from './intake.js';
 import { SKIP_DIRS, parseJsonOnly } from './inventory.js';
 import { renderStatusSafe } from './status.js';
@@ -108,91 +107,8 @@ export const MAX_PER_KIND = 2000;
 const PKG_MAX_BYTES = 1024 * 1024;
 const STALE_ON_MAP_FORCE = ['verdicts.json', 'handoff.json'];
 
-export const LOCK_STALE_MS = 60 * 1000;
-export const LOCK_REFRESH_MS = 20 * 1000;
-
-/**
- * Hold an exclusive run lock (map.lock, created 'wx') for a read-modify-write of map.json.
- * The lock file holds `${pid} ${token}`; release removes it only if the token is still ours.
- * A lock whose mtime is older than staleMs is abandoned: it is renamed aside (never deleted), the renamed content is checked
- * against what was stat'ed, and ours is created. While fn runs the lock's mtime is refreshed every refreshMs.
- * Returns { result, warning } (warning is null when the release was clean).
- */
-export async function withMapLockDetailed(runDir, fn, { now = () => Date.now(), staleMs = LOCK_STALE_MS, refreshMs = LOCK_REFRESH_MS, rm = (p, o) => fs.rm(p, o) } = {}) {
-  const lockPath = path.join(runDir, 'map.lock');
-  const held = () => new Error('map.json is locked by another bbs command (map.lock); remove it if none is running');
-  const token = randomBytes(12).toString('hex');
-  const mine = `${process.pid} ${token}\n`;
-  let acquired = false;
-  for (let attempt = 0; attempt < 3 && !acquired; attempt++) {
-    let fh;
-    try {
-      fh = await fs.open(lockPath, 'wx');
-    } catch (err) {
-      if (err.code !== 'EEXIST') throw err;
-      let st, seen;
-      try {
-        st = await fs.stat(lockPath);
-        seen = await fs.readFile(lockPath, 'utf-8');
-      } catch (e) { if (e.code === 'ENOENT') continue; throw e; }
-      if (!(now() - st.mtimeMs > staleMs)) throw held();
-      const aside = `${lockPath}.stale-${token}`;
-      try { await fs.rename(lockPath, aside); } catch (e) { if (e.code === 'ENOENT') continue; throw e; }
-      let got = null;
-      try { got = await fs.readFile(aside, 'utf-8'); } catch { /* unreadable: treat as a mismatch */ }
-      if (got !== seen) {
-        // We moved someone else's fresh lock aside: put it back if the path is still free, then retry.
-        try { await fs.link(aside, lockPath); await fs.rm(aside, { force: true }); } catch { /* best effort */ }
-      }
-      continue;
-    }
-    try { await fh.writeFile(mine); } finally { await fh.close(); }
-    acquired = true;
-  }
-  if (!acquired) throw held();
-
-  const timer = setInterval(() => {
-    const t = new Date(now());
-    fs.utimes(lockPath, t, t).catch(() => {});
-  }, refreshMs);
-  timer.unref();
-  let result;
-  try {
-    result = await fn();
-  } catch (err) {
-    clearInterval(timer);
-    try { await releaseLock(lockPath, token, rm); } catch { /* the verb's own error wins */ }
-    throw err;
-  }
-  clearInterval(timer);
-  let warning = null;
-  try {
-    warning = await releaseLock(lockPath, token, rm);
-  } catch (err) {
-    warning = `could not release map.lock (${err.code ?? 'error'})`;
-  }
-  return { result, warning };
-}
-
-/** Remove map.lock only if it still carries our token. Returns a warning string when it was taken over, else null. */
-async function releaseLock(lockPath, token, rm) {
-  const takenOver = 'map.lock was taken over by another process; left in place';
-  let content;
-  try {
-    content = await fs.readFile(lockPath, 'utf-8');
-  } catch (err) {
-    if (err.code === 'ENOENT') return takenOver;
-    throw err;
-  }
-  if (content.trim().split(' ')[1] !== token) return takenOver;
-  await rm(lockPath, { force: true });
-  return null;
-}
-
-/** withMapLockDetailed, returning only fn's result (the release warning is dropped; use the detailed form to see it). */
-export async function withMapLock(runDir, fn, opts) {
-  return (await withMapLockDetailed(runDir, fn, opts)).result;
-}
+// The run lock lives in store.js (inventory --force takes it too; inventory cannot import this module).
+export { LOCK_STALE_MS, LOCK_REFRESH_MS, withMapLockDetailed, withMapLock } from './store.js';
 
 /** Re-render status.md after map.json is committed; never throws. Returns { warning } (null when fine). */
 async function renderAfterCommit(runDirPath) {

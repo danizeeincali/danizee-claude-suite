@@ -7,7 +7,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { randomBytes } from 'crypto';
 import { DEFAULT_CONFIG } from './config.js';
-import { runDir as runDirOf, runsDir as runsDirOf, readJson, writeTextAtomic, moveAsideStale } from './store.js';
+import { runDir as runDirOf, runsDir as runsDirOf, readJson, writeTextAtomic, moveAsideStale, withMapLockDetailed } from './store.js';
 import { RUN_ID, invalidRunId } from './intake.js';
 import { loadState, nextStep, renderStatusSafe } from './status.js';
 
@@ -591,7 +591,7 @@ async function claimExclusive(file, content, { link = fs.link } = {}) {
  * Write the inventory powers.json file. Resolves run dir, loads source.json, parses input,
  * validates, checks for overwrites, and writes atomically.
  */
-export async function writeInventory(projectDir, { run, input, force = false, now, cfg = DEFAULT_CONFIG, label = 'input', link = fs.link, rename = fs.rename }) {
+export async function writeInventory(projectDir, { run, input, force = false, now, cfg = DEFAULT_CONFIG, label = 'input', link = fs.link, rename = fs.rename, lockOpts }) {
   if (!RUN_ID.test(run)) throw new Error(invalidRunId(run));
   const runLower = run.toLowerCase();
   const runDirectory = runDirOf(projectDir, runLower, cfg);
@@ -629,18 +629,23 @@ export async function writeInventory(projectDir, { run, input, force = false, no
   const text = JSON.stringify(powersData, null, 2) + '\n'; // serialise first: a failure leaves nothing behind
 
   let stale_moved = [];
+  let lockWarning = null;
   if (force) {
     // Later steps were built for the replaced powers: move them aside BEFORE the new powers.json lands.
-    // Each stale name is claimed exclusively; if anything fails, what was moved is put back.
-    stale_moved = await moveAsideStale(runDirectory, STALE_ON_FORCE, () => new Date(ts), { rename });
-    try {
-      await writeTextAtomic(powersFile, text);
-    } catch (err) {
-      const { restored, notRestored } = await stale_moved.restore();
-      let msg = `${err.message}; stale_moved so far: [${stale_moved.join(', ')}]; restored: [${restored.join(', ')}]`;
-      if (notRestored.length) msg += `; NOT restored (still named *.stale-*): [${notRestored.join(', ')}]`;
-      throw new Error(msg);
-    }
+    // Each stale name is claimed exclusively; if anything fails, what was moved is put back. Both happen under
+    // map.lock, so a running map/verdict step cannot write its stale map.json or verdicts.json back afterwards.
+    ({ result: stale_moved, warning: lockWarning } = await withMapLockDetailed(runDirectory, async () => {
+      const moved = await moveAsideStale(runDirectory, STALE_ON_FORCE, () => new Date(ts), { rename });
+      try {
+        await writeTextAtomic(powersFile, text);
+      } catch (err) {
+        const { restored, notRestored } = await moved.restore();
+        let msg = `${err.message}; stale_moved so far: [${moved.join(', ')}]; restored: [${restored.join(', ')}]`;
+        if (notRestored.length) msg += `; NOT restored (still named *.stale-*): [${notRestored.join(', ')}]`;
+        throw new Error(msg);
+      }
+      return moved;
+    }, lockOpts));
   } else {
     await claimExclusive(powersFile, text, { link });
   }
@@ -655,6 +660,7 @@ export async function writeInventory(projectDir, { run, input, force = false, no
     const file = err && err.path ? path.basename(err.path) : 'run state';
     warning = `powers.json written but ${file} could not be read: ${err.message}`;
   }
+  if (lockWarning) warning = warning ? `${warning}; ${lockWarning}` : lockWarning;
 
   return {
     runId: runLower,
