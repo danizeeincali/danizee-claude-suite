@@ -6,7 +6,10 @@
       "isolation": "worktree",
       "created": "2026-10-07T23:44:40.196Z",
       "tasks": [],
-      "paused": null
+      "paused": {
+        "reason": "ceiling: usage 100% ≥ 100%",
+        "ts": "2026-10-08T13:50:24.894Z"
+      }
     },
     {
       "name": "intake",
@@ -73,10 +76,10 @@
       "name": "command-docs",
       "state": "active",
       "plan": ".claude/plans/2026-10-07-w-bbs.md",
-      "next": "sonnet fix round for review r1 (4 medium: known-source path, --run on resume, one-question changes, dogfood helpers in repo; 5 low); then unit + e2e runs + review r2",
+      "next": "PAUSED at the 100% weekly allowance (the account limit). On resume: budget check; review round 2 (opus, failure paths) on fe069a5..HEAD; then rounds until two clean; then the remaining e2e runs to reach six in a row (5 recorded), record measure packaged=true, close, merge, /bc, run-wide gate, finish",
       "tasks": [],
       "isolation": "../claude-suite-command-docs",
-      "phase": "4.7",
+      "phase": "4.5",
       "base": "2664d95b23fb9a1be3ff39984a849dda0dec2225"
     }
   ],
