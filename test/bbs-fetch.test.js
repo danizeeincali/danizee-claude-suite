@@ -33,7 +33,7 @@ function fakeFetch(table, calls = []) {
     calls.push({ url: String(url), init });
     const entry = typeof table[String(url)] === 'function' ? table[String(url)](String(url), init) : table[String(url)];
     if (!entry) return new Response('not found', { status: 404 });
-    return new Response(entry.body ?? '', { status: entry.status ?? 200, headers: entry.headers ?? { 'content-type': 'text/html' } });
+    return new Response(entry.status === 204 ? null : (entry.body ?? ''), { status: entry.status ?? 200, headers: entry.headers ?? { 'content-type': 'text/html' } });
   };
 }
 
@@ -72,6 +72,19 @@ describe('fetch — address and host policy', () => {
     assert.equal(noDns.length, 0, 'literal IP never hits DNS');
     await assert.rejects(() => checkHost('example.com', { lookup: async () => [] }), (e) => e instanceof EgressRefused && /resolve/i.test(e.message));
     await assert.rejects(() => checkHost('example.com', { lookup: async () => { throw new Error('ENOTFOUND'); } }), (e) => e instanceof EgressRefused && /ENOTFOUND/.test(e.message));
+  });
+
+  it('r2: checkHost races the lookup against timeoutMs — a lookup that never resolves is refused', async () => {
+    await assert.rejects(() => checkHost('slow.example.com', { lookup: () => new Promise(() => {}), timeoutMs: 20 }),
+      (e) => e instanceof EgressRefused && /cannot resolve slow\.example\.com: timeout after 20 ms/.test(e.message));
+  });
+
+  it('r2: fetchUrl and cloneRepo pass their timeoutMs to the lookup race', async () => {
+    const never = () => new Promise(() => {});
+    const log = [];
+    await assert.rejects(() => fetchUrl('https://hang.example.com/', { fetchImpl: async () => { throw new Error('no'); }, lookup: never, timeoutMs: 20, onEgress: (r) => log.push(r) }), (e) => e instanceof EgressRefused && /timeout after 20 ms/.test(e.message));
+    assert.ok(log[0].refused);
+    await assert.rejects(() => cloneRepo('https://hang.example.com/a.git', path.join(os.tmpdir(), `bbs-hang-${Date.now()}`), { git: () => { throw new Error('no git'); }, lookup: never, timeoutMs: 20, onEgress: () => {} }), (e) => e instanceof EgressRefused && /timeout after 20 ms/.test(e.message));
   });
 
   it('hostOfRef handles http(s), ssh://, git:// and scp-style refs', () => {
@@ -373,6 +386,16 @@ describe('fetch — cloneRepo', () => {
     await assert.rejects(() => cloneRepo('https://github.com/a/missing.git', dest, { git, lookup: publicLookup, onEgress: () => {} }), /repository not found/);
     await assert.rejects(() => fs.stat(dest));
   });
+
+  it('r2: a failed clone that wrote data logs the partial bytes as bytes_in on the error row', async () => {
+    const dest = path.join(os.tmpdir(), `bbs-clone-partial-${Date.now()}`);
+    const git = (args) => { fsSync.mkdirSync(dest, { recursive: true }); fsSync.writeFileSync(path.join(dest, 'part'), 'z'.repeat(37)); const e = new Error('Command failed'); e.stderr = 'fatal: early EOF\n'; throw e; };
+    const log = [];
+    await assert.rejects(() => cloneRepo('https://github.com/a/partial.git', dest, { git, lookup: publicLookup, onEgress: (r) => log.push(r) }), /early EOF/);
+    await assert.rejects(() => fs.stat(dest));
+    const errRow = log.find(r => r.error);
+    assert.ok(errRow && errRow.bytes_in === 37, `bytes_in ${errRow?.bytes_in}`);
+  });
 });
 
 describe('fetch — egress summary and line', () => {
@@ -558,6 +581,42 @@ describe('fetch — fetchRun', () => {
     await assert.rejects(() => fs.readdir(path.join(runDir, 'fetched')));
     const egress = await readJsonl(path.join(runDir, 'egress.jsonl'));
     assert.ok(egress.some(e => e.kind === 'git' && e.bytes_in === 20 && e.refused));
+  });
+
+  it('r2: a failure AFTER the source.json commit (loadState throws) keeps fetched/ and fetched:true', async () => {
+    const i = await intake(dir, 'https://commit.example.com/', { now, slug: 'cmt' });
+    const runDir = path.join(dir, '.claude', 'bbs', 'runs', i.runId);
+    await fs.writeFile(path.join(runDir, 'powers.json'), '{ not json');
+    await assert.rejects(() => fetchRun(dir, { run: i.runId, fetchImpl: fakeFetch({ 'https://commit.example.com/': { body: 'kept', headers: { 'content-type': 'text/plain' } } }), lookup: publicLookup, now }));
+    assert.equal(await fs.readFile(path.join(runDir, 'fetched', '1.txt'), 'utf-8'), 'kept');
+    assert.equal((await readJson(path.join(runDir, 'source.json'))).fetched, true);
+  });
+
+  it('r2: a corrupt egress.jsonl row refuses the fetch (limits cannot be trusted) with exit-2 semantics and no request', async () => {
+    const i = await intake(dir, 'https://corrupt.example.com/', { now, slug: 'cor' });
+    const runDir = path.join(dir, '.claude', 'bbs', 'runs', i.runId);
+    await fs.appendFile(path.join(runDir, 'egress.jsonl'), '{"kind":"http","url":"https://x/","status":2');
+    const calls = [];
+    await assert.rejects(() => fetchRun(dir, { run: i.runId, fetchImpl: fakeFetch({}, calls), lookup: publicLookup, now }),
+      (e) => e instanceof EgressRefused && /egress\.jsonl has 1 corrupt row\(s\)/.test(e.message) && /repair or start a new run/.test(e.message));
+    assert.equal(calls.length, 0);
+    assert.equal((await readJson(path.join(runDir, 'source.json'))).fetched, false);
+    assert.ok((await readJsonl(path.join(runDir, 'egress.jsonl'))).some(e => e.refused && /corrupt/.test(e.refused)));
+  });
+
+  it('r2: an empty body (204, or 200 with zero bytes) is a fetch error: row logged, source.json untouched, no fetched/', async () => {
+    for (const [slug, entry] of [['e204', { status: 204 }], ['e200', { status: 200, body: '' }]]) {
+      const url = `https://${slug}.example.com/`;
+      const i = await intake(dir, url, { now, slug });
+      const runDir = path.join(dir, '.claude', 'bbs', 'runs', i.runId);
+      await assert.rejects(() => fetchRun(dir, { run: i.runId, fetchImpl: fakeFetch({ [url]: entry }), lookup: publicLookup, now }),
+        (e) => !(e instanceof EgressRefused) && new RegExp(`empty response body from ${url.replace(/[./]/g, '\\$&')} \\(status ${entry.status}\\)`).test(e.message));
+      const source = await readJson(path.join(runDir, 'source.json'));
+      assert.equal(source.fetched, false);
+      assert.equal(source.identity, 'pending');
+      await assert.rejects(() => fs.readdir(path.join(runDir, 'fetched')));
+      assert.ok((await readJsonl(path.join(runDir, 'egress.jsonl'))).some(e => e.error && /empty response body/.test(e.error)));
+    }
   });
 });
 

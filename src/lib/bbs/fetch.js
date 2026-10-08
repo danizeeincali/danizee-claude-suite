@@ -102,8 +102,18 @@ export function isForbiddenHost(h) {
 
 const defaultLookup = (host, opts) => dns.lookup(host, opts);
 
+/** Race a promise against a timer; rejects with an Error('timeout') carrying code ETIMEDOUT. */
+function withTimeout(promise, ms, label) {
+  if (!Number.isFinite(ms) || ms <= 0) return promise;
+  let timer;
+  const limit = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(Object.assign(new Error(`timeout after ${ms} ms${label ? ` ${label}` : ''}`), { code: 'ETIMEDOUT', timedOut: true })), ms);
+  });
+  return Promise.race([promise, limit]).finally(() => clearTimeout(timer));
+}
+
 /** Resolve all addresses of host and refuse when any is private. Literal IPs skip DNS. */
-export async function checkHost(host, { lookup = defaultLookup } = {}) {
+export async function checkHost(host, { lookup = defaultLookup, timeoutMs } = {}) {
   const h = normHost(host);
   if (net.isIP(h.split('%')[0])) {
     if (isPrivateAddress(h)) throw new EgressRefused(`host ${h} is a private address`);
@@ -111,7 +121,8 @@ export async function checkHost(host, { lookup = defaultLookup } = {}) {
   }
   if (isForbiddenHost(h)) throw new EgressRefused(`host "${h || '(empty)'}" is a private/forbidden name`);
   let res;
-  try { res = await lookup(h, { all: true }); } catch (err) {
+  try { res = await withTimeout(Promise.resolve().then(() => lookup(h, { all: true })), timeoutMs); } catch (err) {
+    if (err?.timedOut) throw new EgressRefused(`cannot resolve ${h}: timeout after ${timeoutMs} ms`);
     throw new EgressRefused(`cannot resolve ${h}: ${err.code || err.message}${err.code && err.message && !err.message.includes(err.code) ? ` (${err.message})` : ''}`);
   }
   const list = (Array.isArray(res) ? res : res ? [res] : []).map(a => (typeof a === 'string' ? a : a?.address)).filter(Boolean);
@@ -167,7 +178,7 @@ export async function fetchUrl(url, opts = {}) {
     if (!/^https?:$/.test(current.protocol)) await refuse(`unsupported scheme "${current.protocol}"`);
     if (current.username || current.password) await refuse('urls with credentials are not fetched');
     if (hops.length >= maxRequests) await refuse(`max_urls reached: the remaining allowance of ${maxRequests} request(s) is used up`);
-    try { await checkHost(current.hostname, { lookup }); } catch (err) {
+    try { await checkHost(current.hostname, { lookup, timeoutMs }); } catch (err) {
       if (err instanceof EgressRefused) await refuse(err.message);
       throw err;
     }
@@ -239,6 +250,11 @@ export async function fetchUrl(url, opts = {}) {
         }
       }
       const body = Buffer.concat(chunks);
+      if (status === 204 || body.length === 0) {
+        const msg = `empty response body from ${current.href} (status ${status})`;
+        await row(current, { status, bytes_in: 0, error: msg });
+        throw new Error(msg);
+      }
       await row(current, { status, bytes_in: body.length });
       return { url: String(url), finalUrl: current.href, status, body, contentType: contentTypeOf(res), hops };
     } finally {
@@ -337,7 +353,7 @@ export async function cloneRepo(ref, dest, {
     await row({ refused: msg });
     throw new EgressRefused(msg);
   }
-  try { await checkHost(host, { lookup }); } catch (err) {
+  try { await checkHost(host, { lookup, timeoutMs }); } catch (err) {
     if (err instanceof EgressRefused) await row({ refused: err.message });
     throw err;
   }
@@ -352,9 +368,11 @@ export async function cloneRepo(ref, dest, {
     try {
       await git(args, path.dirname(path.resolve(dest)), env, { timeout: timeoutMs * 10 });
     } catch (err) {
+      let partial = 0;
+      try { partial = await treeBytes(dest); } catch { /* unreadable partial tree: count nothing */ }
       await fs.rm(dest, { recursive: true, force: true });
       const line = firstLine(err);
-      await row({ error: line });
+      await row({ error: line, bytes_in: partial });
       throw new Error(`git clone failed: ${line}`);
     }
     const bytes = await treeBytes(dest);
@@ -462,7 +480,8 @@ export async function fetchRun(projectDir, opts = {}) {
     }
     const realNetwork = type === 'url' ? (!fetchImpl || !lookup) : (!git || !lookup);
     if (process.env.BBS_NO_NETWORK && realNetwork) await refuseRow('network disabled by BBS_NO_NETWORK');
-    const rows = await readJsonl(egressFile);
+    const { rows, corrupt } = await readJsonl(egressFile, { report: true });
+    if (corrupt > 0) await refuseRow(`egress.jsonl has ${corrupt} corrupt row(s) — the per-run limits cannot be trusted; repair or start a new run`);
     const used = egressSummary(rows);
     const urlLimit = maxUrls ?? cfg.limits?.max_urls ?? DEFAULT_CONFIG.limits.max_urls;
     const byteLimit = maxBytes ?? cfg.limits?.max_bytes ?? DEFAULT_CONFIG.limits.max_bytes;
@@ -478,8 +497,9 @@ export async function fetchRun(projectDir, opts = {}) {
       if (err.code === 'EEXIST') throw new Error(`run "${id}" already has a fetched/ directory — another fetch is running or one crashed; remove ${fetchedDir} to retry`);
       throw err;
     }
+    let committed = false;
+    let identity, files, extraSource, known, reuse_from;
     try {
-      let identity, files, extraSource;
       if (type === 'url') {
         const r = await fetchUrl(source.ref, {
           fetchImpl: fetchImpl || globalThis.fetch, lookup: lookup || defaultLookup, maxBytes: remaining,
@@ -497,14 +517,15 @@ export async function fetchRun(projectDir, opts = {}) {
         files = ['fetched/repo'];
         extraSource = {};
       }
-      const known = await lookupSource(projectDir, identity, cfg);
-      const reuse_from = known ? known.run : null;
+      known = await lookupSource(projectDir, identity, cfg);
+      reuse_from = known ? known.run : null;
       await writeJson(sourceFile, { ...source, fetched: true, identity, ...extraSource, reuse_from, fetched_at: now().toISOString() }); // commit marker: last
-      return await result({ identity, identity_pending: false, known: !!known, reuse_from, files });
+      committed = true;
     } catch (err) {
-      await fs.rm(fetchedDir, { recursive: true, force: true });
+      if (!committed) await fs.rm(fetchedDir, { recursive: true, force: true });
       throw err;
     }
+    return await result({ identity, identity_pending: false, known: !!known, reuse_from, files });
   } finally {
     await renderStatusSafe(dir);
   }
