@@ -178,6 +178,29 @@ describe('fetch — fetchUrl', () => {
     await assert.rejects(() => fetchUrl('ftp://e.com/x', { fetchImpl: ftp, lookup: publicLookup, onEgress: () => {} }), /scheme/i);
   });
 
+  it('r3: a transport failure names the real cause from err.cause (code), in both the thrown error and the egress row', async () => {
+    const failing = async () => { throw new TypeError('fetch failed', { cause: Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:1'), { code: 'ECONNREFUSED' }) }); };
+    const log = [];
+    await assert.rejects(() => fetchUrl('https://down.example.com/', { fetchImpl: failing, lookup: publicLookup, onEgress: (r) => log.push(r) }),
+      (e) => /request to https:\/\/down\.example\.com\/ failed: fetch failed/.test(e.message) && /ECONNREFUSED/.test(e.message));
+    assert.equal(log.length, 1);
+    assert.match(log[0].error, /fetch failed/);
+    assert.match(log[0].error, /ECONNREFUSED/);
+  });
+
+  it('r3: an AggregateError cause lists every inner code', async () => {
+    const agg = new AggregateError([
+      Object.assign(new Error('connect ECONNREFUSED 93.184.216.34:443'), { code: 'ECONNREFUSED' }),
+      Object.assign(new Error('connect ENETUNREACH 2606:2800::1:443'), { code: 'ENETUNREACH' })
+    ], 'all attempts failed');
+    const failing = async () => { throw new TypeError('fetch failed', { cause: agg }); };
+    const log = [];
+    await assert.rejects(() => fetchUrl('https://down.example.com/', { fetchImpl: failing, lookup: publicLookup, onEgress: (r) => log.push(r) }),
+      (e) => /ECONNREFUSED/.test(e.message) && /ENETUNREACH/.test(e.message));
+    assert.match(log[0].error, /ECONNREFUSED/);
+    assert.match(log[0].error, /ENETUNREACH/);
+  });
+
   it('times out: a fetchImpl that never resolves is aborted after timeoutMs and logged as refused', async () => {
     const never = (url, init) => new Promise((_, reject) => { init.signal?.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }))); });
     const log = [];
@@ -299,6 +322,51 @@ describe('fetch — cloneRepo', () => {
     assert.equal(env.GIT_CONFIG_GLOBAL, '/dev/null');
     assert.match(env.GIT_SSH_COMMAND, /BatchMode=yes/);
     assert.match(env.GIT_SSH_COMMAND, /StrictHostKeyChecking=accept-new/);
+  });
+
+  it('r3: isolates global config on git < 2.32 — HOME and XDG_CONFIG_HOME point at one empty scratch dir that exists during the git calls and is removed after', async () => {
+    const seen = [];
+    const git = async (args, cwd, env) => {
+      const st = await fs.stat(env.HOME);
+      seen.push({ args, home: env.HOME, xdg: env.XDG_CONFIG_HOME, isDir: st.isDirectory(), entries: await fs.readdir(env.HOME) });
+      if (args[0] === 'clone') return '';
+      if (args[0] === 'rev-parse') return 'abcdef1234567890abcdef1234567890abcdef12\n';
+      throw new Error('unexpected ' + args.join(' '));
+    };
+    const dest = path.join(os.tmpdir(), `bbs-clone-home-${Date.now()}`);
+    await cloneRepo('https://github.com/a/b.git', dest, { git, lookup: publicLookup, onEgress: () => {} });
+    assert.equal(seen.length, 2);
+    for (const s of seen) {
+      assert.ok(typeof s.home === 'string' && s.home.length > 0, 'HOME is set');
+      assert.ok(typeof s.xdg === 'string' && s.xdg.length > 0, 'XDG_CONFIG_HOME is set');
+      assert.equal(s.home, s.xdg, 'HOME and XDG_CONFIG_HOME are the same scratch dir');
+      assert.notEqual(path.resolve(s.home), path.resolve(os.homedir()), 'HOME is not the real home');
+      assert.ok(s.isDir, 'the scratch dir exists during the git call');
+      assert.deepEqual(s.entries, [], 'the scratch dir is empty (no gitconfig)');
+    }
+    assert.equal(seen[0].home, seen[1].home, 'one scratch dir for clone and rev-parse');
+    await assert.rejects(() => fs.stat(seen[0].home), { code: 'ENOENT' }, 'the scratch dir is removed after the clone');
+    // the r1-r2 env guarantees still hold alongside
+    const env = await (async () => { let e; await cloneRepo('https://github.com/a/b.git', dest + '-2', { git: (a, c, en) => { e = en; return a[0] === 'clone' ? '' : 'abcdef1234567890abcdef1234567890abcdef12'; }, lookup: publicLookup, onEgress: () => {} }); return e; })();
+    assert.equal(env.GIT_CONFIG_NOSYSTEM, '1');
+    assert.equal(env.GIT_CONFIG_GLOBAL, '/dev/null');
+  });
+
+  it('r3: removes the scratch HOME dir when the clone fails too', async () => {
+    let home;
+    const git = (args, cwd, env) => { home = env.HOME; throw Object.assign(new Error('boom'), { stderr: 'fatal: boom' }); };
+    await assert.rejects(() => cloneRepo('https://github.com/a/b.git', path.join(os.tmpdir(), `bbs-clone-fail-${Date.now()}`), { git, lookup: publicLookup, onEgress: () => {} }), /git clone failed: fatal: boom/);
+    assert.ok(home && home !== os.homedir());
+    await assert.rejects(() => fs.stat(home), { code: 'ENOENT' });
+  });
+
+  it('r3: persisted -c values are harmless — core.hooksPath is exactly /dev/null (no temp dir another user could recreate)', async () => {
+    let clone;
+    const git = (args) => { if (args[0] === 'clone') { clone = args; return ''; } return 'abcdef1234567890abcdef1234567890abcdef12\n'; };
+    await cloneRepo('https://github.com/a/b.git', path.join(os.tmpdir(), `bbs-clone-hp-${Date.now()}`), { git, lookup: publicLookup, onEgress: () => {} });
+    const configs = clone.filter((_, k) => clone[k - 1] === '-c');
+    const hooks = configs.filter(c => c.startsWith('core.hooksPath='));
+    assert.deepEqual(hooks, ['core.hooksPath=/dev/null']);
   });
 
   it('refuses http:// and git:// (and any non https/ssh/scp ref) with a refused git row and no git call', async () => {

@@ -145,6 +145,25 @@ export function hostOfRef(ref) {
 
 // ---------------------------------------------------------------- http
 
+/**
+ * Text of a transport error with its real cause: Node's fetch rejects with TypeError('fetch failed')
+ * and keeps the reason in err.cause (a code like ECONNREFUSED, or an AggregateError of several).
+ */
+export function describeError(err) {
+  const causeText = (c, depth = 0) => {
+    if (!c || depth > 5) return '';
+    if (Array.isArray(c.errors) && c.errors.length) {
+      return c.errors.map(e => causeText(e, depth + 1) || String(e?.code || e?.message || e)).filter(Boolean).join('; ');
+    }
+    const own = c.code || c.message || (typeof c === 'string' ? c : '');
+    if (own) return String(own);
+    return causeText(c.cause, depth + 1);
+  };
+  const base = String(err?.message || err || 'unknown error');
+  const cause = causeText(err?.cause);
+  return cause && !base.includes(cause) ? `${base}: ${cause}` : base;
+}
+
 const contentTypeOf = (res) => (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
 
 async function discard(res) {
@@ -195,8 +214,9 @@ export async function fetchUrl(url, opts = {}) {
         });
       } catch (err) {
         if (controller.signal.aborted) { await row(current, { sent: true, refused: timeoutMsg }); throw new Error(timeoutMsg); }
-        await row(current, { error: err.message });
-        throw new Error(`request to ${current.href} failed: ${err.message}`);
+        const why = describeError(err);
+        await row(current, { error: why });
+        throw new Error(`request to ${current.href} failed: ${why}`);
       }
       const status = res.status;
       if (status >= 300 && status < 400) {
@@ -234,8 +254,9 @@ export async function fetchUrl(url, opts = {}) {
           let chunk;
           try { chunk = await reader.read(); } catch (err) {
             if (controller.signal.aborted) { await row(current, { status, bytes_in: total, sent: true, refused: timeoutMsg }); throw new Error(timeoutMsg); }
-            await row(current, { status, bytes_in: total, error: err.message });
-            throw new Error(`reading ${current.href} failed: ${err.message}`);
+            const why = describeError(err);
+            await row(current, { status, bytes_in: total, error: why });
+            throw new Error(`reading ${current.href} failed: ${why}`);
           }
           if (chunk.done) break;
           total += chunk.value.byteLength;
@@ -305,10 +326,17 @@ export function runGit(args, cwd, env, { timeout, exec = execFileSync } = {}) {
 }
 const defaultGit = runGit;
 
-/** Env for clone and rev-parse: scrubbed, no system/global config, no lfs smudge, no prompts. */
-function cloneEnv() {
+/**
+ * Env for clone and rev-parse: scrubbed, no system/global config, no lfs smudge, no prompts.
+ * GIT_CONFIG_GLOBAL is only honoured from git 2.32; older gits still read $HOME/.gitconfig and
+ * $XDG_CONFIG_HOME/git/config, so both point at scratchDir — an empty dir made for this clone.
+ */
+function cloneEnv(scratchDir) {
+  if (!scratchDir) throw new Error('cloneEnv needs the scratch dir that stands in for HOME and XDG_CONFIG_HOME');
   return {
     ...scrubbedGitEnv(),
+    HOME: scratchDir,
+    XDG_CONFIG_HOME: scratchDir,
     GIT_TERMINAL_PROMPT: '0',
     GIT_LFS_SKIP_SMUDGE: '1',
     GIT_CONFIG_NOSYSTEM: '1',
@@ -357,11 +385,15 @@ export async function cloneRepo(ref, dest, {
     if (err instanceof EgressRefused) await row({ refused: err.message });
     throw err;
   }
-  const hooksDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hooks-'));
-  const env = cloneEnv();
+  const scratchDir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-home-'));
+  const env = cloneEnv(scratchDir);
   try {
+    // `git clone -c` writes these into fetched/repo/.git/config. Every value is chosen to be harmless
+    // when it persists: hooks point at /dev/null (never a dir someone could recreate), no redirects,
+    // no credential helper, lfs filters empty, only https/ssh transports. Nothing ever runs git inside
+    // fetched/repo afterwards except our own rev-parse with this same env.
     const args = ['clone', '--depth', '1', '--no-tags', '--no-recurse-submodules',
-      '-c', `core.hooksPath=${hooksDir}`, '-c', 'http.followRedirects=false', '-c', 'credential.helper=',
+      '-c', 'core.hooksPath=/dev/null', '-c', 'http.followRedirects=false', '-c', 'credential.helper=',
       '-c', 'filter.lfs.smudge=', '-c', 'filter.lfs.process=', '-c', 'filter.lfs.required=false',
       '-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always', '-c', 'protocol.ssh.allow=always',
       '--', text, dest];
@@ -393,7 +425,7 @@ export async function cloneRepo(ref, dest, {
     await row({ status: 0, bytes_in: bytes });
     return { sha };
   } finally {
-    await fs.rm(hooksDir, { recursive: true, force: true });
+    await fs.rm(scratchDir, { recursive: true, force: true });
   }
 }
 
