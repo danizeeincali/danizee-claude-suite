@@ -15,10 +15,11 @@ import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 import { loadConfig } from './config.js';
-import { runDir as runDirOf, runsDir as runsDirOf, activeRunId } from './store.js';
+import { runDir as runDirOf, runsDir as runsDirOf, activeRunId, readJson } from './store.js';
 import { intake, RUN_ID, invalidRunId } from './intake.js';
 import { loadState, nextStep, summary, renderStatusSafe } from './status.js';
 import { fetchRun, EgressRefused } from './fetch.js';
+import { writeInventory, inventoryBrief, listSourceFiles } from './inventory.js';
 
 class CliExit extends Error {
   constructor(message, code) { super(message); this.code = code; }
@@ -31,7 +32,8 @@ const FLAGS = {
   intake: { value: ['run', 'project', 'as', 'slug', 'paste-file'], bool: [], positionals: 1, usage: INTAKE_USAGE },
   fetch: { value: ['run', 'project', 'max-bytes', 'max-links'], bool: [], positionals: 0, usage: 'usage: cli.js fetch [--run <id>] [--max-bytes <n>] [--max-links <n>] [--project <dir>]' },
   status: { value: ['run', 'project'], bool: ['next'], positionals: 0, usage: 'usage: cli.js status [--run <id>] [--next] [--project <dir>]' },
-  report: { value: ['run', 'project'], bool: [], positionals: 0, usage: 'usage: cli.js report [--run <id>] [--project <dir>]' }
+  report: { value: ['run', 'project'], bool: [], positionals: 0, usage: 'usage: cli.js report [--run <id>] [--project <dir>]' },
+  inventory: { value: ['from', 'run', 'project'], bool: ['brief', 'force'], positionals: 0, usage: 'usage: cli.js inventory (--brief | --from <file|->) [--force] [--run <id>] [--project <dir>]' }
 };
 
 function parseArgs(argv) {
@@ -172,14 +174,53 @@ const VERBS = {
     if (writeError) warnStatusWrite(id, writeError);
     const s = summary(await loadState(dir));
     out(`found=${s.found} approved=${s.approved} skipped=${s.skip} buy=${s.buy} marathon=${s.marathon || 'none'}`);
+  },
+
+  async inventory({ flags, positional, projectDir, cfg }) {
+    const usage = FLAGS.inventory.usage;
+    const hasBrief = !!flags.brief;
+    const hasFrom = typeof flags.from === 'string';
+    if (!hasBrief && !hasFrom) fail(`${usage}\n  inventory needs exactly one of --brief or --from <file|->`);
+    if (hasBrief && hasFrom) fail(`${usage}\n  inventory needs exactly one of --brief or --from <file|->`);
+
+    const { id, dir } = await resolveRun(projectDir, flags, cfg);
+
+    if (hasBrief) {
+      // Print the brief for the active run
+      const source = await readJson(path.join(dir, 'source.json'));
+      const files = await listSourceFiles(dir, source, { maxFiles: cfg.limits.max_files });
+      const brief = inventoryBrief({ source, files, maxPowers: cfg.limits.max_powers });
+      process.stdout.write(brief + '\n');
+    } else {
+      // Read from file and write powers.json
+      let input;
+      if (flags.from === '-') {
+        input = await readStdin();
+      } else {
+        try {
+          input = await fs.readFile(flags.from, 'utf-8');
+        } catch (err) {
+          if (err.code === 'ENOENT') fail(`file not found: ${flags.from}`);
+          fail(`could not read ${flags.from}: ${err.message}`);
+        }
+      }
+      const result = await writeInventory(projectDir, { run: id, input, force: !!flags.force, now: () => new Date(), cfg });
+      out(result);
+    }
+
+    const { writeError } = await renderStatusSafe(dir);
+    if (writeError) warnStatusWrite(id, writeError);
   }
 };
 
 async function main(argv) {
   const { verb, flags, positional } = parseArgs(argv);
   if (!Object.hasOwn(VERBS, verb)) {
-    const lines = Object.keys(VERBS).map(v => '  ' + (FLAGS[v] ? FLAGS[v].usage.replace(/^usage: /, '') : `cli.js ${v}`));
-    fail([`usage: cli.js <${Object.keys(VERBS).join('|')}> ...`, ...lines, '  <source> may be - to read a paste from stdin'].join('\n'));
+    // Verbs in step order (the six steps, then the read-only verbs), so usage reads like the flow.
+    const order = ['intake', 'fetch', 'inventory', 'map', 'verdict', 'handoff', 'status', 'report'];
+    const verbs = [...order.filter(v => VERBS[v]), ...Object.keys(VERBS).filter(v => !order.includes(v))];
+    const lines = verbs.map(v => '  ' + (FLAGS[v] ? FLAGS[v].usage.replace(/^usage: /, '') : `cli.js ${v}`));
+    fail([`usage: cli.js <${verbs.join('|')}> ...`, ...lines, '  <source> may be - to read a paste from stdin'].join('\n'));
   }
   const projectDir = resolveProjectDir(flags);
   const cfg = await loadConfig(projectDir);

@@ -158,7 +158,7 @@ describe('inventory — brief and source files', () => {
     assert.equal(pf.licence_file, null);
     const u = await intake(dir, 'https://example.com/x', { now, slug: 'lu' });
     const uDir = path.join(dir, '.claude', 'bbs', 'runs', u.runId);
-    await assert.rejects(() => listSourceFiles(uDir, await readJson(path.join(uDir, 'source.json'))), /fetch/);
+    await assert.rejects(async () => listSourceFiles(uDir, await readJson(path.join(uDir, 'source.json'))), /fetch/);
   });
 
   it('inventoryBrief names every field, both enums, the cap, "JSON only", "do not execute", the files to read and the idea rule', async () => {
