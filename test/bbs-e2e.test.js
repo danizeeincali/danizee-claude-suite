@@ -164,5 +164,12 @@ describe('bbs e2e — the packaged check', () => {
     assert.equal(again.code, 0, again.err);
     assert.equal(again.json.known, true);
     assert.equal(again.json.reuse_from, runId);
+    // the documented known-source path (CHECKPOINT 0): report/status of the reused run, no re-audit
+    const rep = run(['report', '--run', again.json.reuse_from]);
+    assert.equal(rep.code, 0, rep.err);
+    assert.ok(rep.out.includes(`marathon=${marathonRun}`), 'the reused run\'s report names the marathon run');
+    const st = run(['status', '--run', again.json.reuse_from]);
+    assert.equal(st.code, 0, st.err);
+    assert.ok(st.out.includes(marathonRun), 'the reused run\'s status names the marathon run');
   });
 });

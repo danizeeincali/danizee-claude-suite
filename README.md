@@ -263,7 +263,7 @@ Each run lives in `.claude/bbs/runs/<run-id>/`; the registry of audited sources 
 .claude/bbs.json              limits, licence policy, sandbox settings
 ```
 
-**CLI:** `node .claude/helpers/bbs/cli.js` `intake` · `fetch` · `inventory --brief|--from` · `map [--brief|--from]` · `verdict [--table|--probe|--decide|--from]` · `handoff [--marathon]` · `status [--next]` · `report`. JSON on stdout; exit 1 is invalid input or broken state, exit 2 is refused by policy (private host, limit hit, illegal verdict). `/w-bbs --resume <run-id>` continues from `status --next`; `/w-bbs --status` prints status only.
+**CLI:** `node .claude/helpers/bbs/cli.js` `intake` · `fetch` · `inventory --brief|--from` · `map [--brief|--from]` · `verdict [--table|--probe|--decide|--from]` · `handoff [--marathon]` · `status [--next]` · `report`. JSON on stdout, except `status`, `report` and the `--brief`/`--table` views, which print text. Exit 1 is invalid input or broken state, exit 2 is refused by policy (private host, limit hit, illegal verdict). `/w-bbs --resume <run-id>` continues from `status --next`; `/w-bbs --status` prints status only.
 
 **Worked example:** `/w-bbs https://github.com/openqodex/openqodex` — the suite has no OpenQodex-specific code; it is just the first source to point the command at.
 

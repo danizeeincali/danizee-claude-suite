@@ -17,6 +17,7 @@ import { DEFAULT_CONFIG } from '../lib/bbs/config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LIB_DIR = path.join(__dirname, '..', 'lib', 'bbs');
+const MANIFEST = '.marathon-files.json';
 const MARATHON_LIB_DIR = path.join(__dirname, '..', 'lib', 'marathon');
 
 export function getNamespace() {
@@ -43,9 +44,18 @@ export async function install(claudeDir, options = {}) {
 
   // handoff.js imports ../marathon/{gate,config}.js (and their siblings); never overwrite the marathon plugin's copy.
   // cli.js is left out on purpose: its presence is what marks the marathon plugin installed.
+  const marathonWritten = []; // the modules this install actually wrote, so uninstall removes exactly those
   for (const f of (await fs.readdir(MARATHON_LIB_DIR)).filter(f => f.endsWith('.js') && f !== 'cli.js').sort()) {
-    plan.push([path.join(claudeDir, 'helpers', 'marathon', f), await fs.readFile(path.join(MARATHON_LIB_DIR, f), 'utf-8'), true]);
+    const dest = path.join(claudeDir, 'helpers', 'marathon', f);
+    plan.push([dest, await fs.readFile(path.join(MARATHON_LIB_DIR, f), 'utf-8'), true]);
+    if (!(await exists(dest))) marathonWritten.push(f);
   }
+  // Written last among the bbs helpers' companions: an earlier manifest (a re-install) keeps the earlier list.
+  const manifest = path.join(claudeDir, 'helpers', 'bbs', MANIFEST);
+  let prior = [];
+  try { prior = JSON.parse(await fs.readFile(manifest, 'utf-8')); } catch {}
+  const record = [...new Set([...(Array.isArray(prior) ? prior : []), ...marathonWritten])].sort();
+  plan.push([manifest, JSON.stringify(record, null, 2) + '\n', false]);
 
   // Project config and the run-data folder marker are written once, never overwritten
   plan.push([path.join(claudeDir, 'bbs.json'), JSON.stringify(DEFAULT_CONFIG, null, 2) + '\n', true]);
@@ -86,8 +96,19 @@ export async function isInstalled(claudeDir) {
 
 /**
  * Remove the helpers only. Run data under .claude/bbs/ and bbs.json are the user's and stay.
+ * The marathon modules bbs copied (listed in helpers/bbs/.marathon-files.json) are removed too, but only
+ * when the marathon plugin is not installed (helpers/marathon/cli.js absent); otherwise they are marathon's.
  */
 export async function uninstall(claudeDir) {
+  const mDir = path.join(claudeDir, 'helpers', 'marathon');
+  if (!(await exists(path.join(mDir, 'cli.js')))) {
+    let listed = [];
+    try { listed = JSON.parse(await fs.readFile(path.join(claudeDir, 'helpers', 'bbs', MANIFEST), 'utf-8')); } catch {}
+    for (const f of Array.isArray(listed) ? listed : []) {
+      if (typeof f === 'string' && /^[\w.-]+\.js$/.test(f)) { try { await fs.rm(path.join(mDir, f)); } catch {} }
+    }
+    try { await fs.rmdir(mDir); } catch {} // only when now empty
+  }
   try { await fs.rm(path.join(claudeDir, 'helpers', 'bbs'), { recursive: true }); } catch {}
 }
 

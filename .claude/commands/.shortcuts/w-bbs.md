@@ -70,7 +70,7 @@ If invoked with `--resume` or `--status`, skip to those sections at the bottom.
 
 `node .claude/helpers/bbs/cli.js intake <source>` (a pasted text goes in a file: `cli.js intake - --paste-file <path>`). It classifies the source as repo, url, local or paste, computes the identity, creates `.claude/bbs/runs/<run-id>/` and checks the registry.
 
-If the JSON says `known: true`, say which run it reuses (`reuse_from`) and jump to CHECKPOINT 5. The same source at the same identity is never audited twice.
+If the JSON says `known: true`, the same source at the same identity is never audited twice. Run `node .claude/helpers/bbs/cli.js report --run <reuse_from>` and `node .claude/helpers/bbs/cli.js status --run <reuse_from>`, print both, say "this source at this identity was audited in run <reuse_from>; nothing is re-audited", and **STOP**: no fetch, no marathon run. The new run stays as a record. (A repository or URL identity is only known after the fetch: CHECKPOINT 1 does the same check.)
 
 **REQUIRED OUTPUT:** run id, type, identity, known or new.
 
@@ -86,15 +86,17 @@ If the JSON says `known: true`, say which run it reuses (`reuse_from`) and jump 
 
 On a non-zero exit stop: exit 2 is refused (say which guard), exit 1 is a failure that stored nothing new.
 
+If the fetch JSON says `known: true` (a repository or URL source is only recognised once its identity is computed), do exactly what CHECKPOINT 0 says for a known source with this `reuse_from`: `cli.js report --run <reuse_from>`, `cli.js status --run <reuse_from>`, print both, say "this source at this identity was audited in run <reuse_from>; nothing is re-audited", and **STOP**.
+
 **AUTO-PROCEED.**
 
 ---
 
 ### ⛔ CHECKPOINT 2: Inventory
 
-1. `node .claude/helpers/bbs/cli.js inventory --brief` prints the helper brief: what to read, the JSON shape, the 12-power cap.
+1. `node .claude/helpers/bbs/cli.js inventory --brief [--run <id>]` prints the helper brief: what to read, the JSON shape, the 12-power cap.
 2. Spawn inventory helpers with `model: haiku` (one per ≤ 15 files or per page), each with the brief, the file list and a token budget. They return **JSON only**.
-3. Concatenate their powers into one file and run `node .claude/helpers/bbs/cli.js inventory --from <file>`. A schema miss exits 1 with the field; re-ask that helper once with the error.
+3. Concatenate their powers into one file and run `node .claude/helpers/bbs/cli.js inventory --from <file> [--run <id>]`. A schema miss exits 1 with the field; re-ask that helper once with the error.
 
 **REQUIRED OUTPUT:** `found`, `not_inventoried` (powers past the cap of 12 are named, not read).
 
@@ -104,9 +106,9 @@ On a non-zero exit stop: exit 2 is refused (say which guard), exit 1 is a failur
 
 ### ⛔ CHECKPOINT 3: Map
 
-1. `node .claude/helpers/bbs/cli.js map` indexes the installed harness (commands, skills, helpers, hooks, modules, scripts) and finds the 5 nearest tools per power. No model is involved.
-2. `node .claude/helpers/bbs/cli.js map --brief` prints the judging brief. Spawn one helper with `model: haiku` to judge each power's 5 candidates as `have`, `partial` or `missing` — **JSON only**.
-3. `node .claude/helpers/bbs/cli.js map --from <file>`. A judgment for a tool that was not a candidate is refused.
+1. `node .claude/helpers/bbs/cli.js map [--run <id>]` indexes the installed harness (commands, skills, helpers, hooks, modules, scripts) and finds the 5 nearest tools per power. No model is involved.
+2. `node .claude/helpers/bbs/cli.js map --brief [--run <id>]` prints the judging brief. Spawn one helper with `model: haiku` to judge each power's 5 candidates as `have`, `partial` or `missing` — **JSON only**.
+3. `node .claude/helpers/bbs/cli.js map --from <file> [--run <id>]`. A judgment for a tool that was not a candidate is refused.
 
 **REQUIRED OUTPUT:** `judged`, `remaining` (must be empty).
 
@@ -116,11 +118,11 @@ On a non-zero exit stop: exit 2 is refused (say which guard), exit 1 is a failur
 
 ### ⛔ CHECKPOINT 4: Verdict (HIL — the only approval)
 
-1. `node .claude/helpers/bbs/cli.js verdict` computes, per power, the legal verdicts, the default and the reasons from the licence policy and the sandbox check.
-2. For every power where `use` is still a candidate, spawn one probe helper with `model: sonnet` that reads the fetched source for hidden network calls and returns `clean`, `found` or `incomplete` with evidence. Record each: `node .claude/helpers/bbs/cli.js verdict --probe <power>=<clean|found|incomplete> --evidence "<text>"`. `found` and `incomplete` remove `use`.
-3. **Show the verdict table:** `node .claude/helpers/bbs/cli.js verdict --table`, printed inline.
-4. **Exactly one AskUserQuestion** — "Verdicts above. Approve the defaults, or change which?" Options: ["Approve the defaults", "Change some verdicts", "Skip everything"]. Collect any changes into a decisions file with one verdict per power.
-5. `node .claude/helpers/bbs/cli.js verdict --from <file>` records every decision as a label and, once all are decided, the registry row. An illegal verdict exits 2 (refused): show the reason, fix the file, rerun; do not ask a second question.
+1. `node .claude/helpers/bbs/cli.js verdict [--run <id>]` computes, per power, the legal verdicts, the default and the reasons from the licence policy and the sandbox check.
+2. For every power where `use` is still a candidate, spawn one probe helper with `model: sonnet` that reads the fetched source for hidden network calls and returns `clean`, `found` or `incomplete` with evidence. Record each: `node .claude/helpers/bbs/cli.js verdict --probe <power>=<clean|found|incomplete> --evidence "<text>" [--run <id>]`. `found` and `incomplete` remove `use`.
+3. **Show the verdict table:** `node .claude/helpers/bbs/cli.js verdict --table [--run <id>]`, printed inline.
+4. **Exactly one AskUserQuestion** — "Verdicts above. Approve as shown, or change which? To change some, pick the second option and answer it via Other with `<power>=<verdict>` pairs separated by spaces, for example `drift-monitor=skip log-tail=rebuild`." Options: ["Approve as shown (defaults)", "Approve with changes — I will type them", "Stop here (skip everything)"]. Build the decisions file from the answer: the table's defaults, with each typed pair overriding its power, or `skip` for every power on "Stop here". Its shape is `{ "<power>": "rebuild|use|buy|skip" }` (one verdict per power), written to a file and recorded with `cli.js verdict --from <file>`. No second question is ever asked: if the typed answer is unparsable (a power not in the table, a verdict not in the list), do not guess and do not decide — print the table again with the resume line (`/w-bbs --resume <run-id>`) and stop.
+5. `node .claude/helpers/bbs/cli.js verdict --from <file> [--run <id>]` records every decision as a label and, once all are decided, the registry row. An illegal verdict exits 2 (refused): show the reason, fix the file, rerun; do not ask a second question.
 
 **The four verdicts, in order of preference — rebuild, then use, then buy; skip is always permitted:**
 
@@ -139,8 +141,8 @@ On a machine without a sandbox `use` is removed from every row with the reason; 
 
 ### ⛔ CHECKPOINT 5: Hand-off
 
-1. `node .claude/helpers/bbs/cli.js handoff --marathon` writes one idea-only brief per approved power, a buy memo per `buy`, and creates a marathon run with a typed finish line (written before any build) and one queued stream per power. If the marathon helpers are absent it says so and exits 1: report that and stop.
-2. `node .claude/helpers/bbs/cli.js report` prints the one-line counts.
+1. `node .claude/helpers/bbs/cli.js handoff --marathon [--run <id>]` writes one idea-only brief per approved power, a buy memo per `buy`, and creates a marathon run with a typed finish line (written before any build) and one queued stream per power. If the marathon helpers are absent it says so and exits 1: report that and stop.
+2. `node .claude/helpers/bbs/cli.js report [--run <id>]` prints the one-line counts.
 3. **End with the resume line, exactly as the JSON gives it:** `/w-marathon --resume <id>`. The build starts only when the owner runs it.
 
 **REQUIRED OUTPUT:** the report line, the resume line, the memos for `buy`.
@@ -156,7 +158,8 @@ On a machine without a sandbox `use` is removed from every row with the reason; 
 ## `--resume <run-id>`
 
 1. `node .claude/helpers/bbs/cli.js status --next --run <run-id>` names the next verb. Run `cli.js status --run <run-id>` and read it.
-2. Continue at the CHECKPOINT that owns that verb. Do not repeat a finished phase; `done` means print the `report` line and the resume line.
+2. From here on append `--run <run-id>` to every `cli.js` verb; without it the verbs act on the ACTIVE run, which may be another intake.
+3. Continue at the CHECKPOINT that owns that verb. Do not repeat a finished phase; `done` means print the `report` line and the resume line.
 
 ## `--status`
 

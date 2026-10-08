@@ -73,6 +73,8 @@ describe('docs — README.md', () => {
     assert.match(section, /\.claude\/bbs\/registry\.jsonl/);
     assert.match(section, /node \.claude\/helpers\/bbs\/cli\.js/);
     for (const verb of ['`intake`', '`fetch`', '`inventory', '`map', '`verdict', '`handoff', '`status', '`report`']) assert.ok(section.includes(verb), `${verb} named`);
+    assert.match(section, /JSON on stdout, except `status`, `report` and the `--brief`\/`--table` views, which print text\./);
+    assert.ok(!/\. JSON on stdout; exit 1/.test(section), 'the old blanket JSON claim is gone');
     assert.match(section, /openqodex/i);
     assert.match(section, /never execute/i);
     assert.match(section, /sandbox/i);

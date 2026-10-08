@@ -112,3 +112,48 @@ describe('repo copy of the shortcuts is regenerated', () => {
     }
   });
 });
+
+describe('/w-bbs command — review r1 regressions', () => {
+  const c = () => commands['w-bbs'].content;
+  const section = (from, to) => { const a = c().indexOf(from); const b = c().indexOf(to, a + 1); assert.ok(a >= 0 && b > a, `${from}..${to}`); return c().slice(a, b); };
+
+  it('known source: CHECKPOINT 0 and CHECKPOINT 1 print the reused run\'s report and status and STOP; nothing is re-audited, no jump to the hand-off', () => {
+    for (const [from, to] of [['### ⛔ CHECKPOINT 0', '### ⛔ CHECKPOINT 1'], ['### ⛔ CHECKPOINT 1', '### ⛔ CHECKPOINT 2']]) {
+      const s = section(from, to);
+      assert.match(s, /`known`\s*(is|:)?\s*(true|`true`)|known: true/, `${from} checks known`);
+      assert.match(s, /cli\.js report --run <reuse_from>/);
+      assert.match(s, /cli\.js status --run <reuse_from>/);
+      assert.match(s, /this source at this identity was audited in run <reuse_from>; nothing is re-audited/);
+      assert.match(s, /STOP/);
+    }
+    assert.ok(!/jump to CHECKPOINT 5/.test(c()), 'a known source never jumps to the hand-off of an empty run');
+    assert.match(section('### ⛔ CHECKPOINT 0', '### ⛔ CHECKPOINT 1'), /no fetch/i);
+  });
+
+  it('--resume appends --run <run-id> to every cli.js verb from then on', () => {
+    const s = section('## `--resume <run-id>`', '## `--status`');
+    assert.match(s, /append `--run <run-id>` to every `cli\.js` verb/);
+    assert.match(s, /ACTIVE run, which may be another intake/);
+    for (const cp of ['CHECKPOINT 2', 'CHECKPOINT 3', 'CHECKPOINT 4', 'CHECKPOINT 5']) {
+      const i = c().indexOf(`### ⛔ ${cp}`);
+      const next = c().indexOf('### ⛔ CHECKPOINT', i + 5);
+      assert.match(c().slice(i, next), /\[--run <id>\]/, `${cp} shows [--run <id>]`);
+    }
+  });
+
+  it('the verdict question: three options, changes answered via Other as <power>=<verdict> pairs, the decisions JSON shape stated, never a second question', () => {
+    const s = section('### ⛔ CHECKPOINT 4', '**The four verdicts');
+    assert.match(s, /"Approve as shown \(defaults\)"/);
+    assert.match(s, /"Approve with changes — I will type them"/);
+    assert.match(s, /"Stop here \(skip everything\)"/);
+    assert.ok(!/Change some verdicts/.test(c()));
+    assert.match(s, /Other/);
+    assert.match(s, /<power>=<verdict>/);
+    assert.match(s, /separated by spaces/);
+    assert.match(s, /\{ "<power>": "rebuild\|use\|buy\|skip" \}/);
+    assert.match(s, /verdict --from <file>/);
+    assert.match(s, /unparsable/i);
+    assert.match(s, /print(s)? the table again with the resume line/i);
+    assert.match(s, /no second question/i);
+  });
+});

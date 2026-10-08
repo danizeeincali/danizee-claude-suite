@@ -106,6 +106,7 @@ program
       console.log(`  ${status.plugins.frontendDesign ? chalk.green('✓') : chalk.red('✗')} Frontend Design plugin`);
       console.log(`  ${status.plugins.dotShortcuts ? chalk.green('✓') : chalk.red('✗')} Workflow Shortcuts (/w-tdd-swarm, /w-swarm, /w-fix, etc.)`);
       console.log(`  ${status.plugins.marathon ? chalk.green('✓') : chalk.red('✗')} Marathon helpers + hooks (/w-marathon, /bc, /bcp)`);
+      console.log(`  ${status.plugins.bbs ? chalk.green('✓') : chalk.red('✗')} BBS helpers (/w-bbs, /bbs)`);
       console.log(`  ${status.plugins.agentCookbook ? chalk.green('✓') : chalk.dim('○')} Agent Cookbook (optional)`);
       console.log(`  ${status.plugins.pmShortcuts ? chalk.green('✓') : chalk.dim('○')} PM Module (optional, --with-pm)`);
 

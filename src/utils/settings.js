@@ -65,11 +65,6 @@ export function getDefaultSettings() {
 }
 
 /**
- * The default suite settings, evaluated once (installedAt is the import time; use getDefaultSettings() for a fresh stamp)
- */
-export const DEFAULT_SETTINGS = getDefaultSettings();
-
-/**
  * Get plugin-specific settings
  */
 export function getPluginSettings(pluginName) {

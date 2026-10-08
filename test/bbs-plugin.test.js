@@ -13,7 +13,7 @@ import { fileURLToPath } from 'url';
 import * as bbs from '../src/plugins/bbs.js';
 import { DEFAULT_CONFIG } from '../src/lib/bbs/config.js';
 import { DaniZeeSuiteInstaller } from '../src/installer.js';
-import { DEFAULT_SETTINGS } from '../src/utils/settings.js';
+import { getDefaultSettings } from '../src/utils/settings.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(__dirname);
@@ -97,9 +97,9 @@ describe('bbs plugin — installer wiring', () => {
   before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-installer-')); });
   after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
 
-  it('DEFAULT_SETTINGS allows the bbs helper CLI like the marathon one', () => {
-    assert.ok(DEFAULT_SETTINGS.permissions.allow.includes('Bash(node .claude/helpers/bbs/cli.js:*)'));
-    assert.ok(DEFAULT_SETTINGS.permissions.allow.includes('Bash(node .claude/helpers/marathon/cli.js:*)'));
+  it('the default settings allow the bbs helper CLI like the marathon one', () => {
+    assert.ok(getDefaultSettings().permissions.allow.includes('Bash(node .claude/helpers/bbs/cli.js:*)'));
+    assert.ok(getDefaultSettings().permissions.allow.includes('Bash(node .claude/helpers/marathon/cli.js:*)'));
   });
 
   it('init installs the bbs plugin next to marathon; check reports plugins.bbs; the dry-run report lists bbs', async () => {
@@ -124,5 +124,101 @@ describe('bbs plugin — installer wiring', () => {
     const installer = new DaniZeeSuiteInstaller({ path: dir, force: true, withoutCookbook: true });
     await installer.uninstall();
     assert.equal(await exists(path.join(dir, '.claude', 'helpers', 'bbs')), false);
+  });
+});
+
+describe('bbs plugin — review r1 regressions', () => {
+  const MLIB = path.join(ROOT, 'src', 'lib', 'marathon');
+  let dir, claudeDir, marker;
+  before(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-only-'));
+    claudeDir = path.join(dir, '.claude');
+    await fs.mkdir(path.join(claudeDir, 'helpers', 'marathon'), { recursive: true });
+    marker = (await fs.readFile(path.join(MLIB, 'gate.js'), 'utf-8')) + '\n// MARKER user copy\n';
+    await fs.writeFile(path.join(claudeDir, 'helpers', 'marathon', 'gate.js'), marker);
+  });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('bbs-only install: a pre-seeded marathon/gate.js is untouched, no marathon/cli.js, marathon not installed, the installed cli runs and handoff --marathon says the marathon helpers are absent', async () => {
+    const marathon = await import('../src/plugins/marathon.js');
+    await bbs.install(claudeDir, { targetDir: dir });
+    assert.equal(await fs.readFile(path.join(claudeDir, 'helpers', 'marathon', 'gate.js'), 'utf-8'), marker);
+    assert.equal(await exists(path.join(claudeDir, 'helpers', 'marathon', 'cli.js')), false);
+    assert.equal(await marathon.isInstalled(claudeDir), false);
+    assert.ok(await exists(path.join(claudeDir, 'helpers', 'marathon', 'config.js')), 'the absent modules were copied');
+    const cli = path.join(claudeDir, 'helpers', 'bbs', 'cli.js');
+    const nope = spawnSync(process.execPath, [cli, 'nope'], { cwd: dir, encoding: 'utf-8' });
+    assert.equal(nope.status, 1);
+    assert.match(nope.stderr, /usage: cli\.js/);
+    const FX = path.join(ROOT, 'test', 'fixtures', 'bbs');
+    const env = { ...process.env, BBS_NO_NETWORK: '1', BBS_SANDBOX: 'absent' };
+    const step = (args) => { const r = spawnSync(process.execPath, [cli, ...args], { cwd: dir, encoding: 'utf-8', env }); assert.equal(r.status, 0, `${args.join(' ')}: ${r.stderr}`); return r; };
+    step(['intake', path.join(FX, 'sample-source'), '--slug', 'x']);
+    step(['fetch']);
+    step(['inventory', '--from', path.join(FX, 'inventory.json')]);
+    step(['map']);
+    step(['map', '--from', path.join(FX, 'judgments.json')]);
+    step(['verdict']);
+    step(['verdict', '--from', path.join(FX, 'decisions.json')]);
+    const h = spawnSync(process.execPath, [cli, 'handoff', '--marathon'], { cwd: dir, encoding: 'utf-8', env });
+    assert.notEqual(h.status, 0);
+    assert.match(h.stderr + h.stdout, /marathon helpers/i);
+    assert.match(h.stderr + h.stdout, /absent|not installed|missing/i);
+  });
+
+  it('install records the marathon modules it copied in helpers/bbs/.marathon-files.json (and not the pre-existing one)', async () => {
+    const m = JSON.parse(await fs.readFile(path.join(claudeDir, 'helpers', 'bbs', '.marathon-files.json'), 'utf-8'));
+    const all = (await fs.readdir(MLIB)).filter(f => f.endsWith('.js') && f !== 'cli.js');
+    assert.ok(Array.isArray(m) && m.length > 0);
+    assert.ok(!m.includes('gate.js'), 'gate.js was the user\'s, bbs did not write it');
+    assert.ok(!m.includes('cli.js'));
+    assert.deepEqual([...m].sort(), all.filter(f => f !== 'gate.js').sort());
+  });
+
+  it('uninstall removes exactly the recorded marathon modules when marathon/cli.js is absent; the user\'s gate.js stays', async () => {
+    await bbs.uninstall(claudeDir);
+    assert.equal(await exists(path.join(claudeDir, 'helpers', 'bbs')), false);
+    assert.equal(await fs.readFile(path.join(claudeDir, 'helpers', 'marathon', 'gate.js'), 'utf-8'), marker);
+    assert.deepEqual(await fs.readdir(path.join(claudeDir, 'helpers', 'marathon')), ['gate.js']);
+  });
+
+  it('uninstall leaves the marathon modules alone when marathon/cli.js is present', async () => {
+    const d2 = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-both-'));
+    try {
+      const c2 = path.join(d2, '.claude');
+      await bbs.install(c2, { targetDir: d2 });
+      await fs.writeFile(path.join(c2, 'helpers', 'marathon', 'cli.js'), '// marathon cli\n');
+      const before = (await fs.readdir(path.join(c2, 'helpers', 'marathon'))).sort();
+      assert.ok(before.length > 2);
+      await bbs.uninstall(c2);
+      assert.deepEqual((await fs.readdir(path.join(c2, 'helpers', 'marathon'))).sort(), before);
+      assert.equal(await exists(path.join(c2, 'helpers', 'bbs')), false);
+    } finally { await fs.rm(d2, { recursive: true, force: true }); }
+  });
+
+  it('settings.js no longer exports an eagerly evaluated DEFAULT_SETTINGS', async () => {
+    const mod = await import('../src/utils/settings.js');
+    assert.equal('DEFAULT_SETTINGS' in mod, false);
+    assert.equal(typeof mod.getDefaultSettings, 'function');
+  });
+
+  it('check prints a BBS helpers line beside the Marathon one', async () => {
+    const d3 = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-check-'));
+    try {
+      await new DaniZeeSuiteInstaller({ path: d3, force: true, withoutCookbook: true }).install();
+      const r = spawnSync(process.execPath, [path.join(ROOT, 'bin', 'cli.js'), 'check', '--path', d3], { encoding: 'utf-8' });
+      assert.match(r.stdout, /✓ BBS helpers \(\/w-bbs, \/bbs\)/);
+      assert.ok(r.stdout.indexOf('Marathon helpers') < r.stdout.indexOf('BBS helpers'));
+    } finally { await fs.rm(d3, { recursive: true, force: true }); }
+  });
+
+  it('the repo\'s own committed .claude/helpers/bbs/*.js equal src/lib/bbs/*.js (dogfood, like marathon\'s), and .gitignore carries the bbs rules', async () => {
+    const libFiles = (await fs.readdir(LIB)).filter(f => f.endsWith('.js'));
+    assert.ok(libFiles.includes('cli.js'));
+    for (const f of libFiles) {
+      assert.equal(await fs.readFile(path.join(ROOT, '.claude', 'helpers', 'bbs', f), 'utf-8'), await fs.readFile(path.join(LIB, f), 'utf-8'), `${f} equals the library`);
+    }
+    const gi = (await fs.readFile(path.join(ROOT, '.gitignore'), 'utf-8')).split('\n');
+    for (const rule of ['.claude/bbs/ACTIVE', '.claude/bbs/runs/*/fetched/', '.claude/bbs/runs/*/map.lock', '.claude/bbs/runs/*/*.tmp']) assert.ok(gi.includes(rule), rule);
   });
 });

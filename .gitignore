@@ -41,3 +41,9 @@ ruvector.db
 
 # Marathon: machine-local pointer to the active run
 .claude/marathon/ACTIVE
+
+# BBS: fetched/ holds foreign source and is never committed; the rest is machine-local state (active-run pointer, lock, temp files)
+.claude/bbs/ACTIVE
+.claude/bbs/runs/*/fetched/
+.claude/bbs/runs/*/map.lock
+.claude/bbs/runs/*/*.tmp
