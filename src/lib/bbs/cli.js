@@ -247,7 +247,8 @@ const VERBS = {
             fail(`could not read ${flags.from}: ${err.message}`);
           }
         }
-        const result = await recordJudgments(projectDir, { run: id, input, now: () => new Date(), force: !!flags.force, cfg });
+        const label = flags.from === '-' ? '--from - (stdin)' : `--from ${flags.from}`;
+        const result = await recordJudgments(projectDir, { run: id, input, now: () => new Date(), force: !!flags.force, cfg, label });
         out(result);
       } else {
         // Build the map

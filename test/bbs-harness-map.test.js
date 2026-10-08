@@ -15,7 +15,8 @@ import {
   STOP_WORDS, KINDS, STATUSES, tokenize, idf, vectorize, cosine, buildIndex, matchPower, buildMap, mapBrief, recordJudgments
 } from '../src/lib/bbs/harness-map.js';
 import { intake } from '../src/lib/bbs/intake.js';
-import { writeInventory } from '../src/lib/bbs/inventory.js';
+import { writeInventory, parseJsonOnly } from '../src/lib/bbs/inventory.js';
+import { moveAsideStale } from '../src/lib/bbs/store.js';
 import { readJson } from '../src/lib/bbs/store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -211,7 +212,8 @@ describe('harness-map — buildMap, mapBrief, recordJudgments', () => {
     await assert.rejects(() => buildMap(dir, { run: r0.runId, now }), /inventory/);
     const r = await runWithPowers('m3', [power()]);
     await buildMap(dir, { run: r.runId, now });
-    await recordJudgments(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'partial' }), now });
+    const toolId = (await readJson(path.join(dir, '.claude', 'bbs', 'runs', r.runId, 'map.json'))).candidates['drift-monitor'][0].id;
+    await recordJudgments(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': { status: 'partial', tool: toolId, why: 'compares hashes, no alerting' } }), now });
     await assert.rejects(() => buildMap(dir, { run: r.runId, now }), /map\.json.*judg.*--force/);
     const out = await buildMap(dir, { run: r.runId, now, force: true });
     assert.equal(out.judgments_dropped, 1);
@@ -228,7 +230,12 @@ describe('harness-map — buildMap, mapBrief, recordJudgments', () => {
     assert.match(brief, /scripts\/check-drift\.sh/);
     assert.match(brief, /\bscript\b/);
     assert.match(brief, /have\|partial\|missing|have, partial or missing/);
-    assert.match(brief, /only (these|the) (five|5) candidates/i);
+    // the real candidate count from map.json, never a hard-coded five
+    const mapJson = await readJson(path.join(dir, '.claude', 'bbs', 'runs', r.runId, 'map.json'));
+    const n = mapJson.candidates['drift-monitor'].length;
+    assert.ok(n > 0 && n <= 5);
+    assert.match(brief, new RegExp(`Only these ${n} candidates`));
+    assert.ok(!/Only these 5 candidates/.test(brief) || n === 5);
     assert.match(brief, /JSON only/);
     assert.match(brief, /cli\.js map --from/);
     assert.match(brief, /"tool":/);
@@ -328,5 +335,228 @@ describe('harness-map — cli verb', () => {
     assert.match(pos.err, /unexpected argument "extra"/);
     const both = run(dir, ['map', '--brief', '--from', 'x']);
     assert.equal(both.code, 1);
+  });
+});
+
+// ---- review r1 regression tests ----------------------------------------------------------------
+
+const synthIndex = (rows) => ({ rows: rows.map(r => ({ kind: 'script', path: r.name, id: `script:${r.name}`, text: '', ...r })), byKind: {}, errors: [], project: '/x' });
+
+describe('harness-map r1 — name weight is exactly 3x a body token (single copy, boost 3)', () => {
+  it('a name-only candidate scores 3/sqrt(10) and a body-only candidate 1/sqrt(10), pinned to 3 decimals', () => {
+    const idx = synthIndex([{ name: 'a-row', tokens: ['zorbit'] }, { name: 'b-row', tokens: ['quasar'] }]);
+    const c = matchPower({ name: 'zorbit', what: '', idea: 'quasar' }, idx);
+    const nameOnly = c.find(x => x.name === 'a-row');
+    const bodyOnly = c.find(x => x.name === 'b-row');
+    assert.equal(nameOnly.score.toFixed(3), '0.949');
+    assert.equal(bodyOnly.score.toFixed(3), '0.316');
+  });
+  it('a name token that also occurs in the body is not tripled again: name 3 + body 1 = 4', () => {
+    const idx = synthIndex([{ name: 'a-row', tokens: ['zorbit'] }, { name: 'b-row', tokens: ['quasar'] }]);
+    const c = matchPower({ name: 'zorbit', what: 'zorbit', idea: 'quasar' }, idx);
+    // vector: zorbit 4*w, quasar 1*w -> cosine with a-row = 4/sqrt(17)
+    assert.equal(c.find(x => x.name === 'a-row').score.toFixed(3), (4 / Math.sqrt(17)).toFixed(3));
+  });
+});
+
+describe('harness-map r1 — shared fence-tolerant JSON parser', () => {
+  it('parseJsonOnly accepts a fence with a trailing newline, CRLF and ```JSON, and names the input in errors', () => {
+    assert.deepEqual(parseJsonOnly('```json\n{"a":1}\n```\n'), { a: 1 });
+    assert.deepEqual(parseJsonOnly('```json\r\n{"a":1}\r\n```\r\n'), { a: 1 });
+    assert.deepEqual(parseJsonOnly('  ```JSON\n{"a":1}\n```  \n'), { a: 1 });
+    assert.throws(() => parseJsonOnly('hello\nworld', { label: '--from x.json' }), (e) => /JSON only — --from x\.json is not JSON; got: "hello\\nworld"/.test(e.message) && !/\n/.test(e.message));
+    assert.throws(() => parseJsonOnly('  ', { label: '--from - (stdin)' }), /JSON only — --from - \(stdin\) is empty/);
+  });
+  it('recordJudgments uses it: fenced + CRLF input is recorded; a bad one names the label', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hfence-'));
+    try {
+      await makeHarness(dir);
+      const r = await intake(dir, '-', { stdin: 'a tool', now, slug: 'f1' });
+      await writeInventory(dir, { run: r.runId, input: JSON.stringify([power()]), now });
+      await buildMap(dir, { run: r.runId, now });
+      await assert.rejects(() => recordJudgments(dir, { run: r.runId, input: 'prose\r\nmore', now, label: '--from j.json' }), /JSON only — --from j\.json is not JSON; got: "prose\\r\\nmore"/);
+      const out = await recordJudgments(dir, { run: r.runId, input: '```JSON\r\n{"drift-monitor":"missing"}\r\n```\r\n', now });
+      assert.equal(out.judged, 1);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe('harness-map r1 — judgments, stale files, brief', () => {
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hr1-')); await makeHarness(dir); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+  async function mk(slug, powers = [power()]) {
+    const r = await intake(dir, '-', { stdin: 'a tool', now, slug });
+    await writeInventory(dir, { run: r.runId, input: JSON.stringify(powers), now });
+    await buildMap(dir, { run: r.runId, now });
+    return { r, runDir: path.join(dir, '.claude', 'bbs', 'runs', r.runId) };
+  }
+
+  it('a bare "have" or "partial" is refused naming {status, tool, why}; a bare "missing" is accepted', async () => {
+    const { r } = await mk('r1a');
+    for (const s of ['have', 'partial']) {
+      await assert.rejects(() => recordJudgments(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': s }), now }),
+        new RegExp(`drift-monitor: status "${s}" needs \\{status, tool, why\\} naming one of the candidates`));
+    }
+    const ok = await recordJudgments(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'missing' }), now });
+    assert.equal(ok.judged, 1);
+  });
+
+  it('map --force and record --force move verdicts.json and handoff.json aside and report stale_moved', async () => {
+    const { r, runDir } = await mk('r1b');
+    await recordJudgments(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'missing' }), now });
+    await fs.writeFile(path.join(runDir, 'verdicts.json'), JSON.stringify({ decisions: { 'drift-monitor': 'skip' } }));
+    await fs.writeFile(path.join(runDir, 'handoff.json'), JSON.stringify({ marathonRun: 'x' }));
+    const rebuilt = await buildMap(dir, { run: r.runId, now, force: true });
+    assert.deepEqual(rebuilt.stale_moved, ['verdicts.json', 'handoff.json']);
+    let files = await fs.readdir(runDir);
+    assert.ok(files.some(f => /^verdicts\.json\.stale-/.test(f)) && files.some(f => /^handoff\.json\.stale-/.test(f)));
+    assert.ok(!files.includes('verdicts.json') && !files.includes('handoff.json'));
+    const j = await recordJudgments(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'missing' }), now });
+    assert.deepEqual(j.stale_moved, []);
+    assert.equal(j.next, 'verdict');
+    // record --force also moves them
+    await fs.writeFile(path.join(runDir, 'verdicts.json'), JSON.stringify({ decisions: { 'drift-monitor': 'skip' } }));
+    const f = await recordJudgments(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'missing' }), now, force: true });
+    assert.deepEqual(f.stale_moved, ['verdicts.json']);
+    files = await fs.readdir(runDir);
+    assert.ok(!files.includes('verdicts.json'));
+    assert.equal(f.next, 'verdict');
+  });
+
+  it('moveAsideStale claims distinct stale names, returns the moved names and restores on a partial failure', async () => {
+    const d = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hstale-'));
+    try {
+      await fs.writeFile(path.join(d, 'a.json'), '1');
+      await fs.writeFile(path.join(d, 'b.json'), '2');
+      let calls = 0;
+      const rename = async (from, to) => { if (++calls === 2) throw Object.assign(new Error('disk says no'), { code: 'EIO' }); return fs.rename(from, to); };
+      await assert.rejects(() => moveAsideStale(d, ['a.json', 'b.json', 'c.json'], now, { rename }), /disk says no.*stale_moved so far: \[a\.json\].*restored: \[a\.json\]/);
+      assert.equal(await fs.readFile(path.join(d, 'a.json'), 'utf-8'), '1');
+      const moved = await moveAsideStale(d, ['a.json', 'b.json', 'c.json'], now);
+      assert.deepEqual([...moved], ['a.json', 'b.json']);
+      assert.ok((await fs.readdir(d)).filter(f => f.includes('.stale-')).length >= 2);
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+
+  it('the brief states the real candidate count; zero candidates says answer missing', async () => {
+    const { r } = await mk('r1c', [power(), power({ name: 'zzqq', what: 'qqzz', idea: 'zzzz qqqq' })]);
+    const brief = await mapBrief(dir, { run: r.runId });
+    const map = await readJson(path.join(dir, '.claude', 'bbs', 'runs', r.runId, 'map.json'));
+    const n = map.candidates['drift-monitor'].length;
+    assert.match(brief, new RegExp(`Only these ${n} candidates`));
+    assert.match(brief, /no candidates — answer missing \(tool null\)/);
+    assert.ok(!/Only these 5 candidates[\s\S]*zzqq/.test(brief.split('## zzqq')[1] ?? ''));
+  });
+});
+
+describe('harness-map r1 — index scope, loud skips, bounded walk', () => {
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hscope-')); await makeHarness(dir); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+  const w = async (rel, text) => { const p = path.join(dir, rel); await fs.mkdir(path.dirname(p), { recursive: true }); await fs.writeFile(p, text); };
+
+  it('skills are exactly .claude/skills/*/SKILL.md; hooks exactly .claude/hooks/*.sh; plugins exactly src/plugins/*.js; vendor dirs are skipped', async () => {
+    await w('.claude/skills/x/references/SKILL.md', '# nested');
+    await w('.claude/skills/x/MYSKILL.md', '# my');
+    await w('.claude/hooks/lib/inner.sh', '# inner');
+    await w('src/plugins/deep/inner.js', '// inner');
+    await w('scripts/vendor/lib.sh', '# vendored');
+    await w('scripts/deep/ok.sh', '# kept');
+    const paths = (await buildIndex(dir)).rows.map(r => r.path);
+    for (const bad of ['.claude/skills/x/references/SKILL.md', '.claude/skills/x/MYSKILL.md', '.claude/hooks/lib/inner.sh', 'src/plugins/deep/inner.js', 'scripts/vendor/lib.sh']) {
+      assert.ok(!paths.includes(bad), `${bad} must not be indexed`);
+    }
+    assert.ok(paths.includes('scripts/deep/ok.sh'), 'scripts stay recursive');
+    assert.ok(paths.includes('.claude/hooks/marathon-precompact.sh'));
+    assert.ok(paths.includes('src/plugins/marathon.js'));
+  });
+
+  it('an unparseable package.json is reported as EJSON', async () => {
+    const d = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hpkg-'));
+    try {
+      await fs.mkdir(path.join(d, '.claude', 'commands'), { recursive: true });
+      await fs.writeFile(path.join(d, '.claude', 'commands', 'one.md'), '# one');
+      await fs.writeFile(path.join(d, 'package.json'), '{ not json');
+      const idx = await buildIndex(d);
+      assert.ok(idx.errors.some(e => e.path === 'package.json' && e.code === 'EJSON'));
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+
+  it('symlinks under index roots are skipped and reported as SYMLINK (file and directory)', async () => {
+    await w('real/target.md', '# target');
+    await fs.symlink(path.join(dir, 'real', 'target.md'), path.join(dir, '.claude', 'commands', 'linked.md'));
+    await fs.symlink(path.join(dir, 'real'), path.join(dir, '.claude', 'commands', 'linkdir'));
+    const idx = await buildIndex(dir);
+    assert.ok(!idx.rows.some(r => r.path.includes('linked.md') || r.path.includes('linkdir')));
+    assert.ok(idx.errors.some(e => e.path === '.claude/commands/linked.md' && e.code === 'SYMLINK'));
+    assert.ok(idx.errors.some(e => e.path === '.claude/commands/linkdir' && e.code === 'SYMLINK'));
+  });
+
+  it('only a bounded prefix of each file is read: a 500 KiB first line yields text under 70 KiB; the cap per kind is recorded', async () => {
+    await w('scripts/huge.sh', 'word '.repeat(100000) + '\nsecond line\n');
+    const idx = await buildIndex(dir);
+    const huge = idx.rows.find(r => r.path === 'scripts/huge.sh');
+    assert.ok(huge.text.length < 70 * 1024, `text was ${huge.text.length}`);
+    const capped = await buildIndex(dir, { maxPerKind: 1 });
+    assert.equal(capped.rows.filter(r => r.kind === 'command').length, 1);
+    assert.equal(capped.capped.command, 1);
+    assert.deepEqual(Object.keys(idx.capped), []);
+  });
+});
+
+describe('harness-map r1 — cli: --from <file>, fenced file, map --force', () => {
+  let dir;
+  function run(cwd, args, input) {
+    const r = spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: 'utf-8', input });
+    let json = null;
+    try { json = JSON.parse(r.stdout); } catch {}
+    return { code: r.status, out: r.stdout, err: r.stderr, json };
+  }
+  before(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hcli2-'));
+    await makeHarness(dir);
+    spawnSync('git', ['init', '-q', '.'], { cwd: dir });
+  });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('--from <file> reads a fenced file with a trailing newline; a bad file names the path; a bare have is refused; map --force after verdicts returns to verdict', async () => {
+    run(dir, ['intake', '-', '--slug', 'c2'], 'a tool');
+    assert.equal(run(dir, ['inventory', '--from', '-'], JSON.stringify([power()])).code, 0);
+    assert.equal(run(dir, ['map']).code, 0);
+    const bad = path.join(dir, 'bad.txt');
+    await fs.writeFile(bad, 'nope\r\n');
+    const b = run(dir, ['map', '--from', bad]);
+    assert.equal(b.code, 1);
+    assert.ok(b.err.includes(`--from ${bad} is not JSON; got: "nope"`), b.err);
+    const stdinBad = run(dir, ['map', '--from', '-'], 'prose');
+    assert.match(stdinBad.err, /--from - \(stdin\) is not JSON/);
+    const bare = run(dir, ['map', '--from', '-'], JSON.stringify({ 'drift-monitor': 'have' }));
+    assert.equal(bare.code, 1);
+    assert.match(bare.err, /needs \{status, tool, why\}/);
+    const good = path.join(dir, 'good.json');
+    await fs.writeFile(good, '```json\n{"drift-monitor":"missing"}\n```\n');
+    const j = run(dir, ['map', '--from', good]);
+    assert.equal(j.code, 0, j.err);
+    assert.equal(j.json.next, 'verdict');
+    const runId = (await fs.readdir(path.join(dir, '.claude', 'bbs', 'runs')))[0];
+    const runDir = path.join(dir, '.claude', 'bbs', 'runs', runId);
+    await fs.writeFile(path.join(runDir, 'verdicts.json'), JSON.stringify({ decisions: { 'drift-monitor': 'skip' } }));
+    assert.equal(run(dir, ['status', '--next']).out.trim(), 'handoff');
+    const f = run(dir, ['map', '--force']);
+    assert.equal(f.code, 0, f.err);
+    assert.deepEqual(f.json.stale_moved, ['verdicts.json']);
+    assert.equal(run(dir, ['map', '--from', good]).code, 0);
+    assert.equal(run(dir, ['status', '--next']).out.trim(), 'verdict');
+    assert.ok((await fs.readdir(runDir)).some(n => n.startsWith('verdicts.json.stale-')));
+  });
+
+  it('a symlinked command file is reported in harness-index errors path via map output', async () => {
+    await fs.symlink(path.join(dir, 'package.json'), path.join(dir, '.claude', 'commands', 'pk.md'));
+    const runId = (await fs.readdir(path.join(dir, '.claude', 'bbs', 'runs')))[0];
+    const m = run(dir, ['map', '--force']);
+    assert.equal(m.code, 0, m.err);
+    const idx = await readJson(path.join(dir, '.claude', 'bbs', 'runs', runId, 'harness-index.json'));
+    assert.ok(idx.errors.some(e => e.path === '.claude/commands/pk.md' && e.code === 'SYMLINK'));
   });
 });

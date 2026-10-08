@@ -6,9 +6,10 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { DEFAULT_CONFIG } from './config.js';
-import { runDir as runDirOf, readJson, writeJson, writeTextAtomic } from './store.js';
+import { runDir as runDirOf, readJson, writeJson, moveAsideStale } from './store.js';
 import { RUN_ID, invalidRunId } from './intake.js';
-import { loadState, nextStep, renderStatusSafe } from './status.js';
+import { SKIP_DIRS, parseJsonOnly } from './inventory.js';
+import { renderStatusSafe } from './status.js';
 
 export const STOP_WORDS = new Set([
   'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'with', 'by',
@@ -100,167 +101,169 @@ export function cosine(a, b) {
   return dotProduct / denom;
 }
 
+export const PREFIX_BYTES = 64 * 1024;
+export const MAX_PER_KIND = 2000;
+const STALE_ON_MAP_FORCE = ['verdicts.json', 'handoff.json'];
+
+/** Read at most PREFIX_BYTES of a file (bounded, via a FileHandle). */
+async function readPrefix(filePath) {
+  const fh = await fs.open(filePath, 'r');
+  try {
+    const buf = Buffer.alloc(PREFIX_BYTES);
+    const { bytesRead } = await fh.read(buf, 0, PREFIX_BYTES, 0);
+    return buf.toString('utf-8', 0, bytesRead);
+  } finally {
+    await fh.close();
+  }
+}
+
 /**
  * Index the harness: commands, skills, helpers, hooks, modules, and scripts.
- * Returns { rows, byKind, errors, project } sorted by id; throws if empty.
+ * Scope: skills exactly .claude/skills/<dir>/SKILL.md; hooks exactly .claude/hooks/*.sh; plugins exactly src/plugins/*.js;
+ * commands, helpers, src/lib and scripts recursive. SKIP_DIRS and symlinks are skipped (symlinks are reported).
+ * Only the first 64 KiB of a file is read; at most maxPerKind rows per kind (the cap hit is recorded in `capped`).
+ * Returns { rows, byKind, errors, capped, project } sorted by id; throws if empty.
  */
-export async function buildIndex(projectDir, { maxLines = 80 } = {}) {
+export async function buildIndex(projectDir, { maxLines = 80, maxPerKind = MAX_PER_KIND } = {}) {
   const rows = [];
   const byKind = {};
   const errors = [];
+  const capped = {};
+  const rel = (p) => path.relative(projectDir, p).split(path.sep).join('/');
 
-  // Helper to read a file safely
-  const readFileSafe = async (filePath) => {
+  // List a directory: files matching `accept(name)` (and, when `recursive`, files in subdirectories).
+  // `dirFilter(name)` limits which subdirectories are entered. Entries are sorted so the cap is deterministic.
+  const listFiles = async (dir, { recursive, accept, subdirs }) => {
+    let entries;
     try {
-      return await fs.readFile(filePath, 'utf-8');
+      entries = await fs.readdir(dir, { withFileTypes: true });
     } catch (err) {
-      errors.push({ path: path.relative(projectDir, filePath), code: err.code });
-      return null;
+      if (err.code === 'ENOENT' || err.code === 'ENOTDIR') return { found: [], sub: [] };
+      errors.push({ path: rel(dir), code: err.code });
+      return { found: [], sub: [] };
     }
-  };
-
-  // Helper to walk a directory
-  const walk = async (dir, processFile) => {
-    try {
-      const entries = await fs.readdir(dir, { withFileTypes: true });
-      for (const ent of entries) {
-        if (ent.name === 'node_modules' || ent.name === '.git') continue;
-        const fullPath = path.join(dir, ent.name);
-        if (ent.isDirectory()) {
-          await walk(fullPath, processFile);
-        } else if (ent.isFile()) {
-          await processFile(fullPath);
-        }
+    entries.sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0));
+    const found = [];
+    const sub = [];
+    for (const ent of entries) {
+      const full = path.join(dir, ent.name);
+      if (ent.isSymbolicLink()) { errors.push({ path: rel(full), code: 'SYMLINK' }); continue; }
+      if (ent.isDirectory()) {
+        if (ent.name === 'node_modules' || ent.name === '.git' || SKIP_DIRS.has(ent.name)) continue;
+        if (recursive || subdirs) sub.push(full);
+      } else if (ent.isFile() && accept(ent.name)) {
+        found.push(full);
       }
-    } catch (err) {
-      if (err.code !== 'ENOENT') throw err;
     }
+    return { found, sub };
   };
 
-  // Commands: .claude/commands/**/*.md
-  await walk(path.join(projectDir, '.claude', 'commands'), async (filePath) => {
-    if (!filePath.endsWith('.md')) return;
-    const relPath = path.relative(projectDir, filePath);
-    const content = await readFileSafe(filePath);
-    if (content === null) return;
-    const name = path.basename(filePath, '.md');
-    const lines = content.split('\n').slice(0, maxLines);
-    const text = (name + '\n' + lines.join('\n')).toLowerCase();
-    const tokens = tokenize(text);
-    rows.push({ id: `command:${relPath}`, kind: 'command', name, path: relPath, text, tokens });
-  });
+  // Collect file paths for one kind, depth-first in sorted order, stopping once the cap is reached.
+  const collect = async (kind, root, opts) => {
+    const out = [];
+    const visit = async (dir) => {
+      const listed = await listFiles(dir, opts);
+      for (const f of listed.found) out.push(f);
+      if (out.length > maxPerKind) return;
+      for (const d of listed.sub) {
+        if (out.length > maxPerKind) return;
+        await visit(d);
+      }
+    };
+    await visit(root);
+    out.sort();
+    if (out.length > maxPerKind) { capped[kind] = maxPerKind; out.length = maxPerKind; }
+    return out;
+  };
 
-  // Skills: .claude/skills/*/SKILL.md
-  await walk(path.join(projectDir, '.claude', 'skills'), async (filePath) => {
-    if (!filePath.endsWith('SKILL.md')) return;
-    const relPath = path.relative(projectDir, filePath);
-    const parentDir = path.dirname(filePath);
-    const name = path.basename(parentDir);
-    const content = await readFileSafe(filePath);
-    if (content === null) return;
-    const lines = content.split('\n').slice(0, maxLines);
-    const text = (name + '\n' + lines.join('\n')).toLowerCase();
-    const tokens = tokenize(text);
-    rows.push({ id: `skill:${relPath}`, kind: 'skill', name, path: relPath, text, tokens });
-  });
-
-  // Helpers: .claude/helpers/**/*.js
-  await walk(path.join(projectDir, '.claude', 'helpers'), async (filePath) => {
-    if (!filePath.endsWith('.js')) return;
-    const relPath = path.relative(projectDir, filePath);
-    const name = path.basename(filePath, '.js');
-    const content = await readFileSafe(filePath);
-    if (content === null) return;
-    const lines = content.split('\n').slice(0, maxLines);
-    const text = (name + '\n' + lines.join('\n')).toLowerCase();
-    const tokens = tokenize(text);
-    rows.push({ id: `helper:${relPath}`, kind: 'helper', name, path: relPath, text, tokens });
-  });
-
-  // Hooks: .claude/hooks/*.sh
-  await walk(path.join(projectDir, '.claude', 'hooks'), async (filePath) => {
-    if (!filePath.endsWith('.sh')) return;
-    const relPath = path.relative(projectDir, filePath);
-    const name = path.basename(filePath, '.sh');
-    const content = await readFileSafe(filePath);
-    if (content === null) return;
-    const lines = content.split('\n').slice(0, maxLines);
-    const text = (name + '\n' + lines.join('\n')).toLowerCase();
-    const tokens = tokenize(text);
-    rows.push({ id: `hook:${relPath}`, kind: 'hook', name, path: relPath, text, tokens });
-  });
-
-  // Modules: src/lib/**/*.js and src/plugins/**/*.js
-  for (const srcDir of [path.join(projectDir, 'src', 'lib'), path.join(projectDir, 'src', 'plugins')]) {
-    await walk(srcDir, async (filePath) => {
-      if (!filePath.endsWith('.js')) return;
-      const relPath = path.relative(projectDir, filePath);
-      const name = path.basename(filePath, '.js');
-      const content = await readFileSafe(filePath);
-      if (content === null) return;
+  const addRows = async (kind, files, nameOf) => {
+    for (let i = 0; i < files.length; i += 64) await Promise.all(files.slice(i, i + 64).map(async (filePath) => {
+      let content;
+      try {
+        content = await readPrefix(filePath);
+      } catch (err) {
+        errors.push({ path: rel(filePath), code: err.code });
+        return;
+      }
+      const name = nameOf(filePath);
+      const relPath = rel(filePath);
       const lines = content.split('\n').slice(0, maxLines);
       const text = (name + '\n' + lines.join('\n')).toLowerCase();
-      const tokens = tokenize(text);
-      rows.push({ id: `module:${relPath}`, kind: 'module', name, path: relPath, text, tokens });
-    });
+      rows.push({ id: `${kind}:${relPath}`, kind, name, path: relPath, text, tokens: tokenize(text) });
+    }));
+  };
+
+  const P = (...parts) => path.join(projectDir, ...parts);
+  const any = () => true;
+
+  await addRows('command', await collect('command', P('.claude', 'commands'), { recursive: true, accept: n => n.endsWith('.md') }), f => path.basename(f, '.md'));
+
+  // Skills: exactly .claude/skills/<dir>/SKILL.md
+  {
+    const skillsRoot = P('.claude', 'skills');
+    const top = await listFiles(skillsRoot, { recursive: false, subdirs: true, accept: () => false });
+    const files = [];
+    for (const d of top.sub ?? []) {
+      const inner = await listFiles(d, { recursive: false, subdirs: false, accept: n => n === 'SKILL.md' });
+      files.push(...(inner.found ?? []));
+    }
+    files.sort();
+    if (files.length > maxPerKind) { capped.skill = maxPerKind; files.length = maxPerKind; }
+    await addRows('skill', files, f => path.basename(path.dirname(f)));
   }
 
-  // Scripts: scripts/** (files) and package.json scripts
-  await walk(path.join(projectDir, 'scripts'), async (filePath) => {
-    const relPath = path.relative(projectDir, filePath);
-    const name = path.basename(filePath);
-    const content = await readFileSafe(filePath);
-    if (content === null) return;
-    const lines = content.split('\n').slice(0, maxLines);
-    const text = (name + '\n' + lines.join('\n')).toLowerCase();
-    const tokens = tokenize(text);
-    rows.push({ id: `script:${relPath}`, kind: 'script', name, path: relPath, text, tokens });
-  });
+  await addRows('helper', await collect('helper', P('.claude', 'helpers'), { recursive: true, accept: n => n.endsWith('.js') }), f => path.basename(f, '.js'));
+  await addRows('hook', await collect('hook', P('.claude', 'hooks'), { recursive: false, accept: n => n.endsWith('.sh') }), f => path.basename(f, '.sh'));
+
+  // Modules: src/lib/** (recursive) and src/plugins/*.js (depth 1), capped together
+  {
+    const lib = await collect('module', P('src', 'lib'), { recursive: true, accept: n => n.endsWith('.js') });
+    const plugins = await collect('module', P('src', 'plugins'), { recursive: false, accept: n => n.endsWith('.js') });
+    const files = [...lib, ...plugins].sort();
+    if (files.length > maxPerKind) { capped.module = maxPerKind; files.length = maxPerKind; }
+    await addRows('module', files, f => path.basename(f, '.js'));
+  }
+
+  await addRows('script', await collect('script', P('scripts'), { recursive: true, accept: any }), f => path.basename(f));
 
   // package.json scripts
-  const pkgJsonPath = path.join(projectDir, 'package.json');
-  const pkgContent = await readFileSafe(pkgJsonPath);
+  let pkgContent = null;
+  try {
+    pkgContent = await fs.readFile(P('package.json'), 'utf-8');
+  } catch (err) {
+    if (err.code !== 'ENOENT') errors.push({ path: 'package.json', code: err.code });
+  }
   if (pkgContent !== null) {
     try {
       const pkg = JSON.parse(pkgContent);
       if (pkg.scripts && typeof pkg.scripts === 'object') {
         for (const [scriptName, scriptCmd] of Object.entries(pkg.scripts)) {
           const text = (scriptName + '\n' + scriptCmd).toLowerCase();
-          const tokens = tokenize(text);
-          rows.push({
-            id: `script:package.json#${scriptName}`,
-            kind: 'script',
-            name: scriptName,
-            path: 'package.json',
-            text,
-            tokens
-          });
+          rows.push({ id: `script:package.json#${scriptName}`, kind: 'script', name: scriptName, path: 'package.json', text, tokens: tokenize(text) });
         }
       }
     } catch {
-      // Ignore parsing errors in package.json
+      errors.push({ path: 'package.json', code: 'EJSON' });
     }
   }
 
-  // Sort by id
   rows.sort((a, b) => a.id.localeCompare(b.id));
+  errors.sort((a, b) => a.path.localeCompare(b.path));
 
-  // Count by kind
   for (const row of rows) {
     byKind[row.kind] = (byKind[row.kind] ?? 0) + 1;
   }
 
-  // Validate: must have at least one row
   if (rows.length === 0) {
     throw new Error('harness index is empty — run from the project root (no commands, skills, helpers, hooks, modules or scripts found)');
   }
 
-  return { rows, byKind, errors, project: projectDir };
+  return { rows, byKind, errors, capped, project: projectDir };
 }
 
 /**
  * Match a power to candidates in an index by IDF-weighted cosine similarity.
- * The power name counts three times; idea and what count once each.
+ * The power name counts 3× (one copy, boost 3); idea and what count once each.
  * Returns at most k candidates: [{ id, kind, name, path, score }], sorted by score desc then name asc.
  */
 export function matchPower(power, index, { k = 5 } = {}) {
@@ -271,32 +274,22 @@ export function matchPower(power, index, { k = 5 } = {}) {
     throw new Error('k must be a positive integer');
   }
 
-  // Tokenize the power: name ×3 + what + idea
-  const allTokens = [
-    ...tokenize(power.name),
-    ...tokenize(power.name),
-    ...tokenize(power.name),
-    ...tokenize(power.what),
-    ...tokenize(power.idea)
-  ];
+  // One copy of the name tokens, boosted 3×; what and idea once each. A name token weighs exactly 3× a body token.
+  const nameTokens = tokenize(power.name);
+  const bodyTokens = [...tokenize(power.what), ...tokenize(power.idea)];
 
-  if (allTokens.length === 0) {
-    // Power shares no tokens with harness
+  if (nameTokens.length + bodyTokens.length === 0) {
     return [];
   }
 
   // Build IDF over the index rows' tokens
-  const docTokens = index.rows.map(r => r.tokens);
-  const idfMap = idf(docTokens);
+  const idfMap = idf(index.rows.map(r => r.tokens));
 
-  // Create a boost map: name tokens get 3×
-  const boost = new Map();
-  for (const token of tokenize(power.name)) {
-    boost.set(token, 3);
+  const nameBoost = new Map(nameTokens.map(t => [t, 3]));
+  const powerVec = vectorize(bodyTokens, idfMap);
+  for (const [token, val] of vectorize(nameTokens, idfMap, { boost: nameBoost })) {
+    powerVec.set(token, (powerVec.get(token) ?? 0) + val);
   }
-
-  // Vectorize the power
-  const powerVec = vectorize(allTokens, idfMap, { boost });
 
   // Score each candidate
   const candidates = [];
@@ -353,42 +346,39 @@ export async function buildMap(projectDir, { run, now, force = false, cfg = DEFA
   const ts = now().toISOString();
   const source = await readJson(path.join(runDirPath, 'source.json'));
 
-  // Write harness-index.json (without text/tokens)
-  const harness = {
-    project: projectDir,
-    ts,
-    byKind: index.byKind,
-    rows: index.rows.map(r => ({ id: r.id, kind: r.kind, name: r.name, path: r.path }))
-  };
-  await writeJson(path.join(runDirPath, 'harness-index.json'), harness);
-
   // Build candidates for each power
   const candidates = {};
   for (const power of powers.powers) {
     candidates[power.name] = matchPower(power, index, { k: 5 });
   }
 
-  // Count existing judgments to report how many are dropped
-  let judgmentsCounted = 0;
-  if (existingMap && existingMap.judgments) {
-    judgmentsCounted = Object.keys(existingMap.judgments).length;
+  const judgmentsCounted = existingMap?.judgments ? Object.keys(existingMap.judgments).length : 0;
+
+  // Later steps were built on the judgments being dropped: move them aside BEFORE the new map lands; put them back on failure.
+  const stale_moved = force ? await moveAsideStale(runDirPath, STALE_ON_MAP_FORCE, () => new Date(ts)) : [];
+  try {
+    // harness-index.json (without text/tokens)
+    await writeJson(path.join(runDirPath, 'harness-index.json'), {
+      project: projectDir,
+      ts,
+      byKind: index.byKind,
+      errors: index.errors,
+      capped: index.capped,
+      rows: index.rows.map(r => ({ id: r.id, kind: r.kind, name: r.name, path: r.path }))
+    });
+    // map.json last: it is what marks the step as done
+    await writeJson(mapPath, { run, source_identity: source.identity, ts, candidates, judgments: {} });
+  } catch (err) {
+    if (stale_moved.length) {
+      const { restored, notRestored } = await stale_moved.restore();
+      let msg = `${err.message}; stale_moved so far: [${stale_moved.join(', ')}]; restored: [${restored.join(', ')}]`;
+      if (notRestored.length) msg += `; NOT restored (still named *.stale-*): [${notRestored.join(', ')}]`;
+      throw new Error(msg);
+    }
+    throw err;
   }
 
-  // Write map.json
-  const map = {
-    run,
-    source_identity: source.identity,
-    ts,
-    candidates,
-    judgments: {}
-  };
-  await writeJson(mapPath, map);
-
-  // Re-render status
   const { writeError } = await renderStatusSafe(runDirPath);
-  if (writeError) {
-    // Warn but don't fail
-  }
 
   return {
     runId: run,
@@ -396,7 +386,10 @@ export async function buildMap(projectDir, { run, now, force = false, cfg = DEFA
     byKind: index.byKind,
     powers: powers.powers.length,
     judgments_dropped: judgmentsCounted,
-    next: 'map'
+    index_errors: index.errors.length,
+    stale_moved: [...stale_moved],
+    next: 'map',
+    ...(writeError ? { warning: `map.json written but status.md could not be written: ${writeError.message}` } : {})
   };
 }
 
@@ -432,7 +425,11 @@ export async function mapBrief(projectDir, { run }, cfg = DEFAULT_CONFIG) {
       lines.push('');
     }
 
-    lines.push('**Only these 5 candidates:**');
+    if (candidates.length === 0) {
+      lines.push('**There are no candidates — answer missing (tool null).**');
+    } else {
+      lines.push(`**Only these ${candidates.length} candidates:**`);
+    }
     lines.push('');
     for (const candidate of candidates) {
       lines.push(`- \`${candidate.id}\` (${candidate.kind}, score ${candidate.score}) — ${candidate.path}`);
@@ -474,7 +471,7 @@ export async function mapBrief(projectDir, { run }, cfg = DEFAULT_CONFIG) {
  * String form allows any status (tool=null); object form requires tool for have/partial.
  * Returns { runId, judged, remaining, next }.
  */
-export async function recordJudgments(projectDir, { run, input, now, force = false, cfg = DEFAULT_CONFIG }) {
+export async function recordJudgments(projectDir, { run, input, now, force = false, cfg = DEFAULT_CONFIG, label = 'input' }) {
   if (!RUN_ID.test(run)) {
     throw new Error(invalidRunId(run));
   }
@@ -488,31 +485,23 @@ export async function recordJudgments(projectDir, { run, input, now, force = fal
     throw new Error('map.json is missing — run cli.js map first');
   }
 
-  // Parse input
-  let judgments;
-  try {
-    let data = typeof input === 'string' ? input : JSON.stringify(input);
-    // Strip ``` fences if present
-    data = data.replace(/^```[\w]*\n/, '').replace(/\n```$/, '');
-    const parsed = JSON.parse(data);
-    // Accept either { judgments: {...} } or a bare object
-    judgments = parsed.judgments ?? parsed;
-  } catch (err) {
-    throw new Error(`JSON only — got: ${typeof input === 'string' ? input.slice(0, 50) : String(input).slice(0, 50)}`);
+  // Parse input (fence-tolerant, shared with inventory); accept { judgments: {...} } or a bare object
+  const parsed = parseJsonOnly(input, { label });
+  const judgments = parsed?.judgments ?? parsed;
+  if (judgments === null || typeof judgments !== 'object' || Array.isArray(judgments)) {
+    throw new Error(`JSON only — ${label} must be an object of power → judgment`);
   }
 
   // Validate and normalize each judgment
   const normalized = {};
+  const ts = now().toISOString();
   const powers = await readJson(path.join(runDirPath, 'powers.json'));
   const powerNames = new Set(powers.powers.map(p => p.name));
 
   for (const [powerName, judgment] of Object.entries(judgments)) {
-    // Check power exists
     if (!powerNames.has(powerName)) {
       throw new Error(`unknown power "${powerName}"`);
     }
-
-    // Check if already judged (and not force)
     if (map.judgments?.[powerName] && !force) {
       throw new Error(`${powerName} already judged — pass --force to replace`);
     }
@@ -520,13 +509,11 @@ export async function recordJudgments(projectDir, { run, input, now, force = fal
     let status, tool, why;
     let isStringForm = false;
     if (typeof judgment === 'string') {
-      // String form: any status is allowed, tool defaults to null
       status = judgment;
       tool = null;
       why = null;
       isStringForm = true;
     } else if (typeof judgment === 'object' && judgment !== null) {
-      // Object form: { status, tool?, why? }
       status = judgment.status;
       tool = judgment.tool;
       why = judgment.why ?? null;
@@ -534,22 +521,22 @@ export async function recordJudgments(projectDir, { run, input, now, force = fal
       throw new Error(`${powerName}: judgment must be a string or object`);
     }
 
-    // Validate status
     if (!STATUSES.includes(status)) {
       throw new Error(`${powerName}: status must be one of have|partial|missing`);
     }
 
-    // For object form, 'have' and 'partial' require a tool
+    // Only 'missing' may be a bare string; have/partial must name the candidate that has it
+    if (isStringForm && status !== 'missing') {
+      throw new Error(`${powerName}: status "${status}" needs {status, tool, why} naming one of the candidates`);
+    }
     if (!isStringForm && (status === 'have' || status === 'partial') && !tool) {
       throw new Error(`${powerName}: status "${status}" requires a tool`);
     }
 
-    // For 'missing', tool must be null
     if (status === 'missing') {
       tool = null;
     }
 
-    // Validate tool is in the candidate list (if provided)
     if (tool) {
       const candidateIds = map.candidates[powerName].map(c => c.id);
       if (!candidateIds.includes(tool)) {
@@ -557,31 +544,35 @@ export async function recordJudgments(projectDir, { run, input, now, force = fal
       }
     }
 
-    normalized[powerName] = { status, tool, why, ts: now().toISOString() };
+    normalized[powerName] = { status, tool, why, ts };
   }
 
-  // Merge into map.judgments
-  const ts = now().toISOString();
-  for (const [powerName, judgment] of Object.entries(normalized)) {
-    map.judgments[powerName] = judgment;
+  Object.assign(map.judgments, normalized);
+
+  // Under --force, decisions and handoff built on the replaced judgments are stale: move them aside first.
+  const stale_moved = force ? await moveAsideStale(runDirPath, STALE_ON_MAP_FORCE, () => new Date(ts)) : [];
+  try {
+    await writeJson(mapPath, map);
+  } catch (err) {
+    if (stale_moved.length) {
+      const { restored, notRestored } = await stale_moved.restore();
+      let msg = `${err.message}; stale_moved so far: [${stale_moved.join(', ')}]; restored: [${restored.join(', ')}]`;
+      if (notRestored.length) msg += `; NOT restored (still named *.stale-*): [${notRestored.join(', ')}]`;
+      throw new Error(msg);
+    }
+    throw err;
   }
 
-  // Write map.json atomically
-  await writeJson(mapPath, map);
-
-  // Re-render status
   const { writeError } = await renderStatusSafe(runDirPath);
-  if (writeError) {
-    // Warn but don't fail
-  }
 
-  // Compute remaining powers
   const remaining = Array.from(powerNames).filter(n => !map.judgments[n]).sort();
 
   return {
     runId: run,
     judged: Object.keys(map.judgments).length,
     remaining,
-    next: remaining.length === 0 ? 'verdict' : 'map'
+    stale_moved: [...stale_moved],
+    next: remaining.length === 0 ? 'verdict' : 'map',
+    ...(writeError ? { warning: `map.json written but status.md could not be written: ${writeError.message}` } : {})
   };
 }
