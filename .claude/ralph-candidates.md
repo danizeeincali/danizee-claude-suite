@@ -204,3 +204,142 @@ STATUS: PASS|FAIL
 **Files in scope:** .claude/marathon.json (models.build_scoped, routing.scoped_max_files), src/lib/marathon/routing.js
 **Constraints:** Hard categories (security, migration) never route below opus; red tests always retry one tier up before any review; gate semantics unchanged
 
+
+---
+
+## Candidates from marathon 2026-10-07-bbs, stream intake (compounded 2026-10-07)
+
+### RC-D010: Finish-line lines declare their scope
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Diagnostic
+**Verifies**: finish-line lines carry `scope: run|stream` so `gate --stream` can skip run-wide lines (e2e_streak, packaged, helpers_over_budget, pushed)
+
+**Test Command**:
+```bash
+grep -n "scope" src/lib/marathon/gate.js
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: FINISH_LINE_SCOPE
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F010 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+### RC-F010: Add `scope: run|stream` to gate.js (additive)
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Conditional Fix
+**Triggered By**: RC-D010 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// lines without `scope` default to "run"; `gate --stream <s>` evaluates only scope:"stream" lines
+const inScope = (line, stream) => !stream || line.scope === 'stream';
+```
+
+**File**: src/lib/marathon/gate.js
+
+**Completion Tests**:
+1. Pattern: `scope` handled in `gate.js`; existing finish-line.json files without the field behave unchanged
+2. Test: RC-D010 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D010 fails)
+
+---
+
+### RC-D011: Messages are checked against the constants they quote
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Diagnostic
+**Verifies**: error and status text in `src/lib/bbs/*.js` does not retype limits, formats or dates that a constant already holds (reviewers found message-wording issues in r1, r5, r6)
+
+**Test Command**:
+```bash
+grep -nE "(fail|warn)\(.*[0-9]{2,}" src/lib/bbs/*.js
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: MESSAGE_LITERALS
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F011 if STATUS: FAIL
+**Priority**: P3
+**Status**: ready
+
+### RC-F011: Add a `facts` scan that greps messages against constants
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Conditional Fix
+**Triggered By**: RC-D011 failure
+**Priority**: P3
+
+**Pattern to Restore**:
+```javascript
+// test/bbs-facts.test.js: for each exported constant (limits, formats), assert
+// every message that mentions its value interpolates the constant instead of a literal
+```
+
+**File**: test/bbs-facts.test.js
+
+**Completion Tests**:
+1. Pattern: a `facts` scan test exists and fails on a retyped limit
+2. Test: RC-D011 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D011 fails)
+
+---
+
+### RC-D012: Every bbs module claims atomically and writes its marker last
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Diagnostic
+**Verifies**: no plain `writeFile`/`mkdir({recursive})` on run state in `src/lib/bbs/` outside the atomic helper (promoted rule "claim atomically, commit last", r1 + r2 + r3)
+
+**Test Command**:
+```bash
+grep -nE "writeFile\(|recursive: true" src/lib/bbs/*.js
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: ATOMIC_WRITES
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F012 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+### RC-F012: Route run-state writes through the store's atomic helpers
+
+**Auto-Generated From**: /w-background-compound on 2026-10-07
+**Type**: Conditional Fix
+**Triggered By**: RC-D012 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// run-state writes use the store's tmp + rename helper; the file that marks a step done is written last
+```
+
+**File**: src/lib/bbs/store.js
+
+**Completion Tests**:
+1. Pattern: no direct `writeFile` on run state in fetch/inventory/verdict/handoff modules
+2. Test: RC-D012 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D012 fails)
