@@ -76,3 +76,7 @@ Add a rule the second time something goes wrong.
   reviews closed and the fixes reviewed. The run-wide lines are judged by plain `cli.js gate` at the
   end. Follow-up for the marathon core (additive): a `scope: run|stream` field on finish-line lines
   so the per-stream gate can say this itself.
+- **Every message names the real state** (`facts`, reviews intake-r1 + intake-r6). An error or
+  status line says which input, file or pointer it is about (stdin vs file vs argument; a flag vs
+  ACTIVE), and dates, limits and formats quoted in text are read from the same constant the code
+  enforces, never retyped.
