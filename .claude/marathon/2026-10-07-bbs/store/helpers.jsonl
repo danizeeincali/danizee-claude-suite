@@ -123,3 +123,6 @@
 {"helper_id":"187cf5ec-6ff5-40f9-a713-73486c3cfce3","tokens":105840,"outcome":"green","event":"done","id":"4f2d2d0e-dac9-4795-9144-2b6da4cb8a17","ts":"2026-10-08T04:52:00.201Z"}
 {"role":"fix","model":"sonnet","stream":"handoff","budget":150000,"event":"spawn","id":"8bd6510b-fc81-4491-80e9-0967f812ffa7","ts":"2026-10-08T04:52:10.201Z"}
 {"helper_id":"8bd6510b-fc81-4491-80e9-0967f812ffa7","tokens":101795,"outcome":"green","event":"done","id":"27212f4a-37bc-444e-a14a-d352e938e382","ts":"2026-10-08T04:55:34.059Z"}
+{"role":"review","model":"opus","stream":"handoff","budget":150000,"event":"spawn","id":"60352c10-e825-4393-8f2f-41cd99e15645","ts":"2026-10-08T04:55:41.582Z"}
+{"helper_id":"60352c10-e825-4393-8f2f-41cd99e15645","tokens":91201,"outcome":"green","event":"done","id":"7cee85f8-a6b7-4fa5-928e-bb4f0c51296e","ts":"2026-10-08T04:57:39.059Z"}
+{"role":"fix","model":"opus","stream":"handoff","budget":150000,"event":"spawn","id":"c0e28b80-4269-448e-a7fb-35a7aefee5cf","ts":"2026-10-08T04:57:39.804Z"}

@@ -23,3 +23,4 @@
 {"stream":"handoff","counts":{"high":3,"medium":6,"low":2},"angle":"one input method at a time","tokens":120505,"commit":"d1c0b20","pass":false,"round":1,"id":"d055c38c-137a-4213-8155-3041ffeac971","ts":"2026-10-08T04:32:32.526Z"}
 {"stream":"handoff","counts":{"high":0,"medium":4,"low":0},"angle":"failure conditions and error paths","tokens":101591,"commit":"0de3813","pass":false,"round":2,"id":"2dd0287e-30b6-4c96-bb5d-a38e4f82ced5","ts":"2026-10-08T04:43:53.982Z"}
 {"stream":"handoff","counts":{"high":0,"medium":3,"low":2},"angle":"older environments and degraded networks","tokens":105840,"commit":"8775915","pass":false,"round":3,"id":"2066d7e0-ae32-4a36-b65a-2ae8b9b844e3","ts":"2026-10-08T04:52:00.297Z"}
+{"stream":"handoff","counts":{"high":0,"medium":2,"low":1},"angle":"the three safety probes: egress, secrets, sandbox escape","tokens":91201,"commit":"12da973","pass":true,"round":4,"id":"92d52a73-5e2f-47eb-b2e2-2efb9325fdbd","ts":"2026-10-08T04:57:39.147Z"}
