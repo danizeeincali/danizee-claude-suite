@@ -235,3 +235,105 @@ describe('intake — intake()', () => {
     assert.equal(await activeRunId(dir), r.runId);
   });
 });
+
+describe('intake — review r1 regressions', () => {
+  let dir;
+  const now = () => new Date('2026-10-07T12:00:00Z');
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-r1-')); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('an existing local path containing whitespace is local, not paste', () => {
+    const exists = (p) => p === '/Users/x/My Tool' || p === path.resolve('My Tool');
+    assert.equal(classifySource('/Users/x/My Tool', { exists }), 'local');
+    assert.equal(classifySource('My Tool', { exists }), 'local');
+    assert.equal(classifySource('a short idea with spaces', { exists }), 'paste');
+    assert.equal(classifySource('line one\nline two', { exists: () => true }), 'paste', 'multi-line text is never a path');
+  });
+
+  it('intake of a real directory whose name has a space is a local run', async () => {
+    await fs.mkdir(path.join(dir, 'My Tool'), { recursive: true });
+    await fs.writeFile(path.join(dir, 'My Tool', 'a.txt'), 'abc');
+    const r = await intake(dir, path.join(dir, 'My Tool'), { now, isGitRepo: () => false });
+    assert.equal(r.type, 'local');
+    assert.equal(r.identity, sha('a.txt\t3\n'));
+    assert.equal(r.runId, '2026-10-07-my-tool');
+  });
+
+  it('a non-existent path-like token is refused with a hint, not taken as paste', () => {
+    for (const ref of ['./missing/dir', '/abs/missing', 'rel/missing', '~/nope', '.hidden', 'a\\b']) {
+      assert.throws(() => classifySource(ref, { exists: existsNone }), (err) => /does not exist/.test(err.message) && /use --as paste or a full URL/.test(err.message), ref);
+    }
+  });
+
+  it('a schemeless URL is refused with a hint, not taken as paste', () => {
+    for (const ref of ['github.com/foo/bar', 'example.com', 'docs.example.com/a']) {
+      assert.throws(() => classifySource(ref, { exists: existsNone }), (err) => /no scheme/.test(err.message) && /use --as paste or a full URL/.test(err.message), ref);
+    }
+    assert.equal(classifySource('whatever', { exists: existsNone }), 'paste', 'a plain word is still paste');
+    assert.equal(classifySource('github.com/foo/bar', { exists: existsNone, as: 'paste' }), 'paste', '--as paste overrides');
+  });
+
+  it('intake of a non-existent path creates no run and leaves ACTIVE alone', async () => {
+    const before = await activeRunId(dir);
+    await assert.rejects(() => intake(dir, './missing/dir', { now }), /does not exist/);
+    await assert.rejects(() => intake(dir, 'github.com/foo/bar', { now }), /no scheme/);
+    await assert.rejects(() => fs.stat(path.join(dir, '.claude', 'bbs', 'runs', '2026-10-07-paste')));
+    assert.equal(await activeRunId(dir), before);
+  });
+
+  it('manifest includes symlinks as path\\t->target, so a symlink-only dir differs from an empty one', async () => {
+    const linked = path.join(dir, 'linked');
+    await fs.mkdir(linked, { recursive: true });
+    await fs.symlink('../elsewhere/target.txt', path.join(linked, 'link'));
+    const id = await sourceIdentity({ type: 'local', ref: linked, isGitRepo: () => false });
+    assert.equal(id, sha('link\t->../elsewhere/target.txt\n'));
+    assert.notEqual(id, sha('\n'));
+  });
+
+  it('an empty local directory has no identity: it is refused as empty', async () => {
+    const empty = path.join(dir, 'emptydir');
+    await fs.mkdir(path.join(empty, 'only-a-subdir'), { recursive: true });
+    await assert.rejects(() => sourceIdentity({ type: 'local', ref: empty, isGitRepo: () => false }), /empty/i);
+  });
+
+  it('--paste-file is hashed and stored as raw bytes, not decoded UTF-8', async () => {
+    const bytes = Buffer.from([0x66, 0x6f, 0xff, 0xfe, 0x0a]);
+    await fs.writeFile(path.join(dir, 'bin.txt'), bytes);
+    const r = await intake(dir, 'ignored', { pasteFile: path.join(dir, 'bin.txt'), now, slug: 'raw' });
+    assert.equal(r.identity, 'sha256:' + createHash('sha256').update(bytes).digest('hex'));
+    const stored = await fs.readFile(path.join(dir, '.claude', 'bbs', 'runs', r.runId, 'fetched', 'paste.txt'));
+    assert.ok(stored.equals(bytes), 'paste.txt holds the exact bytes');
+  });
+
+  it('runIdFor uses the local date of now(), not the UTC date', async () => {
+    const prev = process.env.TZ;
+    process.env.TZ = 'America/Los_Angeles';
+    try {
+      const evening = new Date('2026-10-08T03:30:00Z'); // 2026-10-07 20:30 in Los Angeles
+      assert.equal(await runIdFor(dir, 'late', { now: () => evening }), '2026-10-07-late');
+    } finally {
+      if (prev === undefined) delete process.env.TZ; else process.env.TZ = prev;
+    }
+  });
+
+  it('paste and local intake record the zero-egress row; url intake records none', async () => {
+    const expectRow = async (runId, type) => {
+      const rows = (await fs.readFile(path.join(dir, '.claude', 'bbs', 'runs', runId, 'egress.jsonl'), 'utf-8')).trim().split('\n').map(l => JSON.parse(l));
+      assert.equal(rows.length, 1);
+      const { ts, ...row } = rows[0];
+      assert.ok(ts);
+      assert.deepEqual(row, { kind: 'none', method: null, url: null, host: null, status: null, bytes_in: 0, bytes_out: 0, note: `nothing to fetch: ${type} source` });
+    };
+    const p = await intake(dir, '-', { stdin: 'zero egress', now, slug: 'zero' });
+    await expectRow(p.runId, 'paste');
+    await fs.mkdir(path.join(dir, 'loc'), { recursive: true });
+    await fs.writeFile(path.join(dir, 'loc', 'f'), 'x');
+    const l = await intake(dir, path.join(dir, 'loc'), { now, isGitRepo: () => false });
+    await expectRow(l.runId, 'local');
+    const u = await intake(dir, 'https://example.com/zero', { now });
+    await assert.rejects(() => fs.stat(path.join(dir, '.claude', 'bbs', 'runs', u.runId, 'egress.jsonl')));
+    const status = await fs.readFile(path.join(dir, '.claude', 'bbs', 'runs', p.runId, 'status.md'), 'utf-8');
+    assert.match(status, /- Egress: requests=0 bytes_in=0 bodies_sent=0 hosts=none\n/);
+    assert.match(status, /\| fetch \| done \|/);
+  });
+});

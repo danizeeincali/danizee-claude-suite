@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import * as statusMod from '../src/lib/bbs/status.js';
 import { STEPS, nextStep, renderStatus, loadState, summary } from '../src/lib/bbs/status.js';
 import { writeJson, appendJsonl } from '../src/lib/bbs/store.js';
 
@@ -128,5 +129,32 @@ describe('status — loadState', () => {
     await fs.mkdir(runDir, { recursive: true });
     await fs.writeFile(path.join(runDir, 'source.json'), '{ nope');
     await assert.rejects(() => loadState(runDir), /source\.json/);
+  });
+});
+
+describe('status — review r1 regressions', () => {
+  const fetched = { ...base, source: { ...base.source, identity: 'sha256:a', fetched: true } };
+  const powers = { powers: [{ name: 'p1' }, { name: 'p2' }], not_inventoried: [] };
+  const map = { candidates: { p1: [], p2: [] }, judgments: { p1: 'have', p2: 'missing' } };
+
+  it('isDecision accepts only rebuild|use|buy|skip', () => {
+    assert.equal(typeof statusMod.isDecision, 'function');
+    for (const v of ['rebuild', 'use', 'buy', 'skip']) assert.equal(statusMod.isDecision(v), true, v);
+    for (const v of [null, '', 'maybe', undefined, 'toString', 0, true]) assert.equal(statusMod.isDecision(v), false, String(v));
+  });
+
+  it('null, empty or unknown decisions are undecided for nextStep and summary alike', () => {
+    for (const bad of [null, '', 'maybe', 'toString']) {
+      const verdicts = { decisions: { p1: 'skip', p2: bad } };
+      assert.equal(nextStep({ ...fetched, powers, map, verdicts }), 'verdict', String(bad));
+      assert.equal(summary({ ...fetched, powers, map, verdicts }).undecided, 1, String(bad));
+    }
+  });
+
+  it('the egress line counts requests and hosts over http/git rows only; bytes_in sums all rows', () => {
+    const zero = { kind: 'none', method: null, url: null, host: null, status: null, bytes_in: 0, bytes_out: 0, note: 'nothing to fetch: paste source' };
+    assert.match(renderStatus({ ...fetched, egress: [zero] }), /- Egress: requests=0 bytes_in=0 bodies_sent=0 hosts=none\n/);
+    const md = renderStatus({ ...fetched, egress: [zero, { kind: 'git', host: 'github.com', bytes_in: 10 }, { kind: 'http', host: 'e.x', bytes_in: 5 }, { kind: 'none', host: 'bogus', bytes_in: 1 }] });
+    assert.match(md, /- Egress: requests=2 bytes_in=16 bodies_sent=0 hosts=github\.com,e\.x\n/);
   });
 });

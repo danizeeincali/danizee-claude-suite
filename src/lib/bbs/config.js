@@ -41,5 +41,6 @@ export async function loadConfig(projectDir) {
   let user;
   try { user = JSON.parse(raw); }
   catch (err) { throw new Error(`invalid JSON in ${file}: ${err.message}`); }
+  if (!isPlainObject(user)) throw new Error(`invalid config in ${file}: expected an object`);
   return deepMerge(structuredClone(DEFAULT_CONFIG), user);
 }

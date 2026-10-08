@@ -170,3 +170,17 @@ describe('bbs store — registry', () => {
     assert.equal(await lookupSource(dir, 'pending'), null);
   });
 });
+
+describe('bbs config — review r1 regressions', () => {
+  it('a non-object .claude/bbs.json (null, array, scalar) is refused with a clear message', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-config-r1-'));
+    try {
+      await fs.mkdir(path.join(dir, '.claude'), { recursive: true });
+      const file = path.join(dir, '.claude', 'bbs.json');
+      for (const raw of ['null', '[]', '[1,2]', '5', '"x"', 'true']) {
+        await fs.writeFile(file, raw);
+        await assert.rejects(() => loadConfig(dir), (err) => err.message === `invalid config in ${file}: expected an object`, raw);
+      }
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+});

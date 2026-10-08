@@ -13,24 +13,43 @@ import { execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
 
 import { loadConfig } from './config.js';
-import { runDir as runDirOf, activeRunId } from './store.js';
-import { intake } from './intake.js';
+import { runDir as runDirOf, runsDir as runsDirOf, activeRunId } from './store.js';
+import { intake, RUN_ID } from './intake.js';
 import { loadState, nextStep, summary, renderStatusFile } from './status.js';
 
 class CliExit extends Error {
   constructor(message, code) { super(message); this.code = code; }
 }
 
+const INTAKE_USAGE = 'usage: cli.js intake <source> [--paste-file <p>] [--as repo|url|local|paste] [--slug <s>] [--run <id>] [--project <dir>]';
+
+/** Flags each verb accepts: value flags need a value, boolean flags take none. */
+const FLAGS = {
+  intake: { value: ['run', 'project', 'as', 'slug', 'paste-file'], bool: [], usage: INTAKE_USAGE },
+  status: { value: ['run', 'project'], bool: ['next'], usage: 'usage: cli.js status [--run <id>] [--next] [--project <dir>]' },
+  report: { value: ['run', 'project'], bool: [], usage: 'usage: cli.js report [--run <id>] [--project <dir>]' }
+};
+
 function parseArgs(argv) {
   const [verb, ...rest] = argv;
+  const spec = Object.hasOwn(FLAGS, verb) ? FLAGS[verb] : null;
   const flags = {};
   const positional = [];
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
     if (a.startsWith('--')) {
+      const name = a.slice(2);
       const next = rest[i + 1];
-      if (next !== undefined && !next.startsWith('--')) { flags[a.slice(2)] = next; i++; }
-      else flags[a.slice(2)] = true;
+      if (!spec) { // unknown verb: main reports it; parse loosely
+        if (next !== undefined && !next.startsWith('--')) { flags[name] = next; i++; } else flags[name] = true;
+      } else if (spec.value.includes(name)) {
+        if (next === undefined || next.startsWith('--')) fail(`${spec.usage}\n  --${name} needs a value`);
+        flags[name] = next; i++;
+      } else if (spec.bool.includes(name)) {
+        flags[name] = true;
+      } else {
+        fail(`${spec.usage}\n  unknown flag --${name}`);
+      }
     } else positional.push(a);
   }
   return { verb, flags, positional };
@@ -61,17 +80,20 @@ async function resolveRun(projectDir, flags, cfg) {
     id = await activeRunId(projectDir);
     if (!id) fail('no active run — start one with `cli.js intake <source>` or pass --run <id>');
   }
+  if (!RUN_ID.test(id)) fail(`invalid run id "${id}"`);
   const dir = runDirOf(projectDir, id, cfg);
+  if (!path.resolve(dir).startsWith(path.resolve(runsDirOf(projectDir, cfg)) + path.sep)) fail(`invalid run id "${id}"`);
   try { await fs.stat(dir); } catch { fail(`unknown run "${id}"`); }
   return { id, dir };
 }
-
-const INTAKE_USAGE = 'usage: cli.js intake <source> [--paste-file <p>] [--as repo|url|local|paste] [--slug <s>] [--run <id>]';
 
 const VERBS = {
   async intake({ flags, positional, projectDir, cfg }) {
     const source = positional.find(p => typeof p === 'string');
     if (!source && typeof flags['paste-file'] !== 'string') fail(INTAKE_USAGE);
+    if (typeof flags['paste-file'] === 'string' && source !== undefined && source !== '-') {
+      fail(`${INTAKE_USAGE}\n  --paste-file takes the paste from the file: drop "${source}" or pass "-"`);
+    }
     const pasteFile = typeof flags['paste-file'] === 'string' ? flags['paste-file'] : undefined;
     const stdin = source === '-' && !pasteFile ? await readStdin() : undefined;
     const result = await intake(projectDir, source ?? '-', {

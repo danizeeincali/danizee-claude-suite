@@ -160,3 +160,106 @@ describe('bbs cli — intake, status, report', () => {
     assert.ok(st.mtimeMs > 1000, 'status.md was re-rendered');
   });
 });
+
+describe('bbs cli — review r1 regressions', () => {
+  let dir;
+  let runId;
+  const runs = () => path.join(dir, '.claude', 'bbs', 'runs');
+  const exists = async (p) => { try { await fs.stat(p); return true; } catch { return false; } };
+  before(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-cli-r1-'));
+    const r = run(dir, ['intake', '-', '--slug', 'r1'], 'seed');
+    assert.equal(r.code, 0, r.err);
+    runId = r.json.runId;
+  });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('status --run with a traversal id is refused and writes nothing outside the runs dir', async () => {
+    await fs.mkdir(path.join(dir, '.claude', 'bbs', 'x'), { recursive: true });
+    for (const id of ['../x', '../../..', '..', '.', 'a/b']) {
+      const r = run(dir, ['status', '--run', id]);
+      assert.equal(r.code, 1, id);
+      assert.equal(r.err, `bbs: invalid run id "${id}"\n`, id);
+      assert.equal(r.out, '', id);
+    }
+    assert.equal(await exists(path.join(dir, '.claude', 'bbs', 'x', 'status.md')), false);
+    assert.equal(await exists(path.join(dir, 'status.md')), false);
+    assert.equal(await exists(path.join(dir, '.claude', 'bbs', 'status.md')), false);
+    assert.equal(await exists(path.join(runs(), 'status.md')), false);
+  });
+
+  it("status --run '' is refused (it must not render the runs dir)", async () => {
+    const r = run(dir, ['status', '--run', '']);
+    assert.equal(r.code, 1);
+    assert.equal(r.err, 'bbs: invalid run id ""\n');
+    assert.equal(await exists(path.join(runs(), 'status.md')), false);
+  });
+
+  it('a tampered ACTIVE renders nothing for status or report', async () => {
+    const active = path.join(dir, '.claude', 'bbs', 'ACTIVE');
+    try {
+      for (const bad of ['../../..', '..', '../x']) {
+        await fs.writeFile(active, bad + '\n');
+        for (const verb of ['status', 'report']) {
+          const r = run(dir, [verb]);
+          assert.equal(r.code, 1, `${verb} ${bad}`);
+          assert.equal(r.err, `bbs: invalid run id "${bad}"\n`, `${verb} ${bad}`);
+          assert.equal(r.out, '');
+        }
+      }
+      assert.equal(await exists(path.join(dir, 'status.md')), false);
+      assert.equal(await exists(path.join(dir, '.claude', 'bbs', 'x', 'status.md')), false);
+      assert.equal(await exists(path.join(dir, '.claude', 'status.md')), false);
+    } finally { await fs.writeFile(active, runId + '\n'); }
+  });
+
+  it('a value flag with no value is a usage error, exit 1', async () => {
+    const before = (await fs.readdir(runs())).sort();
+    for (const args of [
+      ['status', '--run'], ['report', '--run'], ['status', '--run', '--next'],
+      ['intake', 'https://example.com/a', '--run'], ['intake', '-', '--as'], ['intake', '-', '--slug'],
+      ['intake', '-', '--project'], ['status', '--project'], ['intake', '--paste-file']
+    ]) {
+      const r = run(dir, args, 'stdin text');
+      assert.equal(r.code, 1, args.join(' '));
+      assert.match(r.err, /^usage: cli\.js /, args.join(' '));
+      assert.equal(r.out, '', args.join(' '));
+    }
+    assert.deepEqual((await fs.readdir(runs())).sort(), before, 'no run was created');
+  });
+
+  it('an unknown flag is a usage error, exit 1', () => {
+    for (const args of [['status', '--frob'], ['report', '--next'], ['intake', '-', '--next'], ['intake', '-', '--frob', 'x']]) {
+      const r = run(dir, args, 'stdin text');
+      assert.equal(r.code, 1, args.join(' '));
+      assert.match(r.err, /^usage: cli\.js /, args.join(' '));
+      assert.match(r.err, /--(frob|next)/, args.join(' '));
+    }
+  });
+
+  it('--project still works for every verb', async () => {
+    const other = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-r1-proj-'));
+    try {
+      const i = run(dir, ['intake', '-', '--project', other, '--slug', 'pp'], 'x');
+      assert.equal(i.code, 0, i.err);
+      assert.equal(run(dir, ['status', '--project', other]).code, 0);
+      assert.equal(run(dir, ['status', '--next', '--project', other]).out.trim(), 'inventory');
+      assert.equal(run(dir, ['report', '--project', other]).code, 0);
+    } finally { await fs.rm(other, { recursive: true, force: true }); }
+  });
+
+  it('--paste-file combined with a positional other than "-" is a usage error; with "-" it is accepted', async () => {
+    const pf = path.join(dir, 'pf.txt');
+    await fs.writeFile(pf, 'from the file');
+    const before = (await fs.readdir(runs())).sort();
+    const r = run(dir, ['intake', 'https://example.com/x', '--paste-file', pf]);
+    assert.equal(r.code, 1);
+    assert.match(r.err, /^usage: cli\.js intake/);
+    assert.deepEqual((await fs.readdir(runs())).sort(), before);
+    const ok = run(dir, ['intake', '-', '--paste-file', pf, '--slug', 'pfok']);
+    assert.equal(ok.code, 0, ok.err);
+    assert.equal(ok.json.identity, sha('from the file'));
+    const alone = run(dir, ['intake', '--paste-file', pf, '--slug', 'pfalone']);
+    assert.equal(alone.code, 0, alone.err);
+  });
+});

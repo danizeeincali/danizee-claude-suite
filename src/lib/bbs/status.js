@@ -8,6 +8,11 @@ import { readJson, readJsonl } from './store.js';
 
 export const STEPS = ['intake', 'fetch', 'inventory', 'map', 'verdict', 'handoff'];
 
+export const DECISIONS = ['rebuild', 'use', 'buy', 'skip'];
+
+/** A power is decided only when its decision is one of DECISIONS. */
+export const isDecision = (v) => typeof v === 'string' && DECISIONS.includes(v);
+
 const names = (state) => (state.powers?.powers || []).map(p => p.name);
 
 export function nextStep(state) {
@@ -19,7 +24,7 @@ export function nextStep(state) {
   const judgments = state.map?.judgments;
   if (!state.map || list.some(n => !judgments || judgments[n] === undefined)) return 'map';
   const decisions = state.verdicts?.decisions;
-  if (!state.verdicts || list.some(n => !decisions || decisions[n] === undefined)) return 'verdict';
+  if (!state.verdicts || list.some(n => !decisions || !isDecision(decisions[n]))) return 'verdict';
   if (!state.handoff) return 'handoff';
   return 'done';
 }
@@ -31,7 +36,7 @@ export function summary(state) {
   let decided = 0;
   for (const n of list) {
     const d = decisions[n];
-    if (d in c) { c[d]++; decided++; }
+    if (isDecision(d)) { c[d]++; decided++; }
   }
   return {
     found: list.length,
@@ -50,7 +55,8 @@ export function renderStatus(state) {
   const next = nextStep(state);
   const sum = summary(state);
   const egress = state.egress || [];
-  const hosts = [...new Set(egress.map(e => e.host).filter(Boolean))];
+  const requests = egress.filter(e => e && (e.kind === 'http' || e.kind === 'git'));
+  const hosts = [...new Set(requests.map(e => e.host).filter(Boolean))];
   const bytesIn = egress.reduce((n, e) => n + (Number(e.bytes_in) || 0), 0);
   const lines = [`# bbs ${state.run}`, ''];
   if (s) {
@@ -60,7 +66,7 @@ export function renderStatus(state) {
     lines.push('- Source: none');
     lines.push('- Identity: none');
   }
-  lines.push(`- Egress: requests=${egress.length} bytes_in=${bytesIn} bodies_sent=0 hosts=${hosts.length ? hosts.join(',') : 'none'}`);
+  lines.push(`- Egress: requests=${requests.length} bytes_in=${bytesIn} bodies_sent=0 hosts=${hosts.length ? hosts.join(',') : 'none'}`);
   if (next === 'done') {
     lines.push(sum.marathon ? `- Next: done — /w-marathon --resume ${sum.marathon}` : '- Next: done');
   } else {
