@@ -66,3 +66,13 @@ Add a rule the second time something goes wrong.
   before use; `git` runs with an explicit directory and a scrubbed environment (no `GIT_DIR`,
   `GIT_WORK_TREE`, `GIT_CONFIG_*`); a source ref is redacted (userinfo removed, token-like query
   values masked) before it is printed, persisted or logged.
+
+## Stream close vs run-wide gate (lead decision, 2026-10-07, after intake r5)
+
+- `cli.js gate --stream <s>` scopes `runs.streak:*`, `reviews.*` and `findings.open:*` to the
+  stream, but `e2e_streak`, `packaged`, `helpers_over_budget` and `pushed` are run-wide by nature
+  and cannot be met before the last stream exists. A stream therefore **closes** when its own lines
+  are met: `clean_reviews`, `latest_high`, `open_high`, `unit_streak`, with every finding from its
+  reviews closed and the fixes reviewed. The run-wide lines are judged by plain `cli.js gate` at the
+  end. Follow-up for the marathon core (additive): a `scope: run|stream` field on finish-line lines
+  so the per-stream gate can say this itself.
