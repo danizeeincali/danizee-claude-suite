@@ -42,5 +42,25 @@ export async function loadConfig(projectDir) {
   try { user = JSON.parse(raw); }
   catch (err) { throw new Error(`invalid JSON in ${file}: ${err.message}`); }
   if (!isPlainObject(user)) throw new Error(`invalid config in ${file}: expected an object`);
-  return deepMerge(structuredClone(DEFAULT_CONFIG), user);
+  const cfg = deepMerge(structuredClone(DEFAULT_CONFIG), user);
+  validatePaths(cfg, projectDir, file);
+  return cfg;
+}
+
+/** Every configured path stays inside the project: runs and registry under .claude/bbs. */
+function validatePaths(cfg, projectDir, file) {
+  if (!isPlainObject(cfg.paths)) throw new Error(`invalid config in ${file}: paths must be an object`);
+  const root = path.resolve(projectDir, '.claude', 'bbs');
+  for (const key of ['runs', 'registry']) {
+    const value = cfg.paths[key];
+    const ok = typeof value === 'string' && value !== '' && !path.isAbsolute(value) && (() => {
+      const resolved = path.resolve(projectDir, value);
+      return resolved.startsWith(root + path.sep) || (key === 'runs' && resolved === root);
+    })();
+    if (!ok) throw new Error(`invalid config in ${file}: paths.${key} "${value}" must stay under .claude/bbs`);
+  }
+  const cli = cfg.paths.marathon_cli;
+  if (typeof cli !== 'string' || cli === '' || path.isAbsolute(cli)) {
+    throw new Error(`invalid config in ${file}: paths.marathon_cli "${cli}" must be a non-empty relative path`);
+  }
 }

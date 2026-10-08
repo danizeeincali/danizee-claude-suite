@@ -369,3 +369,42 @@ describe('bbs cli — review r3 regressions', () => {
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
 });
+
+describe('bbs cli — review r4 regressions', () => {
+  it('intake of an http ref with userinfo exits 1 with the credentials message, prints nothing secret and creates no run', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-r4-cred-'));
+    try {
+      const r = run(dir, ['intake', 'https://alice:ghp_SECRET@github.com/a/b', '--project', dir]);
+      assert.equal(r.code, 1);
+      assert.equal(r.err, 'bbs: refs with embedded credentials are not accepted — pass the URL without userinfo\n');
+      assert.ok(!r.out.includes('ghp_SECRET'));
+      const runs = await fs.readdir(path.join(dir, '.claude', 'bbs', 'runs')).catch(() => []);
+      assert.deepEqual(runs, []);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('intake masks query tokens in stdout and status.md', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-r4-q-'));
+    try {
+      const r = run(dir, ['intake', 'https://example.com/post?token=abc&x=1', '--project', dir]);
+      assert.equal(r.code, 0, r.err);
+      assert.equal(r.json.ref, 'https://example.com/post?token=<redacted>&x=1');
+      assert.ok(!r.out.includes('abc'));
+      const md = await fs.readFile(path.join(dir, '.claude', 'bbs', 'runs', r.json.runId, 'status.md'), 'utf-8');
+      assert.ok(md.includes('token=<redacted>&x=1') && !md.includes('abc'), md);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('a .claude/bbs.json with paths.runs outside .claude/bbs fails loudly and writes nothing outside', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-r4-cfg-'));
+    try {
+      const proj = path.join(dir, 'proj');
+      await fs.mkdir(path.join(proj, '.claude'), { recursive: true });
+      await fs.writeFile(path.join(proj, '.claude', 'bbs.json'), JSON.stringify({ paths: { runs: '../escaped' } }));
+      const r = run(proj, ['intake', '-', '--project', proj], 'x');
+      assert.equal(r.code, 1);
+      assert.match(r.err, /paths\.runs "\.\.\/escaped" must stay under \.claude\/bbs/);
+      await assert.rejects(() => fs.stat(path.join(dir, 'escaped')));
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+});

@@ -9,9 +9,9 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { createHash } from 'crypto';
-import { spawn } from 'child_process';
+import { spawn, execFileSync } from 'child_process';
 import { fileURLToPath } from 'url';
-import { classifySource, slugFor, sourceIdentity, runIdFor, intake } from '../src/lib/bbs/intake.js';
+import { classifySource, slugFor, sourceIdentity, runIdFor, intake, redactRef, gitDirInside } from '../src/lib/bbs/intake.js';
 import { readJson, activeRunId, appendRegistry } from '../src/lib/bbs/store.js';
 
 const sha = (s) => 'sha256:' + createHash('sha256').update(s).digest('hex');
@@ -409,5 +409,147 @@ describe('intake — review r2 regressions', () => {
     const ok = await intake(proj, src, { git: () => 'abc123\n', isGitRepo: () => true, slug: 'withgit' });
     assert.equal(ok.identity, 'git:abc123');
     assert.equal(ok.note, undefined);
+  });
+});
+
+describe('intake — review r4 regressions', () => {
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-r4-')); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  const runFiles = async (proj, runId) => {
+    const runDir = path.join(proj, '.claude', 'bbs', 'runs', runId);
+    return {
+      source: await fs.readFile(path.join(runDir, 'source.json'), 'utf-8'),
+      status: await fs.readFile(path.join(runDir, 'status.md'), 'utf-8')
+    };
+  };
+
+  it('redactRef strips http userinfo, masks token-like query values and strips ssh passwords', () => {
+    assert.equal(redactRef('https://user:pw@h/p'), 'https://h/p');
+    assert.equal(redactRef('https://alice:ghp_SECRET@host/x?token=abc'), 'https://host/x?token=<redacted>');
+    assert.equal(redactRef('https://h/p?token=abc&x=1'), 'https://h/p?token=<redacted>&x=1');
+    assert.equal(redactRef('https://h/p?API_KEY=k&Signature=s&q=v&access_token=t&pwd=p'),
+      'https://h/p?API_KEY=<redacted>&Signature=<redacted>&q=v&access_token=<redacted>&pwd=<redacted>');
+    assert.equal(redactRef('https://github.com/a/b'), 'https://github.com/a/b');
+    assert.equal(redactRef('http://example.com'), 'http://example.com');
+    assert.equal(redactRef('git@github.com:a/b.git'), 'git@github.com:a/b.git');
+    assert.equal(redactRef('git:hunter2@github.com:a/b.git'), 'git@github.com:a/b.git');
+    assert.equal(redactRef('ssh://git:hunter2@gitlab.com/a/b'), 'ssh://git@gitlab.com/a/b');
+    assert.equal(redactRef('ssh://git@gitlab.com/a/b'), 'ssh://git@gitlab.com/a/b');
+    assert.equal(redactRef('/some/local/path'), '/some/local/path');
+  });
+
+  it('an http ref with userinfo is refused at intake and no run is created', async () => {
+    const proj = await fs.mkdtemp(path.join(dir, 'userinfo-'));
+    for (const ref of ['https://alice:ghp_SECRET@github.com/a/b', 'https://alice@example.com/post']) {
+      await assert.rejects(() => intake(proj, ref, { slug: 'cred' }),
+        (err) => err.message === 'refs with embedded credentials are not accepted — pass the URL without userinfo', ref);
+    }
+    const runs = await fs.readdir(path.join(proj, '.claude', 'bbs', 'runs')).catch(() => []);
+    assert.deepEqual(runs, []);
+    assert.equal(await activeRunId(proj), null);
+  });
+
+  it('query tokens are masked in source.json, the result and status.md; the raw value is never persisted', async () => {
+    const proj = await fs.mkdtemp(path.join(dir, 'query-'));
+    const r = await intake(proj, 'https://example.com/post?token=abc&x=1', {});
+    assert.equal(r.ref, 'https://example.com/post?token=<redacted>&x=1');
+    const { source, status } = await runFiles(proj, r.runId);
+    assert.equal(JSON.parse(source).ref, 'https://example.com/post?token=<redacted>&x=1');
+    for (const text of [source, status, JSON.stringify(r)]) {
+      assert.ok(text.includes('token=<redacted>'), text);
+      assert.ok(text.includes('x=1'), text);
+      assert.ok(!text.includes('abc'), text);
+    }
+  });
+
+  it('an ssh ref with a password is stored without it', async () => {
+    const proj = await fs.mkdtemp(path.join(dir, 'ssh-'));
+    const r = await intake(proj, 'ssh://git:hunter2@gitlab.com/a/b', {});
+    assert.equal(r.ref, 'ssh://git@gitlab.com/a/b');
+    const { source, status } = await runFiles(proj, r.runId);
+    assert.ok(!source.includes('hunter2') && !status.includes('hunter2'));
+  });
+
+  async function gitRepo(root, name, file) {
+    const repo = path.join(root, name);
+    await fs.mkdir(repo, { recursive: true });
+    const env = { ...process.env };
+    for (const k of Object.keys(env)) if (/^GIT_/.test(k)) delete env[k];
+    const run = (...args) => execFileSync('git', args, { cwd: repo, encoding: 'utf-8', env });
+    run('init', '-q');
+    run('config', 'user.email', 'bbs@test.invalid');
+    run('config', 'user.name', 'bbs test');
+    run('config', 'commit.gpgsign', 'false');
+    await fs.writeFile(path.join(repo, file), file);
+    run('add', file);
+    run('commit', '-q', '-m', name);
+    return { repo, head: run('rev-parse', 'HEAD').trim() };
+  }
+
+  it('the default git runner ignores an inherited GIT_DIR: identity comes from the named repo', async () => {
+    const root = await fs.mkdtemp(path.join(dir, 'gitdir-env-'));
+    const a = await gitRepo(root, 'a', 'a.txt');
+    const b = await gitRepo(root, 'b', 'b.txt');
+    assert.notEqual(a.head, b.head);
+    const saved = { GIT_DIR: process.env.GIT_DIR, GIT_WORK_TREE: process.env.GIT_WORK_TREE };
+    process.env.GIT_DIR = path.join(a.repo, '.git');
+    process.env.GIT_WORK_TREE = a.repo;
+    try {
+      assert.equal(await sourceIdentity({ type: 'local', ref: b.repo }), 'git:' + b.head);
+    } finally {
+      for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    }
+  });
+
+  it('a normal .git directory still gives the git identity with the default runner', async () => {
+    const root = await fs.mkdtemp(path.join(dir, 'gitdir-normal-'));
+    const b = await gitRepo(root, 'b', 'b.txt');
+    assert.equal(gitDirInside(b.repo), true);
+    assert.equal(await sourceIdentity({ type: 'local', ref: b.repo }), 'git:' + b.head);
+  });
+
+  it('a .git symlink or a gitdir file pointing outside the source falls back to the manifest with a note', async () => {
+    const root = await fs.mkdtemp(path.join(dir, 'gitdir-out-'));
+    const a = await gitRepo(root, 'a', 'a.txt');
+    const linked = path.join(root, 'linked');
+    await fs.mkdir(linked);
+    await fs.writeFile(path.join(linked, 'f.txt'), 'x');
+    await fs.symlink(path.join(a.repo, '.git'), path.join(linked, '.git'));
+    const filed = path.join(root, 'filed');
+    await fs.mkdir(filed);
+    await fs.writeFile(path.join(filed, 'f.txt'), 'x');
+    await fs.writeFile(path.join(filed, '.git'), `gitdir: ${path.relative(filed, path.join(a.repo, '.git'))}\n`);
+    for (const src of [linked, filed]) {
+      const proj = await fs.mkdtemp(path.join(dir, 'gitdir-proj-'));
+      const r = await intake(proj, src, { slug: 'outside' });
+      assert.match(r.identity, /^sha256:/, src);
+      assert.notEqual(r.identity, 'git:' + a.head);
+      assert.match(r.note, /^git dir points outside the source \(.+\); identity is a file manifest$/, src);
+      const sj = await readJson(path.join(proj, '.claude', 'bbs', 'runs', r.runId, 'source.json'));
+      assert.equal(sj.identity_note, r.note);
+    }
+  });
+
+  it('a .git dir whose commondir points outside the source falls back to the manifest with a note', async () => {
+    const root = await fs.mkdtemp(path.join(dir, 'commondir-'));
+    const a = await gitRepo(root, 'a', 'a.txt');
+    const b = await gitRepo(root, 'b', 'b.txt');
+    await fs.writeFile(path.join(b.repo, '.git', 'commondir'), path.join(a.repo, '.git') + '\n');
+    assert.deepEqual(gitDirInside(b.repo), { outside: 'commondir resolves outside the source' });
+    const proj = await fs.mkdtemp(path.join(dir, 'commondir-proj-'));
+    const r = await intake(proj, b.repo, { slug: 'common' });
+    assert.match(r.identity, /^sha256:/);
+    assert.equal(r.note, 'git dir points outside the source (commondir resolves outside the source); identity is a file manifest');
+  });
+
+  it('a gitdir file that resolves inside the source is accepted', async () => {
+    const root = await fs.mkdtemp(path.join(dir, 'gitdir-in-'));
+    const b = await gitRepo(root, 'b', 'b.txt');
+    await fs.rename(path.join(b.repo, '.git'), path.join(b.repo, '.realgit'));
+    await fs.writeFile(path.join(b.repo, '.git'), 'gitdir: .realgit\n');
+    assert.equal(gitDirInside(b.repo), true);
+    assert.equal(await sourceIdentity({ type: 'local', ref: b.repo }), 'git:' + b.head);
   });
 });

@@ -232,3 +232,47 @@ describe('bbs store — ACTIVE pointer is written atomically (review r3)', () =>
     }
   });
 });
+
+describe('bbs config — review r4 regressions: paths stay under .claude/bbs', () => {
+  it('the defaults pass and paths.runs / paths.registry escaping .claude/bbs are refused naming the key', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-config-r4-'));
+    try {
+      await fs.mkdir(path.join(dir, '.claude'), { recursive: true });
+      const file = path.join(dir, '.claude', 'bbs.json');
+      await fs.writeFile(file, JSON.stringify({ paths: { runs: '.claude/bbs/runs', registry: '.claude/bbs/registry.jsonl' } }));
+      assert.deepEqual(await loadConfig(dir), DEFAULT_CONFIG);
+      await fs.writeFile(file, JSON.stringify({ paths: { runs: '.claude/bbs/other-runs', registry: '.claude/bbs/sub/reg.jsonl' } }));
+      const ok = await loadConfig(dir);
+      assert.equal(ok.paths.runs, '.claude/bbs/other-runs');
+      assert.equal(ok.paths.registry, '.claude/bbs/sub/reg.jsonl');
+      await fs.writeFile(file, JSON.stringify({ paths: { runs: '.claude/bbs' } }));
+      assert.equal((await loadConfig(dir)).paths.runs, '.claude/bbs');
+      const bad = [
+        ['runs', '../escaped'], ['runs', '/tmp/abs-runs'], ['runs', ''], ['runs', 5], ['runs', '.claude/bbs/../../x'],
+        ['runs', '.claude/bbsx'], ['runs', '.claude'],
+        ['registry', '../reg.jsonl'], ['registry', '/tmp/reg.jsonl'], ['registry', ''], ['registry', '.claude/bbs'],
+        ['registry', null]
+      ];
+      for (const [key, value] of bad) {
+        await fs.writeFile(file, JSON.stringify({ paths: { [key]: value } }));
+        await assert.rejects(() => loadConfig(dir),
+          (err) => err.message === `invalid config in ${file}: paths.${key} "${value}" must stay under .claude/bbs`, `${key}=${value}`);
+      }
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('paths.marathon_cli must be a non-empty relative string', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-config-r4m-'));
+    try {
+      await fs.mkdir(path.join(dir, '.claude'), { recursive: true });
+      const file = path.join(dir, '.claude', 'bbs.json');
+      for (const value of ['', '/usr/bin/cli.js', 7]) {
+        await fs.writeFile(file, JSON.stringify({ paths: { marathon_cli: value } }));
+        await assert.rejects(() => loadConfig(dir),
+          (err) => err.message === `invalid config in ${file}: paths.marathon_cli "${value}" must be a non-empty relative path`, String(value));
+      }
+      await fs.writeFile(file, JSON.stringify({ paths: { marathon_cli: 'tools/cli.js' } }));
+      assert.equal((await loadConfig(dir)).paths.marathon_cli, 'tools/cli.js');
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+});
