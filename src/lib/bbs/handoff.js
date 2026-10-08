@@ -21,7 +21,7 @@ import { loadConfig as loadMarathonConfig, activeRunId as marathonActiveRun, set
 import { renderStatusSafe } from './status.js';
 import { loadConfig } from './config.js';
 import { VERDICTS, POWERS_CHANGED } from './verdict.js';
-import { redactRef } from './intake.js';
+import { redactRef, redactUrlsInText } from './intake.js';
 
 // The five checks per power, written in the finish line before the build
 export const CHECKS = ['tests_green', 'egress_zero', 'six_sigma_claim', 'callers_ge_1', 'packaged_check'];
@@ -120,14 +120,24 @@ export function buildFinishLine(powers, { tolerance }) {
 }
 
 const LOCATION = /(?:[\w./-]+\.[A-Za-z0-9]+(?::\d+(?:-\d+)?)?)|https?:\/\/\S+/g;
+const LINE_SUFFIX = /:\d+(?:-\d+)?$/;
+const TOKEN_SEGMENT = /[A-Za-z0-9_-]{20,}/;
 
 /**
- * The location tokens in an evidence string (path.ext, path.ext:line, path.ext:a-b, http(s) URLs), deduped in order.
- * Nothing else from the string is kept: a brief never carries source code.
+ * The location tokens in an evidence string, deduped in order. Nothing else from the string is kept: a brief never
+ * carries source code. The whole string first goes through redactUrlsInText, so a URL is kept only redacted (userinfo
+ * removed, token-like query values masked). A dotted token is kept only with a '/' (a path) or a ':<line>' /
+ * ':<a>-<b>' suffix, and any token holding a run of 20+ base64-url characters (a key or JWT-shaped string) is dropped.
  */
 export function evidenceLocations(text) {
   if (text == null) return [];
-  return [...new Set(String(text).match(LOCATION) || [])];
+  const found = redactUrlsInText(String(text)).match(LOCATION) || [];
+  const kept = found.filter((t) => {
+    if (TOKEN_SEGMENT.test(t)) return false;
+    if (/^https?:\/\//i.test(t)) return true;
+    return t.includes('/') || LINE_SUFFIX.test(t);
+  });
+  return [...new Set(kept)];
 }
 
 const evidenceBullet = (evidence) => {
@@ -471,10 +481,13 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
   const flFile = { tolerance: finishLine.tolerance, lines: finishLine.lines };
 
   // Marathon preflight, before any write
+  // A forced hand-off reads the previous handoff.json: its run (when nothing is approved now) and the briefs/memos it wrote
+  let prev = null;
+  if (force) {
+    try { prev = await readJson(handoffPath); } catch { /* unreadable old handoff.json: it is replaced below; nothing it listed is removed */ }
+  }
   let prevMarathonRun = null; // forced hand-off with nothing approved: the run the previous hand-off filled
   if (force && marathon && approved.length === 0) {
-    let prev = null;
-    try { prev = await readJson(handoffPath); } catch { /* unreadable old handoff.json: it is replaced below */ }
     if (typeof prev?.marathonRun === 'string' && MARATHON_RUN_ID.test(prev.marathonRun)) prevMarathonRun = prev.marathonRun;
   }
   const useMarathon = marathon && (approved.length > 0 || prevMarathonRun !== null);
@@ -482,7 +495,11 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
   let runsRoot = null;
   let mcfg = null;
   if (useMarathon) {
-    marathonCliPath = path.join(projectDir, cfg.paths.marathon_cli);
+    marathonCliPath = path.resolve(projectDir, cfg.paths.marathon_cli);
+    const cliRel = path.relative(path.resolve(projectDir), marathonCliPath);
+    if (!cliRel || cliRel.startsWith('..') || path.isAbsolute(cliRel)) {
+      throw new Error(`marathon: paths.marathon_cli ${JSON.stringify(cfg.paths.marathon_cli)} must stay under the project`);
+    }
     try {
       await fs.stat(marathonCliPath);
     } catch {
@@ -524,6 +541,7 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
   let resume_line = null;
   let stale_streams = [];
   let removed_files = [];
+  const skipped_files = [];
   let note = approved.length === 0 ? 'no approved power — nothing to hand off to a marathon run' : null;
 
   if (useMarathon) {
@@ -664,15 +682,32 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
     }
   }
 
-  // A forced refill leaves no brief or memo of a power that is no longer rebuild/use/buy in this hand-off
+  // A forced refill removes the briefs and memos the previous handoff.json listed (powers[].brief, memos[].memo) that
+  // this hand-off does not keep. Nothing else in briefs/ or memos/ is touched. A listed entry that does not sit directly
+  // in its own dir as <name>.md, or is not a regular file, is left alone and reported in skipped_files.
   if (force) {
-    const keep = { briefs: new Set(outputPowers.map(p => `${p.slug}.md`)), memos: new Set(memos.map(m => `${m.slug}.md`)) };
-    for (const [dirName, dirPath] of [['briefs', briefsDir], ['memos', memosDir]]) {
-      for (const f of (await fs.readdir(dirPath)).sort()) {
-        if (!f.endsWith('.md') || keep[dirName].has(f)) continue;
-        await fs.rm(path.join(dirPath, f), { force: true });
-        removed_files.push(posix(path.relative(projectDir, path.join(dirPath, f))));
+    const keep = new Set([...outputPowers.map(p => p.brief), ...memos.map(m => m.memo)]);
+    const listed = [
+      ...(Array.isArray(prev?.powers) ? prev.powers.map(p => ['briefs', briefsDir, p?.brief]) : []),
+      ...(Array.isArray(prev?.memos) ? prev.memos.map(m => ['memos', memosDir, m?.memo]) : [])
+    ];
+    const seen = new Set();
+    for (const [dirName, dirPath, entry] of listed) {
+      if (entry == null || seen.has(entry)) continue;
+      seen.add(entry);
+      if (keep.has(entry)) continue;
+      const target = typeof entry === 'string' ? path.resolve(runDir, entry) : null;
+      if (!target || path.dirname(target) !== dirPath || !target.endsWith('.md') || entry !== `${dirName}/${path.basename(target)}`) {
+        skipped_files.push(String(entry));
+        continue;
       }
+      let st;
+      try { st = await fs.lstat(target); }
+      catch (err) { if (err.code === 'ENOENT') continue; throw err; }
+      const rel = posix(path.relative(projectDir, target));
+      if (!st.isFile()) { skipped_files.push(rel); continue; }
+      await fs.rm(target, { force: true });
+      removed_files.push(rel);
     }
   }
 
@@ -686,7 +721,7 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
     skipped,
     finish_line: flFile,
     note,
-    ...(force ? { stale_streams, removed_files } : {}),
+    ...(force ? { stale_streams, removed_files, skipped_files } : {}),
     ts: now().toISOString()
   };
   if (force) await writeJson(handoffPath, handoffDoc);
@@ -702,7 +737,7 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
     memos,
     skipped,
     note,
-    ...(force ? { stale_streams, removed_files } : {}),
+    ...(force ? { stale_streams, removed_files, skipped_files } : {}),
     next: 'done'
   };
 }

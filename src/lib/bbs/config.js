@@ -47,7 +47,7 @@ export async function loadConfig(projectDir) {
   return cfg;
 }
 
-/** Every configured path stays inside the project: runs and registry under .claude/bbs. */
+/** Every configured path stays inside the project: runs and registry under .claude/bbs, marathon_cli under the project. */
 function validatePaths(cfg, projectDir, file) {
   if (!isPlainObject(cfg.paths)) throw new Error(`invalid config in ${file}: paths must be an object`);
   const root = path.resolve(projectDir, '.claude', 'bbs');
@@ -62,5 +62,9 @@ function validatePaths(cfg, projectDir, file) {
   const cli = cfg.paths.marathon_cli;
   if (typeof cli !== 'string' || cli === '' || path.isAbsolute(cli)) {
     throw new Error(`invalid config in ${file}: paths.marathon_cli "${cli}" must be a non-empty relative path`);
+  }
+  const cliRel = path.relative(path.resolve(projectDir), path.resolve(projectDir, cli));
+  if (!cliRel || cliRel.startsWith('..') || path.isAbsolute(cliRel)) {
+    throw new Error(`invalid config in ${file}: paths.marathon_cli "${cli}" must stay under the project`);
   }
 }

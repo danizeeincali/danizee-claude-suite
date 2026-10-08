@@ -22,6 +22,7 @@ import { writeInventory } from '../src/lib/bbs/inventory.js';
 import { buildMap, recordJudgments } from '../src/lib/bbs/harness-map.js';
 import { computeVerdicts, recordDecisions, POWERS_CHANGED } from '../src/lib/bbs/verdict.js';
 import { readJson, withMapLock } from '../src/lib/bbs/store.js';
+import { DEFAULT_CONFIG } from '../src/lib/bbs/config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.dirname(__dirname);
@@ -767,5 +768,81 @@ describe('handoff — review r3 regressions', () => {
       assert.match(err.message, /may need removing/);
       return true;
     });
+  });
+});
+
+describe('handoff — review r4 regressions', () => {
+  const exists = (p) => fs.stat(p).then(() => true, () => false);
+  const bbsRun = (d, id) => path.join(d, '.claude', 'bbs', 'runs', id);
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-hor4-')); await makeHarness(dir, { withMarathon: true }); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('[medium] evidence: URLs are kept only redacted, a bare dotted token needs a / or a :line, token-shaped strings never land', () => {
+    const ev = 'src/a.js:3 calls https://u:pw@api.x.com/v1?api_key=SECRET and eyJhbGciOi.eyJzdWIi.sig_abc';
+    assert.deepEqual(evidenceLocations(ev), ['src/a.js:3', 'https://api.x.com/v1?api_key=<redacted>']);
+    const ctx = { source: null, row: { licence_class: 'permissive', decision: 'rebuild' }, lines: [], decided_at: 'now' };
+    for (const md of [renderBrief(power({ evidence: ev }), ctx), renderMemo(power({ evidence: ev }), { source: null, row: { licence_class: 'commercial', decision: 'buy' } })]) {
+      assert.ok(md.includes('- Evidence: src/a.js:3, https://api.x.com/v1?api_key=<redacted>'), md);
+      for (const bad of ['pw', 'SECRET', 'eyJ']) assert.ok(!md.includes(bad), `${bad} in ${md}`);
+    }
+    // the switch: a dotted token with a line suffix or a slash is kept, a bare one is not, a long base64-url segment is dropped
+    assert.deepEqual(evidenceLocations('README.md:4 lib/x.ts README.md a.b'), ['README.md:4', 'lib/x.ts']);
+    assert.deepEqual(evidenceLocations('src/abcdefghijABCDEFGHIJ.js:3 src/abcdefghijABCDEFGHI.js:3'), ['src/abcdefghijABCDEFGHI.js:3']);
+    assert.deepEqual(evidenceLocations('https://h.test/hook/abcdefghijABCDEFGHIJ'), []);
+  });
+
+  it('[medium] a forced refill removes only the briefs/memos the previous handoff.json listed: a foreign .md survives, a skipped power\'s brief goes, a directory x.md is skipped and reported', async () => {
+    const three = [power(), power({ name: 'budget guard', idea: 'ceiling check' }), power({ name: 'x', idea: 'x idea' })];
+    const J = { 'drift-monitor': 'missing', 'budget guard': 'missing', x: 'missing' };
+    const r = await decided(dir, 'r4clean', three, J, { 'drift-monitor': 'rebuild', 'budget guard': 'rebuild', x: 'rebuild' });
+    await buildHandoff(dir, { run: r.runId, now, marathon: true });
+    const rd = bbsRun(dir, r.runId);
+    const notes = path.join(rd, 'briefs', 'notes.md');
+    const memoNotes = path.join(rd, 'memos', 'mine.md');
+    await fs.writeFile(notes, '# my notes\n');
+    await fs.writeFile(memoNotes, '# my memo notes\n');
+    const xBrief = path.join(rd, 'briefs', 'x.md');
+    await fs.rm(xBrief);
+    await fs.mkdir(xBrief);
+    await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'budget guard': 'skip', x: 'skip' }), now, force: true });
+    const out = await buildHandoff(dir, { run: r.runId, now, marathon: true, force: true });
+    assert.equal(await exists(notes), true, 'foreign briefs/notes.md survives --force');
+    assert.equal(await exists(memoNotes), true, 'foreign memos/mine.md survives --force');
+    assert.equal(await exists(path.join(rd, 'briefs', 'budget-guard.md')), false, 'the skipped power\'s brief is removed');
+    assert.equal((await fs.stat(xBrief)).isDirectory(), true, 'the directory is left alone');
+    assert.deepEqual(out.removed_files, [`.claude/bbs/runs/${r.runId}/briefs/budget-guard.md`]);
+    assert.deepEqual(out.skipped_files, [`.claude/bbs/runs/${r.runId}/briefs/x.md`]);
+    const hj = await readJson(path.join(rd, 'handoff.json'));
+    assert.deepEqual(hj.removed_files, out.removed_files);
+    assert.deepEqual(hj.skipped_files, out.skipped_files);
+  });
+
+  it('[medium] a previous handoff.json listing a path outside briefs/ or memos/ never deletes it; it is reported in skipped_files', async () => {
+    const r = await decided(dir, 'r4escape', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+    await buildHandoff(dir, { run: r.runId, now });
+    const rd = bbsRun(dir, r.runId);
+    const victim = path.join(rd, 'source.json');
+    const hjPath = path.join(rd, 'handoff.json');
+    const hj = await readJson(hjPath);
+    hj.powers.push({ name: 'evil', slug: 'evil', brief: '../source.json' });
+    hj.memos.push({ name: 'evil2', slug: 'evil2', memo: 'memos/../../../../../escape.md' });
+    await fs.writeFile(hjPath, JSON.stringify(hj));
+    const out = await buildHandoff(dir, { run: r.runId, now, force: true });
+    assert.equal(await exists(victim), true, 'source.json is not deleted');
+    assert.deepEqual(out.removed_files, []);
+    assert.deepEqual(out.skipped_files, ['../source.json', 'memos/../../../../../escape.md']);
+  });
+
+  it('[low] a paths.marathon_cli resolving outside the project is refused before anything runs', async () => {
+    const r = await decided(dir, 'r4cli', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+    const cfg = structuredClone(DEFAULT_CONFIG);
+    cfg.paths.marathon_cli = '../../elsewhere/cli.js';
+    let calls = 0;
+    await assert.rejects(() => buildHandoff(dir, { run: r.runId, now, marathon: true, cfg, marathonRunner: () => { calls++; return '{}'; } }),
+      (err) => err.message === 'marathon: paths.marathon_cli "../../elsewhere/cli.js" must stay under the project');
+    assert.equal(calls, 0);
+    assert.equal(await exists(path.join(bbsRun(dir, r.runId), 'briefs')), false, 'nothing written');
+    assert.equal(await exists(path.join(bbsRun(dir, r.runId), 'handoff.json')), false);
   });
 });
