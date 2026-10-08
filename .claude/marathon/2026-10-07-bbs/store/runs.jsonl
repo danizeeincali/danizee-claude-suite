@@ -25,3 +25,4 @@
 {"kind":"unit","status":"green","stream":"verdict","commit":"4d9da8c","id":"51b0866d-8744-426d-945f-b01726624cc4","ts":"2026-10-08T04:02:19.814Z"}
 {"kind":"unit","status":"green","stream":"verdict","commit":"7caf67d","id":"66a8b50a-c9e4-46f1-8c26-77ad43a0f719","ts":"2026-10-08T04:09:38.822Z"}
 {"kind":"unit","status":"green","stream":"verdict","commit":"723c14d","id":"0318287d-6cca-4c0a-892a-83ff60a1173a","ts":"2026-10-08T04:17:18.653Z"}
+{"kind":"unit","status":"green","stream":"handoff","commit":"d1c0b20","id":"bce088b4-c79c-4b74-95fc-46dd6751d024","ts":"2026-10-08T04:28:26.669Z"}

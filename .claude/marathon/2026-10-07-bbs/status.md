@@ -1,11 +1,11 @@
 # Marathon 2026-10-07-bbs
 
 - State: RUNNING
-- Budget: 5,687,151 / 10,000,000 tokens
+- Budget: 5,833,443 / 10,000,000 tokens
 - Allowance: 95% (ceiling 98%)
 - Gate (run-wide, all streams): 2/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "handoff" (next: builder for handoff.js + handoff verb against test/bbs-handoff.test.js; review r1 with --base 7caf67d) — /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
+- Next for you: Continue stream "handoff" (next: review round 1 (opus) on 7caf67d..HEAD (includes verdict r6 fixes)) — /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
 
 ## Streams
 
@@ -16,7 +16,7 @@
 | inventory | ../claude-suite-inventory | .claude/plans/2026-10-07-w-bbs.md | done | clean 2/2 | done | closed: 3 reviews (r2, r3 clean), 25 findings fixed; r3 fixes (945e873..9905a37) reviewed in harness-map r1 via --base 945e873 |  | 0 |
 | harness-map | ../claude-suite-harness-map | .claude/plans/2026-10-07-w-bbs.md | done | clean 2/2 | done | closed: 4 reviews (r3, r4 clean), 22 findings fixed; r4 fix (f449196..45e70fc) reviewed in verdict r1 via --base f449196 |  | 0 |
 | verdict | ../claude-suite-verdict | .claude/plans/2026-10-07-w-bbs.md | done | clean 2/2 | done | closed: 6 reviews (r5, r6 clean), 26 findings fixed; r6 fixes (7caf67d..723c14d) reviewed in handoff r1 via --base 7caf67d |  | 0 |
-| handoff | ../claude-suite-handoff | .claude/plans/2026-10-07-w-bbs.md | active | clean 0/2 | 4.3 | builder for handoff.js + handoff verb against test/bbs-handoff.test.js; review r1 with --base 7caf67d |  | 0 |
+| handoff | ../claude-suite-handoff | .claude/plans/2026-10-07-w-bbs.md | active | clean 0/2 | 4.5 | review round 1 (opus) on 7caf67d..HEAD (includes verdict r6 fixes) |  | 0 |
 | command-docs |  | .claude/plans/2026-10-07-w-bbs.md | queued | clean 0/2 |  | plugin installer, w-bbs + bbs commands, docs, README, e2e packaged test |  | 0 |
 
 ## Finish line
@@ -24,11 +24,11 @@
 | Line | Owner | Status | Actual | Target |
 |---|---|---|---|---|
 | Green end-to-end runs in a row | build | failing | 0 | at_least 6 |
-| Green unit runs in a row | build | met | 27 | at_least 3 |
+| Green unit runs in a row | build | met | 28 | at_least 3 |
 | Clean reviews in a row | build | met | 2 | at_least 2 |
 | High findings in the latest review | build | met | 0 | at_most 0 |
 | Open high findings | build | met | 0 | at_most 0 |
-| Helpers that blew their budget | build | met | 1 | at_most 4 |
+| Helpers that blew their budget | build | met | 2 | at_most 4 |
 | Packaged check: installed CLI runs the fixture source end to end | build | failing | — | is true |
 | Pushed and merged by the owner via /bcp | human | waiting on human | false | is true |
 
