@@ -14,13 +14,13 @@ import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import {
   VERDICTS, PROBES, PolicyRefused, licenceClass, detectSandbox, legalVerdicts, defaultVerdict, verdictTable,
-  computeVerdicts, recordProbe, recordDecisions
+  computeVerdicts, recordProbe, recordDecisions, defaultExec, SANDBOX_STDERR_MAX_CHARS
 } from '../src/lib/bbs/verdict.js';
 import { DEFAULT_CONFIG } from '../src/lib/bbs/config.js';
 import { intake } from '../src/lib/bbs/intake.js';
 import { writeInventory } from '../src/lib/bbs/inventory.js';
 import { buildMap, recordJudgments } from '../src/lib/bbs/harness-map.js';
-import { readJson, readJsonl, lookupSource } from '../src/lib/bbs/store.js';
+import { readJson, readJsonl, lookupSource, appendRegistry, appendJsonl, registryPath } from '../src/lib/bbs/store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(path.dirname(__dirname), 'src', 'lib', 'bbs', 'cli.js');
@@ -445,7 +445,7 @@ describe('verdict r1 — library: sandbox.required_for_use, probe evidence, prob
     assert.equal(over.probe.evidence, 'a'.repeat(2048) + ' …[truncated]', 'N + 1 is truncated');
   });
 
-  it('probe --force clean → found clears a recorded `use` decision with a warning; labels.jsonl is history and is left untouched', async () => {
+  it('probe --force clean → found clears a recorded `use` decision with a warning; labels.jsonl is append-only history: the old rows stay and exactly one withdrawal row is added', async () => {
     const r = await prepared('clr', [power()], { 'drift-monitor': 'missing' });
     await computeVerdicts(dir, { run: r.runId, sandbox, now });
     await recordProbe(dir, { run: r.runId, power: 'drift-monitor', result: 'clean', now });
@@ -460,7 +460,18 @@ describe('verdict r1 — library: sandbox.required_for_use, probe evidence, prob
     assert.equal(vj.rows['drift-monitor'].decision, null);
     assert.deepEqual(vj.decisions, {});
     assert.deepEqual(vj.rows['drift-monitor'].legal, ['rebuild', 'skip']);
-    assert.ok((await fs.readFile(labelsFile)).equals(labelsBefore), 'labels.jsonl byte-identical');
+    // r2 decision (lead, 2026-10-07): labels are the router's training data, so a withdrawn verdict must be on record.
+    const after = await fs.readFile(labelsFile);
+    assert.ok(after.subarray(0, labelsBefore.length).equals(labelsBefore), 'previous label rows are untouched');
+    const added = after.toString('utf-8').slice(labelsBefore.length).trim().split('\n').filter(Boolean).map(l => JSON.parse(l));
+    assert.equal(added.length, 1, 'exactly one row appended');
+    assert.equal(added[0].power, 'drift-monitor');
+    assert.equal(added[0].verdict, null);
+    assert.equal(added[0].label, null);
+    assert.equal(added[0].withdrawn, 'use');
+    assert.match(added[0].reason, /found/);
+    assert.equal(added[0].run, r.runId);
+    assert.ok(added[0].ts);
   });
 });
 
@@ -600,5 +611,281 @@ describe('verdict r1 — cli --table that recomputes names ignored config on std
       assert.match(t.stdout, /\| drift-monitor \| missing \| MIT \(permissive\) \| rebuild, skip \|/);
       assert.match(t.stderr, /bbs: warning: .*sandbox\.required_for_use=false in \.claude\/bbs\.json is ignored/);
     } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Review r2 (e152092e) regressions: cleared decisions vs the registry, idempotent repair of failed appends,
+// inventory --force under map.lock + powers_ts, corrupt verdicts.json, sandbox reasons, duplicate keys.
+
+describe('verdict r2 — registry, repair, powers_ts, corrupt verdicts.json, duplicate keys', () => {
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-vr2-')); await makeHarness(dir); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+  const runDir = (id) => path.join(dir, '.claude', 'bbs', 'runs', id);
+  const REPAIR = 're-run cli.js verdict --from <same file> to append the missing rows';
+  const registryRows = async (identity) => (await readJsonl(registryPath(dir))).filter(x => x.identity === identity);
+
+  async function prepared(slug, powers, judgments) {
+    const r = await intake(dir, '-', { stdin: 'r2 tool ' + slug, now, slug });
+    await writeInventory(dir, { run: r.runId, input: JSON.stringify(powers), now });
+    await buildMap(dir, { run: r.runId, now });
+    await recordJudgments(dir, { run: r.runId, input: JSON.stringify(judgments), now });
+    return r;
+  }
+
+  it('a probe --force that clears a recorded decision appends a superseding registry row (cleared power → null, complete: false)', async () => {
+    const r = await prepared('clrreg', [power(), power({ name: 'b' })], { 'drift-monitor': 'missing', b: 'missing' });
+    await computeVerdicts(dir, { run: r.runId, sandbox, now });
+    await recordProbe(dir, { run: r.runId, power: 'drift-monitor', result: 'clean', now });
+    await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'use', b: 'rebuild' }), now });
+    const full = await lookupSource(dir, r.identity);
+    assert.deepEqual(full.decisions, { 'drift-monitor': 'use', b: 'rebuild' });
+    assert.equal(full.complete, true);
+    await recordProbe(dir, { run: r.runId, power: 'drift-monitor', result: 'found', now, force: true });
+    const latest = await lookupSource(dir, r.identity);
+    assert.equal(latest.run, r.runId);
+    assert.equal(latest.decisions['drift-monitor'], null);
+    assert.equal(latest.decisions.b, 'rebuild');
+    assert.equal(latest.complete, false);
+    assert.equal(latest.type, full.type);
+    assert.equal(latest.powers, 2);
+    // nothing changed since: a recompute appends no further row
+    const n = (await registryRows(r.identity)).length;
+    await computeVerdicts(dir, { run: r.runId, sandbox, now });
+    assert.equal((await registryRows(r.identity)).length, n);
+  });
+
+  it('a recompute after the sandbox disappears clears `use` and supersedes the registry row; a failed append warns and the next recompute appends it', async () => {
+    const r = await prepared('clrsb', [power()], { 'drift-monitor': 'missing' });
+    await computeVerdicts(dir, { run: r.runId, sandbox, now });
+    await recordProbe(dir, { run: r.runId, power: 'drift-monitor', result: 'clean', now });
+    await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now });
+    const failing = async () => { throw new Error('disk full'); };
+    const out = await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now, appendRegistryImpl: failing });
+    assert.equal(out.rows['drift-monitor'].decision, null);
+    assert.match(out.warning, /registry row could not be written: disk full — re-run cli\.js verdict to append it/);
+    assert.equal((await lookupSource(dir, r.identity)).decisions['drift-monitor'], 'use', 'the failed append left the old row latest');
+    await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now });
+    const latest = await lookupSource(dir, r.identity);
+    assert.equal(latest.decisions['drift-monitor'], null);
+    assert.equal(latest.complete, false);
+  });
+
+  it('every clearing path appends one withdrawal label naming the cause: sandbox gone, --force, corrupt file replaced; a retry appends nothing more', async () => {
+    const withdrawals = async (id) => (await readJsonl(path.join(runDir(id), 'labels.jsonl'))).filter(l => l.withdrawn != null);
+    // sandbox disappears
+    const a = await prepared('wsb', [power()], { 'drift-monitor': 'missing' });
+    await computeVerdicts(dir, { run: a.runId, sandbox, now });
+    await recordProbe(dir, { run: a.runId, power: 'drift-monitor', result: 'clean', now });
+    await recordDecisions(dir, { run: a.runId, input: JSON.stringify({ 'drift-monitor': 'use' }), now });
+    await computeVerdicts(dir, { run: a.runId, sandbox: noSandbox, now });
+    let w = await withdrawals(a.runId);
+    assert.equal(w.length, 1);
+    assert.deepEqual({ ...w[0], reason: undefined }, { run: a.runId, power: 'drift-monitor', verdict: null, label: null, withdrawn: 'use', reason: undefined, ts: w[0].ts });
+    assert.match(w[0].reason, /no sandbox on this machine/);
+    await computeVerdicts(dir, { run: a.runId, sandbox: noSandbox, now });
+    assert.equal((await withdrawals(a.runId)).length, 1, 'a recompute does not withdraw twice');
+    // --force drops a legal decision
+    const b = await prepared('wforce', [power()], { 'drift-monitor': 'missing' });
+    await computeVerdicts(dir, { run: b.runId, sandbox: noSandbox, now });
+    await recordDecisions(dir, { run: b.runId, input: JSON.stringify({ 'drift-monitor': 'skip' }), now });
+    await computeVerdicts(dir, { run: b.runId, sandbox: noSandbox, now, force: true });
+    w = await withdrawals(b.runId);
+    assert.equal(w.length, 1);
+    assert.equal(w[0].withdrawn, 'skip');
+    assert.match(w[0].reason, /forced recompute/);
+    // re-deciding after a withdrawal records a fresh label (the withdrawal counts as no label)
+    await recordDecisions(dir, { run: b.runId, input: JSON.stringify({ 'drift-monitor': 'skip' }), now });
+    assert.deepEqual((await readJsonl(path.join(runDir(b.runId), 'labels.jsonl'))).map(l => [l.verdict, l.withdrawn ?? null]), [['skip', null], [null, 'skip'], ['skip', null]]);
+    // corrupt verdicts.json replaced
+    const c = await prepared('wcorrupt', [power()], { 'drift-monitor': 'missing' });
+    await computeVerdicts(dir, { run: c.runId, sandbox: noSandbox, now });
+    await recordDecisions(dir, { run: c.runId, input: JSON.stringify({ 'drift-monitor': 'rebuild' }), now });
+    await fs.writeFile(path.join(runDir(c.runId), 'verdicts.json'), '{ broken');
+    await computeVerdicts(dir, { run: c.runId, sandbox: noSandbox, now, force: true });
+    w = await withdrawals(c.runId);
+    assert.equal(w.length, 1);
+    assert.equal(w[0].withdrawn, 'rebuild');
+    assert.match(w[0].reason, /corrupt/);
+  });
+
+  it('a failed withdrawal append is a warning and the next recompute appends it once; a decision with no label row behind it is not withdrawn', async () => {
+    const r = await prepared('wfail', [power(), power({ name: 'b' })], { 'drift-monitor': 'missing', b: 'missing' });
+    await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now });
+    const noLabelForB = async (file, row) => { if (row.power === 'b') throw new Error('EIO'); return appendJsonl(file, row); };
+    await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'rebuild', b: 'skip' }), now, appendLabel: noLabelForB });
+    const failing = async () => { throw new Error('disk full'); };
+    const out = await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now, force: true, appendLabel: failing });
+    assert.match(out.warning, /withdrawal label could not be written to labels\.jsonl for drift-monitor \(disk full\) — re-run cli\.js verdict to append it/);
+    const labelsFile = path.join(runDir(r.runId), 'labels.jsonl');
+    assert.equal((await readJsonl(labelsFile)).filter(l => l.withdrawn != null).length, 0);
+    await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now });
+    const w = (await readJsonl(labelsFile)).filter(l => l.withdrawn != null);
+    assert.deepEqual(w.map(l => [l.power, l.withdrawn]), [['drift-monitor', 'rebuild']], 'b had no label row: nothing to withdraw');
+    assert.match(w[0].reason, /no longer recorded in verdicts\.json/);
+  });
+
+  it('a failed registry append is repaired by resubmitting the same decisions: the row is written once, labels are not duplicated', async () => {
+    const r = await prepared('repreg', [power()], { 'drift-monitor': 'missing' });
+    await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now });
+    let calls = 0;
+    const throwOnce = async (...args) => { if (calls++ === 0) throw new Error('EACCES registry'); return appendRegistry(...args); };
+    const input = JSON.stringify({ 'drift-monitor': 'rebuild' });
+    const first = await recordDecisions(dir, { run: r.runId, input, now, appendRegistryImpl: throwOnce });
+    assert.equal(first.registry_written, false);
+    assert.ok(first.warning.includes(`registry row could not be written: EACCES registry — ${REPAIR}`), first.warning);
+    assert.equal(await lookupSource(dir, r.identity), null);
+    const retry = await recordDecisions(dir, { run: r.runId, input, now, appendRegistryImpl: throwOnce });
+    assert.equal(retry.registry_written, true);
+    assert.equal(retry.warning, undefined);
+    assert.deepEqual((await lookupSource(dir, r.identity)).decisions, { 'drift-monitor': 'rebuild' });
+    const again = await recordDecisions(dir, { run: r.runId, input, now });
+    assert.equal(again.registry_written, false, 'nothing missing: nothing appended');
+    assert.equal((await registryRows(r.identity)).length, 1);
+    assert.equal((await readJsonl(path.join(runDir(r.runId), 'labels.jsonl'))).length, 1);
+    // a resubmission with --force of the same decision duplicates nothing either
+    await recordDecisions(dir, { run: r.runId, input, now, force: true });
+    assert.equal((await registryRows(r.identity)).length, 1);
+    assert.equal((await readJsonl(path.join(runDir(r.runId), 'labels.jsonl'))).length, 1);
+  });
+
+  it('a failed label append is repaired by resubmitting the same decisions: only the missing label row is appended', async () => {
+    const r = await prepared('replab', [power(), power({ name: 'b' })], { 'drift-monitor': 'missing', b: 'missing' });
+    await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now });
+    let calls = 0;
+    const throwOnceForB = async (file, row) => { if (row.power === 'b' && calls++ === 0) throw new Error('EIO labels'); return appendJsonl(file, row); };
+    const input = JSON.stringify({ 'drift-monitor': 'rebuild', b: 'skip' });
+    const first = await recordDecisions(dir, { run: r.runId, input, now, appendLabel: throwOnceForB });
+    assert.ok(first.warning.includes(`label for b could not be written to labels.jsonl: EIO labels — ${REPAIR}`), first.warning);
+    assert.equal(first.registry_written, true);
+    const labelsFile = path.join(runDir(r.runId), 'labels.jsonl');
+    assert.deepEqual((await readJsonl(labelsFile)).map(l => l.power), ['drift-monitor']);
+    const retry = await recordDecisions(dir, { run: r.runId, input, now, appendLabel: throwOnceForB });
+    assert.equal(retry.warning, undefined);
+    assert.equal(retry.registry_written, false);
+    assert.deepEqual((await readJsonl(labelsFile)).map(l => [l.power, l.verdict, l.label]), [['drift-monitor', 'rebuild', 1], ['b', 'skip', 0]]);
+    assert.equal((await registryRows(r.identity)).length, 1);
+    // a different verdict for a decided power is still refused without --force
+    await assert.rejects(() => recordDecisions(dir, { run: r.runId, input: JSON.stringify({ b: 'rebuild' }), now }), /b already decided — pass --force to change it/);
+  });
+
+  it('inventory --force waits for no one: it refuses while map.lock is held and moves nothing aside', async () => {
+    const r = await prepared('lock', [power()], { 'drift-monitor': 'missing' });
+    await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now });
+    const rd = runDir(r.runId);
+    const powersBefore = await fs.readFile(path.join(rd, 'powers.json'));
+    await fs.writeFile(path.join(rd, 'map.lock'), '1 someoneelse\n');
+    await assert.rejects(() => writeInventory(dir, { run: r.runId, input: JSON.stringify([power({ name: 'z' })]), now, force: true }), /locked by another bbs command \(map\.lock\)/);
+    assert.ok((await fs.readFile(path.join(rd, 'powers.json'))).equals(powersBefore), 'powers.json untouched');
+    await fs.stat(path.join(rd, 'verdicts.json'));
+    await fs.stat(path.join(rd, 'map.json'));
+    await fs.rm(path.join(rd, 'map.lock'));
+    const ok = await writeInventory(dir, { run: r.runId, input: JSON.stringify([power({ name: 'z' })]), now, force: true });
+    assert.deepEqual([...ok.stale_moved].sort(), ['map.json', 'verdicts.json']);
+    await assert.rejects(() => fs.stat(path.join(rd, 'map.lock')), { code: 'ENOENT' }, 'the lock is released');
+  });
+
+  it('verdicts.json stores powers_ts; recordProbe and recordDecisions refuse when powers.json changed since', async () => {
+    const r = await prepared('pts', [power()], { 'drift-monitor': 'missing' });
+    await computeVerdicts(dir, { run: r.runId, sandbox, now });
+    const rd = runDir(r.runId);
+    const pj = await readJson(path.join(rd, 'powers.json'));
+    assert.equal((await readJson(path.join(rd, 'verdicts.json'))).powers_ts, pj.ts);
+    await fs.writeFile(path.join(rd, 'powers.json'), JSON.stringify({ ...pj, ts: '2026-10-07T13:00:00.000Z' }));
+    const vBefore = await fs.readFile(path.join(rd, 'verdicts.json'));
+    const MSG = { message: 'powers.json changed since the verdicts were computed — run cli.js verdict first' };
+    await assert.rejects(() => recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'rebuild' }), now }), MSG);
+    await assert.rejects(() => recordProbe(dir, { run: r.runId, power: 'drift-monitor', result: 'clean', now }), MSG);
+    assert.ok((await fs.readFile(path.join(rd, 'verdicts.json'))).equals(vBefore), 'verdicts.json byte-identical');
+    await assert.rejects(() => fs.stat(path.join(rd, 'labels.jsonl')), { code: 'ENOENT' });
+    await computeVerdicts(dir, { run: r.runId, sandbox, now });
+    const vj = await readJson(path.join(rd, 'verdicts.json'));
+    delete vj.powers_ts;
+    await fs.writeFile(path.join(rd, 'verdicts.json'), JSON.stringify(vj));
+    await assert.rejects(() => recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'rebuild' }), now }),
+      { message: 'verdicts.json does not record which powers.json it was computed from (no powers_ts) — run cli.js verdict first' });
+    await computeVerdicts(dir, { run: r.runId, sandbox, now });
+    const ok = await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'rebuild' }), now });
+    assert.equal(ok.decided, 1);
+  });
+
+  it('a corrupt verdicts.json: the hint names --force; --force moves it aside and reports dropped as unknown; an unreadable one is a plain error', async () => {
+    const r = await prepared('corrupt', [power()], { 'drift-monitor': 'missing' });
+    const rd = runDir(r.runId);
+    await fs.writeFile(path.join(rd, 'verdicts.json'), '{ not json');
+    await assert.rejects(() => computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now }), /corrupt JSON in .*verdicts\.json.* — pass --force to rebuild it \(probes and decisions are dropped\)/);
+    const out = await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now, force: true });
+    assert.deepEqual(out.dropped, { probes: null, decisions: null, corrupt_replaced: true });
+    const aside = (await fs.readdir(rd)).filter(f => /^verdicts\.json\.stale-.*\.json$/.test(f));
+    assert.equal(aside.length, 1);
+    assert.equal(await fs.readFile(path.join(rd, aside[0]), 'utf-8'), '{ not json');
+    assert.ok((await readJson(path.join(rd, 'verdicts.json'))).rows['drift-monitor']);
+    const clean = await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now, force: true });
+    assert.deepEqual(clean.dropped, { probes: 0, decisions: 0 }, 'a readable file still reports counts');
+    await fs.rm(path.join(rd, 'verdicts.json'));
+    await fs.mkdir(path.join(rd, 'verdicts.json'));
+    for (const force of [false, true]) {
+      await assert.rejects(() => computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now, force }), (e) => /EISDIR|illegal operation on a directory/.test(e.message) && !/--force/.test(e.message));
+    }
+  });
+
+  it('a power named twice in the decisions input is refused naming the power; nothing is written', async () => {
+    const r = await prepared('dup', [power(), power({ name: 'b' })], { 'drift-monitor': 'missing', b: 'missing' });
+    await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now });
+    const rd = runDir(r.runId);
+    const vBefore = await fs.readFile(path.join(rd, 'verdicts.json'));
+    for (const input of [
+      '{"drift-monitor":"rebuild","drift-monitor":"skip"}',
+      '{"decisions":{"drift-monitor":"skip","b":"skip","drift-monitor":"rebuild"}}',
+      '```json\n{ "drift-monitor" : "rebuild" , "drift-monitor":"rebuild" }\n```',
+      '{"drift-monitor":"rebuild","drift\\u002dmonitor":"skip"}'
+    ]) {
+      await assert.rejects(() => recordDecisions(dir, { run: r.runId, input, now }), { message: 'duplicate power "drift-monitor" in decisions' }, input);
+    }
+    await assert.rejects(() => recordDecisions(dir, { run: r.runId, input: Buffer.from('{"b":"skip","b":"rebuild"}'), now, label: '--from d.json' }), { message: 'duplicate power "b" in --from d.json' });
+    assert.ok((await fs.readFile(path.join(rd, 'verdicts.json'))).equals(vBefore));
+    await assert.rejects(() => fs.stat(path.join(rd, 'labels.jsonl')), { code: 'ENOENT' });
+    // distinct keys are not duplicates; an object input cannot carry one
+    const ok = await recordDecisions(dir, { run: r.runId, input: '{"drift-monitor":"rebuild","b":"skip"}', now });
+    assert.equal(ok.decided, 2);
+  });
+});
+
+describe('verdict r2 — sandbox reasons', () => {
+  const enoent = () => { throw Object.assign(new Error('spawnSync x ENOENT'), { code: 'ENOENT' }); };
+  const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
+
+  it('docker stderr in the reason is stripped of control characters and capped at SANDBOX_STDERR_MAX_CHARS (200)', async () => {
+    assert.equal(SANDBOX_STDERR_MAX_CHARS, 200);
+    const dockerSays = (stderr) => detectSandbox({ exec: (cmd) => { if (cmd === 'docker') return { status: 1, stderr }; return enoent(); }, platform: 'darwin' });
+    const dirty = await dockerSays('\u001b[31mCannot connect\u0007 to the daemon\u001b[0m\nsecond line');
+    assert.ok(!CONTROL.test(dirty.reason), dirty.reason);
+    assert.match(dirty.reason, /docker is not running \(\[31mCannot connect to the daemon\[0m\)/);
+    const atCap = await dockerSays('e'.repeat(200));
+    assert.ok(atCap.reason.includes(`(${'e'.repeat(200)})`), 'N = 200 is kept whole');
+    const over = await dockerSays('e'.repeat(201));
+    assert.ok(over.reason.includes(`(${'e'.repeat(200)} …[truncated])`), 'N + 1 is truncated');
+    assert.ok(!over.reason.includes('e'.repeat(201)));
+  });
+
+  it('defaultExec spawns with stdin and stdout ignored and stderr piped, under the 5 s timeout', () => {
+    const seen = [];
+    const spawn = (cmd, args, opts) => { seen.push({ cmd, args, opts }); return { status: 0, stderr: '' }; };
+    assert.deepEqual(defaultExec('docker', ['info'], { spawn }), { status: 0, stderr: '' });
+    assert.deepEqual(seen[0].opts.stdio, ['ignore', 'ignore', 'pipe']);
+    assert.equal(seen[0].opts.timeout, 5000);
+    assert.throws(() => defaultExec('docker', ['info'], { spawn: () => ({ error: Object.assign(new Error('x'), { code: 'ENOENT' }) }) }), { code: 'ENOENT' });
+  });
+
+  it('the unshare part of the reason says why: not installed, timed out, refused (first stderr line), or not linux', async () => {
+    const withUnshare = (u) => detectSandbox({ exec: (cmd) => { if (cmd === 'docker') return enoent(); return u(); }, platform: 'linux' });
+    assert.match((await withUnshare(enoent)).reason, /docker is not installed and unshare is not installed$/);
+    assert.match((await withUnshare(() => { throw Object.assign(new Error('t'), { code: 'ETIMEDOUT' }); })).reason, /and unshare timed out \(5 s timeout\)$/);
+    const refused = await withUnshare(() => ({ status: 1, stderr: 'unshare: unshare failed: Operation not permitted\u001b[0m\nline two' }));
+    assert.match(refused.reason, /and unshare refused user namespaces \(unshare: unshare failed: Operation not permitted\[0m\)$/);
+    assert.ok(!CONTROL.test(refused.reason));
+    const mac = await detectSandbox({ exec: enoent, platform: 'darwin' });
+    assert.match(mac.reason, /and unshare only counts on linux$/);
   });
 });
