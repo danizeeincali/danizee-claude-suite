@@ -11,7 +11,7 @@ import os from 'os';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import {
-  POWER_FIELDS, NETWORK, SIZE, validatePower, parseInventory, inventoryBrief, listSourceFiles, writeInventory
+  POWER_FIELDS, NETWORK, SIZE, validatePower, parseInventory, inventoryBrief, listSourceFiles, writeInventory, SKIP_DIRS
 } from '../src/lib/bbs/inventory.js';
 import { intake } from '../src/lib/bbs/intake.js';
 import { readJson } from '../src/lib/bbs/store.js';
@@ -619,5 +619,157 @@ describe('inventory — review r1 regressions', () => {
     } finally {
       await fs.rm(cdir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('inventory — review r2 regressions', () => {
+  let dir;
+  function run(cwd, args, input) {
+    const r = spawnSync(process.execPath, [CLI, ...args], { cwd, encoding: 'utf-8', input });
+    let json = null;
+    try { json = JSON.parse(r.stdout); } catch {}
+    return { code: r.status, out: r.stdout, err: r.stderr, json };
+  }
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-invr2-')); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+  const runDirOf = (p) => path.join(dir, '.claude', 'bbs', 'runs', p.runId);
+
+  it('commit-then-fail: a corrupt map.json after powers.json is written gives a success result with a warning, not an error', async () => {
+    const p = await intake(dir, '-', { stdin: 'cf', now, slug: 'cf' });
+    await fs.writeFile(path.join(runDirOf(p), 'map.json'), '{ not json');
+    const out = await writeInventory(dir, { run: p.runId, input: JSON.stringify([power()]), now });
+    assert.equal(out.found, 1);
+    assert.equal(out.next, null);
+    assert.match(out.warning, /powers\.json written but .* could not be read/);
+    assert.ok((await readJson(path.join(runDirOf(p), 'powers.json'))).powers.length === 1);
+  });
+
+  it('cli: the same case exits 0, prints the JSON and a "bbs: warning:" line on stderr', async () => {
+    const cdir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-invr2cf-'));
+    try {
+      assert.equal(run(cdir, ['intake', '-', '--slug', 'cf'], 'pasted').code, 0);
+      const runs = await fs.readdir(path.join(cdir, '.claude', 'bbs', 'runs'));
+      await fs.writeFile(path.join(cdir, '.claude', 'bbs', 'runs', runs[0], 'map.json'), '{ not json');
+      const r = run(cdir, ['inventory', '--from', '-'], JSON.stringify([power()]));
+      assert.equal(r.code, 0, r.err);
+      assert.equal(r.json.next, null);
+      assert.match(r.json.warning, /powers\.json written but/);
+      assert.match(r.err, /bbs: warning: powers\.json written but/);
+    } finally { await fs.rm(cdir, { recursive: true, force: true }); }
+  });
+
+  it('no hard links: an injected link that throws EPERM falls back to an exclusive create; the second call still gets the --force error', async () => {
+    const p = await intake(dir, '-', { stdin: 'nl', now, slug: 'nl' });
+    const link = async () => { const e = new Error('operation not permitted'); e.code = 'EPERM'; throw e; };
+    const out = await writeInventory(dir, { run: p.runId, input: JSON.stringify([power()]), now, link });
+    assert.equal(out.found, 1);
+    assert.equal((await readJson(path.join(runDirOf(p), 'powers.json'))).powers.length, 1);
+    await assert.rejects(() => writeInventory(dir, { run: p.runId, input: JSON.stringify([power()]), now, link }), /powers\.json exists — pass --force to replace it/);
+    assert.deepEqual((await fs.readdir(runDirOf(p))).filter(n => n.endsWith('.tmp')), []);
+  });
+
+  it('--force failing partway: files already moved are put back and the error lists stale_moved and restored', async () => {
+    const p = await intake(dir, '-', { stdin: 'pf', now, slug: 'pf' });
+    const rd = runDirOf(p);
+    await writeInventory(dir, { run: p.runId, input: JSON.stringify([power()]), now });
+    await fs.writeFile(path.join(rd, 'map.json'), '{"a":1}');
+    await fs.writeFile(path.join(rd, 'verdicts.json'), '{"b":2}');
+    const rename = async (from, to) => {
+      if (path.basename(from) === 'verdicts.json') { const e = new Error('disk on fire'); e.code = 'EIO'; throw e; }
+      return fs.rename(from, to);
+    };
+    await assert.rejects(
+      () => writeInventory(dir, { run: p.runId, input: JSON.stringify([power({ name: 'new' })]), now, force: true, rename }),
+      (err) => /stale_moved so far: \[.*map\.json.*\]/.test(err.message) && /restored: \[.*map\.json.*\]/.test(err.message)
+    );
+    const names = await fs.readdir(rd);
+    assert.ok(names.includes('map.json'), 'map.json is back');
+    assert.equal(await fs.readFile(path.join(rd, 'map.json'), 'utf-8'), '{"a":1}');
+    assert.deepEqual(names.filter(n => n.includes('.stale-')), []);
+    assert.equal((await readJson(path.join(rd, 'powers.json'))).powers[0].name, 'drift-monitor', 'old powers.json untouched');
+  });
+
+  it('--force never overwrites an existing stale name from the same timestamp', async () => {
+    const p = await intake(dir, '-', { stdin: 'sn', now, slug: 'sn' });
+    const rd = runDirOf(p);
+    await writeInventory(dir, { run: p.runId, input: JSON.stringify([power()]), now });
+    const taken = path.join(rd, 'map.json.stale-2026-10-07T12-00-00.000Z.json');
+    await fs.writeFile(taken, 'older');
+    await fs.writeFile(path.join(rd, 'map.json'), 'newer');
+    await writeInventory(dir, { run: p.runId, input: JSON.stringify([power()]), now, force: true });
+    assert.equal(await fs.readFile(taken, 'utf-8'), 'older');
+    const others = (await fs.readdir(rd)).filter(n => /^map\.json\.stale-.*-[0-9a-f]{6}\.json$/.test(n));
+    assert.equal(others.length, 1);
+    assert.equal(await fs.readFile(path.join(rd, others[0]), 'utf-8'), 'newer');
+  });
+
+  it('an empty source root is an error naming the root (listSourceFiles and --brief)', async () => {
+    const p = await intake(dir, '-', { stdin: 'em', now, slug: 'em' });
+    const rd = runDirOf(p);
+    await fs.rm(path.join(rd, 'fetched'), { recursive: true, force: true });
+    await fs.mkdir(path.join(rd, 'fetched'));
+    const src = await readJson(path.join(rd, 'source.json'));
+    await assert.rejects(() => listSourceFiles(rd, src), /has no files — re-run fetch or intake/);
+    await fs.writeFile(path.join(rd, 'fetched', '.env'), 'SECRET=1');
+    await assert.rejects(() => listSourceFiles(rd, src), /only files were secret-like/);
+    const cdir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-invr2em-'));
+    try {
+      assert.equal(run(cdir, ['intake', '-', '--slug', 'em'], 'pasted').code, 0);
+      const runs = await fs.readdir(path.join(cdir, '.claude', 'bbs', 'runs'));
+      const f = path.join(cdir, '.claude', 'bbs', 'runs', runs[0], 'fetched');
+      await fs.rm(f, { recursive: true, force: true });
+      await fs.mkdir(f);
+      const b = run(cdir, ['inventory', '--brief']);
+      assert.equal(b.code, 1);
+      assert.match(b.err, /has no files — re-run fetch or intake/);
+      assert.equal(b.out, '');
+    } finally { await fs.rm(cdir, { recursive: true, force: true }); }
+  });
+
+  it('the walk skips build and vendor directories and does not count them', async () => {
+    const root = path.join(dir, 'skiptool');
+    for (const d of ['src', 'dist', 'vendor', 'target', '.venv', '__pycache__']) await fs.mkdir(path.join(root, d), { recursive: true });
+    for (const f of ['src/a.js', 'dist/b.js', 'vendor/c.js', 'target/d.rs', '.venv/e.py', '__pycache__/f.pyc']) await fs.writeFile(path.join(root, f), 'x');
+    const r = await intake(dir, root, { now, isGitRepo: () => false });
+    const rd = path.join(dir, '.claude', 'bbs', 'runs', r.runId);
+    const files = await listSourceFiles(rd, await readJson(path.join(rd, 'source.json')));
+    assert.deepEqual(files.files.map(f => f.path), ['src/a.js']);
+    assert.equal(files.total, 1);
+    assert.ok(SKIP_DIRS.has('dist') && SKIP_DIRS.has('vendor') && SKIP_DIRS.has('.git'));
+  });
+
+  it('the walk keeps counting past maxFiles but stops collecting: total is full, files is capped and sorted', async () => {
+    const root = path.join(dir, 'bigtool');
+    await fs.mkdir(root, { recursive: true });
+    for (let i = 0; i < 12; i++) await fs.writeFile(path.join(root, `f${String(i).padStart(2, '0')}.txt`), 'x');
+    const r = await intake(dir, root, { now, isGitRepo: () => false });
+    const rd = path.join(dir, '.claude', 'bbs', 'runs', r.runId);
+    const files = await listSourceFiles(rd, await readJson(path.join(rd, 'source.json')), { maxFiles: 5 });
+    assert.equal(files.total, 12);
+    assert.equal(files.files.length, 5);
+    assert.equal(files.truncated, true);
+    const paths = files.files.map(f => f.path);
+    assert.deepEqual(paths, [...paths].sort());
+  });
+
+  it('parseInventory names the input in the JSON-only error and escapes control characters', () => {
+    assert.throws(() => parseInventory('Here are\u0007 the powers', { label: '--from x.json' }),
+      (e) => /JSON only — --from x\.json is not JSON; got: "Here are\\u0007 the powers"/.test(e.message));
+    assert.throws(() => parseInventory('prose'), /JSON only — input is not JSON; got: "prose"/);
+  });
+
+  it('cli: the JSON-only error says which input it came from', async () => {
+    const cdir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-invr2js-'));
+    try {
+      assert.equal(run(cdir, ['intake', '-', '--slug', 'js'], 'pasted').code, 0);
+      const f = path.join(cdir, 'bad.txt');
+      await fs.writeFile(f, 'Here are the powers');
+      const a = run(cdir, ['inventory', '--from', f]);
+      assert.equal(a.code, 1);
+      assert.ok(a.err.includes(`--from ${f} is not JSON`), a.err);
+      const b = run(cdir, ['inventory', '--from', '-'], 'Here are the powers');
+      assert.equal(b.code, 1);
+      assert.match(b.err, /--from - \(stdin\) is not JSON/);
+    } finally { await fs.rm(cdir, { recursive: true, force: true }); }
   });
 });

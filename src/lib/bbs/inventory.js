@@ -158,7 +158,7 @@ export function validatePower(p, i) {
  */
 const FENCE_RE = /^\s*```[a-zA-Z]*[ \t]*\r?\n([\s\S]*?)\r?\n?\s*```\s*$/;
 
-export function parseInventory(input, { maxPowers = 12 } = {}) {
+export function parseInventory(input, { maxPowers = 12, label = 'input' } = {}) {
   if (!Number.isInteger(maxPowers) || maxPowers <= 0) {
     throw new Error('maxPowers must be a positive integer');
   }
@@ -184,8 +184,9 @@ export function parseInventory(input, { maxPowers = 12 } = {}) {
     try {
       data = JSON.parse(text);
     } catch (err) {
+      // JSON.stringify escapes control characters, so binary input cannot print raw bytes
       const preview = text.slice(0, 60);
-      throw new Error(`JSON only — got: ${preview}`);
+      throw new Error(`JSON only — ${label} is not JSON; got: ${JSON.stringify(preview)}`);
     }
   } else {
     data = input;
@@ -267,7 +268,8 @@ const SECRET_NAMES = [
   /^\.git-credentials$/
 ];
 const LICENCE_RE = /^(LICEN[CS]E|COPYING)([.-]|$)/i;
-const SKIP_DIRS = new Set(['.git', 'node_modules']);
+/** Directories the source walk never enters (VCS, dependencies, build output, caches). */
+export const SKIP_DIRS = new Set(['.git', 'node_modules', '.venv', 'venv', '__pycache__', 'target', 'dist', 'build', 'vendor', '.next', '.cache']);
 /** Files a forced re-inventory makes stale (built for the replaced powers). */
 export const STALE_ON_FORCE = ['map.json', 'verdicts.json', 'handoff.json'];
 
@@ -280,7 +282,7 @@ export function isSecretName(name) {
  * List files in the source. Source must be fetched and identity not pending.
  * Returns { root, files: [{ path, size }], total, truncated, licence_file, omitted_secret, errors: [{ path, code }] }.
  * The root must exist and be a directory; unreadable subdirectories are collected in `errors`.
- * Symlinks, .git and node_modules are skipped; secret-like files are counted, never listed.
+ * Symlinks and SKIP_DIRS (.git, node_modules, build/vendor/cache dirs) are skipped; an empty root is an error; secret-like files are counted, never listed.
  */
 export async function listSourceFiles(runDir, source, { maxFiles = 500 } = {}) {
   if (!source || source.fetched !== true) {
@@ -302,10 +304,13 @@ export async function listSourceFiles(runDir, source, { maxFiles = 500 } = {}) {
     throw new Error(`source root ${root} is missing or not a directory — re-run intake`);
   }
 
+  // `all` holds the first maxFiles files found (then sorted); after that the walk only counts, so a huge tree
+  // costs one readdir per directory and no further lstat. Hence the brief says "first <n> files found, sorted".
   const all = [];
   const licences = [];
   const errors = [];
   let omitted_secret = 0;
+  let total = 0;
 
   async function walk(dir, prefix) {
     let entries;
@@ -315,36 +320,82 @@ export async function listSourceFiles(runDir, source, { maxFiles = 500 } = {}) {
       errors.push({ path: prefix || '.', code: err.code || 'UNKNOWN' });
       return;
     }
+    entries.sort((x, y) => (x.name < y.name ? -1 : x.name > y.name ? 1 : 0));
 
+    const dirs = [];
+    const files = [];
+    const unknown = [];
     for (const entry of entries) {
       if (SKIP_DIRS.has(entry.name)) continue;
-      const fullPath = path.join(dir, entry.name);
       const relPath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      const item = { entry, fullPath: path.join(dir, entry.name), relPath };
+      if (entry.isSymbolicLink()) continue;
+      if (entry.isDirectory()) dirs.push(item);
+      else if (entry.isFile()) files.push(item);
+      else unknown.push(item); // Dirent type unknown on this filesystem: lstat decides
+    }
 
-      let stat;
+    await Promise.all(unknown.map(async (item) => {
       try {
-        stat = await fs.lstat(fullPath);
+        const st = await fs.lstat(item.fullPath);
+        if (st.isSymbolicLink()) return;
+        if (st.isDirectory()) dirs.push(item);
+        else if (st.isFile()) files.push(item);
       } catch (err) {
-        errors.push({ path: relPath, code: err.code || 'UNKNOWN' });
-        continue;
+        errors.push({ path: item.relPath, code: err.code || 'UNKNOWN' });
       }
+    }));
+    // Visit in name order, files and directories interleaved, so the first maxFiles found are the
+    // lexicographically first paths; consecutive files are sized in parallel.
+    const ordered = [...dirs.map(i => ({ ...i, dir: true })), ...files].sort((x, y) => (x.entry.name < y.entry.name ? -1 : x.entry.name > y.entry.name ? 1 : 0));
 
-      if (stat.isSymbolicLink()) continue;
-
-      if (stat.isDirectory()) {
-        await walk(fullPath, relPath);
-      } else if (stat.isFile()) {
-        if (isSecretName(entry.name)) {
-          omitted_secret++;
-          continue;
+    async function flush(batch) {
+      const listed = batch.filter(f => {
+        if (isSecretName(f.entry.name)) { omitted_secret++; return false; }
+        return true;
+      });
+      // Only files still within the cap need a size (one lstat each, in parallel); the rest are just counted.
+      const room = Math.max(0, maxFiles - all.length);
+      const sized = await Promise.all(listed.slice(0, room).map(async (f) => {
+        try {
+          return { f, size: (await fs.lstat(f.fullPath)).size };
+        } catch (err) {
+          errors.push({ path: f.relPath, code: err.code || 'UNKNOWN' });
+          return null;
         }
-        all.push({ path: relPath, size: stat.size });
-        if (LICENCE_RE.test(entry.name)) licences.push(relPath);
+      }));
+      for (const r of sized) {
+        if (!r) continue;
+        total++;
+        all.push({ path: r.f.relPath, size: r.size });
+        if (LICENCE_RE.test(r.f.entry.name)) licences.push(r.f.relPath);
+      }
+      for (const f of listed.slice(room)) {
+        total++;
+        if (LICENCE_RE.test(f.entry.name)) licences.push(f.relPath);
       }
     }
+
+    let batch = [];
+    for (const item of ordered) {
+      if (item.dir) {
+        await flush(batch);
+        batch = [];
+        await walk(item.fullPath, item.relPath);
+      } else {
+        batch.push(item);
+      }
+    }
+    await flush(batch);
   }
 
   await walk(root, '');
+
+  if (total === 0) {
+    throw new Error(omitted_secret > 0
+      ? `source root ${root} has no files — the only files were secret-like (${omitted_secret} omitted); re-run fetch or intake`
+      : `source root ${root} has no files — re-run fetch or intake`);
+  }
 
   const byPath = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
   all.sort((a, b) => a.path.localeCompare(b.path));
@@ -352,7 +403,6 @@ export async function listSourceFiles(runDir, source, { maxFiles = 500 } = {}) {
   const depth = (p) => p.split('/').length;
   licences.sort((a, b) => depth(a) - depth(b) || byPath(a, b));
 
-  const total = all.length;
   return {
     root,
     files: all.slice(0, maxFiles),
@@ -380,7 +430,7 @@ export function inventoryBrief({ source, files, maxPowers }) {
 
   lines.push('## Files in this source\n');
   if (files.truncated) {
-    lines.push(`**${files.total} files in total** — only the first ${files.files.length} are listed. Inventory only the files listed here; name any unlisted top-level directory in evidence instead of reading it.\n`);
+    lines.push(`**${files.total} files in total** — only the first ${files.files.length} are listed (the listing is the first ${files.files.length} files found, sorted). Inventory only the files listed here; name any unlisted top-level directory in evidence instead of reading it.\n`);
   }
   for (const f of files.files) {
     lines.push(`- ${f.path} (${f.size} bytes)`);
@@ -460,11 +510,69 @@ export function inventoryBrief({ source, files, maxPowers }) {
   return lines.join('\n');
 }
 
+const NO_LINK_CODES = new Set(['EPERM', 'ENOTSUP', 'ENOSYS', 'EXDEV', 'EACCES']);
+const EXISTS_MSG = 'powers.json exists — pass --force to replace it';
+
+/**
+ * Create `file` with `content` only if it does not exist. Preferred: write a tmp file and hard-link it (the
+ * content appears whole or not at all). Where hard links are unavailable, fall back to open('wx') + write + fsync.
+ * EEXIST from either path is the "pass --force" error.
+ */
+async function claimExclusive(file, content, { link = fs.link } = {}) {
+  const tmp = `${file}.${randomBytes(6).toString('hex')}.tmp`;
+  let useWx = false;
+  try {
+    await fs.writeFile(tmp, content, { flag: 'wx' });
+    try {
+      await link(tmp, file);
+    } catch (err) {
+      if (err.code === 'EEXIST') throw new Error(EXISTS_MSG);
+      if (!NO_LINK_CODES.has(err.code)) throw err;
+      useWx = true;
+    }
+  } finally {
+    await fs.rm(tmp, { force: true });
+  }
+  if (!useWx) return;
+  let handle;
+  try {
+    handle = await fs.open(file, 'wx');
+  } catch (err) {
+    if (err.code === 'EEXIST') throw new Error(EXISTS_MSG);
+    throw err;
+  }
+  try {
+    await handle.writeFile(content);
+    await handle.sync();
+    await handle.close();
+    handle = null;
+  } catch (err) {
+    if (handle) await handle.close().catch(() => {});
+    await fs.rm(file, { force: true }); // never leave a half-written powers.json claiming the slot
+    throw err;
+  }
+}
+
+/** Claim a `<name>.stale-<ts>[-<hex>].json` path that does not exist yet (created empty, then renamed over). */
+async function claimStaleName(runDirectory, name, stamp) {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const suffix = attempt === 0 ? '' : `-${randomBytes(3).toString('hex')}`;
+    const to = path.join(runDirectory, `${name}.stale-${stamp}${suffix}.json`);
+    try {
+      await (await fs.open(to, 'wx')).close();
+      return to;
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw new Error(`could not move ${name} aside before --force: ${err.message}`);
+    }
+  }
+  throw new Error(`could not find a free stale name for ${name} before --force`);
+}
+
 /**
  * Write the inventory powers.json file. Resolves run dir, loads source.json, parses input,
  * validates, checks for overwrites, and writes atomically.
  */
-export async function writeInventory(projectDir, { run, input, force = false, now, cfg = DEFAULT_CONFIG }) {
+export async function writeInventory(projectDir, { run, input, force = false, now, cfg = DEFAULT_CONFIG, label = 'input', link = fs.link, rename = fs.rename }) {
   if (!RUN_ID.test(run)) throw new Error(invalidRunId(run));
   const runLower = run.toLowerCase();
   const runDirectory = runDirOf(projectDir, runLower, cfg);
@@ -486,7 +594,7 @@ export async function writeInventory(projectDir, { run, input, force = false, no
 
   // Parse the input
   const maxPowers = cfg.limits.max_powers || 12;
-  const parsed = parseInventory(input, { maxPowers });
+  const parsed = parseInventory(input, { maxPowers, label });
 
   const powersFile = path.join(runDirectory, 'powers.json');
   const ts = now ? now().toISOString() : new Date().toISOString();
@@ -504,37 +612,54 @@ export async function writeInventory(projectDir, { run, input, force = false, no
   const stale_moved = [];
   if (force) {
     // Later steps were built for the replaced powers: move them aside BEFORE the new powers.json lands.
+    // Each stale name is claimed exclusively; if anything fails, what was moved is put back.
     const stamp = ts.replace(/:/g, '-');
-    for (const name of STALE_ON_FORCE) {
-      const from = path.join(runDirectory, name);
-      try {
-        await fs.rename(from, path.join(runDirectory, `${name}.stale-${stamp}.json`));
-        stale_moved.push(name);
-      } catch (err) {
-        if (err.code !== 'ENOENT') throw new Error(`could not move ${from} aside before --force: ${err.message}`);
-      }
-    }
-    await writeTextAtomic(powersFile, text);
-  } else {
-    // Claim exclusively: link fails with EEXIST if another run (or an earlier one) already wrote powers.json.
-    const tmp = `${powersFile}.${randomBytes(6).toString('hex')}.tmp`;
+    const moved = []; // { name, from, to }
     try {
-      await fs.writeFile(tmp, text, { flag: 'wx' });
-      await fs.link(tmp, powersFile);
+      for (const name of STALE_ON_FORCE) {
+        const from = path.join(runDirectory, name);
+        try {
+          await fs.lstat(from);
+        } catch (err) {
+          if (err.code === 'ENOENT') continue;
+          throw new Error(`could not move ${from} aside before --force: ${err.message}`);
+        }
+        const to = await claimStaleName(runDirectory, name, stamp);
+        try {
+          await rename(from, to);
+        } catch (err) {
+          await fs.rm(to, { force: true });
+          if (err.code === 'ENOENT') continue;
+          throw new Error(`could not move ${from} aside before --force: ${err.message}`);
+        }
+        moved.push({ name, from, to });
+        stale_moved.push(name);
+      }
+      await writeTextAtomic(powersFile, text);
     } catch (err) {
-      if (err.code === 'EEXIST') throw new Error('powers.json exists — pass --force to replace it');
-      throw err;
-    } finally {
-      await fs.rm(tmp, { force: true });
+      const restored = [];
+      const notRestored = [];
+      for (const m of moved.reverse()) {
+        try { await rename(m.to, m.from); restored.push(m.name); } catch { notRestored.push(m.name); }
+      }
+      let msg = `${err.message}; stale_moved so far: [${stale_moved.join(', ')}]; restored: [${restored.reverse().join(', ')}]`;
+      if (notRestored.length) msg += `; NOT restored (still named *.stale-*): [${notRestored.join(', ')}]`;
+      throw new Error(msg);
     }
+  } else {
+    await claimExclusive(powersFile, text, { link });
   }
 
-  // Re-render status
-  await renderStatusSafe(runDirectory);
-
-  // Get the next step
-  const state = await loadState(runDirectory);
-  const next = nextStep(state);
+  // powers.json is committed from here on: nothing below may fail the verb or invite a retry that says "exists".
+  let next = null;
+  let warning;
+  try {
+    await renderStatusSafe(runDirectory);
+    next = nextStep(await loadState(runDirectory));
+  } catch (err) {
+    const file = err && err.path ? path.basename(err.path) : 'run state';
+    warning = `powers.json written but ${file} could not be read: ${err.message}`;
+  }
 
   return {
     runId: runLower,
@@ -543,6 +668,7 @@ export async function writeInventory(projectDir, { run, input, force = false, no
     total: parsed.total,
     none_found: parsed.none_found,
     stale_moved,
-    next
+    next,
+    ...(warning ? { warning } : {})
   };
 }

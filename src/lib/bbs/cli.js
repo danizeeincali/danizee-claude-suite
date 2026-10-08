@@ -204,8 +204,14 @@ const VERBS = {
           fail(`could not read ${flags.from}: ${err.message}`);
         }
       }
-      const result = await writeInventory(projectDir, { run: id, input, force: !!flags.force, now: () => new Date(), cfg });
+      const label = flags.from === '-' ? '--from - (stdin)' : `--from ${flags.from}`;
+      const result = await writeInventory(projectDir, { run: id, input, force: !!flags.force, now: () => new Date(), cfg, label });
       out(result);
+      if (result.warning) {
+        // powers.json is already written: report, exit 0, and do not re-render over the unreadable file
+        process.stderr.write(`bbs: warning: ${result.warning}\n`);
+        return;
+      }
     }
 
     const { writeError } = await renderStatusSafe(dir);
