@@ -44,18 +44,34 @@ export async function install(claudeDir, options = {}) {
 
   // handoff.js imports ../marathon/{gate,config}.js (and their siblings); never overwrite the marathon plugin's copy.
   // cli.js is left out on purpose: its presence is what marks the marathon plugin installed.
-  const marathonWritten = []; // the modules this install actually wrote, so uninstall removes exactly those
-  for (const f of (await fs.readdir(MARATHON_LIB_DIR)).filter(f => f.endsWith('.js') && f !== 'cli.js').sort()) {
-    const dest = path.join(claudeDir, 'helpers', 'marathon', f);
-    plan.push([dest, await fs.readFile(path.join(MARATHON_LIB_DIR, f), 'utf-8'), true]);
-    if (!(await exists(dest))) marathonWritten.push(f);
-  }
-  // Written last among the bbs helpers' companions: an earlier manifest (a re-install) keeps the earlier list.
+  // The manifest of bbs-owned modules is written FIRST with the planned list, so an interrupted copy still records them.
+  // Modules the manifest lists are bbs's own: they are overwritten (repairing a truncated copy) while marathon/cli.js is absent.
+  const mDir = path.join(claudeDir, 'helpers', 'marathon');
+  const marathonInstalled = await exists(path.join(mDir, 'cli.js'));
   const manifest = path.join(claudeDir, 'helpers', 'bbs', MANIFEST);
   let prior = [];
-  try { prior = JSON.parse(await fs.readFile(manifest, 'utf-8')); } catch {}
-  const record = [...new Set([...(Array.isArray(prior) ? prior : []), ...marathonWritten])].sort();
+  if (await exists(manifest)) {
+    try {
+      prior = JSON.parse(await fs.readFile(manifest, 'utf-8'));
+      if (!Array.isArray(prior)) throw new Error('not a list');
+    } catch {
+      prior = [];
+      process.stderr.write(`bbs: warning: helpers/bbs/${MANIFEST} is unreadable — rewriting it\n`);
+    }
+  }
+  const owned = new Set(prior.filter(f => typeof f === 'string'));
+  const marathonPlan = []; // the modules this install writes, so uninstall removes exactly those
+  const marathonWritten = [];
+  for (const f of (await fs.readdir(MARATHON_LIB_DIR)).filter(f => f.endsWith('.js') && f !== 'cli.js').sort()) {
+    const dest = path.join(mDir, f);
+    const absent = !(await exists(dest));
+    const repair = !absent && owned.has(f) && !marathonInstalled;
+    marathonPlan.push([dest, await fs.readFile(path.join(MARATHON_LIB_DIR, f), 'utf-8'), !repair]);
+    if (absent) marathonWritten.push(f);
+  }
+  const record = [...new Set([...owned, ...marathonWritten])].sort();
   plan.push([manifest, JSON.stringify(record, null, 2) + '\n', false]);
+  plan.push(...marathonPlan);
 
   // Project config and the run-data folder marker are written once, never overwritten
   plan.push([path.join(claudeDir, 'bbs.json'), JSON.stringify(DEFAULT_CONFIG, null, 2) + '\n', true]);
@@ -64,7 +80,7 @@ export async function install(claudeDir, options = {}) {
   for (const [dest, content, onlyIfAbsent] of plan) {
     const rel = path.relative(claudeDir, dest);
     if (onlyIfAbsent && await exists(dest)) continue;
-    if (onlyIfAbsent) files.push(rel);
+    if (onlyIfAbsent || rel.startsWith(path.join('helpers', 'marathon'))) files.push(rel);
     if (dry) continue;
     await fs.mkdir(path.dirname(dest), { recursive: true });
     await fs.writeFile(dest, content, 'utf-8');

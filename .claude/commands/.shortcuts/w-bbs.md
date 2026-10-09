@@ -96,7 +96,7 @@ If the fetch JSON says `known: true` (a repository or URL source is only recogni
 
 1. `node .claude/helpers/bbs/cli.js inventory --brief [--run <id>]` prints the helper brief: what to read, the JSON shape, the 12-power cap.
 2. Spawn inventory helpers with `model: haiku` (one per ≤ 15 files or per page), each with the brief, the file list and a token budget. They return **JSON only**.
-3. Concatenate their powers into one file and run `node .claude/helpers/bbs/cli.js inventory --from <file> [--run <id>]`. A schema miss exits 1 with the field; re-ask that helper once with the error.
+3. Concatenate their powers into one file and run `node .claude/helpers/bbs/cli.js inventory --from <file> [--run <id>]`. A schema miss exits 1 with the field; re-ask that helper once with the error. If every helper returns `none_found`, pass one `{ "powers": [], "none_found": "<reason>" }` object to `cli.js inventory --from` instead, report 'no powers found' and stop before map — no question, no hand-off.
 
 **REQUIRED OUTPUT:** `found`, `not_inventoried` (powers past the cap of 12 are named, not read).
 
@@ -121,8 +121,8 @@ If the fetch JSON says `known: true` (a repository or URL source is only recogni
 1. `node .claude/helpers/bbs/cli.js verdict [--run <id>]` computes, per power, the legal verdicts, the default and the reasons from the licence policy and the sandbox check.
 2. For every power where `use` is still a candidate, spawn one probe helper with `model: sonnet` that reads the fetched source for hidden network calls and returns `clean`, `found` or `incomplete` with evidence. Record each: `node .claude/helpers/bbs/cli.js verdict --probe <power>=<clean|found|incomplete> --evidence "<text>" [--run <id>]`. `found` and `incomplete` remove `use`.
 3. **Show the verdict table:** `node .claude/helpers/bbs/cli.js verdict --table [--run <id>]`, printed inline.
-4. **Exactly one AskUserQuestion** — "Verdicts above. Approve as shown, or change which? To change some, pick the second option and answer it via Other with `<power>=<verdict>` pairs separated by spaces, for example `drift-monitor=skip log-tail=rebuild`." Options: ["Approve as shown (defaults)", "Approve with changes — I will type them", "Stop here (skip everything)"]. Build the decisions file from the answer: the table's defaults, with each typed pair overriding its power, or `skip` for every power on "Stop here". Its shape is `{ "<power>": "rebuild|use|buy|skip" }` (one verdict per power), written to a file and recorded with `cli.js verdict --from <file>`. No second question is ever asked: if the typed answer is unparsable (a power not in the table, a verdict not in the list), do not guess and do not decide — print the table again with the resume line (`/w-bbs --resume <run-id>`) and stop.
-5. `node .claude/helpers/bbs/cli.js verdict --from <file> [--run <id>]` records every decision as a label and, once all are decided, the registry row. An illegal verdict exits 2 (refused): show the reason, fix the file, rerun; do not ask a second question.
+4. **Exactly one AskUserQuestion** — "Verdicts above. Approve as shown, or change which? To change some, pick the second option and answer it via Other with `<power>=<verdict>` pairs separated by spaces, for example `drift-monitor=skip log-tail=rebuild`." Options: ["Approve as shown (defaults)", "Approve with changes — I will type them", "Stop here (skip everything)"]. Build the decisions file from the answer: the table's defaults, with each typed pair overriding its power, or `skip` for every power on "Stop here". Its shape is `{ "<power>": "rebuild|use|buy|skip" }` (one verdict per power), written to a file and recorded with `cli.js verdict --from <file>`. No second question is ever asked: if the typed answer is unparsable (a power not in the table, a verdict not in the list, or a verdict not in that row's `legal` list from the verdict JSON), do not guess and do not decide — print the table again with the resume line (`/w-bbs --resume <run-id>`) and stop.
+5. `node .claude/helpers/bbs/cli.js verdict --from <file> [--run <id>]` records every decision as a label and, once all are decided, the registry row. On exit 2 (an illegal verdict, refused): report the refusal verbatim and stop with the same resume line (`/w-bbs --resume <run-id>`); do not ask a second question. Never edit an owner's choice.
 
 **The four verdicts, in order of preference — rebuild, then use, then buy; skip is always permitted:**
 
@@ -141,9 +141,9 @@ On a machine without a sandbox `use` is removed from every row with the reason; 
 
 ### ⛔ CHECKPOINT 5: Hand-off
 
-1. `node .claude/helpers/bbs/cli.js handoff --marathon [--run <id>]` writes one idea-only brief per approved power, a buy memo per `buy`, and creates a marathon run with a typed finish line (written before any build) and one queued stream per power. If the marathon helpers are absent it says so and exits 1: report that and stop.
+1. `node .claude/helpers/bbs/cli.js handoff --marathon [--run <id>]` writes one idea-only brief per approved power, a buy memo per `buy`, and creates a marathon run with a typed finish line (written before any build) and one queued stream per power. If the marathon helpers are absent it says so and exits 1: report that and stop. On the error text 'created and is ACTIVE but incomplete', run the exact command the error names once (`cli.js handoff --marathon --force --run <id>`); if it fails again, report and stop.
 2. `node .claude/helpers/bbs/cli.js report [--run <id>]` prints the one-line counts.
-3. **End with the resume line, exactly as the JSON gives it:** `/w-marathon --resume <id>`. The build starts only when the owner runs it.
+3. **End with the resume line, exactly as the JSON gives it:** `/w-marathon --resume <id>`. The build starts only when the owner runs it. When the JSON's resume_line is null (no approved power), print its note and list the buy memos; no marathon run is expected.
 
 **REQUIRED OUTPUT:** the report line, the resume line, the memos for `buy`.
 
@@ -178,7 +178,7 @@ On a machine without a sandbox `use` is removed from every row with the reason; 
 - [ ] Egress line printed after fetch
 - [ ] Helpers returned JSON only; inventory and map on `haiku`, probes on `sonnet`
 - [ ] Verdict table shown; exactly one AskUserQuestion
-- [ ] Marathon run created with a finish line; resume line printed
+- [ ] Marathon run created and resume line printed — or, with no approved power, the note and memos printed
 - [ ] `/bc` run; nothing pushed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked

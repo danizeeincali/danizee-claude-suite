@@ -157,3 +157,42 @@ describe('/w-bbs command — review r1 regressions', () => {
     assert.match(s, /no second question/i);
   });
 });
+
+describe('/w-bbs command — review r2 regressions', () => {
+  const c = () => commands['w-bbs'].content;
+  const section = (from, to) => { const a = c().indexOf(from); const b = c().indexOf(to, a + 1); assert.ok(a >= 0 && b > a, `${from}..${to}`); return c().slice(a, b); };
+
+  it('a refusal is never routed around: a verdict outside the row\'s legal list is unparsable, exit 2 is reported verbatim with the resume line, an owner\'s choice is never edited', () => {
+    const s = section('### ⛔ CHECKPOINT 4', '**The four verdicts');
+    assert.match(s, /legal/);
+    assert.match(s, /not in that row's `legal` list/);
+    assert.match(s, /exit 2/);
+    assert.match(s, /verbatim/);
+    assert.match(s, /never edit an owner's choice/i);
+    assert.ok(!c().includes('fix the file'));
+    assert.ok(!/rerun/i.test(s));
+  });
+
+  it('zero approved powers: the hand-off prints the note and the buy memos when resume_line is null; no marathon run is expected', () => {
+    const s = section('### ⛔ CHECKPOINT 5', '### ⛔ CHECKPOINT 6');
+    assert.match(s, /resume_line is null/);
+    assert.match(s, /no marathon run is expected/i);
+    assert.match(c(), /Marathon run created and resume line printed — or, with no approved power, the note and memos printed/);
+  });
+
+  it('an empty inventory (every helper none_found) passes one powers [] object, reports no powers found and stops before map', () => {
+    const s = section('### ⛔ CHECKPOINT 2', '### ⛔ CHECKPOINT 3');
+    assert.match(s, /every helper returns `?none_found`?/);
+    assert.match(s, /\{ "powers": \[\], "none_found": "<reason>" \}/);
+    assert.match(s, /no powers found/);
+    assert.match(s, /stop before map/i);
+  });
+
+  it('a half-run hand-off (created and is ACTIVE but incomplete) runs the exact command the error names once, then reports and stops', () => {
+    const s = section('### ⛔ CHECKPOINT 5', '### ⛔ CHECKPOINT 6');
+    assert.match(s, /created and is ACTIVE but incomplete/);
+    assert.match(s, /cli\.js handoff --marathon --force --run <id>/);
+    assert.match(s, /exact command the error names once/);
+    assert.match(s, /fails again, report and stop/i);
+  });
+});

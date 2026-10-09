@@ -222,3 +222,52 @@ describe('bbs plugin — review r1 regressions', () => {
     for (const rule of ['.claude/bbs/ACTIVE', '.claude/bbs/runs/*/fetched/', '.claude/bbs/runs/*/map.lock', '.claude/bbs/runs/*/*.tmp']) assert.ok(gi.includes(rule), rule);
   });
 });
+
+describe('bbs plugin — review r2 regressions (manifest)', () => {
+  const MLIB = path.join(ROOT, 'src', 'lib', 'marathon');
+  let dirs = [];
+  const mk = async () => { const d = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-r2-')); dirs.push(d); return d; };
+  after(async () => { for (const d of dirs) await fs.rm(d, { recursive: true, force: true }); });
+
+  it('an unreadable manifest prints a warning on stderr and is replaced by a valid list', async () => {
+    const d = await mk(); const c = path.join(d, '.claude');
+    await bbs.install(c, { targetDir: d });
+    const mf = path.join(c, 'helpers', 'bbs', '.marathon-files.json');
+    await fs.writeFile(mf, '{ half-written');
+    const orig = process.stderr.write; let err = '';
+    process.stderr.write = (s) => { err += s; return true; };
+    try { await bbs.install(c, { targetDir: d }); } finally { process.stderr.write = orig; }
+    assert.match(err, /bbs: warning: helpers\/bbs\/\.marathon-files\.json is unreadable — rewriting it/);
+    const m = JSON.parse(await fs.readFile(mf, 'utf-8'));
+    assert.ok(Array.isArray(m) && !m.includes('cli.js'));
+  });
+
+  it('the manifest is written before the marathon modules (an interrupted install still records them)', async () => {
+    const d = await mk(); const c = path.join(d, '.claude');
+    await bbs.install(c, { targetDir: d });
+    const m = JSON.parse(await fs.readFile(path.join(c, 'helpers', 'bbs', '.marathon-files.json'), 'utf-8'));
+    const all = (await fs.readdir(MLIB)).filter(f => f.endsWith('.js') && f !== 'cli.js').sort();
+    assert.deepEqual([...m].sort(), all);
+  });
+
+  it('a truncated bbs-owned gate.js is repaired on re-install without marathon, and the manifest keeps it', async () => {
+    const d = await mk(); const c = path.join(d, '.claude');
+    await bbs.install(c, { targetDir: d });
+    const gate = path.join(c, 'helpers', 'marathon', 'gate.js');
+    await fs.writeFile(gate, '// trunc');
+    await bbs.install(c, { targetDir: d });
+    assert.equal(await fs.readFile(gate, 'utf-8'), await fs.readFile(path.join(MLIB, 'gate.js'), 'utf-8'));
+    const m = JSON.parse(await fs.readFile(path.join(c, 'helpers', 'bbs', '.marathon-files.json'), 'utf-8'));
+    assert.ok(m.includes('gate.js'));
+  });
+
+  it('a modified bbs-owned module is not touched on re-install when marathon/cli.js is present', async () => {
+    const d = await mk(); const c = path.join(d, '.claude');
+    await bbs.install(c, { targetDir: d });
+    const gate = path.join(c, 'helpers', 'marathon', 'gate.js');
+    await fs.writeFile(gate, '// marathon owns this now');
+    await fs.writeFile(path.join(c, 'helpers', 'marathon', 'cli.js'), '// marathon cli\n');
+    await bbs.install(c, { targetDir: d });
+    assert.equal(await fs.readFile(gate, 'utf-8'), '// marathon owns this now');
+  });
+});
