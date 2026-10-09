@@ -20,8 +20,8 @@ export function escapeHtml(value) {
 
 const e = escapeHtml;
 
-const STATUS_TEXT = { waiting_on_human: 'waiting on human', not_counted: 'not counted' };
-const STATUS_CLASS = { met: 'ok', failing: 'bad', waiting_on_human: 'warn', not_counted: 'muted' };
+const STATUS_TEXT = { waiting_on_human: 'waiting on human', not_counted: 'not counted', run_scoped: 'run-wide (judged by the run gate)' };
+const STATUS_CLASS = { met: 'ok', failing: 'bad', waiting_on_human: 'warn', not_counted: 'muted', run_scoped: 'muted' };
 const statusText = (s) => STATUS_TEXT[s] ?? String(s ?? '');
 const show = (v) => (v == null ? '—' : String(v));
 

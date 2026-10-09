@@ -251,7 +251,7 @@ const inScope = (line, stream) => !stream || line.scope === 'stream';
 1. Pattern: `scope` handled in `gate.js`; existing finish-line.json files without the field behave unchanged
 2. Test: RC-D010 returns STATUS: PASS
 
-**Status**: ready (only runs if RC-D010 fails)
+**Status**: done 2026-10-09 — `scope: run|stream` added to gate.js (SCOPES, validateFinishLine, evaluateGate reports `run_scoped`), test/marathon-gate-scope.test.js, example finish line tagged
 
 ---
 

@@ -185,7 +185,7 @@ export async function stampHandoff(runDir, info) {
 const oneLine = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
 const cell = (v) => oneLine(v).replace(/\|/g, '\\|');
 
-const STATUS_TEXT = { waiting_on_human: 'waiting on human', not_counted: 'not counted' };
+const STATUS_TEXT = { waiting_on_human: 'waiting on human', not_counted: 'not counted', run_scoped: 'run-wide (judged by the run gate)' };
 const statusText = (s) => STATUS_TEXT[s] ?? String(s ?? '');
 const show = (v) => (v == null ? '—' : String(v));
 

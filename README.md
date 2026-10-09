@@ -184,7 +184,9 @@ timestamped measurement for `usage_reading_ttl_minutes` (30), after which it is 
 so a stale reading never passes the ceiling.
 
 **The gate is yours.** `finish-line.json` holds one typed input per line (`bool` / `number` /
-`percent`, `at_least` / `at_most` / `is`, owner `build` or `human`) and the tolerance (how many
+`percent`, `at_least` / `at_most` / `is`, owner `build` or `human`, and an optional `scope`:
+`run` lines such as e2e streaks, packaged checks and human jobs are judged only by the run-wide
+gate, while `stream` lines count for `cli.js gate --stream <s>` too) and the tolerance (how many
 high / medium / low findings a review may have and still pass, and how many passes in a row). Edit
 it at any time; the next review uses the new numbers. `cli.js gate` reports `failing`,
 `waitingOnHuman`, `buildGateMet` and `gateMet`; a missing check is never a pass.

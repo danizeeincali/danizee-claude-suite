@@ -10,6 +10,12 @@ const SEVERITIES = ['high', 'medium', 'low'];
 const OWNERS = ['build', 'human'];
 const OPS = ['is', 'at_least', 'at_most'];
 const TYPES = ['bool', 'number', 'percent'];
+/**
+ * A line's scope: `run` lines are judged only by the run-wide gate (e2e streaks, packaged checks,
+ * human lines) and are reported as run_scoped — never counted — when a stream is given; `stream`
+ * lines, and lines with no scope, are counted per stream as well.
+ */
+export const SCOPES = ['run', 'stream'];
 const LINE_ID = /^[A-Za-z0-9_-]+$/;
 const TOLERANCE_KEYS = [...SEVERITIES, 'passes_in_a_row'];
 
@@ -108,6 +114,9 @@ export function validateFinishLine(finishLine) {
     }
     if (line.type !== undefined && !TYPES.includes(line.type)) {
       errors.push(`${name}: type must be one of ${TYPES.join(', ')} (got ${show(line.type)})`);
+    }
+    if (line.scope !== undefined && !SCOPES.includes(line.scope)) {
+      errors.push(`${name}: scope must be one of ${SCOPES.join(', ')} (got ${show(line.scope)})`);
     }
     if (typeof line.source !== 'string' || !SOURCE_PATTERN.test(line.source)) {
       errors.push(`${name}: source ${show(line.source)} is not a known source (runs.streak:<unit|e2e|build>, reviews.streak, reviews.latest.<sev>, findings.open:<sev>, helpers.over_budget, checklist:<id>, measure:<id>)`);
@@ -284,7 +293,8 @@ function typeOk(type, op, actual) {
  * An empty gate (no counted line) is not met, and the build gate needs at
  * least one counted build line: a human-only finish line never meets it,
  * though its full gate can still be met. With `stream`, runs, reviews and
- * findings are scoped to that stream first (see filterByStream).
+ * findings are scoped to that stream first (see filterByStream), and lines with scope `run` are
+ * reported as run_scoped and left to the run-wide gate.
  */
 export function evaluateGate({ finishLine, runs, reviews, findings, helpers, measurements, checklist, stream } = {}) {
   const scoped = typeof stream === 'string' && stream !== '' ? stream : null;
@@ -295,6 +305,7 @@ export function evaluateGate({ finishLine, runs, reviews, findings, helpers, mea
   for (const line of finishLine?.lines ?? []) {
     const owner = line.owner ?? 'build';
     const op = line.op ?? 'at_least';
+    const scope = SCOPES.includes(line.scope) ? line.scope : null;
     const resolved = resolveSource(line.source, ctx);
     const actual = resolved.found ? resolved.value : null;
     const counted = line.value !== null && line.value !== undefined;
@@ -302,6 +313,9 @@ export function evaluateGate({ finishLine, runs, reviews, findings, helpers, mea
     let status;
     if (!counted) {
       status = 'not_counted';
+    } else if (scoped !== null && scope === 'run') {
+      // A run-wide line cannot be met by one stream; the run-wide gate judges it.
+      status = 'run_scoped';
     } else if (resolved.found && typeOk(line.type, op, actual) && compare(op, actual, line.value)) {
       status = 'met';
     } else {
@@ -314,19 +328,21 @@ export function evaluateGate({ finishLine, runs, reviews, findings, helpers, mea
       owner,
       type: line.type,
       op,
+      scope,
       value: line.value ?? null,
       actual,
       status
     });
   }
 
-  const counted = lines.filter(l => l.status !== 'not_counted');
+  const counted = lines.filter(l => l.status !== 'not_counted' && l.status !== 'run_scoped');
   const countedBuild = counted.filter(l => l.owner === 'build');
   return {
     stream: scoped,
     lines,
     failing: lines.filter(l => l.status === 'failing').map(l => l.id),
     waitingOnHuman: lines.filter(l => l.status === 'waiting_on_human').map(l => l.id),
+    runScoped: lines.filter(l => l.status === 'run_scoped').map(l => l.id),
     buildGateMet: countedBuild.length > 0 && countedBuild.every(l => l.status === 'met'),
     // gateMet ⇒ buildGateMet always: a finish line that the build never had a hand in is not "done".
     gateMet: countedBuild.length > 0 && counted.every(l => l.status === 'met')

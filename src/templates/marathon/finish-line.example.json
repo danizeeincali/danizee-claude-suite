@@ -1,14 +1,91 @@
 {
-  "$comment": "One typed input per gate line. The human edits this file; Claude reads it before every review. value: null shows a line without counting it. owner: human lines are listed once under 'Waiting on human' and never retried.",
-  "tolerance": { "high": 0, "medium": 2, "low": 5, "passes_in_a_row": 2 },
+  "$comment": "One typed input per gate line. The human edits this file; Claude reads it before every review. value: null shows a line without counting it. owner: human lines are listed once under 'Waiting on human' and never retried. scope: run lines (e2e streaks, packaged checks, human jobs) are judged only by the run-wide gate; stream (or no scope) lines count per stream too.",
+  "tolerance": {
+    "high": 0,
+    "medium": 2,
+    "low": 5,
+    "passes_in_a_row": 2
+  },
   "lines": [
-    { "id": "e2e_streak", "label": "Green end-to-end runs in a row", "type": "number", "op": "at_least", "value": 6, "owner": "build", "source": "runs.streak:e2e" },
-    { "id": "unit_streak", "label": "Green unit runs in a row", "type": "number", "op": "at_least", "value": 3, "owner": "build", "source": "runs.streak:unit" },
-    { "id": "clean_reviews", "label": "Clean reviews in a row", "type": "number", "op": "at_least", "value": 2, "owner": "build", "source": "reviews.streak" },
-    { "id": "latest_high", "label": "High findings in the latest review", "type": "number", "op": "at_most", "value": 0, "owner": "build", "source": "reviews.latest.high" },
-    { "id": "open_high", "label": "Open high findings", "type": "number", "op": "at_most", "value": 0, "owner": "build", "source": "findings.open:high" },
-    { "id": "helpers_over_budget", "label": "Helpers that blew their budget", "type": "number", "op": "at_most", "value": 2, "owner": "build", "source": "helpers.over_budget" },
-    { "id": "lighthouse_mobile", "label": "Lighthouse mobile performance", "type": "percent", "op": "at_least", "value": null, "owner": "build", "source": "measure:lighthouse_mobile" },
-    { "id": "deployed", "label": "Deployed to the hosting account", "type": "bool", "op": "is", "value": true, "owner": "human", "source": "checklist:deployed" }
+    {
+      "id": "e2e_streak",
+      "label": "Green end-to-end runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 6,
+      "owner": "build",
+      "source": "runs.streak:e2e",
+      "scope": "run"
+    },
+    {
+      "id": "unit_streak",
+      "label": "Green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 3,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "scope": "stream"
+    },
+    {
+      "id": "clean_reviews",
+      "label": "Clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "scope": "stream"
+    },
+    {
+      "id": "latest_high",
+      "label": "High findings in the latest review",
+      "type": "number",
+      "op": "at_most",
+      "value": 0,
+      "owner": "build",
+      "source": "reviews.latest.high",
+      "scope": "stream"
+    },
+    {
+      "id": "open_high",
+      "label": "Open high findings",
+      "type": "number",
+      "op": "at_most",
+      "value": 0,
+      "owner": "build",
+      "source": "findings.open:high",
+      "scope": "stream"
+    },
+    {
+      "id": "helpers_over_budget",
+      "label": "Helpers that blew their budget",
+      "type": "number",
+      "op": "at_most",
+      "value": 2,
+      "owner": "build",
+      "source": "helpers.over_budget",
+      "scope": "run"
+    },
+    {
+      "id": "lighthouse_mobile",
+      "label": "Lighthouse mobile performance",
+      "type": "percent",
+      "op": "at_least",
+      "value": null,
+      "owner": "build",
+      "source": "measure:lighthouse_mobile",
+      "scope": "run"
+    },
+    {
+      "id": "deployed",
+      "label": "Deployed to the hosting account",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "human",
+      "source": "checklist:deployed",
+      "scope": "run"
+    }
   ]
 }
