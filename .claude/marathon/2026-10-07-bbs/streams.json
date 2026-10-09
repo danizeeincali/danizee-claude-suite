@@ -6,7 +6,8 @@
       "isolation": "worktree",
       "created": "2026-10-07T23:44:40.196Z",
       "tasks": [],
-      "paused": null
+      "paused": null,
+      "finished": "2026-10-09T22:13:20.632Z"
     },
     {
       "name": "intake",

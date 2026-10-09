@@ -1,11 +1,11 @@
 # Marathon 2026-10-07-bbs
 
-- State: RUNNING
-- Budget: 7,795,797 / 10,000,000 tokens
+- State: FINISHED
+- Budget: 7,785,797 / 10,000,000 tokens
 - Allowance: 1% (ceiling 100%)
 - Gate (run-wide, all streams): 2/2 clean reviews — build gate met, full gate not met
 - Escapes: 0
-- Next for you: All streams done and the build gate is met — run `cli.js gate`, then `cli.js finish`. Waiting on you: pushed (tick them in checklist.md).
+- Next for you: Run is finished. Start a new one with /w-marathon <finish line>.
 
 ## Streams
 

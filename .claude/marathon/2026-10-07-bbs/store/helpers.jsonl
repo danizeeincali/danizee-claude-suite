@@ -148,3 +148,4 @@
 {"role":"fix","model":"sonnet","stream":"command-docs","budget":150000,"event":"spawn","id":"eb857139-68c9-496f-822d-9a1a499f6e81","ts":"2026-10-09T22:07:52.988Z"}
 {"helper_id":"eb857139-68c9-496f-822d-9a1a499f6e81","tokens":76595,"outcome":"green","event":"done","id":"814b2d82-aea3-4f6e-8923-c022ad87bda7","ts":"2026-10-09T22:10:08.260Z"}
 {"role":"routine","model":"sonnet","stream":"command-docs","budget":100000,"event":"spawn","id":"2096e70a-f2f8-4761-bdda-1a606431a7e4","ts":"2026-10-09T22:10:44.001Z"}
+{"helper_id":"2096e70a-f2f8-4761-bdda-1a606431a7e4","tokens":90000,"outcome":"green","event":"done","id":"4d2b674e-d5c5-4c25-a19b-815c8fb2780b","ts":"2026-10-09T22:13:20.364Z"}
