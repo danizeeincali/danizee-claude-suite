@@ -21,6 +21,7 @@ import * as agentCookbook from './plugins/agent-cookbook.js';
 import * as terminalAgents from './plugins/terminal-agents.js';
 import * as autoresearch from './plugins/autoresearch.js';
 import * as marathon from './plugins/marathon.js';
+import * as bbs from './plugins/bbs.js';
 import { checkShadowing } from './lib/marathon/shadow.js';
 import os from 'os';
 
@@ -237,6 +238,12 @@ export class DaniZeeSuiteInstaller {
       targetDir: this.targetDir
     }));
 
+    // Install BBS (beg, borrow, steal) helpers; its handoff imports the marathon library installed above
+    results.push(await bbs.install(this.claudeDir, {
+      dryRun: this.dryRun,
+      targetDir: this.targetDir
+    }));
+
     // Install PM Module (if opted in)
     if (this.withPm) {
       results.push(await pmShortcuts.install(this.claudeDir, {
@@ -385,7 +392,8 @@ echo "MCP server started. You can now use memory and swarm operations."
         agentCookbook: false,
         pmShortcuts: false,
         terminalAgents: false,
-        marathon: false
+        marathon: false,
+        bbs: false
       },
       shadowing: []
     };
@@ -423,6 +431,7 @@ echo "MCP server started. You can now use memory and swarm operations."
     status.plugins.pmShortcuts = await pmShortcuts.isInstalled(this.claudeDir);
     status.plugins.terminalAgents = await terminalAgents.isInstalled(this.claudeDir);
     status.plugins.marathon = await marathon.isInstalled(this.claudeDir);
+    status.plugins.bbs = await bbs.isInstalled(this.claudeDir);
     status.shadowing = await this.checkShadowing();
 
     // Overall status (core plugins only — PM and cookbook are optional)
@@ -451,6 +460,7 @@ echo "MCP server started. You can now use memory and swarm operations."
     await pmShortcuts.uninstall(this.claudeDir);
     await terminalAgents.uninstall(this.claudeDir, { targetDir: this.targetDir });
     await marathon.uninstall(this.claudeDir);
+    await bbs.uninstall(this.claudeDir);
 
     // Remove settings
     await removeSettings(this.claudeDir, this.keepSettings);
@@ -533,6 +543,8 @@ echo "MCP server started. You can now use memory and swarm operations."
         'frontend-design',
         'dot-shortcuts',
         'pure-ralph',
+        'marathon',
+        'bbs',
         ...(this.withoutCookbook ? [] : ['agent-cookbook']),
         ...(this.withPm ? ['pm-shortcuts'] : [])
       ]

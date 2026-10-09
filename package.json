@@ -32,7 +32,8 @@
     "project-management",
     "pi-brain",
     "verification",
-    "agent-browser"
+    "agent-browser",
+    "beg-borrow-steal"
   ],
   "author": "Danizee",
   "license": "MIT",

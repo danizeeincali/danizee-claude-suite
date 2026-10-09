@@ -172,6 +172,7 @@ Use the `/w-` prefix for quick workflow invocation:
 | `/w-tdd-swarm [feature]` | Full TDD + Swarm + Review combined (recommended) |
 | `/w-plan-tdd-swarm [idea]` | Deep interview → refine idea → TDD Swarm |
 | `/w-marathon [finish line]` | Days-long run with a finish line: status file, wake-up, hard ceiling (alias `/mt`) |
+| `/w-bbs [source]` | Absorb a power from an outside source: intake, fetch, inventory, map, verdict gate, hand-off to a marathon run (alias `/bbs`) |
 | `/w-background-compound` | Background write-up + handoff + prune line; commits, never pushes (alias `/bc`) |
 | `/bcp` | Same as `/bc` with `--push`: commit, push and merge |
 | `/w-swarm [task]` | Parallel agents for rapid implementation |
@@ -544,10 +545,10 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/ideas/[idea]" }
 7. One git worktree per stream
 8. Human jobs on a checklist Claude reads and never retries
 
-**Scripts decide, the model acts:** `node .claude/helpers/marathon/cli.js <verb>` — `gate`, `budget` (exit 2 = stop spawning), `record`, `seen-twice`, `review-brief`, `resume`, `keeplist`, `context`, `wake`, `page`.
+**Scripts decide, the model acts:** `node .claude/helpers/marathon/cli.js <verb>` — `init`, `status`, `gate --stream`, `budget` (any non-zero exit = do not spawn), `record` (run, review, finding, finding-fixed, helper, helper-done, measure, escape), `stream`, `route`, `model-stats`, `seen-twice`, `promote`, `review-brief`, `review-writeup`, `resume`, `keeplist`, `context`, `wake`, `page`, `finish`. Everything fails closed: an unreadable finish line, a review without counts, an empty measurement — none of them is a pass.
 
 **⚠️ Enforcement:**
-- NEVER spawn a helper after `cli.js budget` exits 2
+- NEVER spawn a helper after `cli.js budget` exits non-zero (2 = ceiling/budget, 1 = broken state)
 - NEVER weaken an assertion; a fresh reviewer checks every fix
 - NEVER retry a `waitingOnHuman` line
 - NEVER push or merge without the owner's go (`/bcp`)
@@ -555,6 +556,32 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/ideas/[idea]" }
 **Example:**
 ```
 /w-marathon Ship /bbs in the suite. Two clean reviews per stream, six green e2e runs, under 10M tokens.
+```
+
+---
+
+### Beg, borrow, steal — absorb a power from an outside source
+
+**Say:** "Look at this repo and see what we should take from it" or "Absorb a power from [source]"
+**Slash:** `/w-bbs <source>` · `/bbs` · `/w-bbs --resume <run-id>` · `/w-bbs --status`
+
+**What it does:** Takes one source — a git repository URL, a web page URL, a local path or pasted text — and runs six phases: intake (identity, registry check), fetch (GET only, egress line printed), inventory (helpers return JSON only, at most 12 powers), harness map (what we already have, per power), verdict gate (one table, one approval), hand-off (approved powers become streams of a `/w-marathon` run).
+
+**The four verdicts, in order of preference:** `rebuild` (always legal, preferred) · `use` (permissive licence, sandbox present and a clean probe) · `buy` (memo only) · `skip` (always legal).
+
+**Scripts decide, the model acts:** `node .claude/helpers/bbs/cli.js <verb>` — `cli.js intake`, `fetch`, `inventory`, `map`, `verdict`, `handoff`, `status`, `report`. Identities, licence classes, legal verdicts and counts are never computed in chat.
+
+**Enforcement:**
+- NEVER execute fetched code; foreign source is read, never run, and `fetched/` is never committed
+- GET only, to the hosts the owner named; private hosts and private redirects are refused; never crawl
+- JSON only from helpers; a prose answer is rejected
+- Exactly one approval: the verdict question. Exit 2 means refused — stop and report
+- Safety first, our rules always win; the lead stays on the session model, inventory and map helpers run on haiku, probes on sonnet
+- The command ends with the `/w-marathon --resume <run-id>` line; the build starts only when you run it
+
+**Example:**
+```
+/w-bbs https://github.com/openqodex/openqodex
 ```
 
 ---

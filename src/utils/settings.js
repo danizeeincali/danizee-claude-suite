@@ -50,6 +50,8 @@ export function getDefaultSettings() {
         'Bash(git worktree:*)',
         // The marathon loop calls its helper CLI dozens of times unattended; a prompt would stall it.
         'Bash(node .claude/helpers/marathon/cli.js:*)',
+        // /w-bbs drives its helper CLI step by step; a prompt per verb would stall the run.
+        'Bash(node .claude/helpers/bbs/cli.js:*)',
         'Read(docs/solutions/**)',
         'Write(docs/solutions/**)'
       ]
