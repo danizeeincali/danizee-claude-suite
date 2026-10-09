@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marathon 2026-10-07-bbs</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --fg: #1b1f24;
+  --muted: #5f6b76;
+  --line: #d8dee4;
+  --ok: #1a7f37;
+  --warn: #9a6700;
+  --bad: #cf222e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --fg: #e6edf3;
+    --muted: #8b98a5;
+    --line: #30363d;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --bad: #f85149;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 64rem; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 1.5rem; margin: 0 0 4px; }
+h2 { font-size: 1.1rem; margin: 32px 0 8px; }
+p { margin: 4px 0; }
+.muted { color: var(--muted); }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+.ok { color: var(--ok); font-weight: 600; }
+.warn { color: var(--warn); font-weight: 600; }
+.bad { color: var(--bad); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+<h1>Marathon 2026-10-07-bbs</h1>
+<p class="muted">Snapshot of the run: finish line, streams, review ledger and helper spend.</p>
+
+<h2>Gate</h2>
+<p>Build gate: <span class="ok">met</span> · Full gate: <span class="bad">not met</span></p>
+<p class="muted">Failing: none · Waiting on human: pushed</p>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Line</th><th scope="col">Owner</th><th scope="col">Target</th><th scope="col">Actual</th><th scope="col">Status</th></tr></thead>
+<tbody>
+<tr><td>Green end-to-end runs in a row</td><td>build</td><td>at least 6</td><td>8</td><td class="ok">met</td></tr>
+<tr><td>Green unit runs in a row</td><td>build</td><td>at least 3</td><td>37</td><td class="ok">met</td></tr>
+<tr><td>Clean reviews in a row</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>High findings in the latest review</td><td>build</td><td>at most 0</td><td>0</td><td class="ok">met</td></tr>
+<tr><td>Open high findings</td><td>build</td><td>at most 0</td><td>0</td><td class="ok">met</td></tr>
+<tr><td>Helpers that blew their budget</td><td>build</td><td>at most 4</td><td>3</td><td class="ok">met</td></tr>
+<tr><td>Packaged check: installed CLI runs the fixture source end to end</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>Pushed and merged by the owner via /bcp</td><td>human</td><td>is true</td><td>false</td><td class="warn">waiting on human</td></tr>
+</tbody>
+</table></div>
+
+<h2>Streams</h2>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Stream</th><th scope="col">State</th><th scope="col">Phase</th><th scope="col">Next</th><th scope="col">Tasks</th></tr></thead>
+<tbody>
+<tr><td>intake</td><td>done</td><td>/w-marathon · done</td><td>closed: 6 reviews (r4–r6 clean), 28 findings fixed; r6 fixes (497e7cf..5921405) reviewed in fetch r1 via --base 497e7cf</td><td></td></tr>
+<tr><td>fetch</td><td>done</td><td>done</td><td>closed: 3 reviews (r2, r3 clean), 18 findings fixed; r3 fixes (952736d..eeebb82) reviewed in inventory r1 via --base 952736d</td><td></td></tr>
+<tr><td>inventory</td><td>done</td><td>done</td><td>closed: 3 reviews (r2, r3 clean), 25 findings fixed; r3 fixes (945e873..9905a37) reviewed in harness-map r1 via --base 945e873</td><td></td></tr>
+<tr><td>harness-map</td><td>done</td><td>done</td><td>closed: 4 reviews (r3, r4 clean), 22 findings fixed; r4 fix (f449196..45e70fc) reviewed in verdict r1 via --base f449196</td><td></td></tr>
+<tr><td>verdict</td><td>done</td><td>done</td><td>closed: 6 reviews (r5, r6 clean), 26 findings fixed; r6 fixes (7caf67d..723c14d) reviewed in handoff r1 via --base 7caf67d</td><td></td></tr>
+<tr><td>handoff</td><td>done</td><td>done</td><td>closed: 5 reviews (r4, r5 clean), 27 findings fixed; r5 fixes (fe069a5..c6743bb) reviewed in command-docs r1 via --base fe069a5</td><td></td></tr>
+<tr><td>command-docs</td><td>done</td><td>done</td><td>closed: 3 reviews (r2, r3 clean), 17 findings fixed; r3 fixes (a297d74) covered by the e2e packaged check and the run-wide gate</td><td></td></tr>
+</tbody>
+</table></div>
+
+<h2>Review ledger</h2>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Review</th><th scope="col">Stream</th><th scope="col">Round</th><th scope="col">Result</th><th scope="col">High / medium / low</th><th scope="col">Time</th></tr></thead>
+<tbody>
+<tr><td>448bbd3b-5f45-4a2d-9bef-89826f18e287</td><td>intake</td><td>1</td><td class="bad">over</td><td>2 / 5 / 4</td><td>2026-10-08T00:44:11.908Z</td></tr>
+<tr><td>ff312adf-11ef-4e55-a4f6-574d0e402f76</td><td>intake</td><td>2</td><td class="bad">over</td><td>0 / 3 / 3</td><td>2026-10-08T00:51:20.995Z</td></tr>
+<tr><td>de700e9d-6a0a-4da1-8bf8-f202448d8858</td><td>intake</td><td>3</td><td class="bad">over</td><td>0 / 4 / 1</td><td>2026-10-08T00:56:31.283Z</td></tr>
+<tr><td>5519bc89-613c-4ea6-937a-95846e45cd13</td><td>intake</td><td>4</td><td class="ok">pass</td><td>0 / 2 / 2</td><td>2026-10-08T01:01:14.891Z</td></tr>
+<tr><td>7ef7d811-19f0-45fb-ac15-af2711f1c1b7</td><td>intake</td><td>5</td><td class="ok">pass</td><td>0 / 1 / 4</td><td>2026-10-08T01:08:02.790Z</td></tr>
+<tr><td>d85e685b-f180-4a24-a80c-c7efce195fb7</td><td>intake</td><td>6</td><td class="ok">pass</td><td>0 / 2 / 0</td><td>2026-10-08T01:14:19.832Z</td></tr>
+<tr><td>44f23eec-7530-4d37-ab7b-694515f450b3</td><td>fetch</td><td>1</td><td class="bad">over</td><td>2 / 5 / 3</td><td>2026-10-08T01:27:16.798Z</td></tr>
+<tr><td>dfe6fbb7-b42e-4b86-9a42-aca5f825b022</td><td>fetch</td><td>2</td><td class="ok">pass</td><td>0 / 2 / 3</td><td>2026-10-08T01:34:34.024Z</td></tr>
+<tr><td>a0d726b8-eea1-43ef-a369-ba7325ab2c49</td><td>fetch</td><td>3</td><td class="ok">pass</td><td>0 / 1 / 2</td><td>2026-10-08T01:40:56.045Z</td></tr>
+<tr><td>7d848756-cf86-4d19-9388-e641f3ac6e6e</td><td>inventory</td><td>1</td><td class="bad">over</td><td>0 / 9 / 4</td><td>2026-10-08T01:59:57.336Z</td></tr>
+<tr><td>f52a6a06-72db-45f3-9d33-0cfc6660a68e</td><td>inventory</td><td>2</td><td class="ok">pass</td><td>0 / 2 / 4</td><td>2026-10-08T02:07:00.834Z</td></tr>
+<tr><td>882830d4-b726-42b3-860d-f9ab845a62ce</td><td>inventory</td><td>3</td><td class="ok">pass</td><td>0 / 1 / 5</td><td>2026-10-08T02:16:27.344Z</td></tr>
+<tr><td>033d7104-b64c-44cc-9801-fc1aaba6188a</td><td>harness-map</td><td>1</td><td class="bad">over</td><td>1 / 4 / 6</td><td>2026-10-08T02:33:50.018Z</td></tr>
+<tr><td>19af5b0b-aada-441c-8c27-78c8bccddff0</td><td>harness-map</td><td>2</td><td class="bad">over</td><td>0 / 3 / 3</td><td>2026-10-08T02:41:30.771Z</td></tr>
+<tr><td>55fc36d3-2951-4b2e-9854-261435419b01</td><td>harness-map</td><td>3</td><td class="ok">pass</td><td>0 / 1 / 3</td><td>2026-10-08T02:47:00.122Z</td></tr>
+<tr><td>0d791fd9-0436-4039-a15f-d7424a6884be</td><td>harness-map</td><td>4</td><td class="ok">pass</td><td>0 / 1 / 0</td><td>2026-10-08T02:54:25.135Z</td></tr>
+<tr><td>ff26cdf4-1cdf-4397-b5f2-17fc3dc4abec</td><td>verdict</td><td>1</td><td class="bad">over</td><td>1 / 3 / 1</td><td>2026-10-08T03:05:22.200Z</td></tr>
+<tr><td>e152092e-e278-4f1f-babc-8847a8b27431</td><td>verdict</td><td>2</td><td class="bad">over</td><td>0 / 3 / 4</td><td>2026-10-08T03:13:38.523Z</td></tr>
+<tr><td>3050ca93-18fc-4534-bc4e-38de8c2d81dc</td><td>verdict</td><td>3</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-10-08T03:43:59.268Z</td></tr>
+<tr><td>2b48b0cf-406d-41c9-860d-be6a20331643</td><td>verdict</td><td>4</td><td class="bad">over</td><td>0 / 3 / 1</td><td>2026-10-08T03:53:20.947Z</td></tr>
+<tr><td>87b87518-e053-4557-bd3a-bd67e084d8ea</td><td>verdict</td><td>5</td><td class="ok">pass</td><td>0 / 1 / 1</td><td>2026-10-08T04:04:23.727Z</td></tr>
+<tr><td>7dfef390-1cc2-4515-8615-e1ca8623476f</td><td>verdict</td><td>6</td><td class="ok">pass</td><td>0 / 0 / 5</td><td>2026-10-08T04:14:29.242Z</td></tr>
+<tr><td>d055c38c-137a-4213-8155-3041ffeac971</td><td>handoff</td><td>1</td><td class="bad">over</td><td>3 / 6 / 2</td><td>2026-10-08T04:32:32.526Z</td></tr>
+<tr><td>2dd0287e-30b6-4c96-bb5d-a38e4f82ced5</td><td>handoff</td><td>2</td><td class="bad">over</td><td>0 / 4 / 0</td><td>2026-10-08T04:43:53.982Z</td></tr>
+<tr><td>2066d7e0-ae32-4a36-b65a-2ae8b9b844e3</td><td>handoff</td><td>3</td><td class="bad">over</td><td>0 / 3 / 2</td><td>2026-10-08T04:52:00.297Z</td></tr>
+<tr><td>92d52a73-5e2f-47eb-b2e2-2efb9325fdbd</td><td>handoff</td><td>4</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-10-08T04:57:39.147Z</td></tr>
+<tr><td>0789fb27-d1ba-4fdd-b946-e63f5ce1e3f3</td><td>handoff</td><td>5</td><td class="ok">pass</td><td>0 / 1 / 3</td><td>2026-10-08T05:03:51.375Z</td></tr>
+<tr><td>dc9b4879-7ce2-4007-90b5-372373fce637</td><td>command-docs</td><td>1</td><td class="bad">over</td><td>0 / 4 / 5</td><td>2026-10-08T13:45:47.328Z</td></tr>
+<tr><td>53173496-a0f9-4625-b246-8142459c7540</td><td>command-docs</td><td>2</td><td class="ok">pass</td><td>0 / 2 / 3</td><td>2026-10-09T22:01:02.455Z</td></tr>
+<tr><td>040191f3-c09f-47ef-a2a0-c94809e95ab8</td><td>command-docs</td><td>3</td><td class="ok">pass</td><td>0 / 1 / 2</td><td>2026-10-09T22:07:52.348Z</td></tr>
+</tbody>
+</table></div>
+
+<h2>Helper spend by model</h2>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Model</th><th scope="col">Helpers</th><th scope="col">Done</th><th scope="col">Tokens used</th><th scope="col">Tokens budgeted in flight</th></tr></thead>
+<tbody>
+<tr><td>sonnet</td><td>26</td><td>25</td><td>2,380,926</td><td>100,000</td></tr>
+<tr><td>opus</td><td>44</td><td>44</td><td>4,899,676</td><td>0</td></tr>
+<tr><td>haiku</td><td>3</td><td>3</td><td>415,195</td><td>0</td></tr>
+</tbody>
+</table></div>
+</main>
+</body>
+</html>
