@@ -23,7 +23,7 @@
 
 | Line | Owner | Status | Actual | Target |
 |---|---|---|---|---|
-| Green end-to-end runs in a row | build | failing | 5 | at_least 6 |
+| Green end-to-end runs in a row | build | met | 6 | at_least 6 |
 | Green unit runs in a row | build | met | 35 | at_least 3 |
 | Clean reviews in a row | build | failing | 0 | at_least 2 |
 | High findings in the latest review | build | met | 0 | at_most 0 |
