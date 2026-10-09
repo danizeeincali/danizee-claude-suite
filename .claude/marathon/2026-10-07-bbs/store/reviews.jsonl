@@ -27,3 +27,4 @@
 {"stream":"handoff","counts":{"high":0,"medium":1,"low":3},"angle":"accessibility","tokens":118931,"commit":"fe069a5","pass":true,"round":5,"id":"0789fb27-d1ba-4fdd-b946-e63f5ce1e3f3","ts":"2026-10-08T05:03:51.375Z"}
 {"stream":"command-docs","counts":{"high":0,"medium":4,"low":5},"angle":"one input method at a time","tokens":167908,"commit":"2e409ab","pass":false,"round":1,"id":"dc9b4879-7ce2-4007-90b5-372373fce637","ts":"2026-10-08T13:45:47.328Z"}
 {"stream":"command-docs","counts":{"high":0,"medium":2,"low":3},"angle":"failure conditions and error paths","tokens":114028,"commit":"bfed2cf","pass":true,"round":2,"id":"53173496-a0f9-4625-b246-8142459c7540","ts":"2026-10-09T22:01:02.455Z"}
+{"stream":"command-docs","counts":{"high":0,"medium":1,"low":2},"angle":"older environments and degraded networks","tokens":127311,"commit":"4e8fea5","pass":true,"round":3,"id":"040191f3-c09f-47ef-a2a0-c94809e95ab8","ts":"2026-10-09T22:07:52.348Z"}
