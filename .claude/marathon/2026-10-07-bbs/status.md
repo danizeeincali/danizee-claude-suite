@@ -1,11 +1,11 @@
 # Marathon 2026-10-07-bbs
 
-- State: PAUSED (budget)
-- Budget: 7,291,325 / 10,000,000 tokens
-- Allowance: 100% (ceiling 100%)
+- State: RUNNING
+- Budget: 7,441,325 / 10,000,000 tokens
+- Allowance: 1% (ceiling 100%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: PAUSED — raise ceiling_pct / run_token_budget in .claude/marathon.json or wait for the allowance, then `cli.js unpause` (or `cli.js budget --usage-pct <fresh reading>`) and /w-marathon --resume 2026-10-07-bbs.
+- Next for you: Continue stream "command-docs" (next: review round 2 (opus, failure paths) on fe069a5..HEAD) — /w-marathon --resume 2026-10-07-bbs. Waiting on you: pushed (tick them in checklist.md).
 
 ## Streams
 
@@ -17,7 +17,7 @@
 | harness-map | ../claude-suite-harness-map | .claude/plans/2026-10-07-w-bbs.md | done | clean 2/2 | done | closed: 4 reviews (r3, r4 clean), 22 findings fixed; r4 fix (f449196..45e70fc) reviewed in verdict r1 via --base f449196 |  | 0 |
 | verdict | ../claude-suite-verdict | .claude/plans/2026-10-07-w-bbs.md | done | clean 2/2 | done | closed: 6 reviews (r5, r6 clean), 26 findings fixed; r6 fixes (7caf67d..723c14d) reviewed in handoff r1 via --base 7caf67d |  | 0 |
 | handoff | ../claude-suite-handoff | .claude/plans/2026-10-07-w-bbs.md | done | clean 2/2 | done | closed: 5 reviews (r4, r5 clean), 27 findings fixed; r5 fixes (fe069a5..c6743bb) reviewed in command-docs r1 via --base fe069a5 |  | 0 |
-| command-docs | ../claude-suite-command-docs | .claude/plans/2026-10-07-w-bbs.md | active | clean 0/2 | 4.5 | PAUSED at the 100% weekly allowance (the account limit). On resume: budget check; review round 2 (opus, failure paths) on fe069a5..HEAD; then rounds until two clean; then the remaining e2e runs to reach six in a row (5 recorded), record measure packaged=true, close, merge, /bc, run-wide gate, finish |  | 0 |
+| command-docs | ../claude-suite-command-docs | .claude/plans/2026-10-07-w-bbs.md | active | clean 0/2 | 4.5 | review round 2 (opus, failure paths) on fe069a5..HEAD |  | 0 |
 
 ## Finish line
 

@@ -139,3 +139,4 @@
 {"helper_id":"35104bfd-30ea-46ea-9056-0ca95ac1e8e9","tokens":167908,"outcome":"green","event":"done","id":"2ea7544d-43db-4e63-a6f7-232ab5e77751","ts":"2026-10-08T13:45:46.924Z"}
 {"role":"fix","model":"sonnet","stream":"command-docs","budget":200000,"event":"spawn","id":"33b4041f-870f-4046-8d3e-adb28fdeb47d","ts":"2026-10-08T13:45:48.498Z"}
 {"helper_id":"33b4041f-870f-4046-8d3e-adb28fdeb47d","tokens":107132,"outcome":"green","event":"done","id":"35af7c7c-fe80-4489-9148-2ed2809192d1","ts":"2026-10-08T13:50:23.800Z"}
+{"role":"review","model":"opus","stream":"command-docs","budget":150000,"event":"spawn","id":"915950de-71fb-4067-8776-aab02ad8023d","ts":"2026-10-09T21:58:03.182Z"}
