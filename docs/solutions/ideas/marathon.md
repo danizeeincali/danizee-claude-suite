@@ -180,3 +180,31 @@ Trend across rounds was 10 → 8 → 11 → 3 highs; shipped after four with the
 - fast-check 4 removed `fc.hexaString`; use `fc.stringMatching(/^[0-9a-f]{8}$/)`.
 - zsh does not word-split `$CMD` with spaces; smoke scripts that call `node file args` through a
   variable must run under bash or use a shell function.
+
+## First real run: 2026-10-07-bbs (closed 2026-10-09)
+
+Measured from `.claude/marathon/2026-10-07-bbs/store/*.jsonl` and `cli.js` output, answering the
+"What to measure on the first real run" list above.
+
+- **Resumes after compaction and pauses**: the run paused four times at the allowance ceiling (70%,
+  95%, 98%, 100%; intake active, verdict r2, command-docs built, command-docs r1 fixed). The owner
+  raised the ceiling three times (95, 98, 100) and the allowance reset once. Every resume was from
+  files (`status.md`, `cli.js resume`), with no "where were we?" turn recorded. One compaction row
+  (`bc`, 308,015 tokens, 30.8%, decision `clear`).
+- **Escapes per stream**: 0 in all 7 streams (`cli.js status`).
+- **Tokens per review**: 30 reviews. Clean (pass): 16, mean 105,356 tokens. Over tolerance: 14, mean
+  110,510 tokens. The gap is about 5%, so promotion lowered rounds-to-clean more than cost per review.
+- **Budget never breached**: no helper was spawned after `budget` exited 2. The four pauses are the
+  only exit-2 events; each ended with an owner raise before the next spawn.
+- **`cli.js model-stats`** (every helper finished green, none escalated):
+  - sonnet: 26 spawned, 25 done, first-pass green 100%, mean 95,237 tokens
+  - opus: 44 spawned, 44 done, first-pass green 100%, mean 111,356 tokens
+  - haiku: 3 spawned, 3 done, first-pass green 100%, mean 138,398 tokens
+  The 100% rate is uninformative: no row ever failed, so the router was never tested by a red step.
+- **Totals**: 7 streams closed; 30 reviews; 168 findings with a severity (9 high, 81 medium, 78 low),
+  all with `fixed_ts`; 9 rules promoted (`promotions.jsonl`); 73 helpers spawned (150 helper rows,
+  including 5 helpers with a second `done` row, which inflates a naive sum to 8,339,135); spend
+  7,795,797 of the 10,000,000 budget (status line; `model-stats` sums 7,695,797); final test
+  count 1055; 37 green unit runs and 8 green e2e runs in a row.
+- **Surprises**: the run-wide finish-line lines (`e2e_streak`, `packaged`, `pushed`) cannot be met
+  per stream, so a stream-close rule was written by hand.

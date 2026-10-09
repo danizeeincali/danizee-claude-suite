@@ -1032,3 +1032,286 @@ STATUS: PASS|FAIL
 2. Test: RC-D027 returns STATUS: PASS
 
 **Status**: ready (only runs if RC-D027 fails)
+
+---
+
+### RC-D028: Helper token actuals arrive only in the task notification
+
+**Auto-Generated From**: /w-background-compound on 2026-10-09
+**Type**: Diagnostic
+**Verifies**: the ledger holds a spawn row with a budget but no actual for a helper (run 2026-10-07-bbs: 150 helper rows for 73 spawns, 5 helpers with two done rows)
+
+**Test Command**:
+```bash
+node .claude/helpers/marathon/cli.js status | grep -i 'helper'; # every spawn has exactly one done row
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: HELPER_TOKEN_ACTUALS_ARRIVE_ONLY_IN_THE_
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F028 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+---
+
+### RC-F028: Prompt `record helper-done` in the Agent result handler, once per helper
+
+**Auto-Generated From**: /w-background-compound on 2026-10-09
+**Type**: Conditional Fix
+**Triggered By**: RC-D028 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// on every Agent result: cli.js record helper-done --helper <id> --tokens <n> --outcome green|red
+// record is idempotent per helper_id: a second done row is refused
+```
+
+**File**: src/lib/marathon/ledger.js, .claude/commands/.shortcuts/w-marathon.md
+
+**Completion Tests**:
+1. Pattern: w-marathon.md tells the lead to call `record helper-done` from the Agent result
+2. Test: a duplicate helper_id done row is refused; RC-D028 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D028 fails)
+
+---
+
+### RC-D029: A pause from the allowance ceiling is silent until the next wake
+
+**Auto-Generated From**: /w-background-compound on 2026-10-09
+**Type**: Diagnostic
+**Verifies**: a run paused at the ceiling four times; each pause was only noticed when the owner looked (run 2026-10-07-bbs)
+
+**Test Command**:
+```bash
+node --test test/marathon-budget.test.js --test-name-pattern='pause'; # expect green
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: A_PAUSE_FROM_THE_ALLOWANCE_CEILING_IS_SI
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F029 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+---
+
+### RC-F029: On exit 2 write the pause and its resume line to status.md and the page in the same step
+
+**Auto-Generated From**: /w-background-compound on 2026-10-09
+**Type**: Conditional Fix
+**Triggered By**: RC-D029 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// budget exit 2 -> status.md: State PAUSED, 'Next for you: raise ceiling_pct in .claude/marathon.json, then cli.js unpause'
+```
+
+**File**: src/lib/marathon/budget.js
+
+**Completion Tests**:
+1. Pattern: PAUSED state names the config key and the next command
+2. Test: RC-D029 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D029 fails)
+
+---
+
+### RC-D030: A command routes around a refusal when its text says "fix and rerun"
+
+**Auto-Generated From**: /w-background-compound on 2026-10-09
+**Type**: Diagnostic
+**Verifies**: command text told the lead to rerun after an exit 2 verdict refusal, which means choosing a value the owner never approved (review command-docs r2, medium process)
+
+**Test Command**:
+```bash
+node --test test/w-bbs-command.test.js --test-name-pattern='refusal|exit 2'; # expect green
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: A_COMMAND_ROUTES_AROUND_A_REFUSAL_WHEN_I
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F030 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+---
+
+### RC-F030: Every command exit-2 branch says: report verbatim, print the resume line, stop
+
+**Auto-Generated From**: /w-background-compound on 2026-10-09
+**Type**: Conditional Fix
+**Triggered By**: RC-D030 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// ...exit code 2: print the refusal word for word, then the resume line, then STOP. Never edit the answer, never ask again.
+```
+
+**File**: src/plugins/dot-shortcuts.js, .claude/commands/.shortcuts/*.md
+
+**Completion Tests**:
+1. Pattern: no command text contains 'fix the file and rerun' after an exit 2
+2. Test: RC-D030 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D030 fails)
+
+---
+
+### RC-D031: A command that names an exit branch needs a branch for a killed process
+
+**Auto-Generated From**: /w-background-compound on 2026-10-09
+**Type**: Diagnostic
+**Verifies**: fetch ran under the Bash default 120 s timeout while a clone may take 300 s; a killed process left fetched/ and a tmp HOME (review command-docs r3, medium correctness)
+
+**Test Command**:
+```bash
+node --test test/w-bbs-command.test.js --test-name-pattern='timeout|killed'; # expect green
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: A_COMMAND_THAT_NAMES_AN_EXIT_BRANCH_NEED
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F031 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+---
+
+### RC-F031: Slow verbs get an explicit Bash timeout above their code limit and a killed-process branch
+
+**Auto-Generated From**: /w-background-compound on 2026-10-09
+**Type**: Conditional Fix
+**Triggered By**: RC-D031 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// command text: run `cli.js fetch` with a Bash timeout of 600000 ms; if killed, run `cli.js repair` before retrying
+```
+
+**File**: src/plugins/dot-shortcuts.js, .claude/commands/.shortcuts/w-bbs.md
+
+**Completion Tests**:
+1. Pattern: every verb with a code timeout above 100 s names a larger Bash timeout in the command
+2. Test: RC-D031 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D031 fails)
+
+---
+
+### RC-D032: A suite that ships a command must carry that command's helpers in its own repo
+
+**Auto-Generated From**: /w-background-compound on 2026-10-09
+**Type**: Diagnostic
+**Verifies**: the repo committed /w-bbs but not .claude/helpers/bbs/, so the command failed at its first verb here (review command-docs r1, medium correctness)
+
+**Test Command**:
+```bash
+for h in $(grep -o 'helpers/[a-z]*/cli.js' .claude/commands/.shortcuts/*.md | sort -u | cut -d: -f2); do test -f .claude/$h || echo MISSING $h; done; # expect no output
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: A_SUITE_THAT_SHIPS_A_COMMAND_MUST_CARRY_
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F032 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+---
+
+### RC-F032: Dogfood: install the helpers into the repo's own .claude and commit them
+
+**Auto-Generated From**: /w-background-compound on 2026-10-09
+**Type**: Conditional Fix
+**Triggered By**: RC-D032 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// run the installer against this repo's .claude; commit .claude/helpers/<name>/; add its gitignore rules
+```
+
+**File**: src/installer.js, .gitignore
+
+**Completion Tests**:
+1. Pattern: every helper path named in a shipped command exists in the repo
+2. Test: RC-D032 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D032 fails)
+
+---
+
+### RC-D033: A manifest-before-write order is asserted with an interrupted install, not a finished one
+
+**Auto-Generated From**: /w-background-compound on 2026-10-09
+**Type**: Diagnostic
+**Verifies**: an uninterrupted install passes whether the manifest is written first or last (review command-docs r3, low test-quality)
+
+**Test Command**:
+```bash
+node --test test/bbs-plugin.test.js --test-name-pattern='manifest.*(order|before)'; # expect green
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: A_MANIFEST-BEFORE-WRITE_ORDER_IS_ASSERTE
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F033 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+---
+
+### RC-F033: Make one module write fail and assert the manifest already lists all planned modules
+
+**Auto-Generated From**: /w-background-compound on 2026-10-09
+**Type**: Conditional Fix
+**Triggered By**: RC-D033 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// dest of one marathon module is a directory -> install throws -> manifest still lists every planned module
+```
+
+**File**: test/bbs-plugin.test.js
+
+**Completion Tests**:
+1. Pattern: a failing-write test exists for manifest order
+2. Test: RC-D033 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D033 fails)
