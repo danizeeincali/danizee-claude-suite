@@ -39,3 +39,4 @@
 {"kind":"unit","status":"green","stream":"command-docs","commit":"bfed2cf","id":"919a3ae0-e089-417d-b2bd-e6c1cdf14143","ts":"2026-10-08T13:50:23.903Z"}
 {"kind":"e2e","status":"green","stream":"command-docs","commit":"bfed2cf","id":"eef4457f-3c9c-4209-bf52-8b15744eccf3","ts":"2026-10-08T13:50:24.005Z"}
 {"kind":"e2e","status":"green","stream":"command-docs","commit":"bfed2cf","id":"b762cbd8-4a6c-4cf4-b48d-f29ada4f478e","ts":"2026-10-09T22:00:27.600Z"}
+{"kind":"unit","status":"green","stream":"command-docs","commit":"4e8fea5","id":"347e486c-ac48-46a6-a3ea-5e968e00383a","ts":"2026-10-09T22:04:20.303Z"}

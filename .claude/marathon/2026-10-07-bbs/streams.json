@@ -73,10 +73,10 @@
       "name": "command-docs",
       "state": "active",
       "plan": ".claude/plans/2026-10-07-w-bbs.md",
-      "next": "sonnet fix round for review r2 (refusal handling, zero-approved path, none_found, half-run recovery, manifest); then unit run + review r3 (second clean closes)",
+      "next": "review round 3 (opus, older environments) on fe069a5..HEAD; clean → close stream",
       "tasks": [],
       "isolation": "../claude-suite-command-docs",
-      "phase": "4.7",
+      "phase": "4.5",
       "base": "2664d95b23fb9a1be3ff39984a849dda0dec2225"
     }
   ],
