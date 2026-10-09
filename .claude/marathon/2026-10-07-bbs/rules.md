@@ -97,3 +97,8 @@ Add a rule the second time something goes wrong.
   handoff-r1). Module headers, docstrings and the spec say exactly what the code enforces, where
   files live and what a value means; when the code changes, the sentence changes in the same
   commit. A reviewer may cite a stale sentence as a defect.
+- **A command never routes around a refusal or a human choice** (`process`, reviews command-docs-r1 +
+  command-docs-r2). When a helper CLI exits 2, the command reports the refusal word for word and
+  stops with the resume line; it never edits an owner's answer, never asks a second question, and
+  never picks a different value to make the step pass. The one approval is the only place a human
+  choice enters, and the command text carries every way the answer can be given.
