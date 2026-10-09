@@ -250,6 +250,17 @@ describe('bbs plugin — review r2 regressions (manifest)', () => {
     assert.deepEqual([...m].sort(), all);
   });
 
+  it('r3: when a planned marathon module cannot be written, the install rejects and the manifest already lists every planned module', async () => {
+    const d = await mk(); const c = path.join(d, '.claude');
+    const all = (await fs.readdir(MLIB)).filter(f => f.endsWith('.js') && f !== 'cli.js').sort();
+    // helpers/marathon is a FILE: every module is absent (planned) and the first module write fails
+    await fs.mkdir(path.join(c, 'helpers'), { recursive: true });
+    await fs.writeFile(path.join(c, 'helpers', 'marathon'), 'not a directory');
+    await assert.rejects(bbs.install(c, { targetDir: d }));
+    const m = JSON.parse(await fs.readFile(path.join(c, 'helpers', 'bbs', '.marathon-files.json'), 'utf-8'));
+    assert.deepEqual([...m].sort(), all);
+  });
+
   it('a truncated bbs-owned gate.js is repaired on re-install without marathon, and the manifest keeps it', async () => {
     const d = await mk(); const c = path.join(d, '.claude');
     await bbs.install(c, { targetDir: d });

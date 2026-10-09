@@ -80,11 +80,13 @@ If the JSON says `known: true`, the same source at the same identity is never au
 
 ### ⛔ CHECKPOINT 1: Fetch
 
-`node .claude/helpers/bbs/cli.js fetch`. GET only; repositories are shallow-cloned without tags and with hooks off; 25 URLs and 20 MB per run; every request is logged to `egress.jsonl`.
+`node .claude/helpers/bbs/cli.js fetch [--run <id>]`, run with the Bash tool `timeout` set to 600000 ms (a repository clone may take up to 300 s, plus DNS and rev-parse). GET only; repositories are shallow-cloned without tags and with hooks off; 25 URLs and 20 MB per run; every request is logged to `egress.jsonl`.
 
 **Print the egress line verbatim** from the JSON (`egress_line`), for example `requests=3 bytes_in=412880 bodies_sent=0 hosts=github.com`. A local path or pasted text prints `requests=0 …`.
 
 On a non-zero exit stop: exit 2 is refused (say which guard), exit 1 is a failure that stored nothing new.
+
+If the process was killed (no JSON, no exit 1/2), remove the `fetched/` directory the next error names and rerun fetch once with `--run <id>`; if that fails, stop with `/w-bbs --resume <run-id>`.
 
 If the fetch JSON says `known: true` (a repository or URL source is only recognised once its identity is computed), do exactly what CHECKPOINT 0 says for a known source with this `reuse_from`: `cli.js report --run <reuse_from>`, `cli.js status --run <reuse_from>`, print both, say "this source at this identity was audited in run <reuse_from>; nothing is re-audited", and **STOP**.
 

@@ -90,6 +90,15 @@ describe('docs — README.md', () => {
   });
 });
 
+describe('docs — r3 sandbox wording', () => {
+  it('states the real conditions for the use verdict sandbox', async () => {
+    const readme = await fs.readFile(path.join(ROOT, 'README.md'), 'utf-8');
+    assert.match(readme, /docker info.*5 s/);
+    assert.match(readme, /remote.*DOCKER_HOST/);
+    assert.match(readme, /Linux only.*unshare --user/);
+  });
+});
+
 describe('docs — package.json', () => {
   it('keywords include beg-borrow-steal; the version is not bumped by this stream', async () => {
     const pkg = JSON.parse(await fs.readFile(path.join(ROOT, 'package.json'), 'utf-8'));

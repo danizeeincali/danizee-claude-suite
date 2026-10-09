@@ -237,7 +237,7 @@ Preference order: rebuild, then use, then buy; skip is always permitted. Safety 
 
 **Fetch guards (code, not advice):** GET only, no body, no auth header or cookie; private hosts (loopback, RFC 1918, link-local, IPv4-mapped IPv6, `localhost`, `*.local`, `*.internal`) are refused before connecting and on every redirect, and a redirect to a private host is a refusal, not a follow; 25 URLs and 20 MB per run; every request is logged to `egress.jsonl`; repositories are cloned shallow, without tags and with hooks off; links cited in a page are recorded and never followed (no crawl). The command prints the egress line (`requests=… bytes_in=… bodies_sent=0 hosts=…`) after every fetch.
 
-**Sandbox:** `use` is removed, with the reason, on a machine without `docker` or `unshare`. Tests set `BBS_SANDBOX=absent` only; the override is announced on stderr.
+**Sandbox:** `use` is removed, with the reason shown in the table, unless a local docker daemon answers `docker info` within 5 s, or (Linux only) unprivileged `unshare --user` works; a remote `DOCKER_HOST` or docker context never counts. Tests set `BBS_SANDBOX=absent` only; the override is announced on stderr.
 
 **Run state** (committed, except `fetched/`, which holds foreign source and is git-ignored):
 

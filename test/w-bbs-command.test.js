@@ -195,4 +195,13 @@ describe('/w-bbs command — review r2 regressions', () => {
     assert.match(s, /exact command the error names once/);
     assert.match(s, /fails again, report and stop/i);
   });
+
+  it('r3: CHECKPOINT 1 runs fetch with a Bash timeout above the clone allowance and handles a killed process', () => {
+    const s = section('### ⛔ CHECKPOINT 1', '### ⛔ CHECKPOINT 2');
+    assert.match(s, /timeout.*600000|600000.*timeout/);
+    assert.match(s, /killed/);
+    assert.match(s, /fetched\/` directory/);
+    assert.match(s, /rerun fetch once with `--run <id>`/);
+    assert.match(s, /\/w-bbs --resume <run-id>/);
+  });
 });
