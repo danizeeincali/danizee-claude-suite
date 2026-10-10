@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { spawnSync } from 'child_process';
 import { getCommands } from '../src/plugins/dot-shortcuts.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -94,6 +95,113 @@ describe('/w-marathon command content', () => {
 
   it('has no literal backtick escaping artifacts', () => {
     assert.ok(!c().includes('\\`'), 'rendered content must not contain escaped backticks');
+  });
+});
+
+describe('kit wiring', () => {
+  const c = () => commands['w-marathon'].content;
+  const section = (from, to) => {
+    const a = c().indexOf(from);
+    assert.ok(a >= 0, `${from} missing`);
+    const b = to ? c().indexOf(to, a + from.length) : c().length;
+    assert.ok(b > a, `${to} missing after ${from}`);
+    return c().slice(a, b);
+  };
+  const review = () => section('**4.5 Review round', '**4.5a');
+  const gate = () => section('**4.8 Gate.**', '**4.9 Escapes');
+  const compound = () => section('### ⛔ CHECKPOINT 6', '## `--resume');
+  const FALLBACK = 'If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.';
+  const OTHER = 'Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found.';
+
+  it('4.5 appends lenses and impact over the stream range with --base and handles every diff-range exit', () => {
+    const r = review();
+    assert.match(r, /cli\.js stream <name>/, 'says how to read the stream base');
+    assert.match(r, /`base` field/);
+    assert.match(r, /diff-range --dir "\$W" --base "\$BASE" > "\$D"; RC=\$\?/);
+    assert.match(r, /lenses --diff "\$D"/);
+    assert.match(r, /impact --diff "\$D" --base "\$BASE"/);
+    assert.match(r, /if \[ ! -f \.claude\/helpers\/kit\/cli\.js \]; then echo "kit not installed/);
+    assert.match(r, /D=\$\(mktemp 2>\/dev\/null\) && \[ -n "\$D" \] \|\| \{[^}]*D=;/);
+    assert.match(r, /\(trap 'rm -f/);
+    assert.match(r, /case \$RC in 0\)/);
+    assert.match(r, /3\) echo "no change to review"; RC=0;;/);
+    assert.match(r, /2\) echo "diff-range refused/);
+    assert.match(r, /\*\) echo "diff-range failed \(exit \$RC\)/);
+    assert.ok(r.includes(FALLBACK));
+    assert.ok(r.includes(OTHER));
+  });
+
+  it('4.5 says skipped files make every result a floor', () => {
+    const r = review();
+    assert.match(r, /too_large/);
+    assert.match(r, /max_untracked/);
+    assert.match(r, /nested repositor/i);
+    assert.match(r, /--json/);
+    assert.match(r, /floor/);
+  });
+
+  it('4.5 says what the reviewer gets and that both the brief and the JSON are redacted', () => {
+    const r = review();
+    assert.match(r, /"Kit analysis"/);
+    assert.match(r, /brief text/);
+    assert.match(r, /already redacts the diff/);
+    assert.match(r, /\.claude\/kit\/secrets/);
+    assert.match(r, /fails closed/);
+    assert.match(r, /redact --keep-lines/);
+    assert.match(r, /`text`/);
+    assert.match(r, /raw diff/);
+  });
+
+  it('4.5 records a receipt after the review with a concrete pass and fail command', () => {
+    const r = review();
+    assert.match(r, /cli\.js record review[\s\S]*push-gate receipt/);
+    assert.match(r, /push-gate receipt --verdict pass --high 0 --medium 1 --low 3 --base [0-9a-f]{7,40}/);
+    assert.match(r, /push-gate receipt --verdict fail --high 1 --medium 2 --low 0 --base [0-9a-f]{7,40}/);
+    assert.match(r, /cd "\$W"/);
+    assert.match(r, /exit 0[^.]*written/i);
+    assert.match(r, /exit 1[^.]*wrong input/i);
+    assert.match(r, /exit 2[^.]*refused receipt store/i);
+    for (const line of r.split('\n').filter(l => /push-gate receipt --verdict/.test(l))) {
+      assert.ok(!/<[A-Za-z]+>/.test(line), `no placeholder in command line: ${line}`);
+    }
+  });
+
+  it('4.8 runs scrub --history before the gate and records a finding on exit 2', () => {
+    const g = gate();
+    assert.ok(g.indexOf('scrub --history "$BASE"') < g.indexOf('cli.js gate --stream'), 'scrub comes before the gate call');
+    assert.match(g, /exit 0[^.]*clean/i);
+    assert.match(g, /exit 2[^.]*(hits|incomplete)/i);
+    assert.match(g, /exit 1[^.]*wrong input/i);
+    assert.match(g, /cli\.js record finding [^\n]*severity=high category=security/);
+    assert.match(g, /do not close the stream|not close the stream/i);
+    assert.match(g, /gate still runs/i);
+    assert.ok(g.includes(FALLBACK));
+    assert.ok(g.includes(OTHER));
+  });
+
+  it('CHECKPOINT 6 runs push-gate check --base before any /bcp with the abstain/ask/deny semantics', () => {
+    const k = compound();
+    assert.match(k, /push-gate check --base "\$BASE"/);
+    assert.match(k, /cd "\$W"/);
+    assert.match(k, /abstain/);
+    assert.match(k, /no review recorded for this change/);
+    assert.match(k, /any other `ask`/i);
+    assert.match(k, /not pushed/);
+    assert.match(k, /exit 2[^.]*deny[^.]*refused/i);
+    assert.match(k, /exit 1[^.]*error/i);
+    assert.match(k, /never skips or answers the owner's own permission prompt/);
+    assert.match(k, /Before any `\/bcp`/);
+    assert.ok(k.includes(FALLBACK));
+    assert.ok(k.includes(OTHER));
+  });
+
+  it('every extracted bash block passes bash -n', () => {
+    const blocks = [...c().matchAll(/```bash\n([\s\S]*?)```/g)].map(m => m[1]);
+    assert.ok(blocks.length >= 5, 'the wired steps carry bash blocks');
+    for (const b of blocks) {
+      const r = spawnSync('bash', ['-n'], { input: b, encoding: 'utf-8' });
+      assert.equal(r.status, 0, `bash -n failed: ${r.stderr}\n${b}`);
+    }
   });
 });
 
