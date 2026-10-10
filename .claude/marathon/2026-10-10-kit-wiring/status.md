@@ -1,11 +1,11 @@
 # Marathon 2026-10-10-kit-wiring
 
 - State: RUNNING
-- Budget: 3,795,440 / 10,000,000 tokens
+- Budget: 3,865,440 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 5/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "bbs" (next: 4.4 record unit run, then 4.5 review-brief --stream bbs) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
+- Next for you: Continue stream "bbs" (next: 4.5 round 1 opus review, then record review/findings) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
 - Last handoff: 2026-10-10T21:03:09.812Z (auto) on claude/project-thread-vootem@41dd24c, 0 uncommitted, tasks: none
 
 ## Streams
@@ -16,7 +16,7 @@
 | pt | ../danizee-claude-suite-pt | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | /w-plan-tdd-swarm · review | done; compounded via /bc |  | 0 |
 | bc | ../danizee-claude-suite-bc | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | /w-plan-tdd-swarm · review | done; compounded via /bc |  | 0 |
 | marathon | ../danizee-claude-suite-marathon | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | /w-plan-tdd-swarm · review | done; compounded via /bc |  | 0 |
-| bbs | ../danizee-claude-suite-bbs | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | clean 0/2 | /w-plan-tdd-swarm · build | 4.4 record unit run, then 4.5 review-brief --stream bbs |  | 0 |
+| bbs | ../danizee-claude-suite-bbs | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | clean 0/2 | /w-plan-tdd-swarm · review | 4.5 round 1 opus review, then record review/findings |  | 0 |
 | sweep-commits |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire the eight commit-and-push workflows |  | 0 |
 | sweep-foreign-and-logs |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire the six foreign-repo and log workflows |  | 0 |
 
@@ -36,7 +36,7 @@
 | marathon: green unit runs in a row | build | met | 6 | at_least 1 |
 | marathon: clean reviews in a row | build | met | 5 | at_least 2 |
 | marathon: open high findings | build | met | 0 | at_most 0 |
-| bbs: green unit runs in a row | build | failing | 0 | at_least 1 |
+| bbs: green unit runs in a row | build | met | 1 | at_least 1 |
 | bbs: clean reviews in a row | build | failing | 0 | at_least 2 |
 | bbs: open high findings | build | met | 0 | at_most 0 |
 | sweep-commits: green unit runs in a row | build | failing | 0 | at_least 1 |

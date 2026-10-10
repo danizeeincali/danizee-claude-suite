@@ -55,10 +55,10 @@
       "name": "bbs",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "4.4 record unit run, then 4.5 review-brief --stream bbs",
+      "next": "4.5 round 1 opus review, then record review/findings",
       "tasks": [],
       "isolation": "../danizee-claude-suite-bbs",
-      "phase": "build",
+      "phase": "review",
       "skill": "w-plan-tdd-swarm",
       "base": "c8ddc24a976fc488ae86521d82073d04724c5214"
     },
