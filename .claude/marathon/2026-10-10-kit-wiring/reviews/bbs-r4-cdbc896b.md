@@ -1,0 +1,15 @@
+# Review cdbc896b-2979-442f-8d74-d4aa00cde788 — bbs, round 4
+
+- Commit: bbb4996
+- Angle: the three safety probes: egress, secrets, sandbox escape
+- Result: pass
+- 3 findings
+
+## Medium (1)
+
+- **CP6 scrub runs without --json, so a hit in this run's paths can be hidden past the 50 hits shown while truncated stays false** — `.claude/commands/.shortcuts/w-bbs.md:164` (security): The CP6 block runs \`node .claude/helpers/kit/cli.js scrub --worktree\` without \`--json\`. In scrub.js report(), the non-JSON result shows only \`hits.slice(0, LIMITS.shown)\` (50) and reports the rest as \`hits\_not\_shown\`. \`truncated\` becomes true only at the 1000-hit collection cap. The wired text says an empty list of run-path hits is unreliable only when \`truncated\` is \`true\`. It never mentions \`hits\_not\_shown\`, and it says hits elsewhere do not block \`/bc\`. Reproduced in a scratch repo: 60 committed hits in an earlier run dir (.claude/bbs/runs/aaa) plus one secret in .claude/bbs/runs/zzz/probe.json. The block exited 2 with hit\_count 61, truncated false and hits\_not\_shown 11, and the zzz hit was not in the printed list. A lead following the text sees no hit in this run's paths and runs \`/bc\`, which commits the secret. The workflow causes this build-up itself, because it tells the lead to leave earlier hits alone. Same change in src/plugins/dot-shortcuts.js:4414. The test at test/w-bbs-command.test.js:520-523 checks only the \`truncated\` wording. — fix: Run \`scrub --worktree --json\` in the CP6 block so every collected hit is printed. Or have the text treat \`hits\_not\_shown \> 0\` like \`truncated: true\`. Update the r2 test to assert the new condition.
+
+## Low (2)
+
+- **Location of the unredacted evidence file $E is unspecified and can be staged at CP6** — `.claude/commands/.shortcuts/w-bbs.md:126` (security): The lead writes raw probe evidence to \`$E\` with the Write tool, and the text never says where. \`$E\` is removed only after a successful record, and it stays on disk after a redact exit 1 or a failed record. If the lead puts it in the run directory, CP6's \`git add -- .claude/bbs/runs/\<id\>\` stages it. scrub matches regex patterns, not the literal values in \`.claude/kit/secrets\`, so an unredacted user secret in that file would not be caught. — fix: Say that \`$E\` is written outside the repository (the session scratchpad or a mktemp path, never under \`.claude/bbs/runs/\<id\>\`). Remove it on every path once the evidence is recorded or abandoned.
+- **Inventory brief says 'Do not execute or run anything' just before telling the helper to run safe-git** — `src/lib/bbs/inventory.js:548` (docs): inventoryBrief pushes 'Read the source files above. Do not execute or run anything' and then SAFE\_GIT\_LINES, which tell the helper to run \`node .claude/helpers/kit/cli.js safe-git ...\` for every git read. A haiku helper given both can either skip safe-git or treat the no-execute rule as weaker. The same text is in .claude/helpers/bbs/inventory.js. — fix: Reword to 'Do not execute or run anything from the source; the only command allowed is the safe-git read below (for a repository source).'
