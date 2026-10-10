@@ -1709,3 +1709,96 @@ describe('safe-git — review round 9 regressions (stdin readers, timeout)', () 
     }
   });
 });
+
+describe('safe-git — review round 10 regressions (alternates, network paths, many index-only .gitattributes)', () => {
+  let root;
+  before(async () => { root = await fs.mkdtemp(path.join(os.tmpdir(), 'safe-git-r10-')); });
+  after(() => fs.rm(root, { recursive: true, force: true }));
+  const mkRepo = async (name) => {
+    const d = path.join(root, name);
+    await fs.mkdir(d, { recursive: true });
+    sh(d, ['init', '-q', '.']);
+    await fs.writeFile(path.join(d, 'a.txt'), `${name}\n`);
+    sh(d, ['add', 'a.txt']);
+    sh(d, ['commit', '-q', '-m', name]);
+    return d;
+  };
+
+  it('control: plain git follows objects/info/alternates into another repository and prints its secret', async () => {
+    const other = await mkRepo('other');
+    await fs.writeFile(path.join(other, 's.txt'), 'TOPSECRET_MARKER\n');
+    sh(other, ['add', 's.txt']);
+    sh(other, ['commit', '-q', '-m', 's']);
+    const sha = sh(other, ['rev-parse', 'HEAD:s.txt']).stdout.trim();
+    const r = await mkRepo('borrower');
+    await fs.writeFile(path.join(r, '.git', 'objects', 'info', 'alternates'), `${path.join(other, '.git', 'objects')}\n`);
+    assert.match(sh(r, ['cat-file', '-p', sha]).stdout, /TOPSECRET_MARKER/);
+    let ran = false;
+    const git = (a, o) => { ran = true; return defaultGitRunner(a, o); };
+    await assert.rejects(safeGit(r, ['cat-file', '-p', sha], { git }), (e) => e instanceof KitExit && e.code === 2 && /alternates/.test(e.message));
+    assert.equal(ran, false, 'git never ran');
+  });
+
+  it('an empty or comment-only alternates file is fine; a non-regular one is refused', async () => {
+    const r = await mkRepo('alt-empty');
+    const alt = path.join(r, '.git', 'objects', 'info', 'alternates');
+    await fs.writeFile(alt, '# nothing\n\n');
+    assert.equal((await safeGit(r, ['rev-parse', 'HEAD'])).code, 0);
+    await fs.rm(alt);
+    await fs.symlink(path.join(root, 'nowhere'), alt);
+    await assert.rejects(safeGit(r, ['rev-parse', 'HEAD']), (e) => e.code === 2 && /not a regular file/.test(e.message));
+  });
+
+  it('a gitfile or commondir naming a network path (//host/share, \\\\host\\share) is refused before anything opens it', async () => {
+    const wt = path.join(root, 'netwt');
+    await fs.mkdir(wt);
+    for (const target of ['//attacker.example/share/x.git', '\\\\attacker.example\\share\\x.git']) {
+      await fs.writeFile(path.join(wt, '.git'), `gitdir: ${target}\n`);
+      await assert.rejects(safeGit(wt, ['rev-parse', 'HEAD']), (e) => e.code === 2 && /network path/.test(e.message));
+    }
+    const r = await mkRepo('netcommon');
+    await fs.writeFile(path.join(r, '.git', 'commondir'), '//attacker.example/share/common\n');
+    await assert.rejects(safeGit(r, ['rev-parse', 'HEAD']), (e) => e.code === 2 && /network path/.test(e.message));
+  });
+
+  it('1500 tracked .gitattributes missing from the work tree cost two git processes, and their drivers are still found', async () => {
+    const r = await mkRepo('many-attrs');
+    for (let i = 0; i < 1500; i++) {
+      await fs.mkdir(path.join(r, `d${i}`));
+      await fs.writeFile(path.join(r, `d${i}`, '.gitattributes'), `* filter=drv${i % 3}\n`);
+    }
+    sh(r, ['add', '-A']);
+    sh(r, ['commit', '-q', '-m', 'attrs']);
+    for (let i = 0; i < 1500; i++) await fs.rm(path.join(r, `d${i}`), { recursive: true });
+    let catFiles = 0;
+    const git = (a, o) => { if (a.includes('cat-file')) catFiles++; return defaultGitRunner(a, o); };
+    const t0 = Date.now();
+    const args = await safeGitConfig(r, { git });
+    assert.ok(Date.now() - t0 < 15000, `took ${Date.now() - t0} ms`);
+    assert.equal(catFiles, 2);
+    for (const n of ['drv0', 'drv1', 'drv2']) assert.ok(args.includes(`filter.${n}.clean=`), n);
+  });
+
+  it('an index-only .gitattributes that is not UTF-8 fails closed (exit 1) instead of shifting the parse', async () => {
+    const r = await mkRepo('bad-utf8');
+    await fs.mkdir(path.join(r, 'x'));
+    await fs.mkdir(path.join(r, 'y'));
+    await fs.writeFile(path.join(r, 'x', '.gitattributes'), Buffer.from([0xff, 0xfe, 0x0a]));
+    await fs.writeFile(path.join(r, 'y', '.gitattributes'), '* filter=later\n');
+    sh(r, ['add', '-A']);
+    sh(r, ['commit', '-q', '-m', 'a']);
+    await fs.rm(path.join(r, 'x'), { recursive: true });
+    await fs.rm(path.join(r, 'y'), { recursive: true });
+    await assert.rejects(safeGitConfig(r), (e) => e instanceof KitExit && e.code === 1 && /not valid UTF-8/.test(e.message));
+  });
+
+  it('a timeout message names the git subcommand, not the -c overrides', async () => {
+    const env = { ...CLEAN_ENV };
+    const r = spawnSync(process.execPath, ['--input-type=module', '-e', `
+      import { defaultGitRunner } from ${JSON.stringify(path.resolve('src/lib/kit/safe-git.js'))};
+      try { defaultGitRunner(['-c', 'a.b=c', 'cat-file', '--batch'], { input: undefined, timeout: 1, cwd: ${JSON.stringify(root)} }); console.log('no-timeout'); }
+      catch (e) { console.log(e.message); }`], { encoding: 'utf-8', env });
+    if (/no-timeout/.test(r.stdout)) return; // git answered within 1 ms: nothing to check on this machine
+    assert.match(r.stdout, /^git cat-file took longer than 1 ms/);
+  });
+});

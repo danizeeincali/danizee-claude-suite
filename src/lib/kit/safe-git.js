@@ -217,6 +217,15 @@ export function resolveGit(env = process.env) {
   throw new KitExit('cannot run git: no git program in any absolute PATH entry (empty and relative entries are not searched)', 1);
 }
 
+/** The git subcommand in an argv that may start with `-c key=value` pairs (for messages). */
+function gitCommandName(args) {
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '-c') { i++; continue; }
+    if (!String(args[i]).startsWith('-')) return args[i];
+  }
+  return '';
+}
+
 /**
  * Default runner: `git(args, { cwd, env, input, timeout })` → { code, stdout, stderr }. stdin is closed without input.
  * git is spawned by its absolute path (resolveGit), never by bare name.
@@ -228,8 +237,9 @@ export function defaultGitRunner(args, { cwd, env, input, timeout } = {}) {
     input: hasInput ? input : undefined,
     stdio: [hasInput ? 'pipe' : 'ignore', 'pipe', 'pipe']
   });
-  if (r.error?.code === 'ETIMEDOUT') throw new KitExit(`git ${args[0] ?? ''} took longer than ${timeout} ms and was stopped (raise it with --timeout <ms>)`, GIT_FAILED_EXIT);
-  if (r.error?.code === 'ENOBUFS') throw new KitExit(`git ${args[0] ?? ''} wrote more than 256 MiB of output; narrow the command`, GIT_FAILED_EXIT);
+  const cmd = gitCommandName(args);
+  if (r.error?.code === 'ETIMEDOUT') throw new KitExit(`git ${cmd} took longer than ${timeout} ms and was stopped (raise it with --timeout <ms>)`, GIT_FAILED_EXIT);
+  if (r.error?.code === 'ENOBUFS') throw new KitExit(`git ${cmd} wrote more than 256 MiB of output; narrow the command`, GIT_FAILED_EXIT);
   if (r.error) throw new KitExit(`cannot run git: ${r.error.message}`, 1);
   return { code: r.status ?? 1, stdout: r.stdout || '', stderr: r.stderr || '' };
 }
@@ -274,6 +284,7 @@ export async function locateRepo(dir) {
     if (st?.isFile()) {
       const text = await readSmall(dotgit);
       const m = /^gitdir: (.+?)\s*$/m.exec(text || '');
+      if (m && isNetworkPath(m[1])) throw refuse(`${dotgit} points at a network path; refusing to open it`);
       const target = m ? path.resolve(d, m[1]) : null;
       if (!target || !(await looksLikeGitDir(target))) throw new KitExit(`${real} is not a readable git repository (invalid gitfile ${dotgit})`, 1);
       return finishLocate(real, target, d);
@@ -289,6 +300,7 @@ export async function locateRepo(dir) {
 async function finishLocate(real, gitDirIn, topIn) {
   const gitDir = await fs.realpath(gitDirIn);
   const cd = await readSmall(path.join(gitDir, 'commondir'));
+  if (cd && isNetworkPath(cd)) throw refuse(`${path.join(gitDir, 'commondir')} points at a network path; refusing to open it`);
   const commonDir = cd ? await fs.realpath(path.resolve(gitDir, cd.trim())).catch(() => null) : gitDir;
   if (!commonDir || !(await isDir(path.join(commonDir, 'objects')))) throw new KitExit(`${real} is not a readable git repository (no objects folder)`, 1);
   return { real, gitDir, commonDir, top: topIn ? await fs.realpath(topIn) : null };
@@ -466,15 +478,41 @@ async function workTreeAttributes(exec, top) {
   const r = await exec(['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ':(top,glob)**/.gitattributes']);
   if (r.code !== 0) throw new KitExit(`cannot list the .gitattributes files of ${top}: ${(r.stderr || '').trim() || 'git ls-files failed'}`, 1);
   const out = [];
+  const missing = [];
   for (const rel of new Set(String(r.stdout).split('\0').filter(Boolean))) {
     if (path.posix.basename(rel) !== '.gitattributes') continue;
     const file = path.join(top, ...rel.split('/'));
     if (await lstatOrNull(file)) { out.push({ rel, text: await readAttributesFile(file, top) }); continue; } // a symlink: skipped, as git does
-    const size = await exec(['cat-file', '-s', `:${rel}`]);
-    if (size.code !== 0) continue; // untracked and gone, or not in the index: git reads nothing either
-    if (Number(String(size.stdout).trim()) > MAX_ATTR_BYTES) throw refuse(`${rel} in the index is larger than ${MAX_ATTR_BYTES} bytes; its filter drivers cannot be checked`);
-    const blob = await exec(['cat-file', 'blob', `:${rel}`]);
-    if (blob.code === 0) out.push({ rel, text: blob.stdout });
+    if (!/[\n\r]/.test(rel)) missing.push(rel); // gone from the work tree (deleted, sparse): git reads the index copy
+  }
+  if (!missing.length) return out;
+  // Two git processes for all of them, however many (a sparse checkout can leave thousands outside the cone).
+  const check = await exec(['cat-file', '--batch-check'], { input: missing.map((rel) => `:${rel}\n`).join('') });
+  if (check.code !== 0) throw new KitExit(`cannot read the index copies of .gitattributes in ${top}: ${(check.stderr || '').trim() || 'git cat-file failed'}`, 1);
+  const found = [];
+  String(check.stdout).split('\n').slice(0, missing.length).forEach((line, i) => {
+    const m = /^[0-9a-f]+ blob (\d+)$/.exec(line);
+    if (!m) return; // not in the index (untracked and gone): git reads nothing either
+    if (Number(m[1]) > MAX_ATTR_BYTES) throw refuse(`${missing[i]} in the index is larger than ${MAX_ATTR_BYTES} bytes; its filter drivers cannot be checked`);
+    found.push({ rel: missing[i], size: Number(m[1]) });
+  });
+  if (!found.length) return out;
+  const batch = await exec(['cat-file', '--batch'], { input: found.map((f) => `:${f.rel}\n`).join('') });
+  if (batch.code !== 0) throw new KitExit(`cannot read the index copies of .gitattributes in ${top}: ${(batch.stderr || '').trim() || 'git cat-file failed'}`, 1);
+  const buf = Buffer.from(String(batch.stdout), 'utf-8');
+  // The runner decodes stdout as UTF-8; a blob that is not valid UTF-8 changes its byte length and would shift every
+  // header after it. git ends each blob with a newline, so check that byte sits exactly where the size says and fail
+  // closed (exit 1) rather than parse a shifted stream.
+  let at = 0;
+  for (const f of found) {
+    const nl = buf.indexOf(0x0a, at);
+    if (nl < 0) break;
+    const m = /^[0-9a-f]+ blob (\d+)$/.exec(buf.subarray(at, nl).toString('utf-8'));
+    if (!m) throw new KitExit(`unexpected git cat-file --batch output for ${f.rel}`, 1);
+    const size = Number(m[1]);
+    if (buf[nl + 1 + size] !== 0x0a) throw new KitExit(`${f.rel} in the index is not valid UTF-8 text; its attributes cannot be checked`, 1);
+    out.push({ rel: f.rel, text: buf.subarray(nl + 1, nl + 1 + size).toString('utf-8') });
+    at = nl + 1 + size + 1;
   }
   return out;
 }
@@ -548,6 +586,7 @@ export function checkRepoRoot(loc) {
 async function inspect(dir, ctx) {
   const loc = await locateRepo(dir);
   checkRepoRoot(loc);
+  await checkNoAlternates(loc);
   const mainCfg = path.join(loc.commonDir, 'config');
   const fmt = repoFormat(await readConfigFile(ctx, mainCfg));
   const files = [mainCfg];
@@ -558,6 +597,25 @@ async function inspect(dir, ctx) {
   const top = core.bare === true ? null : loc.top;
   return { loc, fmt, entries, core, top };
 }
+
+/**
+ * git follows objects/info/alternates to any path, recursively (another repo's objects, a FIFO, a UNC share that sends
+ * the user's credentials). A clone never carries this file; a copied or unpacked repo can. Refuse (KitExit 2) when it
+ * names anything, before git runs; an alternates file that is not a regular file is refused too.
+ */
+async function checkNoAlternates(loc) {
+  const file = path.join(loc.commonDir, 'objects', 'info', 'alternates');
+  const st = await lstatOrNull(file);
+  if (!st) return;
+  if (!st.isFile()) throw refuse(`${file} is not a regular file; safe-git does not follow object alternates`);
+  if (st.size === 0) return;
+  const text = await readSmall(file);
+  const named = String(text).split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+  if (named.length) throw refuse(`${file} borrows objects from ${JSON.stringify(named[0]).slice(0, 120)}${named.length > 1 ? ` and ${named.length - 1} more` : ''}; safe-git does not follow object alternates (they can point anywhere, including network shares)`);
+}
+
+/** A network path (//host/share or \\host\share): git would open it over SMB/NFS. */
+const isNetworkPath = (p) => /^(\/\/|\\\\)/.test(String(p).trim());
 
 function overrideArgs(names) {
   const args = [];
