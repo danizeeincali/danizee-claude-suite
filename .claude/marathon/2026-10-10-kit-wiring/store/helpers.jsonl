@@ -1,1 +1,3 @@
 {"role":"build","model":"sonnet","stream":"diff-range","budget":150000,"event":"spawn","id":"c8fb1eff-ea6f-4558-9fee-62c5d952b5f1","ts":"2026-10-10T16:24:57.530Z"}
+{"helper_id":"c8fb1eff-ea6f-4558-9fee-62c5d952b5f1","tokens":91440,"outcome":"green","event":"done","id":"3acc4fc8-a8fb-4d02-828c-8409cbb91913","ts":"2026-10-10T16:41:15.633Z"}
+{"role":"review","model":"opus","stream":"diff-range","budget":150000,"event":"spawn","id":"d2af7cbd-5410-49a3-a248-4cc1ac1231f6","ts":"2026-10-10T16:41:22.438Z"}

@@ -11,10 +11,10 @@
       "name": "diff-range",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "builder finishing w-review switch, regen and sync; then commit and review round 1",
+      "next": "review round 1 (opus) on the stream diff",
       "tasks": [],
       "isolation": "../danizee-claude-suite-diff-range",
-      "phase": "build",
+      "phase": "review",
       "skill": "w-plan-tdd-swarm",
       "base": "5b9822f178da0836d19d91de471e0e2a35f99150"
     },
