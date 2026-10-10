@@ -2339,3 +2339,11 @@ describe('safe-git — review round 19 regressions', () => {
     await assert.rejects(run(['--', 'name-rev', '--an'], { cwd: process.cwd() }), (e) => e.code === 1 && /name-rev --an reads stdin/.test(e.message));
   });
 });
+
+describe('safe-git — review round 20 regressions', () => {
+  it('every abbreviation git takes for name-rev --stdin and for-each-ref --stdin counts as reading stdin', () => {
+    for (const a of ['--s', '--st', '--std', '--stdin']) assert.equal(readsStdin(['name-rev', a]), true, a);
+    for (const a of ['--st', '--std', '--stdin']) assert.equal(readsStdin(['for-each-ref', a]), true, a);
+    for (const a of ['--sort=refname', '--shell', '--s']) assert.equal(readsStdin(['for-each-ref', a]), false, a); // --s is ambiguous there
+  });
+});

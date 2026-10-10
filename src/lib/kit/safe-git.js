@@ -13,7 +13,7 @@
  *   and GIT_WORK_TREE at the repo's work tree (none for a bare repo or a path inside the git dir). The shadow holds:
  *     - a config WE write, holding only allow-listed keys whose values are validated (core.repositoryformatversion,
  *       extensions.objectformat, core.bare, and the booleans/enums core.ignorecase, precomposeunicode, quotepath,
- *       filemode, symlinks, autocrlf, eol). The repo's config files are read as DATA (`git config --file <f>
+ *       filemode, symlinks, trustctime, autocrlf, eol, checkstat). The repo's config files are read as DATA (`git config --file <f>
  *       --no-includes --list -z`, run outside any repository; an include.path is never opened, so a FIFO or a UNC
  *       share it names is never touched); config.worktree only when extensions.worktreeConfig is set; extensions and
  *       the format version only from the repo's own config file (as git does). An extension we do not know
@@ -55,7 +55,8 @@
  *   (KitExit 1, "pass the repository top; paths are relative to it") rather than silently re-rooting pathspecs.
  *   Pathspecs and printed paths are top-relative, rev-parse --show-prefix/--show-cdup print an empty line,
  *   --is-inside-work-tree/--is-inside-git-dir are answered for --dir (asked on their own; mixed with other rev-parse
- *   arguments they are refused), and the relative `HEAD:./path` form is not available.
+ *   arguments they are refused), and the relative `HEAD:./path` form is not available. With --dir naming a .git folder
+ *   (no work tree) the shadow is bare, so rev-parse --is-bare-repository prints true where plain git in .git prints false.
  *
  *   DEFENCE IN DEPTH: every inherited GIT_* variable is removed; no system config (GIT_CONFIG_NOSYSTEM) and no global
  *   config — GIT_CONFIG_GLOBAL is an empty file, and because git before 2.32 ignores that variable, HOME and
@@ -79,7 +80,7 @@
  * --exec-path cannot be passed): rev-parse rev-list log show diff diff-tree diff-index diff-files ls-files ls-tree
  * cat-file status show-ref for-each-ref merge-base name-rev describe. Everything else (fetch, pull, push, clone,
  * submodule, checkout, config, blame, grep, archive, ...) is refused. Options that re-enable what the wrapper
- * switches off (--ext-diff, --textconv, --filters, --output, -O/--open-files-in-pager, --no-index, --show-signature,
+ * switches off (--ext-diff, --textconv, --filters, --output, -O<orderfile> (reads any file), --no-index, --show-signature,
  * --recurse-submodules, --ignore-submodules, --submodule, %G and %(signature) format placeholders) are refused too —
  * and so is ANY long option that is a prefix of one of them (git accepts unambiguous abbreviations such as
  * `cat-file --textc`), with or without `=value` — except a real option the subcommand has, which git matches
@@ -127,8 +128,8 @@ export const STDIN_OPTIONS = Object.freeze({
   // rev-list, log and diff-tree parse --stdin as a revision option: git accepts no abbreviation there
   '*': [['stdin', 'stdin']],
   'cat-file': [['batch', 'batch'], ['batch-check', 'batch-ch'], ['batch-command', 'batch-co']],
-  'name-rev': [['annotate-stdin', 'an'], ['stdin', 'std']],
-  'for-each-ref': [['stdin', 'std']], // a parse-options boolean since git 2.46, so abbreviations count there
+  'name-rev': [['annotate-stdin', 'an'], ['stdin', 's']], // no other name-rev option starts with s
+  'for-each-ref': [['stdin', 'st']], // a parse-options boolean since git 2.46 (--st is unique: --sort, --shell)
   'show-ref': [['exclude-existing', 'ex']]
 });
 export const STDIN_LONG = Object.freeze([...new Set(Object.values(STDIN_OPTIONS).flat().map(([o]) => o))]);
@@ -632,7 +633,6 @@ async function checkObjectsNotLinked(loc, limits) {
   await walk(objects);
 }
 
-/** A network path (//host/share or \\host\share): git would open it over SMB/NFS. */
 /** A network path: two leading separators in any mix (//host, \\\\host, /\\host, \\/host), which Windows treats as UNC. */
 const isNetworkPath = (p) => /^[\\/]{2}/.test(String(p).trim());
 
