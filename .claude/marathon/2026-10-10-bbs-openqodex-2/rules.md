@@ -65,3 +65,6 @@ Add a rule the second time something goes wrong.
   kit helper, and test it with a fake git that echoes unknown flags the way old git does.
 - (promoted: test-quality) A fake used in a test behaves like the real thing it stands for (exit code, stdout vs stderr,
   echoed flags); a test named for a behaviour asserts that behaviour's observable result, not just "no throw".
+
+## Owner decision (2026-10-10): no parser dependency
+Dani chose "No dependency" for the symbol-graph streams (fact-cached-graph-build-with-budget, change-blast-radius-walk, caller-floor-disclosure). Build a small JS/TS-only fact extractor inside the kit; any file it cannot parse (other languages, unparseable syntax) is reported as not read, and results are labelled partial. Build fact-cached-graph-build-with-budget before the two streams that use its graph.

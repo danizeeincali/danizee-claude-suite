@@ -1,0 +1,11 @@
+# Review 55ef8550-b3a7-4175-8260-ef00599d69f0 — lens-catalog-file-triggered-checks, round 2
+
+- Commit: 3469478
+- Angle: failure conditions and error paths
+- Result: pass
+- 2 findings
+
+## Medium (2)
+
+- **--no-prefix rename involving a single-letter directory loses that directory from the path** — `src/lib/kit/lenses.js:221` (correctness): The /w-review step produces the diff with --no-prefix. For a rename (or copy), the header halves differ, so the 'none' check at line 219 fails and the regex at line 221 is tried. That regex treats any leading '\[a-z\]/' as a git prefix. I reproduced it: renaming c/x.js to c/y.js with an edit gives 'diff --git c/x.js c/y.js' and '+++ c/y.js'. parseDiff takes mode 'git', and cleanPath then strips GIT\_PREFIX, so the file is reported as 'y.js' when it should be 'c/y.js'. A rename from src/x.js to a/x.js goes the loose route and also comes out as 'x.js'. Any lens whose globs name a directory (for example 'c/\*\*/\*.js', or the test-asserts-nothing glob 'test/\*\*' when the directory is t/) then silently fails to fire, and fired.files gives the reviewer the wrong path. — fix: Treat a header as git-prefixed only when the halves use the expected prefix pairs (a/ b/, i/ w/, c/ w/, c/ o/, w/ w/...), not any \[a-z\]/. Better, read the path from the 'rename to' / 'copy to' lines (or from '+++' as given, with no stripping) when the header mode is uncertain. Add a test for a --no-prefix rename inside a one-letter directory.
+- **Lens step writes the reviewed diff to one fixed shared path, /tmp/w-review.diff** — `src/plugins/dot-shortcuts.js:2123` (correctness): Every /w-review run, in every worktree and repo on the machine, writes to and reads back /tmp/w-review.diff. Marathon streams review several worktrees at once. If two reviews overlap, one review's 'node ... lenses --diff /tmp/w-review.diff' can read the other worktree's diff. It then fires lenses, and lists files, for a change it is not reviewing, or skips lenses that apply. Nothing reports an error, because the file is a valid diff, so the 'fix the range' safeguard never triggers. — fix: Use a unique temp file per run (DIFF=$(mktemp) ... --diff "$DIFF"), or pipe straight in: '{ ...; } | node .claude/helpers/kit/cli.js lenses --diff -'. Update the copy in .claude/commands/.shortcuts/w-review.md to match.

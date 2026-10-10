@@ -1,11 +1,11 @@
 # Marathon 2026-10-10-bbs-openqodex-2
 
 - State: RUNNING
-- Budget: 1,529,213 / 10,000,000 tokens
+- Budget: 1,720,418 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
-- Gate (run-wide, all streams): 3/2 clean reviews — build gate not met, full gate not met
+- Gate (run-wide, all streams): 7/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "lens-catalog-file-triggered-checks" (next: review round 2) — /w-marathon --resume 2026-10-10-bbs-openqodex-2.
+- Next for you: Next stream "hardened-git-read-on-untrusted-repo": create its worktree (`git worktree add ../<repo>-hardened-git-read-on-untrusted-repo -b marathon/2026-10-10-bbs-openqodex-2/hardened-git-read-on-untrusted-repo`) and activate it with `cli.js stream hardened-git-read-on-untrusted-repo state=active isolation=<path>`, then /w-marathon --resume 2026-10-10-bbs-openqodex-2.
 - Last handoff: 2026-10-10T05:06:45.604Z (auto) on claude/project-thread-p9gbyo@ddd4b25, 3 uncommitted, tasks: none
 
 ## Streams
@@ -14,7 +14,7 @@
 |---|---|---|---|---|---|---|---|---|
 | pre-push-review-gate | ../danizee-claude-suite-pre-push-review-gate | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/pre-push-review-gate.md | done | met | review | — |  | 0 |
 | secret-redaction-by-value-and-fingerprin | ../danizee-claude-suite-secret-redaction-by-value-and-fingerprin | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/secret-redaction-by-value-and-fingerprin.md | done | met | review | — |  | 0 |
-| lens-catalog-file-triggered-checks | ../danizee-claude-suite-lens-catalog-file-triggered-checks | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/lens-catalog-file-triggered-checks.md | active | clean 1/2 | review | review round 2 |  | 0 |
+| lens-catalog-file-triggered-checks | ../danizee-claude-suite-lens-catalog-file-triggered-checks | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/lens-catalog-file-triggered-checks.md | done | met | review | — |  | 0 |
 | hardened-git-read-on-untrusted-repo |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/hardened-git-read-on-untrusted-repo.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | identity-checked-file-writes |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/identity-checked-file-writes.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | change-blast-radius-walk |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/change-blast-radius-walk.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
@@ -38,9 +38,9 @@
 | secret-redaction-by-value-and-fingerprin: clean reviews in a row | build | met | 2 | at_least 2 |
 | secret-redaction-by-value-and-fingerprin: callers in the harness | build | met | 1 | at_least 1 |
 | secret-redaction-by-value-and-fingerprin: packaged check passes | build | met | true | is true |
-| lens-catalog-file-triggered-checks: green unit runs in a row | build | met | 2 | at_least 1 |
+| lens-catalog-file-triggered-checks: green unit runs in a row | build | met | 4 | at_least 1 |
 | lens-catalog-file-triggered-checks: zero egress in the packaged check | build | met | true | is true |
-| lens-catalog-file-triggered-checks: clean reviews in a row | build | failing | 1 | at_least 2 |
+| lens-catalog-file-triggered-checks: clean reviews in a row | build | met | 5 | at_least 2 |
 | lens-catalog-file-triggered-checks: callers in the harness | build | met | 1 | at_least 1 |
 | lens-catalog-file-triggered-checks: packaged check passes | build | met | true | is true |
 | hardened-git-read-on-untrusted-repo: green unit runs in a row | build | failing | 0 | at_least 1 |
@@ -83,7 +83,7 @@
 | isolated-tool-free-wording-judge: clean reviews in a row | build | failing | 0 | at_least 2 |
 | isolated-tool-free-wording-judge: callers in the harness | build | failing | — | at_least 1 |
 | isolated-tool-free-wording-judge: packaged check passes | build | failing | — | is true |
-| Clean reviews in a row | build | met | 3 | at_least 2 |
+| Clean reviews in a row | build | met | 7 | at_least 2 |
 | High findings in the latest review | build | met | 0 | at_most 0 |
 | Open high findings | build | met | 0 | at_most 0 |
 
