@@ -286,3 +286,27 @@ describe('guarded-write — review round 2 regressions', () => {
     assert.equal(await fs.readFile(path.join(t, 'a2', 'b', 'f'), 'utf-8'), 'NEW');
   });
 });
+
+describe('push-gate check — review round 3 regressions', () => {
+  it('check on a home with no store folder answers (no receipt yet) and creates nothing', async () => {
+    const { run: gate } = await import('../src/lib/kit/push-gate.js');
+    const { spawnSync } = await import('child_process');
+    const t = await fs.mkdtemp(path.join(os.tmpdir(), 'gfs-r3-'));
+    try {
+      const home = path.join(t, 'home');
+      await fs.mkdir(home);
+      const repo = path.join(t, 'repo');
+      await fs.mkdir(repo);
+      const g = (a) => spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { cwd: repo, encoding: 'utf-8' });
+      g(['init', '-q', '.']); await fs.writeFile(path.join(repo, 'a'), 'a\n'); g(['add', 'a']); g(['commit', '-q', '-m', 'a']);
+      const env = { ...process.env, HOME: home };
+      delete env.KIT_RECEIPTS_DIR;
+      const r = await gate(['check'], { cwd: repo, stdin: async () => '', env });
+      assert.ok(r.decision, JSON.stringify(r));
+      assert.deepEqual(await fs.readdir(home), []); // no ~/.claude/kit created by a read
+      const ro = { ...process.env, KIT_RECEIPTS_DIR: path.join(t, 'missing', 'deeper', 'receipts') };
+      assert.ok((await gate(['check'], { cwd: repo, stdin: async () => '', env: ro })).decision);
+      assert.equal(await fs.access(path.join(t, 'missing')).then(() => true, () => false), false);
+    } finally { await fs.rm(t, { recursive: true, force: true }); }
+  });
+});

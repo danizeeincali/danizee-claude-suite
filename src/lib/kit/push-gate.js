@@ -163,7 +163,7 @@ const thresholdOf = v => {
   return v;
 };
 
-async function storeFile(git, env, cwd) {
+async function storeFile(git, env, cwd, { create = true } = {}) {
   const [common] = await gitPaths(git, cwd, ['commonDir'], 'cannot find the git dir');
   const real = await fs.realpath(common);
   const override = env.KIT_RECEIPTS_DIR;
@@ -173,9 +173,13 @@ async function storeFile(git, env, cwd) {
   const parent = path.dirname(path.resolve(dir));
   let root;
   try {
-    await fs.mkdir(parent, { recursive: true });
+    if (create) await fs.mkdir(parent, { recursive: true }); // check only reads: it never creates folders
     root = await fs.realpath(parent);
-  } catch (e) { throw new KitExit(`cannot open the receipt store folder ${parent}: ${e.message}`, 1); }
+  } catch (e) {
+    // a store folder that does not exist yet holds no receipt (check on a fresh or read-only home): not an error
+    if (!create && e.code === 'ENOENT') return { dir: path.resolve(dir), file: null, repo: real, guard: null };
+    throw new KitExit(`cannot open the receipt store folder ${parent}: ${e.message}`, 1);
+  }
   const protect = path.join(root, path.basename(path.resolve(dir)));
   return { dir: protect, file: path.join(protect, `${sha(real)}.json`), repo: real, guard: { root, protect } };
 }
@@ -232,10 +236,10 @@ export async function run(args, io) {
   const counts = cmd === 'receipt' ? { high: count(flags.high, 'high'), medium: count(flags.medium, 'medium'), low: count(flags.low, 'low') } : null;
 
   const change = await changeId(git, { base: flags.base, working: cmd === 'receipt', cwd: git.cwd || io.cwd });
-  const { dir, file, repo, guard } = await storeFile(git, env, git.cwd || io.cwd);
+  const { dir, file, repo, guard } = await storeFile(git, env, git.cwd || io.cwd, { create: cmd === 'receipt' });
 
   if (cmd === 'check') {
-    const state = await readState(file, guard);
+    const state = file ? await readState(file, guard) : null;
     const d = decide(state, change.id, threshold);
     const result = { ...d, change_id: change.id, threshold };
     if (d.decision === 'deny') result.exit = 2;
