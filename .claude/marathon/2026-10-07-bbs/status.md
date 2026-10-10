@@ -2,8 +2,8 @@
 
 - State: FINISHED
 - Budget: 7,784,658 / 10,000,000 tokens
-- Allowance: 1% (ceiling 100%)
-- Gate (run-wide, all streams): 2/2 clean reviews — build gate met, full gate not met
+- Allowance: unknown (ceiling 100%)
+- Gate (run-wide, all streams): 2/2 clean reviews — build gate met, full gate met
 - Escapes: 0
 - Next for you: Run is finished. Start a new one with /w-marathon <finish line>.
 
@@ -30,8 +30,8 @@
 | Open high findings | build | met | 0 | at_most 0 |
 | Helpers that blew their budget | build | met | 3 | at_most 4 |
 | Packaged check: installed CLI runs the fixture source end to end | build | met | true | is true |
-| Pushed and merged by the owner via /bcp | human | waiting on human | false | is true |
+| Pushed and merged by the owner via /bcp | human | met | true | is true |
 
 ## Waiting on human
 
-- pushed — Pushed and merged by the owner via /bcp
+none
