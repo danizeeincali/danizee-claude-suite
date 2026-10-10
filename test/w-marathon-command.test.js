@@ -95,6 +95,13 @@ describe('/w-marathon command content', () => {
   it('has no literal backtick escaping artifacts', () => {
     assert.ok(!c().includes('\\`'), 'rendered content must not contain escaped backticks');
   });
+
+  it('the integration stream from a bbs hand-off wires approved steps, records wired and delivered, and is reviewed on the command files', () => {
+    assert.match(c(), /4\.3a Integration stream/);
+    assert.match(c(), /marathon-measure\.js --wired --bbs-run <id> --power <name> --verb <verb>/);
+    assert.match(c(), /--delivered --bbs-run <id> --verb <power>=<verb>/);
+    assert.match(c(), /reached in the workflow's normal flow/);
+  });
 });
 
 describe('/mt alias', () => {

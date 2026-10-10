@@ -158,7 +158,7 @@ describe('bbs e2e — the packaged check', () => {
     assert.equal(fl.lines.filter(l => l.id.startsWith('tests_green_')).length, 2);
     const streams = JSON.parse(await fs.readFile(path.join(mDir, 'streams.json'), 'utf-8'));
     const rows = (streams.streams || streams).filter(s => s.name !== '_meta');
-    assert.equal(rows.length, 2);
+    assert.equal(rows.length, 3, 'two powers plus the integration stream');
     for (const row of rows) {
       assert.equal(row.state, 'queued');
       await fs.stat(path.join(dir, row.plan));

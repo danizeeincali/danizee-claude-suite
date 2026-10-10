@@ -234,4 +234,14 @@ describe('/w-bbs — the targets step (marathon 2026-10-10-bbs-integration)', ()
     assert.match(c(), /6\. Targets: where each power lands/);
     assert.match(c(), /Building a power is not the deliverable/);
   });
+
+  it('the hand-off queues an integration stream that is gated on wiring and on telling the owner', () => {
+    const h = c().slice(c().indexOf('CHECKPOINT 5: Hand-off'), c().indexOf('CHECKPOINT 6'));
+    assert.match(h, /one \`integration\` stream queued after them|one `integration` stream queued after them/);
+    assert.match(h, /integration\.md/);
+    assert.match(h, /wired_<power>/);
+    assert.match(h, /delivered\.md/);
+    assert.match(h, /never evidence of integration/);
+    assert.match(h, /integration plan path/);
+  });
 });

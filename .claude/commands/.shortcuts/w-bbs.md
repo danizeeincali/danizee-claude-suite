@@ -174,11 +174,11 @@ On a machine without a sandbox `use` is removed from every row with the reason; 
 
 ### ⛔ CHECKPOINT 5: Hand-off
 
-1. `node .claude/helpers/bbs/cli.js handoff --marathon [--run <id>]` writes one idea-only brief per approved power, a buy memo per `buy`, and creates a marathon run with a typed finish line (written before any build) and one queued stream per power. If the marathon helpers are absent it says so and exits 1: report that and stop. On the error text 'created and is ACTIVE but incomplete', run the exact command the error names once (`cli.js handoff --marathon --force --run <id>`); if it fails again, report and stop.
+1. `node .claude/helpers/bbs/cli.js handoff --marathon [--run <id>]` writes one idea-only brief per approved power, a buy memo per `buy`, and creates a marathon run with a typed finish line (written before any build), one queued stream per power, and one `integration` stream queued after them. Building a power is not the deliverable: the `integration` stream wires every power into the workflow steps approved at the verdict (its plan is the run's `integration.md`), its `wired_<power>` lines count only a target step that runs the power's verb, and its `delivered` line passes only when `delivered.md` tells the owner what they got: each power, where it now runs, and the command to run it by hand. A `callers` count (any file that names the verb) is never evidence of integration. If the marathon helpers are absent it says so and exits 1: report that and stop. On the error text 'created and is ACTIVE but incomplete', run the exact command the error names once (`cli.js handoff --marathon --force --run <id>`); if it fails again, report and stop.
 2. `node .claude/helpers/bbs/cli.js report [--run <id>]` prints the one-line counts.
 3. **End with the resume line, exactly as the JSON gives it:** `/w-marathon --resume <id>`. The build starts only when the owner runs it. When the JSON's resume_line is null (no approved power), print its note and list the buy memos; no marathon run is expected.
 
-**REQUIRED OUTPUT:** the report line, the resume line, the memos for `buy`.
+**REQUIRED OUTPUT:** the report line, the resume line, the memos for `buy`, and the integration plan path (each power → workflow · step).
 
 ---
 

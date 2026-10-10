@@ -78,7 +78,7 @@ describe('handoff — slugs and finish line', () => {
   });
 
   it('CHECKS are the five per-power checks in order', () => {
-    assert.deepEqual(CHECKS, ['tests_green', 'egress_zero', 'six_sigma_claim', 'callers_ge_1', 'packaged_check']);
+    assert.deepEqual(CHECKS, ['tests_green', 'egress_zero', 'six_sigma_claim', 'wired_all', 'packaged_check']);
   });
 
   it('buildFinishLine writes five typed lines per approved power plus the three standard lines, and the result validates against the marathon gate schema', () => {
@@ -86,15 +86,16 @@ describe('handoff — slugs and finish line', () => {
       { tolerance: { high: 0, medium: 2, low: 5, passes_in_a_row: 2 } });
     const ids = fl.lines.map(l => l.id);
     assert.deepEqual(ids, [
-      'tests_green_drift-monitor', 'egress_zero_drift-monitor', 'six_sigma_drift-monitor', 'callers_drift-monitor', 'packaged_drift-monitor',
-      'tests_green_budget-guard', 'egress_zero_budget-guard', 'six_sigma_budget-guard', 'callers_budget-guard', 'packaged_budget-guard',
-      'clean_reviews', 'latest_high', 'open_high'
+      'tests_green_drift-monitor', 'egress_zero_drift-monitor', 'six_sigma_drift-monitor', 'wired_drift-monitor', 'packaged_drift-monitor',
+      'tests_green_budget-guard', 'egress_zero_budget-guard', 'six_sigma_budget-guard', 'wired_budget-guard', 'packaged_budget-guard',
+      'delivered', 'clean_reviews', 'latest_high', 'open_high'
     ]);
     const by = Object.fromEntries(fl.lines.map(l => [l.id, l]));
     assert.deepEqual(by['tests_green_drift-monitor'], { id: 'tests_green_drift-monitor', label: 'drift-monitor: green unit runs in a row', type: 'number', op: 'at_least', value: 1, owner: 'build', source: 'runs.streak:unit', stream: 'drift-monitor' });
     assert.deepEqual(by['egress_zero_drift-monitor'], { id: 'egress_zero_drift-monitor', label: 'drift-monitor: zero egress in the packaged check', type: 'bool', op: 'is', value: true, owner: 'build', source: 'measure:egress_zero_drift-monitor', stream: 'drift-monitor' });
     assert.deepEqual(by['six_sigma_drift-monitor'], { id: 'six_sigma_drift-monitor', label: 'drift-monitor: clean reviews in a row', type: 'number', op: 'at_least', value: 2, owner: 'build', source: 'reviews.streak', stream: 'drift-monitor' });
-    assert.deepEqual(by['callers_drift-monitor'], { id: 'callers_drift-monitor', label: 'drift-monitor: callers in the harness', type: 'number', op: 'at_least', value: 1, owner: 'build', source: 'measure:callers_drift-monitor', stream: 'drift-monitor' });
+    assert.deepEqual(by['wired_drift-monitor'], { id: 'wired_drift-monitor', label: 'drift-monitor: wired into its target workflow', type: 'number', op: 'at_least', value: 1, owner: 'build', source: 'measure:wired_drift-monitor', stream: 'integration' });
+    assert.deepEqual(by.delivered, { id: 'delivered', label: 'The owner was told what they got: delivered.md lists every power, wired, with its command', type: 'bool', op: 'is', value: true, owner: 'build', source: 'measure:delivered', stream: 'integration' });
     assert.deepEqual(by['packaged_drift-monitor'], { id: 'packaged_drift-monitor', label: 'drift-monitor: packaged check passes', type: 'bool', op: 'is', value: true, owner: 'build', source: 'measure:packaged_drift-monitor', stream: 'drift-monitor' });
     assert.equal(by.clean_reviews.value, 2, 'clean_reviews follows passes_in_a_row');
     assert.deepEqual(fl.tolerance, { high: 0, medium: 2, low: 5, passes_in_a_row: 2 });
@@ -130,7 +131,7 @@ describe('handoff — briefs and memos', () => {
     assert.match(md, /## What we have/);
     assert.match(md, /partial.*check-drift\.sh.*hashes but no alerting/);
     assert.match(md, /## Finish line \(5 checks, written before the build\)/);
-    for (const id of ['tests_green_drift-monitor', 'egress_zero_drift-monitor', 'six_sigma_drift-monitor', 'callers_drift-monitor', 'packaged_drift-monitor']) assert.match(md, new RegExp(id));
+    for (const id of ['tests_green_drift-monitor', 'egress_zero_drift-monitor', 'six_sigma_drift-monitor', 'wired_drift-monitor', 'packaged_drift-monitor']) assert.match(md, new RegExp(id));
     assert.match(md, /## Kickoff lines/);
     assert.match(md, /Done means/);
     assert.match(md, /Never/);
@@ -235,7 +236,7 @@ describe('handoff — buildHandoff with the marathon bridge', () => {
     assert.match(kickoff, /Source: paste/);
     const streams = await readJson(path.join(mDir, 'streams.json'));
     const rows = (streams.streams || streams).filter(s => s.name !== '_meta');
-    assert.deepEqual(rows.map(s => [s.name, s.state]), [['drift-monitor', 'queued'], ['budget-guard', 'queued']]);
+    assert.deepEqual(rows.map(s => [s.name, s.state]), [['drift-monitor', 'queued'], ['budget-guard', 'queued'], ['integration', 'queued']]);
     assert.match(rows[0].plan, /briefs\/drift-monitor\.md$/);
     assert.match(rows[0].next, /brief/);
     const status = spawnSync(process.execPath, [path.join(dir, '.claude', 'helpers', 'marathon', 'cli.js'), 'status', '--run', out.marathonRun], { cwd: dir, encoding: 'utf-8' });
@@ -382,7 +383,7 @@ describe('handoff — review r1 regressions', () => {
     const again = await buildHandoff(dir, { run: r.runId, now, marathon: true, force: true });
     assert.equal(again.marathonRun, first.marathonRun);
     const streams = await readJson(path.join(dir, '.claude', 'marathon', first.marathonRun, 'streams.json'));
-    assert.deepEqual((streams.streams || streams).filter(s => s.name !== '_meta').map(s => s.name), ['drift-monitor']);
+    assert.deepEqual((streams.streams || streams).filter(s => s.name !== '_meta').map(s => s.name), ['drift-monitor', 'integration']);
   });
 
   it('[high] the queued stream plan is a project-relative path that exists; kickoff.md names the bbs run, its dir and each brief under ## Source', async () => {
@@ -437,12 +438,12 @@ describe('handoff — review r1 regressions', () => {
   it('[medium] per-power lines are exact: powers "b" and "a_b" never share checks (buildFinishLine.byPower, briefs, handoff.json)', async () => {
     const fl = buildFinishLine([{ name: 'b', verdict: 'rebuild' }, { name: 'a_b', verdict: 'rebuild' }], { tolerance: TOL });
     assert.deepEqual(Object.keys(fl), ['tolerance', 'lines', 'byPower']);
-    assert.deepEqual(fl.byPower.b.map(l => l.id), ['tests_green_b', 'egress_zero_b', 'six_sigma_b', 'callers_b', 'packaged_b']);
-    assert.deepEqual(fl.byPower.a_b.map(l => l.id), ['tests_green_a_b', 'egress_zero_a_b', 'six_sigma_a_b', 'callers_a_b', 'packaged_a_b']);
+    assert.deepEqual(fl.byPower.b.map(l => l.id), ['tests_green_b', 'egress_zero_b', 'six_sigma_b', 'wired_b', 'packaged_b']);
+    assert.deepEqual(fl.byPower.a_b.map(l => l.id), ['tests_green_a_b', 'egress_zero_a_b', 'six_sigma_a_b', 'wired_a_b', 'packaged_a_b']);
     const r = await decided(dir, 'ab', [power({ name: 'b' }), power({ name: 'a_b' })], { b: 'missing', a_b: 'missing' }, { b: 'rebuild', a_b: 'rebuild' });
     const out = await buildHandoff(dir, { run: r.runId, now });
     const pb = out.powers.find(p => p.name === 'b');
-    assert.deepEqual(pb.lines.map(l => l.id), ['tests_green_b', 'egress_zero_b', 'six_sigma_b', 'callers_b', 'packaged_b']);
+    assert.deepEqual(pb.lines.map(l => l.id), ['tests_green_b', 'egress_zero_b', 'six_sigma_b', 'wired_b', 'packaged_b']);
     const brief = await fs.readFile(path.join(bbsRun(dir, r.runId), 'briefs', 'b.md'), 'utf-8');
     assert.ok(!brief.includes('tests_green_a_b'), 'b\'s brief does not list a_b\'s checks');
   });
@@ -472,7 +473,7 @@ describe('handoff — review r1 regressions', () => {
     const calls = [];
     const out = await buildHandoff(dir, { run: r.runId, now, marathon: true, marathonRunner: realRunner(dir, a => calls.push(a)) });
     const streamCalls = calls.filter(a => a[0] === 'stream');
-    assert.equal(streamCalls.length, 1);
+    assert.equal(streamCalls.length, 2, 'one per power plus the integration stream');
     for (const a of streamCalls) assert.deepEqual(a.slice(a.indexOf('--run'), a.indexOf('--run') + 2), ['--run', out.marathonRun]);
   });
 
@@ -574,7 +575,7 @@ describe('handoff — review r2 regressions', () => {
       const names = await fs.readdir(mDir);
       assert.ok(names.some(n => n.startsWith(`${file}.stale-`) && n.endsWith('.json')), `corrupt ${file} was moved aside: ${names}`);
       assert.deepEqual(validateFinishLine(await readJson(path.join(mDir, 'finish-line.json'))), []);
-      assert.deepEqual((await rowsOf(dir, out.marathonRun)).map(s => s.name), ['drift-monitor']);
+      assert.deepEqual((await rowsOf(dir, out.marathonRun)).map(s => s.name), ['drift-monitor', 'integration']);
     });
   }
 
@@ -606,9 +607,9 @@ describe('handoff — review r2 regressions', () => {
     await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'skip' }), now, force: true });
     const out = await buildHandoff(dir, { run: r.runId, now, marathon: true, force: true });
     const rows = await rowsOf(dir, first.marathonRun);
-    assert.deepEqual(rows.map(s => s.state), ['blocked']);
+    assert.deepEqual(rows.map(s => [s.name, s.state]), [['drift-monitor', 'blocked'], ['integration', 'blocked']]);
     assert.ok(out.note.includes(first.marathonRun), out.note);
-    assert.deepEqual(out.stale_streams, ['drift-monitor']);
+    assert.deepEqual(out.stale_streams, ['drift-monitor', 'integration']);
     assert.equal((await readJson(path.join(bbsRun(dir, r.runId), 'handoff.json'))).note, out.note);
   });
 
@@ -708,7 +709,7 @@ describe('handoff — review r3 regressions', () => {
     const out = await buildHandoff(dir, { run: r.runId, now, marathon: true, marathonRunner: runner, lockOpts: { staleMs: 120, refreshMs: 30 } });
     assert.equal(out.warning, undefined, 'the lock is still ours at the end');
     assert.equal(steals, 0);
-    assert.equal(calls, 4);
+    assert.equal(calls, 5, 'init, three power streams, the integration stream');
     assert.equal(out.powers.length, 3);
   });
 
@@ -881,11 +882,11 @@ describe('handoff — review r5 regressions', () => {
     const out = await buildHandoff(dir, { run: r.runId, now, marathon: true, force: true });
     assert.equal(out.marathonRun, first.marathonRun);
     const oldRows = await rowsOf(dir, oldId);
-    assert.deepEqual(oldRows.map(s => [s.name, s.state]), [['drift-monitor', 'blocked'], ['budget-guard', 'blocked']]);
-    assert.deepEqual((await rowsOf(dir, out.marathonRun)).map(s => [s.name, s.state]), [['drift-monitor', 'queued']]);
-    assert.deepEqual(out.stale_streams, [`${oldId}/drift-monitor`, `${oldId}/budget-guard`]);
+    assert.deepEqual(oldRows.map(s => [s.name, s.state]), [['drift-monitor', 'blocked'], ['budget-guard', 'blocked'], ['integration', 'blocked']]);
+    assert.deepEqual((await rowsOf(dir, out.marathonRun)).map(s => [s.name, s.state]), [['drift-monitor', 'queued'], ['integration', 'queued']]);
+    assert.deepEqual(out.stale_streams, [`${oldId}/drift-monitor`, `${oldId}/budget-guard`, `${oldId}/integration`]);
     assert.ok(out.note.includes(oldId), out.note);
-    assert.match(out.note, new RegExp(`streams blocked in ${oldId}, not removed: drift-monitor, budget-guard`));
+    assert.match(out.note, new RegExp(`streams blocked in ${oldId}, not removed: drift-monitor, budget-guard, integration`));
     assert.deepEqual((await readJson(hjPath)).stale_streams, out.stale_streams);
   });
 

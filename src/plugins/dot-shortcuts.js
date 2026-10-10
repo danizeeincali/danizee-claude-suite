@@ -3942,6 +3942,8 @@ In the desktop app, read the allowance with \`get_usage\` and pass the **weekly*
 
 **4.3 Build.** Inside the worktree, build through \`/pt\` (interview already done — pass the stream's plan and skip straight to its Plan gate) or \`/w-tdd-swarm\`: contracts first, failing tests, then builders. Route each builder with \`cli.js route hasContract=<bool> hasFailingTests=<bool> files=<n> category=<c>\`: **scoped → \`build_scoped\` (haiku)**, default → \`build\` (sonnet), **hard → \`build_hard\` (opus)**. For every helper: \`cli.js record helper stream=<s> role=build model=<m> budget=<n>\` before the spawn (put the budget in the brief); \`cli.js record helper-done helper_id=<id> tokens=<n> outcome=green|red|escalated\` from the task notification. **Red tests → retry one tier up (\`next\` from \`cli.js route\`) before any review is spent**, with \`escalated_from=<id>\` on the new spawn row; the second row's outcome is what the review sees. A builder's output never feeds the next step until its tests are green.
 
+**4.3a Integration stream (runs from a \`/w-bbs\` hand-off).** The \`integration\` stream starts only after every build stream is done; its plan is the bbs run's \`integration.md\`. Wire each power into the approved step of each target workflow's command source, regenerate the installed commands, then record \`node scripts/marathon-measure.js --wired --bbs-run <id> --power <name> --verb <verb>\` per power and \`--delivered --bbs-run <id> --verb <power>=<verb> ...\` once; print \`delivered.md\` to the owner. Its reviewer reads the command files it changed and checks each new step is reached in the workflow's normal flow.
+
 **4.4 Record runs.** After every test run: \`cli.js record run kind=unit|e2e|build status=green|red stream=<s>\`. Each test run uses its own temp folder, cleaned up afterwards.
 
 **4.5 Review round — one fresh reviewer.** First **commit the stream's changes in its worktree** — the brief diffs committed history and the review is stamped with HEAD.
@@ -4216,11 +4218,11 @@ On a machine without a sandbox \`use\` is removed from every row with the reason
 
 ### ⛔ CHECKPOINT 5: Hand-off
 
-1. \`node .claude/helpers/bbs/cli.js handoff --marathon [--run <id>]\` writes one idea-only brief per approved power, a buy memo per \`buy\`, and creates a marathon run with a typed finish line (written before any build) and one queued stream per power. If the marathon helpers are absent it says so and exits 1: report that and stop. On the error text 'created and is ACTIVE but incomplete', run the exact command the error names once (\`cli.js handoff --marathon --force --run <id>\`); if it fails again, report and stop.
+1. \`node .claude/helpers/bbs/cli.js handoff --marathon [--run <id>]\` writes one idea-only brief per approved power, a buy memo per \`buy\`, and creates a marathon run with a typed finish line (written before any build), one queued stream per power, and one \`integration\` stream queued after them. Building a power is not the deliverable: the \`integration\` stream wires every power into the workflow steps approved at the verdict (its plan is the run's \`integration.md\`), its \`wired_<power>\` lines count only a target step that runs the power's verb, and its \`delivered\` line passes only when \`delivered.md\` tells the owner what they got: each power, where it now runs, and the command to run it by hand. A \`callers\` count (any file that names the verb) is never evidence of integration. If the marathon helpers are absent it says so and exits 1: report that and stop. On the error text 'created and is ACTIVE but incomplete', run the exact command the error names once (\`cli.js handoff --marathon --force --run <id>\`); if it fails again, report and stop.
 2. \`node .claude/helpers/bbs/cli.js report [--run <id>]\` prints the one-line counts.
 3. **End with the resume line, exactly as the JSON gives it:** \`/w-marathon --resume <id>\`. The build starts only when the owner runs it. When the JSON's resume_line is null (no approved power), print its note and list the buy memos; no marathon run is expected.
 
-**REQUIRED OUTPUT:** the report line, the resume line, the memos for \`buy\`.
+**REQUIRED OUTPUT:** the report line, the resume line, the memos for \`buy\`, and the integration plan path (each power → workflow · step).
 
 ---
 
