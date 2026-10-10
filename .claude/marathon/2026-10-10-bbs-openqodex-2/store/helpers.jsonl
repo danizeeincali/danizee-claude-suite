@@ -129,3 +129,4 @@
 {"role":"fix","model":"sonnet","stream":"fact-cached-graph-build-with-budget","budget":150000,"event":"spawn","id":"b3b66cb3-1623-4059-b279-075b15f72f00","ts":"2026-10-10T10:52:28.108Z"}
 {"helper_id":"b3b66cb3-1623-4059-b279-075b15f72f00","tokens":120000,"outcome":"green","event":"done","id":"13eef46e-bfe6-48ad-b6cf-67b3ff39d377","ts":"2026-10-10T10:56:42.919Z"}
 {"role":"review","model":"opus","stream":"fact-cached-graph-build-with-budget","budget":150000,"event":"spawn","id":"333f2492-10b7-4b03-9efd-792cfed0dba7","ts":"2026-10-10T10:58:12.266Z"}
+{"role":"build","model":"sonnet","stream":"change-blast-radius-walk","budget":150000,"event":"spawn","id":"4f3fd423-a8b6-4e58-84d8-8a67749d21a0","ts":"2026-10-10T11:04:15.672Z"}

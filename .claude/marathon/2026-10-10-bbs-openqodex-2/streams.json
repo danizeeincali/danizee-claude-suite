@@ -59,10 +59,13 @@
     },
     {
       "name": "change-blast-radius-walk",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/change-blast-radius-walk.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract tests and module",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-change-blast-radius-walk",
+      "phase": "build",
+      "base": "fd7c7fbb0e8f65dc2afe0f4ebecb15e4807b3617"
     },
     {
       "name": "caller-floor-disclosure",
