@@ -151,39 +151,41 @@ describe('targets — the owner\'s word and what a decision stands on', () => {
 });
 
 describe('targets — the decision gate', () => {
-  let dir;
-  const decide = (obj) => recordDecisions(dir, { run: RUN, input: JSON.stringify(obj), now });
+  let dir, run;
+  const decide = (obj) => recordDecisions(dir, { run, input: JSON.stringify(obj), now });
   before(async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-tgt-d-'));
-    const rd = await makeRun(dir, { evidence: 'none' });
+    await makeRun(dir, { evidence: 'none' });
     const { intake } = await import('../src/lib/bbs/intake.js');
     const { writeInventory } = await import('../src/lib/bbs/inventory.js');
     const { buildMap, recordJudgments } = await import('../src/lib/bbs/harness-map.js');
-    const r = await intake(dir, '-', { stdin: 'decision gate', now, slug: 'gate', run: RUN }).catch(() => null);
-    void r; void rd;
-    await writeInventory(dir, { run: RUN, input: JSON.stringify([{ name: 'redact', what: 'masks secrets', idea: 'mask', evidence: 'x', licence: 'MIT' }, { name: 'gate', what: 'blocks a push', idea: 'block', evidence: 'y', licence: 'MIT' }]), now, force: true });
-    await buildMap(dir, { run: RUN, now });
-    await recordJudgments(dir, { run: RUN, input: JSON.stringify({ redact: 'missing', gate: 'missing' }), now });
-    await computeVerdicts(dir, { run: RUN, sandbox: noSandbox, now });
+    run = (await intake(dir, '-', { stdin: 'decision gate', now, slug: 'gate' })).runId;
+    const p = (name, what) => ({ name, what, idea: what, evidence: 'src/x.ts:1', dependencies: [], data_needed: 'none', network: 'none', size: 'small', licence: 'MIT' });
+    await writeInventory(dir, { run, input: JSON.stringify([p('redact', 'masks secrets'), p('gate', 'blocks a push')]), now });
+    await buildMap(dir, { run, now });
+    await recordJudgments(dir, { run, input: JSON.stringify({ redact: 'missing', gate: 'missing' }), now });
+    await writeJson(path.join(dir, '.claude', 'bbs', 'runs', run, 'usage.json'), { evidence: 'none', workflows: [] });
+    await computeVerdicts(dir, { run, sandbox: noSandbox, now });
   });
   after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
 
   it('with no evidence of use, proposals are recorded unverified against every installed workflow, and a rebuild waits for the owner', async () => {
-    const b = await targetsBrief(dir, { run: RUN });
+    const b = await targetsBrief(dir, { run });
     assert.match(b, /every installed workflow is listed/);
     assert.match(b, /### w-background-compound — steps/);
-    await recordTargets(dir, { run: RUN, input: JSON.stringify({ redact: [row()], gate: [] }), now });
-    const saved = await readJson(path.join(dir, '.claude', 'bbs', 'runs', RUN, 'targets.json'));
+    assert.ok(!b.includes('### bc — steps'), 'aliases are not listed twice');
+    await recordTargets(dir, { run, input: JSON.stringify({ redact: [row()], gate: [] }), now });
+    const saved = await readJson(path.join(dir, '.claude', 'bbs', 'runs', run, 'targets.json'));
     assert.equal(saved.targets.redact[0].unverified, true);
     await assert.rejects(decide({ redact: 'rebuild' }), (e) => e instanceof PolicyRefused && /no evidence/.test(e.message));
   });
 
   it('once the owner names workflows, a target outside them does not stand; [] is refused; skip always passes', async () => {
-    await writeJson(path.join(dir, '.claude', 'bbs', 'runs', RUN, 'usage.json'), { evidence: 'owner', workflows: [{ name: 'w-background-compound', count: null }] });
+    await writeJson(path.join(dir, '.claude', 'bbs', 'runs', run, 'usage.json'), { evidence: 'owner', workflows: [{ name: 'w-background-compound', count: null }] });
     await assert.rejects(decide({ redact: 'rebuild' }), (e) => e instanceof PolicyRefused && /none of its targets is a workflow the owner runs/.test(e.message));
     await assert.rejects(decide({ gate: 'rebuild' }), (e) => e instanceof PolicyRefused && /its targets are empty.*targets --set gate@/.test(e.message));
     assert.equal((await decide({ gate: 'skip' })).decided, 1);
-    await setOwnerTargets(dir, { run: RUN, set: 'redact@bc', now });
+    await setOwnerTargets(dir, { run, set: 'redact@bc', now });
     assert.equal((await decide({ redact: 'rebuild' })).decided, 2);
   });
 });

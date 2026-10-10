@@ -4070,9 +4070,10 @@ Use TaskCreate NOW to create todos for ALL phases:
 3. Inventory: helpers return JSON only (at most 12 powers)
 4. Map: what the harness already has, per power
 5. Usage: which workflows the owner actually runs
-6. Verdict: the table, one question — the only approval
-7. Hand-off: approved powers become a marathon run
-8. Compound: /bc
+6. Targets: where each power lands in those workflows
+7. Verdict: the table, one question — the only approval
+8. Hand-off: approved powers become a marathon run
+9. Compound: /bc
 
 ⚠️ VIOLATION: Any action before TaskCreate = restart workflow
 
@@ -4167,10 +4168,24 @@ If the fetch JSON says \`known: true\` (a repository or URL source is only recog
 \`node .claude/helpers/bbs/cli.js usage [--run <id>]\` counts the workflows the owner actually ran in the last 90 days (\`--days <n>\`) from their local Claude Code session history (\`~/.claude/projects/\` by default; \`usage.roots\` in \`.claude/bbs.json\` or \`--root <dir>\` to change it). A typed \`/mt\` and the Skill hops it triggers are one use of \`w-marathon\`; aliases fold into their workflow. Only names and counts are kept: no message text, no arguments, no network.
 
 - \`evidence: transcripts\` → print the top workflows from \`top\`.
-- \`evidence: none\` (a fresh machine, a cloud session) → say so. The verdict question then also asks the owner which workflows they use (\`workflows=a,b\`), and the answer is recorded with \`cli.js usage --force --workflows <a,b>\` before \`verdict --from\`.
+- \`evidence: none\` (a fresh machine, a cloud session) → say so, with the note. Targets are then proposed against every installed workflow, unverified; the verdict question also asks the owner which workflows they use (\`workflows=a,b\`), and no \`rebuild\` or \`use\` is recorded until that answer is (\`cli.js usage --force --workflows <a,b>\`).
 - The owner may always name their own list: \`cli.js usage --force --workflows <a,b>\`.
 
 **REQUIRED OUTPUT:** \`evidence\` and the \`top\` line.
+
+**AUTO-PROCEED.**
+
+---
+
+### ⛔ CHECKPOINT 3b: Targets
+
+Building a power is not the deliverable; landing it in a workflow the owner runs is. Every power names where it lands before anything is approved.
+
+1. \`node .claude/helpers/bbs/cli.js targets --brief [--run <id>]\` prints the powers, the owner's workflows with their step headings, and the JSON shape.
+2. Spawn one helper with \`model: sonnet\` and the brief. It returns **JSON only**: \`{ "<power>": [{ "workflow", "step", "how", "mode": "advisory|blocking" }] }\`, or \`[]\` for a power that fits none of them.
+3. \`node .claude/helpers/bbs/cli.js targets --from <file> [--run <id>]\`. A workflow that is not installed, a step that is not a heading of that workflow, or a workflow the owner has not used (unless the row carries \`unused_reason\`) is refused with the field; re-ask the helper once with the error.
+
+**REQUIRED OUTPUT:** \`recorded\`, \`no_target\` (powers that land nowhere: they can only be skipped or bought).
 
 **AUTO-PROCEED.**
 
@@ -4180,8 +4195,8 @@ If the fetch JSON says \`known: true\` (a repository or URL source is only recog
 
 1. \`node .claude/helpers/bbs/cli.js verdict [--run <id>]\` computes, per power, the legal verdicts, the default and the reasons from the licence policy and the sandbox check.
 2. For every power where \`use\` is still a candidate, spawn one probe helper with \`model: sonnet\` that reads the fetched source for hidden network calls and returns \`clean\`, \`found\` or \`incomplete\` with evidence. Record each: \`node .claude/helpers/bbs/cli.js verdict --probe <power>=<clean|found|incomplete> --evidence "<text>" [--run <id>]\`. \`found\` and \`incomplete\` remove \`use\`.
-3. **Show the verdict table:** \`node .claude/helpers/bbs/cli.js verdict --table [--run <id>]\`, printed inline.
-4. **Exactly one AskUserQuestion** — "Verdicts above. Approve as shown, or change which? To change some, pick the second option and answer it via Other with \`<power>=<verdict>\` pairs separated by spaces, for example \`drift-monitor=skip log-tail=rebuild\`." Options: ["Approve as shown (defaults)", "Approve with changes — I will type them", "Stop here (skip everything)"]. Build the decisions file from the answer: the table's defaults, with each typed pair overriding its power, or \`skip\` for every power on "Stop here". Its shape is \`{ "<power>": "rebuild|use|buy|skip" }\` (one verdict per power), written to a file and recorded with \`cli.js verdict --from <file>\`. No second question is ever asked: if the typed answer is unparsable (a power not in the table, a verdict not in the list, or a verdict not in that row's \`legal\` list from the verdict JSON), do not guess and do not decide — print the table again with the resume line (\`/w-bbs --resume <run-id>\`) and stop.
+3. **Show the verdict table:** \`node .claude/helpers/bbs/cli.js verdict --table [--run <id>]\`, printed inline. Its **Lands in** column shows each power's targets (workflow · step · mode), so the owner approves where a power lands with its verdict.
+4. **Exactly one AskUserQuestion** — "Verdicts above. Approve as shown, or change which? To change some, pick the second option and answer it via Other with \`<power>=<verdict>\` pairs separated by spaces, for example \`drift-monitor=skip log-tail=rebuild\`, and \`<power>@<workflow>[,<workflow>]\` to change where a power lands, for example \`log-tail@w-debug,bc\`." When usage has no evidence, the question adds: "I could not see which workflows you use: name them with \`workflows=a,b\` (required to build anything)." Options: ["Approve as shown (defaults)", "Approve with changes — I will type them", "Stop here (skip everything)"]. Record the answer's \`workflows=a,b\` first with \`cli.js usage --force --workflows <a,b>\`, then each \`<power>@<workflows>\` with \`cli.js targets --set <power>@<workflows>\`. Build the decisions file from the answer: the table's defaults, with each typed pair overriding its power, or \`skip\` for every power on "Stop here". Its shape is \`{ "<power>": "rebuild|use|buy|skip" }\` (one verdict per power), written to a file and recorded with \`cli.js verdict --from <file>\`. No second question is ever asked: if the typed answer is unparsable (a power not in the table, a verdict not in the list, a verdict not in that row's \`legal\` list from the verdict JSON, or a workflow that is not installed), do not guess and do not decide — print the table again with the resume line (\`/w-bbs --resume <run-id>\`) and stop.
 5. \`node .claude/helpers/bbs/cli.js verdict --from <file> [--run <id>]\` records every decision as a label and, once all are decided, the registry row. On exit 2 (an illegal verdict, refused): report the refusal verbatim and stop with the same resume line (\`/w-bbs --resume <run-id>\`); do not ask a second question. Never edit an owner's choice.
 
 **The four verdicts, in order of preference — rebuild, then use, then buy; skip is always permitted:**
@@ -4227,16 +4242,17 @@ On a machine without a sandbox \`use\` is removed from every row with the reason
 
 ## Verbs
 
-\`intake\` · \`fetch\` · \`inventory --brief|--from\` · \`map [--brief|--from]\` · \`usage [--days|--root|--workflows]\` · \`verdict [--table|--probe|--decide|--from]\` · \`handoff [--marathon]\` · \`status [--next]\` · \`report\`. All take \`--run <id>\`.
+\`intake\` · \`fetch\` · \`inventory --brief|--from\` · \`map [--brief|--from]\` · \`usage [--days|--root|--workflows]\` · \`targets --brief|--from|--set\` · \`verdict [--table|--probe|--decide|--from]\` · \`handoff [--marathon]\` · \`status [--next]\` · \`report\`. All take \`--run <id>\`.
 
 ---
 
 ## Completion Checklist
 
-- [ ] TaskCreate used at start with all 8 phases
+- [ ] TaskCreate used at start with all 9 phases
 - [ ] Nothing fetched was executed; nothing outside the owner's hosts was requested
 - [ ] Egress line printed after fetch
 - [ ] Usage counted from session history or named by the owner; never assumed
+- [ ] Every power has targets (or \`[]\`); the verdict table showed Lands in; no rebuild or use without a workflow to land in
 - [ ] Helpers returned JSON only; inventory and map on \`haiku\`, probes on \`sonnet\`
 - [ ] Verdict table shown; exactly one AskUserQuestion
 - [ ] Marathon run created and resume line printed — or, with no approved power, the note and memos printed

@@ -218,3 +218,20 @@ describe('/w-bbs — the usage step (marathon 2026-10-10-bbs-integration)', () =
     assert.match(c(), /5\. Usage: which workflows the owner actually runs/);
   });
 });
+
+describe('/w-bbs — the targets step (marathon 2026-10-10-bbs-integration)', () => {
+  const c = () => commands['w-bbs'].content;
+  it('every power names where it lands before the verdict, and the one question approves it', () => {
+    assert.match(c(), /CHECKPOINT 3b: Targets/);
+    assert.ok(c().indexOf('CHECKPOINT 3a: Usage') < c().indexOf('CHECKPOINT 3b: Targets'));
+    assert.ok(c().indexOf('CHECKPOINT 3b: Targets') < c().indexOf('CHECKPOINT 4: Verdict'));
+    assert.match(c(), /cli\.js targets --brief/);
+    assert.match(c(), /cli\.js targets --from <file>/);
+    assert.match(c(), /\*\*Lands in\*\* column/);
+    assert.match(c(), /<power>@<workflow>\[,<workflow>\]/);
+    assert.match(c(), /cli\.js targets --set <power>@<workflows>/);
+    assert.match(c(), /workflows=a,b/);
+    assert.match(c(), /6\. Targets: where each power lands/);
+    assert.match(c(), /Building a power is not the deliverable/);
+  });
+});
