@@ -36,3 +36,4 @@
 {"stream":"bbs","counts":{"high":0,"medium":1,"low":1},"angle":"facts and content","tokens":45000,"pass":true,"round":6,"commit":"6d3bc53","id":"7e5170cf-ea5c-46cb-8b33-4150f83a631a","ts":"2026-10-10T22:01:37.417Z"}
 {"stream":"bbs","counts":{"high":0,"medium":0,"low":0},"angle":"performance and memory","tokens":38000,"pass":true,"round":7,"commit":"6142e83","id":"389b6b36-0253-4fae-8d32-5c803439159d","ts":"2026-10-10T22:10:56.061Z"}
 {"stream":"sweep-commits","counts":{"high":0,"medium":2,"low":4},"angle":"one input method at a time","tokens":70000,"pass":true,"round":1,"commit":"e5920e7","id":"a1204b1b-00b9-4790-aa55-7b4153b76159","ts":"2026-10-10T22:29:47.348Z"}
+{"stream":"sweep-commits","counts":{"high":0,"medium":2,"low":4},"angle":"failure conditions and error paths","tokens":90000,"pass":true,"round":2,"commit":"6845f97","id":"4ec787b3-a7f9-4cce-a8b7-09f80be2b42b","ts":"2026-10-10T22:39:14.443Z"}
