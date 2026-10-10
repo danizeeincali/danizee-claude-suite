@@ -1,3 +1,4 @@
 {"category":"correctness","kind":"rule","ref":".claude/marathon/2026-10-10-bbs-integration/rules.md","area":null,"id":"9d35146a-f443-401e-9833-fa40463a46e4","ts":"2026-10-10T16:53:30.533Z"}
 {"category":"performance","kind":"rule","ref":".claude/marathon/2026-10-10-bbs-integration/rules.md","area":null,"id":"5b4a99a8-f165-4915-b318-3de067c0e747","ts":"2026-10-10T18:10:04.863Z"}
 {"category":"security","kind":"test","ref":"test/bbs-wiring.test.js (integration-gate review r4 regressions)","area":null,"id":"82f9a6a6-dc26-4c77-9e69-9830fcae0c88","ts":"2026-10-10T18:34:52.800Z"}
+{"category":"docs","kind":"rule","ref":".claude/marathon/2026-10-10-bbs-integration/rules.md","area":null,"id":"8013d40c-c9d5-4a38-8d6a-5feae54b7a97","ts":"2026-10-10T18:39:20.386Z"}

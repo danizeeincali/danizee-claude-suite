@@ -48,3 +48,4 @@ Add a rule the second time something goes wrong.
   answer. Every state file a verb reads has a --force repair path its error names, and every config value it reads
   is validated in loadConfig before any scan.
 - **performance (promoted):** a loop over a capped list never rescans or re-reads per item (build the index once, e.g. a Map or Set, then look up); every scan of the owner's project has a file count and byte cap, and an eviction or cap loop must make progress each pass (no saturation spin).
+- (promoted: docs) When a verb's grammar or output changes, its cli.js usage line, its refusal text and the /w-bbs or /w-marathon doc change in the same commit, and a test pins the new wording.
