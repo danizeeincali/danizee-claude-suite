@@ -1,9 +1,9 @@
 # Marathon 2026-10-10-bbs-openqodex-2
 
 - State: RUNNING
-- Budget: 3,857,162 / 10,000,000 tokens
+- Budget: 3,957,609 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
-- Gate (run-wide, all streams): 7/2 clean reviews — build gate not met, full gate not met
+- Gate (run-wide, all streams): 8/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
 - Next for you: Continue stream "hardened-git-read-on-untrusted-repo" (next: review round 9) — /w-marathon --resume 2026-10-10-bbs-openqodex-2.
 - Last handoff: 2026-10-10T05:06:45.604Z (auto) on claude/project-thread-p9gbyo@ddd4b25, 3 uncommitted, tasks: none
@@ -43,9 +43,9 @@
 | lens-catalog-file-triggered-checks: clean reviews in a row | build | met | 5 | at_least 2 |
 | lens-catalog-file-triggered-checks: callers in the harness | build | met | 1 | at_least 1 |
 | lens-catalog-file-triggered-checks: packaged check passes | build | met | true | is true |
-| hardened-git-read-on-untrusted-repo: green unit runs in a row | build | met | 11 | at_least 1 |
+| hardened-git-read-on-untrusted-repo: green unit runs in a row | build | met | 12 | at_least 1 |
 | hardened-git-read-on-untrusted-repo: zero egress in the packaged check | build | met | true | is true |
-| hardened-git-read-on-untrusted-repo: clean reviews in a row | build | met | 7 | at_least 2 |
+| hardened-git-read-on-untrusted-repo: clean reviews in a row | build | met | 8 | at_least 2 |
 | hardened-git-read-on-untrusted-repo: callers in the harness | build | met | 1 | at_least 1 |
 | hardened-git-read-on-untrusted-repo: packaged check passes | build | met | true | is true |
 | identity-checked-file-writes: green unit runs in a row | build | failing | 0 | at_least 1 |
@@ -83,7 +83,7 @@
 | isolated-tool-free-wording-judge: clean reviews in a row | build | failing | 0 | at_least 2 |
 | isolated-tool-free-wording-judge: callers in the harness | build | failing | — | at_least 1 |
 | isolated-tool-free-wording-judge: packaged check passes | build | failing | — | is true |
-| Clean reviews in a row | build | met | 7 | at_least 2 |
+| Clean reviews in a row | build | met | 8 | at_least 2 |
 | High findings in the latest review | build | met | 0 | at_most 0 |
 | Open high findings | build | met | 0 | at_most 0 |
 

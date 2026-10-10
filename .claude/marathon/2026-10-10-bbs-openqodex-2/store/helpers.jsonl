@@ -90,3 +90,6 @@
 {"helper_id":"531a0259-08b5-45de-8c63-fa60aacd4146","tokens":0,"outcome":"green","event":"done","id":"6ac46456-b753-4d8a-801f-2998ef591e34","ts":"2026-10-10T07:51:29.580Z"}
 {"helper_id":"531a0259-08b5-45de-8c63-fa60aacd4146","tokens":105651,"outcome":"green","event":"done","id":"9b8e984e-761c-49cd-9196-e059482a268a","ts":"2026-10-10T07:55:36.952Z"}
 {"role":"review","model":"opus","stream":"hardened-git-read-on-untrusted-repo","budget":150000,"event":"spawn","id":"53f67456-1506-4d97-954e-42af8356daa8","ts":"2026-10-10T07:55:51.522Z"}
+{"helper_id":"53f67456-1506-4d97-954e-42af8356daa8","tokens":0,"outcome":"green","event":"done","id":"17ea44ac-9918-4412-9480-ceaca525fdd4","ts":"2026-10-10T07:59:36.477Z"}
+{"helper_id":"53f67456-1506-4d97-954e-42af8356daa8","tokens":100447,"outcome":"green","event":"done","id":"5eb52af1-dc7f-40a6-be2e-87d64e773f8e","ts":"2026-10-10T07:59:42.113Z"}
+{"role":"review","model":"opus","stream":"hardened-git-read-on-untrusted-repo","budget":150000,"event":"spawn","id":"2927b3bf-96ce-4b84-b999-77fc9662d48d","ts":"2026-10-10T08:02:27.139Z"}
