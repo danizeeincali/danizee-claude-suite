@@ -26,3 +26,4 @@
 {"stream":"marathon","counts":{"high":0,"medium":2,"low":4},"angle":"failure conditions and error paths","tokens":75000,"pass":true,"round":2,"commit":"5671237","id":"77b23ca4-249f-458d-986f-1ecd935bd4cf","ts":"2026-10-10T20:32:35.008Z"}
 {"stream":"marathon","counts":{"high":0,"medium":1,"low":1},"angle":"older environments and degraded networks","tokens":60000,"pass":true,"round":3,"commit":"5f081b1","id":"ffa73977-f66c-476c-bb64-d5eac3b0034d","ts":"2026-10-10T20:42:07.791Z"}
 {"stream":"marathon","counts":{"high":0,"medium":1,"low":1},"angle":"the three safety probes: egress, secrets, sandbox escape","tokens":45000,"pass":true,"round":4,"commit":"297cfcd","id":"4f04c228-c12a-4f47-b2eb-7f55bf06da26","ts":"2026-10-10T20:48:56.773Z"}
+{"stream":"marathon","counts":{"high":0,"medium":1,"low":2},"angle":"accessibility","tokens":45000,"pass":true,"round":5,"commit":"14bea65","id":"ae8569cb-d2f4-42c4-a125-53429e337326","ts":"2026-10-10T20:55:20.970Z"}

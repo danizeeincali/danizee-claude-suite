@@ -44,7 +44,7 @@
       "name": "marathon",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "last checking review (round 5) running; then close and /bc",
+      "next": "fix round 5 (folder-mode wording, W at 4.2, deny reason text) running; then a checking review, close, /bc",
       "tasks": [],
       "isolation": "../danizee-claude-suite-marathon",
       "phase": "review",
