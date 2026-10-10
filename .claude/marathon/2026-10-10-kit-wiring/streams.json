@@ -9,10 +9,14 @@
     },
     {
       "name": "diff-range",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "worktree, write the verb contract and failing tests",
-      "tasks": []
+      "next": "contract and failing tests for diff-range",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-diff-range",
+      "phase": "build",
+      "skill": "w-plan-tdd-swarm",
+      "base": "5b9822f178da0836d19d91de471e0e2a35f99150"
     },
     {
       "name": "pt",
