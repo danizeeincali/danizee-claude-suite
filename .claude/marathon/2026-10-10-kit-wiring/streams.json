@@ -64,20 +64,23 @@
     },
     {
       "name": "sweep-commits",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "4.5 round 7 opus checking review, then close",
+      "next": "/bc write-up",
       "tasks": [],
       "isolation": "../danizee-claude-suite-sweep-commits",
       "base": "6142e8347401b14ce7302dc386c162669ea8d9fe",
-      "phase": "review"
+      "phase": "done"
     },
     {
       "name": "sweep-foreign-and-logs",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "worktree, wire the six foreign-repo and log workflows",
-      "tasks": []
+      "next": "4.1 budget, then build: safe-git+lenses in multi-repo/suite-sync, redact in compound and ralph-batch, lenses/callers in swarm and fix",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-sweep-foreign-and-logs",
+      "base": "38552ec51f19e978f3b95bc47716950676a33fa9",
+      "phase": "build"
     }
   ],
   "handoff": {

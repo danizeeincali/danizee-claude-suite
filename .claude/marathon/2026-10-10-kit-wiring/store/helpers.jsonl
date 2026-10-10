@@ -183,3 +183,6 @@
 {"role":"fix","model":"opus","stream":"sweep-commits","budget":100000,"event":"spawn","id":"9615700a-d0eb-4895-95c1-6f0d99a20a77","ts":"2026-10-10T23:03:06.559Z"}
 {"helper_id":"9615700a-d0eb-4895-95c1-6f0d99a20a77","tokens":45000,"outcome":"green","event":"done","id":"cdb95ebe-0cf9-450f-83b3-1483cb2d5ba1","ts":"2026-10-10T23:09:35.785Z"}
 {"role":"review","model":"opus","stream":"sweep-commits","budget":80000,"event":"spawn","id":"635b0c06-3861-4c40-84a6-91a0c3b82fc9","ts":"2026-10-10T23:09:36.327Z"}
+{"helper_id":"635b0c06-3861-4c40-84a6-91a0c3b82fc9","tokens":30000,"outcome":"green","event":"done","id":"040003b5-438f-4fab-ab7f-db562b9d0043","ts":"2026-10-10T23:10:43.535Z"}
+{"role":"routine","model":"sonnet","stream":"sweep-commits","budget":100000,"event":"spawn","id":"af4eda5e-e287-4e13-8235-7d6e546f471f","ts":"2026-10-10T23:10:44.395Z"}
+{"role":"build","model":"sonnet","stream":"sweep-foreign-and-logs","budget":150000,"event":"spawn","id":"82b62fc5-e498-4fc8-8ef1-6b33e25f3eef","ts":"2026-10-10T23:10:44.502Z"}
