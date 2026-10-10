@@ -59,7 +59,7 @@ describe('/w-plan-tdd-swarm Review step', () => {
     assert.match(s, /rm -f "\$D"; \(exit \$RC\)/);
     assert.match(s, /Exit 3 from `diff-range` means an empty range: report "no change to review", never a failure/);
     assert.match(s, /Exit 2 means `diff-range` refused the repository/);
-    assert.match(s, /Any other non-zero exit is wrong input or a broken state: report it, never skip the step/);
+    assert.match(s, /Exit 1 is wrong input or a broken state: report it, never skip the step/);
     assert.match(s, /removed_with_live_callers/);
     assert.match(s, /`risk`/);
     assert.match(s, /`cuts`/);
@@ -149,7 +149,7 @@ describe('review round 1 fixes', () => {
   });
   it('push-gate check exits are named and none is an allow', () => {
     const c = closing();
-    assert.match(c, /exit 0 means abstain or ask \(read `decision`\), exit 2 deny and exit 1 an error; none is an allow/);
+    assert.match(c, /exit 0 means abstain or ask \(read `decision`\), exit 2 deny \(read `decision` and `reason`\) or a refused receipt store \(`kit: refused:` on stderr\), and exit 1 an error; none is an allow/);
   });
   it('description copies agree with the template phase count', async () => {
     const m = content.match(/with all (\d+) phases/)[1];
@@ -160,5 +160,41 @@ describe('review round 1 fixes', () => {
       assert.ok(i >= 0, f);
       assert.ok(t.slice(i, i + 600).includes(`Use TodoWrite first with all ${m} phases`), f);
     }
+  });
+});
+
+describe('review round 2 fixes', () => {
+  const blocks = () => [...review().matchAll(/```bash\n([\s\S]*?)```/g)].map(m => m[1]).filter(b => b.includes('diff-range'));
+  it('exit 0 with skipped files is a floor naming them', () => {
+    const r = review();
+    assert.match(r, /Exit 0 from `diff-range` can still leave files out/);
+    for (const w of ['too_large', 'max_untracked', 'nested_repository', 'skipped_detail', 'stderr']) assert.ok(r.includes(w), w);
+    assert.match(r, /name each skipped file in the findings, say it was not analysed, and treat every lens, graph and impact result as a floor/);
+  });
+  it('exit 1, 2 and 3 are separate sentences', () => {
+    const r = review();
+    assert.match(r, /Exit 1 is wrong input or a broken state: report it, never skip the step\./);
+    assert.ok(!r.includes('Any other non-zero exit'));
+    assert.match(r, /Exit 2 means `diff-range` refused the repository[^.]*: report the refusal as printed\./);
+    assert.match(r, /Exit 3 from `diff-range` means an empty range[^.]*the whole block exits 0 on an empty range/);
+  });
+  it('the 3) branch sets RC=0 in every block', () => {
+    const bs = blocks();
+    assert.equal(bs.length, 3);
+    for (const b of bs) {
+      assert.match(b, /3\) echo "no change to review"; RC=0;;/);
+      assert.match(b.trimEnd(), /\(exit \$RC\); fi$/);
+    }
+  });
+  it('a kit guard precedes each kit call and does not exit the shell', () => {
+    const bs = blocks();
+    for (const b of bs) {
+      assert.ok(b.startsWith('if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed'), b);
+      assert.ok(b.indexOf('kit not installed') < b.indexOf('node .claude/helpers/kit/cli.js'));
+      assert.ok(!/(^|[;\s])exit \d/.test(b.replace(/\(exit (\$RC|0)\)/g, '')));
+    }
+  });
+  it('push-gate check exit 2 is a deny or a refused receipt store', () => {
+    assert.match(closing(), /exit 2 deny \(read `decision` and `reason`\) or a refused receipt store \(`kit: refused:` on stderr\)/);
   });
 });
