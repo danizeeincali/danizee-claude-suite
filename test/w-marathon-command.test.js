@@ -314,8 +314,8 @@ describe('kit wiring', () => {
     const bs = [...c().matchAll(/```bash\n([\s\S]*?)```/g)].map(m => m[1]).filter(b => /^W=/.test(b) && b.includes('.claude/helpers/kit/cli.js'));
     const cp = [...c().matchAll(/```bash\n([\s\S]*?)```/g)].map(m => m[1]).find(b => b.includes('cp .claude/kit/scrub-patterns.local'));
     assert.ok(cp && bs.length === 6, 'six kit blocks and the 4.2 copy block');
-    for (const b of [...bs, cp]) assert.match(b, /\[ -n "\$W" \] \|\| \{ echo "W is empty: set it to the stream's isolation path" >&2; exit 1; \}/);
-    assert.match(c(), /streams\.isolation: folder\`\) the stream row has no isolation path and the stream builds in the main checkout, so set \`W=\.\` and skip the 4.2 copy/);
+    for (const b of bs) assert.match(b, /\[ -n "\$W" \] \|\| \{ echo "W is empty: set it to the stream's isolation path" >&2; exit 1; \}/);
+    assert.match(c(), /streams\.isolation: folder\`\) the stream row has no isolation path and the stream builds in the main checkout, so set \`W=\.\` and skip 4\.2 entirely/);
   });
 
   it('r3 fix 2: a "took longer than" failure is cured with --timeout on scrub, diff-range and push-gate check; impact cannot be raised', () => {
@@ -323,7 +323,7 @@ describe('kit wiring', () => {
       assert.match(c(), new RegExp('took longer than … ms[^\\n]*--timeout <ms>\\`? added to (the )?\\`' + verb));
     }
     // r4 fix 2 retarget: the push-gate check remedy is worded under the deny (exit 2) bullet
-    assert.match(c(), /took longer than … ms is cured by running the block again with `--timeout <ms>` on push-gate check/);
+    assert.match(c(), /took longer than … ms and was stopped \(raise it with --timeout <ms>\)" is cured by running the block again with `--timeout <ms>` on push-gate check/);
     assert.match(c(), /\`impact\` has no such flag, so a timeout there \(exit 3\) is reported as a failed step/);
   });
 
@@ -503,7 +503,7 @@ describe('kit blocks run against the real kit in a stream worktree', () => {
       for (const b of [lensesBlock(), impactBlock(), copyBlock(), scrubBlock(), cp6Block(), ...receiptBlocks()]) {
         const r = fx.run(b, '');
         assert.equal(r.status, 1, r.stdout + r.stderr);
-        assert.match(r.stderr, /W is empty: set it to the stream's isolation path/);
+        assert.match(r.stderr, b === copyBlock() ? /W is empty: set it to the new worktree path/ : /W is empty: set it to the stream's isolation path/);
         assert.ok(!/cannot enter|kit not installed/.test(r.stdout + r.stderr));
       }
       assert.equal(existsSync('/.claude/kit'), had, 'nothing was written under /');
@@ -537,7 +537,7 @@ describe('kit blocks run against the real kit in a stream worktree', () => {
 
   it('r4 fix 2: the scrub-timeout remedy sits under the CHECKPOINT 6 exit-2 bullet, not exit 1', () => {
     const t = c();
-    assert.match(t, /- Exit 2 is a deny or a refused receipt store[^\n]*A deny whose reason says the scrub took longer than … ms is cured by running the block again with `--timeout <ms>` on push-gate check\./);
+    assert.match(t, /- Exit 2 is a deny or a refused receipt store[^\n]*A deny whose reason reads "the scrub check is configured but could not run: … took longer than … ms and was stopped \(raise it with --timeout <ms>\)" is cured by running the block again with `--timeout <ms>` on push-gate check\./);
     assert.match(t, /- Exit 1 is an error: \*\*not pushed\*\*; report it\.\n/);
   });
 
@@ -574,6 +574,22 @@ describe('kit blocks run against the real kit in a stream worktree', () => {
     } finally {
       rmSync(fx.root, { recursive: true, force: true });
     }
+  });
+});
+
+describe('round 5 wording', () => {
+  const c = () => commands['w-marathon'].content;
+  it('r5 fix 1: folder mode skips 4.2 and activates with --no-isolation', () => {
+    assert.match(c(), /In folder mode \(`streams\.isolation: folder`\) skip 4\.2 entirely: activate with `cli\.js stream <name> state=active --no-isolation` and use `W=\.` in every later block/);
+    assert.ok(!c().includes('(or a folder when'));
+  });
+  it('r5 fix 2: 4.2 names W and its guard points to the new worktree path', () => {
+    assert.match(c(), /Set `W` to the path you gave `git worktree add`\./);
+    assert.match(c(), /W is empty: set it to the new worktree path/);
+  });
+  it('r5 fix 3: CHECKPOINT 6 quotes the real deny wording', () => {
+    assert.match(c(), /the scrub check is configured but could not run: … took longer than … ms/);
+    assert.ok(!c().includes('says the scrub took longer'));
   });
 });
 
