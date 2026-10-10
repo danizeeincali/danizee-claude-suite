@@ -39,3 +39,15 @@ describe('/w-review closing step', () => {
     assert.match(s, /--incomplete/);
   });
 });
+
+describe('/w-review lens step', () => {
+  it('runs the lenses verb on a diff file inside Code Analysis, copy-pasteable as written', () => {
+    const c = commands['w-review'].content;
+    const a = c.indexOf('### ⛔ CHECKPOINT 1: Code Analysis');
+    const b = c.indexOf('### ⛔ CHECKPOINT 2', a);
+    const s = c.slice(a, b);
+    assert.match(s, /git diff HEAD > \/tmp\/w-review\.diff\nnode \.claude\/helpers\/kit\/cli\.js lenses --diff \/tmp\/w-review\.diff\n/);
+    assert.match(s, /--covered no-floating-promises/);
+    assert.ok(!s.includes('\\`'));
+  });
+});
