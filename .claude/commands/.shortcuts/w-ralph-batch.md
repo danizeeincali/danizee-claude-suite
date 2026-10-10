@@ -154,6 +154,13 @@ GC=$(git rev-parse --git-common-dir 2>/dev/null || true)
 MAIN_SECRETS=""
 [ -z "$GC" ] || MAIN_SECRETS="$GC/../.claude/kit/secrets"
 
+# Say once, before the first log line, whether log() redacts on this run.
+if [ -f "$KIT" ] && { [ -e "$SECRETS" ] || [ -L "$SECRETS" ] || [ -e "$MAIN_SECRETS" ] || [ -L "$MAIN_SECRETS" ]; }; then
+  printf '%s\n' "log redaction: on" | tee -a "$LOG_FILE"
+else
+  printf '%s\n' "log redaction: off (kit or secrets file not found from $PWD)" | tee -a "$LOG_FILE"
+fi
+
 # Every log line goes through the kit's redact (line numbers kept) when the kit and a
 # secrets file exist, else it is a plain tee. A failed redact never drops the line.
 log() {
@@ -191,7 +198,7 @@ log "Ralph Batch Complete: $(date)"
 echo "Results logged to: $LOG_FILE"
 ```
 
-**Log redaction (inside the generated script):** the `log()` function above pipes each line (the script's own lines and, one by one, every line `claude -p` prints) through `node .claude/helpers/kit/cli.js redact --keep-lines` (stdin to JSON `{ text, replaced }`; the `text` is what is logged) only when, at run time, `.claude/helpers/kit/cli.js` exists and so does a secrets file (`.claude/kit/secrets` in the worktree top, or in the main checkout: `-e` or `-L`, so a dangling symlink or a directory there still goes to `redact` and fails loudly). Otherwise it is the plain `printf | tee -a "$LOG_FILE"`: with no kit the script behaves as it did before, and the test is the script's own `[ -f ... ]`, not a decision made when it was generated. `redact` exit 0 is the redacted line. Exit 1 is bad input or an unreadable secrets file, never "nothing to redact": the line is still written to the log, with the marker `[redact failed exit 1]` after it, and the script continues (a failed redact never drops a line and never stops an overnight run). Any other non-zero exit (for example 127, or a signal) is a failure of that step and gets the same marker with its exit status. A log line that carries the marker was not redacted: review the log before sharing it.
+**Log redaction (inside the generated script):** the `log()` function above pipes each line (the script's own lines and, one by one, every line `claude -p` prints) through `node .claude/helpers/kit/cli.js redact --keep-lines` (stdin to JSON `{ text, replaced }`; the `text` is what is logged) only when, at run time, `.claude/helpers/kit/cli.js` exists and so does a secrets file (`.claude/kit/secrets` in the worktree top, or in the main checkout: `-e` or `-L`, so a dangling symlink or a directory there still goes to `redact` and fails loudly). Otherwise it is the plain `printf | tee -a "$LOG_FILE"`: with no kit the script behaves as it did before, and the test is the script's own `[ -f ... ]`, not a decision made when it was generated. `redact` exit 0 is the redacted line. Exit 1 is bad input or an unreadable secrets file, never "nothing to redact": the line is still written to the log, with the marker `[redact failed exit 1]` after it, and the script continues (a failed redact never drops a line and never stops an overnight run). Any other non-zero exit (for example 127, or a signal) is a failure of that step and gets the same marker with its exit status. A log line that carries the marker was not redacted: review the log before sharing it. Before the first log line the script writes one line saying which case it is in: `log redaction: on`, or `log redaction: off (kit or secrets file not found from $PWD)` with the directory it ran from (`KIT` and `SECRETS` are relative paths, so run the script from the repository top).
 
 **Phased Mode - Sequential Priority Execution:**
 ```
