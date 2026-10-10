@@ -75,8 +75,8 @@ STOP and wait for user response.
 **Search the Pi Brain network for existing knowledge matching this task:**
 
 \`\`\`bash
-# npm client (preferred)
-curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[task description]" --top-k=3
+# curl, query URL-encoded (preferred)
+curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[task description]" --data top_k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[task description]&top_k=3"
@@ -303,8 +303,8 @@ STOP and wait for user response.
 **Search the Pi Brain network for existing knowledge matching this feature:**
 
 \`\`\`bash
-# npm client (preferred)
-curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[feature description]" --top-k=3
+# curl, query URL-encoded (preferred)
+curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[feature description]" --data top_k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[feature description]&top_k=3"
@@ -406,7 +406,7 @@ Skip this block for non-UI tasks.
 | Performance | _____ | _____ |
 | Architecture | _____ | _____ |
 
-**🔎 Code Analysis (lenses and impact over the change under review):** Run these two, in order, over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
+**🔎 Code Analysis (lenses and impact over the change under review):** Run these two, in order, over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files; the whole history when there is no upstream: then \`removed_with_live_callers\` cannot find removals, so say the removal check did not run). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
 
 1. Lenses: which review rules apply to the changed files.
 \`\`\`bash
@@ -423,7 +423,7 @@ if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range --base "$B" > "$
 case $RC in 0) node .claude/helpers/kit/cli.js impact --diff "$D" --base "$B"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; fi; (exit $RC); fi
 \`\`\`
 
-How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review output below, and mention a non-empty \`capped\` list. For impact, check every entry of \`removed_with_live_callers\` (a removal with a caller left behind is a defect until shown otherwise), the \`risk\` level with its \`reasons\` and every row of \`cuts\`; when \`risk.lower_bound\` is true or \`cuts\` is not empty the level is a floor, never write "nothing else is affected". Print each symbol's \`sentences\` as they are; a symbol with \`floor: true\` and no callers found is not unused.
+How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review findings above, and mention a non-empty \`capped\` list. For impact, check every entry of \`removed_with_live_callers\` (a removal with a caller left behind is a defect until shown otherwise), the \`risk\` level with its \`reasons\` and every row of \`cuts\`; when \`risk.lower_bound\` is true or \`cuts\` is not empty the level is a floor, never write "nothing else is affected". Print each symbol's \`sentences\` as they are; a symbol with \`floor: true\` and no callers found is not unused.
 Exit 3 from \`diff-range\` means an empty range: report "no change to review", never a failure and never "no lens applies"; the block sets its own status to 0 in that case. Exit 1 is wrong input or a broken state: report it, never skip the step. Exit 2 is a refusal (the repository, a range over 32 MiB, or the verb itself): report it as printed and stop that step, never retry it. Exit 0 from \`diff-range\` can still leave files out: it writes a note to stderr for an untracked file over the size cap (\`too_large\`, named) and for untracked files over the count cap (\`max_untracked\`, a count only); name each skipped file in the findings, say it was not analysed, and treat every result as a floor. If \`diff-range\` itself fails the step prints "diff-range failed" and the verb does not run; if the temp file cannot be made it prints "mktemp failed": report that the change was not analysed, never "nothing found". Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found.
 
 
@@ -1084,8 +1084,8 @@ Search for past solutions. Check memory keys, search codebase for similar implem
 **Search the Pi Brain network for existing knowledge matching this feature:**
 
 \`\`\`bash
-# npm client (preferred)
-curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[feature description]" --top-k=3
+# curl, query URL-encoded (preferred)
+curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[feature description]" --data top_k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[feature description]&top_k=3"
@@ -1172,7 +1172,7 @@ Quick self-review. Fix any critical/high findings before proceeding.
 - Build status: pass/fail/n-a
 - Regressions: none / [list]
 
-**🔎 Code Analysis (lenses and impact over the change under review):** Run these two, in order, over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
+**🔎 Code Analysis (lenses and impact over the change under review):** Run these two, in order, over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files; the whole history when there is no upstream: then \`removed_with_live_callers\` cannot find removals, so say the removal check did not run). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
 
 1. Lenses: which review rules apply to the changed files.
 \`\`\`bash
@@ -1189,7 +1189,7 @@ if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range --base "$B" > "$
 case $RC in 0) node .claude/helpers/kit/cli.js impact --diff "$D" --base "$B"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; fi; (exit $RC); fi
 \`\`\`
 
-How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review output below, and mention a non-empty \`capped\` list. For impact, check every entry of \`removed_with_live_callers\` (a removal with a caller left behind is a defect until shown otherwise), the \`risk\` level with its \`reasons\` and every row of \`cuts\`; when \`risk.lower_bound\` is true or \`cuts\` is not empty the level is a floor, never write "nothing else is affected". Print each symbol's \`sentences\` as they are; a symbol with \`floor: true\` and no callers found is not unused.
+How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review findings above, and mention a non-empty \`capped\` list. For impact, check every entry of \`removed_with_live_callers\` (a removal with a caller left behind is a defect until shown otherwise), the \`risk\` level with its \`reasons\` and every row of \`cuts\`; when \`risk.lower_bound\` is true or \`cuts\` is not empty the level is a floor, never write "nothing else is affected". Print each symbol's \`sentences\` as they are; a symbol with \`floor: true\` and no callers found is not unused.
 Exit 3 from \`diff-range\` means an empty range: report "no change to review", never a failure and never "no lens applies"; the block sets its own status to 0 in that case. Exit 1 is wrong input or a broken state: report it, never skip the step. Exit 2 is a refusal (the repository, a range over 32 MiB, or the verb itself): report it as printed and stop that step, never retry it. Exit 0 from \`diff-range\` can still leave files out: it writes a note to stderr for an untracked file over the size cap (\`too_large\`, named) and for untracked files over the count cap (\`max_untracked\`, a count only); name each skipped file in the findings, say it was not analysed, and treat every result as a floor. If \`diff-range\` itself fails the step prints "diff-range failed" and the verb does not run; if the temp file cannot be made it prints "mktemp failed": report that the change was not analysed, never "nothing found". Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found.
 
 
@@ -1217,7 +1217,7 @@ Exit 0 is clean for the tracked files (or no pattern file is configured: then no
 node .claude/helpers/kit/cli.js push-gate receipt --verdict pass --high 0 --medium 0 --low 0
 node .claude/helpers/kit/cli.js push-gate receipt --verdict fail --high 1 --medium 2 --low 0
 \`\`\`
-   Exit 0 means the receipt was written; exit 1 is wrong input or a broken state and exit 2 a refused receipt store: report either as printed, never read it as recorded.
+   Verdict rule: \`--verdict fail\` when any high finding is open, else \`--verdict pass\`, always with the real counts. Exit 0 means the receipt was written; exit 1 is wrong input or a broken state and exit 2 a refused receipt store: report either as printed, never read it as recorded. Any other non-zero exit is a failure of the step: name the exit code. A failed receipt (exit 1, 2 or any other non-zero) means **not pushed**: write "not pushed: receipt not recorded (exit N)" into the final output and stop Phase 7 there, skip step 5 and the push; a review ran but its receipt was not written, so never let the gate's "no review recorded" case push it.
 5. Run the push gate before the push. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
 \`\`\`bash
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): push-gate check skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js push-gate check; RC=$?; (exit $RC); fi
@@ -1341,8 +1341,8 @@ Search for past solutions. Check memory keys, search codebase.
 **Search the Pi Brain network for existing knowledge matching this idea:**
 
 \`\`\`bash
-# npm client (preferred)
-curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[idea description]" --top-k=3
+# curl, query URL-encoded (preferred)
+curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[idea description]" --data top_k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[idea description]&top_k=3"
@@ -1501,8 +1501,8 @@ STOP and wait for user response.
 **Search the Pi Brain network for existing knowledge matching this bug:**
 
 \`\`\`bash
-# npm client (preferred)
-curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[bug description]" --top-k=3
+# curl, query URL-encoded (preferred)
+curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[bug description]" --data top_k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[bug description]&top_k=3"
@@ -1707,8 +1707,8 @@ STOP and wait for user response.
 **Search the Pi Brain network for existing debug recipes matching this issue:**
 
 \`\`\`bash
-# npm client (preferred)
-curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[bug/issue description]" --top-k=3
+# curl, query URL-encoded (preferred)
+curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[bug/issue description]" --data top_k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[bug/issue description]&top_k=3"
@@ -1848,7 +1848,7 @@ Skip this block for non-UI tasks.
 | Performance | _____ | _____ |
 | Regressions | _____ | _____ |
 
-**🔎 Code Analysis (lenses and impact over the change under review):** Run these two, in order, over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
+**🔎 Code Analysis (lenses and impact over the change under review):** Run these two, in order, over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files; the whole history when there is no upstream: then \`removed_with_live_callers\` cannot find removals, so say the removal check did not run). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
 
 1. Lenses: which review rules apply to the changed files.
 \`\`\`bash
@@ -1865,7 +1865,7 @@ if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range --base "$B" > "$
 case $RC in 0) node .claude/helpers/kit/cli.js impact --diff "$D" --base "$B"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; fi; (exit $RC); fi
 \`\`\`
 
-How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review output below, and mention a non-empty \`capped\` list. For impact, check every entry of \`removed_with_live_callers\` (a removal with a caller left behind is a defect until shown otherwise), the \`risk\` level with its \`reasons\` and every row of \`cuts\`; when \`risk.lower_bound\` is true or \`cuts\` is not empty the level is a floor, never write "nothing else is affected". Print each symbol's \`sentences\` as they are; a symbol with \`floor: true\` and no callers found is not unused.
+How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review findings above, and mention a non-empty \`capped\` list. For impact, check every entry of \`removed_with_live_callers\` (a removal with a caller left behind is a defect until shown otherwise), the \`risk\` level with its \`reasons\` and every row of \`cuts\`; when \`risk.lower_bound\` is true or \`cuts\` is not empty the level is a floor, never write "nothing else is affected". Print each symbol's \`sentences\` as they are; a symbol with \`floor: true\` and no callers found is not unused.
 Exit 3 from \`diff-range\` means an empty range: report "no change to review", never a failure and never "no lens applies"; the block sets its own status to 0 in that case. Exit 1 is wrong input or a broken state: report it, never skip the step. Exit 2 is a refusal (the repository, a range over 32 MiB, or the verb itself): report it as printed and stop that step, never retry it. Exit 0 from \`diff-range\` can still leave files out: it writes a note to stderr for an untracked file over the size cap (\`too_large\`, named) and for untracked files over the count cap (\`max_untracked\`, a count only); name each skipped file in the findings, say it was not analysed, and treat every result as a floor. If \`diff-range\` itself fails the step prints "diff-range failed" and the verb does not run; if the temp file cannot be made it prints "mktemp failed": report that the change was not analysed, never "nothing found". Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found.
 
 
@@ -2052,8 +2052,8 @@ STOP and wait for user response.
 **Search the Pi Brain network for existing knowledge matching this incident:**
 
 \`\`\`bash
-# npm client (preferred)
-curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[incident description]" --top-k=3
+# curl, query URL-encoded (preferred)
+curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[incident description]" --data top_k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[incident description]&top_k=3"
@@ -2148,7 +2148,7 @@ Skip this block for non-UI tasks.
 | Data exposure | _____ | _____ |
 | Injection risks | _____ | _____ |
 
-**🔎 Code Analysis (lenses and impact over the change under review):** Run these two, in order, over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
+**🔎 Code Analysis (lenses and impact over the change under review):** Run these two, in order, over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files; the whole history when there is no upstream: then \`removed_with_live_callers\` cannot find removals, so say the removal check did not run). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
 
 1. Lenses: which review rules apply to the changed files.
 \`\`\`bash
@@ -2165,7 +2165,7 @@ if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range --base "$B" > "$
 case $RC in 0) node .claude/helpers/kit/cli.js impact --diff "$D" --base "$B"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; fi; (exit $RC); fi
 \`\`\`
 
-How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review output below, and mention a non-empty \`capped\` list. For impact, check every entry of \`removed_with_live_callers\` (a removal with a caller left behind is a defect until shown otherwise), the \`risk\` level with its \`reasons\` and every row of \`cuts\`; when \`risk.lower_bound\` is true or \`cuts\` is not empty the level is a floor, never write "nothing else is affected". Print each symbol's \`sentences\` as they are; a symbol with \`floor: true\` and no callers found is not unused.
+How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review findings above, and mention a non-empty \`capped\` list. For impact, check every entry of \`removed_with_live_callers\` (a removal with a caller left behind is a defect until shown otherwise), the \`risk\` level with its \`reasons\` and every row of \`cuts\`; when \`risk.lower_bound\` is true or \`cuts\` is not empty the level is a floor, never write "nothing else is affected". Print each symbol's \`sentences\` as they are; a symbol with \`floor: true\` and no callers found is not unused.
 Exit 3 from \`diff-range\` means an empty range: report "no change to review", never a failure and never "no lens applies"; the block sets its own status to 0 in that case. Exit 1 is wrong input or a broken state: report it, never skip the step. Exit 2 is a refusal (the repository, a range over 32 MiB, or the verb itself): report it as printed and stop that step, never retry it. Exit 0 from \`diff-range\` can still leave files out: it writes a note to stderr for an untracked file over the size cap (\`too_large\`, named) and for untracked files over the count cap (\`max_untracked\`, a count only); name each skipped file in the findings, say it was not analysed, and treat every result as a floor. If \`diff-range\` itself fails the step prints "diff-range failed" and the verb does not run; if the temp file cannot be made it prints "mktemp failed": report that the change was not analysed, never "nothing found". Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found.
 
 
@@ -2643,7 +2643,7 @@ Skip this block for non-UI tasks.
 - Prioritized remediation list (by severity)
 - Recommended fixes
 
-**🔎 Code Analysis (lenses and impact over the change under review):** Run these two, in order, over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
+**🔎 Code Analysis (lenses and impact over the change under review):** Run these two, in order, over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files; the whole history when there is no upstream: then \`removed_with_live_callers\` cannot find removals, so say the removal check did not run). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
 
 1. Lenses: which review rules apply to the changed files.
 \`\`\`bash
@@ -2660,7 +2660,7 @@ if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range --base "$B" > "$
 case $RC in 0) node .claude/helpers/kit/cli.js impact --diff "$D" --base "$B"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; fi; (exit $RC); fi
 \`\`\`
 
-How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review output below, and mention a non-empty \`capped\` list. For impact, check every entry of \`removed_with_live_callers\` (a removal with a caller left behind is a defect until shown otherwise), the \`risk\` level with its \`reasons\` and every row of \`cuts\`; when \`risk.lower_bound\` is true or \`cuts\` is not empty the level is a floor, never write "nothing else is affected". Print each symbol's \`sentences\` as they are; a symbol with \`floor: true\` and no callers found is not unused.
+How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review findings above, and mention a non-empty \`capped\` list. For impact, check every entry of \`removed_with_live_callers\` (a removal with a caller left behind is a defect until shown otherwise), the \`risk\` level with its \`reasons\` and every row of \`cuts\`; when \`risk.lower_bound\` is true or \`cuts\` is not empty the level is a floor, never write "nothing else is affected". Print each symbol's \`sentences\` as they are; a symbol with \`floor: true\` and no callers found is not unused.
 Exit 3 from \`diff-range\` means an empty range: report "no change to review", never a failure and never "no lens applies"; the block sets its own status to 0 in that case. Exit 1 is wrong input or a broken state: report it, never skip the step. Exit 2 is a refusal (the repository, a range over 32 MiB, or the verb itself): report it as printed and stop that step, never retry it. Exit 0 from \`diff-range\` can still leave files out: it writes a note to stderr for an untracked file over the size cap (\`too_large\`, named) and for untracked files over the count cap (\`max_untracked\`, a count only); name each skipped file in the findings, say it was not analysed, and treat every result as a floor. If \`diff-range\` itself fails the step prints "diff-range failed" and the verb does not run; if the temp file cannot be made it prints "mktemp failed": report that the change was not analysed, never "nothing found". Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found.
 
 
@@ -3044,8 +3044,8 @@ STOP and wait for user response.
 **Search the Pi Brain network for existing architecture recipes matching this system:**
 
 \`\`\`bash
-# npm client (preferred)
-curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[system description]" --top-k=3
+# curl, query URL-encoded (preferred)
+curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[system description]" --data top_k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[system description]&top_k=3"
@@ -3601,7 +3601,7 @@ Skip if auto_share.enabled is false.
 
 \`\`\`bash
 # Check for similar existing recipes
-curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[recipe title]" --top-k=3
+curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[recipe title]" --data top_k=3
 \`\`\`
 
 3. **If similar memory found (score > 0.7):** Submit as a fork to inherit grade
@@ -4825,6 +4825,7 @@ Scan the work just completed for measurable optimization targets:
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
+**AUTO-PROCEED:** Continue to Commit phase.
 
 ---
 
@@ -4845,11 +4846,22 @@ Commit only after the scrub exited 0 (or the kit is not installed); after a refu
 - Scrub: clean / refused (<hits>) / kit not installed
 - Commit hash: _____
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Commit complete. Session ended. Run /w-start to resume later."
-- Options: ["Done", "Push to remote"]
+**USER GATE:** Use AskUserQuestion. The gate depends on the scrub result:
+- After a scrub refusal (nothing was committed): Question: "Not committed: scrub refused. Fix and retry?" Options: ["Fix and retry", "Done without committing"]. There is no push option on this path.
+- On the normal path: Question: "Commit complete. Session ended. Run /w-start to resume later." Options: ["Done", "Push to remote"]
 
 STOP and wait for user response.
+
+**On "Push to remote" (normal path only):** run the push gate first. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): push-gate check skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js push-gate check; RC=$?; (exit $RC); fi
+\`\`\`
+Read the printed \`decision\` and \`reason\`. The gate stays advisory: it only abstains, asks or denies, and it never allows, skips or answers the owner's own permission prompt for the push.
+- Exit 0 with decision \`abstain\`: push (\`git push -u origin HEAD\`).
+- Exit 0 with decision \`ask\` and a \`reason\` starting "no review recorded for this change": the push goes on, and the summary says "no review recorded for this change, pushed (run /w-review next time)".
+- Exit 0 with any other \`ask\`: **not pushed**. Write "not pushed — gate asks: <reason>" (the \`reason\` as printed) and let the owner decide; never answer the ask yourself.
+- Exit 2 is a deny (read \`decision\` and \`reason\`) or a refused receipt store (\`kit: refused:\` on stderr): **not pushed**; report it as printed.
+- Exit 1 is an error: report it and do not push. Any other non-zero exit is a failure of the step: report it and do not push.
 
 ---
 
@@ -5616,8 +5628,9 @@ Execute the Ralph loop with the candidate spec:
 - All tests pass: yes/no
 - Total iterations: _____
 - If failed: which tests still failing
+- Lens findings: _____
 
-**🔎 Code Analysis (lenses over the change under review):** Run this over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
+**🔎 Code Analysis (lenses over the change under review):** Run this over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files; the whole history when there is no upstream: then \`removed_with_live_callers\` cannot find removals, so say the removal check did not run). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
 
 1. Lenses: which review rules apply to the changed files.
 \`\`\`bash
@@ -5626,7 +5639,7 @@ if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range > "$D"; RC=$?
 case $RC in 0) node .claude/helpers/kit/cli.js lenses --diff "$D"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; (exit $RC); fi
 \`\`\`
 
-How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review output below, and mention a non-empty \`capped\` list.
+How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review findings above, and mention a non-empty \`capped\` list.
 Exit 3 from \`diff-range\` means an empty range: report "no change to review", never a failure and never "no lens applies"; the block sets its own status to 0 in that case. Exit 1 is wrong input or a broken state: report it, never skip the step. Exit 2 is a refusal (the repository, a range over 32 MiB, or the verb itself): report it as printed and stop that step, never retry it. Exit 0 from \`diff-range\` can still leave files out: it writes a note to stderr for an untracked file over the size cap (\`too_large\`, named) and for untracked files over the count cap (\`max_untracked\`, a count only); name each skipped file in the findings, say it was not analysed, and treat every result as a floor. If \`diff-range\` itself fails the step prints "diff-range failed" and the verb does not run; if the temp file cannot be made it prints "mktemp failed": report that the change was not analysed, never "nothing found". Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found.
 
 

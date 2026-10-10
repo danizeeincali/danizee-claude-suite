@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
+import { spawnSync } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getCommands } from '../src/plugins/dot-shortcuts.js';
@@ -166,5 +167,91 @@ describe('w-ralph-pick', () => {
   });
   it('does not commit, so adds no scrub', () => {
     assert.ok(!/scrub --worktree/.test(commands['w-ralph-pick'].content));
+  });
+});
+
+describe('sweep-commits round 1 review fixes', () => {
+  const six = [
+    ['w-tdd-swarm', true], ['w-agent-tdd-swarm', true], ['w-debug', true],
+    ['w-hotfix', true], ['w-security', true], ['w-ralph-pick', false],
+  ];
+  for (const [name] of six) {
+    it(`${name}: the range sentence covers the no-upstream case`, () => {
+      const c = commands[name].content;
+      const s = c.slice(c.indexOf('Code Analysis ('));
+      assert.match(s, /the whole history when there is no upstream: then `removed_with_live_callers` cannot find removals, so say the removal check did not run\)/);
+      assert.ok(!c.includes('review output below'));
+    });
+  }
+  for (const name of ['w-tdd-swarm', 'w-debug', 'w-security', 'w-hotfix']) {
+    it(`${name}: lens findings go to the review findings above`, () => {
+      assert.match(commands[name].content, /add its findings to the review findings above/);
+    });
+  }
+  it('w-agent-tdd-swarm: lens findings sentence points above', () => {
+    assert.match(commands['w-agent-tdd-swarm'].content, /add its findings to the review findings above/);
+  });
+  it('w-ralph-pick: CP4 REQUIRED OUTPUT has a Lens findings line', () => {
+    const s = section('w-ralph-pick', '### ⛔ CHECKPOINT 4: Completion Verification', '**🔎 Code Analysis');
+    assert.match(s, /\*\*REQUIRED OUTPUT:\*\*[\s\S]*- Lens findings: _____/);
+  });
+
+  it('w-end: the gate is conditional, with no push option after a scrub refusal', () => {
+    const s = section('w-end', '**USER GATE:** Use AskUserQuestion. The gate depends on the scrub result', '## What Gets Captured');
+    assert.match(s, /After a scrub refusal \(nothing was committed\): Question: "Not committed: scrub refused\. Fix and retry\?" Options: \["Fix and retry", "Done without committing"\]\. There is no push option on this path\./);
+    assert.match(s, /On the normal path: Question: "Commit complete\. Session ended\. Run \/w-start to resume later\." Options: \["Done", "Push to remote"\]/);
+    const refusal = s.slice(s.indexOf('After a scrub refusal'), s.indexOf('On the normal path'));
+    assert.ok(!refusal.includes('Push to remote'));
+  });
+  it('w-end: Push to remote runs the guarded push-gate check, every exit named', () => {
+    const c = commands['w-end'].content;
+    const s = c.slice(c.indexOf('**On "Push to remote"'), c.indexOf('## What Gets Captured'));
+    assert.match(s, NO_KIT('push-gate check'));
+    assert.match(s, /push-gate check; RC=\$\?/);
+    assert.ok(s.indexOf('push-gate check; RC=$?') < s.indexOf('git push -u origin HEAD'));
+    assert.match(s, /Exit 0 with decision `abstain`: push/);
+    assert.match(s, /starting "no review recorded for this change": the push goes on/);
+    assert.match(s, /any other `ask`: \*\*not pushed\*\*/);
+    assert.match(s, /Exit 2 is a deny .*\*\*not pushed\*\*/);
+    assert.match(s, /`kit: refused:` on stderr/);
+    assert.match(s, /Exit 1 is an error: report it and do not push/);
+    assert.match(s, /Any other non-zero exit is a failure of the step: report it and do not push/);
+    assert.match(s, /never allows, skips or answers the owner's own permission prompt/);
+    assert.ok(!s.includes('\\`'));
+  });
+
+  it('w-agent-tdd-swarm step 4: failed receipt means not pushed, with the verdict rule', () => {
+    const c = commands['w-agent-tdd-swarm'].content;
+    const s = c.slice(c.indexOf('4. Record the review receipt'), c.indexOf('5. Run the push gate'));
+    assert.match(s, /`--verdict fail` when any high finding is open, else `--verdict pass`, always with the real counts/);
+    assert.match(s, /Any other non-zero exit is a failure of the step: name the exit code/);
+    assert.match(s, /"not pushed: receipt not recorded \(exit N\)"/);
+    assert.match(s, /skip step 5 and the push/);
+  });
+
+  it('no generated copy carries the broken Pi Brain curl line, and the fixed line is valid bash', () => {
+    const broken = /memories\/search "\[[^\]]*\]" --top-k=3/;
+    let fixed = 0;
+    for (const [name, cmd] of Object.entries(commands)) {
+      assert.ok(!broken.test(cmd.content), `${name}: broken Pi Brain curl line`);
+      assert.ok(!cmd.content.includes('# npm client (preferred)'), `${name}: mislabelled curl`);
+      for (const m of cmd.content.matchAll(/^curl -s -G "https:\/\/pi\.ruv\.io\/v1\/memories\/search".*$/gm)) {
+        fixed++;
+        const r = spawnSync('bash', ['-n'], { input: m[0] + '\n', encoding: 'utf-8' });
+        assert.equal(r.status, 0, `${name}: bash -n failed: ${r.stderr}`);
+      }
+    }
+    assert.ok(fixed > 0);
+  });
+  it('no repo copy carries the broken Pi Brain curl line', async () => {
+    for (const f of await fs.readdir(SHORTCUTS_DIR)) {
+      const md = await fs.readFile(path.join(SHORTCUTS_DIR, f), 'utf-8');
+      assert.ok(!/memories\/search "\[[^\]]*\]" --top-k=3/.test(md), `${f}: broken Pi Brain curl line`);
+    }
+  });
+
+  it('w-end: Checkpoint 1 ends with AUTO-PROCEED to the Commit phase', () => {
+    const s = section('w-end', '### ⛔ CHECKPOINT 1: Compound', '### ⛔ CHECKPOINT 2: Commit');
+    assert.match(s, /RALPH CANDIDATE CHECK[\s\S]*\*\*AUTO-PROCEED:\*\* Continue to Commit phase\./);
   });
 });
