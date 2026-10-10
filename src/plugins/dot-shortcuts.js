@@ -3617,8 +3617,27 @@ Only the person can run \`/compact\` or \`/clear\` — a skill, a command or the
 compaction runs at about 97% of the context window and keeps ~30k tokens; twice in one week a
 multi-phase skill had to be reloaded because compaction had cut its instructions. So \`/bc\` writes
 everything a fresh context needs into files first, then tells you exactly which line to run. Two
-suite hooks make automatic compaction behave the same way: \`PreCompact\` stamps the status file,
-\`SessionStart(compact)\` prints the resume line.
+suite hooks make automatic compaction behave the same way: \`PreCompact\` stamps the status file
+and records the compaction, \`SessionStart(compact)\` prints the resume line.
+
+---
+
+## One copy, configured per project
+
+\`/bc\` ships once, at user level (\`danizee-claude-suite install-user\`), so a stale user-level
+command can never shadow it. A project never copies the command; it adds \`.claude/bc.json\`:
+
+\`\`\`json
+{ "status": ".claude/plans/STATUS.md", "kickoff": "docs/build/KICKOFF.md", "rules": ".claude/plans/RULES.md",
+  "memory": "docs/solutions", "db": ".claude/bc/compactions.jsonl" }
+\`\`\`
+
+Optional keys: \`prune_below_pct\` (50), \`clear_above_pct\` (80), \`context_window\` (1000000).
+Without the file the defaults above apply (no kickoff).
+
+Below, **\`bc\`** means \`node .claude/helpers/bc/cli.js\` when that file exists in the project, otherwise
+\`node ~/.claude/helpers/bc/cli.js\` (the user-level copy). While a marathon run is active the helper hands
+every verb to the run, so the same lines work in both cases.
 
 ---
 
@@ -3630,7 +3649,7 @@ suite hooks make automatic compaction behave the same way: \`PreCompact\` stamps
   - Highest score wins. Default to 'feature' on empty diff.
 - **Step 2:** Branch detection (current branch name)
 - **Step 3:** Push flag: \`--push\` present (or invoked as \`/bcp\`) → push phase enabled. Otherwise the push phase is skipped.
-- **Step 4:** Marathon run active? Ask the CLI, never a file test (ACTIVE is machine-local and absent in a worktree): \`node .claude/helpers/marathon/cli.js status\` succeeds → handoff goes to that run; it fails with "no active run" → \`.claude/plans/STATUS.md\`.
+- **Step 4:** \`bc config\` → the project's status, kickoff and rules files, the thresholds, and \`marathonRun\` (the active run id, or null). Never test for files yourself: ACTIVE is machine-local and absent in a worktree. A run → the handoff goes to that run; no marathon run → the status file named in \`bc.json\`.
 
 **AUTO-PROCEED:** Continue to the Handoff.
 
@@ -3640,8 +3659,8 @@ suite hooks make automatic compaction behave the same way: \`PreCompact\` stamps
 
 Write what a fresh context needs, in files, and commit it **before** anything runs in the background,
 so two writers never commit in the same checkout at the same time:
-- **Status rows (\`status.md\`):** every stream — where it lives, its plan, its state, its next step, any running background task ids. With a marathon run active: \`node .claude/helpers/marathon/cli.js stream <name> state=... phase=... skill=... next="..." tasks=<id>,<id>\` per stream, then \`cli.js status\`. Without a marathon run: refresh \`.claude/plans/STATUS.md\` with the same columns — the handoff does not need marathon.
-- **Standing rules:** anything learned the hard way this session → \`rules.md\` of the run (or \`.claude/plans/RULES.md\` without a run).
+- **Status rows (\`status.md\`):** every stream — where it lives, its plan, its state, its next step, any running background task ids. With a marathon run active: \`node .claude/helpers/marathon/cli.js stream <name> state=... phase=... skill=... next="..." tasks=<id>,<id>\` per stream, then \`cli.js status\`. Without a marathon run: refresh the status file from \`bc config\` (default \`.claude/plans/STATUS.md\`) as a table — \`| Stream | Where | Plan | State | Next | Phase | Skill | Tasks |\` — one row per stream, \`active\` in State for the one being worked, \`done\` once finished. If a multi-phase skill such as \`/pt\` is mid-run, its row names the skill and the phase. The handoff does not need marathon.
+- **Standing rules:** anything learned the hard way this session → \`rules.md\` of the run (or the rules file from \`bc config\` without a run).
 - **Durable facts** → memory.
 - Commit these files (specific paths, not \`git add -A\`). Never push here.
 
@@ -3684,16 +3703,16 @@ candidates file, memory exports) — never the handoff files the lead just commi
 
 ### ⛔ CHECKPOINT 3: Measure the context and decide
 
-\`node .claude/helpers/marathon/cli.js context\` reads the latest transcript's last assistant usage
+\`bc context\` (the helper's \`cli.js context\`) reads the latest transcript's last assistant usage
 (input + cache read + cache creation) and returns \`{tokens, pct, decision}\`. Pass \`--transcript <path>\`
 to pin a transcript and \`--stream-finished\` when the stream just closed. Thresholds live in
-\`.claude/marathon.json\` → \`bc\` (\`prune_below_pct\` 50, \`clear_above_pct\` 80, \`context_window\`).
+\`.claude/bc.json\` (or \`.claude/marathon.json\` → \`bc\`): \`prune_below_pct\` 50, \`clear_above_pct\` 80, \`context_window\`.
 
 | decision | What you print |
 |----------|----------------|
 | \`none\` (under 50%) | One line: "Context at N% — no prune." |
-| \`compact\` (50–80%) | The output of \`cli.js keeplist\`: a ready-to-run \`/compact …\` line whose keep-list names the kickoff, the open stream rows, open findings by id, the rules file, the last commit and running tasks — never finished streams, never file contents. Without a marathon run it keeps \`.claude/plans/STATUS.md\`, \`RULES.md\` and the last commit. |
-| \`clear\` (≥ 80%, or the stream just finished) | Recommend \`/clear\`, and print \`cli.js resume --plain\` as the first line to paste into the fresh session (without a run it says so and points at \`STATUS.md\`). A compaction that late buys little room. |
+| \`compact\` (50–80%) | The output of \`bc keeplist\` (\`cli.js keeplist\`): a ready-to-run \`/compact …\` line whose keep-list names the kickoff, the open stream rows, open findings by id (in a marathon run), the rules file, the last commit and running tasks — never finished streams, never file contents. Generated from the status file, never typed from memory. |
+| \`clear\` (≥ 80%, or the stream just finished) | Recommend \`/clear\`, and print \`bc resume --plain\` (\`cli.js resume --plain\`) as the first line to paste into the fresh session: read the kickoff, status, rules and memory index, then continue the active stream, reloading its skill at its phase. A compaction that late buys little room. |
 
 Say plainly that only the person can run the line; you cannot compact for them.
 
@@ -3701,8 +3720,9 @@ Say plainly that only the person can run the line; you cannot compact for them.
 
 ### ⛔ CHECKPOINT 4: Record
 
-With a marathon run active: \`cli.js record compaction trigger=bc tokens=<n> pct=<n> decision=<d>\`.
-Without one, skip. Automatic compactions are recorded by the \`PreCompact\` hook the same way.
+\`bc record compaction trigger=bc tokens=<n> pct=<n> decision=<d>\` (\`cli.js record compaction …\`) — into the run's
+store with a marathon run active, otherwise into the \`db\` file from \`bc.json\` (default \`.claude/bc/compactions.jsonl\`).
+Every compaction, manual or automatic, is also recorded by the \`PreCompact\` hook, with its trigger and size.
 
 ---
 

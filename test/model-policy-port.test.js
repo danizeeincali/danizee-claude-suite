@@ -134,8 +134,8 @@ describe('Pi Brain read-only — BEHAVIORAL invariant (not just banned strings)'
 });
 
 describe('Release', () => {
-  it('package.json is bumped to 4.3.0', async () => {
+  it('package.json is bumped to at least 4.3.0', async () => {
     const pkg = JSON.parse(await fs.readFile(path.join(PROJECT_ROOT, 'package.json'), 'utf-8'));
-    assert.equal(pkg.version, '4.3.0');
+    assert.ok(pkg.version.split('.').map(Number).reduce((d, n, i) => d || n - [4, 3, 0][i], 0) >= 0, `version ${pkg.version} is below 4.3.0`);
   });
 });

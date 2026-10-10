@@ -8,7 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { execSync, execFileSync } from 'child_process';
 import { runConflictChecks } from './utils/conflicts.js';
-import { mergeSettings, removeSettings, readSettings } from './utils/settings.js';
+import { mergeSettings, removeSettings, readSettings, mergeHooks } from './utils/settings.js';
 import { writeWorkflowShortcuts, shortcutsExist } from './utils/shortcuts.js';
 import * as ruflo from './plugins/ruflo.js';
 // Backward compat alias
@@ -23,6 +23,7 @@ import * as autoresearch from './plugins/autoresearch.js';
 import * as marathon from './plugins/marathon.js';
 import * as bbs from './plugins/bbs.js';
 import * as kit from './plugins/kit.js';
+import * as bc from './plugins/bc.js';
 import { checkShadowing } from './lib/marathon/shadow.js';
 import os from 'os';
 
@@ -84,11 +85,11 @@ export class DaniZeeSuiteInstaller {
     // Install Pure Ralph templates
     const ralphResult = await this.installRalphTemplates();
 
-    // Merge settings (marathon hooks registered idempotently)
+    // Merge settings (marathon and /bc hooks registered idempotently)
     await mergeSettings(this.claudeDir, {
       force: this.force,
       targetDir: this.targetDir,
-      hooks: marathon.getHookEntries()
+      hooks: mergeHooks(marathon.getHookEntries(), bc.getHookEntries())
     });
 
     // Generate WORKFLOW-SHORTCUTS.md
@@ -235,6 +236,12 @@ export class DaniZeeSuiteInstaller {
 
     // Install Marathon helpers, hooks, reviewer kit and rules
     results.push(await marathon.install(this.claudeDir, {
+      dryRun: this.dryRun,
+      targetDir: this.targetDir
+    }));
+
+    // Install the /bc helper and its compaction hooks; it imports the marathon library installed above
+    results.push(await bc.install(this.claudeDir, {
       dryRun: this.dryRun,
       targetDir: this.targetDir
     }));
@@ -400,6 +407,7 @@ echo "MCP server started. You can now use memory and swarm operations."
         pmShortcuts: false,
         terminalAgents: false,
         marathon: false,
+        bc: false,
         bbs: false,
         kit: false
       },
@@ -439,6 +447,7 @@ echo "MCP server started. You can now use memory and swarm operations."
     status.plugins.pmShortcuts = await pmShortcuts.isInstalled(this.claudeDir);
     status.plugins.terminalAgents = await terminalAgents.isInstalled(this.claudeDir);
     status.plugins.marathon = await marathon.isInstalled(this.claudeDir);
+    status.plugins.bc = await bc.isInstalled(this.claudeDir);
     status.plugins.bbs = await bbs.isInstalled(this.claudeDir);
     status.plugins.kit = await kit.isInstalled(this.claudeDir);
     status.shadowing = await this.checkShadowing();
@@ -469,6 +478,7 @@ echo "MCP server started. You can now use memory and swarm operations."
     await pmShortcuts.uninstall(this.claudeDir);
     await terminalAgents.uninstall(this.claudeDir, { targetDir: this.targetDir });
     await marathon.uninstall(this.claudeDir);
+    await bc.uninstall(this.claudeDir);
     await bbs.uninstall(this.claudeDir);
     await kit.uninstall(this.claudeDir);
 
@@ -554,6 +564,7 @@ echo "MCP server started. You can now use memory and swarm operations."
         'dot-shortcuts',
         'pure-ralph',
         'marathon',
+        'bc',
         'bbs',
         'kit',
         ...(this.withoutCookbook ? [] : ['agent-cookbook']),

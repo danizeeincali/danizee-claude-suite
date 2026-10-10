@@ -1023,7 +1023,9 @@ Claude: Stored as project/bugs/[auto-named] + created docs/solutions/bugs/[name]
 
 **`/bc` commits and never pushes. `/bcp` is the owner's go: it also pushes and merges.**
 
-Two suite hooks make automatic compaction behave the same way: `PreCompact` stamps the status file, `SessionStart(compact)` prints the resume line.
+Two suite hooks make automatic compaction behave the same way: `PreCompact` stamps the status file and records the compaction, `SessionStart(compact)` prints the resume line and the active stream's row.
+
+**Configure per project, install once:** a project names its status, kickoff and rules files in `.claude/bc.json`; `npx danizee-claude-suite install-user` puts one `/bc` and its hooks in `~/.claude` for every project.
 
 ---
 

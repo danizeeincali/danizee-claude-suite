@@ -271,28 +271,62 @@ Each run lives in `.claude/bbs/runs/<run-id>/`; the registry of audited sources 
 
 ### Compaction hooks and `/bc` vs `/bcp`
 
-Only you can run `/compact` or `/clear`; Claude cannot. `/bc` therefore prepares the handoff and
-hands you the line: the lead writes the status rows, standing rules and memory and commits them
-first; then a background `sonnet` agent writes the lessons up and commits only its own files;
+Only you can run `/compact` or `/clear`; Claude cannot. Automatic compaction runs at about 97% of
+the context window and cannot be moved. `/bc` therefore prepares the handoff and hands you the
+line: the lead writes the status rows, standing rules and memory and commits them first; then a
+background `sonnet` agent writes the lessons up and commits only its own files;
 `cli.js context` measures the context from the transcript; under 50% nothing, 50–80% a
 ready-to-run `/compact` with a generated keep-list (`cli.js keeplist`), above 80% `/clear` plus the
-resume line (`cli.js resume`). Both work in a project with no marathon run — the keep-list then
-names `.claude/plans/STATUS.md` and `RULES.md` instead of a run.
+resume line (`cli.js resume`). Every decision is recorded (`cli.js record compaction`).
+
+All of this runs through one helper, `.claude/helpers/bc/cli.js` (verbs `config`, `context`,
+`keeplist`, `resume`, `handoff`, `record`). While a marathon run is active it hands each verb to the
+run; otherwise it works from the files the project names in `.claude/bc.json`:
+
+```json
+{ "status": ".claude/plans/STATUS.md", "kickoff": "docs/build/KICKOFF.md", "rules": ".claude/plans/RULES.md",
+  "memory": "docs/solutions", "db": ".claude/bc/compactions.jsonl" }
+```
+
+Optional: `prune_below_pct` (50), `clear_above_pct` (80), `context_window` (1000000); without them
+the `bc` block of `marathon.json` applies. The status file is a markdown table read by its header —
+`| Stream | Where | Plan | State | Next | Phase | Skill | Tasks |`, only the first column required.
+A row whose State starts with `active` is the stream to resume; `done`, `merged`, `shipped` and the
+like are finished and never reach the keep-list. A Phase and Skill on the active row make the
+resume line say "reload /pt and continue from phase 3".
 
 `/bc` **never pushes**. `/bcp` is the owner's go: the same flow with `--push`, which pushes the
 branch and merges to main.
 
 The installer registers two hooks in `.claude/settings.json` so automatic compaction behaves the
-same way: `PreCompact` (`.claude/hooks/marathon-precompact.sh`) stamps the status file and records
-the compaction; `SessionStart` with matcher `compact` (`.claude/hooks/marathon-session-start.sh`)
-prints the resume line back into Claude's context. Registration is idempotent — `update` never
-duplicates an entry.
+same way: `PreCompact` (`.claude/hooks/bc-precompact.sh`, matcher `manual` and `auto`) stamps the
+status file with the time, branch, commit, uncommitted files and running tasks and records the
+compaction with its trigger and size; `SessionStart` with matcher `compact`
+(`.claude/hooks/bc-session-start.sh`) prints the resume line and the active stream's row back into
+Claude's context. In a marathon run the marathon hooks (`marathon-precompact.sh`,
+`marathon-session-start.sh`) do the same for the run and the `bc-` hooks step aside. In a project
+with neither a `bc.json` nor a status file the hooks do nothing. Registration is idempotent —
+`update` never duplicates an entry.
+
+### One `/bc` for every project
+
+```bash
+npx danizee-claude-suite install-user     # /bc, /bcp, /w-background-compound, helper and hooks into ~/.claude
+npx danizee-claude-suite uninstall-user   # removes only the suite's pieces
+```
+
+`install-user` ships `/bc` once, at user level, with the hooks registered in
+`~/.claude/settings.json`. A project then never copies the command; it adds `.claude/bc.json`. If
+the project also has its own `.claude/hooks/bc-*.sh` (from `init`), the project copy runs and the
+user copy steps aside. `install-user` refuses to replace a `~/.claude/commands/bc.md` you wrote
+yourself unless you pass `--force` (it keeps a `.bak`).
 
 ### Shadowed commands
 
 A `~/.claude/commands/<name>.md` is loaded instead of the project's `.claude/commands/.shortcuts/<name>.md`
 with the same name — an old user-level `/bc` silently wins over the suite's. `init` and `check`
-list any such collisions and print the rename to run:
+list any such collisions (the suite's own `install-user` copy is not one) and print the rename to run,
+then `install-user` puts the suite's `/bc` there instead:
 
 ```bash
 mv ~/.claude/commands/bc.md ~/.claude/commands/bc-old.md
@@ -449,15 +483,19 @@ npx danizee-claude-suite uninstall     # Remove suite
 │   └── autoresearch/       Autoresearch skill (SKILL.md)
 ├── hooks/
 │   ├── autoresearch-context.sh
-│   ├── marathon-precompact.sh      PreCompact: stamp status, record compaction
-│   └── marathon-session-start.sh   SessionStart(compact): print the resume line
+│   ├── marathon-precompact.sh      PreCompact: stamp the run's status, record compaction
+│   ├── marathon-session-start.sh   SessionStart(compact): print the run's resume line
+│   ├── bc-precompact.sh            PreCompact: stamp bc.json's status file, record compaction
+│   └── bc-session-start.sh         SessionStart(compact): print the /bc resume line
 ├── helpers/
 │   ├── quick-start.sh
 │   ├── setup-mcp.sh
 │   ├── terminal-agents-mcp.js
 │   ├── marathon/               cli.js + zero-dep library (gate, budget, store, …)
+│   ├── bc/                     cli.js for /bc: context, keep-list, resume, handoff, record
 │   └── bbs/                    cli.js + zero-dep library (intake, fetch, inventory, map, verdict, handoff)
 ├── marathon.json               Marathon config (ceiling, budgets, models, bc thresholds)
+├── bc.json                     /bc config (status, kickoff, rules, memory, results file)
 ├── marathon/                   Marathon runs (one folder per run-id) + reviewer kit + rules
 ├── bbs.json                    BBS config (limits, licence policy, sandbox)
 ├── bbs/                        BBS runs (one folder per run-id) + registry.jsonl
