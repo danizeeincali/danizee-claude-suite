@@ -1,7 +1,7 @@
 # Marathon 2026-10-10-kit-wiring
 
 - State: RUNNING
-- Budget: 1,671,440 / 10,000,000 tokens
+- Budget: 1,921,440 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 7/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
