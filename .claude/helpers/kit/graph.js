@@ -1179,9 +1179,17 @@ function resolveGraph(parsed, sourceSet, o) {
   };
   const unresolved = [];
   let unresolvedTotal = 0;
+  // At the cap, a row that names a missing export or a deleted target (what impact's removed-symbol check reads) takes
+  // the place of the latest row that does not, so a large installed harness cannot crowd a live caller out of the list.
+  const KEEP = new Set(['unknown export', 'unread target']);
+  let evict = -1; // scan position for the next replaceable row, from the end
   const addUnresolved = (from, call, reason) => {
     unresolvedTotal++;
-    if (unresolved.length < o.maxUnresolved) unresolved.push({ from, call, reason });
+    if (unresolved.length < o.maxUnresolved) { unresolved.push({ from, call, reason }); return; }
+    if (!KEEP.has(reason)) return;
+    if (evict < 0 || evict >= unresolved.length) evict = unresolved.length - 1;
+    while (evict >= 0 && KEEP.has(unresolved[evict].reason)) evict--;
+    if (evict >= 0) unresolved[evict--] = { from, call, reason };
   };
   const link = (from, nodes, kind, rank, call, blocked, miss = 'unknown export') => {
     if (!nodes.length) { addUnresolved(from, call, blocked || miss); return; }
