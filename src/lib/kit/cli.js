@@ -5,7 +5,7 @@
  * `run` returns a JSON-serialisable result or throws a KitExit. Output is JSON on stdout, errors on stderr.
  * Built from ideas audited by /w-bbs (run 2026-10-10-openqodex-2); no foreign code.
  *
- * A result with a string `raw` property is written to stdout as is (no JSON, no added newline) and `exit` still applies.
+ * A result with a string or Buffer `raw` property is written to stdout as is (a Buffer undecoded) (no JSON, no added newline) and `exit` still applies.
  *
  * Exit codes: 0 ok · 1 invalid input / broken state · 2 policy refusal (the verb said no) · any other code a verb
  * returns as `exit` in its result and documents in its usage (safe-git: 3 = git ran and failed).
@@ -54,7 +54,7 @@ export async function main(argv = process.argv.slice(2)) {
   }
   try {
     const result = await entry.run(args, { cwd: process.cwd(), stdin: readStdin, stdinBytes: readStdinBytes, stdinIsTTY: !!process.stdin.isTTY, env: process.env });
-    if (result && typeof result.raw === 'string') process.stdout.write(result.raw);
+    if (result && (typeof result.raw === 'string' || Buffer.isBuffer(result.raw))) process.stdout.write(result.raw);
     else process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     return result && typeof result.exit === 'number' ? result.exit : 0;
   } catch (err) {

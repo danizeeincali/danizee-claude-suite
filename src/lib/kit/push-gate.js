@@ -49,13 +49,15 @@ export function defaultGit(cwd, { runner, spawn = spawnSync, env = process.env }
   for (const [k, v] of Object.entries(env)) if (!k.startsWith('GIT_')) clean[k] = v;
   clean.GIT_TERMINAL_PROMPT = '0';
   clean.GIT_OPTIONAL_LOCKS = '0';
-  const git = async (args, { input, env: extra } = {}) => {
+  const git = async (args, { input, env: extra, binary } = {}) => {
     const full = ['-c', 'core.hooksPath=/dev/null', ...args];
     const e = extra ? { ...clean, ...extra } : clean;
     if (runner) return runner(full, { cwd, env: e, input });
-    const r = spawn('git', full, { cwd, env: e, input, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024 });
+    // binary: stdout comes back as a Buffer (undecoded); stderr is text either way
+    const r = spawn('git', full, { cwd, env: e, input, encoding: binary ? 'buffer' : 'utf-8', maxBuffer: 64 * 1024 * 1024 });
     if (r.error) throw new KitExit(`cannot run git: ${r.error.message}`, 1);
-    return { code: r.status ?? 1, stdout: r.stdout || '', stderr: r.stderr || '' };
+    const stderr = r.stderr ? r.stderr.toString('utf-8') : '';
+    return { code: r.status ?? 1, stdout: r.stdout || (binary ? Buffer.alloc(0) : ''), stderr };
   };
   git.cwd = cwd; // rev-parse prints relative paths against this (see git-paths.js)
   return git;

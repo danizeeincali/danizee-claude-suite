@@ -359,7 +359,7 @@ describe('impact — the /w-review caller', () => {
   it('has a blast-radius step that runs impact on the reviewed range with its base, copy-pasteable', () => {
     const s = step();
     assert.match(s, /BLAST RADIUS/);
-    assert.match(s, /node \.claude\/helpers\/kit\/cli\.js impact --diff "\$D" --base "\$\(node \.claude\/helpers\/kit\/cli\.js diff-range --base-only\)"; RC=\$\?;; 3\) echo "no change to review"/);
+    assert.match(s, /node \.claude\/helpers\/kit\/cli\.js impact --diff "\$D" --base "\$B"; RC=\$\?;; 3\) echo "no change to review"/);
     assert.match(s, /diff-range > "\$D"; RC=\$\?/);
     const blocks = s.split('```').filter((_, k) => k % 2 === 1);
     assert.equal(blocks.length, 2, 'the graph block and the impact block');
@@ -425,8 +425,11 @@ describe('impact — review round 1 regressions', () => {
     assert.ok(r.notes.some(n => /names no files/.test(n)));
     const c = getCommands()['w-review'].content;
     const s = c.slice(c.indexOf('Then the blast radius'), c.indexOf('**REQUIRED OUTPUT:**', c.indexOf('Then the blast radius')));
-    assert.match(s, /exit 3 from `diff-range`/);
-    assert.match(s, /non-zero exit means wrong input or a broken state/);
+    assert.match(s, /Exit 3 from `diff-range`/);
+    assert.match(s, /Any other non-zero exit is wrong input or a broken state: report it, never skip the step/);
+    assert.match(s, /never a failure and never "no lens applies"/);
+    assert.match(s, /B=\$\(node \.claude\/helpers\/kit\/cli\.js diff-range --base-only\); D=\$\(mktemp\); node \.claude\/helpers\/kit\/cli\.js diff-range --base "\$B" > "\$D"/);
+    assert.match(s, /impact --diff "\$D" --base "\$B"/);
     const md = await fs.readFile(new URL('../.claude/commands/.shortcuts/w-review.md', import.meta.url), 'utf-8');
     assert.equal(md, c);
   }));
@@ -524,7 +527,7 @@ describe('impact — review round 4 regressions', () => {
   }));
   it('an untracked file git cannot diff makes the step fail, not silently drop it', () => {
     const s = stepScript();
-    assert.match(s, /diff-range > "\$D"; RC=\$\?/);
+    assert.match(s, /diff-range --base "\$B" > "\$D"; RC=\$\?/);
     assert.match(s, /\*\) echo "diff-range failed/);
   });
 });

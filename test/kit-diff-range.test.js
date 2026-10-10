@@ -14,7 +14,7 @@
  * Exit: 0 a non-empty diff was printed · 3 the range is empty (nothing printed) · 1 bad input or git failed
  * (not a repository, an unknown --base, a diff that could not be produced) · 2 refused.
  * --base-only prints the resolved base (a sha, or the empty-tree id) and a newline, exit 0.
- * --json prints { base, upstream, from_upstream, tracked, untracked, empty } instead of the diff (exit 0 even when empty).
+ * --json prints { base, upstream, from_upstream, tracked, untracked, skipped, empty } instead of the diff (exit 0 even when empty).
  * The cli prints a verb result's `raw` string as is (no JSON) — that is how this verb writes the diff.
  */
 import { describe, it, beforeEach, afterEach } from 'node:test';
@@ -25,6 +25,7 @@ import path from 'path';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
+import { defaultGit } from '../src/lib/kit/push-gate.js';
 import { run, verb, usage } from '../src/lib/kit/diff-range.js';
 import { parseDiff } from '../src/lib/kit/lenses.js';
 
@@ -184,5 +185,57 @@ describe('diff-range — the review range as one unified diff', () => {
     const r = await run([], io({ env: { ...process.env, GIT_DIR: '/nonexistent', GIT_WORK_TREE: '/nonexistent' } }));
     assert.equal(r.exit, 0);
     assert.deepEqual(parseDiff(r.raw).map(f => f.path), ['a.txt']);
+  });
+
+  it('an untracked nested repository is skipped and reported, the real untracked file is still diffed, never exit 3 with an unread path', async () => {
+    await put('a.txt', 'a\n'); commit();
+    await put('real.txt', 'real\n');
+    await fs.mkdir(path.join(dir, 'sub'), { recursive: true });
+    sh(path.join(dir, 'sub'), 'init', '-q');
+    await put('sub/inner.txt', 'inner\n');
+    const j = await run(['--base', 'HEAD', '--json'], io());
+    assert.deepEqual(j.untracked, ['real.txt']);
+    assert.deepEqual(j.skipped, ['sub/']);
+    assert.equal(j.empty, false);
+    const r = await run(['--base', 'HEAD'], io());
+    assert.equal(r.exit, 0);
+    assert.deepEqual(parseDiff(r.raw).map(f => f.path), ['real.txt']);
+    // only the nested repository: nothing was read for it, and the range is honestly empty with the path reported
+    await fs.rm(path.join(dir, 'real.txt'));
+    const only = await run(['--base', 'HEAD', '--json'], io());
+    assert.deepEqual(only.skipped, ['sub/']);
+    assert.deepEqual(only.untracked, []);
+  });
+
+  it('git diff --no-index exit 1 with empty stdout or text on stderr is a failure naming the path, never exit 3', async () => {
+    await put('a.txt', 'a\n'); commit();
+    const real = defaultGit(dir, {});
+    const fake = (stderr, stdout) => Object.assign(async (args, o) => {
+      if (args.includes('--no-index')) return { code: 1, stdout, stderr };
+      return real(args, o);
+    }, { cwd: dir });
+    await put('x.txt', 'x\n');
+    for (const [err, out] of [['error: Could not access x', ''], ['', ''], ['warning: odd', 'diff --git x x\n']]) {
+      await assert.rejects(run([], io({ git: fake(err, out) })), (e) => e instanceof KitExit && e.code === 1 && e.message.includes('x.txt') && e.message.includes(err || 'git failed'));
+    }
+  });
+
+  it('non-UTF-8 bytes come through the cli byte for byte', async () => {
+    await put('a.txt', 'a\n'); commit();
+    await fs.writeFile(path.join(dir, 'lat.txt'), Buffer.from([0x63, 0x61, 0x66, 0xE9, 0x0A]));
+    const r = spawnSync(process.execPath, [CLI, 'diff-range'], { cwd: dir, encoding: 'buffer', env: { ...process.env, GIT_DIR: '', GIT_WORK_TREE: '' } });
+    assert.equal(r.status, 0);
+    assert.ok(r.stdout.includes(Buffer.from([0x2B, 0x63, 0x61, 0x66, 0xE9, 0x0A])), 'the +caf<E9> line is intact');
+    assert.ok(!r.stdout.includes(Buffer.from([0xEF, 0xBF, 0xBD])), 'no U+FFFD');
+  });
+
+  it('--base accepts the empty-tree id that --base-only prints, so the base can be resolved once and passed back', async () => {
+    await put('a.txt', 'a\n'); commit();
+    const b = await run(['--base-only'], io());
+    assert.equal(b.raw, `${EMPTY_TREE}\n`);
+    const r = await run(['--base', EMPTY_TREE], io());
+    assert.equal(r.exit, 0);
+    assert.deepEqual(parseDiff(r.raw).map(f => f.path), ['a.txt']);
+    await assert.rejects(run(['--base', '1111111111111111111111111111111111111111'], io()), (e) => e instanceof KitExit && e.code === 1);
   });
 });

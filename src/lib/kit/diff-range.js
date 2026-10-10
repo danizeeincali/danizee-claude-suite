@@ -4,9 +4,15 @@
  *   diff-range [--dir <repo>] [--base <ref>] [--no-untracked] [--base-only] [--json]
  *
  * The range: tracked changes from <base> to the working tree (committed since the base plus uncommitted edits), plus
- * every untracked, not-ignored file as an added file (unless --no-untracked). <base> is --base <ref>, else the merge
+ * every untracked, not-ignored file as an added file (unless --no-untracked). <base> is --base <ref> (a commit, or the empty-tree id that --base-only prints when there is no upstream), else the merge
  * base of HEAD and @{upstream}, else the empty tree (the whole history). Paths are bare and relative to the repository
  * top. Git runs with hooks off, no external diff, no colour and no inherited GIT_* variables.
+ *
+ * Untracked paths: a path is listed under `untracked` (--json) only when its diff text is non-empty. A nested git repository
+ * (ls-files shows it as `sub/`) is not this repository's file: it is SKIPPED, never diffed, and reported in `skipped` (--json).
+ * Any other `git diff --no-index` failure (exit above 1, or exit 1 with empty stdout or text on stderr) is a failure, exit 1 naming
+ * the path and git's stderr, so a range with an unread untracked path is never exit 3.
+ * Bytes: the diffs are read as bytes. When they are valid UTF-8 `raw` is a string; otherwise `raw` is a Buffer the cli writes undecoded.
  *
  * Exit: 0 printed, 3 empty (nothing printed), 1 bad input or git failed, 2 refused.
  */
@@ -19,7 +25,7 @@ import { parseDiff } from './lenses.js';
 export const verb = 'diff-range';
 export const usage = 'cli.js diff-range [--dir <repo>] [--base <ref>] [--no-untracked] [--base-only] [--json]   (prints the review range as one raw unified diff: '
   + 'tracked changes from the base to the working tree plus untracked files; base = --base, else the merge base with the upstream, else the empty tree; '
-  + '--no-untracked leaves untracked files out, --base-only prints the resolved base, --json prints the summary; '
+  + '--no-untracked leaves untracked files out, --base-only prints the resolved base, --json prints the summary (with the skipped nested repositories); '
   + 'exit 0 printed, 3 empty, 1 bad input or git failed, 2 refused)';
 
 const BOOL_FLAGS = ['no-untracked', 'base-only', 'json', 'help'];
@@ -44,6 +50,7 @@ function parseArgs(args) {
 }
 
 const fail = (what, r) => new KitExit(`${what}: ${(r.stderr || r.stdout || '').trim() || 'git failed'}`, 1);
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 const DIFF = ['diff', '--no-color', '--no-ext-diff', '--no-prefix'];
 
 export async function run(args, io = {}) {
@@ -62,8 +69,9 @@ export async function run(args, io = {}) {
   if (up.code === 0 && up.stdout.trim()) upstream = up.stdout.trim();
   if (f.base !== undefined) {
     const r = await git(['rev-parse', '--verify', '-q', `${f.base}^{commit}`]);
-    if (r.code !== 0 || !r.stdout.trim()) throw invalid(`--base "${f.base}" does not resolve to a commit`);
-    base = r.stdout.trim();
+    if (r.code === 0 && r.stdout.trim()) base = r.stdout.trim();
+    else if (f.base === EMPTY_TREE) base = EMPTY_TREE; // what --base-only prints when there is no upstream: the whole history
+    else throw invalid(`--base "${f.base}" does not resolve to a commit`);
   } else if (upstream) {
     const mb = await git(['merge-base', 'HEAD', upstream]);
     if (mb.code === 0 && mb.stdout.trim()) { base = mb.stdout.trim(); fromUpstream = true; }
@@ -75,23 +83,31 @@ export async function run(args, io = {}) {
   }
   if (f['base-only']) return { raw: `${base}\n` };
 
-  const t = await git([...DIFF, base]);
+  const buf = (x) => (Buffer.isBuffer(x) ? x : Buffer.from(x || ''));
+  const t = await git([...DIFF, base], { binary: true });
   if (t.code !== 0 && t.code !== 1) throw fail('cannot diff against the base', t);
-  let text = t.stdout;
+  const tracked = buf(t.stdout);
+  const parts = [tracked];
   const untracked = [];
+  const skipped = [];
   if (!f['no-untracked']) {
     const l = await git(['ls-files', '-z', '--others', '--exclude-standard']);
     if (l.code !== 0) throw fail('cannot list untracked files', l);
     for (const file of l.stdout.split('\0').filter(Boolean)) {
-      const d = await git([...DIFF, '--no-index', '--', '/dev/null', file]);
-      if (d.code > 1) throw fail(`cannot diff untracked file ${file}`, d);
+      if (file.endsWith('/')) { skipped.push(file); continue; } // a nested repository
+      const d = await git([...DIFF, '--no-index', '--', '/dev/null', file], { binary: true });
+      const out = buf(d.stdout);
+      if (d.code > 1 || (d.code === 1 && (!out.length || (d.stderr || '').trim()))) throw fail(`cannot diff untracked file ${file}`, d);
+      if (!out.length) continue;
       untracked.push(file);
-      text += d.stdout;
+      parts.push(out);
     }
   }
+  const all = Buffer.concat(parts);
+  const text = all.toString('utf-8');
   const exit = text.trim() ? 0 : 3;
   if (f.json) {
-    return { base, upstream, from_upstream: fromUpstream, tracked: parseDiff(t.stdout).map(x => x.path), untracked, empty: exit === 3 };
+    return { base, upstream, from_upstream: fromUpstream, tracked: parseDiff(tracked.toString('utf-8')).map(x => x.path), untracked, skipped, empty: exit === 3 };
   }
-  return { raw: text, exit };
+  return { raw: Buffer.from(text, 'utf-8').equals(all) ? text : all, exit };
 }
