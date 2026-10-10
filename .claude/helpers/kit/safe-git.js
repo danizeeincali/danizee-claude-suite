@@ -19,18 +19,30 @@
  *       (refstorage=reftable, compatobjectformat, ...) or a format version above 1 is refused (KitExit 2), never
  *       guessed at. extensions.partialclone and worktreeconfig are dropped, so no promisor remote exists;
  *     - HEAD and the per-worktree pseudo refs (ORIG_HEAD, FETCH_HEAD, MERGE_HEAD, ...), refs/ (common dir, overlaid
- *       with the worktree's own refs) and packed-refs, copied at call time — regular files only, symlinks skipped;
+ *       with the worktree's own refs) and packed-refs, copied at call time — regular files only, symlinks below refs/
+ *       skipped. A refs/ (or worktree refs/) that is ITSELF a symlink is refused (KitExit 2): plain git would follow
+ *       it and read refs from a folder outside the repository, and copying it could pull in any tree (/usr, $HOME);
  *     - shallow, a copy of the index (and sharedindex.* files), info/exclude and info/attributes (attributes cannot
  *       name a program when no config defines a driver; work-tree .gitattributes stay as they are).
+ *   COPY LIMITS. Every copied file is lstat'ed, must be a regular file, and is copied with a bounded read that stops at
+ *   its cap, so a sparse file (`truncate -s 1T`, no disk in the repo) cannot fill the temp disk. Defaults, overridable
+ *   with the `limits` option: index and each sharedindex 256 MiB, packed-refs 64 MiB, any other file 64 MiB, 512 MiB
+ *   in all per call, 100000 entries walked under refs/. Over a limit the call is refused (KitExit 2) naming the file.
  *   No hooks dir, no config.worktree, no includes, no remotes. Repository discovery is done here on the file system
  *   (.git dir, gitdir: file, commondir file, bare layout), so git never opens the repo with its own config.
  *
- *   DEFENCE IN DEPTH: every inherited GIT_* variable is removed, no system or global config, no prompts,
+ *   DEFENCE IN DEPTH: every inherited GIT_* variable is removed; no system config (GIT_CONFIG_NOSYSTEM) and no global
+ *   config — GIT_CONFIG_GLOBAL is an empty file, and because git before 2.32 ignores that variable, HOME and
+ *   XDG_CONFIG_HOME also point at an empty private folder for every git child (so ~/.gitconfig and
+ *   $XDG_CONFIG_HOME/git/{config,attributes,ignore} are not read on any version); no prompts,
  *   GIT_NO_LAZY_FETCH, no optional locks, no lfs smudge, closed stdin unless input is given; `-c` overrides switch off
- *   hooks, fsmonitor, the pager, submodule recursion (diff.ignoreSubmodules=all), every transport (protocol.allow and
+ *   hooks, fsmonitor (`core.fsmonitor=` EMPTY: before git 2.36 the value is a hook path, so "false" would run a program
+ *   named false), the pager, submodule recursion (diff.ignoreSubmodules=all), every transport (protocol.allow and
  *   protocol.<each>.allow=never), the external diff, signatures (log.showSignature=false, gpg.program /
  *   gpg.ssh.program / gpg.x509.program = a path that cannot run, format.pretty=medium), and every filter/diff/merge
- *   driver named in the repo's config (config, config.worktree, included files) or in any attributes file. A driver
+ *   driver named in the repo's config (config, config.worktree, included files), info/attributes, core.attributesFile,
+ *   or a work-tree .gitattributes that git would read — listed by the shadow's own `ls-files --cached --others
+ *   --exclude-standard`, so git-ignored trees such as node_modules are never walked. A driver
  *   name that cannot be switched off safely makes the call refuse (KitExit 2). Diff-producing subcommands get
  *   `--no-ext-diff --no-textconv --ignore-submodules=all`, status gets `--ignore-submodules=all`, and
  *   `describe --dirty/--broken` is answered with submodules ignored (describe's own check starts a git inside each
@@ -67,10 +79,12 @@ export const READ_SUBCOMMANDS = Object.freeze([
 ]);
 const DIFFING = new Set(['log', 'show', 'diff', 'diff-tree', 'diff-index', 'diff-files']);
 const DRIVER_NAME = /^[A-Za-z0-9._-]+$/;
-const MAX_DIRS = 20000;
 const MAX_ATTR_BYTES = 4 * 1024 * 1024;
 const MAX_SMALL_FILE = 64 * 1024;
 const INTERNAL_TIMEOUT = 60000;
+const MiB = 1024 * 1024;
+/** Copy limits for the shadow (see COPY LIMITS in the header); each can be overridden through the `limits` option. */
+export const DEFAULT_LIMITS = Object.freeze({ index: 256 * MiB, packedRefs: 64 * MiB, file: 64 * MiB, total: 512 * MiB, entries: 100000 });
 
 const refuse = (msg) => new KitExit(msg, 2);
 
@@ -86,8 +100,12 @@ function nullConfigPath() {
   return emptyConfigFile;
 }
 
-/** baseEnv without any GIT_* variable, plus the hardening variables. Never mutates baseEnv. */
-export function safeGitEnv(baseEnv = process.env) {
+/**
+ * baseEnv without any GIT_* variable, plus the hardening variables. Never mutates baseEnv. With `home` (an empty
+ * private folder), HOME and XDG_CONFIG_HOME point at it too: git < 2.32 ignores GIT_CONFIG_GLOBAL and reads
+ * ~/.gitconfig and $XDG_CONFIG_HOME/git/config instead.
+ */
+export function safeGitEnv(baseEnv = process.env, { home } = {}) {
   const out = {};
   for (const [k, v] of Object.entries(baseEnv || {})) if (!/^GIT_/i.test(k) && v !== undefined) out[k] = v;
   out.GIT_CONFIG_NOSYSTEM = '1';
@@ -96,6 +114,10 @@ export function safeGitEnv(baseEnv = process.env) {
   out.GIT_NO_LAZY_FETCH = '1';
   out.GIT_OPTIONAL_LOCKS = '0';
   out.GIT_LFS_SKIP_SMUDGE = '1';
+  if (home) {
+    out.HOME = home;
+    out.XDG_CONFIG_HOME = home;
+  }
   return out;
 }
 
@@ -304,23 +326,27 @@ async function readCapped(file) {
   return fs.readFile(file, 'utf-8');
 }
 
-async function attributeFiles(top, gitDirs, extra) {
-  const files = [...new Set(gitDirs.map(d => path.join(d, 'info', 'attributes'))), ...extra];
-  if (!top) return files;
-  const queue = [top];
-  let seen = 0;
-  while (queue.length) {
-    const d = queue.pop();
-    if (++seen > MAX_DIRS) throw refuse(`more than ${MAX_DIRS} folders under ${top}; its .gitattributes files cannot all be checked`);
-    let ents;
-    try { ents = await fs.readdir(d, { withFileTypes: true }); } catch { continue; }
-    for (const e of ents) {
-      if (e.name === '.git') continue;
-      if (e.isDirectory()) queue.push(path.join(d, e.name));
-      else if (e.name === '.gitattributes') files.push(path.join(d, e.name));
-    }
+/**
+ * The work-tree .gitattributes files git would read, as the shadow's own index sees them: tracked ones plus untracked
+ * ones outside git-ignored folders (`ls-files --others --exclude-standard` does not descend into an ignored
+ * node_modules). Returns [{ rel, text }]; a tracked file missing from the work tree (deleted, sparse) is read from the
+ * index, as git does. KitExit 1 when git cannot list them (fail closed).
+ */
+async function workTreeAttributes(exec, top) {
+  const r = await exec(['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ':(top,glob)**/.gitattributes'], { cwd: top });
+  if (r.code !== 0) throw new KitExit(`cannot list the .gitattributes files of ${top}: ${(r.stderr || '').trim() || 'git ls-files failed'}`, 1);
+  const out = [];
+  for (const rel of new Set(String(r.stdout).split('\0').filter(Boolean))) {
+    if (path.posix.basename(rel) !== '.gitattributes') continue;
+    const file = path.join(top, ...rel.split('/'));
+    if (await lstatOrNull(file)) { out.push({ rel, text: await readCapped(file) }); continue; }
+    const size = await exec(['cat-file', '-s', `:${rel}`], { cwd: top });
+    if (size.code !== 0) continue; // untracked and gone, or not in the index: git reads nothing either
+    if (Number(String(size.stdout).trim()) > MAX_ATTR_BYTES) throw refuse(`${rel} in the index is larger than ${MAX_ATTR_BYTES} bytes; its filter drivers cannot be checked`);
+    const blob = await exec(['cat-file', 'blob', `:${rel}`], { cwd: top });
+    if (blob.code === 0) out.push({ rel, text: blob.stdout });
   }
-  return files;
+  return out;
 }
 
 /** Kept for API compatibility: there is no cache any more (every call re-reads everything). */
@@ -328,7 +354,7 @@ export function clearSafeGitCache() {}
 
 const NO_PROGRAM = process.platform === 'win32' ? nullConfigPath() : '/dev/null'; // exists, is not executable
 const STATIC_OVERRIDES = [
-  'core.hooksPath=/dev/null', 'core.fsmonitor=false', 'core.pager=cat', 'submodule.recurse=false',
+  'core.hooksPath=/dev/null', 'core.fsmonitor=', 'core.pager=cat', 'submodule.recurse=false',
   'diff.ignoreSubmodules=all', 'status.submoduleSummary=false',
   'protocol.allow=never', ...['file', 'git', 'ssh', 'http', 'https', 'ext'].map(p => `protocol.${p}.allow=never`),
   'diff.external=', 'log.showSignature=false', 'format.pretty=medium', 'credential.helper=',
@@ -349,19 +375,7 @@ async function inspect(dir, ctx) {
   return { loc, fmt, entries, core, top };
 }
 
-async function overridesFor(info) {
-  const { loc, entries } = info;
-  const names = driversFromKeys(entries.map(([k]) => k));
-  const extra = [];
-  for (const [k, v] of entries) {
-    if (k !== 'core.attributesfile' || !v) continue;
-    const expanded = v.startsWith('~/') ? path.join(os.homedir(), v.slice(2)) : v;
-    // git resolves a relative value against the folder it runs in; scan every plausible base.
-    for (const base of [loc.real, loc.top, loc.gitDir, loc.commonDir]) if (base) extra.push(path.resolve(base, expanded));
-  }
-  for (const f of await attributeFiles(loc.top, [loc.gitDir, loc.commonDir], [...new Set(extra)])) {
-    for (const n of driversFromAttributes(await readCapped(f))) names.add(n);
-  }
+function overrideArgs(names) {
   const args = [];
   for (const o of STATIC_OVERRIDES) args.push('-c', o);
   for (const name of [...names].sort()) {
@@ -374,50 +388,145 @@ async function overridesFor(info) {
   return args;
 }
 
+/**
+ * The -c overrides: static switches + every driver named in the config entries, info/attributes, core.attributesFile
+ * and (with a work tree) the .gitattributes files the shadow lists. `shadowExec(args, extra)` runs git in the shadow.
+ */
+async function overridesFor(info, shadowExec) {
+  const { loc, entries } = info;
+  const names = driversFromKeys(entries.map(([k]) => k));
+  const files = [...new Set([loc.gitDir, loc.commonDir].map(d => path.join(d, 'info', 'attributes')))];
+  for (const [k, v] of entries) {
+    if (k !== 'core.attributesfile' || !v) continue;
+    const expanded = v.startsWith('~/') ? path.join(os.homedir(), v.slice(2)) : v;
+    // git resolves a relative value against the folder it runs in; scan every plausible base.
+    for (const base of [loc.real, loc.top, loc.gitDir, loc.commonDir]) if (base) files.push(path.resolve(base, expanded));
+  }
+  for (const f of new Set(files)) for (const n of driversFromAttributes(await readCapped(f))) names.add(n);
+  // validate the config/info names first: the listing below runs git, and must not run with a name we cannot switch off
+  const base = overrideArgs(names);
+  if (!info.top) return base;
+  const listExec = (a, extra) => shadowExec([...base, ...a], extra);
+  for (const { text } of await workTreeAttributes(listExec, info.top)) for (const n of driversFromAttributes(text)) names.add(n);
+  return overrideArgs(names);
+}
+
 async function withScratch(fn) {
   const scratch = await fs.mkdtemp(path.join(os.tmpdir(), 'safe-git-shadow-'));
   try {
     await fs.chmod(scratch, 0o700);
+    await fs.mkdir(path.join(scratch, 'home'), { mode: 0o700 });
     return await fn(scratch);
   } finally {
     await fs.rm(scratch, { recursive: true, force: true });
   }
 }
 
-function makeCtx(git, env, scratch, timeout) {
+function makeCtx(git, env, scratch, timeout, limits) {
   // git config --file still looks for a repository around its cwd: give it an empty folder and a ceiling above it.
-  const cfgEnv = { ...safeGitEnv(env), GIT_CEILING_DIRECTORIES: path.dirname(scratch) };
-  return { git, scratch, cfgEnv, timeout: timeout ?? INTERNAL_TIMEOUT };
+  // HOME / XDG_CONFIG_HOME = the empty private scratch/home for every git child (git < 2.32 ignores GIT_CONFIG_GLOBAL).
+  const home = path.join(scratch, 'home');
+  const cfgEnv = { ...safeGitEnv(env, { home }), GIT_CEILING_DIRECTORIES: path.dirname(scratch) };
+  return { git, env, home, scratch, cfgEnv, timeout: timeout ?? INTERNAL_TIMEOUT, limits: { ...DEFAULT_LIMITS, ...(limits || {}) } };
+}
+
+/** inspect + shadow + overrides for one call. Returns { info, shadow, overrides, exec } where exec runs git in the shadow. */
+async function prepare(dir, ctx) {
+  const info = await inspect(dir, ctx);
+  const shadow = await buildShadow(ctx.scratch, info, ctx.limits);
+  const genv = { ...safeGitEnv(ctx.env, { home: ctx.home }), GIT_DIR: shadow, GIT_OBJECT_DIRECTORY: path.join(info.loc.commonDir, 'objects') };
+  if (info.top) genv.GIT_WORK_TREE = info.top;
+  const raw = async (a, extra = {}) => {
+    const r = await ctx.git(a, { cwd: info.loc.real, env: genv, timeout: ctx.timeout, ...extra });
+    return { stdout: r.stdout, stderr: r.stderr || '', code: r.code };
+  };
+  const overrides = await overridesFor(info, raw);
+  const exec = (a, extra = {}) => raw([...overrides, ...a], extra);
+  return { info, shadow, overrides, exec };
 }
 
 /**
  * The `-c` override argv for the folder (defence in depth; git never reads the repo config through safeGit anyway):
  * static switches plus, for every driver name in its config files (config, config.worktree, included files — read as
- * data) or in any attributes file, empty filter.<n>.{clean,smudge,process}, filter.<n>.required=false, empty
+ * data), info/attributes, core.attributesFile or a .gitattributes the shadow's ls-files lists, empty filter.<n>.{clean,smudge,process}, filter.<n>.required=false, empty
  * diff.<n>.{command,textconv} and merge.<n>.driver. KitExit 2 for a driver name outside [A-Za-z0-9._-] or an
  * unsupported repository format, KitExit 1 when git cannot answer. Computed afresh on every call.
  */
-export async function safeGitConfig(dir, { git = defaultGitRunner, env = process.env, timeout } = {}) {
-  return withScratch(async (scratch) => overridesFor(await inspect(dir, makeCtx(git, env, scratch, timeout))));
+export async function safeGitConfig(dir, { git = defaultGitRunner, env = process.env, timeout, limits } = {}) {
+  return withScratch(async (scratch) => (await prepare(dir, makeCtx(git, env, scratch, timeout, limits))).overrides);
 }
 
 // ---------------------------------------------------------------- the shadow git dir
 
-/** Copy a tree of regular files (symlinks and anything else skipped); a missing source is fine. */
-async function copyTree(src, dst) {
-  let ents;
-  try { ents = await fs.readdir(src, { withFileTypes: true }); } catch { return; }
-  await fs.mkdir(dst, { recursive: true, mode: 0o700 });
-  for (const e of ents) {
-    const s = path.join(src, e.name);
-    const d = path.join(dst, e.name);
-    if (e.isDirectory()) await copyTree(s, d);
-    else if (e.isFile()) await copyIfRegular(s, d);
+const mib = (n) => `${Math.round(n / MiB * 10) / 10} MiB`;
+
+/**
+ * Copy one file into the shadow if it is a regular file (lstat: a symlink or anything else is skipped; a missing
+ * source is fine), refusing (KitExit 2, naming the file) when it is larger than `cap` or would take the call past
+ * limits.total. The copy is a bounded read of an O_NOFOLLOW descriptor, so a file that grows or is swapped after the
+ * size check still cannot write more than the cap. `budget` = { limits, used, entries }. Returns the source stat or null.
+ */
+async function copyCapped(src, dst, cap, budget) {
+  const st = await lstatOrNull(src);
+  if (!st || !st.isFile()) return null;
+  const left = budget.limits.total - budget.used;
+  const tooBig = (size) => refuse(size > cap
+    ? `${src} is ${mib(size)}, over safe-git's ${mib(cap)} limit for this file; refusing to copy it (safeGit's limits option raises it for a repository trusted to be that large)`
+    : `${src} (${mib(size)}) would take this call past safe-git's ${mib(budget.limits.total)} total copy limit; refusing`);
+  if (st.size > cap || st.size > left) throw tooBig(st.size);
+  let fh;
+  try {
+    fh = await fs.open(src, fsSync.constants.O_RDONLY | (fsSync.constants.O_NOFOLLOW || 0) | (fsSync.constants.O_NONBLOCK || 0));
+  } catch (err) {
+    if (err.code === 'ENOENT' || err.code === 'ELOOP') return null;
+    throw err;
+  }
+  const max = Math.min(cap, left);
+  let out;
+  try {
+    const fst = await fh.stat();
+    if (!fst.isFile()) return null;
+    if (fst.size > max) throw tooBig(fst.size);
+    out = await fs.open(dst, 'w', 0o600); // a worktree's own ref may replace the common one
+    const buf = Buffer.alloc(Math.min(MiB, Math.max(1, max + 1)));
+    let total = 0;
+    for (;;) {
+      const { bytesRead } = await fh.read(buf, 0, buf.length, null);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+      if (total > max) throw tooBig(total);
+      await out.write(buf, 0, bytesRead);
+    }
+    budget.used += total;
+    return fst;
+  } finally {
+    await fh.close();
+    if (out) await out.close();
   }
 }
 
-async function copyIfRegular(src, dst) {
-  if (await isRegular(src)) await fs.copyFile(src, dst).catch((err) => { if (err.code !== 'ENOENT') throw err; });
+/**
+ * Copy a tree of regular files (symlinks below the top and anything else skipped, each file capped); a missing source
+ * is fine. A top folder that is itself a symlink is refused (KitExit 2): plain git would follow it out of the repository.
+ */
+async function copyTree(src, dst, budget, label) {
+  const top = await lstatOrNull(src);
+  if (!top) return;
+  if (top.isSymbolicLink()) throw refuse(`${src} (${label}) is a symlink; git would read refs from wherever it points, so safe-git refuses to read this repository`);
+  if (!top.isDirectory()) return;
+  const walk = async (s0, d0) => {
+    let ents;
+    try { ents = await fs.readdir(s0, { withFileTypes: true }); } catch { return; }
+    await fs.mkdir(d0, { recursive: true, mode: 0o700 });
+    for (const e of ents) {
+      if (++budget.entries > budget.limits.entries) throw refuse(`more than ${budget.limits.entries} entries under ${src}; refusing to copy them`);
+      const s = path.join(s0, e.name);
+      const d = path.join(d0, e.name);
+      if (e.isDirectory()) await walk(s, d);
+      else if (e.isFile()) await copyCapped(s, d, budget.limits.file, budget);
+    }
+  };
+  await walk(src, dst);
 }
 
 /**
@@ -425,17 +534,18 @@ async function copyIfRegular(src, dst) {
  * index file as "racily clean" and compares its content. A copy stamped "now" would make a same-size edit made in
  * the same second as the last index write look unchanged.
  */
-async function copyIndex(src, dst) {
+async function copyIndex(src, dst, budget) {
   const st = await fs.lstat(src, { bigint: true }).catch(() => null);
   if (!st || !st.isFile()) return;
-  await copyIfRegular(src, dst);
+  if (!(await copyCapped(src, dst, budget.limits.index, budget))) return;
   const us = (ns) => (Number(ns / 1000n) - 1) / 1e6;
   await fs.utimes(dst, us(st.atimeNs), us(st.mtimeNs)).catch((err) => { if (err.code !== 'ENOENT') throw err; });
 }
 
-/** Build the shadow git dir inside `scratch` (see the header) and return its path. */
-export async function buildShadow(scratch, info) {
+/** Build the shadow git dir inside `scratch` (see the header) and return its path. `limits` as DEFAULT_LIMITS. */
+export async function buildShadow(scratch, info, limits = DEFAULT_LIMITS) {
   const { loc, fmt, core, top } = info;
+  const budget = { limits: { ...DEFAULT_LIMITS, ...limits }, used: 0, entries: 0 };
   const sg = path.join(scratch, 'git');
   await fs.mkdir(sg, { mode: 0o700 });
   await fs.writeFile(path.join(sg, 'config'), shadowConfigText(fmt, core, top === null), { mode: 0o600 });
@@ -453,20 +563,24 @@ export async function buildShadow(scratch, info) {
   }
   await fs.writeFile(path.join(sg, 'HEAD'), head);
 
-  await copyTree(path.join(loc.commonDir, 'refs'), path.join(sg, 'refs'));
-  if (loc.gitDir !== loc.commonDir) await copyTree(path.join(loc.gitDir, 'refs'), path.join(sg, 'refs')); // per-worktree refs
-  await fs.mkdir(path.join(sg, 'refs', 'heads'), { recursive: true });
-  await fs.mkdir(path.join(sg, 'refs', 'tags'), { recursive: true });
-  for (const f of ['packed-refs', 'shallow']) await copyIfRegular(path.join(loc.commonDir, f), path.join(sg, f));
-  for (const f of ['ORIG_HEAD', 'FETCH_HEAD', 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD']) await copyIfRegular(path.join(loc.gitDir, f), path.join(sg, f));
+  // the small, bounded files first, so an oversized one is refused before the refs tree is walked
+  await copyCapped(path.join(loc.commonDir, 'packed-refs'), path.join(sg, 'packed-refs'), budget.limits.packedRefs, budget);
+  await copyCapped(path.join(loc.commonDir, 'shallow'), path.join(sg, 'shallow'), budget.limits.file, budget);
+  for (const f of ['ORIG_HEAD', 'FETCH_HEAD', 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD']) await copyCapped(path.join(loc.gitDir, f), path.join(sg, f), budget.limits.file, budget);
   if (top) {
-    await copyIndex(path.join(loc.gitDir, 'index'), path.join(sg, 'index'));
+    await copyIndex(path.join(loc.gitDir, 'index'), path.join(sg, 'index'), budget);
     let ents = [];
     try { ents = await fs.readdir(loc.gitDir); } catch { /* none */ }
-    for (const n of ents) if (/^sharedindex\.[0-9a-f]+$/.test(n)) await copyIndex(path.join(loc.gitDir, n), path.join(sg, n));
+    for (const n of ents) if (/^sharedindex\.[0-9a-f]+$/.test(n)) await copyIndex(path.join(loc.gitDir, n), path.join(sg, n), budget);
   }
   await fs.mkdir(path.join(sg, 'info'));
-  for (const f of ['exclude', 'attributes']) await copyIfRegular(path.join(loc.commonDir, 'info', f), path.join(sg, 'info', f));
+  if ((await lstatOrNull(path.join(loc.commonDir, 'info')))?.isDirectory()) { // a symlinked info/ is skipped
+    for (const f of ['exclude', 'attributes']) await copyCapped(path.join(loc.commonDir, 'info', f), path.join(sg, 'info', f), budget.limits.file, budget);
+  }
+  await copyTree(path.join(loc.commonDir, 'refs'), path.join(sg, 'refs'), budget, 'refs/');
+  if (loc.gitDir !== loc.commonDir) await copyTree(path.join(loc.gitDir, 'refs'), path.join(sg, 'refs'), budget, "the worktree's refs/"); // per-worktree refs
+  await fs.mkdir(path.join(sg, 'refs', 'heads'), { recursive: true });
+  await fs.mkdir(path.join(sg, 'refs', 'tags'), { recursive: true });
   return sg;
 }
 
@@ -569,21 +683,14 @@ async function describeDirty(exec, plan, timeout) {
 
 /**
  * Run a read-only git command for `dir` against a fresh shadow git dir (see the header).
- * Returns { stdout, stderr, code }. `git` and `env` are injectable; `input` becomes stdin (closed otherwise).
+ * Returns { stdout, stderr, code }. `git` and `env` are injectable; `input` becomes stdin (closed otherwise);
+ * `limits` overrides DEFAULT_LIMITS for the shadow copy.
  */
-export async function safeGit(dir, args, { input, git = defaultGitRunner, env = process.env, timeout } = {}) {
+export async function safeGit(dir, args, { input, git = defaultGitRunner, env = process.env, timeout, limits } = {}) {
   const argv = checkReadArgs(args);
   const dirtyPlan = describeDirtyPlan(argv);
   return withScratch(async (scratch) => {
-    const info = await inspect(dir, makeCtx(git, env, scratch, timeout));
-    const overrides = await overridesFor(info);
-    const shadow = await buildShadow(scratch, info);
-    const genv = { ...safeGitEnv(env), GIT_DIR: shadow, GIT_OBJECT_DIRECTORY: path.join(info.loc.commonDir, 'objects') };
-    if (info.top) genv.GIT_WORK_TREE = info.top;
-    const exec = async (a, extra = {}) => {
-      const r = await git([...overrides, ...a], { cwd: info.loc.real, env: genv, ...extra });
-      return { stdout: r.stdout, stderr: r.stderr || '', code: r.code };
-    };
+    const { exec } = await prepare(dir, makeCtx(git, env, scratch, timeout, limits));
     if (dirtyPlan) return describeDirty(exec, dirtyPlan, timeout);
     return exec(argv, { input, timeout });
   });

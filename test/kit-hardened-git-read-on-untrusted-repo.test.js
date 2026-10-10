@@ -9,7 +9,7 @@ import { KitExit } from '../src/lib/kit/kit-exit.js';
 import {
   safeGit, safeGitEnv, safeGitConfig, checkReadArgs, clearSafeGitCache, defaultGitRunner,
   driversFromConfig, driversFromAttributes, run, READ_SUBCOMMANDS,
-  parseConfigList, allowedCore, repoFormat, describeDirtyPlan
+  parseConfigList, allowedCore, repoFormat, describeDirtyPlan, buildShadow, DEFAULT_LIMITS
 } from '../src/lib/kit/safe-git.js';
 
 const CLEAN_ENV = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
@@ -158,7 +158,9 @@ describe('safe-git — on a real hostile repo', () => {
       for (const v of ['clean', 'smudge', 'process']) assert.ok(set.includes(`filter.${n}.${v}=`), `${n}.${v}`);
       assert.ok(set.includes(`filter.${n}.required=false`));
     }
-    for (const s of ['core.hooksPath=/dev/null', 'core.fsmonitor=false', 'submodule.recurse=false', 'protocol.allow=never', 'diff.external=']) assert.ok(set.includes(s), s);
+    for (const s of ['core.hooksPath=/dev/null', 'core.fsmonitor=', 'submodule.recurse=false', 'protocol.allow=never', 'diff.external=']) assert.ok(set.includes(s), s);
+    // before git 2.36 core.fsmonitor is a hook path: "false" would run a program named false; only EMPTY is off everywhere
+    assert.ok(!set.some(s => /^core\.fsmonitor=./i.test(s)), `fsmonitor override is empty: ${set.filter(s => /fsmonitor/i.test(s))}`);
   });
 
   it('a driver from an included config file is neutralised too', async () => {
@@ -903,5 +905,219 @@ describe('safe-git — shadow git dir: the repository config is never read (revi
     assert.equal(describeDirtyPlan(['describe', '--dirty', '--no-dirty']), null);
     assert.throws(() => describeDirtyPlan(['describe', '--dirty', 'HEAD']), e => e instanceof KitExit && e.code === 1);
     assert.throws(() => describeDirtyPlan(['describe', '--dirty', '--', 'HEAD']), e => e instanceof KitExit && e.code === 1);
+  });
+});
+
+describe('safe-git — review round 3 regressions (copy limits, symlinked refs, ignored trees, HOME, fsmonitor)', () => {
+  let root;
+  before(async () => { root = await fs.mkdtemp(path.join(os.tmpdir(), 'safe-git-r3-')); });
+  after(async () => { await fs.rm(root, { recursive: true, force: true }); });
+
+  async function plainRepo(name) {
+    const dir = path.join(root, name);
+    await fs.mkdir(dir, { recursive: true });
+    sh(dir, ['init', '-q', '.']);
+    await fs.writeFile(path.join(dir, 'f.txt'), 'one\n');
+    sh(dir, ['add', 'f.txt']);
+    sh(dir, ['commit', '-q', '-m', 'init']);
+    return { dir, real: await fs.realpath(dir) };
+  }
+  /** What buildShadow needs, built by hand so the test owns (and can measure) the scratch folder. */
+  const infoFor = (real, gitDir = path.join(real, '.git'), commonDir = gitDir) =>
+    ({ loc: { real, gitDir, commonDir, top: real }, fmt: { version: '0', objectFormat: null }, core: {}, top: real });
+  /** Bytes actually allocated on disk under a folder (sparse-aware). */
+  async function diskUsage(d) {
+    let n = 0;
+    for (const e of await fs.readdir(d, { withFileTypes: true, recursive: true })) {
+      const st = await fs.lstat(path.join(e.parentPath ?? e.path, e.name));
+      n += st.blocks * 512;
+    }
+    return n;
+  }
+  const GiB = 1024 ** 3;
+
+  it('a sparse 2 GiB index and a sparse 2 GiB packed-refs are refused (exit 2) quickly, naming the file, with nothing large written', async () => {
+    for (const [name, file] of [['sparse-index', 'index'], ['sparse-packed', 'packed-refs']]) {
+      const r = await plainRepo(name);
+      const target = path.join(r.real, '.git', file);
+      await fs.appendFile(target, '');
+      await fs.truncate(target, 2 * GiB);
+      assert.ok((await fs.stat(target)).blocks * 512 < 64 * 1024 * 1024, 'setup: the file is sparse');
+      const scratch = await fs.mkdtemp(path.join(root, `${name}-scratch-`));
+      const t0 = Date.now();
+      await assert.rejects(() => buildShadow(scratch, infoFor(r.real)), e => e instanceof KitExit && e.code === 2 && e.message.includes(target), file);
+      assert.ok(Date.now() - t0 < 5000, `${file}: refused quickly (${Date.now() - t0} ms)`);
+      assert.ok(await diskUsage(scratch) < 1024 * 1024, `${file}: under 1 MiB written into the shadow, got ${await diskUsage(scratch)}`);
+      assert.equal(await exists(path.join(scratch, 'git', file)), false, `${file}: no partial copy`);
+      // end to end: refused before any git runs against a shadow
+      const withDir = [];
+      const git = (a, o) => { if (o.env?.GIT_DIR) withDir.push(a); return defaultGitRunner(a, o); };
+      const t1 = Date.now();
+      await assert.rejects(() => safeGit(r.dir, ['rev-parse', 'HEAD'], { git }), e => e instanceof KitExit && e.code === 2 && new RegExp(file).test(e.message));
+      assert.ok(Date.now() - t1 < 5000, `${file}: safeGit refused quickly`);
+      assert.deepEqual(withDir, [], `${file}: no git ran against the shadow`);
+    }
+  });
+
+  it('per-file and total copy limits are enforced on real (non-sparse) files and can be raised through limits', async () => {
+    const r = await plainRepo('limits');
+    sh(r.dir, ['pack-refs', '--all']);
+    const packed = path.join(r.real, '.git', 'packed-refs');
+    await fs.appendFile(packed, `# ${'x'.repeat(2 * 1024 * 1024)}\n`);
+    assert.deepEqual(DEFAULT_LIMITS, { index: 256 * 1024 * 1024, packedRefs: 64 * 1024 * 1024, file: 64 * 1024 * 1024, total: 512 * 1024 * 1024, entries: 100000 });
+    await assert.rejects(() => safeGit(r.dir, ['rev-parse', 'HEAD'], { limits: { packedRefs: 1024 * 1024 } }),
+      e => e instanceof KitExit && e.code === 2 && e.message.includes(packed) && /limit/.test(e.message));
+    await assert.rejects(() => safeGit(r.dir, ['rev-parse', 'HEAD'], { limits: { total: 1024 * 1024 } }),
+      e => e instanceof KitExit && e.code === 2 && /total copy limit/.test(e.message));
+    const head = sh(r.dir, ['rev-parse', 'HEAD']).stdout.trim();
+    assert.equal((await safeGit(r.dir, ['rev-parse', 'HEAD'])).stdout.trim(), head, 'within the default limits it reads');
+  });
+
+  it('control: plain git follows a symlinked refs/ to an outside folder and lists a ref that lives there', async () => {
+    const r = await plainRepo('refs-link-control');
+    const outside = path.join(root, 'refs-link-control-outside');
+    await fs.rename(path.join(r.real, '.git', 'refs'), outside);
+    await fs.symlink(outside, path.join(r.real, '.git', 'refs'));
+    const head = sh(r.dir, ['rev-parse', 'HEAD']).stdout.trim();
+    await fs.writeFile(path.join(outside, 'heads', 'SECRET_from_outside'), `${head}\n`);
+    assert.match(sh(r.dir, ['for-each-ref']).stdout, /SECRET_from_outside/);
+  });
+
+  it('a refs/ symlinked to an outside folder is refused (exit 2) and nothing from it reaches the shadow; a symlink below refs/ is skipped', async () => {
+    const r = await plainRepo('refs-link');
+    const head = sh(r.dir, ['rev-parse', 'HEAD']).stdout.trim();
+    const outside = path.join(root, 'refs-link-outside');
+    await fs.rename(path.join(r.real, '.git', 'refs'), outside);
+    await fs.symlink(outside, path.join(r.real, '.git', 'refs'));
+    await fs.writeFile(path.join(outside, 'heads', 'SECRET_from_outside'), `${head}\n`);
+    const scratch = await fs.mkdtemp(path.join(root, 'refs-link-scratch-'));
+    await assert.rejects(() => buildShadow(scratch, infoFor(r.real)), e => e instanceof KitExit && e.code === 2 && /symlink/.test(e.message));
+    const copied = (await fs.readdir(scratch, { recursive: true })).map(String);
+    assert.ok(!copied.some(f => f.includes('SECRET_from_outside')), `the outside file never appears in the shadow: ${copied}`);
+    const withDir = [];
+    const git = (a, o) => { if (o.env?.GIT_DIR) withDir.push(a); return defaultGitRunner(a, o); };
+    await assert.rejects(() => safeGit(r.dir, ['for-each-ref'], { git }), e => e instanceof KitExit && e.code === 2 && /refs/.test(e.message) && /symlink/.test(e.message));
+    assert.deepEqual(withDir, []);
+
+    // a symlinked folder BELOW refs/ is skipped (not followed), the rest reads
+    const r2 = await plainRepo('refs-sublink');
+    const out2 = path.join(root, 'refs-sublink-outside');
+    await fs.mkdir(out2);
+    await fs.writeFile(path.join(out2, 'SECRET_from_outside'), `${head}\n`);
+    await fs.symlink(out2, path.join(r2.real, '.git', 'refs', 'heads', 'linked'));
+    const list = await safeGit(r2.dir, ['for-each-ref', '--format=%(refname)']);
+    assert.equal(list.code, 0, list.stderr);
+    assert.match(list.stdout, /refs\/heads\/(main|master)/);
+    assert.doesNotMatch(list.stdout, /SECRET_from_outside/);
+  });
+
+  it("a linked worktree whose own refs/ is a symlink is refused (exit 2)", async () => {
+    const main = await plainRepo('wt-refs-link');
+    const wt = path.join(root, 'wt-refs-link-wt');
+    assert.equal(sh(main.dir, ['worktree', 'add', '-q', '-b', 'side', wt]).status, 0);
+    const wtGit = path.join(main.real, '.git', 'worktrees', path.basename(wt));
+    const outside = path.join(root, 'wt-refs-link-outside');
+    await fs.mkdir(path.join(outside, 'bisect'), { recursive: true });
+    await fs.writeFile(path.join(outside, 'bisect', 'SECRET_from_outside'), `${sh(main.dir, ['rev-parse', 'HEAD']).stdout.trim()}\n`);
+    await fs.rm(path.join(wtGit, 'refs'), { recursive: true, force: true });
+    await fs.symlink(outside, path.join(wtGit, 'refs'));
+    await assert.rejects(() => safeGit(wt, ['rev-parse', 'HEAD']), e => e instanceof KitExit && e.code === 2 && /worktree's refs/.test(e.message));
+  });
+
+  it('the number of entries walked under refs/ is capped (exit 2 past limits.entries)', async () => {
+    const r = await plainRepo('refs-many');
+    for (let i = 0; i < 12; i++) sh(r.dir, ['branch', `b${i}`]);
+    await assert.rejects(() => safeGit(r.dir, ['rev-parse', 'HEAD'], { limits: { entries: 8 } }),
+      e => e instanceof KitExit && e.code === 2 && /more than 8 entries/.test(e.message));
+    assert.equal((await safeGit(r.dir, ['rev-parse', 'b11'])).code, 0, 'the default limit reads them');
+  });
+
+  it('a checkout with >20000 folders in a git-ignored node_modules reads fine; .gitattributes in it are not read, tracked/untracked ones elsewhere are', async () => {
+    const r = await plainRepo('node-modules');
+    await fs.writeFile(path.join(r.real, '.gitignore'), 'node_modules/\n');
+    await fs.mkdir(path.join(r.real, 'src'));
+    await fs.writeFile(path.join(r.real, 'src', '.gitattributes'), '*.js filter=tracked\n');
+    sh(r.dir, ['add', '.gitignore', 'src/.gitattributes']);
+    sh(r.dir, ['commit', '-q', '-m', 'ignore']);
+    await fs.mkdir(path.join(r.real, 'lib'));
+    await fs.writeFile(path.join(r.real, 'lib', '.gitattributes'), '*.c filter=untracked\n');
+    const nm = path.join(r.real, 'node_modules');
+    for (let i = 0; i < 210; i++) {
+      await Promise.all(Array.from({ length: 101 }, (_, j) => fs.mkdir(path.join(nm, `p${i}`, `d${j}`), { recursive: true })));
+    }
+    // a name safe-git would refuse if it read this file: it must not be read (git never reads it for an ignored tree)
+    await fs.writeFile(path.join(nm, 'p0', '.gitattributes'), '* filter=bad;name\n');
+    const head = sh(r.dir, ['rev-parse', 'HEAD']).stdout.trim();
+    const t0 = Date.now();
+    const out = await safeGit(r.dir, ['rev-parse', 'HEAD']);
+    assert.equal(out.code, 0, out.stderr);
+    assert.equal(out.stdout.trim(), head);
+    assert.equal((await safeGit(r.dir, ['status', '--porcelain'])).stdout, '?? lib/\n');
+    const args = await safeGitConfig(r.dir);
+    assert.ok(args.includes('filter.tracked.clean='), 'a tracked nested .gitattributes is still read');
+    assert.ok(args.includes('filter.untracked.clean='), 'an untracked, not ignored .gitattributes is still read');
+    assert.ok(!args.some(a => a.includes('bad;name')));
+    assert.ok(Date.now() - t0 < 30000, `three calls in ${Date.now() - t0} ms`);
+  });
+
+  it('a tracked .gitattributes deleted from the work tree is read from the index (as git does)', async () => {
+    const r = await plainRepo('attr-index');
+    await fs.writeFile(path.join(r.real, '.gitattributes'), '* filter=fromindex\n');
+    sh(r.dir, ['add', '.gitattributes']);
+    sh(r.dir, ['commit', '-q', '-m', 'attrs']);
+    await fs.rm(path.join(r.real, '.gitattributes'));
+    assert.ok((await safeGitConfig(r.dir)).includes('filter.fromindex.clean='));
+  });
+
+  it('every git child runs with HOME and XDG_CONFIG_HOME at an empty private folder, GIT_CONFIG_GLOBAL kept', async () => {
+    const r = await plainRepo('home-env');
+    const seen = [];
+    const git = (a, o) => {
+      seen.push({ a, home: o.env.HOME, xdg: o.env.XDG_CONFIG_HOME, global: o.env.GIT_CONFIG_GLOBAL,
+        homeIsDir: fsSync.statSync(o.env.HOME).isDirectory(), homeEntries: fsSync.readdirSync(o.env.HOME),
+        homeMode: fsSync.statSync(o.env.HOME).mode & 0o777 });
+      return defaultGitRunner(a, o);
+    };
+    const realHome = path.join(root, 'home-env-realhome');
+    await fs.mkdir(realHome);
+    await fs.writeFile(path.join(r.real, 'new.txt'), 'n\n');
+    const out = await safeGit(r.dir, ['status', '--porcelain'], { git, env: { ...CLEAN_ENV, HOME: realHome, XDG_CONFIG_HOME: path.join(realHome, '.config') } });
+    assert.equal(out.code, 0, out.stderr);
+    assert.ok(seen.length >= 3, 'config read, ls-files and status all went through the runner');
+    for (const s of seen) {
+      assert.notEqual(s.home, realHome, s.a.join(' '));
+      assert.equal(s.xdg, s.home, s.a.join(' '));
+      assert.equal(s.global, '/dev/null');
+      assert.ok(s.homeIsDir);
+      assert.deepEqual(s.homeEntries, [], `${s.a.join(' ')}: HOME is empty`);
+      assert.equal(s.homeMode, 0o700);
+    }
+    assert.equal(await exists(seen[0].home), false, 'the private HOME is removed with the shadow');
+    const env = safeGitEnv({ HOME: '/h', XDG_CONFIG_HOME: '/x' }, { home: '/empty' });
+    assert.equal(env.HOME, '/empty');
+    assert.equal(env.XDG_CONFIG_HOME, '/empty');
+    assert.equal(env.GIT_CONFIG_GLOBAL, '/dev/null');
+  });
+
+  it('the caller\'s $XDG_CONFIG_HOME/git/ignore is not read (what git < 2.32 would read through HOME despite GIT_CONFIG_GLOBAL)', async () => {
+    const r = await plainRepo('home-ignore');
+    const home = path.join(root, 'home-ignore-home');
+    await fs.mkdir(path.join(home, '.config', 'git'), { recursive: true });
+    await fs.writeFile(path.join(home, '.config', 'git', 'ignore'), '*.txt\n');
+    await fs.writeFile(path.join(r.real, 'new.txt'), 'n\n');
+    const env = { ...CLEAN_ENV, HOME: home, XDG_CONFIG_HOME: path.join(home, '.config') };
+    assert.equal(sh(r.dir, ['status', '--porcelain'], env).stdout, '', 'control: plain git with that HOME hides new.txt');
+    assert.equal((await safeGit(r.dir, ['status', '--porcelain'], { env })).stdout, '?? new.txt\n');
+  });
+
+  it('core.fsmonitor override is empty (not "false", a program name on git 2.16-2.35) and git accepts it', async () => {
+    const r = await plainRepo('fsmonitor-empty');
+    const args = await safeGitConfig(r.dir);
+    const fsm = args.filter((a, i) => args[i - 1] === '-c' && /^core\.fsmonitor=/i.test(a));
+    assert.deepEqual(fsm, ['core.fsmonitor=']);
+    await fs.writeFile(path.join(r.real, 'f.txt'), 'two\n');
+    const st = await safeGit(r.dir, ['status', '--porcelain']);
+    assert.equal(st.code, 0, st.stderr);
+    assert.equal(st.stdout, ' M f.txt\n');
   });
 });
