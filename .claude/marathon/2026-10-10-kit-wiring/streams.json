@@ -11,10 +11,10 @@
       "name": "diff-range",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "review round 7 (opus); clean closes the stream",
+      "next": "fix round 7 (sonnet) on 2 medium + 1 low, then review round 8",
       "tasks": [],
       "isolation": "../danizee-claude-suite-diff-range",
-      "phase": "review",
+      "phase": "fix",
       "skill": "w-plan-tdd-swarm",
       "base": "5b9822f178da0836d19d91de471e0e2a35f99150"
     },
