@@ -284,7 +284,7 @@ describe('fetch — cloneRepo', () => {
     const git = (args, cwd, env) => {
       calls.push({ args, cwd, env });
       if (args[0] === 'clone') return '';
-      if (args[0] === 'rev-parse') return 'abcdef1234567890abcdef1234567890abcdef12\n';
+      if (args.includes('rev-parse')) return 'abcdef1234567890abcdef1234567890abcdef12\n';
       throw new Error('unexpected ' + args.join(' '));
     };
     const log = [];
@@ -302,8 +302,9 @@ describe('fetch — cloneRepo', () => {
     assert.equal(clone[clone.length - 1], dest);
     assert.equal(calls[0].env?.GIT_TERMINAL_PROMPT, '0');
     assert.equal(calls[0].env?.GIT_DIR, undefined);
-    assert.deepEqual(calls[1].args, ['rev-parse', 'HEAD']);
-    assert.equal(calls[1].cwd, dest);
+    // the plain runner names the clone with --git-dir and runs from its parent folder, never inside the clone
+    assert.deepEqual(calls[1].args, ['--git-dir', path.join(dest, '.git'), 'rev-parse', 'HEAD']);
+    assert.equal(calls[1].cwd, path.dirname(dest));
     assert.equal(log.length, 1);
     assert.equal(log[0].kind, 'git');
     assert.equal(log[0].host, 'github.com');
@@ -330,7 +331,7 @@ describe('fetch — cloneRepo', () => {
       const st = await fs.stat(env.HOME);
       seen.push({ args, home: env.HOME, xdg: env.XDG_CONFIG_HOME, isDir: st.isDirectory(), entries: await fs.readdir(env.HOME) });
       if (args[0] === 'clone') return '';
-      if (args[0] === 'rev-parse') return 'abcdef1234567890abcdef1234567890abcdef12\n';
+      if (args.includes('rev-parse')) return 'abcdef1234567890abcdef1234567890abcdef12\n';
       throw new Error('unexpected ' + args.join(' '));
     };
     const dest = path.join(os.tmpdir(), `bbs-clone-home-${Date.now()}`);
@@ -385,7 +386,7 @@ describe('fetch — cloneRepo', () => {
     }
     for (const ref of ['ssh://git@github.com/a/b.git', 'git@github.com:a/b.git']) {
       const calls = [];
-      const git = (args) => { calls.push(args); return args[0] === 'rev-parse' ? 'abcdef1234567890abcdef1234567890abcdef12\n' : ''; };
+      const git = (args) => { calls.push(args); return args.includes('rev-parse') ? 'abcdef1234567890abcdef1234567890abcdef12\n' : ''; };
       const dest = path.join(os.tmpdir(), `bbs-clone-ok-${Date.now()}-${Math.random().toString(16).slice(2)}`);
       await cloneRepo(ref, dest, { git, lookup: publicLookup, onEgress: () => {} });
       assert.equal(calls[0][0], 'clone', `${ref} is accepted`);
@@ -394,7 +395,7 @@ describe('fetch — cloneRepo', () => {
 
   it('passes a timeout (10x timeoutMs) to the git runner for the clone; the default runner turns a timeout into an error naming it', async () => {
     const seen = [];
-    const git = (args, cwd, env, opts) => { seen.push({ args, opts }); return args[0] === 'rev-parse' ? 'abcdef1234567890abcdef1234567890abcdef12\n' : ''; };
+    const git = (args, cwd, env, opts) => { seen.push({ args, opts }); return args.includes('rev-parse') ? 'abcdef1234567890abcdef1234567890abcdef12\n' : ''; };
     const dest = path.join(os.tmpdir(), `bbs-clone-to-${Date.now()}`);
     await cloneRepo('https://github.com/a/b.git', dest, { git, lookup: publicLookup, onEgress: () => {}, timeoutMs: 1234 });
     assert.equal(seen[0].opts?.timeout, 12340);

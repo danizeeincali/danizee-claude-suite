@@ -5,7 +5,8 @@
  * `run` returns a JSON-serialisable result or throws a KitExit. Output is JSON on stdout, errors on stderr.
  * Built from ideas audited by /w-bbs (run 2026-10-10-openqodex-2); no foreign code.
  *
- * Exit codes: 0 ok · 1 invalid input / broken state · 2 policy refusal (the verb said no).
+ * Exit codes: 0 ok · 1 invalid input / broken state · 2 policy refusal (the verb said no) · any other code a verb
+ * returns as `exit` in its result and documents in its usage (safe-git: 3 = git ran and failed).
  */
 
 import fs from 'fs/promises';
