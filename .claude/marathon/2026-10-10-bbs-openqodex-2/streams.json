@@ -29,10 +29,13 @@
     },
     {
       "name": "lens-catalog-file-triggered-checks",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/lens-catalog-file-triggered-checks.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract tests and module",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-lens-catalog-file-triggered-checks",
+      "phase": "build",
+      "base": "ddd4b25dc59076380d88a2ff7287b9f28121e831"
     },
     {
       "name": "hardened-git-read-on-untrusted-repo",
@@ -91,5 +94,14 @@
       "tasks": []
     }
   ],
-  "handoff": null
+  "handoff": {
+    "ts": "2026-10-10T05:06:45.604Z",
+    "trigger": "auto",
+    "branch": "claude/project-thread-p9gbyo",
+    "commit": "ddd4b25",
+    "uncommitted": 3,
+    "tasks": [],
+    "context_tokens": 382786,
+    "context_pct": 38.3
+  }
 }

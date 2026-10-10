@@ -28,3 +28,4 @@
 {"helper_id":"817a5188-6219-4e0a-b708-d95fb4450f1a","tokens":77542,"outcome":"green","event":"done","id":"5675f3d0-afab-44dd-9eb1-f5a82ba6ee04","ts":"2026-10-10T05:02:47.949Z"}
 {"role":"review","model":"opus","stream":"secret-redaction-by-value-and-fingerprin","budget":150000,"event":"spawn","id":"c7126f76-19cd-40d8-992d-919df2eaf055","ts":"2026-10-10T05:02:48.858Z"}
 {"helper_id":"c7126f76-19cd-40d8-992d-919df2eaf055","tokens":71053,"outcome":"green","event":"done","id":"8f1a3114-6c77-4220-8dc5-280b1d3e2a99","ts":"2026-10-10T05:03:43.114Z"}
+{"role":"build","model":"sonnet","stream":"lens-catalog-file-triggered-checks","budget":150000,"event":"spawn","id":"92f7d483-df16-4230-ade9-801881ad2f08","ts":"2026-10-10T05:04:36.361Z"}
