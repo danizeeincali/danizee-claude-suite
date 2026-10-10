@@ -1,11 +1,11 @@
 # Marathon 2026-10-10-kit-wiring
 
 - State: RUNNING
-- Budget: 5,474,440 / 10,000,000 tokens
+- Budget: 5,584,440 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 11/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "sweep-foreign-and-logs" (next: port the shipped RuFlo w-swarm into the generator so copy equals generator, then 4.5 round 1) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
+- Next for you: Continue stream "sweep-foreign-and-logs" (next: 4.5 round 1 opus review) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
 - Last handoff: 2026-10-10T21:03:09.812Z (auto) on claude/project-thread-vootem@41dd24c, 0 uncommitted, tasks: none
 
 ## Streams
@@ -18,7 +18,7 @@
 | marathon | ../danizee-claude-suite-marathon | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | /w-plan-tdd-swarm · review | done; compounded via /bc |  | 0 |
 | bbs | ../danizee-claude-suite-bbs | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | /w-plan-tdd-swarm · done | /bc write-up |  | 0 |
 | sweep-commits | ../danizee-claude-suite-sweep-commits | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | done | /bc write-up |  | 0 |
-| sweep-foreign-and-logs | ../danizee-claude-suite-sweep-foreign-and-logs | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | clean 0/2 | build | port the shipped RuFlo w-swarm into the generator so copy equals generator, then 4.5 round 1 |  | 0 |
+| sweep-foreign-and-logs | ../danizee-claude-suite-sweep-foreign-and-logs | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | clean 0/2 | review | 4.5 round 1 opus review |  | 0 |
 
 ## Finish line
 
@@ -42,7 +42,7 @@
 | sweep-commits: green unit runs in a row | build | met | 7 | at_least 1 |
 | sweep-commits: clean reviews in a row | build | met | 7 | at_least 2 |
 | sweep-commits: open high findings | build | met | 0 | at_most 0 |
-| sweep-foreign-and-logs: green unit runs in a row | build | met | 1 | at_least 1 |
+| sweep-foreign-and-logs: green unit runs in a row | build | met | 2 | at_least 1 |
 | sweep-foreign-and-logs: clean reviews in a row | build | failing | 0 | at_least 2 |
 | sweep-foreign-and-logs: open high findings | build | met | 0 | at_most 0 |
 | Repo copies under .claude/commands/.shortcuts equal the generator output | build | failing | — | is true |

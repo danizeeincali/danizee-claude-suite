@@ -76,11 +76,11 @@
       "name": "sweep-foreign-and-logs",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "port the shipped RuFlo w-swarm into the generator so copy equals generator, then 4.5 round 1",
+      "next": "4.5 round 1 opus review",
       "tasks": [],
       "isolation": "../danizee-claude-suite-sweep-foreign-and-logs",
       "base": "38552ec51f19e978f3b95bc47716950676a33fa9",
-      "phase": "build"
+      "phase": "review"
     }
   ],
   "handoff": {

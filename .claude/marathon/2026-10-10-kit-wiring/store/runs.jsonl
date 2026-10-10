@@ -56,3 +56,4 @@
 {"kind":"unit","status":"green","stream":"sweep-commits","commit":"d6fa12d","id":"ba924288-98da-463f-b5e9-d8b8e965beee","ts":"2026-10-10T23:01:03.036Z"}
 {"kind":"unit","status":"green","stream":"sweep-commits","commit":"38552ec","id":"98280f19-4d64-4ee0-a613-5026d705e04e","ts":"2026-10-10T23:09:35.892Z"}
 {"kind":"unit","status":"green","stream":"sweep-foreign-and-logs","commit":"94c7f56","id":"458146be-6ccc-41a5-97e2-5f8de8cebec4","ts":"2026-10-10T23:22:33.931Z"}
+{"kind":"unit","status":"green","stream":"sweep-foreign-and-logs","commit":"d67fe41","id":"39afda53-2384-4231-9ab0-b9a01859126f","ts":"2026-10-10T23:32:56.014Z"}
