@@ -15,14 +15,17 @@ Turn a half-baked idea into a well-built feature through deep interviewing + Ful
 
 Use TaskCreate NOW to create todos for ALL phases:
 1. Search for past solutions
-2. Interview to refine idea
-3. Save refined spec
-4. Plan architecture
-5. Write spec/acceptance criteria
-6. Write ALL tests (must fail)
-7. Build implementation (tests pass)
-8. Run full review
-9. Compound solution
+2. Look up callers of every symbol to be changed or removed (`callers --symbol`, part of Search)
+3. Interview to refine idea
+4. Save refined spec
+5. Plan architecture
+6. Write spec/acceptance criteria
+7. Write ALL tests (must fail)
+8. Build implementation (tests pass)
+9. Run full review, including Code Analysis (lenses, graph, impact)
+10. Verify
+11. Scrub and receipt
+12. Compound solution
 
 ⚠️ VIOLATION: Any action before TaskCreate = restart workflow
 
@@ -125,6 +128,13 @@ If this task involves UI, frontend, or visual changes:
 
 If agent-browser is not available, prompt: `npx playwright install`
 Skip this block for non-UI tasks.
+
+**🔗 CALLERS (file:line targets for symbols that will be changed or removed):**
+For every file:line target this search produces for a symbol that will be changed or removed, ask the kit who calls it, as `callers --symbol <file>:<name>` with the path relative to the repository top:
+```bash
+node .claude/helpers/kit/cli.js callers --symbol src/file.js:name
+```
+Carry each symbol's callers, `floor`, `reasons` and `sentences` forward to the later phases, printing the `sentences` as they are. Zero callers with `floor: true` is never "unused": the floor means same-name calls, calls through a value, interface dispatch or unread files may hide callers, so check those by hand. Exit 0 printed the entry; exit 1 is wrong input or a broken state: report it, never read it as "no callers"; exit 2 is a refusal: stop that step and report it as printed. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
 
 **REQUIRED OUTPUT:**
 - List of past solutions (0+ items with memory keys)
@@ -305,6 +315,28 @@ If this task involves UI, frontend, or visual changes:
 If agent-browser is not available, prompt: `npx playwright install`
 Skip this block for non-UI tasks.
 
+**🔎 Code Analysis (lenses, graph, impact over the change under review):**
+Run these three, in order, over the range printed by `diff-range` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files). Each writes the range to its own temp file. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+1. Lenses: which review rules apply to the changed files.
+```bash
+D=$(mktemp); node .claude/helpers/kit/cli.js diff-range > "$D"; RC=$?
+case $RC in 0) node .claude/helpers/kit/cli.js lenses --diff "$D"; RC=$?;; 3) echo "no change to review";; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; rm -f "$D"; (exit $RC)
+```
+2. Graph: calls around the changed files (JS/TS source only, stops at a time budget).
+```bash
+D=$(mktemp); node .claude/helpers/kit/cli.js diff-range > "$D"; RC=$?
+case $RC in 0) node .claude/helpers/kit/cli.js graph --diff "$D" --budget-ms 20000 --max-parses 300; RC=$?;; 3) echo "no change to review";; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; rm -f "$D"; (exit $RC)
+```
+3. Impact: what depends on the change. The base is resolved once into `B` and given to both `diff-range` and `impact` so they cannot disagree.
+```bash
+B=$(node .claude/helpers/kit/cli.js diff-range --base-only) || { echo "diff-range --base-only failed: the base was not resolved" >&2; B=; }
+if [ -z "$B" ]; then RC=1; else D=$(mktemp); node .claude/helpers/kit/cli.js diff-range --base "$B" > "$D"; RC=$?
+case $RC in 0) node .claude/helpers/kit/cli.js impact --diff "$D" --base "$B"; RC=$?;; 3) echo "no change to review";; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; rm -f "$D"; fi; (exit $RC)
+```
+How to read the results: each entry in `fired` (lenses) has a `name`, the `files` it matched and a `body` to apply as an extra check on those files: add its findings to the table below, and mention a non-empty `capped` list. For the graph, state `partial` and every `not_read` entry as they are; when `partial` is true the graph is a floor, so never write "nothing else calls this" from it. For impact, check every entry of `removed_with_live_callers` (a removal with a caller left behind is a defect until shown otherwise), the `risk` level with its `reasons`, and every row of `cuts`; when `risk.lower_bound` is true or `cuts` is not empty the level is a floor, never write "nothing else is affected". Print each symbol's `sentences` as they are; a symbol with `floor: true` and no callers found is not unused and a removed one is not safe to remove.
+Exit 3 from `diff-range` means an empty range: report "no change to review", never a failure and never "no lens applies". Any other non-zero exit is wrong input or a broken state: report it, never skip the step. Exit 2 means `diff-range` refused the repository (for example an include in its own config): report the refusal as printed. If `diff-range` itself fails the step prints "diff-range failed" and the verb does not run: report that the change was not analysed, never "nothing found".
+
 **REQUIRED OUTPUT:**
 | Category | Finding | Severity |
 |----------|---------|----------|
@@ -337,6 +369,22 @@ Skip this block for non-UI tasks.
 - PASS → proceed to next phase
 - FAIL + retries remaining → log failure reason, fix the issue, re-verify
 - FAIL + max retries exceeded → escalate to user with AskUserQuestion
+
+---
+
+### 🔒 CLOSING STEP: Scrub and receipt
+After Verification passes and before Compound, scan the tracked files as they are on disk for secrets, then record the review verdict. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+```bash
+node .claude/helpers/kit/cli.js scrub --worktree
+```
+Exit 0 clean (or no pattern file is configured: then nothing was scanned, say so). Exit 2 means hits or an incomplete scan: list them as printed and stop, do not commit. Exit 1 is wrong input or a broken state: report it, never read it as clean.
+
+Then record the counts from the findings table, with the real finding counts in place of the numbers (add `--incomplete` if any category was skipped). Use the form that matches the verdict:
+```
+node .claude/helpers/kit/cli.js push-gate receipt --verdict pass --high 0 --medium 0 --low 0
+node .claude/helpers/kit/cli.js push-gate receipt --verdict fail --high 1 --medium 2 --low 0
+```
+Exit 0 means the receipt was written; exit 1 is wrong input or a broken state and exit 2 a refused receipt store: report either as printed. Then tell the user: run `node .claude/helpers/kit/cli.js push-gate check` before pushing (same `--base`, or none, used for the receipt). It only abstains, asks or denies; it never skips their permission prompt.
 
 ---
 
@@ -392,7 +440,7 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 ## Completion Checklist
 
 Before marking workflow complete, verify ALL boxes:
-- [ ] TaskCreate used at start with all 9 phases
+- [ ] TaskCreate used at start with all 12 phases
 - [ ] All checkpoints completed
 - [ ] Checkpoints 4-7 completed (auto-proceed)
 - [ ] Interview conducted with multiple questions
@@ -400,6 +448,9 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] All required outputs generated
 - [ ] All tests pass
 - [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
+- [ ] Callers looked up for changed/removed symbols (Search)
+- [ ] Code Analysis run (lenses, graph, impact)
+- [ ] Scrub and receipt step executed
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
