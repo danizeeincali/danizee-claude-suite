@@ -130,3 +130,6 @@
 {"key":"packaged_change-blast-radius-walk","value":true,"id":"3c61979a-50ac-45ee-88d8-a5208de3532e","ts":"2026-10-10T11:41:13.790Z"}
 {"key":"egress_zero_change-blast-radius-walk","value":true,"id":"a53a7017-6d24-4727-968a-2d27722eaeea","ts":"2026-10-10T11:41:13.933Z"}
 {"key":"callers_change-blast-radius-walk","value":1,"id":"db754d27-52eb-4eff-82d2-93bab89f45a4","ts":"2026-10-10T11:41:14.060Z"}
+{"key":"packaged_caller-floor-disclosure","value":true,"id":"9e2c68f8-87c2-4614-890c-2e3446453da1","ts":"2026-10-10T12:08:36.619Z"}
+{"key":"egress_zero_caller-floor-disclosure","value":true,"id":"1bc97429-3af8-4f12-ab61-36bf1a639e3f","ts":"2026-10-10T12:08:36.755Z"}
+{"key":"callers_caller-floor-disclosure","value":2,"id":"2893d693-2d77-4246-b83c-b362dbe431be","ts":"2026-10-10T12:08:36.889Z"}
