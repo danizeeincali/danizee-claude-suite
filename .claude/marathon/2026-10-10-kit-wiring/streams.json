@@ -20,9 +20,9 @@
     },
     {
       "name": "pt",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "checking review (round 4) of the round-3 fixes running; then close and /bc",
+      "next": "done; compounded via /bc",
       "tasks": [],
       "isolation": "../danizee-claude-suite-pt",
       "phase": "review",
@@ -31,10 +31,14 @@
     },
     {
       "name": "bc",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "worktree, wire scrub before commits and push-gate check before Phase 3",
-      "tasks": []
+      "next": "4.1 budget, then build: scrub before commits, push-gate check at Phase 3, never-abort clause, redact in solution doc",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-bc",
+      "phase": "build",
+      "skill": "w-plan-tdd-swarm",
+      "base": "15c224cf666451c6babd935d83cad59185459320"
     },
     {
       "name": "marathon",

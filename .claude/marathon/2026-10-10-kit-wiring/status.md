@@ -1,11 +1,11 @@
 # Marathon 2026-10-10-kit-wiring
 
 - State: RUNNING
-- Budget: 1,726,440 / 10,000,000 tokens
+- Budget: 1,671,440 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
-- Gate (run-wide, all streams): 6/2 clean reviews — build gate not met, full gate not met
+- Gate (run-wide, all streams): 7/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "pt" (next: checking review (round 4) of the round-3 fixes running; then close and /bc) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
+- Next for you: Continue stream "bc" (next: 4.1 budget, then build: scrub before commits, push-gate check at Phase 3, never-abort clause, redact in solution doc) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
 - Last handoff: 2026-10-10T18:17:14.221Z (auto) on claude/project-thread-vootem@690cc36, 5 uncommitted, tasks: none
 
 ## Streams
@@ -13,8 +13,8 @@
 | Stream | Isolation | Plan | State | Gate | Phase | Next | Tasks | Escapes |
 |---|---|---|---|---|---|---|---|---|
 | diff-range | ../danizee-claude-suite-diff-range | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | /w-plan-tdd-swarm · review | done; compounded via /bc |  | 0 |
-| pt | ../danizee-claude-suite-pt | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | met | /w-plan-tdd-swarm · review | checking review (round 4) of the round-3 fixes running; then close and /bc |  | 0 |
-| bc |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire scrub before commits and push-gate check before Phase 3 |  | 0 |
+| pt | ../danizee-claude-suite-pt | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | /w-plan-tdd-swarm · review | done; compounded via /bc |  | 0 |
+| bc | ../danizee-claude-suite-bc | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | clean 0/2 | /w-plan-tdd-swarm · build | 4.1 budget, then build: scrub before commits, push-gate check at Phase 3, never-abort clause, redact in solution doc |  | 0 |
 | marathon |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire 4.5, 4.8 and CP6 |  | 0 |
 | bbs |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, safe-git in helper briefs, redact at probe, scrub at compound |  | 0 |
 | sweep-commits |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire the eight commit-and-push workflows |  | 0 |
@@ -28,7 +28,7 @@
 | diff-range: clean reviews in a row | build | met | 3 | at_least 2 |
 | diff-range: open high findings | build | met | 0 | at_most 0 |
 | pt: green unit runs in a row | build | met | 4 | at_least 1 |
-| pt: clean reviews in a row | build | met | 3 | at_least 2 |
+| pt: clean reviews in a row | build | met | 4 | at_least 2 |
 | pt: open high findings | build | met | 0 | at_most 0 |
 | bc: green unit runs in a row | build | failing | 0 | at_least 1 |
 | bc: clean reviews in a row | build | failing | 0 | at_least 2 |
