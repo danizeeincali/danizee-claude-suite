@@ -5,9 +5,9 @@ Fully Autonomous TDD Swarm — Zero user gates. Designed for terminal agents (tm
 **Philosophy:** Same rigor as /w-tdd-swarm, but fully autonomous. No gates, no stops, auto-PR.
 
 ## Usage
-\`\`\`
+```
 /w-agent-tdd-swarm [feature description]
-\`\`\`
+```
 
 ---
 
@@ -33,7 +33,7 @@ Use TodoWrite NOW to create todos for ALL phases:
 - ZERO user gates — this workflow runs fully autonomously
 - NEVER proceed to Build before all tests exist and FAIL
 - NEVER skip compound phase at the end
-- ALWAYS create a PR at the end with \`gh pr create --fill\`
+- ALWAYS create a PR at the end with `gh pr create --fill`
 - ALWAYS commit with descriptive messages
 
 ---
@@ -57,13 +57,13 @@ Search for past solutions. Check memory keys, search codebase for similar implem
 ### PHASE 1.5: Pi Brain — Knowledge Discovery (AUTO-PROCEED)
 **Search the Pi Brain network for existing knowledge matching this feature:**
 
-\`\`\`bash
+```bash
 # npm client (preferred)
 curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[feature description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[feature description]&top_k=3"
-\`\`\`
+```
 
 **If matching memories found:** Review steps for applicable patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
@@ -135,7 +135,7 @@ Quick self-review. Fix any critical/high findings before proceeding.
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare `git diff --stat` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -225,7 +225,7 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 ---
 
 ### PHASE 9: Report & Notify Parent (MANDATORY - NEVER SKIP)
-**Write a completion report** to \`.claude/agent-reports/{your-agent-id}.md\` containing:
+**Write a completion report** to `.claude/agent-reports/{your-agent-id}.md` containing:
 - Task summary (what was built)
 - Files changed (list with brief descriptions)
 - Test results (pass/fail counts)
@@ -234,10 +234,10 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Your agent-id was specified in the initial prompt. If unclear, use the branch name.
 
-**If a parent agent was specified in your initial prompt**, use the \`redirect_terminal_agent\` MCP tool to send:
-\`\`\`
+**If a parent agent was specified in your initial prompt**, use the `redirect_terminal_agent` MCP tool to send:
+```
 Agent {id} completed. PR: {url}. Report: .claude/agent-reports/{id}.md
-\`\`\`
+```
 
 **REQUIRED OUTPUT:**
 - Report path: .claude/agent-reports/_____.md
@@ -250,7 +250,7 @@ Agent {id} completed. PR: {url}. Report: .claude/agent-reports/{id}.md
 - [ ] TodoWrite used at start
 - [ ] All 9 phases completed (zero user gates)
 - [ ] Tests written and pass
-- [ ] PR created with \`gh pr create --fill\`
+- [ ] PR created with `gh pr create --fill`
 - [ ] Compound phase executed
 - [ ] Completion report written to .claude/agent-reports/
 - [ ] Parent agent notified (if applicable)

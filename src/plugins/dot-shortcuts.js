@@ -53,10 +53,10 @@ Use TodoWrite NOW to create todos for ALL phases:
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\`
 3. Note current UI state for comparison after build
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -74,13 +74,13 @@ STOP and wait for user response.
 ### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
 **Search the Pi Brain network for existing knowledge matching this task:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # npm client (preferred)
 curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[task description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[task description]&top_k=3"
-\\\`\\\`\\\`
+\`\`\`
 
 **If matching memories found:** Review steps for applicable patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
@@ -116,10 +116,10 @@ STOP and wait for user response.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to verify the implementation visually
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+2. \`agent-browser open <url>\` → \`agent-browser snapshot -i\` → verify elements
 3. Compare against pre-change screenshots from Search phase
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -137,7 +137,7 @@ Skip this block for non-UI tasks.
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -163,10 +163,10 @@ Skip this block for non-UI tasks.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Final visual verification with agent-browser
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\` → compare before/after
 3. Verify responsive layout, dark mode, accessibility
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -189,15 +189,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -281,10 +281,10 @@ Use TodoWrite NOW to create todos for ALL phases:
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\`
 3. Note current UI state for comparison after build
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -302,13 +302,13 @@ STOP and wait for user response.
 ### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
 **Search the Pi Brain network for existing knowledge matching this feature:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # npm client (preferred)
 curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[feature description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[feature description]&top_k=3"
-\\\`\\\`\\\`
+\`\`\`
 
 **If matching memories found:** Review steps for applicable patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
@@ -374,10 +374,10 @@ For simple builds, proceed with serial implementation.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to verify the implementation visually
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+2. \`agent-browser open <url>\` → \`agent-browser snapshot -i\` → verify elements
 3. Compare against pre-change screenshots from Search phase
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -393,10 +393,10 @@ Skip this block for non-UI tasks.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Final visual verification with agent-browser
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\` → compare before/after
 3. Verify responsive layout, dark mode, accessibility
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -437,7 +437,7 @@ Exit 3 from \`diff-range\` means an empty range: report "no change to review", n
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -495,15 +495,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -1031,9 +1031,9 @@ Fully Autonomous TDD Swarm — Zero user gates. Designed for terminal agents (tm
 **Philosophy:** Same rigor as /w-tdd-swarm, but fully autonomous. No gates, no stops, auto-PR.
 
 ## Usage
-\\\`\\\`\\\`
+\`\`\`
 /w-agent-tdd-swarm [feature description]
-\\\`\\\`\\\`
+\`\`\`
 
 ---
 
@@ -1059,7 +1059,7 @@ Use TodoWrite NOW to create todos for ALL phases:
 - ZERO user gates — this workflow runs fully autonomously
 - NEVER proceed to Build before all tests exist and FAIL
 - NEVER skip compound phase at the end
-- ALWAYS create a PR at the end with \\\`gh pr create --fill\\\`
+- ALWAYS create a PR at the end with \`gh pr create --fill\`
 - ALWAYS commit with descriptive messages
 
 ---
@@ -1083,13 +1083,13 @@ Search for past solutions. Check memory keys, search codebase for similar implem
 ### PHASE 1.5: Pi Brain — Knowledge Discovery (AUTO-PROCEED)
 **Search the Pi Brain network for existing knowledge matching this feature:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # npm client (preferred)
 curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[feature description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[feature description]&top_k=3"
-\\\`\\\`\\\`
+\`\`\`
 
 **If matching memories found:** Review steps for applicable patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
@@ -1161,7 +1161,7 @@ Quick self-review. Fix any critical/high findings before proceeding.
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -1251,7 +1251,7 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 ---
 
 ### PHASE 9: Report & Notify Parent (MANDATORY - NEVER SKIP)
-**Write a completion report** to \\\`.claude/agent-reports/{your-agent-id}.md\\\` containing:
+**Write a completion report** to \`.claude/agent-reports/{your-agent-id}.md\` containing:
 - Task summary (what was built)
 - Files changed (list with brief descriptions)
 - Test results (pass/fail counts)
@@ -1260,10 +1260,10 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 Your agent-id was specified in the initial prompt. If unclear, use the branch name.
 
-**If a parent agent was specified in your initial prompt**, use the \\\`redirect_terminal_agent\\\` MCP tool to send:
-\\\`\\\`\\\`
+**If a parent agent was specified in your initial prompt**, use the \`redirect_terminal_agent\` MCP tool to send:
+\`\`\`
 Agent {id} completed. PR: {url}. Report: .claude/agent-reports/{id}.md
-\\\`\\\`\\\`
+\`\`\`
 
 **REQUIRED OUTPUT:**
 - Report path: .claude/agent-reports/_____.md
@@ -1276,7 +1276,7 @@ Agent {id} completed. PR: {url}. Report: .claude/agent-reports/{id}.md
 - [ ] TodoWrite used at start
 - [ ] All 9 phases completed (zero user gates)
 - [ ] Tests written and pass
-- [ ] PR created with \\\`gh pr create --fill\\\`
+- [ ] PR created with \`gh pr create --fill\`
 - [ ] Compound phase executed
 - [ ] Completion report written to .claude/agent-reports/
 - [ ] Parent agent notified (if applicable)
@@ -1293,10 +1293,10 @@ Interview then Spawn Autonomous Agent. Interactive interview refines the idea, t
 **Philosophy:** Humans are best at requirements. Agents are best at execution. Split the work.
 
 ## Usage
-\\\`\\\`\\\`
+\`\`\`
 /w-agent-interview-swarm [description or file path]
 /w-agent-interview-swarm I want some kind of notification system
-\\\`\\\`\\\`
+\`\`\`
 
 ---
 
@@ -1340,13 +1340,13 @@ Search for past solutions. Check memory keys, search codebase.
 ### PHASE 0.75: Pi Brain — Knowledge Discovery (AUTO-PROCEED)
 **Search the Pi Brain network for existing knowledge matching this idea:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # npm client (preferred)
 curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[idea description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[idea description]&top_k=3"
-\\\`\\\`\\\`
+\`\`\`
 
 **If matching memories found:** Share findings with user during interview. Note recipe IDs for the spawned agent's auto-receipt.
 **If no matches:** Proceed normally.
@@ -1393,7 +1393,7 @@ STOP and wait for user response.
 ---
 
 ### PHASE 2: Save Spec (AUTO-PROCEED)
-Save the refined spec to: \\\`.claude/plans/YYYY-MM-DD-[name].md\\\`
+Save the refined spec to: \`.claude/plans/YYYY-MM-DD-[name].md\`
 
 Include: requirements, acceptance criteria, key decisions, user quotes.
 
@@ -1404,21 +1404,21 @@ Include: requirements, acceptance criteria, key decisions, user quotes.
 ### PHASE 3: Spawn Terminal Agent (AUTO-PROCEED)
 **Use the spawn_terminal_agent MCP tool:**
 
-- \\\`repo_path\\\`: Current repository path
-- \\\`task\\\`: The complete refined spec from the interview
-- \\\`workflow\\\`: "/w-agent-tdd-swarm"
-- \\\`parent_agent_id\\\`: Your own tmux session name (so the child can notify you when done)
+- \`repo_path\`: Current repository path
+- \`task\`: The complete refined spec from the interview
+- \`workflow\`: "/w-agent-tdd-swarm"
+- \`parent_agent_id\`: Your own tmux session name (so the child can notify you when done)
 
-To find your own tmux session name, run: \\\`tmux display-message -p '#S'\\\` (if not in tmux, omit parent_agent_id)
+To find your own tmux session name, run: \`tmux display-message -p '#S'\` (if not in tmux, omit parent_agent_id)
 
 **After spawning, report to the user:**
 - Agent ID
 - Branch name
-- The agent will notify you when done via \\\`redirect_terminal_agent\\\`
-- The agent will write a report to \\\`.claude/agent-reports/{agent-id}.md\\\`
-- The agent will create a PR with \\\`gh pr create --fill\\\`
-- To check status manually: \\\`check_terminal_agents\\\` MCP tool
-- To read the report: \\\`get_agent_report\\\` MCP tool
+- The agent will notify you when done via \`redirect_terminal_agent\`
+- The agent will write a report to \`.claude/agent-reports/{agent-id}.md\`
+- The agent will create a PR with \`gh pr create --fill\`
+- To check status manually: \`check_terminal_agents\` MCP tool
+- To read the report: \`get_agent_report\` MCP tool
 
 **REQUIRED OUTPUT:**
 - Agent ID: _____
@@ -1479,10 +1479,10 @@ Use TodoWrite NOW to create todos for ALL phases:
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\`
 3. Note current UI state for comparison after build
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -1500,13 +1500,13 @@ STOP and wait for user response.
 ### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
 **Search the Pi Brain network for existing knowledge matching this bug:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # npm client (preferred)
 curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[bug description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[bug description]&top_k=3"
-\\\`\\\`\\\`
+\`\`\`
 
 **If matching memories found:** Review steps for applicable fix patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
@@ -1536,10 +1536,10 @@ STOP and wait for user response.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to verify the implementation visually
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+2. \`agent-browser open <url>\` → \`agent-browser snapshot -i\` → verify elements
 3. Compare against pre-change screenshots from Search phase
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -1557,7 +1557,7 @@ Skip this block for non-UI tasks.
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -1599,15 +1599,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -1706,13 +1706,13 @@ STOP and wait for user response.
 ### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
 **Search the Pi Brain network for existing debug recipes matching this issue:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # npm client (preferred)
 curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[bug/issue description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[bug/issue description]&top_k=3"
-\\\`\\\`\\\`
+\`\`\`
 
 **If matching memories found:** Review steps for applicable fix patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
@@ -1728,10 +1728,10 @@ curl -s "https://pi.ruv.io/v1/memories/search?q=[bug/issue description]&top_k=3"
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\`
 3. Note current UI state for comparison after build
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -1815,10 +1815,10 @@ For simple fixes, proceed with serial implementation.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to verify the implementation visually
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+2. \`agent-browser open <url>\` → \`agent-browser snapshot -i\` → verify elements
 3. Compare against pre-change screenshots from Search phase
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -1835,10 +1835,10 @@ Skip this block for non-UI tasks.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Final visual verification with agent-browser
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\` → compare before/after
 3. Verify responsive layout, dark mode, accessibility
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -1879,7 +1879,7 @@ Exit 3 from \`diff-range\` means an empty range: report "no change to review", n
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -1938,15 +1938,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -2030,10 +2030,10 @@ Use TodoWrite NOW to create todos for ALL phases:
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\`
 3. Note current UI state for comparison after build
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -2051,13 +2051,13 @@ STOP and wait for user response.
 ### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
 **Search the Pi Brain network for existing knowledge matching this incident:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # npm client (preferred)
 curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[incident description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[incident description]&top_k=3"
-\\\`\\\`\\\`
+\`\`\`
 
 **If matching memories found:** Review steps for applicable fix patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
@@ -2087,10 +2087,10 @@ STOP and wait for user response.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to verify the implementation visually
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+2. \`agent-browser open <url>\` → \`agent-browser snapshot -i\` → verify elements
 3. Compare against pre-change screenshots from Search phase
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -2108,7 +2108,7 @@ Skip this block for non-UI tasks.
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -2134,10 +2134,10 @@ Skip this block for non-UI tasks.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Final visual verification with agent-browser
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\` → compare before/after
 3. Verify responsive layout, dark mode, accessibility
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -2214,15 +2214,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -2583,10 +2583,10 @@ Use TodoWrite NOW to create todos for ALL phases:
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\`
 3. Note current UI state for comparison after build
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -2606,10 +2606,10 @@ STOP and wait for user response.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to verify the implementation visually — focus on security-related UI aspects, auth flows, input sanitization display
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+2. \`agent-browser open <url>\` → \`agent-browser snapshot -i\` → verify elements
 3. Compare against pre-change screenshots from Search phase
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -2632,10 +2632,10 @@ Skip this block for non-UI tasks.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Final visual verification with agent-browser
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\` → compare before/after
 3. Verify responsive layout, dark mode, accessibility
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -2674,7 +2674,7 @@ Exit 3 from \`diff-range\` means an empty range: report "no change to review", n
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -2729,15 +2729,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -2826,10 +2826,10 @@ Use TodoWrite NOW to create todos for ALL phases:
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\`
 3. Note current UI state for comparison after build
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -2849,10 +2849,10 @@ STOP and wait for user response.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to verify the implementation visually
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+2. \`agent-browser open <url>\` → \`agent-browser snapshot -i\` → verify elements
 3. Compare against pre-change screenshots from Search phase
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -2874,10 +2874,10 @@ Skip this block for non-UI tasks.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Final visual verification with agent-browser — focus on performance impact, load times, rendering
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\` → compare before/after
 3. Verify responsive layout, dark mode, accessibility
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -2895,7 +2895,7 @@ Skip this block for non-UI tasks.
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -2934,15 +2934,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -3022,10 +3022,10 @@ Use TodoWrite NOW to create todos for ALL phases:
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\`
 3. Note current UI state for comparison after build
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -3043,13 +3043,13 @@ STOP and wait for user response.
 ### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
 **Search the Pi Brain network for existing architecture recipes matching this system:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # npm client (preferred)
 curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[system description]" --top-k=3
 
 # HTTP fallback
 curl -s "https://pi.ruv.io/v1/memories/search?q=[system description]&top_k=3"
-\\\`\\\`\\\`
+\`\`\`
 
 **If matching memories found:** Review steps for applicable architecture patterns. Adapt proven approaches.
 **If no matches:** Proceed normally.
@@ -3100,10 +3100,10 @@ STOP and wait for user response.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Final visual verification with agent-browser
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\` → compare before/after
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\` → compare before/after
 3. Verify responsive layout, dark mode, accessibility
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -3126,7 +3126,7 @@ STOP and wait for user response.
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -3165,15 +3165,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -3327,15 +3327,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -3418,9 +3418,9 @@ This command MUST complete ALL phases including auto-QA generation.
 - Context to capture: _____
 
 **AUTO-DETECT:** If argument provided, use it. Otherwise, auto-detect from git diff:
-\\\`\\\`\\\`bash
+\`\`\`bash
 git diff HEAD~1
-\\\`\\\`\\\`
+\`\`\`
 Use weighted pattern matching:
 - security (weight 3): injection, vulnerability, sanitize, xss, csrf, auth
 - bug (weight 2): fix, bug, patch, hotfix, error handling, fallback
@@ -3490,9 +3490,9 @@ Run: \`git diff --name-only HEAD~1\` and \`git diff HEAD~1\`
 **Verifies**: [description]
 
 **Test Command**:
-\\\`\\\`\\\`bash
+\`\`\`bash
 grep -n "[pattern]" [file]
-\\\`\\\`\\\`
+\`\`\`
 
 **AI-Verifiable Output**:
 DIAGNOSTIC: [NAME]
@@ -3525,9 +3525,9 @@ STATUS: PASS|FAIL
 **Priority**: P1 (critical - restores functionality)
 
 **Pattern to Restore**:
-\\\`\\\`\\\`[language]
+\`\`\`[language]
 [actual code that was just written]
-\\\`\\\`\\\`
+\`\`\`
 
 **File**: [path/to/file]
 
@@ -3599,16 +3599,16 @@ Skip if auto_share.enabled is false.
 1. Extract recipe: title, description, tags, ordered steps with inputs/outputs
 2. **Fork check — discover similar recipes before submitting:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # Check for similar existing recipes
 curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/search "[recipe title]" --top-k=3
-\\\`\\\`\\\`
+\`\`\`
 
 3. **If similar memory found (score > 0.7):** Submit as a fork to inherit grade
 4. **If no match:** Submit as a new recipe
 5. If auto_share.confirm = true: ask user before submitting
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # Vote on existing memory (when similar memory found)
 curl -X POST https://pi.ruv.io/v1/memories \\\\
   -H "Content-Type: application/json" \\\\
@@ -3618,7 +3618,7 @@ curl -X POST https://pi.ruv.io/v1/memories \\\\
 curl -X POST https://pi.ruv.io/v1/memories \\\\
   -H "Content-Type: application/json" \\\\
   -d '{"title":"...","description":"...","tags":[...],"version":"1.0.0","steps":[...]}'
-\\\`\\\`\\\`
+\`\`\`
 
 **REQUIRED OUTPUT:**
 - Recipe-worthy: yes/no
@@ -3730,11 +3730,11 @@ STOP and wait for user response.
 Autonomous experiment loop. Runs experiments, measures results, keeps winners, discards losers.
 
 ## Usage
-\\\`\\\`\\\`
+\`\`\`
 /w-autoresearch [optimization objective]     # Free-form: describe what to optimize
 /w-autoresearch RC-A003                      # RC-A target: use pre-defined candidate
 /w-autoresearch optimize test suite runtime  # Example: optimize test speed
-\\\`\\\`\\\`
+\`\`\`
 
 ---
 
@@ -3762,7 +3762,7 @@ Gather information for the experiment:
 1. **Objective:** What are we optimizing? (from user argument)
 2. **Primary metric:** What number tells us if we improved? (e.g., test_duration_seconds, bundle_size_kb)
 3. **Direction:** maximize or minimize?
-4. **Benchmark command:** How to measure the metric? Must output \\\`METRIC name=number\\\`
+4. **Benchmark command:** How to measure the metric? Must output \`METRIC name=number\`
 5. **Files in scope:** What can the experiment modify?
 6. **Constraints:** What must NOT break? (e.g., "all tests must still pass")
 
@@ -3772,13 +3772,13 @@ Gather information for the experiment:
 
 ### ⛔ CHECKPOINT 2: Setup
 
-1. Create feature branch: \\\`git checkout -b autoresearch/[goal-slug]\\\`
+1. Create feature branch: \`git checkout -b autoresearch/[goal-slug]\`
 2. Read source files deeply — understand what you're optimizing
-3. Create \\\`autoresearch.md\\\` — session blueprint with objective, metrics, scope, constraints
-4. Create \\\`autoresearch.sh\\\` — benchmark runner (outputs \\\`METRIC name=number\\\`)
+3. Create \`autoresearch.md\` — session blueprint with objective, metrics, scope, constraints
+4. Create \`autoresearch.sh\` — benchmark runner (outputs \`METRIC name=number\`)
 5. Run baseline measurement
-6. Initialize \\\`autoresearch.jsonl\\\` with config header
-7. Create \\\`experiments/worklog.md\\\` for narrative log
+6. Initialize \`autoresearch.jsonl\` with config header
+7. Create \`experiments/worklog.md\` for narrative log
 
 **AUTO-PROCEED:** Continue to Background Dispatch.
 
@@ -3791,13 +3791,13 @@ Launch a background agent that runs the experiment loop autonomously:
 **The loop (runs forever until paused):**
 1. **Think:** Based on worklog and ideas, choose next experiment
 2. **Implement:** Make the code change
-3. **Run:** Execute \\\`./autoresearch.sh\\\`, capture output
-4. **Parse:** Extract \\\`METRIC name=number\\\` lines
+3. **Run:** Execute \`./autoresearch.sh\`, capture output
+4. **Parse:** Extract \`METRIC name=number\` lines
 5. **Evaluate:**
    - **Keep:** metric improved → run the scrub below, then \`git commit\` with Result trailer; a scrub refusal means no commit: treat it as a Crash (log the hits, revert, try a different approach)
-   - **Discard:** metric worse/equal → \\\`git checkout -- .\\\` to revert
+   - **Discard:** metric worse/equal → \`git checkout -- .\` to revert
    - **Crash:** non-zero exit → log error, revert, try different approach
-6. **Log:** Append result to \\\`autoresearch.jsonl\\\`, update dashboard
+6. **Log:** Append result to \`autoresearch.jsonl\`, update dashboard
 7. **Loop:** Go to step 1
 
 **ERROR HANDLING:** Log errors but NEVER abort. Revert and try a different approach.
@@ -3810,7 +3810,7 @@ if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/he
 Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed and **do not commit**. Exit 1 is wrong input or a broken state: report it, never read it as clean, do not commit. Any other non-zero exit is a failure of the step: report it, do not commit. After any refusal unstage the paths so they cannot ride along in a later commit: \`git reset -q -- <those paths>; RC=$?\`, and if that exit is non-zero report "unstage failed (exit $RC): still staged: <those paths>" and say the owner must unstage them.
 
 
-**Pausing:** Create \\\`.autoresearch-off\\\` sentinel file, or user sends \\\`/autoresearch off\\\`
+**Pausing:** Create \`.autoresearch-off\` sentinel file, or user sends \`/autoresearch off\`
 
 ---
 
@@ -3818,28 +3818,28 @@ Exit 0 is clean for the tracked files (or no pattern file is configured: then no
 
 | File | Purpose |
 |------|---------|
-| \\\`autoresearch.md\\\` | Session blueprint (objective, rules, what's been tried) |
-| \\\`autoresearch.sh\\\` | Benchmark runner (must output METRIC lines) |
-| \\\`autoresearch.jsonl\\\` | Structured state (config + results) |
-| \\\`autoresearch-dashboard.md\\\` | Progress visualization |
-| \\\`autoresearch.ideas.md\\\` | Promising untried optimizations |
-| \\\`experiments/worklog.md\\\` | Narrative experiment log |
+| \`autoresearch.md\` | Session blueprint (objective, rules, what's been tried) |
+| \`autoresearch.sh\` | Benchmark runner (must output METRIC lines) |
+| \`autoresearch.jsonl\` | Structured state (config + results) |
+| \`autoresearch-dashboard.md\` | Progress visualization |
+| \`autoresearch.ideas.md\` | Promising untried optimizations |
+| \`experiments/worklog.md\` | Narrative experiment log |
 
 ## JSONL Protocol
 
 **Config header:**
-\\\`\\\`\\\`json
+\`\`\`json
 {"type": "config", "goal": "...", "primary_metric": "...", "direction": "maximize|minimize", "command": "./autoresearch.sh", "started": "ISO8601"}
-\\\`\\\`\\\`
+\`\`\`
 
 **Result line:**
-\\\`\\\`\\\`json
+\`\`\`json
 {"type": "result", "run": 1, "commit": "abc123", "metric": 0.783, "status": "keep|discard|crash", "timestamp": "ISO8601", "notes": "what changed"}
-\\\`\\\`\\\`
+\`\`\`
 
 ## Example
 
-\\\`\\\`\\\`
+\`\`\`
 # Free-form: optimize test runtime
 /w-autoresearch optimize test suite runtime
 
@@ -3848,7 +3848,7 @@ Exit 0 is clean for the tracked files (or no pattern file is configured: then no
 
 # Pause a running experiment
 /autoresearch off
-\\\`\\\`\\\`
+\`\`\`
 `
     },
 
@@ -4813,15 +4813,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -4882,7 +4882,7 @@ STOP and wait for user response.
 \`\`\`
 
 ## Next Session
-Run \\\`/w-start\\\` to load this session's context and continue where you left off.
+Run \`/w-start\` to load this session's context and continue where you left off.
 `
     },
 
@@ -6005,10 +6005,10 @@ Suite Sync from Upstream Source — Parallel fetch + interview-driven additive s
 **Philosophy:** Never modify existing files (zero regression risk). Only add new files and features.
 
 ## Usage
-\\\`\\\`\\\`
+\`\`\`
 /w-suite-sync
 /w-suite-sync --source https://github.com/danizeeincali/danizee-claude-suite
-\\\`\\\`\\\`
+\`\`\`
 
 ---
 
@@ -6039,7 +6039,7 @@ Use TodoWrite NOW to create todos for ALL phases:
 ### ⛔ CHECKPOINT 0: Fetch Upstream
 **Parallel fetch all content categories from upstream source:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 # Clone or fetch upstream
 git clone --depth 1 https://github.com/danizeeincali/danizee-claude-suite /tmp/suite-upstream
 
@@ -6048,7 +6048,7 @@ ls /tmp/suite-upstream/src/plugins/     # Workflow commands
 ls /tmp/suite-upstream/src/lib/         # Library modules
 ls /tmp/suite-upstream/src/templates/   # Templates
 ls /tmp/suite-upstream/docs/            # Documentation
-\\\`\\\`\\\`
+\`\`\`
 
 **REQUIRED OUTPUT:**
 - Upstream version: _____
@@ -6127,9 +6127,9 @@ STOP and wait for user response.
 ### ⛔ CHECKPOINT 4: Verify No Regressions
 **Run existing test suites and checks:**
 
-\\\`\\\`\\\`bash
+\`\`\`bash
 npm test
-\\\`\\\`\\\`
+\`\`\`
 
 **Additional checks:**
 - Levenshtein similarity check: new command names vs existing (flag conflicts > 0.8)
@@ -6178,10 +6178,10 @@ Before marking workflow complete, verify ALL boxes:
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Example
-\\\`\\\`\\\`
+\`\`\`
 /w-suite-sync
 # Fetches latest upstream, shows what's new, you pick what to sync
-\\\`\\\`\\\`
+\`\`\`
 `
     }
   };

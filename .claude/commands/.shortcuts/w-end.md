@@ -56,15 +56,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\`\`\`
+```
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \`[command to measure]\`
+**Benchmark:** `[command to measure]`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\`\`\`
+```
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -125,4 +125,4 @@ STOP and wait for user response.
 ```
 
 ## Next Session
-Run \`/w-start\` to load this session's context and continue where you left off.
+Run `/w-start` to load this session's context and continue where you left off.
