@@ -8,7 +8,7 @@
  * each changed range to the INNERMOST definitions around it; a changed line outside every definition is reported as a
  * module-level change. (3) Walks incoming `call`, `extends` and `implements` edges backwards, up to --hops hops (default
  * 2, at most 3), and ranks what it finds: certain before likely before possible (a path is as strong as its weakest
- * edge), production code before tests, nearer folders before distant ones, then fewer hops. (4) With --base, builds the
+ * edge), production code before tests, then fewer hops, then nearer folders before distant ones. (4) With --base, builds the
  * facts of each changed file as it was at <ref> (`git cat-file blob <ref>:<path>`, read-only, through safe-git), finds
  * definitions the change removes, and flags each removed one that the new tree still calls: a call the graph could not
  * link because the name is gone (`unknown export`, a `value call` in the same file, a member call nothing answers to).
@@ -72,13 +72,25 @@ export function parseDiffLines(diffText) {
 
 // ================================================================ touched symbols
 
-const overlaps = (d, [s, e]) => d.start <= e && d.end >= s;
-const within = (inner, outer) => inner.start >= outer.start && inner.end <= outer.end && (inner.start > outer.start || inner.end < outer.end);
-
-/** Definitions (any shape with start/end) that intersect a range and have no smaller intersecting definition inside. */
-function innermost(defs, ranges) {
-  const hit = defs.filter((d) => ranges.some((r) => overlaps(d, r)));
-  return hit.filter((d) => !hit.some((o) => o !== d && within(o, d)));
+/**
+ * Decided per changed LINE: each line maps to the smallest definition that contains it (none = module level), and the
+ * touched set is the union over lines. So an outer function whose own lines changed stays touched next to a nested
+ * one that changed too. Returns { hit: [defs], outside: true when some changed line is in no definition }.
+ */
+function mapLines(defs, ranges) {
+  const hit = new Set();
+  let outside = false;
+  for (const [s, e] of ranges) {
+    for (let n = s; n <= e; n++) {
+      let best = null;
+      for (const d of defs) {
+        if (d.start > n || d.end < n) continue;
+        if (!best || d.end - d.start < best.end - best.start || (d.end - d.start === best.end - best.start && d.start > best.start)) best = d;
+      }
+      if (best) hit.add(best); else outside = true;
+    }
+  }
+  return { hit: [...hit], outside };
 }
 
 /**
@@ -100,10 +112,10 @@ export function touchedSymbols(graph, changes, { oldGraph } = {}) {
       if (!readFiles.has(c.path)) out.unmapped.push({ file: c.path, reason: notRead.get(c.path) || 'not_read' });
       else {
         const defs = defsOf.get(c.path) || [];
-        const hit = innermost(defs, c.added);
+        const { hit, outside } = mapLines(defs, c.added);
         for (const d of hit) if (!seen.has(d.id)) { seen.add(d.id); out.touched.push(d); }
-        // a range that no definition covers is a module-level change
-        if (c.added.some((r) => !defs.some((d) => overlaps(d, r)))) out.module_level.push(c.path);
+        // any changed line that no definition contains is a module-level change
+        if (outside) out.module_level.push(c.path);
       }
     }
     const old = oldGraph && c.oldPath && oldGraph.files[c.oldPath];
@@ -342,11 +354,18 @@ export async function run(args, io = {}) {
   const dir = path.resolve(cwd, f.dir || '.');
   const diffText = await readDiffArg(f.diff, io, cwd);
   const changes = parseDiffLines(diffText);
-  if (!changes.length) throw invalid('the diff names no files (see --help)');
   const loc = await locateRepo(dir);
   if (!loc.top) throw invalid(`${dir} has no work tree (a bare repository or a path inside .git)`);
   const exec = (a) => safeGit(loc.top, a, { git: io.git, env: io.env || process.env });
   const [top] = await gitPaths(exec, loc.top, ['toplevel'], 'cannot find the repository');
+  if (!changes.length) { // an empty diff is not an error (graph treats it the same way): nothing touched, nothing to follow
+    return {
+      root: top, base: f.base ?? null, hops: f.hops ? Number(f.hops) : LIMITS.hops, partial: false, graph_partial: false, not_read: [], unmapped: [],
+      old_not_read: [], removed_unchecked: [], touched: [], module_level: [], removed: [], removed_with_live_callers: [], impacted_total: 0,
+      impacted: [], hubs: [], cuts: [], risk: { level: 'low', score: 0, reasons: [], lower_bound: false },
+      notes: ['the diff names no files: nothing was touched, so nothing was mapped or followed'], stats: null
+    };
+  }
   let oldGraph;
   if (f.base !== undefined) {
     const ok = await exec(['rev-parse', '--verify', '--quiet', `${f.base}^{tree}`]);

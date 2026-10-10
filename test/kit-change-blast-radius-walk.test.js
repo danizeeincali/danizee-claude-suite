@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
@@ -338,7 +339,6 @@ describe('impact — the verb', () => {
   });
   it('--diff - refuses a terminal, an empty diff and text that is not a diff', async () => {
     await assert.rejects(run(['--diff', '-'], { stdinIsTTY: true, stdin: async () => diff }), /terminal/);
-    await assert.rejects(run(['--diff', '-'], { stdin: async () => '' }), /names no files/);
     await assert.rejects(run(['--diff', '-'], { stdin: async () => 'hello' }), /not a unified diff/);
   });
   it('an unknown --base is refused, not guessed at', () => tmp(async (dir) => {
@@ -365,4 +365,67 @@ describe('impact — the /w-review caller', () => {
     assert.ok(!s.includes('\\`'));
     for (const word of ['`cuts`', '`partial`', '`not_read`', '`removed_with_live_callers`', 'risk.lower_bound']) assert.ok(s.includes(word), word);
   });
+});
+
+describe('impact — review round 1 regressions', () => {
+  it('an outer definition and a nested one that both changed in their own lines are both touched, and the outer one\'s caller is followed', () => tmp(async (dir) => {
+    const before = { 'lib/a.js': 'export function outer() {\n  const k = 1;\n  function inner() {\n    return 1;\n  }\n  return k;\n}\n',
+      'lib/b.js': "import { outer } from './a.js';\nexport function user() {\n  return outer();\n}\n" };
+    const after = { ...before, 'lib/a.js': before['lib/a.js'].replace('const k = 1', 'const k = 2').replace('return 1;', 'return 5;') };
+    const { diff } = await change(dir, before, after);
+    for (const via of ['stdin', 'file']) {
+      let r;
+      if (via === 'stdin') r = await impactOf(dir, diff);
+      else {
+        await fs.writeFile(path.join(dir, '.d.diff'), diff);
+        r = await run(['--dir', dir, '--diff', path.join(dir, '.d.diff')], { cwd: dir, env: process.env });
+      }
+      assert.deepEqual(ids(r.touched).sort(), ['outer', 'outer.inner'], via);
+      assert.ok(r.impacted.some(i => i.qualified === 'user' && i.hop === 1), via);
+    }
+  }));
+  it('a class field and one of its methods that both changed are both touched', () => tmp(async (dir) => {
+    const before = { 'lib/c.js': 'export class Box {\n  size = 1;\n  open() {\n    return 1;\n  }\n}\n' };
+    const after = { 'lib/c.js': 'export class Box {\n  size = 2;\n  open() {\n    return 5;\n  }\n}\n' };
+    const { diff } = await change(dir, before, after);
+    const q = ids((await impactOf(dir, diff)).touched);
+    assert.ok(q.includes('Box') && q.includes('Box.open'), q.join(','));
+  }));
+  it('a module-level line next to a changed definition line is still reported in module_level', () => tmp(async (dir) => {
+    const before = { 'lib/a.js': 'export function foo() {\n  return 1;\n}\n' };
+    const after = { 'lib/a.js': 'export const LIMIT = 5;\nexport function foo(x = LIMIT) {\n  return 1;\n}\n' };
+    const { diff } = await change(dir, before, after);
+    const r = await impactOf(dir, diff);
+    assert.deepEqual(r.module_level, ['lib/a.js']);
+    assert.deepEqual(ids(r.touched), ['foo']);
+    assert.ok(r.notes.some(n => /module level/.test(n)));
+  }));
+  it('the header describes the sort order byRank really uses: hops before folder distance', () => {
+    const src = fsSync.readFileSync(new URL('../src/lib/kit/impact.js', import.meta.url), 'utf-8');
+    assert.match(src, /production code before tests, then fewer hops, then nearer folders/);
+    const g = { defs: [
+      { id: 't::t', file: 't.js', name: 't', qualified: 't', kind: 'function', start: 1, end: 2 },
+      { id: 'far/x.js::far', file: 'far/x.js', name: 'far', qualified: 'far', kind: 'function', start: 1, end: 2 },
+      { id: 'a/n.js::near2', file: 'a/n.js', name: 'near2', qualified: 'near2', kind: 'function', start: 1, end: 2 },
+      { id: 'a/m.js::mid', file: 'a/m.js', name: 'mid', qualified: 'mid', kind: 'function', start: 1, end: 2 },
+      { id: 'a/t.js::tt', file: 'a/t.js', name: 'tt', qualified: 'tt', kind: 'function', start: 1, end: 2 }] ,
+      edges: [{ from: 'far/x.js::far', to: 'a/t.js::tt', kind: 'call', confidence: 'certain' }, { from: 'a/m.js::mid', to: 'a/t.js::tt', kind: 'call', confidence: 'certain' },
+        { from: 'a/n.js::near2', to: 'a/m.js::mid', kind: 'call', confidence: 'certain' }] };
+    const w = walk(g, [g.defs[4]]);
+    assert.deepEqual(w.impacted.map(i => [i.qualified, i.hop]), [['mid', 1], ['far', 1], ['near2', 2]]);
+  });
+  it('an empty diff exits 0 with nothing touched and a note, like graph, and the w-review step says what non-zero means', () => tmp(async (dir) => {
+    git(dir, 'init', '-q', '.');
+    const r = await impactOf(dir, '');
+    assert.deepEqual(r.touched, []);
+    assert.deepEqual(r.impacted, []);
+    assert.equal(r.risk.level, 'low');
+    assert.ok(r.notes.some(n => /names no files/.test(n)));
+    const c = getCommands()['w-review'].content;
+    const s = c.slice(c.indexOf('Then the blast radius'), c.indexOf('**REQUIRED OUTPUT:**', c.indexOf('Then the blast radius')));
+    assert.match(s, /empty diff exits 0/);
+    assert.match(s, /non-zero exit means wrong input or a broken state/);
+    const md = await fs.readFile(new URL('../.claude/commands/.shortcuts/w-review.md', import.meta.url), 'utf-8');
+    assert.equal(md, c);
+  }));
 });
