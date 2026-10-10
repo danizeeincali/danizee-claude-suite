@@ -14,7 +14,7 @@ import { runDir as runDirOf, readJson, readJsonl, writeJson, appendJsonl, append
 import { RUN_ID, invalidRunId, redactUrlsInText } from './intake.js';
 import { parseJsonOnly } from './inventory.js';
 import { renderStatusSafe, loadState, nextStep } from './status.js';
-import { landsIn } from './targets.js';
+import { landsIn, standingTargets } from './targets.js';
 
 export const VERDICTS = ['rebuild', 'use', 'buy', 'skip'];
 export const PROBES = ['clean', 'found', 'incomplete'];
@@ -829,13 +829,19 @@ export async function recordDecisions(projectDir, { run, input, now = () => new 
     // Validate everything before the decisions are written. A decision identical to the recorded one is a repair, not a change.
     const changed = [];
     const repeated = [];
+    const counted = await readJson(path.join(p.dir, 'usage.json'));
     const landing = (await readJson(path.join(p.dir, 'targets.json')))?.targets;
     try {
       for (const [name, v] of Object.entries(decisions)) {
         const row = vj.rows[name];
-        if ((v === 'rebuild' || v === 'use') && !(Array.isArray(landing?.[name]) && landing[name].length)) {
+        if ((v === 'rebuild' || v === 'use') && (!counted || counted.evidence === 'none')) {
+          // where a power can land depends on the workflows the owner runs: never decided on a guess
+          throw new PolicyRefused(`${v} needs the owner's workflows first: ${counted ? 'usage.json has no evidence — record the owner\'s answer with cli.js usage --force --workflows <a,b>' : 'run cli.js usage (or cli.js usage --workflows <a,b> with the owner\'s own list)'}, then decide ${name}`);
+        }
+        if ((v === 'rebuild' || v === 'use') && !standingTargets(landing?.[name], counted).length) {
           // building is not the deliverable: a power lands in a workflow the owner runs, or it is not built
-          throw new PolicyRefused(`${v} needs a workflow for ${name} to land in: ${Array.isArray(landing?.[name]) ? 'its targets are empty' : 'no targets recorded'} — `
+          const why = !Array.isArray(landing?.[name]) ? 'no targets recorded' : landing[name].length ? 'none of its targets is a workflow the owner runs' : 'its targets are empty';
+          throw new PolicyRefused(`${v} needs a workflow for ${name} to land in: ${why} — `
             + `record them with cli.js targets --from <file>, or the owner's own with cli.js targets --set ${name}@<workflow>[,<workflow>]; otherwise skip or buy it`);
         }
         if (v === 'use' && row.needs_probe) {

@@ -23,9 +23,9 @@ import { runDir as runDirOf, writeJson, readJson } from './store.js';
 export const EVIDENCE = ['transcripts', 'owner', 'none'];
 export const DEFAULT_DAYS = 90;
 export const DEFAULT_ROOTS = ['~/.claude/projects'];
-/** A transcript line longer than this is skipped unread: a command marker never needs a multi-megabyte line. */
-export const MAX_LINE_BYTES = 4 * 1024 * 1024;
-const NAME = /^[a-z0-9][a-z0-9._-]*(?::[a-z0-9][a-z0-9._-]*)?$/i;
+/** A transcript line longer than this (in characters) is skipped unparsed: a command marker never needs a multi-megabyte line. */
+export const MAX_LINE_CHARS = 4 * 1024 * 1024;
+const NAME = /^[a-z0-9][a-z0-9._-]*(?::[a-z0-9][a-z0-9._-]*)*$/i;
 const ALIAS = /^#\s*\/([a-z0-9][a-z0-9._-]*)\s+[—-]+\s+alias for\s+\/([a-z0-9][a-z0-9._:-]*)/i;
 
 export const expandHome = (p) => (p === '~' ? os.homedir() : p.startsWith('~/') ? path.join(os.homedir(), p.slice(2)) : p);
@@ -79,7 +79,8 @@ async function listTranscripts(root, sinceMs) {
     try { ents = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
     for (const e of ents) {
       const p = path.join(dir, e.name);
-      if (e.isDirectory()) await walk(p, depth + 1);
+      // a subagent's transcript is work a workflow delegated, not a session the owner ran
+      if (e.isDirectory()) { if (e.name !== 'subagents') await walk(p, depth + 1); }
       else if (e.isFile() && e.name.endsWith('.jsonl')) {
         try { const st = await fs.stat(p); if (st.mtimeMs >= sinceMs) out.push(p); } catch { /* vanished */ }
       }
@@ -93,12 +94,14 @@ async function listTranscripts(root, sinceMs) {
 export function invocations(row) {
   const names = [];
   const msg = row && typeof row === 'object' ? row.message : null;
-  if (!msg) return names;
+  if (!msg || row.isSidechain === true) return names;
   const parts = typeof msg.content === 'string' ? [{ type: 'text', text: msg.content }] : Array.isArray(msg.content) ? msg.content : [];
   if (row.type === 'user') {
     for (const p of parts) {
       if (p?.type !== 'text' || typeof p.text !== 'string') continue;
-      const m = /^\s*<command-name>\/?([^<\s]+)<\/command-name>/.exec(p.text);
+      // the command tags open the turn, in either order: <command-message>…</command-message> may come first
+      const head = p.text.replace(/^(\s*<command-(?:message|args)>[^<]*<\/command-(?:message|args)>)+/, '');
+      const m = /^\s*<command-name>\/?([^<\s]+)<\/command-name>/.exec(head);
       if (m) names.push({ name: m[1], kind: 'typed' });
     }
   } else if (row.type === 'assistant') {
@@ -130,7 +133,7 @@ export async function scanUsage(projectDir, { roots = DEFAULT_ROOTS, days = DEFA
       const session = new Map(); // workflow -> { typed, skill, last, via }
       const rl = readline.createInterface({ input: createReadStream(file, { encoding: 'utf-8' }), crlfDelay: Infinity });
       for await (const line of rl) {
-        if (line.length > MAX_LINE_BYTES) { linesSkipped++; continue; }
+        if (line.length > MAX_LINE_CHARS) { linesSkipped++; continue; }
         if (!line.includes('<command-name>') && !line.includes('"Skill"')) continue;
         let row;
         try { row = JSON.parse(line); } catch { linesSkipped++; continue; }
@@ -141,7 +144,7 @@ export async function scanUsage(projectDir, { roots = DEFAULT_ROOTS, days = DEFA
           if (!workflow) { if (via) other.set(via, (other.get(via) || 0) + 1); continue; }
           const s = session.get(workflow) || { uses: 0, prev: undefined, last: null, via: new Map(), useVia: null, hopVia: false };
           const t = ts ? Date.parse(ts) : null;
-          const hop = s.prev !== undefined && (t === null || s.prev === null || t - s.prev < HOP_MS);
+          const hop = s.prev !== undefined && (t === null || (s.prev !== null && t - s.prev < HOP_MS));
           if (!hop) { s.uses++; s.via.set(via, (s.via.get(via) || 0) + 1); s.useVia = via; s.hopVia = inv.kind === 'skill'; }
           else if (inv.kind === 'typed' && s.hopVia) {
             // the typed name is the one the owner used: it replaces the Skill name this use was first seen by
@@ -151,7 +154,7 @@ export async function scanUsage(projectDir, { roots = DEFAULT_ROOTS, days = DEFA
             s.useVia = via;
             s.hopVia = false;
           }
-          s.prev = t;
+          if (t !== null || s.prev === undefined) s.prev = t;
           if (ts && (!s.last || ts > s.last)) s.last = ts;
           session.set(workflow, s);
         }

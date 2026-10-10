@@ -14,6 +14,7 @@ import { runDir as runDirOf, readJson, readJsonl, writeJson, appendJsonl, append
 import { RUN_ID, invalidRunId, redactUrlsInText } from './intake.js';
 import { parseJsonOnly } from './inventory.js';
 import { renderStatusSafe, loadState, nextStep } from './status.js';
+import { landsIn, standingTargets } from './targets.js';
 
 export const VERDICTS = ['rebuild', 'use', 'buy', 'skip'];
 export const PROBES = ['clean', 'found', 'incomplete'];
@@ -402,16 +403,20 @@ function harnessCell(judgment) {
   return status;
 }
 
-export function verdictTable(rows) {
-  const lines = ['| Power | Harness | Licence | Legal | Default | Decision | Why |', '| --- | --- | --- | --- | --- | --- | --- |'];
+/** The verdict table. With `targets` (targets.json's map) it gains a Lands in column: workflow · step · mode per target. */
+export function verdictTable(rows, targets) {
+  const lines = targets
+    ? ['| Power | Harness | Licence | Legal | Default | Lands in | Decision | Why |', '| --- | --- | --- | --- | --- | --- | --- | --- |']
+    : ['| Power | Harness | Licence | Legal | Default | Decision | Why |', '| --- | --- | --- | --- | --- | --- | --- |'];
   for (const [name, r] of Object.entries(rows || {})) {
     const whys = (r.removed || []).map(x => `${x.verdict} removed: ${x.reason}`);
     if (r.needs_probe) whys.push(`use needs a clean network probe (cli.js verdict --probe ${name}=clean|found|incomplete)`);
     if (r.probe?.result) whys.push(`probe: ${r.probe.result}`);
     const why = whys.join('; ');
     const legal = (r.legal || []).map(v => (v === 'use' && r.needs_probe ? 'use (probe first)' : v)).join(', ');
-    lines.push(`| ${[name, harnessCell(r.judgment), `${r.licence ?? 'unknown'} (${r.licence_class ?? 'none'})`,
-      legal, r.default ?? '', r.decision || '—', why].map(cell).join(' | ')} |`);
+    const cells = [name, harnessCell(r.judgment), `${r.licence ?? 'unknown'} (${r.licence_class ?? 'none'})`, legal, r.default ?? ''];
+    if (targets) cells.push(landsIn(targets[name]));
+    lines.push(`| ${[...cells, r.decision || '—', why].map(cell).join(' | ')} |`);
   }
   return lines.join('\n');
 }
@@ -713,7 +718,7 @@ export async function computeVerdicts(projectDir, { run, sandbox, now = () => ne
       runId: run,
       sandbox: sb,
       rows,
-      table: verdictTable(rows),
+      table: verdictTable(rows, (await readJson(path.join(p.dir, 'targets.json')))?.targets),
       needs_probe: Object.keys(rows).filter(n => rows[n].needs_probe),
       dropped,
       next: await nextOf(p.dir, unread),
@@ -824,9 +829,21 @@ export async function recordDecisions(projectDir, { run, input, now = () => new 
     // Validate everything before the decisions are written. A decision identical to the recorded one is a repair, not a change.
     const changed = [];
     const repeated = [];
+    const counted = await readJson(path.join(p.dir, 'usage.json'));
+    const landing = (await readJson(path.join(p.dir, 'targets.json')))?.targets;
     try {
       for (const [name, v] of Object.entries(decisions)) {
         const row = vj.rows[name];
+        if ((v === 'rebuild' || v === 'use') && (!counted || counted.evidence === 'none')) {
+          // where a power can land depends on the workflows the owner runs: never decided on a guess
+          throw new PolicyRefused(`${v} needs the owner's workflows first: ${counted ? 'usage.json has no evidence — record the owner\'s answer with cli.js usage --force --workflows <a,b>' : 'run cli.js usage (or cli.js usage --workflows <a,b> with the owner\'s own list)'}, then decide ${name}`);
+        }
+        if ((v === 'rebuild' || v === 'use') && !standingTargets(landing?.[name], counted).length) {
+          // building is not the deliverable: a power lands in a workflow the owner runs, or it is not built
+          const why = !Array.isArray(landing?.[name]) ? 'no targets recorded' : landing[name].length ? 'none of its targets is a workflow the owner runs' : 'its targets are empty';
+          throw new PolicyRefused(`${v} needs a workflow for ${name} to land in: ${why} — `
+            + `record them with cli.js targets --from <file>, or the owner's own with cli.js targets --set ${name}@<workflow>[,<workflow>]; otherwise skip or buy it`);
+        }
         if (v === 'use' && row.needs_probe) {
           throw new PolicyRefused(`use needs a clean network probe for ${name} first (cli.js verdict --probe ${name}=clean|found|incomplete); legal verdicts are ${row.legal.join(', ')}`);
         }

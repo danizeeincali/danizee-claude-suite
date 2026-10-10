@@ -6,7 +6,7 @@ import path from 'path';
 import { readJson, readJsonl, writeTextAtomic } from './store.js';
 import { egressLine } from './fetch.js';
 
-export const STEPS = ['intake', 'fetch', 'inventory', 'map', 'usage', 'verdict', 'handoff'];
+export const STEPS = ['intake', 'fetch', 'inventory', 'map', 'usage', 'targets', 'verdict', 'handoff'];
 
 export const DECISIONS = ['rebuild', 'use', 'buy', 'skip'];
 
@@ -27,6 +27,8 @@ export function nextStep(state) {
   const decided = !!state.verdicts && list.every(n => decisions && isDecision(decisions[n]));
   // usage comes before the verdict; a run decided before the usage step existed is not sent back to it
   if (!state.usage && !decided) return 'usage';
+  // where each power lands is proposed before the verdict, which approves it
+  if (!decided && !list.every(n => Array.isArray(state.targets?.targets?.[n]))) return 'targets';
   if (!decided) return 'verdict';
   if (!state.handoff) return 'handoff';
   return 'done';
@@ -79,6 +81,7 @@ export function renderStatus(state) {
     inventory: state.powers ? `${sum.found} powers (${sum.not_inventoried} not inventoried)` : '',
     map: state.map ? `${Object.keys(state.map.judgments || {}).length} judged` : '',
     usage: state.usage ? `${state.usage.evidence}: ${(state.usage.workflows || []).length} workflows` : 'skipped (decided before the usage step)',
+    targets: state.targets ? `${Object.values(state.targets.targets || {}).filter(t => Array.isArray(t) && t.length).length} powers land somewhere` : 'skipped (decided before the targets step)',
     verdict: state.verdicts ? `${sum.approved} approved, ${sum.skip} skipped, ${sum.undecided} undecided` : '',
     handoff: [sum.marathon, state.handoff?.note].filter(Boolean).map(esc).join(' — ')
   };
@@ -103,6 +106,7 @@ export async function loadState(runDir) {
     powers: await j('powers.json'),
     map: await j('map.json'),
     usage: await j('usage.json'),
+    targets: await j('targets.json'),
     verdicts: await j('verdicts.json'),
     handoff: await j('handoff.json')
   };

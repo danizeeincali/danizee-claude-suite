@@ -4,6 +4,7 @@
  * one brief per power, idea-only, no source code; buy → memo; skip → listed. Nothing is pushed, nothing is built here.
  */
 
+import { landed } from './fixtures/bbs-landed.js';
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
@@ -60,6 +61,7 @@ async function decided(dir, slug, powers, judgments, decisions) {
   await writeInventory(dir, { run: r.runId, input: JSON.stringify(powers), now });
   await buildMap(dir, { run: r.runId, now });
   await recordJudgments(dir, { run: r.runId, input: JSON.stringify(judgments), now });
+  await landed(dir, r.runId);
   await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now });
   await recordDecisions(dir, { run: r.runId, input: JSON.stringify(decisions), now });
   return r;
@@ -283,13 +285,15 @@ describe('handoff — cli verb', () => {
     run(dir, ['inventory', '--from', '-'], JSON.stringify([power()]));
     run(dir, ['map']);
     run(dir, ['map', '--from', '-'], JSON.stringify({ 'drift-monitor': 'missing' }));
+    run(dir, ['usage', '--workflows', 'w-review']);
+    run(dir, ['targets', '--set', 'drift-monitor@w-review']);
   });
   after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
 
   it('usage lists handoff [--marathon] [--force]; handoff before the decisions exits 1 naming verdict', () => {
     const u = run(dir, ['nope']);
     assert.match(u.err, /cli\.js handoff \[--marathon\] \[--force\] \[--run <id>\] \[--project <dir>\]/);
-    assert.match(u.err, /usage: cli\.js <intake\|fetch\|inventory\|map\|usage\|verdict\|handoff\|status\|report> \.\.\./);
+    assert.match(u.err, /usage: cli\.js <intake\|fetch\|inventory\|map\|usage\|targets\|verdict\|handoff\|status\|report> \.\.\./);
     const early = run(dir, ['handoff']);
     assert.equal(early.code, 1);
     assert.match(early.err, /verdict/);

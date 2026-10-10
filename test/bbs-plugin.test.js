@@ -72,7 +72,7 @@ describe('bbs plugin — install', () => {
   it('the installed cli.js runs on its own (every sibling import resolves) — usage on an unknown verb, exit 1', () => {
     const r = spawnSync(process.execPath, [path.join(claudeDir, 'helpers', 'bbs', 'cli.js'), 'nope'], { cwd: dir, encoding: 'utf-8' });
     assert.equal(r.status, 1);
-    assert.match(r.stderr, /usage: cli\.js <intake\|fetch\|inventory\|map\|usage\|verdict\|handoff\|status\|report>/);
+    assert.match(r.stderr, /usage: cli\.js <intake\|fetch\|inventory\|map\|usage\|targets\|verdict\|handoff\|status\|report>/);
     assert.equal(r.stdout, '');
   });
 
@@ -158,6 +158,8 @@ describe('bbs plugin — review r1 regressions', () => {
     step(['inventory', '--from', path.join(FX, 'inventory.json')]);
     step(['map']);
     step(['map', '--from', path.join(FX, 'judgments.json')]);
+    step(['usage', '--workflows', 'w-review']);
+    step(['targets', '--from', path.join(FX, 'targets.json')]);
     step(['verdict']);
     step(['verdict', '--from', path.join(FX, 'decisions.json')]);
     const h = spawnSync(process.execPath, [cli, 'handoff', '--marathon'], { cwd: dir, encoding: 'utf-8', env });
