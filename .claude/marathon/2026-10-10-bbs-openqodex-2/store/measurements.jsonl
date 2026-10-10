@@ -88,3 +88,6 @@
 {"key":"packaged_hardened-git-read-on-untrusted-repo","value":true,"id":"36144a0d-9227-45ba-9cd3-ef14dd7e71de","ts":"2026-10-10T09:39:40.646Z"}
 {"key":"egress_zero_hardened-git-read-on-untrusted-repo","value":true,"id":"b281a204-b7c8-46ae-af54-9e4c18445da6","ts":"2026-10-10T09:39:40.773Z"}
 {"key":"callers_hardened-git-read-on-untrusted-repo","value":1,"id":"2160ba73-fd59-4a67-92dd-00d1a58018d8","ts":"2026-10-10T09:39:40.895Z"}
+{"key":"packaged_identity-checked-file-writes","value":true,"id":"df1c5c08-3aeb-4535-a43b-89f39ad2bcb8","ts":"2026-10-10T09:51:26.821Z"}
+{"key":"egress_zero_identity-checked-file-writes","value":true,"id":"bd08ed2e-07a8-432d-bdd9-e87d27e32c6f","ts":"2026-10-10T09:51:26.933Z"}
+{"key":"callers_identity-checked-file-writes","value":1,"id":"14e5d69d-2a0c-4839-9fdc-faff12b214a7","ts":"2026-10-10T09:51:27.050Z"}
