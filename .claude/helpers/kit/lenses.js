@@ -249,7 +249,8 @@ function parseGitHeader(rest) {
 /**
  * A unified diff → `[{ path, added: [...], removed: [...] }]` in file order. Lines are without the +/- marker.
  * `{ deleted: true }` adds `deleted` (the new side is /dev/null) to each entry. `{ lines: true }` adds `deleted`, `oldPath`
- * and, aligned with `added` / `removed`, `addedAt` (new-side line numbers) and `removedAt` (old-side line numbers).
+ * and, aligned with `added` / `removed`, `addedAt` (new-side line numbers), `removedAt` (old-side line numbers) and
+ * `removedNewAt` (for each removed line, the new-side line the removal sits just before).
  */
 export function parseDiff(text, { deleted = false, lines = false } = {}) {
   const files = [];
@@ -259,7 +260,7 @@ export function parseDiff(text, { deleted = false, lines = false } = {}) {
     if (hunk && (hunk.old > 0 || hunk.new > 0)) {
       const c = line[0];
       if (c === '+') { cur.added.push(line.slice(1)); cur.addedAt.push(hunk.newNo++); hunk.new--; continue; }
-      if (c === '-') { cur.removed.push(line.slice(1)); cur.removedAt.push(hunk.oldNo++); hunk.old--; continue; }
+      if (c === '-') { cur.removed.push(line.slice(1)); cur.removedAt.push(hunk.oldNo++); cur.removedNewAt.push(hunk.newNo); hunk.old--; continue; }
       if (c === ' ' || line === '') { hunk.old--; hunk.new--; hunk.oldNo++; hunk.newNo++; continue; }
       if (c === '\\') continue;
       hunk = null; // malformed counts: treat this line as a header
@@ -267,7 +268,7 @@ export function parseDiff(text, { deleted = false, lines = false } = {}) {
     if (line.startsWith('\\')) continue;
     if (line.startsWith('diff --git ')) {
       const g = parseGitHeader(line.slice('diff --git '.length).replace(/\r$/, ''));
-      cur = { path: g.path, mode: g.mode, added: [], removed: [], addedAt: [], removedAt: [], fromGit: true, sawOld: false };
+      cur = { path: g.path, mode: g.mode, added: [], removed: [], addedAt: [], removedAt: [], removedNewAt: [], fromGit: true, sawOld: false };
       files.push(cur);
       continue;
     }
@@ -282,7 +283,7 @@ export function parseDiff(text, { deleted = false, lines = false } = {}) {
       const mode = cur && cur.fromGit ? cur.mode : 'loose';
       const p = cleanPath(line.slice(4), mode);
       if (cur && cur.fromGit && !cur.sawOld && cur.added.length + cur.removed.length === 0) { cur.sawOld = true; if (!cur.renamed) cur.oldPath = p; }
-      else { cur = { path: p, oldPath: p, mode: 'loose', added: [], removed: [], addedAt: [], removedAt: [], sawOld: true }; files.push(cur); }
+      else { cur = { path: p, oldPath: p, mode: 'loose', added: [], removed: [], addedAt: [], removedAt: [], removedNewAt: [], sawOld: true }; files.push(cur); }
       continue;
     }
     if (line.startsWith('+++ ') && cur && cur.renamed) continue;
@@ -295,7 +296,7 @@ export function parseDiff(text, { deleted = false, lines = false } = {}) {
     const h = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
     if (h && cur) hunk = { old: h[2] === undefined ? 1 : +h[2], new: h[4] === undefined ? 1 : +h[4], oldNo: +h[1], newNo: +h[3] };
   }
-  if (lines) return files.map(f => ({ path: f.path, oldPath: f.oldPath || f.path, added: f.added, removed: f.removed, addedAt: f.addedAt, removedAt: f.removedAt, deleted: !!f.deleted }));
+  if (lines) return files.map(f => ({ path: f.path, oldPath: f.oldPath || f.path, added: f.added, removed: f.removed, addedAt: f.addedAt, removedAt: f.removedAt, removedNewAt: f.removedNewAt, deleted: !!f.deleted }));
   return files.map(f => (deleted ? { path: f.path, added: f.added, removed: f.removed, deleted: !!f.deleted } : { path: f.path, added: f.added, removed: f.removed }));
 }
 

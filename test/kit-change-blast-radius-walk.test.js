@@ -429,3 +429,35 @@ describe('impact — review round 1 regressions', () => {
     assert.equal(md, c);
   }));
 });
+
+describe('impact — review round 2 regressions', () => {
+  it('a change that only deletes lines inside a definition touches it and walks its callers', () => tmp(async dir => {
+    const lib = (body) => `export function check(x) {\n  const y = x + 1;\n${body}  return y;\n}\n`;
+    const { base, diff } = await change(dir,
+      { 'lib.js': lib('  if (x < 0) throw new Error("neg");\n'), 'main.js': "import { check } from './lib.js';\nexport function main() { return check(1); }\n" },
+      { 'lib.js': lib('') });
+    for (const extra of [[], ['--base', base]]) {
+      const r = await impactOf(dir, diff, extra);
+      assert.deepEqual(ids(r.touched), ['check'], extra.join(' '));
+      assert.ok(ids(r.impacted).includes('main'), 'the caller of the edited function is walked');
+      assert.ok(r.risk.score > 0);
+    }
+  }));
+
+  it('deleting a whole definition is module-level for the new side (the old side reports the removal)', () => {
+    const changes = parseDiffLines(['diff --git x.js x.js', '--- x.js', '+++ x.js', '@@ -1,4 +1,1 @@', '-function gone() {', '-  return 1;', '-}', ' export const k = 1;', ''].join('\n'), { cuts: true });
+    assert.deepEqual(changes[0].cuts, [1]);
+    const t = touchedSymbols({ files: [{ path: 'x.js' }], defs: [], not_read: [] }, changes);
+    assert.deepEqual(t.touched, []);
+    assert.deepEqual(t.module_level, ['x.js']);
+  });
+
+  it('an empty diff still checks --base', () => tmp(async dir => {
+    git(dir, 'init', '-q', '.');
+    await put(dir, { 'a.js': 'export const a = 1;\n' });
+    git(dir, 'add', '-A');
+    git(dir, 'commit', '-q', '-m', 'a');
+    await assert.rejects(impactOf(dir, '', ['--base', 'no-such-ref']), (e) => e instanceof KitExit && e.code === 1 && /--base/.test(e.message));
+    assert.equal((await impactOf(dir, '', ['--base', 'HEAD'])).touched.length, 0);
+  }));
+});

@@ -63,11 +63,12 @@ function toRanges(nums) {
 /**
  * A unified diff → `[{ path, oldPath, deleted, added: [[start, end]], removed: [[start, end]] }]`. `added` are new-side
  * line ranges, `removed` old-side ones (consecutive lines merged). One reader for every prefix style (lenses.parseDiff).
+ * `{ cuts: true }` adds `cuts`: the new-side line each removal sits just before (pure deletions map through these).
  */
-export function parseDiffLines(diffText) {
+export function parseDiffLines(diffText, { cuts = false } = {}) {
   return parseDiff(diffText, { lines: true })
     .filter((f) => f.path && f.path !== '/dev/null')
-    .map((f) => ({ path: f.path, oldPath: f.oldPath, deleted: !!f.deleted, added: toRanges(f.addedAt), removed: toRanges(f.removedAt) }));
+    .map((f) => ({ path: f.path, oldPath: f.oldPath, deleted: !!f.deleted, added: toRanges(f.addedAt), removed: toRanges(f.removedAt), ...(cuts ? { cuts: [...new Set(f.removedNewAt || [])].sort((a, b) => a - b) } : {}) }));
 }
 
 // ================================================================ touched symbols
@@ -76,8 +77,10 @@ export function parseDiffLines(diffText) {
  * Decided per changed LINE: each line maps to the smallest definition that contains it (none = module level), and the
  * touched set is the union over lines. So an outer function whose own lines changed stays touched next to a nested
  * one that changed too. Returns { hit: [defs], outside: true when some changed line is in no definition }.
+ * `cuts` are pure deletions: new-side line p means lines were removed between p-1 and p. A cut belongs to the smallest
+ * definition holding both p-1 and p (a deleted check inside a function that still exists touches that function).
  */
-function mapLines(defs, ranges) {
+function mapLines(defs, ranges, cuts = []) {
   const hit = new Set();
   let outside = false;
   for (const [s, e] of ranges) {
@@ -89,6 +92,14 @@ function mapLines(defs, ranges) {
       }
       if (best) hit.add(best); else outside = true;
     }
+  }
+  for (const p of cuts) {
+    let best = null;
+    for (const d of defs) {
+      if (d.start > p - 1 || d.end < p) continue;
+      if (!best || d.end - d.start < best.end - best.start || (d.end - d.start === best.end - best.start && d.start > best.start)) best = d;
+    }
+    if (best) hit.add(best); else outside = true;
   }
   return { hit: [...hit], outside };
 }
@@ -108,11 +119,11 @@ export function touchedSymbols(graph, changes, { oldGraph } = {}) {
   for (const c of changes) {
     const src = isSource(c.path) || (c.oldPath && isSource(c.oldPath));
     if (!src) { out.not_source.push(c.path); continue; }
-    if (!c.deleted && c.added.length) {
+    if (!c.deleted && (c.added.length || (c.cuts || []).length)) {
       if (!readFiles.has(c.path)) out.unmapped.push({ file: c.path, reason: notRead.get(c.path) || 'not_read' });
       else {
         const defs = defsOf.get(c.path) || [];
-        const { hit, outside } = mapLines(defs, c.added);
+        const { hit, outside } = mapLines(defs, c.added, c.cuts || []);
         for (const d of hit) if (!seen.has(d.id)) { seen.add(d.id); out.touched.push(d); }
         // any changed line that no definition contains is a module-level change
         if (outside) out.module_level.push(c.path);
@@ -353,11 +364,15 @@ export async function run(args, io = {}) {
   const cwd = io.cwd || process.cwd();
   const dir = path.resolve(cwd, f.dir || '.');
   const diffText = await readDiffArg(f.diff, io, cwd);
-  const changes = parseDiffLines(diffText);
+  const changes = parseDiffLines(diffText, { cuts: true });
   const loc = await locateRepo(dir);
   if (!loc.top) throw invalid(`${dir} has no work tree (a bare repository or a path inside .git)`);
   const exec = (a) => safeGit(loc.top, a, { git: io.git, env: io.env || process.env });
   const [top] = await gitPaths(exec, loc.top, ['toplevel'], 'cannot find the repository');
+  if (f.base !== undefined) {
+    const ok = await exec(['rev-parse', '--verify', '--quiet', `${f.base}^{tree}`]);
+    if (ok.code !== 0) throw invalid(`--base ${JSON.stringify(f.base).slice(0, 80)} is not a commit or tree in this repository (see --help)`);
+  }
   if (!changes.length) { // an empty diff is not an error (graph treats it the same way): nothing touched, nothing to follow
     return {
       root: top, base: f.base ?? null, hops: f.hops ? Number(f.hops) : LIMITS.hops, partial: false, graph_partial: false, not_read: [], unmapped: [],
@@ -368,8 +383,6 @@ export async function run(args, io = {}) {
   }
   let oldGraph;
   if (f.base !== undefined) {
-    const ok = await exec(['rev-parse', '--verify', '--quiet', `${f.base}^{tree}`]);
-    if (ok.code !== 0) throw invalid(`--base ${JSON.stringify(f.base).slice(0, 80)} is not a commit or tree in this repository (see --help)`);
     oldGraph = await buildOldSide(exec, f.base, changes, { clock: io.clock });
   }
   const graph = await buildGraph(top, {
