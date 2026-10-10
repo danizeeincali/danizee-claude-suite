@@ -152,3 +152,4 @@
 {"role":"review","model":"opus","stream":"tracked-file-scrub-gate","budget":150000,"event":"spawn","id":"8f5b8fae-26f3-452f-9b34-6d62b93de3f9","ts":"2026-10-10T12:52:28.704Z"}
 {"role":"fix","model":"sonnet","stream":"tracked-file-scrub-gate","budget":120000,"event":"spawn","id":"9aff1bff-a5f7-411b-8beb-2f01d147cabc","ts":"2026-10-10T12:56:22.452Z"}
 {"helper_id":"9aff1bff-a5f7-411b-8beb-2f01d147cabc","tokens":110000,"outcome":"green","event":"done","id":"19897d0d-0868-4e98-a1cc-e8a535b25b93","ts":"2026-10-10T13:00:10.934Z"}
+{"role":"build","model":"sonnet","stream":"planted-bug-review-scoring","budget":150000,"event":"spawn","id":"84d0eae2-2d61-4a12-8e9f-6ae449a8dc17","ts":"2026-10-10T13:03:53.820Z"}

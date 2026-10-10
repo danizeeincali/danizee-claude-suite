@@ -99,10 +99,13 @@
     },
     {
       "name": "planted-bug-review-scoring",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/planted-bug-review-scoring.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract tests and module",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-planted-bug-review-scoring",
+      "phase": "build",
+      "base": "8dd56055efd0e55ee2e53f4d585a70e9fc8e5053"
     },
     {
       "name": "isolated-tool-free-wording-judge",

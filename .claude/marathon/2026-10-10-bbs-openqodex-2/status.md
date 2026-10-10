@@ -1,11 +1,11 @@
 # Marathon 2026-10-10-bbs-openqodex-2
 
 - State: RUNNING
-- Budget: 9,153,771 / 10,000,000 tokens
+- Budget: 9,303,771 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 2/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Next stream "planted-bug-review-scoring": create its worktree (`git worktree add ../<repo>-planted-bug-review-scoring -b marathon/2026-10-10-bbs-openqodex-2/planted-bug-review-scoring`) and activate it with `cli.js stream planted-bug-review-scoring state=active isolation=<path>`, then /w-marathon --resume 2026-10-10-bbs-openqodex-2.
+- Next for you: Continue stream "planted-bug-review-scoring" (next: builder writes contract tests and module) — /w-marathon --resume 2026-10-10-bbs-openqodex-2.
 - Last handoff: 2026-10-10T09:05:18.050Z (auto) on claude/project-thread-p9gbyo@3434e5b, 5 uncommitted, tasks: none
 
 ## Streams
@@ -21,7 +21,7 @@
 | caller-floor-disclosure | ../danizee-claude-suite-caller-floor-disclosure | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/caller-floor-disclosure.md | done | met | review | — |  | 0 |
 | fact-cached-graph-build-with-budget | ../danizee-claude-suite-fact-cached-graph-build-with-budget | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/fact-cached-graph-build-with-budget.md | done | met | review | — |  | 0 |
 | tracked-file-scrub-gate | ../danizee-claude-suite-tracked-file-scrub-gate | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/tracked-file-scrub-gate.md | done | met | review | — |  | 0 |
-| planted-bug-review-scoring |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/planted-bug-review-scoring.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
+| planted-bug-review-scoring | ../danizee-claude-suite-planted-bug-review-scoring | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/planted-bug-review-scoring.md | active | clean 0/2 | build | builder writes contract tests and module |  | 0 |
 | isolated-tool-free-wording-judge |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/isolated-tool-free-wording-judge.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 
 ## Finish line
