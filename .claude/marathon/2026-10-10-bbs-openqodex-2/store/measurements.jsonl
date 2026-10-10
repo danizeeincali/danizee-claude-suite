@@ -139,3 +139,6 @@
 {"key":"packaged_caller-floor-disclosure","value":true,"id":"f94c046f-a12e-4c8f-b0dd-88410b6d8200","ts":"2026-10-10T12:20:28.635Z"}
 {"key":"egress_zero_caller-floor-disclosure","value":true,"id":"5401b3fa-2a0d-42c2-9a8c-a1b609984603","ts":"2026-10-10T12:20:28.760Z"}
 {"key":"callers_caller-floor-disclosure","value":2,"id":"708b948e-0470-4155-b751-dd4efddcc8f2","ts":"2026-10-10T12:20:28.878Z"}
+{"key":"packaged_tracked-file-scrub-gate","value":true,"id":"0b69b516-45f6-4666-94b4-8f1954993f3b","ts":"2026-10-10T12:30:09.160Z"}
+{"key":"egress_zero_tracked-file-scrub-gate","value":true,"id":"c4e12b03-8222-4f60-a2ff-a6ac8c783e1b","ts":"2026-10-10T12:30:09.345Z"}
+{"key":"callers_tracked-file-scrub-gate","value":2,"id":"5392cb45-20ee-4f26-a086-0dbe70ffea81","ts":"2026-10-10T12:30:09.498Z"}

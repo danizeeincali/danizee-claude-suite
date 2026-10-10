@@ -47,3 +47,4 @@
 {"kind":"unit","status":"green","stream":"caller-floor-disclosure","commit":"05a9c21","id":"ec27a115-be99-4bbb-ac43-89e8e76b4d70","ts":"2026-10-10T12:08:33.500Z"}
 {"kind":"unit","status":"green","stream":"caller-floor-disclosure","commit":"20039d1","id":"9462d3c2-9eaa-4593-b74b-bef468901941","ts":"2026-10-10T12:15:53.906Z"}
 {"kind":"unit","status":"green","stream":"caller-floor-disclosure","commit":"3aa26df","id":"9664ff96-1b9f-4caa-b242-591bab22c05c","ts":"2026-10-10T12:20:25.128Z"}
+{"kind":"unit","status":"green","stream":"tracked-file-scrub-gate","commit":"083b6d6","id":"42446416-2b63-44a6-8f04-988b65208842","ts":"2026-10-10T12:30:05.245Z"}
