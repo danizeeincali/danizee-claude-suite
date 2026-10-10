@@ -51,7 +51,7 @@
       "name": "identity-checked-file-writes",
       "state": "active",
       "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/identity-checked-file-writes.md",
-      "next": "review round 1",
+      "next": "review round 2",
       "tasks": [],
       "isolation": "../danizee-claude-suite-identity-checked-file-writes",
       "phase": "review",
