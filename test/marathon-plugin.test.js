@@ -191,9 +191,16 @@ describe('installer — marathon wiring', () => {
     const installer = new DaniZeeSuiteInstaller({ path: testDir, force: true, homeDir: fakeHome });
     await installer.install();
     const settings = await readSettings(path.join(testDir, '.claude'));
-    assert.equal(settings.hooks.PreCompact.length, 1);
-    assert.equal(settings.hooks.SessionStart.length, 1);
-    assert.equal(settings.hooks.SessionStart[0].matcher, 'compact');
+    // One entry per hook script: marathon's pair and /bc's pair, none duplicated.
+    const commands = (event) => settings.hooks[event].flatMap(e => e.hooks.map(h => h.command));
+    for (const event of ['PreCompact', 'SessionStart']) {
+      const cmds = commands(event);
+      assert.equal(cmds.length, 2, `${event}: ${cmds.join(', ')}`);
+      assert.equal(new Set(cmds).size, cmds.length);
+    }
+    assert.equal(commands('PreCompact').filter(c => /marathon-precompact\.sh/.test(c)).length, 1);
+    assert.equal(commands('PreCompact').filter(c => /bc-precompact\.sh/.test(c)).length, 1);
+    assert.ok(settings.hooks.SessionStart.every(e => e.matcher === 'compact'));
   });
 
   it('m10: the helper CLI is in permissions.allow so an unattended loop never stalls on a prompt', async () => {

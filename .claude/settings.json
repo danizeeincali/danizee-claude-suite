@@ -26,7 +26,8 @@
       "Bash(git worktree:*)",
       "Read(docs/solutions/**)",
       "Write(docs/solutions/**)",
-      "Bash(node .claude/helpers/marathon/cli.js:*)"
+      "Bash(node .claude/helpers/marathon/cli.js:*)",
+      "Bash(node .claude/helpers/bc/cli.js:*)"
     ]
   },
   "features": {
@@ -131,6 +132,14 @@
             "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/marathon-precompact.sh\""
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/bc-precompact.sh\""
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -140,6 +149,15 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/marathon-session-start.sh\""
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/bc-session-start.sh\""
           }
         ]
       }
