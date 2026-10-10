@@ -8,6 +8,7 @@ import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { redactSecrets, fingerprintSecrets, redactByFingerprint, parseSecretsFile, loadProjectSecrets, secretsRoots, run, verb, MARKER } from '../src/lib/kit/redact.js';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
+import { oldGitSpawn } from './helpers/old-git.js';
 import { DaniZeeSuiteInstaller } from '../src/installer.js';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -172,10 +173,29 @@ describe('run (CLI contract)', () => {
   it('a git rev-parse failure is diagnosed by git\'s own reason, "not a repository" only when git says so (review r2)', () => {
     const fake = (stderr) => () => ({ status: 128, stdout: '', stderr });
     assert.throws(() => secretsRoots('/x', fake('fatal: not a git repository (or any of the parent directories): .git\n')), /not inside a git repository/);
-    assert.throws(() => secretsRoots('/x', fake('error: unknown option `path-format=absolute\'\nusage: git rev-parse\n')),
-      e => e instanceof KitExit && /git rev-parse failed \(error: unknown option `path-format=absolute'\)/.test(e.message) && !/not inside/.test(e.message));
+    assert.throws(() => secretsRoots('/x', fake('fatal: bad revision\n')),
+      e => e instanceof KitExit && /git rev-parse failed \(fatal: bad revision\)/.test(e.message) && !/not inside/.test(e.message));
     assert.throws(() => secretsRoots('/x', fake('')), /git rev-parse failed \(exit 128\)/);
   });
+  it('git < 2.31 (echoes unknown flags on stdout, exits 0): roots are absolute, never an echoed flag (review r3)', () => tmp(async dir => {
+    // Even git that echoes a --path-format flag back cannot make a root out of it: the output is rejected.
+    const echoing = () => ({ status: 0, stdout: '--path-format=absolute\n/repo\n.git\n', stderr: '' });
+    assert.throws(() => secretsRoots('/x', echoing), e => e instanceof KitExit && e.code === 1 && /unexpected git rev-parse output/.test(e.message));
+    // A fake old git that echoes any --path-format it is given; relative --git-common-dir is resolved against cwd.
+    const old = await oldGitSpawn(dir);
+    const main = path.join(dir, 'main');
+    await fs.mkdir(main);
+    await repo(main);
+    spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'x'], { cwd: main });
+    spawnSync('git', ['worktree', 'add', '-q', path.join(dir, 'wt')], { cwd: main });
+    await fs.mkdir(path.join(dir, 'wt', 'deep'), { recursive: true });
+    const real = await fs.realpath(dir);
+    assert.deepEqual(secretsRoots(path.join(main, 'sub'), old), [path.join(real, 'main')]);
+    assert.deepEqual(secretsRoots(path.join(dir, 'wt', 'deep'), old), [path.join(real, 'wt'), path.join(real, 'main')]);
+    for (const r of [...secretsRoots(path.join(main, 'sub'), old), ...secretsRoots(path.join(dir, 'wt', 'deep'), old)]) {
+      assert.ok(path.isAbsolute(r) && !r.includes('--path-format'), r);
+    }
+  }));
   it('refuses unknown flags, a missing explicit file, conflicting modes and a non-repo default; never echoes values', () => tmp(async dir => {
     await repo(dir);
     await assert.rejects(run(['--bogus'], io(dir)), /unknown flag --bogus/);

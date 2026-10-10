@@ -23,6 +23,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { KitExit } from './kit-exit.js';
+import { revParseArgs, resolveRevParse } from './git-paths.js';
 
 export const verb = 'redact';
 export const usage = 'cli.js redact [--secrets-file <f>] [--keep-lines] | cli.js redact --fingerprint [--secrets-file <f>] | cli.js redact --fingerprints <f> [--max-length <n>]  (text on stdin)';
@@ -124,7 +125,8 @@ export function parseSecretsFile(content) {
  * of its own and must fall back to the main checkout's.
  */
 export function secretsRoots(cwd, spawn = spawnSync) {
-  const r = spawn('git', ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir'], { cwd, encoding: 'utf-8' });
+  const queries = ['toplevel', 'commonDir'];
+  const r = spawn('git', revParseArgs(queries), { cwd, encoding: 'utf-8' });
   if (r.error) throw new KitExit(`cannot run git: ${r.error.message}`, 1);
   if (r.status !== 0) {
     const err = String(r.stderr || '');
@@ -132,7 +134,7 @@ export function secretsRoots(cwd, spawn = spawnSync) {
     const why = (err.split('\n').find(l => l.trim()) || `exit ${r.status}`).trim().slice(0, 200);
     throw new KitExit(`git rev-parse failed (${why}), so the default secrets file cannot be located; pass --secrets-file`, 1);
   }
-  const [top, common] = r.stdout.split('\n').map(s => s.trim());
+  const [top, common] = resolveRevParse(cwd, queries, r.stdout);
   const roots = [top];
   if (common && path.basename(common) === '.git') { const main = path.dirname(common); if (main !== top) roots.push(main); }
   return roots;
