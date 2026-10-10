@@ -213,6 +213,7 @@ describe('diff-range — the review range as one unified diff', () => {
     const real = defaultGit(dir, {});
     const fake = (stderr, stdout) => Object.assign(async (args, o) => {
       if (args.includes('--no-index')) return { code: 1, stdout, stderr };
+      if (args.includes('--pathspec-from-file=-')) return { code: 129, stdout: '', stderr: 'error: unknown option `pathspec-from-file=-\'\nusage: git add' }; // an old git: the per-file --no-index fallback runs
       return real(args, o);
     }, { cwd: dir });
     await put('x.txt', 'x\n');
@@ -367,7 +368,7 @@ describe('diff-range — the review range as one unified diff', () => {
     } finally { await fs.rm(tools, { recursive: true, force: true }); }
   });
 
-  it('a partial clone with a missing blob is exit 1 naming the missing object and lazy fetch being off; nothing is fetched', async (t) => {
+  it('a partial clone with a missing blob is exit 1 naming the missing object and that diff-range never downloads; nothing is fetched', async (t) => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'diff-range-pc-'));
     try {
       const src = path.join(root, 'src');
@@ -590,7 +591,7 @@ describe('diff-range — the review range as one unified diff', () => {
     assert.equal(r.exit, 0);
     const subs = new Set(calls.map(c => c.args.find(a => !a.startsWith('-') && !a.includes('=')) ));
     for (const need of ['config', 'rev-parse', 'diff']) assert.ok(subs.has(need), `saw ${need}: ${[...subs]}`);
-    assert.ok(calls.some(c => c.args.includes('ls-files')) && calls.some(c => c.args.includes('--no-index')));
+    assert.ok(calls.some(c => c.args.includes('ls-files')) && calls.some(c => c.args.includes('add') && c.args.includes('-N') && c.env.GIT_INDEX_FILE));
     assert.ok(calls.some(c => c.args.includes('rev-parse') && c.args.includes('--verify')));
     for (const c of calls) {
       assert.match(c.env.GIT_CONFIG_PARAMETERS, /'core\.fsmonitor='/, c.args.join(' '));
@@ -614,6 +615,101 @@ describe('diff-range — the review range as one unified diff', () => {
       await run(['--base-only'], io({ git: rec }));
     } finally { await fs.rm(origin, { recursive: true, force: true }); }
     assert.ok(calls.some(c => c.args.includes('merge-base')), 'merge-base ran');
+    for (const c of calls) assert.match(c.env.GIT_CONFIG_PARAMETERS, /'core\.fsmonitor='/);
+  });
+
+  it('untracked files go through ONE add -N and ONE diff on a temporary index; the real index is untouched; names with leading dashes, colons, globs and spaces are safe', async () => {
+    await put('a.txt', 'a\n'); commit();
+    const names = ['-dash.txt', ':colon*.txt', 'sp ace.txt', 'glob[1].txt', 'plain.txt'];
+    for (const n of names) await put(n, `${n}\n`);
+    await put('empty.txt', '');
+    const before = fsSync.readFileSync(path.join(dir, '.git', 'index'));
+    const real = defaultGit(dir, {});
+    const calls = [];
+    const rec = Object.assign(async (args, o = {}) => { calls.push(args); return real(args, o); }, { cwd: dir });
+    const j = await run(['--base', 'HEAD', '--json'], io({ git: rec }));
+    assert.deepEqual(j.untracked.sort(), [...names, 'empty.txt'].sort());
+    assert.equal(j.untracked_count, names.length + 1);
+    assert.equal(calls.filter(a => a.includes('add')).length, 1);
+    assert.equal(calls.filter(a => a.includes('diff')).length, 1);
+    assert.ok(!calls.some(a => a.includes('--no-index')));
+    assert.ok(before.equals(fsSync.readFileSync(path.join(dir, '.git', 'index'))), 'the user index is byte for byte unchanged');
+    assert.equal(sh(dir, 'status', '--porcelain').split('\n').filter(l => l.startsWith('??')).length, names.length + 1, 'still untracked, not intent-to-add');
+    const r = await run(['--base', 'HEAD'], io({ git: rec }));
+    assert.ok(r.raw.includes('+-dash.txt\n') && r.raw.includes('diff --git :colon*.txt :colon*.txt\n'));
+  });
+
+  it('3,000 untracked files: one add -N, one diff, a few seconds', async () => {
+    await put('a.txt', 'a\n'); commit();
+    await Promise.all(Array.from({ length: 3000 }, (_, i) => fs.writeFile(path.join(dir, `f${i}.txt`), `${i}\n`)));
+    const real = defaultGit(dir, {});
+    const calls = [];
+    const rec = Object.assign(async (args, o = {}) => { calls.push(args); return real(args, o); }, { cwd: dir });
+    const t0 = Date.now();
+    const j = await run(['--base', 'HEAD', '--json'], io({ git: rec }));
+    assert.ok(Date.now() - t0 < 8000, `took ${Date.now() - t0} ms`);
+    assert.equal(j.untracked.length, 3000);
+    assert.equal(j.untracked_count, 3000);
+    assert.equal(calls.filter(a => a.includes('add')).length, 1);
+    assert.equal(calls.filter(a => a.includes('diff')).length, 1);
+  });
+
+  it('--max-untracked <n> leaves the extra files in skipped with reason max_untracked and a note on stderr; untracked_count says how many there were', async () => {
+    await put('a.txt', 'a\n'); commit();
+    for (let i = 0; i < 5; i++) await put(`u${i}.txt`, `${i}\n`);
+    let err = '';
+    const j = await run(['--base', 'HEAD', '--json', '--max-untracked', '2'], io({ stderr: { write: (m) => { err += m; } } }));
+    assert.equal(j.untracked.length, 2);
+    assert.equal(j.untracked_count, 5);
+    assert.equal(j.skipped.length, 3);
+    assert.ok(j.skipped_detail.every(d => d.reason === 'max_untracked' && j.skipped.includes(d.path)));
+    assert.match(err, /--max-untracked 2/);
+    assert.ok(usage.includes('--max-untracked') && usage.includes('--max-file-bytes'));
+    await assert.rejects(run(['--max-untracked', 'x'], io()), (e) => e instanceof KitExit && e.code === 1);
+  });
+
+  it('an untracked file over --max-file-bytes (default 8 MiB) is skipped as too_large and named on stderr; the rest of the range is intact', async () => {
+    await put('a.txt', 'a\n'); commit();
+    await fs.writeFile(path.join(dir, 'big.log'), Buffer.alloc(9 * 1024 * 1024, 0x61));
+    await put('small.txt', 's\n');
+    let err = '';
+    const j = await run(['--base', 'HEAD', '--json'], io({ stderr: { write: (m) => { err += m; } } }));
+    assert.deepEqual(j.untracked, ['small.txt']);
+    assert.deepEqual(j.skipped, ['big.log']);
+    assert.deepEqual(j.skipped_detail, [{ path: 'big.log', reason: 'too_large' }]);
+    assert.match(err, /big\.log/);
+    const k = await run(['--base', 'HEAD', '--json', '--max-file-bytes', '1'], io({ stderr: { write: () => {} } }));
+    assert.deepEqual(k.untracked, []);
+    assert.equal(k.skipped.length, 2);
+  });
+
+  it('a range above graph\'s maxDiffBytes is refused (exit 2) naming the remedies', async () => {
+    await put('a.txt', 'a\n'); commit();
+    for (let i = 0; i < 5; i++) await fs.writeFile(path.join(dir, `m${i}.txt`), Buffer.alloc(7 * 1024 * 1024, 0x62 + i));
+    await assert.rejects(run(['--base', 'HEAD'], io()), (e) => e instanceof KitExit && e.code === 2 && /larger than/.test(e.message) && /lenses, graph and impact/.test(e.message) && /--no-untracked/.test(e.message) && /--max-file-bytes/.test(e.message) && /\.gitignore/.test(e.message));
+    const ok = await run(['--base', 'HEAD', '--no-untracked'], io());
+    assert.equal(ok.exit, 3);
+  });
+
+  it('git output over the 64 MiB buffer (ENOBUFS) is exit 1 naming the git subcommand and the limit', async () => {
+    const enobufs = defaultGit(dir, { spawn: () => ({ error: Object.assign(new Error('spawnSync git ENOBUFS'), { code: 'ENOBUFS' }), status: null, signal: null, stdout: '', stderr: '' }) });
+    await assert.rejects(enobufs(['diff', 'HEAD']), (e) => e instanceof KitExit && e.code === 1 && e.message.startsWith('git diff ') && /64 MiB/.test(e.message) && !/cannot run git/.test(e.message));
+    await assert.rejects(run([], io({ git: enobufs })), (e) => e instanceof KitExit && e.code === 1 && /^git config .*64 MiB/.test(e.message));
+  });
+
+  it('a git without --pathspec-from-file falls back to one hardened --no-index diff per file, symlinks and nested repos as before', async () => {
+    await put('a.txt', 'a\n'); commit();
+    await put('u1.txt', '1\n'); await put('u2.txt', '2\n');
+    const real = defaultGit(dir, {});
+    const calls = [];
+    const old = Object.assign(async (args, o = {}) => {
+      calls.push({ args, env: o.env || {} });
+      if (args.includes('--pathspec-from-file=-')) return { code: 129, stdout: '', stderr: 'error: unknown option `pathspec-from-file=-\'\nusage: git add' };
+      return real(args, o);
+    }, { cwd: dir });
+    const j = await run(['--base', 'HEAD', '--json'], io({ git: old }));
+    assert.deepEqual(j.untracked.sort(), ['u1.txt', 'u2.txt']);
+    assert.equal(calls.filter(c => c.args.includes('--no-index')).length, 2);
     for (const c of calls) assert.match(c.env.GIT_CONFIG_PARAMETERS, /'core\.fsmonitor='/);
   });
 

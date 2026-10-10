@@ -61,6 +61,7 @@ export function defaultGit(cwd, { runner, spawn = spawnSync, env = process.env, 
     if (r.error?.code === 'ETIMEDOUT') throw new KitExit(`${cmd} took longer than ${timeout} ms and was stopped (raise it with --timeout <ms>)`, 1);
     // any other signal death (OOM killer, SIGPIPE, an external kill) is not a timeout
     if (r.signal && !r.error) throw new KitExit(`${cmd} was killed by ${r.signal}`, 1);
+    if (r.error?.code === 'ENOBUFS') throw new KitExit(`${cmd} printed more than the 64 MiB this tool reads from git; narrow the range (for diff-range: --no-untracked, --max-file-bytes <n> or a .gitignore)`, 1);
     if (r.error) throw new KitExit(`cannot run git: ${r.error.message}`, 1);
     const stderr = r.stderr ? r.stderr.toString('utf-8') : '';
     return { code: r.status ?? 1, stdout: r.stdout || (binary ? Buffer.alloc(0) : ''), stderr };

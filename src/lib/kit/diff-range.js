@@ -1,7 +1,7 @@
 /**
  * diff-range — the review range as ONE unified diff on stdout, raw text, ready for `lenses|graph|impact --diff -`.
  *
- *   diff-range [--dir <repo>] [--base <ref>] [--no-untracked] [--base-only] [--json] [--timeout <ms>]
+ *   diff-range [--dir <repo>] [--base <ref>] [--no-untracked] [--base-only] [--json] [--timeout <ms>] [--max-untracked <n>] [--max-file-bytes <n>]
  *
  * The range: tracked changes from <base> to the working tree (committed since the base plus uncommitted edits), plus
  * every untracked, not-ignored file as an added file (unless --no-untracked). <base> is --base <ref> (a commit, or the empty-tree id that --base-only prints when there is no upstream), else the merge
@@ -31,7 +31,7 @@
  * global and system files) is executed, and textconv output never replaces the real content; drivers defined in files your
  * own global/system config includes are yours and are not switched off. In a partial clone a blob
  * that is not local is NOT fetched (lazy fetch off, transports refused): the verb exits 1 naming the missing object and
- * that lazy fetch is off, never printing a partial diff (the note says it is a partial clone only when extensions.partialClone or a
+ * that diff-range never downloads, never printing a partial diff (the note says it is a partial clone only when extensions.partialClone or a
  * remote.<name>.promisor says so, else "if this is a partial clone"). An include.path / includeIf in the repository's OWN config
  * (scope local, .git/config, or scope worktree, $GIT_DIR/config.worktree when extensions.worktreeConfig is on) is refused,
  * exit 2, before any diff (a driver defined in an included file could not be switched off); the scopes come from the same
@@ -39,6 +39,12 @@
  * `--worktree`). Includes in the user's global/system config are the user's own and stay allowed. The remaining trust: the work tree's own files (and the
  * .gitattributes / .gitignore in it) are read as DATA, the object store is read as is, and git itself is trusted.
  *
+ * Untracked files go through ONE git process: a temporary copy of the index (GIT_INDEX_FILE; the real index is never touched) gets
+ * `git add -N --pathspec-from-file=- --pathspec-file-nul` (names on stdin, NUL-separated, GIT_LITERAL_PATHSPECS=1) and a single `git diff <base>`
+ * then prints them as new files; a git without --pathspec-from-file (< 2.25) falls back to one `--no-index` diff per file. Caps: --max-untracked <n>
+ * (default 20000) and --max-file-bytes <n> (default 8 MiB, by lstat); a file over either goes to `skipped` (--json: also `skipped_detail`
+ * [{path, reason}], reason nested_repository | max_untracked | too_large) with a note on stderr, `untracked_count` counts every untracked file
+ * seen, and a range larger than graph's maxDiffBytes (32 MiB) is refused, exit 2.
  * Untracked paths: a path is listed under `untracked` (--json) only when its diff text is non-empty. A nested git repository
  * (ls-files shows it as `sub/`) is not this repository's file: it is SKIPPED, never diffed, and reported in `skipped` (--json).
  * An untracked SYMLINK is never followed (git would fail on a link to a directory): its added-file diff is written here in git's
@@ -54,23 +60,28 @@
  * Exit: 0 printed, 3 empty (nothing printed), 1 bad input or git failed, 2 refused.
  */
 import fs from 'fs/promises';
+import os from 'os';
 import path from 'path';
+import { isUtf8 } from 'buffer';
 import { KitExit } from './kit-exit.js';
 import { defaultGit } from './push-gate.js';
 import { gitPaths } from './git-paths.js';
 import { parseDiff } from './lenses.js';
+import { DEFAULTS as graphDefaults } from './graph.js';
 import { overrideArgs, driversFromConfig, parseConfigList } from './safe-git.js';
 
 const driversFromKeys = (keys) => driversFromConfig(keys.map(k => `${k}\n`).join('\0'));
 
 export const verb = 'diff-range';
-export const usage = 'cli.js diff-range [--dir <repo>] [--base <ref>] [--no-untracked] [--base-only] [--json] [--timeout <ms>]   (prints the review range as one raw unified diff: '
+export const usage = 'cli.js diff-range [--dir <repo>] [--base <ref>] [--no-untracked] [--base-only] [--json] [--timeout <ms>] [--max-untracked <n>] [--max-file-bytes <n>]   (prints the review range as one raw unified diff: '
   + 'tracked changes from the base to the working tree plus untracked files; base = --base, else the merge base with the upstream, else the empty tree; '
-  + '--no-untracked leaves untracked files out, --base-only prints the resolved base, --json prints the summary (with the skipped nested repositories); --timeout <ms> stops any git call after that long (default 60000); '
+  + '--no-untracked leaves untracked files out, --base-only prints the resolved base, --json prints the summary (with the skipped nested repositories); --timeout <ms> stops any git call after that long (default 60000); --max-untracked <n> (default 20000) and --max-file-bytes <n> (default 8388608) leave the extra or oversized untracked files out (listed in skipped); '
   + 'exit 0 printed, 3 empty, 1 bad input or git failed, 2 refused)';
 
 const BOOL_FLAGS = ['no-untracked', 'base-only', 'json', 'help'];
-const VALUE_FLAGS = ['dir', 'base', 'timeout'];
+const VALUE_FLAGS = ['dir', 'base', 'timeout', 'max-untracked', 'max-file-bytes'];
+const DEFAULT_MAX_UNTRACKED = 20000;
+const DEFAULT_MAX_FILE_BYTES = 8 * 1024 * 1024;
 const invalid = (m) => new KitExit(m, 1);
 
 function parseArgs(args) {
@@ -88,6 +99,8 @@ function parseArgs(args) {
   }
   if (f.base !== undefined && (f.base === '' || f.base.startsWith('-'))) throw invalid('--base needs a ref');
   if (f.timeout !== undefined && !/^[1-9]\d{0,9}$/.test(f.timeout)) throw invalid('--timeout must be a positive whole number of milliseconds');
+  if (f['max-untracked'] !== undefined && !/^\d{1,9}$/.test(f['max-untracked'])) throw invalid('--max-untracked must be a whole number (0 or more)');
+  if (f['max-file-bytes'] !== undefined && !/^[1-9]\d{0,12}$/.test(f['max-file-bytes'])) throw invalid('--max-file-bytes must be a positive whole number of bytes');
   return f;
 }
 
@@ -223,26 +236,66 @@ export async function run(args, io = {}) {
   if (f['base-only']) return { raw: `${base}\n` };
 
   const buf = (x) => (Buffer.isBuffer(x) ? x : Buffer.from(x || ''));
-  const t = await git([...DIFF, base], { binary: true });
-  if (t.code !== 0 && t.code !== 1) throw new KitExit(`${fail('cannot diff against the base', t).message}${missingNote(t, top, partial)}`, 1);
-  const tracked = buf(t.stdout);
-  const parts = [tracked];
+  const maxUntracked = f['max-untracked'] !== undefined ? Number(f['max-untracked']) : DEFAULT_MAX_UNTRACKED;
+  const maxFileBytes = f['max-file-bytes'] !== undefined ? Number(f['max-file-bytes']) : DEFAULT_MAX_FILE_BYTES;
+  const note = (m) => (io.stderr || process.stderr).write(`diff-range: ${m}\n`);
   const untracked = [];
   const skipped = [];
+  const skippedDetail = []; // { path, reason }: nested_repository | max_untracked | too_large
+  const skip = (file, reason) => { skipped.push(file); skippedDetail.push({ path: file, reason }); };
+  let untrackedCount = 0;
+  const candidates = []; // regular untracked files, diffed through ONE intent-to-add index
+  const links = []; // untracked symlinks, written by hand below (git's own entry carries an index line the hand-written one never had)
   if (!f['no-untracked']) {
     const l = await git(['ls-files', '-z', '--others', '--exclude-standard']);
     if (l.code !== 0) throw fail('cannot list untracked files', l);
+    let over = 0;
     for (const file of l.stdout.split('\0').filter(Boolean)) {
-      if (file.endsWith('/')) { skipped.push(file); continue; } // a nested repository
+      if (file.endsWith('/')) { skip(file, 'nested_repository'); continue; } // a nested repository
+      untrackedCount++;
+      if (candidates.length + links.length >= maxUntracked) { skip(file, 'max_untracked'); over++; continue; }
       let st = null;
       try { st = await fs.lstat(path.join(top, file)); } catch { /* gone or unreadable: let git report it */ }
-      if (st && st.isSymbolicLink()) {
-        const target = await fs.readlink(path.join(top, file), { encoding: 'buffer' });
-        untracked.push(file);
-        const q = gitQuote(file);
-        parts.push(Buffer.concat([Buffer.from(`diff --git ${q} ${q}\nnew file mode 120000\n--- /dev/null\n+++ ${q}${file.includes(' ') ? '\t' : ''}\n@@ -0,0 +1 @@\n+`), target, Buffer.from('\n\\ No newline at end of file\n')]));
-        continue;
+      if (st && st.isSymbolicLink()) { links.push(file); continue; }
+      if (st && st.size > maxFileBytes) { skip(file, 'too_large'); note(`skipped ${file}: ${st.size} bytes is over --max-file-bytes ${maxFileBytes} (too_large)`); continue; }
+      candidates.push(file);
+    }
+    if (over) note(`${untrackedCount} untracked files, over --max-untracked ${maxUntracked}: ${over} left out of the range (skipped, reason max_untracked); raise --max-untracked or add a .gitignore`);
+  }
+
+  // The tracked diff and every untracked regular file in ONE git diff: a temporary copy of the index gets `add -N` for the untracked
+  // list (intent-to-add, so the files show as new files), the user's own index is never touched.
+  const candSet = new Set(candidates);
+  let parts;
+  let merged = false;
+  let tracked = Buffer.alloc(0);
+  const diffBase = async (extra = {}) => {
+    const t = await git([...DIFF, base], { binary: true, ...extra });
+    if (t.code !== 0 && t.code !== 1) throw new KitExit(`${fail('cannot diff against the base', t).message}${missingNote(t, top, partial)}`, 1);
+    return buf(t.stdout);
+  };
+  if (candidates.length) {
+    const [real] = await gitPaths(git, top, [{ gitPath: 'index' }], 'cannot find the index');
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'diff-range-index-'));
+    try {
+      const tmp = path.join(tmpDir, 'index');
+      try { await fs.copyFile(real, tmp); } catch (e) { if (e.code !== 'ENOENT') throw new KitExit(`cannot copy the index: ${e.message}`, 1); }
+      const env = { GIT_INDEX_FILE: tmp, GIT_LITERAL_PATHSPECS: '1' };
+      const add = await git(['-c', 'core.safecrlf=false', 'add', '-N', '--pathspec-from-file=-', '--pathspec-file-nul'], { env, input: Buffer.from(`${candidates.join('\0')}\0`) });
+      if (add.code === 0) {
+        tracked = await diffBase({ env: { GIT_INDEX_FILE: tmp } });
+        parts = [tracked];
+        merged = true;
+      } else if (!/pathspec-from-file|pathspec-file-nul|unknown option|usage:/i.test(add.stderr || '')) {
+        throw new KitExit(`${fail('cannot list the untracked files for the diff', add).message}${missingNote(add, top, partial)}`, 1);
       }
+    } finally { await fs.rm(tmpDir, { recursive: true, force: true }); }
+  }
+  if (!merged) {
+    // no untracked regular files, or a git older than 2.25 (no --pathspec-from-file): the tracked diff, then one --no-index diff per file
+    tracked = await diffBase();
+    parts = [tracked];
+    for (const file of candidates) {
       const d = await git(['-c', 'core.safecrlf=false', ...DIFF, '--no-index', '--', '/dev/null', file], { binary: true });
       const out = buf(d.stdout);
       if (d.code > 1 || (d.code === 1 && (!out.length || (d.stderr || '').split('\n').some(l => l.trim() && !BENIGN.test(l))))) throw new KitExit(`${fail(`cannot diff untracked file ${file}`, d).message}${missingNote(d, top, partial)}`, 1);
@@ -251,11 +304,30 @@ export async function run(args, io = {}) {
       parts.push(out);
     }
   }
-  const all = Buffer.concat(parts);
-  const text = all.toString('utf-8');
-  const exit = text.trim() ? 0 : 3;
-  if (f.json) {
-    return { base, upstream, from_upstream: fromUpstream, tracked: parseDiff(tracked.toString('utf-8')).map(x => x.path), untracked, skipped, empty: exit === 3 };
+  for (const file of links) {
+    // An untracked symlink is never followed: written in git's own shape for a mode-120000 blob.
+    const target = await fs.readlink(path.join(top, file), { encoding: 'buffer' });
+    untracked.push(file);
+    const q = gitQuote(file);
+    parts.push(Buffer.concat([Buffer.from(`diff --git ${q} ${q}\nnew file mode 120000\n--- /dev/null\n+++ ${q}${file.includes(' ') ? '\t' : ''}\n@@ -0,0 +1 @@\n+`), target, Buffer.from('\n\\ No newline at end of file\n')]));
   }
-  return { raw: Buffer.from(text, 'utf-8').equals(all) ? text : all, exit };
+  const all = parts.length === 1 ? parts[0] : Buffer.concat(parts);
+  parts = null;
+  if (all.length > graphDefaults.maxDiffBytes) {
+    throw new KitExit(`the review range is ${all.length} bytes, larger than the ${graphDefaults.maxDiffBytes} bytes that lenses, graph and impact accept; use --no-untracked, --max-file-bytes <n> or a .gitignore to shrink it`, 2);
+  }
+  // Decode once, and only when the bytes are valid UTF-8 (otherwise `raw` is the Buffer, undecoded).
+  const valid = isUtf8(all);
+  const text = all.toString('utf-8');
+  const exit = !valid || text.trim() ? 0 : 3;
+  if (f.json) {
+    let trackedPaths;
+    if (merged) {
+      const inRange = parseDiff(text).map(x => x.path);
+      for (const p of inRange) if (candSet.has(p)) untracked.push(p);
+      trackedPaths = inRange.filter(p => !candSet.has(p) && !links.includes(p));
+    } else trackedPaths = parseDiff(tracked.toString('utf-8')).map(x => x.path);
+    return { base, upstream, from_upstream: fromUpstream, tracked: trackedPaths, untracked, untracked_count: untrackedCount, skipped, skipped_detail: skippedDetail, empty: exit === 3 };
+  }
+  return { raw: valid ? text : all, exit };
 }
