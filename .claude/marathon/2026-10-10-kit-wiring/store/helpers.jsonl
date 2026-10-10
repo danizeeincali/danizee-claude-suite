@@ -161,3 +161,5 @@
 {"role":"review","model":"opus","stream":"sweep-commits","budget":150000,"event":"spawn","id":"c5ba9947-87ce-46c0-aacb-00a55b972f88","ts":"2026-10-10T22:24:26.992Z"}
 {"helper_id":"c5ba9947-87ce-46c0-aacb-00a55b972f88","tokens":70000,"outcome":"green","event":"done","id":"94ebebb2-164e-4722-ae19-9d2f996076d0","ts":"2026-10-10T22:29:47.234Z"}
 {"role":"fix","model":"sonnet","stream":"sweep-commits","budget":150000,"event":"spawn","id":"f08ba664-68fb-4ead-a2c9-94092cbc9999","ts":"2026-10-10T22:29:48.274Z"}
+{"helper_id":"f08ba664-68fb-4ead-a2c9-94092cbc9999","tokens":60000,"outcome":"green","event":"done","id":"262bc435-dd0a-4d3e-9e8b-0f2ca2dde737","ts":"2026-10-10T22:33:24.485Z"}
+{"role":"review","model":"opus","stream":"sweep-commits","budget":150000,"event":"spawn","id":"8d0e1725-011f-4840-9605-7ffa05557acc","ts":"2026-10-10T22:33:25.513Z"}
