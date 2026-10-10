@@ -123,3 +123,6 @@
 {"role":"build","model":"sonnet","stream":"marathon","budget":60000,"event":"spawn","id":"cc5e3054-fd44-4db2-a60d-ba3e33e566bf","ts":"2026-10-10T20:55:21.980Z"}
 {"helper_id":"cc5e3054-fd44-4db2-a60d-ba3e33e566bf","tokens":40000,"outcome":"green","event":"done","id":"aa0f4155-a289-4ae8-970a-d57751499c0e","ts":"2026-10-10T21:01:47.083Z"}
 {"role":"review","model":"opus","stream":"marathon","budget":80000,"event":"spawn","id":"b1845019-cd2a-4b15-a2fb-2119077d0d0c","ts":"2026-10-10T21:01:48.041Z"}
+{"helper_id":"b1845019-cd2a-4b15-a2fb-2119077d0d0c","tokens":30000,"outcome":"green","event":"done","id":"f129a361-e210-4666-9bc8-589b4e402722","ts":"2026-10-10T21:02:51.961Z"}
+{"role":"routine","model":"sonnet","stream":"marathon","budget":100000,"event":"spawn","id":"95504b8a-c8c2-4c44-be74-8705e149771d","ts":"2026-10-10T21:02:53.163Z"}
+{"role":"build","model":"sonnet","stream":"bbs","budget":150000,"event":"spawn","id":"091ac9f9-f5da-4a37-8432-299cb91c5f25","ts":"2026-10-10T21:02:53.295Z"}

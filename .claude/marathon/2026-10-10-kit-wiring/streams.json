@@ -42,9 +42,9 @@
     },
     {
       "name": "marathon",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "last checking review (round 6) running; then close and /bc",
+      "next": "done; compounded via /bc",
       "tasks": [],
       "isolation": "../danizee-claude-suite-marathon",
       "phase": "review",
@@ -53,10 +53,14 @@
     },
     {
       "name": "bbs",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "worktree, safe-git in helper briefs, redact at probe, scrub at compound",
-      "tasks": []
+      "next": "4.1 budget, then build: safe-git in helper briefs, redact probe evidence, scrub --worktree at CP6",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-bbs",
+      "phase": "build",
+      "skill": "w-plan-tdd-swarm",
+      "base": "c8ddc24a976fc488ae86521d82073d04724c5214"
     },
     {
       "name": "sweep-commits",
