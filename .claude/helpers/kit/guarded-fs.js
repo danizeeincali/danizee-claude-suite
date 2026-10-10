@@ -17,7 +17,10 @@
  *   Unicode-equivalent spelling of it is still caught once it exists.
  *   WRITE. guardedWrite() opens the verified parent folder (O_DIRECTORY|O_NOFOLLOW) and compares the handle's
  *   device+inode with the chain (a folder swapped for a link after the walk is refused). On Linux the file operations
- *   then go through /proc/self/fd/<handle>/, i.e. relative to that open folder; elsewhere through the verified path.
+ *   then go through /proc/self/fd/<handle>/, i.e. relative to that open folder; elsewhere through the verified path,
+ *   with the folder and temp file re-checked right before the rename (a swap in the last instructions before rename()
+ *   is still possible off Linux and is caught, but not prevented, by the check after it). An overwrite keeps the old
+ *   file's permission bits; a new file is 0600.
  *   The temp file is created O_EXCL|O_NOFOLLOW (mode 0600), written, fsynced, renamed over the name. Node has no
  *   renameat, so afterwards the final path must hold the same device+inode as the temp file's handle and the walk must
  *   give the same chain; if not, what we wrote is removed and the call fails (KitExit 2). The temp file never remains
@@ -38,8 +41,8 @@ import path from 'path';
 import { KitExit } from './kit-exit.js';
 
 export const verb = 'guarded-write';
-export const usage = 'cli.js guarded-write --root <absolute dir> --file <path under root> [--protect <dir under root>]   '
-  + '(content on stdin; writes it through an identity-checked walk: a symlink inside the protect folder (default: root) is refused, '
+export const usage = 'cli.js guarded-write --root <absolute dir> --file <path under root> [--protect <dir under root>] [--allow-empty]   '
+  + '(content as bytes on piped stdin, never a terminal; empty input is refused without --allow-empty; an overwritten file keeps its permission bits, a new one is 0600; writes it through an identity-checked walk: a symlink inside the protect folder (default: root) is refused, '
   + 'one elsewhere under root is followed; exit 0 written, 1 invalid, 2 refused)';
 
 export const MAX_STEPS = 64;
@@ -151,7 +154,7 @@ async function recheck(target, opts, res, what) {
 }
 
 /** Open the verified parent folder; its device+inode must be the chain's last entry. Returns { fh, base } (base = where to name files). */
-async function openParent(res) {
+async function openParent(res, viaProc = PROC) {
   let fh;
   try { fh = await fs.open(res.parent, C.O_RDONLY | (C.O_DIRECTORY || 0) | (C.O_NOFOLLOW || 0)); } catch (e) {
     if (e.code === 'ELOOP' || e.code === 'ENOTDIR') throw refuse(`${res.parent} is no longer a plain folder (swapped for a link or file after the walk)`);
@@ -162,7 +165,7 @@ async function openParent(res) {
     const st = await fh.stat({ bigint: true });
     if (!st.isDirectory() || !sameId(st, res.chain.at(-1))) throw refuse(`the folder ${res.parent} is no longer the one that was checked (swapped after the walk)`);
   } catch (e) { await fh.close().catch(() => {}); throw e; }
-  return { fh, base: PROC ? `/proc/self/fd/${fh.fd}` : res.parent };
+  return { fh, base: viaProc ? `/proc/self/fd/${fh.fd}` : res.parent };
 }
 
 const wrap = (what, target) => (e) => { throw e instanceof KitExit ? e : invalid(`cannot ${what} ${target}: ${e.message}`); };
@@ -175,7 +178,8 @@ export async function guardedWrite(target, data, opts = {}) {
   const wopts = { root: opts.root, protect: opts.protect };
   const res = await resolveGuarded(target, { ...wopts, create: true }).catch(wrap('write', target));
   await hooks.afterWalk?.(res);
-  const { fh: dirFh, base } = await openParent(res);
+  const viaProc = PROC && !opts.byPath; // byPath: the code path of systems without /proc/self/fd (tests)
+  const { fh: dirFh, base } = await openParent(res, viaProc);
   const tmpPath = path.join(base, `.${res.name}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`);
   const finalVia = path.join(base, res.name);
   let fh;
@@ -183,11 +187,23 @@ export async function guardedWrite(target, data, opts = {}) {
   let mine = null;
   try {
     await hooks.afterOpen?.(res);
+    // an overwrite keeps the old file's permission bits (a script stays executable); a new file gets `mode`
+    const old = await lstatBig(finalVia).catch(() => null);
+    const keep = old?.isFile() ? Number(old.mode & 0o777n) : mode;
     fh = await fs.open(tmpPath, C.O_WRONLY | C.O_CREAT | C.O_EXCL | (C.O_NOFOLLOW || 0), mode);
+    if (keep !== mode) await fh.chmod(keep);
     await fh.writeFile(buf);
     await fh.sync();
     mine = await fh.stat({ bigint: true });
     await hooks.beforeRename?.(res);
+    // Without /proc/self/fd the rename goes by path: re-check, immediately before it, that the folder on the path is
+    // still the opened one and still holds our temp file. A swap inside the few instructions left before rename()
+    // remains possible there (Node has no renameat); the identity check after the rename then catches and reports it.
+    if (!viaProc) {
+      const dirNow = await lstatBig(res.parent).catch(() => null);
+      const tmpNow = await lstatBig(tmpPath).catch(() => null);
+      if (!dirNow?.isDirectory() || !sameId(dirNow, res.chain.at(-1)) || !sameId(tmpNow, mine)) throw refuse(`the folder ${res.parent} was swapped during the write; nothing was renamed`);
+    }
     await fs.rename(tmpPath, finalVia);
     renamed = true;
     await hooks.afterRename?.(res);
@@ -282,6 +298,7 @@ export async function guardedDelete(target, opts = {}) {
 // ---------------------------------------------------------------- CLI
 
 const FLAGS = ['root', 'file', 'protect'];
+const SWITCHES = ['allow-empty'];
 
 export function parseArgs(args) {
   const out = {};
@@ -290,7 +307,8 @@ export function parseArgs(args) {
     const a = rest.shift();
     if (!a.startsWith('--')) throw invalid(`unexpected argument "${a}"\n${usage}`);
     const k = a.slice(2);
-    if (!FLAGS.includes(k)) throw invalid(`unknown flag --${k} (allowed: ${FLAGS.map((f) => `--${f}`).join(', ')})`);
+    if (SWITCHES.includes(k)) { out[k] = true; continue; }
+    if (!FLAGS.includes(k)) throw invalid(`unknown flag --${k} (allowed: ${[...FLAGS, ...SWITCHES].map((f) => `--${f}`).join(', ')})`);
     if (!rest.length) throw invalid(`--${k} needs a value`);
     out[k] = rest.shift();
   }
@@ -302,7 +320,10 @@ export async function run(args, io) {
   if (!f.root || !f.file) throw invalid(`--root and --file are required\n${usage}`);
   if (f.file.split(/[\\/]+/).includes('..')) throw refuse(`--file contains "..": ${JSON.stringify(f.file).slice(0, 120)}`);
   const file = path.isAbsolute(f.file) ? f.file : path.join(f.root, f.file);
-  const content = await io.stdin();
+  // a terminal or a closed stdin must never empty the target: input is required, and zero bytes only with --allow-empty
+  if (io.stdinIsTTY) throw invalid(`guarded-write reads the content from piped stdin, not a terminal\n${usage}`);
+  const content = io.stdinBytes ? await io.stdinBytes() : Buffer.from(String(await io.stdin()), 'utf-8'); // bytes as given
+  if (content.length === 0 && !f['allow-empty']) throw invalid('stdin was empty: refusing to write an empty file (pass --allow-empty to mean it)');
   const r = await guardedWrite(file, content, { root: f.root, protect: f.protect });
   return { written: true, path: r.path, bytes: r.bytes };
 }

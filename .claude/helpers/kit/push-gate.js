@@ -14,8 +14,9 @@
  * does not, and unpushed uncommitted edits are never mistaken for a reviewed push.
  * Receipts live outside the repository ($KIT_RECEIPTS_DIR, else ~/.claude/kit/receipts/), one JSON file per
  * repository keyed by a hash of its real git common dir; a branch cannot carry one. Every store read and write goes
- * through guarded-fs (identity-checked walk from the home folder: a symlink inside the receipts folder is refused, a
- * dotfile link above it is followed while it stays under home; with $KIT_RECEIPTS_DIR the root is that folder's parent).
+ * through guarded-fs. The owner's own links above the receipts folder (~/.claude -> a dotfiles checkout, wherever it
+ * lives) are resolved first; the identity-checked walk then starts at the receipts folder's real parent, and a symlink
+ * at or inside the receipts folder is refused (KitExit 2). The same holds with $KIT_RECEIPTS_DIR.
  * Built from ideas
  * audited by /w-bbs (run 2026-10-10-openqodex-2); no foreign code.
  */

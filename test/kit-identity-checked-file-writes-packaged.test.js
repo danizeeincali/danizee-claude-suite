@@ -28,7 +28,7 @@ describe('guarded-write — packaged end to end', () => {
     assert.equal(pkg.kit(['guarded-write', '--root', home, '--file', 'a/../../x'], 'no').code, 2);
     assert.equal(pkg.kit(['guarded-write', '--root', home, '--nope', 'x'], 'no').code, 1);
 
-    // the receipts store of push-gate: HOME is the root, a link inside the receipts folder is refused
+    // the receipts store of push-gate: the walk starts at the store's real parent, a link inside the receipts folder is refused
     const rec = path.join(home, '.claude', 'kit', 'receipts');
     await fs.mkdir(rec, { recursive: true });
     const env = { HOME: home };

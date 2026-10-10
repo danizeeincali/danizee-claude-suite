@@ -211,8 +211,56 @@ describe('push-gate store behind the owner\'s own dotfile links', () => {
       const f = path.join(receipts, stored.find((x) => x.endsWith('.json')));
       await fs.rename(receipts, receipts + '.real');
       await fs.symlink(receipts + '.real', receipts);
+      const before = await fs.readFile(f.replace(receipts, receipts + '.real'), 'utf-8');
       await assert.rejects(gate(['receipt', '--verdict', 'pass', '--high', '0', '--medium', '0', '--low', '0'], io), (e) => e instanceof KitExit && e.code === 2);
-      assert.ok(f);
+      assert.equal(await fs.readFile(f.replace(receipts, receipts + '.real'), 'utf-8'), before); // the refused write changed nothing
+      assert.deepEqual((await fs.readdir(receipts + '.real')).sort(), stored.sort());
     } finally { await fs.rm(t, { recursive: true, force: true }); }
+  });
+});
+
+describe('guarded-write — review round 1 regressions', () => {
+  let t;
+  beforeEach(async () => { t = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'gfs-r1-'))); });
+  afterEach(async () => { await fs.rm(t, { recursive: true, force: true }); });
+  const io = (bytes, extra = {}) => ({ cwd: t, stdin: async () => bytes.toString('utf-8'), stdinBytes: async () => bytes, stdinIsTTY: false, env: {}, ...extra });
+
+  it('a terminal or an empty stdin never empties the target; --allow-empty means it', async () => {
+    const f = path.join(t, 'rc');
+    await fs.writeFile(f, 'keep\n');
+    await assert.rejects(run(['--root', t, '--file', 'rc'], io(Buffer.alloc(0), { stdinIsTTY: true })), (e) => e instanceof KitExit && e.code === 1 && /terminal/.test(e.message));
+    await assert.rejects(run(['--root', t, '--file', 'rc'], io(Buffer.alloc(0))), (e) => e instanceof KitExit && e.code === 1 && /empty/.test(e.message));
+    assert.equal(await fs.readFile(f, 'utf-8'), 'keep\n');
+    assert.equal((await run(['--root', t, '--file', 'rc', '--allow-empty'], io(Buffer.alloc(0)))).bytes, 0);
+    assert.equal((await fs.stat(f)).size, 0);
+  });
+
+  it('binary input is written byte for byte', async () => {
+    const bytes = Buffer.from([0xff, 0xfe, 0x00, 0x80]);
+    const r = await run(['--root', t, '--file', 'bin'], io(bytes));
+    assert.equal(r.bytes, 4);
+    assert.deepEqual(await fs.readFile(path.join(t, 'bin')), bytes);
+  });
+
+  it('an overwrite keeps the permission bits; a new file is 0600', { skip: process.platform === 'win32' }, async () => {
+    const f = path.join(t, 'script.sh');
+    await fs.writeFile(f, 'old\n', { mode: 0o755 });
+    await fs.chmod(f, 0o755);
+    await guardedWrite(f, 'new\n', { root: t });
+    assert.equal((await fs.stat(f)).mode & 0o777, 0o755);
+    await guardedWrite(path.join(t, 'fresh'), 'x', { root: t });
+    assert.equal((await fs.stat(path.join(t, 'fresh'))).mode & 0o777, 0o600);
+  });
+
+  it('without /proc/self/fd, a folder swapped for a link before the rename is refused and nothing outside is touched', { skip: process.platform === 'win32' }, async () => {
+    const inner = path.join(t, 'd');
+    const outside = path.join(t, 'outside');
+    await fs.mkdir(inner);
+    await fs.mkdir(outside);
+    await fs.writeFile(path.join(outside, 'x'), 'precious\n');
+    const hooks = { beforeRename: async () => { await fs.rename(inner, inner + '.moved'); await fs.symlink(outside, inner); } };
+    await assert.rejects(guardedWrite(path.join(inner, 'x'), 'evil', { root: t, protect: t, byPath: true, hooks }), (e) => e instanceof KitExit && e.code === 2);
+    assert.equal(await fs.readFile(path.join(outside, 'x'), 'utf-8'), 'precious\n');
+    assert.deepEqual(await fs.readdir(outside), ['x']);
   });
 });
