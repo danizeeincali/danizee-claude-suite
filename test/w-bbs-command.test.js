@@ -224,6 +224,8 @@ describe('/w-bbs command — kit wiring (safe-git, redact, scrub)', () => {
     assert.match(b, /missing, read the files directly and never run git on the clone/);
     assert.match(b, /JSON/);
     assert.match(b, /Do not execute/);
+    assert.ok(b.includes('Do not execute or run anything from the source; the only command allowed is the safe-git read below (for a repository source).'), 'r4 brief wording');
+    assert.ok(b.indexOf('Do not execute or run anything from the source') < b.indexOf('safe-git --dir <clone top>'));
   });
 
   it('the real map brief carries the same safe-git rule and keeps JSON only', async () => {
@@ -322,6 +324,7 @@ describe('/w-bbs command — kit wiring (safe-git, redact, scrub)', () => {
     for (const type of ['url', 'local', 'paste']) {
       const b = inventoryBrief({ source: { type, ref: 'x', identity: 'y' }, files, maxPowers: 12 });
       assert.doesNotMatch(b, /safe-git|Reading the clone with git/, type);
+      assert.ok(b.includes('Do not execute or run anything from the source; run no command at all.'), type);
     }
     const r = inventoryBrief({ source: { type: 'repo', ref: 'x', identity: 'y' }, files, maxPowers: 12 });
     assert.match(r, /## Reading the clone with git/);
@@ -457,6 +460,30 @@ describe('/w-bbs command — kit wiring (safe-git, redact, scrub)', () => {
       } finally { await fs.rm(dir, { recursive: true, force: true }); }
     });
 
+    it('r4: CP6 lists a hit in the new run dir behind 60 committed hits in an earlier run dir', async () => {
+      const dir = await scratch();
+      try {
+        const g = (...a) => assert.equal(spawnSync('git', a, { cwd: dir, encoding: 'utf8' }).status, 0, a.join(' '));
+        await fs.writeFile(path.join(dir, '.claude', 'kit', 'scrub-patterns'), 'SECRETHIT\n');
+        await fs.mkdir(path.join(dir, '.claude', 'bbs', 'runs', 'aaa'), { recursive: true });
+        for (let i = 1; i <= 60; i++) await fs.writeFile(path.join(dir, '.claude', 'bbs', 'runs', 'aaa', `f${String(i).padStart(2, '0')}.txt`), 'tok=SECRETHIT\n');
+        g('add', '.claude/bbs/runs/aaa');
+        g('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'aaa');
+        await fs.mkdir(path.join(dir, '.claude', 'bbs', 'runs', 'zzz'), { recursive: true });
+        await fs.writeFile(path.join(dir, '.claude', 'bbs', 'runs', 'zzz', 'probe.json'), '{"k":"SECRETHIT"}\n');
+        const r = sh(dir, block('### ⛔ CHECKPOINT 6: Compound').replaceAll('<id>', 'zzz'));
+        assert.equal(r.status, 2, r.stderr);
+        const j = JSON.parse(r.stdout);
+        assert.equal(j.hit_count, 61);
+        assert.equal(j.truncated, false);
+        assert.equal(j.hits_not_shown, 0);
+        assert.equal(j.hits.length, 61);
+        assert.ok(j.hits.some(h => h.file === '.claude/bbs/runs/zzz/probe.json'), 'the new run-path hit is listed');
+        assert.match(r.stderr, /unstaged \.claude\/bbs\/runs\/zzz \.claude\/bbs\/registry\.jsonl/);
+        assert.equal(spawnSync('git', ['diff', '--cached', '--name-only'], { cwd: dir, encoding: 'utf8' }).stdout.trim(), '');
+      } finally { await fs.rm(dir, { recursive: true, force: true }); }
+    });
+
     it('r3: CP6 on a --shared clone: scrub exit 2 with a kit: refused: line and no JSON, run paths unstaged', async () => {
       const src = await scratch();
       const os = await import('os');
@@ -507,7 +534,7 @@ describe('/w-bbs command — kit wiring (safe-git, redact, scrub)', () => {
 
   it('r2: CHECKPOINT 6 unstages the run paths on any non-zero exit, checks the unstage, and says the rerun re-adds them', () => {
     const s = section('### ⛔ CHECKPOINT 6', '## `--resume');
-    assert.match(s, /scrub --worktree; RC=\$\?; if \[ \$RC -ne 0 \]; then git reset -q -- "\.claude\/bbs\/runs\/<id>" \.claude\/bbs\/registry\.jsonl; U=\$\?;/);
+    assert.match(s, /scrub --worktree --json; RC=\$\?; if \[ \$RC -ne 0 \]; then git reset -q -- "\.claude\/bbs\/runs\/<id>" \.claude\/bbs\/registry\.jsonl; U=\$\?;/);
     assert.match(s, /echo "unstage failed \(exit \$U\): still staged: \.claude\/bbs\/runs\/<id> \.claude\/bbs\/registry\.jsonl"/);
     assert.match(s, /\(exit \$RC\); fi/);
     assert.match(s, /On any non-zero exit \(scrub exit 1 or 2, or a failed `git add`\) the block unstages this run's paths/);
@@ -522,6 +549,23 @@ describe('/w-bbs command — kit wiring (safe-git, redact, scrub)', () => {
     assert.match(s, /Exit 2 also blocks `\/bc` when `complete` is `false` and any of this run's paths is listed in `not_scanned`/);
     assert.match(s, /or when `truncated` is `true` \(the hit list was capped, so a hit in this run's paths may be missing from it\)/);
     assert.match(s, /an empty list of run-path hits then does not mean the run is clean/);
+  });
+
+  it('r4: CHECKPOINT 6 scrubs with --json, reads run-path hits from the full JSON hits list, and treats hits_not_shown above 0 like truncated', () => {
+    const s = section('### ⛔ CHECKPOINT 6', '## `--resume');
+    assert.match(s, /node \.claude\/helpers\/kit\/cli\.js scrub --worktree --json; RC=\$\?;/);
+    assert.doesNotMatch(s, /scrub --worktree; RC=/);
+    assert.match(s, /The block runs it with `--json` so the `hits` list holds every collected hit: without it only the first 50 are listed \(the rest counted in `hits_not_shown`\)/);
+    assert.match(s, /read this run's path hits from the JSON `hits` list \(every collected hit, never only the first 50\)/);
+    assert.match(s, /`hits_not_shown` must be 0 if it ever appears: a value above 0 means the `hits` list was cut short, so block `\/bc` exactly as for `truncated: true`/);
+  });
+
+  it('r4: CHECKPOINT 4 puts the raw evidence file $E outside the repository and removes it on every path', () => {
+    const s = section('### ⛔ CHECKPOINT 4', '### ⛔ CHECKPOINT 5');
+    assert.match(s, /Write the evidence to a temp file `\$E` outside the repository \(in the session scratchpad or at a `mktemp` path, never under `\.claude\/bbs\/runs\/<id>` or anywhere else in the repository, where CP6's `git add` would stage the unredacted text/);
+    assert.match(s, /`\$E` holds the unredacted evidence, so it is removed on every path, recorded or abandoned/);
+    assert.match(s, /after a redact exit 1 \(or any other non-zero exit of the block\), a failed record, or evidence the lead decides not to record, run `rm -f -- "\$E" "\$R"` with the literal paths/);
+    assert.match(s, /&& rm -f -- "\$R" "\$E"/);
   });
 
   it('the closing checklist carries the kit line', () => {

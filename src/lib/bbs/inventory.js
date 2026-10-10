@@ -542,7 +542,10 @@ export function inventoryBrief({ source, files, maxPowers }) {
   lines.push('');
 
   lines.push('## Your task\n');
-  lines.push('Read the source files above. Do not execute or run anything — list reusable capabilities only.');
+  // A repository source gets the safe-git section below, so the no-execute rule names it as the one allowed command.
+  lines.push(source.type === 'repo'
+    ? 'Read the source files above. Do not execute or run anything from the source; the only command allowed is the safe-git read below (for a repository source). List reusable capabilities only.'
+    : 'Read the source files above. Do not execute or run anything from the source; run no command at all. List reusable capabilities only.');
   lines.push('');
   // Only a cloned repository (fetched/repo) has a clone to read with git; pages, local folders and pastes do not.
   if (source.type === 'repo') lines.push(...SAFE_GIT_LINES);
