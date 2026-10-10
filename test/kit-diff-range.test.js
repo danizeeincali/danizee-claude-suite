@@ -26,7 +26,7 @@ import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
 import { defaultGit } from '../src/lib/kit/push-gate.js';
-import { run, verb, usage } from '../src/lib/kit/diff-range.js';
+import { run, verb, usage, configParameters } from '../src/lib/kit/diff-range.js';
 import { parseDiff } from '../src/lib/kit/lenses.js';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -326,5 +326,73 @@ describe('diff-range — the review range as one unified diff', () => {
       assert.equal(r.exit, 0);
       assert.deepEqual(parseDiff(r.raw).map(f => f.path), ['a.txt']);
     } finally { await fs.rm(d2, { recursive: true, force: true }); }
+  });
+
+  it('a planted .git/config runs nothing: no textconv, no clean filter, no fsmonitor, and the diff carries the real content', { skip: process.platform === 'win32' }, async () => {
+    const tools = await fs.mkdtemp(path.join(os.tmpdir(), 'diff-range-evil-'));
+    try {
+      const marker = (n) => path.join(tools, `marker-${n}`);
+      const script = async (n, body) => { const f = path.join(tools, `${n}.sh`); await fs.writeFile(f, `#!/bin/sh\ntouch '${marker(n)}'\n${body}\n`, { mode: 0o755 }); return f; };
+      const tc = await script('textconv', 'echo FAKE-TEXTCONV');
+      const clean = await script('clean', 'echo FAKE-CLEAN');
+      const fsm = await script('fsmonitor', 'exit 1');
+      await put('.gitattributes', '*.txt diff=evil filter=evil\n');
+      await put('a.txt', 'one\n'); commit('1');
+      await put('a.txt', 'two\n'); commit('2');
+      await put('a.txt', 'two\nthree\n'); // uncommitted edit
+      await put('u.txt', 'untracked real\n'); // untracked, matches *.txt
+      sh(dir, 'config', 'diff.evil.textconv', tc);
+      sh(dir, 'config', 'filter.evil.clean', clean);
+      sh(dir, 'config', 'core.fsmonitor', fsm);
+      const r = await run(['--base', 'HEAD~1'], io());
+      const j = await run(['--base', 'HEAD~1', '--json'], io());
+      const c = cli(dir, ['--base', 'HEAD~1']);
+      for (const n of ['textconv', 'clean', 'fsmonitor']) {
+        await assert.rejects(fs.access(marker(n)), `${n} must not have run`);
+      }
+      assert.equal(r.exit, 0);
+      for (const raw of [r.raw, c.out]) {
+        assert.ok(!raw.includes('FAKE'), raw);
+        assert.ok(/^-one$/m.test(raw) && /^\+two$/m.test(raw) && /^\+three$/m.test(raw), raw);
+        assert.ok(/^\+untracked real$/m.test(raw), raw);
+        assert.deepEqual(parseDiff(raw).map(f => f.path), ['a.txt', 'u.txt']);
+      }
+      assert.equal(c.code, 0, c.err);
+      assert.deepEqual(j.untracked, ['u.txt']);
+      // the scenario is real: plain git in the same repo runs the planted programs
+      spawnSync('git', ['diff', 'HEAD~1'], { cwd: dir, encoding: 'utf-8' });
+      spawnSync('git', ['diff', '--no-index', '--', '/dev/null', 'u.txt'], { cwd: dir, encoding: 'utf-8' });
+      for (const n of ['textconv', 'clean']) await fs.access(marker(n));
+    } finally { await fs.rm(tools, { recursive: true, force: true }); }
+  });
+
+  it('a partial clone with a missing blob is exit 1 naming the missing object and lazy fetch being off; nothing is fetched', async (t) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'diff-range-pc-'));
+    try {
+      const src = path.join(root, 'src');
+      await fs.mkdir(src);
+      sh(src, 'init', '-q', '.');
+      await fs.writeFile(path.join(src, 'a.txt'), 'one\n');
+      sh(src, 'add', '-A'); sh(src, 'commit', '-q', '-m', '1');
+      await fs.writeFile(path.join(src, 'a.txt'), 'two\n');
+      sh(src, 'commit', '-q', '-am', '2');
+      sh(src, 'config', 'uploadpack.allowFilter', 'true');
+      const clone = path.join(root, 'clone');
+      const c = spawnSync('git', ['clone', '-q', '--filter=blob:none', '--no-checkout', `file://${src}`, clone], { encoding: 'utf-8' });
+      const missing = () => spawnSync('git', ['rev-list', '--objects', '--missing=print', '--all'], { cwd: clone, encoding: 'utf-8' }).stdout.split('\n').filter(l => l.startsWith('?'));
+      if (c.status !== 0 || missing().length === 0) return t.skip(`this git cannot build a blob:none partial clone: ${c.stderr}`);
+      const before = missing();
+      await assert.rejects(run(['--dir', clone, '--base', 'HEAD~1'], { cwd: root, env: process.env }),
+        (e) => e instanceof KitExit && e.code === 1 && /cannot diff against the base/.test(e.message) && /lazy fetch/i.test(e.message) && /promisor|not in the local store/.test(e.message));
+      const r = cli(root, ['--dir', clone, '--base', 'HEAD~1']);
+      assert.equal(r.code, 1);
+      assert.equal(r.out, '', 'no partial diff is printed');
+      assert.match(r.err, /lazy fetch/i);
+      assert.deepEqual(missing(), before, 'no blob was fetched from the promisor remote');
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
+  });
+
+  it('configParameters single-quotes each -c pair the way git does', () => {
+    assert.equal(configParameters(['-c', 'core.fsmonitor=', '-c', "a.b=it's"]), `'core.fsmonitor=' 'a.b=it'\\''s'`);
   });
 });

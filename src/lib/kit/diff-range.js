@@ -9,7 +9,24 @@
  * top. When an upstream exists but `git merge-base HEAD <upstream>` fails (a shallow clone, or a git error) the verb is exit 1
  * ("no merge base with <upstream> (shallow clone?): pass --base <ref>"); the empty-tree fallback is only for no upstream.
  * --base also accepts the repository's own empty-tree id (`git hash-object -t tree /dev/null`: SHA-1 or SHA-256) as well as the
- * SHA-1 constant. Git runs with hooks off, no external diff, no colour and no inherited GIT_* variables.
+ * SHA-1 constant.
+ *
+ * Hardening (the repository under review may be one you did not write; --dir can name any folder): git runs with no
+ * inherited GIT_* variables and, on EVERY call (rev-parse, hash-object, merge-base, config, ls-files, both diffs), with
+ * safe-git.js's override list (overrideArgs there is the source of truth, reused here): hooks off (core.hooksPath=/dev/null),
+ * the file system monitor off (`core.fsmonitor=` EMPTY, not "false", which old git runs as a hook path), the pager
+ * (core.pager=cat), the external diff (diff.external=), submodule recursion (submodule.recurse=false,
+ * diff.ignoreSubmodules=all: a submodule pointer change is NOT in the range), every transport (protocol.allow=never and
+ * protocol.<file|git|ssh|http|https|ext>.allow=never), the credential helper (credential.helper=) and signature programs;
+ * plus every filter/diff/merge driver name found in `git config -z --list` (all scopes, includes resolved; read as data)
+ * gets empty filter.<n>.{clean,smudge,process}, filter.<n>.required=false, empty diff.<n>.{command,textconv} and
+ * merge.<n>.driver (a name outside [A-Za-z0-9._-] is refused, exit 2). These go in GIT_CONFIG_PARAMETERS (what `-c`
+ * itself sets, inherited by any git child), and the env also carries GIT_NO_LAZY_FETCH=1 and GIT_LFS_SKIP_SMUDGE=1.
+ * Both diffs also get --no-ext-diff --no-textconv --ignore-submodules=all and no colour. So nothing named in .git/config
+ * (or any config git reads) is executed, and textconv output never replaces the real content. In a partial clone a blob
+ * that is not local is NOT fetched (lazy fetch off, transports refused): the verb exits 1 naming the missing object and
+ * that lazy fetch is off, never printing a partial diff. The remaining trust: the work tree's own files (and the
+ * .gitattributes / .gitignore in it) are read as DATA, the object store is read as is, and git itself is trusted.
  *
  * Untracked paths: a path is listed under `untracked` (--json) only when its diff text is non-empty. A nested git repository
  * (ls-files shows it as `sub/`) is not this repository's file: it is SKIPPED, never diffed, and reported in `skipped` (--json).
@@ -31,6 +48,7 @@ import { KitExit } from './kit-exit.js';
 import { defaultGit } from './push-gate.js';
 import { gitPaths } from './git-paths.js';
 import { parseDiff } from './lenses.js';
+import { overrideArgs, driversFromConfig } from './safe-git.js';
 
 export const verb = 'diff-range';
 export const usage = 'cli.js diff-range [--dir <repo>] [--base <ref>] [--no-untracked] [--base-only] [--json]   (prints the review range as one raw unified diff: '
@@ -61,7 +79,26 @@ function parseArgs(args) {
 
 const fail = (what, r) => new KitExit(`${what}: ${(r.stderr || r.stdout || '').trim() || 'git failed'}`, 1);
 const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
-const DIFF = ['-c', 'core.quotePath=true', 'diff', '--no-color', '--no-ext-diff', '--no-prefix'];
+const DIFF = ['-c', 'core.quotePath=true', 'diff', '--no-color', '--no-ext-diff', '--no-textconv', '--ignore-submodules=all', '--no-prefix'];
+
+/** `-c` pairs as GIT_CONFIG_PARAMETERS ('k=v' 'k2=v2', single-quoted the way git's sq_quote does). */
+export function configParameters(cArgs) {
+  const out = [];
+  for (let i = 0; i < cArgs.length; i += 2) out.push(`'${cArgs[i + 1].replace(/'/g, "'\\''")}'`);
+  return out.join(' ');
+}
+
+/** `git` with the overrides and the no-lazy-fetch / no-lfs-smudge env on every call (see the header). */
+function hardened(git, cArgs) {
+  const base = { GIT_CONFIG_PARAMETERS: configParameters(cArgs), GIT_NO_LAZY_FETCH: '1', GIT_LFS_SKIP_SMUDGE: '1' };
+  const h = (args, o = {}) => git(args, { ...o, env: { ...(o.env || {}), ...base } });
+  h.cwd = git.cwd;
+  return h;
+}
+
+// A blob a partial clone does not hold locally: with lazy fetch off git cannot read it.
+const MISSING = /unable to read|missing (blob|object)|bad object|could not fetch|promisor|lazy fetch|unable to access|not our ref/i;
+const missingNote = (r) => (MISSING.test(r.stderr || '') ? ' (an object is not in the local store, e.g. a partial clone; lazy fetching from the promisor remote is off (GIT_NO_LAZY_FETCH=1, transports refused): fetch the objects yourself, or use a full clone)' : '');
 const ESC = { 7: 'a', 8: 'b', 9: 't', 10: 'n', 11: 'v', 12: 'f', 13: 'r', 34: '"', 92: '\\' };
 
 /** A path as git spells it in a diff header: C-quoted when it has a control char, `"`, `\` or a byte >= 0x80 (core.quotePath on). */
@@ -81,9 +118,15 @@ export async function run(args, io = {}) {
   if (f.help) return { usage };
   const dir = path.resolve(io.cwd || process.cwd(), f.dir || '.');
   const env = io.env || process.env;
-  const at = io.git || defaultGit(dir, { env });
+  const rawAt = io.git || defaultGit(dir, { env });
+  const statics = overrideArgs([]);
+  const cfg = await hardened(rawAt, statics)(['config', '-z', '--list']);
+  // exit 1 with no output is "no config at all"; anything else that failed is a failure (never run unprotected)
+  if (cfg.code !== 0 && !(cfg.code === 1 && !(cfg.stdout || '').length && !(cfg.stderr || '').trim())) throw fail('cannot read the git config', cfg);
+  const cArgs = overrideArgs(driversFromConfig(cfg.stdout || ''));
+  const at = hardened(rawAt, cArgs);
   const [top] = await gitPaths(at, dir, ['toplevel'], 'cannot locate the git repository');
-  const git = io.git || defaultGit(top, { env });
+  const git = hardened(io.git || defaultGit(top, { env }), cArgs);
 
   let base;
   let upstream = null;
@@ -112,7 +155,7 @@ export async function run(args, io = {}) {
 
   const buf = (x) => (Buffer.isBuffer(x) ? x : Buffer.from(x || ''));
   const t = await git([...DIFF, base], { binary: true });
-  if (t.code !== 0 && t.code !== 1) throw fail('cannot diff against the base', t);
+  if (t.code !== 0 && t.code !== 1) throw new KitExit(`${fail('cannot diff against the base', t).message}${missingNote(t)}`, 1);
   const tracked = buf(t.stdout);
   const parts = [tracked];
   const untracked = [];
@@ -133,7 +176,7 @@ export async function run(args, io = {}) {
       }
       const d = await git(['-c', 'core.safecrlf=false', ...DIFF, '--no-index', '--', '/dev/null', file], { binary: true });
       const out = buf(d.stdout);
-      if (d.code > 1 || (d.code === 1 && (!out.length || (d.stderr || '').split('\n').some(l => l.trim() && !BENIGN.test(l))))) throw fail(`cannot diff untracked file ${file}`, d);
+      if (d.code > 1 || (d.code === 1 && (!out.length || (d.stderr || '').split('\n').some(l => l.trim() && !BENIGN.test(l))))) throw new KitExit(`${fail(`cannot diff untracked file ${file}`, d).message}${missingNote(d)}`, 1);
       if (!out.length) continue;
       untracked.push(file);
       parts.push(out);
