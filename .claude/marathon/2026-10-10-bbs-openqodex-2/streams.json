@@ -39,10 +39,13 @@
     },
     {
       "name": "hardened-git-read-on-untrusted-repo",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/hardened-git-read-on-untrusted-repo.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract tests and module",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-hardened-git-read-on-untrusted-repo",
+      "phase": "build",
+      "base": "19179298fe22acd6f358e46bf904792578d4f87c"
     },
     {
       "name": "identity-checked-file-writes",

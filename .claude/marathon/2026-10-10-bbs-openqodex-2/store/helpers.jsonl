@@ -45,3 +45,4 @@
 {"helper_id":"a063e39b-ae16-44a9-8b6f-ab3dbfc6fe62","tokens":60826,"outcome":"green","event":"done","id":"66352198-30b2-4aa9-9fd9-2a41cc88e58c","ts":"2026-10-10T05:26:10.211Z"}
 {"role":"review","model":"opus","stream":"lens-catalog-file-triggered-checks","budget":150000,"event":"spawn","id":"2e6e6b8c-aebb-4caf-8aba-ac94ae05ea18","ts":"2026-10-10T05:26:25.562Z"}
 {"helper_id":"2e6e6b8c-aebb-4caf-8aba-ac94ae05ea18","tokens":71672,"outcome":"green","event":"done","id":"d9d70e50-8160-457e-8c3e-9d74c6463ecb","ts":"2026-10-10T05:28:23.675Z"}
+{"role":"build","model":"sonnet","stream":"hardened-git-read-on-untrusted-repo","budget":150000,"event":"spawn","id":"96883dd7-1b12-4dba-9513-ad53f0a005ff","ts":"2026-10-10T05:29:17.315Z"}
