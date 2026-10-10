@@ -1,17 +1,17 @@
 # Marathon 2026-10-10-kit-wiring
 
 - State: RUNNING
-- Budget: 241,440 / 10,000,000 tokens
+- Budget: 286,440 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "diff-range" (next: review round 1 (opus) on the stream diff) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
+- Next for you: Continue stream "diff-range" (next: fix round 1 (sonnet) on 5 findings, then review round 2) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
 
 ## Streams
 
 | Stream | Isolation | Plan | State | Gate | Phase | Next | Tasks | Escapes |
 |---|---|---|---|---|---|---|---|---|
-| diff-range | ../danizee-claude-suite-diff-range | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | clean 0/2 | /w-plan-tdd-swarm · review | review round 1 (opus) on the stream diff |  | 0 |
+| diff-range | ../danizee-claude-suite-diff-range | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | clean 0/2 | /w-plan-tdd-swarm · fix | fix round 1 (sonnet) on 5 findings, then review round 2 |  | 0 |
 | pt |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire CP6 Review and the closing step |  | 0 |
 | bc |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire scrub before commits and push-gate check before Phase 3 |  | 0 |
 | marathon |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire 4.5, 4.8 and CP6 |  | 0 |
@@ -25,7 +25,7 @@
 |---|---|---|---|---|
 | diff-range: green unit runs in a row | build | met | 2 | at_least 1 |
 | diff-range: clean reviews in a row | build | failing | 0 | at_least 2 |
-| diff-range: open high findings | build | met | 0 | at_most 0 |
+| diff-range: open high findings | build | failing | 1 | at_most 0 |
 | pt: green unit runs in a row | build | failing | 0 | at_least 1 |
 | pt: clean reviews in a row | build | failing | 0 | at_least 2 |
 | pt: open high findings | build | met | 0 | at_most 0 |
