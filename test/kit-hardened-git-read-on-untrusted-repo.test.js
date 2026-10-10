@@ -2326,3 +2326,16 @@ describe('safe-git — review round 18 regressions', () => {
     assert.equal((await safeGit(r, ['rev-parse', 'HEAD'], { limits: { workTreeEntries: 1 } })).code, 0);
   });
 });
+
+describe('safe-git — review round 19 regressions', () => {
+  it('input errors stay short and point at --help instead of repeating the usage', async () => {
+    for (const args of [['--bogus'], ['log'], ['--dir', '.']]) {
+      await assert.rejects(run(args, { cwd: process.cwd() }), (e) => e instanceof KitExit && e.code === 1 && /see --help/.test(e.message) && !e.message.includes(usage) && e.message.length < 200, args.join(' '));
+    }
+  });
+
+  it('the reads-stdin refusal names the argument that reads stdin, abbreviation included', async () => {
+    await assert.rejects(run(['--', 'cat-file', '--batch-ch'], { cwd: process.cwd() }), (e) => e.code === 1 && /cat-file --batch-ch reads stdin/.test(e.message));
+    await assert.rejects(run(['--', 'name-rev', '--an'], { cwd: process.cwd() }), (e) => e.code === 1 && /name-rev --an reads stdin/.test(e.message));
+  });
+});

@@ -134,10 +134,13 @@ export const STDIN_OPTIONS = Object.freeze({
 export const STDIN_LONG = Object.freeze([...new Set(Object.values(STDIN_OPTIONS).flat().map(([o]) => o))]);
 
 /** True when `args` (after the subcommand checks) would make git read stdin. */
-export function readsStdin(args) {
+export function readsStdin(args) { return stdinArg(args) !== null; }
+
+/** The first argument that makes git read stdin (as given, abbreviation included), or null. */
+export function stdinArg(args) {
   // cat-file --batch-all-objects lists every object itself: its --batch/--batch-check format reads no stdin.
   const allObjects = args.includes('--batch-all-objects');
-  return args.some((a) => {
+  return args.find((a) => {
     if (!a.startsWith('--') || a === '--') return false;
     const name = a.slice(2).split('=')[0];
     if (!name || name === 'batch-all-objects') return false;
@@ -146,7 +149,7 @@ export function readsStdin(args) {
     const candidates = table.some(([o]) => o === name) ? [name]
       : table.filter(([o, min]) => o.startsWith(name) && name.startsWith(min)).map(([o]) => o);
     return candidates.some((o) => !(allObjects && (o === 'batch' || o === 'batch-check')));
-  });
+  }) ?? null;
 }
 
 export const READ_SUBCOMMANDS = Object.freeze([
@@ -1127,14 +1130,13 @@ export async function run(args, io = {}) {
     if (a === '--dir') {
       if (i + 1 >= args.length || args[i + 1] === '--') throw new KitExit('--dir needs a path', 1);
       dir = path.resolve(io.cwd || process.cwd(), args[++i]);
-    } else if (!a.startsWith('-')) throw new KitExit(`expected \`--\` before the git arguments (got ${a}; usage: ${usage})`, 1);
-    else throw new KitExit(`unknown flag ${a} (usage: ${usage})`, 1);
+    } else if (!a.startsWith('-')) throw new KitExit(`expected \`--\` before the git arguments (got ${a}; see --help)`, 1);
+    else throw new KitExit(`unknown flag ${a} (see --help)`, 1);
   }
   const gitArgs = args.slice(i);
-  if (gitArgs.length === 0) throw new KitExit(`no git command given (usage: ${usage})`, 1);
-  if (!wantInput && readsStdin(gitArgs)) {
-    throw new KitExit(`${gitArgs[0]} with these options reads stdin: pass --input - before \`--\` (usage: ${usage})`, 1);
-  }
+  if (gitArgs.length === 0) throw new KitExit('no git command given (see --help)', 1);
+  const reader = wantInput ? null : stdinArg(gitArgs);
+  if (reader) throw new KitExit(`${gitArgs[0]} ${reader} reads stdin: pass --input - before \`--\` (see --help)`, 1);
   const input = wantInput ? await io.stdin() : undefined;
   const result = await safeGit(dir, gitArgs, { env: io.env || process.env, git: io.git, input, timeout: timeoutMs });
   return { ...result, exit: result.code === 0 ? 0 : GIT_FAILED_EXIT };
