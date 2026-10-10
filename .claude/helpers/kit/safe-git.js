@@ -13,8 +13,9 @@
  *   and GIT_WORK_TREE at the repo's work tree (none for a bare repo or a path inside the git dir). The shadow holds:
  *     - a config WE write, holding only allow-listed keys whose values are validated (core.repositoryformatversion,
  *       extensions.objectformat, core.bare, and the booleans/enums core.ignorecase, precomposeunicode, quotepath,
- *       filemode, symlinks, autocrlf, eol). The repo's config files are read as DATA (`git config --file <f> --list
- *       -z`, run outside any repository); config.worktree only when extensions.worktreeConfig is set; extensions and
+ *       filemode, symlinks, autocrlf, eol). The repo's config files are read as DATA (`git config --file <f>
+ *       --no-includes --list -z`, run outside any repository; an include.path is never opened, so a FIFO or a UNC
+ *       share it names is never touched); config.worktree only when extensions.worktreeConfig is set; extensions and
  *       the format version only from the repo's own config file (as git does). An extension we do not know
  *       (refstorage=reftable, compatobjectformat, ...) or a format version above 1 is refused (KitExit 2), never
  *       guessed at. extensions.partialclone and worktreeconfig are dropped, so no promisor remote exists;
@@ -28,8 +29,20 @@
  *   its cap, so a sparse file (`truncate -s 1T`, no disk in the repo) cannot fill the temp disk. Defaults, overridable
  *   with the `limits` option: index and each sharedindex 256 MiB, packed-refs 64 MiB, any other file 64 MiB, 512 MiB
  *   in all per call, 100000 entries walked under refs/. Over a limit the call is refused (KitExit 2) naming the file.
+ *   INDEX PATHS. git does not re-check index entries it reads from disk, so before anything reads the work tree the
+ *   shadow's index copy is listed (`ls-files -z --stage`) and an entry that is absolute or has an empty, '.', '..' or
+ *   git-dir component ('.git' in any case, with trailing dots/spaces, NTFS/HFS aliases such as git~1) is refused
+ *   (KitExit 2): an entry named ../outside/sec would make diff and status print a file outside the repository.
  *   No hooks dir, no config.worktree, no includes, no remotes. Repository discovery is done here on the file system
  *   (.git dir, gitdir: file, commondir file, bare layout), so git never opens the repo with its own config.
+ *
+ *   NEVER INSIDE THE REPO: git is spawned by an absolute path found in the absolute PATH entries only (a bare 'git'
+ *   is looked up in the child's cwd on Windows and through an empty/relative PATH entry on POSIX), git's children get
+ *   a PATH without empty/relative entries, and every git child runs with cwd = the private scratch folder: the work
+ *   tree reaches git only through GIT_WORK_TREE. So every command runs as from the TOP of the work tree, whatever
+ *   subfolder --dir names: pathspecs and printed paths are top-relative, rev-parse --show-prefix/--show-cdup print an
+ *   empty line, --is-inside-work-tree/--is-inside-git-dir are answered for --dir (asked on their own; mixed with
+ *   other rev-parse arguments they are refused), and the relative `HEAD:./path` form is not available.
  *
  *   DEFENCE IN DEPTH: every inherited GIT_* variable is removed; no system config (GIT_CONFIG_NOSYSTEM) and no global
  *   config — GIT_CONFIG_GLOBAL is an empty file, and because git before 2.32 ignores that variable, HOME and
@@ -40,7 +53,7 @@
  *   named false), the pager, submodule recursion (diff.ignoreSubmodules=all), every transport (protocol.allow and
  *   protocol.<each>.allow=never), the external diff, signatures (log.showSignature=false, gpg.program /
  *   gpg.ssh.program / gpg.x509.program = a path that cannot run, format.pretty=medium), and every filter/diff/merge
- *   driver named in the repo's config (config, config.worktree, included files), info/attributes, core.attributesFile,
+ *   driver named in the repo's own config files (config, config.worktree; includes are not read), info/attributes, core.attributesFile,
  *   or a work-tree .gitattributes that git would read — listed by the shadow's own `ls-files --cached --others
  *   --exclude-standard`, so git-ignored trees such as node_modules are never walked. A driver
  *   name that cannot be switched off safely makes the call refuse (KitExit 2). Diff-producing subcommands get
@@ -108,6 +121,9 @@ function nullConfigPath() {
 export function safeGitEnv(baseEnv = process.env, { home } = {}) {
   const out = {};
   for (const [k, v] of Object.entries(baseEnv || {})) if (!/^GIT_/i.test(k) && v !== undefined) out[k] = v;
+  // git's own child lookups (sh, a pager, helpers) search PATH too: an empty or relative entry would mean "the folder
+  // git runs in". Keep only absolute entries (the key is case-insensitive on Windows: Path).
+  for (const k of Object.keys(out)) if (pathKeyMatches(k)) out[k] = absolutePathEntries(out[k]).join(path.delimiter);
   out.GIT_CONFIG_NOSYSTEM = '1';
   out.GIT_CONFIG_GLOBAL = nullConfigPath();
   out.GIT_TERMINAL_PROMPT = '0';
@@ -123,10 +139,53 @@ export function safeGitEnv(baseEnv = process.env, { home } = {}) {
 
 // ---------------------------------------------------------------- git runner
 
-/** Default runner: `git(args, { cwd, env, input, timeout })` → { code, stdout, stderr }. stdin is closed without input. */
+const pathKeyMatches = (k) => (process.platform === 'win32' ? k.toUpperCase() === 'PATH' : k === 'PATH');
+const envGet = (env, name) => {
+  if (process.platform !== 'win32') return env?.[name];
+  const key = Object.keys(env || {}).find(k => k.toUpperCase() === name);
+  return key === undefined ? undefined : env[key];
+};
+
+/** The PATH entries that are absolute; empty, '.' and relative entries (which mean "the current folder") are dropped. */
+export function absolutePathEntries(value, { delimiter = path.delimiter, isAbsolute = path.isAbsolute } = {}) {
+  return String(value ?? '').split(delimiter).filter(e => e !== '' && isAbsolute(e));
+}
+
+const gitPathCache = new Map();
+
+/**
+ * The absolute path of the git program, found by scanning only the absolute entries of env.PATH (on Windows with each
+ * PATHEXT extension). Never a bare name: a bare 'git' is looked up in the child's cwd on Windows, and through an
+ * empty or relative PATH entry on POSIX, so a git committed to the repository being read would run. Cached per
+ * PATH/PATHEXT. KitExit 1 when no git is found.
+ */
+export function resolveGit(env = process.env) {
+  const win = process.platform === 'win32';
+  const pathValue = envGet(env, 'PATH') ?? '';
+  const exts = win ? String(envGet(env, 'PATHEXT') || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean) : [''];
+  const key = `${pathValue}\0${exts.join(';')}`;
+  if (gitPathCache.has(key)) return gitPathCache.get(key);
+  for (const dir of absolutePathEntries(pathValue)) {
+    for (const ext of exts) {
+      const file = path.join(dir, `git${ext.toLowerCase()}`);
+      try {
+        if (!fsSync.statSync(file).isFile()) continue;
+        if (!win) fsSync.accessSync(file, fsSync.constants.X_OK);
+      } catch { continue; }
+      gitPathCache.set(key, file);
+      return file;
+    }
+  }
+  throw new KitExit('cannot run git: no git program in any absolute PATH entry (empty and relative entries are not searched)', 1);
+}
+
+/**
+ * Default runner: `git(args, { cwd, env, input, timeout })` → { code, stdout, stderr }. stdin is closed without input.
+ * git is spawned by its absolute path (resolveGit), never by bare name.
+ */
 export function defaultGitRunner(args, { cwd, env, input, timeout } = {}) {
   const hasInput = input !== undefined && input !== null;
-  const r = spawnSync('git', args, {
+  const r = spawnSync(resolveGit(env || process.env), args, {
     cwd, env, encoding: 'utf-8', maxBuffer: 256 * 1024 * 1024, timeout,
     input: hasInput ? input : undefined,
     stdio: [hasInput ? 'pipe' : 'ignore', 'pipe', 'pipe']
@@ -208,10 +267,14 @@ export function parseConfigList(stdout) {
   return out;
 }
 
-/** Read one config FILE as data. git runs in an empty scratch dir below a ceiling, so it opens no repository. */
-async function readConfigFile(ctx, file, includes) {
+/**
+ * Read one config FILE as data. git runs in an empty scratch dir below a ceiling, so it opens no repository. Always
+ * --no-includes: an include.path / includeIf names any path (a FIFO that hangs the read, a UNC share that sends the
+ * user's credentials), and nothing from an included file is ever used — the shadow config is ours.
+ */
+async function readConfigFile(ctx, file) {
   if (!(await isRegular(file))) return [];
-  const r = await ctx.git(['config', '--file', file, includes ? '--includes' : '--no-includes', '--list', '-z'],
+  const r = await ctx.git(['config', '--file', file, '--no-includes', '--list', '-z'],
     { cwd: ctx.scratch, env: ctx.cfgEnv, timeout: ctx.timeout });
   if (r.code !== 0) throw new KitExit(`cannot read ${file} as data: ${(r.stderr || '').trim() || 'git failed'}`, 1);
   return parseConfigList(r.stdout);
@@ -333,20 +396,63 @@ async function readCapped(file) {
  * index, as git does. KitExit 1 when git cannot list them (fail closed).
  */
 async function workTreeAttributes(exec, top) {
-  const r = await exec(['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ':(top,glob)**/.gitattributes'], { cwd: top });
+  const r = await exec(['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ':(top,glob)**/.gitattributes']);
   if (r.code !== 0) throw new KitExit(`cannot list the .gitattributes files of ${top}: ${(r.stderr || '').trim() || 'git ls-files failed'}`, 1);
   const out = [];
   for (const rel of new Set(String(r.stdout).split('\0').filter(Boolean))) {
     if (path.posix.basename(rel) !== '.gitattributes') continue;
     const file = path.join(top, ...rel.split('/'));
     if (await lstatOrNull(file)) { out.push({ rel, text: await readCapped(file) }); continue; }
-    const size = await exec(['cat-file', '-s', `:${rel}`], { cwd: top });
+    const size = await exec(['cat-file', '-s', `:${rel}`]);
     if (size.code !== 0) continue; // untracked and gone, or not in the index: git reads nothing either
     if (Number(String(size.stdout).trim()) > MAX_ATTR_BYTES) throw refuse(`${rel} in the index is larger than ${MAX_ATTR_BYTES} bytes; its filter drivers cannot be checked`);
-    const blob = await exec(['cat-file', 'blob', `:${rel}`], { cwd: top });
+    const blob = await exec(['cat-file', 'blob', `:${rel}`]);
     if (blob.code === 0) out.push({ rel, text: blob.stdout });
   }
   return out;
+}
+
+// ---------------------------------------------------------------- index paths
+
+// Characters HFS+ ignores in names (so ".g‌it" is ".git" there), as git's is_hfs_dotgit lists them.
+const HFS_IGNORABLE = /[‌-‏‪-‮⁪-⁯﻿]/g;
+
+/**
+ * Why an index entry path would let git read outside the work tree (or into a git dir), or null when it is safe.
+ * Refused: an absolute path (/x, \x, C:...), and any component (split on / and \) that is empty, '.', '..', or a git
+ * dir alias — '.git' in any case, also with trailing dots/spaces, an NTFS stream suffix (.git::$INDEX_ALLOCATION),
+ * HFS+ ignorable characters, or the NTFS short name git~<n>. A sparse-index directory entry may end in one '/'.
+ */
+export function unsafeIndexPath(p, { dir = false } = {}) {
+  let s = String(p);
+  if (s === '') return 'empty path';
+  if (dir && s.endsWith('/')) s = s.slice(0, -1);
+  if (/^[\\/]/.test(s) || /^[A-Za-z]:/.test(s)) return 'absolute path';
+  for (const c of s.split(/[\\/]/)) {
+    if (c === '' || c === '.' || c === '..') return `component ${JSON.stringify(c)}`;
+    const name = c.replace(HFS_IGNORABLE, '').split(':')[0].replace(/[. ]+$/, '').toLowerCase();
+    if (name === '.git' || /^git~\d+$/.test(name)) return `component ${JSON.stringify(c).slice(0, 40)} names a git dir`;
+  }
+  return null;
+}
+
+/**
+ * List the SHADOW's index copy (`ls-files -z --stage`, which reads only the index) and refuse (KitExit 2) when any
+ * entry is unsafe (unsafeIndexPath): git does not re-check index entries it reads from disk, so an entry named
+ * ../outside/sec makes diff and status read and print a file outside the repository. The listing is bounded by the
+ * index copy limit and the runner's output cap (an overflow is a git failure: KitExit 1, fail closed).
+ */
+async function checkIndexPaths(exec) {
+  const r = await exec(['ls-files', '-z', '--stage']);
+  if (r.code !== 0) throw new KitExit(`cannot list the index: ${(r.stderr || '').trim() || 'git ls-files failed'}`, 1);
+  for (const rec of String(r.stdout).split('\0')) {
+    if (!rec) continue;
+    const tab = rec.indexOf('\t');
+    if (tab === -1) throw new KitExit(`cannot parse git ls-files --stage output: ${JSON.stringify(rec).slice(0, 80)}`, 1);
+    const p = rec.slice(tab + 1);
+    const why = unsafeIndexPath(p, { dir: rec.startsWith('040000 ') });
+    if (why) throw refuse(`the index has an entry ${JSON.stringify(p).slice(0, 120)} (${why}) that would make git read outside the work tree; refusing to read this repository`);
+  }
 }
 
 /** Kept for API compatibility: there is no cache any more (every call re-reads everything). */
@@ -365,11 +471,11 @@ const STATIC_OVERRIDES = [
 async function inspect(dir, ctx) {
   const loc = await locateRepo(dir);
   const mainCfg = path.join(loc.commonDir, 'config');
-  const fmt = repoFormat(await readConfigFile(ctx, mainCfg, false));
+  const fmt = repoFormat(await readConfigFile(ctx, mainCfg));
   const files = [mainCfg];
   if (fmt.worktreeConfig) files.push(path.join(loc.gitDir, 'config.worktree'));
   const entries = [];
-  for (const f of files) entries.push(...await readConfigFile(ctx, f, true));
+  for (const f of files) entries.push(...await readConfigFile(ctx, f)); // the repo's own files only, no includes
   const core = allowedCore(entries);
   const top = core.bare === true ? null : loc.top;
   return { loc, fmt, entries, core, top };
@@ -407,6 +513,8 @@ async function overridesFor(info, shadowExec) {
   const base = overrideArgs(names);
   if (!info.top) return base;
   const listExec = (a, extra) => shadowExec([...base, ...a], extra);
+  // before anything reads the work tree (the listing below, then the user's command): no index entry may lead out of it
+  await checkIndexPaths(listExec);
   for (const { text } of await workTreeAttributes(listExec, info.top)) for (const n of driversFromAttributes(text)) names.add(n);
   return overrideArgs(names);
 }
@@ -437,7 +545,8 @@ async function prepare(dir, ctx) {
   const genv = { ...safeGitEnv(ctx.env, { home: ctx.home }), GIT_DIR: shadow, GIT_OBJECT_DIRECTORY: path.join(info.loc.commonDir, 'objects') };
   if (info.top) genv.GIT_WORK_TREE = info.top;
   const raw = async (a, extra = {}) => {
-    const r = await ctx.git(a, { cwd: info.loc.real, env: genv, timeout: ctx.timeout, ...extra });
+    // cwd is the private scratch folder, never the repository: the work tree reaches git only through GIT_WORK_TREE
+    const r = await ctx.git(a, { cwd: ctx.scratch, env: genv, timeout: ctx.timeout, ...extra });
     return { stdout: r.stdout, stderr: r.stderr || '', code: r.code };
   };
   const overrides = await overridesFor(info, raw);
@@ -447,8 +556,8 @@ async function prepare(dir, ctx) {
 
 /**
  * The `-c` override argv for the folder (defence in depth; git never reads the repo config through safeGit anyway):
- * static switches plus, for every driver name in its config files (config, config.worktree, included files — read as
- * data), info/attributes, core.attributesFile or a .gitattributes the shadow's ls-files lists, empty filter.<n>.{clean,smudge,process}, filter.<n>.required=false, empty
+ * static switches plus, for every driver name in its own config files (config, config.worktree — read as data,
+ * without includes), info/attributes, core.attributesFile or a .gitattributes the shadow's ls-files lists, empty filter.<n>.{clean,smudge,process}, filter.<n>.required=false, empty
  * diff.<n>.{command,textconv} and merge.<n>.driver. KitExit 2 for a driver name outside [A-Za-z0-9._-] or an
  * unsupported repository format, KitExit 1 when git cannot answer. Computed afresh on every call.
  */
@@ -664,6 +773,29 @@ export function describeDirtyPlan(argv) {
   return { argv: ['describe', ...kept], dirty: dirty ?? '-dirty', broken };
 }
 
+/** rev-parse options whose answer depends on the folder git runs in (always the private scratch folder). */
+const REV_PARSE_POSITION = new Set(['--show-prefix', '--show-cdup', '--is-inside-work-tree', '--is-inside-git-dir']);
+const within = (p, dir) => p === dir || p.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep);
+
+/**
+ * Answer rev-parse --show-prefix / --show-cdup / --is-inside-work-tree / --is-inside-git-dir for `info` as from the top
+ * of the work tree (every command runs that way). Returns null when argv asks none of them; KitExit 2 when they are
+ * mixed with other arguments (rev-parse prints one line per argument, and the others go to git).
+ */
+export function revParsePosition(argv, info) {
+  if (argv[0] !== 'rev-parse' || !argv.slice(1).some(a => REV_PARSE_POSITION.has(a))) return null;
+  if (!argv.slice(1).every(a => REV_PARSE_POSITION.has(a))) {
+    throw refuse(`git rev-parse ${[...REV_PARSE_POSITION].join('/')} must be asked on their own through safe-git (it runs git outside the work tree); refused`);
+  }
+  const { loc, top } = info;
+  const lines = argv.slice(1).map(a => {
+    if (a === '--is-inside-work-tree') return String(!!top && !within(loc.real, loc.gitDir));
+    if (a === '--is-inside-git-dir') return String(within(loc.real, loc.gitDir) || within(loc.real, loc.commonDir));
+    return ''; // --show-prefix, --show-cdup: commands run as from the top of the work tree
+  });
+  return { stdout: lines.map(l => `${l}\n`).join(''), stderr: '', code: 0 };
+}
+
 async function describeDirty(exec, plan, timeout) {
   const d = await exec(plan.argv, { timeout });
   if (d.code !== 0) return d;
@@ -690,7 +822,9 @@ export async function safeGit(dir, args, { input, git = defaultGitRunner, env = 
   const argv = checkReadArgs(args);
   const dirtyPlan = describeDirtyPlan(argv);
   return withScratch(async (scratch) => {
-    const { exec } = await prepare(dir, makeCtx(git, env, scratch, timeout, limits));
+    const { exec, info } = await prepare(dir, makeCtx(git, env, scratch, timeout, limits));
+    const position = revParsePosition(argv, info);
+    if (position) return position;
     if (dirtyPlan) return describeDirty(exec, dirtyPlan, timeout);
     return exec(argv, { input, timeout });
   });

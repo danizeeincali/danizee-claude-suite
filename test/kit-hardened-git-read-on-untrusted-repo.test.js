@@ -4,12 +4,14 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import os from 'os';
 import path from 'path';
-import { spawnSync } from 'child_process';
+import { spawnSync, spawn } from 'child_process';
+import crypto from 'crypto';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
 import {
   safeGit, safeGitEnv, safeGitConfig, checkReadArgs, clearSafeGitCache, defaultGitRunner,
   driversFromConfig, driversFromAttributes, run, READ_SUBCOMMANDS,
-  parseConfigList, allowedCore, repoFormat, describeDirtyPlan, buildShadow, DEFAULT_LIMITS
+  parseConfigList, allowedCore, repoFormat, describeDirtyPlan, buildShadow, DEFAULT_LIMITS,
+  resolveGit, absolutePathEntries, unsafeIndexPath
 } from '../src/lib/kit/safe-git.js';
 
 const CLEAN_ENV = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
@@ -163,13 +165,23 @@ describe('safe-git — on a real hostile repo', () => {
     assert.ok(!set.some(s => /^core\.fsmonitor=./i.test(s)), `fsmonitor override is empty: ${set.filter(s => /fsmonitor/i.test(s))}`);
   });
 
-  it('a driver from an included config file is neutralised too', async () => {
+  it('a driver from an included config file never runs (includes are not even opened: the shadow never uses them)', async () => {
     clearSafeGitCache();
     const r = await evilRepo(root, 'included');
     await fs.writeFile(path.join(r.dir, '.git', 'extra.cfg'), `[filter "viainclude"]\n\tclean = touch ${r.mk('included')}\n`);
     sh(r.dir, ['config', 'include.path', 'extra.cfg']);
-    const args = await safeGitConfig(r.dir);
-    assert.ok(args.includes('filter.viainclude.clean='));
+    // review round 4: config is read with --no-includes, so an included driver is not discovered from the include ...
+    assert.ok(!(await safeGitConfig(r.dir)).includes('filter.viainclude.clean='), 'the include is not read');
+    // ... yet it never runs: the shadow config defines no driver (whatever attributes name it)
+    await fs.writeFile(path.join(r.dir, '.gitattributes'), '*.txt filter=evil diff=evil\nb.txt filter=viainclude\n');
+    sh(r.dir, ['add', 'b.txt']);
+    assert.ok((await r.fired()).includes('included'), 'control: the included filter fires under plain git');
+    await fs.rm(r.mk('included'));
+    await fs.writeFile(path.join(r.dir, 'b.txt'), 'changed, a different size\n');
+    for (const c of [['status', '--porcelain'], ['diff'], ['diff', '--cached'], ['ls-files', '--stage']]) {
+      assert.equal((await safeGit(r.dir, c)).code, 0, c.join(' '));
+    }
+    assert.ok(!(await r.fired()).includes('included'), `the included filter never runs: ${await r.fired()}`);
   });
 
   it('refuses (exit 2) a driver name it cannot switch off safely, from config or attributes, and runs nothing', async () => {
@@ -755,7 +767,7 @@ describe('safe-git — shadow git dir: the repository config is never read (revi
     assert.deepEqual(await r.fired(), []);
   });
 
-  it('a filter added later through an included config file never runs and is listed in the overrides (no stale cache)', async () => {
+  it('a filter added later through an included config file never runs (the include is not read; nothing is cached)', async () => {
     const r = await plainRepo('include-late');
     sh(r.dir, ['config', 'include.path', 'extra.cfg']);
     await fs.writeFile(path.join(r.dir, '.git', 'extra.cfg'), '');
@@ -768,7 +780,8 @@ describe('safe-git — shadow git dir: the repository config is never read (revi
     sh(r.dir, ['diff']);
     assert.ok((await r.fired()).includes('late'), 'control: the included filter fires under plain git');
     await fs.rm(r.mk('late'));
-    assert.ok((await safeGitConfig(r.dir)).includes('filter.late.clean='), 'the included driver is listed at once');
+    // review round 4: includes are read with --no-includes, so the included driver is not listed; it still never runs
+    assert.ok(!(await safeGitConfig(r.dir)).includes('filter.late.clean='), 'the include is not opened');
     assert.match((await safeGit(r.dir, ['diff'])).stdout, /\+two, a different size/);
     assert.equal((await safeGit(r.dir, ['status', '--porcelain'], { git: shadowOnly() })).code, 0);
     assert.deepEqual(await r.fired(), []);
@@ -825,7 +838,11 @@ describe('safe-git — shadow git dir: the repository config is never read (revi
     assert.match((await safeGit(wt, ['status', '--porcelain'])).stdout, /^ M f\.txt$/m);
     assert.equal((await safeGit(main.dir, ['status', '--porcelain'])).stdout, '');
     await fs.mkdir(path.join(wt, 'deep'));
-    assert.equal((await safeGit(path.join(wt, 'deep'), ['rev-parse', '--show-prefix'])).stdout.trim(), 'deep/');
+    // review round 4: git never runs inside the repository, so a --dir in a subfolder selects the repository and every
+    // command runs as from the top of the work tree (documented in the header)
+    assert.equal((await safeGit(path.join(wt, 'deep'), ['rev-parse', '--show-prefix'])).stdout, '\n');
+    assert.equal((await safeGit(path.join(wt, 'deep'), ['rev-parse', '--show-toplevel'])).stdout.trim(), await fs.realpath(wt));
+    assert.match((await safeGit(path.join(wt, 'deep'), ['status', '--porcelain'])).stdout, /^ M f\.txt$/m, 'paths are top-relative');
   });
 
   it('a bare repository (and a path inside .git) reads without a work tree', async () => {
@@ -1119,5 +1136,164 @@ describe('safe-git — review round 3 regressions (copy limits, symlinked refs, 
     const st = await safeGit(r.dir, ['status', '--porcelain']);
     assert.equal(st.code, 0, st.stderr);
     assert.equal(st.stdout, ' M f.txt\n');
+  });
+});
+
+describe('safe-git — review round 4 regressions (git found by absolute path, unsafe index paths, no config includes)', () => {
+  let root;
+  before(async () => { root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'safe-git-r4-'))); });
+  after(async () => { await fs.rm(root, { recursive: true, force: true }); });
+
+  async function plainRepo(name) {
+    const dir = path.join(root, name);
+    await fs.mkdir(dir, { recursive: true });
+    assert.equal(sh(dir, ['init', '-q', '.']).status, 0);
+    await fs.writeFile(path.join(dir, 'f.txt'), 'one\n');
+    sh(dir, ['add', 'f.txt']);
+    sh(dir, ['commit', '-q', '-m', 'init']);
+    return { dir, head: sh(dir, ['rev-parse', 'HEAD']).stdout.trim() };
+  }
+
+  /** A repo with an executable git at its root, in ./rel/ and ./bin/ that leaves a marker and then runs the real git. */
+  async function plantedGitRepo(name) {
+    const r = await plainRepo(name);
+    const realGit = resolveGit(CLEAN_ENV);
+    const marker = path.join(root, `${name}-PWN`);
+    const fake = `#!/bin/sh\ntouch '${marker}'\nexec '${realGit}' "$@"\n`;
+    await fs.writeFile(path.join(r.dir, 'git'), fake, { mode: 0o755 });
+    for (const d of ['rel', 'bin']) {
+      await fs.mkdir(path.join(r.dir, d));
+      await fs.writeFile(path.join(r.dir, d, 'git'), fake, { mode: 0o755 });
+    }
+    return { ...r, marker };
+  }
+
+  it('control (POSIX): with an empty PATH entry, a bare "git" spawned in the repository runs the repository\'s ./git', async (t) => {
+    if (process.platform === 'win32') return t.skip('POSIX PATH semantics');
+    const r = await plantedGitRepo('control-path');
+    const out = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: r.dir, encoding: 'utf-8', env: { ...CLEAN_ENV, PATH: `:${CLEAN_ENV.PATH}` } });
+    assert.equal(out.stdout.trim(), r.head);
+    assert.equal(await exists(r.marker), true, 'control: the planted git ran');
+  });
+
+  it('PATH with an empty, "." and relative entry + an executable ./git in the repo: safeGit, run() and bbs headOf never run it', async (t) => {
+    if (process.platform === 'win32') return t.skip('POSIX PATH semantics');
+    const r = await plantedGitRepo('planted');
+    await fs.writeFile(path.join(r.dir, 'f.txt'), 'two\n');
+    for (const PATH of [`:${CLEAN_ENV.PATH}`, `.:${CLEAN_ENV.PATH}`, `rel:bin:${CLEAN_ENV.PATH}`, `${CLEAN_ENV.PATH}:`]) {
+      const env = { ...CLEAN_ENV, PATH };
+      assert.equal((await safeGit(r.dir, ['rev-parse', 'HEAD'], { env })).stdout.trim(), r.head, PATH);
+      assert.match((await safeGit(r.dir, ['diff'], { env })).stdout, /\+two/);
+      assert.match((await safeGit(r.dir, ['status', '--porcelain'], { env })).stdout, /^ M f\.txt$/m);
+      assert.equal((await safeGit(r.dir, ['describe', '--always', '--dirty'], { env })).stdout.trim(), `${r.head.slice(0, 7)}-dirty`);
+      assert.equal((await run(['--dir', r.dir, '--', 'rev-parse', 'HEAD'], { cwd: r.dir, env })).stdout.trim(), r.head);
+      await safeGitConfig(r.dir, { env });
+    }
+    const { headOf } = await import('../src/lib/bbs/fetch.js');
+    assert.equal(await headOf(r.dir, { ...CLEAN_ENV, PATH: `:${CLEAN_ENV.PATH}` }, { hardened: true }), r.head);
+    assert.equal(await exists(r.marker), false, 'the repository\'s git never ran');
+  });
+
+  it('every git child runs with cwd = the private scratch folder (never the repository) and an absolute git; PATH keeps absolute entries only', async () => {
+    const r = await plainRepo('cwd');
+    const seen = [];
+    const git = (a, o) => { seen.push(o); return defaultGitRunner(a, o); };
+    await fs.mkdir(path.join(r.dir, 'deep'));
+    await safeGit(path.join(r.dir, 'deep'), ['status', '--porcelain'], { git, env: { ...CLEAN_ENV, PATH: `:.:rel:${CLEAN_ENV.PATH}` } });
+    assert.ok(seen.length >= 3);
+    for (const o of seen) {
+      assert.ok(!(o.cwd === r.dir || o.cwd.startsWith(r.dir + path.sep)), `cwd ${o.cwd} is outside the repository`);
+      assert.match(path.basename(o.cwd), /^safe-git-shadow-/);
+      assert.equal(o.env.PATH, CLEAN_ENV.PATH, 'empty and relative PATH entries are removed for git\'s own children');
+    }
+    assert.ok(path.isAbsolute(resolveGit(CLEAN_ENV)));
+    assert.deepEqual(absolutePathEntries(':.:rel:/usr/bin::/bin:', { delimiter: ':', isAbsolute: path.posix.isAbsolute }), ['/usr/bin', '/bin']);
+    assert.throws(() => resolveGit({ PATH: `:.:rel` }), e => e instanceof KitExit && e.code === 1 && /cannot run git/.test(e.message));
+  });
+
+  it('rev-parse position queries answer as from the top of the work tree; mixed with other arguments they are refused', async () => {
+    const r = await plainRepo('position');
+    await fs.mkdir(path.join(r.dir, 'deep'));
+    assert.equal((await safeGit(r.dir, ['rev-parse', '--is-inside-work-tree', '--is-inside-git-dir', '--show-prefix', '--show-cdup'])).stdout, 'true\nfalse\n\n\n');
+    assert.equal((await safeGit(path.join(r.dir, 'deep'), ['rev-parse', '--is-inside-work-tree'])).stdout, 'true\n');
+    assert.equal((await safeGit(path.join(r.dir, '.git'), ['rev-parse', '--is-inside-git-dir', '--is-inside-work-tree'])).stdout, 'true\nfalse\n');
+    await assert.rejects(() => safeGit(r.dir, ['rev-parse', '--show-prefix', 'HEAD']), e => e instanceof KitExit && e.code === 2);
+  });
+
+  /** Rename one index entry in place (same length) and rewrite the SHA-1 trailer. */
+  async function patchIndexEntry(dir, from, to) {
+    assert.equal(Buffer.byteLength(from), Buffer.byteLength(to));
+    const file = path.join(dir, '.git', 'index');
+    const buf = await fs.readFile(file);
+    const at = buf.indexOf(Buffer.from(`${from}\0`));
+    assert.ok(at > 0, `entry ${from} found in the index`);
+    Buffer.from(to).copy(buf, at);
+    const body = buf.subarray(0, buf.length - 20);
+    crypto.createHash('sha1').update(body).digest().copy(buf, buf.length - 20);
+    await fs.writeFile(file, buf);
+  }
+
+  it('control: plain git diff/status follow an index entry patched to ../outside/sec and print the secret', async () => {
+    const r = await plainRepo('dotdot-control');
+    await fs.mkdir(path.join(r.dir, 'zzzzzzzzzz'));
+    await fs.writeFile(path.join(r.dir, 'zzzzzzzzzz', 'sec'), 'x\n');
+    sh(r.dir, ['add', 'zzzzzzzzzz/sec']);
+    await fs.mkdir(path.join(root, 'outside'), { recursive: true });
+    await fs.writeFile(path.join(root, 'outside', 'sec'), 'TOP SECRET KEY\n');
+    await patchIndexEntry(r.dir, 'zzzzzzzzzz/sec', '../outside/sec');
+    assert.match(sh(r.dir, ['diff']).stdout, /TOP SECRET KEY/, 'control: plain git prints the outside file');
+  });
+
+  it('an index entry patched to ../outside/sec is refused (exit 2) before any command runs; the secret is never printed', async () => {
+    const r = await plainRepo('dotdot');
+    await fs.mkdir(path.join(r.dir, 'zzzzzzzzzz'));
+    await fs.writeFile(path.join(r.dir, 'zzzzzzzzzz', 'sec'), 'x\n');
+    sh(r.dir, ['add', 'zzzzzzzzzz/sec']);
+    await fs.mkdir(path.join(root, 'outside'), { recursive: true });
+    await fs.writeFile(path.join(root, 'outside', 'sec'), 'TOP SECRET KEY\n');
+    await patchIndexEntry(r.dir, 'zzzzzzzzzz/sec', '../outside/sec');
+    const calls = [];
+    const git = (a, o) => { calls.push(a); return defaultGitRunner(a, o); };
+    for (const c of [['diff'], ['status', '--porcelain'], ['diff-files', '-p'], ['ls-files'], ['rev-parse', 'HEAD']]) {
+      await assert.rejects(() => safeGit(r.dir, c, { git }), e => e instanceof KitExit && e.code === 2 && /\.\.\/outside\/sec/.test(e.message) && !/TOP SECRET/.test(e.message), c.join(' '));
+    }
+    await assert.rejects(() => run(['--dir', r.dir, '--', 'diff'], { cwd: root, env: CLEAN_ENV }), e => e instanceof KitExit && e.code === 2);
+    const userCommands = calls.filter(a => a.some(x => ['diff', 'status', 'diff-files', 'rev-parse'].includes(x)) || (a.includes('ls-files') && !a.includes('--stage') && !a.includes('--others')));
+    assert.deepEqual(userCommands, [], 'only the index listing ran; no work-tree command');
+  });
+
+  it('unsafeIndexPath refuses absolute paths, ., .., empty and git-dir alias components (any case, trailing dots/spaces, NTFS/HFS forms); keeps ordinary names', () => {
+    const bad = ['../x', 'a/../x', 'a/..', '/etc/passwd', '\\x', 'C:/x', 'c:x', 'a//b', './x', 'a/./b', 'a/', '.git/config', 'sub/.GIT/config',
+      '.Git', '.git./x', '.git /x', '.git . /x', 'GIT~1/config', 'a/git~2', '.g\u200cit/config', '.git\ufeff/x', '.git::$INDEX_ALLOCATION/x',
+      'a\\..\\b', 'a\\.git\\config', ''];
+    for (const p of bad) assert.ok(unsafeIndexPath(p), JSON.stringify(p));
+    const good = ['f.txt', 'a/b/c', '.gitignore', '.gitattributes', '.gitmodules', 'x.git', '..a', 'a..', '.github/workflows/ci.yml', 'git~x', 'gitx'];
+    for (const p of good) assert.equal(unsafeIndexPath(p), null, JSON.stringify(p));
+    assert.equal(unsafeIndexPath('dir/', { dir: true }), null, 'a sparse-index directory entry');
+  });
+
+  it('include.path naming a FIFO: the call returns promptly and the FIFO is never opened (its writer stays blocked)', async (t) => {
+    if (process.platform === 'win32') return t.skip('needs mkfifo');
+    const r = await plainRepo('fifo');
+    const fifo = path.join(root, 'fifo-pipe');
+    const mk = spawnSync('mkfifo', [fifo]);
+    if (mk.status !== 0) return t.skip('mkfifo unavailable');
+    const opened = path.join(root, 'fifo-OPENED');
+    // the writer blocks in open() until something opens the FIFO for reading, then leaves a marker
+    const writer = spawn('sh', ['-c', `echo '[filter "x"]' > '${fifo}'; touch '${opened}'`], { stdio: 'ignore' });
+    try {
+      await fs.appendFile(path.join(r.dir, '.git', 'config'), `[include]\n\tpath = ${fifo}\n[includeIf "gitdir:/"]\n\tpath = ${fifo}\n`);
+      const t0 = Date.now();
+      const out = await safeGit(r.dir, ['rev-parse', 'HEAD'], { timeout: 5000 });
+      assert.equal(out.stdout.trim(), r.head);
+      await safeGitConfig(r.dir, { timeout: 5000 });
+      assert.ok(Date.now() - t0 < 5000, `returned promptly (${Date.now() - t0} ms)`);
+      await new Promise(res => setTimeout(res, 200));
+      assert.equal(await exists(opened), false, 'the FIFO was never opened');
+      assert.equal(writer.exitCode, null, 'the writer is still blocked');
+    } finally {
+      writer.kill('SIGKILL');
+      await new Promise(res => (writer.exitCode !== null || writer.signalCode ? res() : writer.once('exit', res)));
+    }
   });
 });
