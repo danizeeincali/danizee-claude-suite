@@ -2117,3 +2117,54 @@ describe('safe-git — review round 15 regressions', () => {
     } finally { await fs.rm(root, { recursive: true, force: true }); }
   });
 });
+
+describe('safe-git — review round 16 regressions', () => {
+  let root;
+  before(async () => { root = await fs.mkdtemp(path.join(os.tmpdir(), 'safe-git-r16-')); });
+  after(async () => {
+    await fs.chmod(path.join(root, 'locked', '.git', 'objects', 'd5'), 0o755).catch(() => {});
+    await fs.rm(root, { recursive: true, force: true });
+  });
+  const mkRepo = async (name) => {
+    const d = path.join(root, name);
+    await fs.mkdir(d);
+    sh(d, ['init', '-q', '.']);
+    await fs.writeFile(path.join(d, 'a.txt'), `${name}\n`);
+    sh(d, ['add', 'a.txt']);
+    sh(d, ['commit', '-q', '-m', name]);
+    return d;
+  };
+
+  it('a folder under objects/ that cannot be listed is refused (git could still open a symlinked object in it by name)',
+    { skip: process.platform === 'win32' || process.getuid?.() === 0 ? 'needs a non-root POSIX user (root lists any folder)' : false }, async () => {
+      const r = await mkRepo('locked');
+      const d5 = path.join(r, '.git', 'objects', 'd5');
+      await fs.mkdir(d5, { recursive: true });
+      await fs.chmod(d5, 0o333);
+      let ran = false;
+      const git = (a, o) => { ran = true; return defaultGitRunner(a, o); };
+      await assert.rejects(safeGit(r, ['rev-parse', 'HEAD'], { git }), (e) => e instanceof KitExit && e.code === 2 && /cannot list/.test(e.message));
+      assert.equal(ran, false);
+    });
+
+  it('a git killed by a signal is exit 3, never read as git\'s own code 1', { skip: process.platform === 'win32' }, async () => {
+    const bin = path.join(root, 'bin');
+    await fs.mkdir(bin);
+    await fs.writeFile(path.join(bin, 'git'), '#!/bin/sh\nkill -SEGV $$\n', { mode: 0o755 });
+    clearSafeGitCache();
+    try {
+      assert.throws(() => defaultGitRunner(['diff-index', '--quiet', 'HEAD'], { env: { PATH: bin }, cwd: root }),
+        (e) => e instanceof KitExit && e.code === 3 && /killed by SIGSEGV/.test(e.message));
+    } finally { clearSafeGitCache(); }
+  });
+
+  it('a timeout while checking index paths stays exit 3 (a git failure); only an output overflow is a refusal', async () => {
+    const r = await mkRepo('idx');
+    const failing = (extra) => (a, o) => {
+      if (a.includes('ls-files') && a.includes('--stage')) throw Object.assign(new KitExit('git ls-files took longer than 5 ms and was stopped', 3), extra);
+      return defaultGitRunner(a, o);
+    };
+    await assert.rejects(safeGit(r, ['status'], { git: failing({}) }), (e) => e.code === 3 && /took longer/.test(e.message));
+    await assert.rejects(safeGit(r, ['status'], { git: failing({ overflow: true }) }), (e) => e.code === 2 && /too large to check/.test(e.message));
+  });
+});

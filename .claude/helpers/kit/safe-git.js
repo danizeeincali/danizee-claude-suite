@@ -260,8 +260,9 @@ export function defaultGitRunner(args, { cwd, env, input, timeout } = {}) {
   });
   const cmd = gitCommandName(args);
   if (r.error?.code === 'ETIMEDOUT') throw new KitExit(`git ${cmd} took longer than ${timeout} ms and was stopped (raise it with --timeout <ms>)`, GIT_FAILED_EXIT);
-  if (r.error?.code === 'ENOBUFS') throw new KitExit(`git ${cmd} wrote more than 256 MiB of output; narrow the command`, GIT_FAILED_EXIT);
+  if (r.error?.code === 'ENOBUFS') throw Object.assign(new KitExit(`git ${cmd} wrote more than 256 MiB of output; narrow the command`, GIT_FAILED_EXIT), { overflow: true });
   if (r.error) throw new KitExit(`cannot run git: ${r.error.message}`, 1);
+  if (r.signal) throw new KitExit(`git ${cmd} was killed by ${r.signal}`, GIT_FAILED_EXIT);
   return { code: r.status ?? 1, stdout: r.stdout || '', stderr: r.stderr || '' };
 }
 
@@ -527,7 +528,7 @@ export function unsafeIndexPath(p, { dir = false, platform = process.platform } 
 async function checkIndexPaths(exec) {
   let r;
   try { r = await exec(['ls-files', '-z', '--stage']); } catch (err) {
-    if (err instanceof KitExit && err.code === GIT_FAILED_EXIT) throw refuse(`the index is too large to check its paths (${err.message}); refusing to read this repository`);
+    if (err instanceof KitExit && err.overflow) throw refuse(`the index is too large to check its paths (${err.message}); refusing to read this repository`);
     throw err;
   }
   if (r.code !== 0) throw new KitExit(`cannot list the index: ${(r.stderr || '').trim() || 'git ls-files failed'}`, 1);
@@ -607,7 +608,12 @@ async function checkObjectsNotLinked(loc, limits) {
   let seen = 0;
   const walk = async (dir, depth) => {
     let entries;
-    try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
+    try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch (err) {
+      if (err.code === 'ENOENT' || err.code === 'ENOTDIR') return;
+      // git can still open a file by name in a folder it may not list (mode 0333), so an unlistable folder could hide
+      // a symlink: fail closed
+      throw refuse(`cannot list ${dir} (${err.code || err.message}) to check it for symlinks; refusing to read this repository`);
+    }
     for (const e of entries) {
       if (++seen > limits.entries) throw refuse(`more than ${limits.entries} entries under ${objects} (loose objects count); refusing to check them — run git gc in a copy you trust, or raise safeGit's limits.entries`);
       const p = path.join(dir, e.name);
