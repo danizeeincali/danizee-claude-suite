@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * bbs helper CLI — `node cli.js <verb> [flags]`.
- * Verbs here: intake · fetch · inventory · map · verdict · handoff · status · report. Later streams add verbs
+ * Verbs here: intake · fetch · inventory · map · usage · verdict · handoff · status · report. Later streams add verbs
  * by registering them in VERBS.
  *
  * Exit codes: 0 ok · 1 invalid input / broken state · 2 policy refusals (egress refused, illegal verdict).
@@ -23,6 +23,7 @@ import { writeInventory, inventoryBrief, listSourceFiles } from './inventory.js'
 import { buildMap, mapBrief, recordJudgments } from './harness-map.js';
 import { computeVerdicts, recordProbe, recordDecisions, verdictTable, PolicyRefused } from './verdict.js';
 import { buildHandoff } from './handoff.js';
+import { recordUsage } from './usage.js';
 
 class CliExit extends Error {
   constructor(message, code) { super(message); this.code = code; }
@@ -38,6 +39,7 @@ const FLAGS = {
   report: { value: ['run', 'project'], bool: [], positionals: 0, usage: 'usage: cli.js report [--run <id>] [--project <dir>]' },
   inventory: { value: ['from', 'run', 'project'], bool: ['brief', 'force'], positionals: 0, usage: 'usage: cli.js inventory (--brief | --from <file|->) [--force] [--run <id>] [--project <dir>]' },
   map: { value: ['from', 'run', 'project'], bool: ['brief', 'force'], positionals: 0, usage: 'usage: cli.js map [--brief | --from <file|->] [--force] [--run <id>] [--project <dir>]' },
+  usage: { value: ['run', 'project', 'days', 'root', 'workflows'], bool: ['force'], positionals: 0, repeat: ['root'], usage: 'usage: cli.js usage [--days <n>] [--root <dir>]... [--workflows <a,b>] [--force] [--run <id>] [--project <dir>]' },
   verdict: { value: ['probe', 'evidence', 'decide', 'from', 'run', 'project'], bool: ['table', 'force'], positionals: 0, usage: 'usage: cli.js verdict [--table | --probe <power>=<clean|found|incomplete> [--evidence <text>] | --decide <power>=<verdict> | --from <file|->] [--force] [--run <id>] [--project <dir>]' },
   handoff: { value: ['run', 'project'], bool: ['marathon', 'force'], positionals: 0, usage: 'usage: cli.js handoff [--marathon] [--force] [--run <id>] [--project <dir>]' }
 };
@@ -56,7 +58,9 @@ function parseArgs(argv) {
         if (next !== undefined && !next.startsWith('--')) { flags[name] = next; i++; } else flags[name] = true;
       } else if (spec.value.includes(name)) {
         if (next === undefined || next.startsWith('--')) fail(`${spec.usage}\n  --${name} needs a value`);
-        flags[name] = next; i++;
+        if (spec.repeat?.includes(name)) (flags[name] ||= []).push(next);
+        else flags[name] = next;
+        i++;
       } else if (spec.bool.includes(name)) {
         flags[name] = true;
       } else {
@@ -271,6 +275,21 @@ const VERBS = {
     }
   },
 
+  async usage({ flags, projectDir, cfg }) {
+    const usage = FLAGS.usage.usage;
+    const days = positiveInt(flags, 'days', usage);
+    if (flags.workflows !== undefined && (flags.root !== undefined || days !== undefined)) {
+      fail(`${usage}\n  --workflows is the owner's own list: it takes no --root or --days`);
+    }
+    const { id, dir } = await resolveRun(projectDir, flags, cfg);
+    try {
+      out(await recordUsage(projectDir, { run: id, roots: flags.root, days, workflows: flags.workflows, force: !!flags.force, cfg }));
+    } finally {
+      const { writeError } = await renderStatusSafe(dir);
+      if (writeError) warnStatusWrite(id, writeError);
+    }
+  },
+
   async handoff({ flags, projectDir, cfg }) {
     const { id, dir } = await resolveRun(projectDir, flags, cfg);
     try {
@@ -375,7 +394,7 @@ async function main(argv) {
   const { verb, flags, positional } = parseArgs(argv);
   if (!Object.hasOwn(VERBS, verb)) {
     // Verbs in step order (the six steps, then the read-only verbs), so usage reads like the flow.
-    const order = ['intake', 'fetch', 'inventory', 'map', 'verdict', 'handoff', 'status', 'report'];
+    const order = ['intake', 'fetch', 'inventory', 'map', 'usage', 'verdict', 'handoff', 'status', 'report'];
     const verbs = [...order.filter(v => VERBS[v]), ...Object.keys(VERBS).filter(v => !order.includes(v))];
     const lines = verbs.map(v => '  ' + (FLAGS[v] ? FLAGS[v].usage.replace(/^usage: /, '') : `cli.js ${v}`));
     fail([`usage: cli.js <${verbs.join('|')}> ...`, ...lines, '  <source> may be - to read a paste from stdin'].join('\n'));

@@ -89,7 +89,11 @@ describe('bbs e2e — the packaged check', () => {
     assert.equal(j.code, 0, j.err);
     assert.equal(j.json.judged, 3);
     assert.deepEqual(j.json.remaining, []);
-    assert.equal(j.json.next, 'verdict');
+    assert.equal(j.json.next, 'usage');
+    const u = run(['usage', '--root', path.join(FIXTURES, 'no-transcripts-here')]);
+    assert.equal(u.code, 0, u.err);
+    assert.equal(u.json.evidence, 'none', 'no transcripts: the verdict question must ask for the workflows');
+    assert.equal(run(['status', '--next']).out.trim(), 'verdict');
   });
 
   it('5 verdict: no sandbox → use removed with a reason; the table shows every power; the fixture decisions are legal and the registry row lands', async () => {

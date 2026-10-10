@@ -13,7 +13,7 @@ import { DEFAULT_CONFIG, LICENCE_CLASSES } from './config.js';
 import { runDir as runDirOf, readJson, readJsonl, writeJson, appendJsonl, appendRegistry, lookupSource, moveAsideStale, withMapLockDetailed } from './store.js';
 import { RUN_ID, invalidRunId, redactUrlsInText } from './intake.js';
 import { parseJsonOnly } from './inventory.js';
-import { renderStatusSafe } from './status.js';
+import { renderStatusSafe, loadState, nextStep } from './status.js';
 
 export const VERDICTS = ['rebuild', 'use', 'buy', 'skip'];
 export const PROBES = ['clean', 'found', 'incomplete'];
@@ -528,7 +528,8 @@ export function sanitizeEvidence(text) {
   return capCodePoints(red, EVIDENCE_MAX_CHARS, EVIDENCE_TRUNCATED);
 }
 
-const nextOf = (rows, unread) => unread ? null : Object.values(rows).every(r => r.decision) ? 'handoff' : 'verdict';
+/** The next step from the step order: usage comes before deciding, so an undecided run without usage.json says usage. */
+const nextOf = async (dir, unread) => unread ? null : nextStep(await loadState(dir));
 
 export const POWERS_CHANGED = 'powers.json changed since the verdicts were computed — run cli.js verdict first';
 /** The repair hint names the input that was used: --decide and --from <path> are re-run as given, stdin is resubmitted. */
@@ -715,7 +716,7 @@ export async function computeVerdicts(projectDir, { run, sandbox, now = () => ne
       table: verdictTable(rows),
       needs_probe: Object.keys(rows).filter(n => rows[n].needs_probe),
       dropped,
-      next: nextOf(rows, unread),
+      next: await nextOf(p.dir, unread),
       ...(w ? { warning: w, warnings } : {})
     };
   }, lockOpts);
@@ -752,7 +753,7 @@ export async function recordProbe(projectDir, { run, power, result, evidence, no
     const regWarning = await supersedeRegistry(projectDir, p, run, vj, cfg, appendRegistryImpl);
     const { warning, unread } = await renderAfterCommit(p.dir);
     const w = joinWarnings(...sandboxConfigWarnings(cfg), cleared, ...refreshWarnings, labelWarning, regWarning, warning);
-    return { runId: run, power, ...row, next: nextOf(vj.rows, unread), ...(sandboxChanged ? { sandbox_changed: true } : {}), ...(w ? { warning: w } : {}) };
+    return { runId: run, power, ...row, next: await nextOf(p.dir, unread), ...(sandboxChanged ? { sandbox_changed: true } : {}), ...(w ? { warning: w } : {}) };
   }, lockOpts);
   return withWarning(out, lockWarning);
 }
@@ -897,7 +898,7 @@ export async function recordDecisions(projectDir, { run, input, now = () => new 
       runId: run,
       decided: names.length - remaining.length,
       remaining,
-      next: unread ? null : remaining.length ? 'verdict' : 'handoff',
+      next: await nextOf(p.dir, unread),
       registry_written,
       ...(sandboxChanged ? { sandbox_changed: true } : {}),
       ...(w ? { warning: w } : {})

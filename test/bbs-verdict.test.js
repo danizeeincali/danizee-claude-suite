@@ -187,7 +187,7 @@ describe('verdict — computeVerdicts, recordProbe, recordDecisions', () => {
   it('computeVerdicts needs every judgment, writes verdicts.json with rows, the sandbox result and empty decisions, and returns the table', async () => {
     const r = await prepared('v1', [power(), power({ name: 'exporter', licence: 'GPL-3.0', what: 'exports data', idea: 'csv dump' })], { 'drift-monitor': 'missing', exporter: 'missing' });
     const out = await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now });
-    assert.equal(out.next, 'verdict');
+    assert.equal(out.next, 'usage');
     assert.deepEqual(Object.keys(out.rows).sort(), ['drift-monitor', 'exporter']);
     assert.deepEqual(out.rows['drift-monitor'].legal, ['rebuild', 'skip']);
     assert.equal(out.rows['drift-monitor'].default, 'rebuild');
@@ -248,7 +248,7 @@ describe('verdict — computeVerdicts, recordProbe, recordDecisions', () => {
     const one = await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'rebuild' }), now });
     assert.equal(one.decided, 1);
     assert.deepEqual(one.remaining.sort(), ['dup', 'exporter']);
-    assert.equal(one.next, 'verdict');
+    assert.equal(one.next, 'usage');
     assert.equal(one.registry_written, false);
     const rest = await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ decisions: { exporter: 'buy', dup: 'skip' } }), now });
     assert.equal(rest.decided, 3);
@@ -319,12 +319,12 @@ describe('verdict — cli verb', () => {
   it('usage lists verdict with [--table | --probe <power>=<result> [--evidence <t>] | --decide <power>=<verdict> | --from <file|->] [--force]; BBS_SANDBOX overrides detection', () => {
     const u = run(dir, ['nope']);
     assert.match(u.err, /cli\.js verdict \[--table \| --probe <power>=<clean\|found\|incomplete> \[--evidence <text>\] \| --decide <power>=<verdict> \| --from <file\|->\] \[--force\] \[--run <id>\] \[--project <dir>\]/);
-    assert.match(u.err, /usage: cli\.js <intake\|fetch\|inventory\|map\|verdict\|handoff\|status\|report> \.\.\./);
+    assert.match(u.err, /usage: cli\.js <intake\|fetch\|inventory\|map\|usage\|verdict\|handoff\|status\|report> \.\.\./);
     const v = run(dir, ['verdict'], undefined, { BBS_SANDBOX: 'absent' });
     assert.equal(v.code, 0, v.err);
     assert.equal(v.json.sandbox.present, false);
     assert.deepEqual(v.json.rows['drift-monitor'].legal, ['rebuild', 'skip']);
-    assert.equal(v.json.next, 'verdict');
+    assert.equal(v.json.next, 'usage');
     const t = run(dir, ['verdict', '--table']);
     assert.equal(t.code, 0, t.err);
     assert.equal(t.json, null);

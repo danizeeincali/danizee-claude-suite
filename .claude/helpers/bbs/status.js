@@ -6,7 +6,7 @@ import path from 'path';
 import { readJson, readJsonl, writeTextAtomic } from './store.js';
 import { egressLine } from './fetch.js';
 
-export const STEPS = ['intake', 'fetch', 'inventory', 'map', 'verdict', 'handoff'];
+export const STEPS = ['intake', 'fetch', 'inventory', 'map', 'usage', 'verdict', 'handoff'];
 
 export const DECISIONS = ['rebuild', 'use', 'buy', 'skip'];
 
@@ -24,7 +24,10 @@ export function nextStep(state) {
   const judgments = state.map?.judgments;
   if (!state.map || list.some(n => !judgments || judgments[n] === undefined)) return 'map';
   const decisions = state.verdicts?.decisions;
-  if (!state.verdicts || list.some(n => !decisions || !isDecision(decisions[n]))) return 'verdict';
+  const decided = !!state.verdicts && list.every(n => decisions && isDecision(decisions[n]));
+  // usage comes before the verdict; a run decided before the usage step existed is not sent back to it
+  if (!state.usage && !decided) return 'usage';
+  if (!decided) return 'verdict';
   if (!state.handoff) return 'handoff';
   return 'done';
 }
@@ -75,6 +78,7 @@ export function renderStatus(state) {
     fetch: s ? (s.fetched ? 'fetched' : 'not fetched') : '',
     inventory: state.powers ? `${sum.found} powers (${sum.not_inventoried} not inventoried)` : '',
     map: state.map ? `${Object.keys(state.map.judgments || {}).length} judged` : '',
+    usage: state.usage ? `${state.usage.evidence}: ${(state.usage.workflows || []).length} workflows` : 'skipped (decided before the usage step)',
     verdict: state.verdicts ? `${sum.approved} approved, ${sum.skip} skipped, ${sum.undecided} undecided` : '',
     handoff: [sum.marathon, state.handoff?.note].filter(Boolean).map(esc).join(' — ')
   };
@@ -98,6 +102,7 @@ export async function loadState(runDir) {
     egress_corrupt: egress.corrupt,
     powers: await j('powers.json'),
     map: await j('map.json'),
+    usage: await j('usage.json'),
     verdicts: await j('verdicts.json'),
     handoff: await j('handoff.json')
   };

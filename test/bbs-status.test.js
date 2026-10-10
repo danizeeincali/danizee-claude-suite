@@ -20,7 +20,7 @@ const base = {
 
 describe('status — steps and nextStep', () => {
   it('STEPS are the six verbs in order', () => {
-    assert.deepEqual(STEPS, ['intake', 'fetch', 'inventory', 'map', 'verdict', 'handoff']);
+    assert.deepEqual(STEPS, ['intake', 'fetch', 'inventory', 'map', 'usage', 'verdict', 'handoff']);
   });
 
   it('no source → intake; pending identity or unfetched → fetch', () => {
@@ -40,9 +40,12 @@ describe('status — steps and nextStep', () => {
     const mapHalf = { candidates: { p1: [], p2: [] }, judgments: { p1: 'have' } };
     assert.equal(nextStep({ ...fetched, powers, map: mapHalf }), 'map', 'every power needs a judgment');
     const map = { candidates: { p1: [], p2: [] }, judgments: { p1: 'have', p2: 'missing' } };
-    assert.equal(nextStep({ ...fetched, powers, map }), 'verdict');
+    assert.equal(nextStep({ ...fetched, powers, map }), 'usage', 'which workflows the owner uses comes before the verdict');
+    const usage = { evidence: 'none', workflows: [] };
+    assert.equal(nextStep({ ...fetched, powers, map, usage }), 'verdict');
     const halfDecided = { decisions: { p1: 'skip' } };
-    assert.equal(nextStep({ ...fetched, powers, map, verdicts: halfDecided }), 'verdict');
+    assert.equal(nextStep({ ...fetched, powers, map, verdicts: halfDecided }), 'usage');
+    assert.equal(nextStep({ ...fetched, powers, map, usage, verdicts: halfDecided }), 'verdict');
     const verdicts = { decisions: { p1: 'skip', p2: 'rebuild' } };
     assert.equal(nextStep({ ...fetched, powers, map, verdicts }), 'handoff');
     assert.equal(nextStep({ ...fetched, powers, map, verdicts, handoff: { marathonRun: null, powers: [] } }), 'done');
@@ -146,7 +149,7 @@ describe('status — review r1 regressions', () => {
   it('null, empty or unknown decisions are undecided for nextStep and summary alike', () => {
     for (const bad of [null, '', 'maybe', 'toString']) {
       const verdicts = { decisions: { p1: 'skip', p2: bad } };
-      assert.equal(nextStep({ ...fetched, powers, map, verdicts }), 'verdict', String(bad));
+      assert.equal(nextStep({ ...fetched, powers, map, usage: { evidence: 'none', workflows: [] }, verdicts }), 'verdict', String(bad));
       assert.equal(summary({ ...fetched, powers, map, verdicts }).undecided, 1, String(bad));
     }
   });

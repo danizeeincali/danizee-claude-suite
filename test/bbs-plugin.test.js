@@ -72,7 +72,7 @@ describe('bbs plugin — install', () => {
   it('the installed cli.js runs on its own (every sibling import resolves) — usage on an unknown verb, exit 1', () => {
     const r = spawnSync(process.execPath, [path.join(claudeDir, 'helpers', 'bbs', 'cli.js'), 'nope'], { cwd: dir, encoding: 'utf-8' });
     assert.equal(r.status, 1);
-    assert.match(r.stderr, /usage: cli\.js <intake\|fetch\|inventory\|map\|verdict\|handoff\|status\|report>/);
+    assert.match(r.stderr, /usage: cli\.js <intake\|fetch\|inventory\|map\|usage\|verdict\|handoff\|status\|report>/);
     assert.equal(r.stdout, '');
   });
 

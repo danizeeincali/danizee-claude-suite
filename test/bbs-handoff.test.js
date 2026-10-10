@@ -289,7 +289,7 @@ describe('handoff — cli verb', () => {
   it('usage lists handoff [--marathon] [--force]; handoff before the decisions exits 1 naming verdict', () => {
     const u = run(dir, ['nope']);
     assert.match(u.err, /cli\.js handoff \[--marathon\] \[--force\] \[--run <id>\] \[--project <dir>\]/);
-    assert.match(u.err, /usage: cli\.js <intake\|fetch\|inventory\|map\|verdict\|handoff\|status\|report> \.\.\./);
+    assert.match(u.err, /usage: cli\.js <intake\|fetch\|inventory\|map\|usage\|verdict\|handoff\|status\|report> \.\.\./);
     const early = run(dir, ['handoff']);
     assert.equal(early.code, 1);
     assert.match(early.err, /verdict/);

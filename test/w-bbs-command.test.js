@@ -205,3 +205,16 @@ describe('/w-bbs command — review r2 regressions', () => {
     assert.match(s, /\/w-bbs --resume <run-id>/);
   });
 });
+
+describe('/w-bbs — the usage step (marathon 2026-10-10-bbs-integration)', () => {
+  const c = () => commands['w-bbs'].content;
+  it('counts the owner\'s workflows before the verdict and never assumes them', () => {
+    assert.match(c(), /CHECKPOINT 3a: Usage/);
+    assert.ok(c().indexOf('CHECKPOINT 3a: Usage') < c().indexOf('CHECKPOINT 4: Verdict'));
+    assert.match(c(), /cli\.js usage/);
+    assert.match(c(), /Never assume which workflows the owner uses/);
+    assert.match(c(), /evidence: none/);
+    assert.match(c(), /--workflows <a,b>/);
+    assert.match(c(), /5\. Usage: which workflows the owner actually runs/);
+  });
+});
