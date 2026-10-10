@@ -129,3 +129,5 @@
 {"helper_id":"95504b8a-c8c2-4c44-be74-8705e149771d","tokens":90000,"outcome":"green","event":"done","id":"40785d81-172e-427d-a6fc-7f0506917ba6","ts":"2026-10-10T21:06:30.542Z"}
 {"helper_id":"091ac9f9-f5da-4a37-8432-299cb91c5f25","tokens":70000,"outcome":"green","event":"done","id":"43efe1d2-0add-46de-8b52-95095959842a","ts":"2026-10-10T21:09:37.525Z"}
 {"role":"review","model":"opus","stream":"bbs","budget":150000,"event":"spawn","id":"8d7d174d-00c9-4a65-a654-b194c02c3e3e","ts":"2026-10-10T21:09:45.241Z"}
+{"helper_id":"8d7d174d-00c9-4a65-a654-b194c02c3e3e","tokens":60000,"outcome":"green","event":"done","id":"0a43020e-4305-404d-ab4b-1f676bb301e7","ts":"2026-10-10T21:12:36.033Z"}
+{"role":"fix","model":"sonnet","stream":"bbs","budget":150000,"event":"spawn","id":"f359886f-93a3-4829-ae7a-c4e0eec9c4b4","ts":"2026-10-10T21:12:45.138Z"}
