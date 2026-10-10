@@ -22,10 +22,10 @@
       "name": "pt",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "4.1 budget, then build: wire lenses/graph/impact at CP6, callers at Search, closing scrub + push-gate receipt",
+      "next": "review round 1 (opus, angle: one input method at a time) running; then fix round or round 2",
       "tasks": [],
       "isolation": "../danizee-claude-suite-pt",
-      "phase": "build",
+      "phase": "review",
       "skill": "w-plan-tdd-swarm",
       "base": "9fc73ac51e42ca781e490ecc9e4173645b4ce88f"
     },
