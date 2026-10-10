@@ -8,8 +8,10 @@
  *   owner        the owner's own list (`--workflows a,b`), for a machine with no transcripts or to override them
  *   none         neither: legal, but the verdict question must then ask the owner to name the workflows
  *
- * Only names, counts, session counts and the last-used time are kept. Message text, arguments and transcript
- * paths are never stored. Reads only; no network.
+ * The scan covers every project's transcripts on the machine (workflows are used across projects), so only installed
+ * workflow names, counts, session counts and the last-used time are kept. Names of commands that are not installed here
+ * (other projects' or plugins') are counted, never stored. Message text, arguments and transcript paths are never
+ * stored. Reads only; no network.
  */
 
 import fs from 'fs/promises';
@@ -138,7 +140,7 @@ export async function scanUsage(projectDir, { roots = DEFAULT_ROOTS, days = DEFA
   const installed = await installedWorkflows(projectDir);
   const sinceMs = now().getTime() - days * 86400000;
   const per = new Map(); // workflow -> { typed, skill, sessions:Set, last, via:Map }
-  const other = new Map();
+  let otherInvocations = 0;
   let filesRead = 0;
   let filesUnreadable = 0;
   let linesSkipped = 0;
@@ -156,7 +158,7 @@ export async function scanUsage(projectDir, { roots = DEFAULT_ROOTS, days = DEFA
           if (ts && Date.parse(ts) < sinceMs) continue;
           for (const inv of invocations(row)) {
             const { workflow, via } = resolveName(inv.name, installed);
-            if (!workflow) { if (via) other.set(via, (other.get(via) || 0) + 1); continue; }
+            if (!workflow) { if (via) otherInvocations++; continue; }
             const s = session.get(workflow) || { uses: 0, prev: undefined, last: null, via: new Map(), useVia: null, hopVia: false };
             const t = ts ? Date.parse(ts) : null;
             const hop = s.prev !== undefined && (t === null || (s.prev !== null && t - s.prev < HOP_MS));
@@ -201,7 +203,7 @@ export async function scanUsage(projectDir, { roots = DEFAULT_ROOTS, days = DEFA
     files_unreadable: filesUnreadable,
     lines_skipped: linesSkipped,
     workflows,
-    other: Object.fromEntries([...other.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 20)),
+    other_invocations: otherInvocations,
     installed: installed.size
   };
 }
@@ -221,7 +223,7 @@ export async function ownerUsage(projectDir, list) {
     seen.set(workflow, row);
   }
   if (unknown.length) throw new Error(`not an installed workflow: ${unknown.join(', ')} (names come from .claude/commands/)`);
-  return { evidence: 'owner', window_days: null, files_read: 0, lines_skipped: 0, workflows: [...seen.values()], other: {}, installed: installed.size };
+  return { evidence: 'owner', window_days: null, files_read: 0, lines_skipped: 0, workflows: [...seen.values()], other_invocations: 0, installed: installed.size };
 }
 
 /** Write usage.json for a run. Refuses to overwrite without force. */

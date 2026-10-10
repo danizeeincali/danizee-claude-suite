@@ -11,7 +11,7 @@ export const TARGET = { workflow: 'w-review', step: 'w-review', how: 'runs the p
 
 export async function landed(dir, runId, { targets = true } = {}) {
   const rd = path.join(dir, '.claude', 'bbs', 'runs', runId);
-  await writeJson(path.join(rd, 'usage.json'), { run: runId, ts: '2026-10-10T00:00:00.000Z', evidence: 'transcripts', window_days: 90, files_read: 1, lines_skipped: 0, workflows: OWNER_WORKFLOWS, other: {}, installed: 1 });
+  await writeJson(path.join(rd, 'usage.json'), { run: runId, ts: '2026-10-10T00:00:00.000Z', evidence: 'transcripts', window_days: 90, files_read: 1, lines_skipped: 0, workflows: OWNER_WORKFLOWS, other_invocations: 0, installed: 1 });
   if (!targets) return;
   const powers = (await readJson(path.join(rd, 'powers.json')))?.powers || [];
   await writeJson(path.join(rd, 'targets.json'), { run: runId, ts: '2026-10-10T00:00:00.000Z', usage_evidence: 'transcripts', targets: Object.fromEntries(powers.map(p => [p.name, [TARGET]])) });

@@ -217,3 +217,27 @@ describe('targets — cli', () => {
     assert.match(cli(['targets', '--from', 'nope.json']).err, /file not found: nope\.json/);
   });
 });
+
+describe('targets — usage review r4 regressions', () => {
+  it('a corrupt usage.json or targets.json makes a decision name the --force repair', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-tgt-c-'));
+    try {
+      await makeRun(dir);
+      const { intake } = await import('../src/lib/bbs/intake.js');
+      const { writeInventory } = await import('../src/lib/bbs/inventory.js');
+      const { buildMap, recordJudgments } = await import('../src/lib/bbs/harness-map.js');
+      const run = (await intake(dir, '-', { stdin: 'corrupt', now, slug: 'corrupt' })).runId;
+      const p = { name: 'redact', what: 'masks', idea: 'mask', evidence: 'x:1', dependencies: [], data_needed: 'none', network: 'none', size: 'small', licence: 'MIT' };
+      await writeInventory(dir, { run, input: JSON.stringify([p]), now });
+      await buildMap(dir, { run, now });
+      await recordJudgments(dir, { run, input: JSON.stringify({ redact: 'missing' }), now });
+      await computeVerdicts(dir, { run, sandbox: noSandbox, now });
+      const rd = path.join(dir, '.claude', 'bbs', 'runs', run);
+      await fs.writeFile(path.join(rd, 'usage.json'), '{bad');
+      await assert.rejects(recordDecisions(dir, { run, input: JSON.stringify({ redact: 'rebuild' }), now }), /corrupt JSON.*cli\.js usage --force/);
+      await writeJson(path.join(rd, 'usage.json'), { evidence: 'owner', workflows: [{ name: 'w-review' }] });
+      await fs.writeFile(path.join(rd, 'targets.json'), '{bad');
+      await assert.rejects(recordDecisions(dir, { run, input: JSON.stringify({ redact: 'rebuild' }), now }), /corrupt JSON.*cli\.js targets --force --from/);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+});

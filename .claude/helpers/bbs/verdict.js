@@ -829,8 +829,11 @@ export async function recordDecisions(projectDir, { run, input, now = () => new 
     // Validate everything before the decisions are written. A decision identical to the recorded one is a repair, not a change.
     const changed = [];
     const repeated = [];
-    const counted = await readJson(path.join(p.dir, 'usage.json'));
-    const landing = (await readJson(path.join(p.dir, 'targets.json')))?.targets;
+    const repairable = async (file, verb) => {
+      try { return await readJson(path.join(p.dir, file)); } catch (err) { throw new Error(`${err.message} — ${verb} to replace it`); }
+    };
+    const counted = await repairable('usage.json', 'run cli.js usage --force (or --force --workflows <a,b>)');
+    const landing = (await repairable('targets.json', 'run cli.js targets --force --from <file>'))?.targets;
     try {
       for (const [name, v] of Object.entries(decisions)) {
         const row = vj.rows[name];

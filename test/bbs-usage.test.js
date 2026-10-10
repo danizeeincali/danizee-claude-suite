@@ -115,7 +115,8 @@ describe('usage — scanning transcripts', () => {
     assert.equal(by['w-background-compound'].last_used, '2026-10-09T11:00:01.000Z');
     assert.equal(by['w-review'].count, 1, 'a Skill call without a typed command still counts');
     assert.equal(u.workflows[0].name, 'w-background-compound', 'ranked by count');
-    assert.deepEqual(u.other, { 'ghost-cmd': 1 }, 'a command that is not installed is counted by name only');
+    assert.equal(u.other_invocations, 1, 'a command that is not installed is counted, never named');
+    assert.ok(!JSON.stringify(u).includes('ghost-cmd'));
     assert.equal(u.lines_skipped, 0, 'a broken line without a marker is never parsed');
   });
 

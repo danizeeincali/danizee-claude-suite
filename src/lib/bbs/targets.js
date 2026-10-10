@@ -144,7 +144,7 @@ export async function recordTargets(projectDir, { run, input, force = false, now
   const installed = await installedWorkflows(projectDir);
   const ctx = context(projectDir, installed, usage);
   const file = path.join(dir, 'targets.json');
-  const prior = force ? null : await readJson(file);
+  const prior = force ? null : await readPrior(file);
   const targets = { ...(prior?.targets || {}) };
   for (const [power, rows] of Object.entries(parsed)) {
     if (!names.includes(power)) throw new Error(`unknown power "${power}"`);
@@ -173,7 +173,7 @@ export async function setOwnerTargets(projectDir, { run, set, now = () => new Da
   if (!names.includes(power)) throw new Error(`unknown power "${power}"`);
   const installed = await installedWorkflows(projectDir);
   const file = path.join(dir, 'targets.json');
-  const prior = await readJson(file);
+  const prior = await readPrior(file);
   const targets = { ...(prior?.targets || {}) };
   const had = targets[power] || [];
   const out = [];
@@ -187,6 +187,11 @@ export async function setOwnerTargets(projectDir, { run, set, now = () => new Da
   }
   targets[power] = out;
   return save(file, { run, names, usage, targets, now });
+}
+
+/** targets.json as recorded; a corrupt file names its repair. */
+async function readPrior(file) {
+  try { return await readJson(file); } catch (err) { throw new Error(`${err.message} — run cli.js targets --force --from <file> to replace it`); }
 }
 
 async function save(file, { run, names, usage, targets, now }) {
