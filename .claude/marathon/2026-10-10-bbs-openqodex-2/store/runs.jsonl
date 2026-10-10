@@ -43,3 +43,4 @@
 {"kind":"unit","status":"green","stream":"change-blast-radius-walk","commit":"3bc82ec","id":"af38f58a-1e60-4f09-a0e1-5125d1cf380c","ts":"2026-10-10T11:30:24.958Z"}
 {"kind":"unit","status":"green","stream":"change-blast-radius-walk","commit":"1d233ea","id":"93761331-5b55-4f7f-aaa1-14c815ab5d1c","ts":"2026-10-10T11:36:52.001Z"}
 {"kind":"unit","status":"green","stream":"change-blast-radius-walk","commit":"1994f52","id":"1c1be7ce-4d59-45be-bf71-34c6a150202d","ts":"2026-10-10T11:41:10.505Z"}
+{"kind":"unit","status":"red","stream":"caller-floor-disclosure","commit":"310e9e3","id":"83229fb6-9eed-45ef-80d2-9e7eb77476c3","ts":"2026-10-10T11:54:02.705Z"}
