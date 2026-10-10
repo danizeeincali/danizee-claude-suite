@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
+import nodeFs from 'fs';
 import path from 'path';
 import os from 'os';
 import { spawnSync } from 'child_process';
@@ -50,7 +51,7 @@ describe('/w-plan-tdd-swarm Review step', () => {
   it('runs lenses, graph and impact over diff-range with case $RC handling', () => {
     const s = review();
     assert.match(s, /Code Analysis/);
-    assert.match(s, /D=\$\(mktemp\); node \.claude\/helpers\/kit\/cli\.js diff-range > "\$D"; RC=\$\?\n/);
+    assert.match(s, /D=\$\(mktemp 2>\/dev\/null\) && \[ -n "\$D" \] \|\| \{[^\n]*\nif \[ -n "\$D" \]; then node \.claude\/helpers\/kit\/cli\.js diff-range > "\$D"; RC=\$\?\n/);
     assert.match(s, /lenses --diff "\$D"; RC=\$\?;; 3\) echo "no change to review"/);
     assert.match(s, /graph --diff "\$D" --budget-ms 20000 --max-parses 300; RC=\$\?;; 3\)/);
     assert.match(s, /diff-range --base-only/);
@@ -174,7 +175,7 @@ describe('review round 2 fixes', () => {
   it('exit 1, 2 and 3 are separate sentences', () => {
     const r = review();
     assert.match(r, /Exit 1 is wrong input or a broken state: report it, never skip the step\./);
-    assert.ok(!r.includes('Any other non-zero exit'));
+    assert.match(r, /Any other non-zero exit \(for example 127, or a signal\) is a failure of that step: report it, never read it as nothing found\./);
     assert.match(r, /Exit 2 means `diff-range` refused the repository[^.]*: report the refusal as printed\./);
     assert.match(r, /Exit 3 from `diff-range` means an empty range[^.]*the whole block exits 0 on an empty range/);
   });
@@ -196,5 +197,44 @@ describe('review round 2 fixes', () => {
   });
   it('push-gate check exit 2 is a deny or a refused receipt store', () => {
     assert.match(closing(), /exit 2 deny \(read `decision` and `reason`\) or a refused receipt store \(`kit: refused:` on stderr\)/);
+  });
+});
+
+describe('review round 3 fixes', () => {
+  const blocks = () => [...review().matchAll(/```bash\n([\s\S]*?)```/g)].map(m => m[1]);
+  it('skipped-file wording matches what diff-range prints', () => {
+    const r = review();
+    assert.match(r, /`too_large` skip names each file on stderr, so report those names/);
+    assert.match(r, /`max_untracked` prints only a count \(report the count/);
+    assert.match(r, /nested repository is visible only with `diff-range --json` \(`skipped_detail`\)/);
+  });
+  it('each block guards the temp file and runs diff-range only when it exists', () => {
+    const bs = blocks();
+    assert.equal(bs.length, 3);
+    for (const b of bs) {
+      assert.match(b, /D=\$\(mktemp 2>\/dev\/null\) && \[ -n "\$D" \] \|\| \{ echo "mktemp failed: no temp file for the range" >&2; D=; RC=1; \}/);
+      assert.ok(b.indexOf('mktemp failed') < b.indexOf('diff-range >') || b.indexOf('mktemp failed') < b.indexOf('diff-range --base "$B" >'));
+      assert.match(b, /\[ -z "\$D" \] \|\| rm -f "\$D"/);
+      const dir = nodeFs.mkdtempSync(path.join(os.tmpdir(), 'pt-r3-'));
+      try {
+        nodeFs.mkdirSync(path.join(dir, '.claude/helpers/kit'), { recursive: true });
+        nodeFs.writeFileSync(path.join(dir, '.claude/helpers/kit/cli.js'), 'if (process.argv.includes("--base-only")) { console.log("abc"); process.exit(0); } process.exit(0);');
+        const bin = path.join(dir, 'bin');
+        nodeFs.mkdirSync(bin);
+        for (const t of ['node', 'rm']) {
+          const w = spawnSync('sh', ['-c', `command -v ${t}`], { encoding: 'utf-8' }).stdout.trim();
+          if (w) nodeFs.symlinkSync(w, path.join(bin, t));
+        }
+        const res = spawnSync(spawnSync('sh', ['-c', 'command -v bash'], { encoding: 'utf-8' }).stdout.trim(), ['-c', b], { cwd: dir, encoding: 'utf-8', env: { PATH: bin } });
+        assert.equal(res.status, 1);
+        assert.match(res.stderr, /mktemp failed: no temp file for the range/);
+        assert.ok(!/diff-range failed/.test(res.stderr));
+      } finally {
+        nodeFs.rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  });
+  it('a catch-all sentence covers other non-zero exits', () => {
+    assert.match(review(), /Any other non-zero exit \(for example 127, or a signal\) is a failure of that step: report it, never read it as nothing found\./);
   });
 });
