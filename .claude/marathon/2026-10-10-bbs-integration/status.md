@@ -1,7 +1,7 @@
 # Marathon 2026-10-10-bbs-integration
 
 - State: RUNNING
-- Budget: 1,231,474 / 10,000,000 tokens
+- Budget: 1,431,474 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 2/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
@@ -21,8 +21,8 @@
 
 | Line | Owner | Status | Actual | Target |
 |---|---|---|---|---|
-| Green /w-bbs end-to-end runs in a row (usage -> targets -> verdict -> handoff with an integration stream) | build | failing | 0 | at_least 2 |
-| Green unit runs in a row | build | met | 7 | at_least 1 |
+| Green /w-bbs end-to-end runs in a row (usage -> targets -> verdict -> handoff with an integration stream) | build | failing | 1 | at_least 2 |
+| Green unit runs in a row | build | met | 8 | at_least 1 |
 | Clean reviews in a row | build | met | 2 | at_least 2 |
 | High findings in the latest review | build | met | 0 | at_most 0 |
 | Open high findings | build | met | 0 | at_most 0 |

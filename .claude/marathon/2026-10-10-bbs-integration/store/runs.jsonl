@@ -5,3 +5,5 @@
 {"kind":"unit","status":"green","stream":"targets","commit":"ec92870","id":"3e6f99c9-b93b-4ae0-9d44-2fc3791aacb4","ts":"2026-10-10T17:10:37.556Z"}
 {"kind":"unit","status":"green","stream":"targets","commit":"c85e19c","id":"f87de4cd-a885-452e-ab17-428810a69cf1","ts":"2026-10-10T17:19:27.189Z"}
 {"kind":"unit","status":"green","stream":"targets","commit":"a59228c","id":"f5cbde5d-da2c-411b-8502-aa4d63420c32","ts":"2026-10-10T17:27:34.054Z"}
+{"kind":"unit","status":"green","stream":"integration-gate","commit":"fb48992","id":"d5b9bf9b-923f-49ca-9a85-970c290fe675","ts":"2026-10-10T17:58:09.367Z"}
+{"kind":"e2e","status":"green","stream":"integration-gate","commit":"fb48992","id":"b0f00669-78aa-4a66-8078-3a81f8c502a5","ts":"2026-10-10T17:58:09.517Z"}
