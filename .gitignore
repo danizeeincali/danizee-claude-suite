@@ -47,3 +47,6 @@ ruvector.db
 .claude/bbs/runs/*/fetched/
 .claude/bbs/runs/*/map.lock
 .claude/bbs/runs/*/*.tmp
+
+# Kit: the redact verb's list of secret values is machine-local and never committed
+.claude/kit/secrets
