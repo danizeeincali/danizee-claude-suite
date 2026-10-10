@@ -5,13 +5,13 @@
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "diff-range" (next: contract and failing tests for diff-range) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
+- Next for you: Continue stream "diff-range" (next: write failing tests for diff-range, then route a builder) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
 
 ## Streams
 
 | Stream | Isolation | Plan | State | Gate | Phase | Next | Tasks | Escapes |
 |---|---|---|---|---|---|---|---|---|
-| diff-range | ../danizee-claude-suite-diff-range | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | clean 0/2 | /w-plan-tdd-swarm · build | contract and failing tests for diff-range |  | 0 |
+| diff-range | ../danizee-claude-suite-diff-range | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | clean 0/2 | /w-plan-tdd-swarm · tests | write failing tests for diff-range, then route a builder |  | 0 |
 | pt |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire CP6 Review and the closing step |  | 0 |
 | bc |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire scrub before commits and push-gate check before Phase 3 |  | 0 |
 | marathon |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire 4.5, 4.8 and CP6 |  | 0 |
