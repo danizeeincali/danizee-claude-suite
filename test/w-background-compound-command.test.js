@@ -215,7 +215,7 @@ describe('review round 1 fixes (wording)', () => {
     assert.match(p, /Exit 1 is wrong input or a broken state: report it, do not commit, skip Phase 3/);
     assert.match(p, /Any other non-zero exit is a failure of the step: report it, do not commit, skip Phase 3/);
     const h = handoff();
-    assert.match(h, /git restore --staged -- <those paths>/);
+    assert.match(h, /git reset -q -- <those paths>/);
     assert.match(h, /dispatch the background agent \*\*without `--push`\*\*/);
     assert.match(h, /git commit -- <those paths>/);
   });
@@ -256,7 +256,7 @@ describe('review round 2 fixes (wording)', () => {
     const src = await fs.readFile(path.join(KIT_SRC, 'push-gate.js'), 'utf-8');
     assert.ok(src.includes(`block('${EARLIER}'`), 'push-gate.js no longer returns the earlier-review reason this text quotes');
     const s = phase3();
-    const mb = s.indexOf('MB=$(git merge-base @{upstream} HEAD)');
+    const mb = s.indexOf('MB=$(git merge-base @{upstream} HEAD 2>/dev/null)');
     const merge = s.indexOf('merge to main');
     assert.ok(mb > 0 && merge > mb, 'MB not recorded before the merge');
     assert.ok(s.indexOf('push-gate check --base "$MB"') > merge);
@@ -337,6 +337,7 @@ describe('blocks run against the real kit', () => {
       const j = JSON.parse(r.stdout);
       assert.equal(j.replaced, 0);
       assert.match(j.text, /\+two/);
+      assert.deepEqual(readdirSync(fx.tmp), [], 'temp file left behind');
     } finally {
       rmSync(fx.root, { recursive: true, force: true });
     }
@@ -397,6 +398,70 @@ describe('blocks run against the real kit', () => {
       assert.notEqual(r.status, 0);
       assert.match(r.stderr, /BASE not set/);
       assert.doesNotMatch(r.stdout, /"replaced"/);
+      assert.deepEqual(readdirSync(fx.tmp), [], 'temp file left behind');
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('review round 3 fixes', () => {
+  it('medium: MB is recorded before the branch push, and the main re-check reuses it', async () => {
+    const src = await fs.readFile(path.join(KIT_SRC, 'push-gate.js'), 'utf-8');
+    assert.match(src, /merge-base', 'HEAD', up\.stdout\.trim\(\)/, 'push-gate.js no longer keys the change id on the merge-base with @{upstream}');
+    const s = phase3();
+    const gate = s.indexOf('push-gate check;');
+    const mb = s.indexOf('MB=$(git merge-base @{upstream} HEAD 2>/dev/null)');
+    const push = s.indexOf('git push -u origin HEAD');
+    const again = s.indexOf('push-gate check --base "$MB"');
+    assert.ok(gate > 0 && mb > gate, 'MB not recorded after the branch gate check');
+    assert.ok(push > mb, 'MB recorded after the branch push');
+    assert.ok(again > push);
+    assert.match(s, /a successful push moves the remote-tracking ref, so the merge-base becomes HEAD/);
+    assert.match(s, /`MB` is empty: the branch check had no base, and the main check runs without `--base`/);
+    assert.match(s, /returns the same earlier-review ask \("only an earlier review exists…"\), which goes to the relay \(CHECKPOINT 4\)/);
+  });
+  it('medium: the handoff unstages with git reset -q, checks its exit and names the paths still staged', () => {
+    const h = handoff();
+    assert.match(h, /`git reset -q -- <those paths>; RC=\$\?`/);
+    assert.doesNotMatch(content, /git restore --staged --/);
+    assert.match(h, /a non-zero exit means nothing was unstaged, so report "unstage failed \(exit \$RC\): still staged: <those paths>", naming each path/);
+  });
+  it('medium: a failed push stops Phase 3 (no merge, no main push, no clean-up) and is written into the summary', () => {
+    const FAILED = '"not pushed — push failed (exit N): <first line of git\'s stderr>"';
+    const s = phase3();
+    assert.ok(s.includes('`git push -u origin HEAD; RC=$?`'));
+    assert.ok(s.includes('`git push origin main; RC=$?`'));
+    assert.match(s, /is a failed push: stop Phase 3 there \(no merge into main, no main push, no clean-up\)/);
+    assert.ok(s.includes(`write ${FAILED} (N is \`$RC\`) into the Phase 4 summary`));
+    assert.ok(s.includes(`no clean-up, and the summary says ${FAILED} for main`));
+    assert.ok(s.indexOf('git push -u origin HEAD') < s.indexOf('merge to main'));
+    assert.match(s, /never let the shell answer or bypass the owner's own permission prompt/);
+    assert.ok(section('**Phase 4', '**ERROR HANDLING').includes(FAILED.slice(1, -1)));
+    const e = errors();
+    assert.ok(e.includes(`A failed push (a non-zero exit from \`git push\`, written ${FAILED}) is a stop beside them, not an error to work around: no merge, no main push and no clean-up after it`));
+  });
+  it('low: the redact block traps the temp file in a subshell; the claim names what the trap cannot catch', () => {
+    const b = redactBlock();
+    assert.match(b, /else \( D=\$\(mktemp/);
+    const trap = b.indexOf(`[ -z "$D" ] || trap 'rm -f "$D"' EXIT INT TERM`);
+    assert.ok(trap > b.indexOf('mktemp failed') && trap < b.indexOf('git diff "$BASE"'), 'trap not set right after the mktemp guard');
+    assert.match(b, /exit \$RC \); RC=\$\?; \(exit \$RC\); fi\s*$/);
+    const p = phase1();
+    assert.doesNotMatch(p, /The temp file is removed on every path\./);
+    assert.match(p, /Only a SIGKILL, which no trap can catch, can leave it behind/);
+  });
+  it('low: the subshell trap leaves the caller\'s D and EXIT trap alone', () => {
+    const fx = kitRepo();
+    try {
+      const keep = path.join(fx.root, 'keep');
+      writeFileSync(keep, 'x');
+      const BASE = git(fx.dir, 'rev-parse', 'HEAD').trim();
+      const r = fx.run(`D=${JSON.stringify(keep)}; trap 'echo caller-trap' EXIT\n${redactBlock()}\necho "D=$D"`, fx.dir, { BASE });
+      assert.equal(r.status, 0, r.stderr);
+      assert.ok(r.stdout.includes(`D=${keep}`));
+      assert.match(r.stdout, /caller-trap/);
+      assert.deepEqual(readdirSync(fx.root).includes('keep'), true, 'the caller\'s file was deleted');
       assert.deepEqual(readdirSync(fx.tmp), [], 'temp file left behind');
     } finally {
       rmSync(fx.root, { recursive: true, force: true });
