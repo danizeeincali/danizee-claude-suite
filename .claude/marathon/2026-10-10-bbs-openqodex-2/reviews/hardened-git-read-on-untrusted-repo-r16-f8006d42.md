@@ -1,0 +1,18 @@
+# Review f8006d42-604b-4c53-82ec-98ace1f313da — hardened-git-read-on-untrusted-repo, round 16
+
+- Commit: 20d63ae
+- Angle: failure conditions and error paths
+- Result: over tolerance
+- 3 findings
+
+## High (1)
+
+- **Symlink check under objects/ fails open when a folder cannot be listed, so a symlinked loose object (or commit-graph/midx) in a write+exec-only folder is followed** — `src/lib/kit/safe-git.js:610` (security): checkObjectsNotLinked does \`try { entries = await fs.readdir(dir) } catch { return; }\`, so any readdir error skips that whole subtree. git opens loose objects (objects/ab/\<rest\>), objects/info/commit-graph and objects/pack/multi-pack-index by NAME, which needs only search (x) permission on the folder. Traced as a non-root user (runuser -u nobody): repo evil/ with objects/d5 set to mode 0333 holding a symlink d5/52d1... -\> /other/victim/.git/objects/d5/52d1...; \`safeGit(evil, \['cat-file','-p','d552d1...'\])\` returns {stdout:'TOP SECRET', code:0}, reading another repository's object. As root (folder listable) the same repo is refused with KitExit 2 'is a symlink'. Modes like this survive tar/zip extraction of a hostile archive (333 & ~022 = 311 is still unlistable), so the documented guarantee 'any symlink inside objects/ is refused' and 'nothing outside the repo is opened' does not hold. A symlinked objects/info/commit-graph to a FIFO also blocks every call until the timeout. — fix: Fail closed: in the walk, return only on ENOENT/ENOTDIR and throw refuse(\`${dir} cannot be listed; safe-git cannot check it for symlinks\`) for any other readdir error (EACCES, EPERM, EIO...). Add a test that chmods a loose-object folder to 0o333 and runs as a non-root user (skip when uid 0).
+
+## Medium (1)
+
+- **A git killed by a signal is reported as exit code 1, which describe --dirty and --quiet callers read as 'has differences'** — `src/lib/kit/safe-git.js:265` (correctness): defaultGitRunner returns \`code: r.status ?? 1\`; spawnSync sets status null and signal (SIGSEGV, SIGABRT from git's BUG(), SIGKILL from the OOM killer) with no r.error, so a crash becomes code 1. describeDirty treats q.code === 1 as dirty: with a git whose diff-index dies of SIGSEGV, \`safeGit(r, \['describe','--dirty','--tags'\])\` returns {stdout:'v1-dirty\n', code:0} (traced; a normal run prints 'v1'). Likewise \`diff-index --quiet HEAD\` / \`diff --quiet\` return code 1 with empty stderr, the documented 'differences found' answer, instead of a failure. A hostile repo crafted to crash git (corrupt index/pack hitting a git BUG/abort) turns that into a wrong 'dirty' result with exit 0. — fix: When r.signal is set, throw KitExit(\`git ${cmd} was killed by ${r.signal}\`, GIT\_FAILED\_EXIT) (or return code 128 + signal number with a stderr note) so no caller can mistake a crash for exit 1; add a test with a stub git that kills itself.
+
+## Low (1)
+
+- **A timeout while listing the index is reported as 'the index is too large' and as a policy refusal (exit 2)** — `src/lib/kit/safe-git.js:530` (correctness): checkIndexPaths converts every KitExit with code GIT\_FAILED\_EXIT into refuse('the index is too large to check its paths ...'). defaultGitRunner uses that code for both ENOBUFS and ETIMEDOUT, so \`--timeout 200\` on a slow disk, or a loaded machine, prints 'kit: refused: the index is too large ... (git ls-files took longer than 200 ms ...)' and exits 2, while the header (line 91) says a timeout is exit 3. Callers that retry on 3 and treat 2 as a permanent policy verdict (bbs fails the fetch) get the wrong class. — fix: Only map the output-overflow case to a refusal (distinguish it, e.g. by a \`reason\` field on the KitExit or by matching the ENOBUFS message) and let a timeout propagate as exit 3.
