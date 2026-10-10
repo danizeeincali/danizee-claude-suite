@@ -185,3 +185,34 @@ describe('guarded-fs', () => {
     assert.equal(await fs.readFile(path.join(home, 'sub', 'n.txt'), 'utf-8'), 'hello');
   });
 });
+
+describe('push-gate store behind the owner\'s own dotfile links', () => {
+  it('a ~/.claude that links outside the home folder still stores receipts; a link inside the receipts folder is refused', async () => {
+    const { run: gate } = await import('../src/lib/kit/push-gate.js');
+    const { spawnSync } = await import('child_process');
+    const t = await fs.mkdtemp(path.join(os.tmpdir(), 'gfs-dot-'));
+    try {
+      const home = path.join(t, 'home');
+      const dotfiles = path.join(t, 'dotfiles', 'claude');
+      await fs.mkdir(home, { recursive: true });
+      await fs.mkdir(dotfiles, { recursive: true });
+      await fs.symlink(dotfiles, path.join(home, '.claude'));
+      const repo = path.join(t, 'repo');
+      await fs.mkdir(repo);
+      const g = (a) => spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { cwd: repo, encoding: 'utf-8' });
+      g(['init', '-q', '.']); await fs.writeFile(path.join(repo, 'a'), 'a\n'); g(['add', 'a']); g(['commit', '-q', '-m', 'a']);
+      const env = { ...process.env, HOME: home };
+      delete env.KIT_RECEIPTS_DIR;
+      const io = { cwd: repo, stdin: async () => '', env };
+      await gate(['receipt', '--verdict', 'pass', '--high', '0', '--medium', '0', '--low', '0'], io);
+      const stored = await fs.readdir(path.join(dotfiles, 'kit', 'receipts'));
+      assert.equal(stored.filter((f) => f.endsWith('.json')).length, 1);
+      const receipts = path.join(dotfiles, 'kit', 'receipts');
+      const f = path.join(receipts, stored.find((x) => x.endsWith('.json')));
+      await fs.rename(receipts, receipts + '.real');
+      await fs.symlink(receipts + '.real', receipts);
+      await assert.rejects(gate(['receipt', '--verdict', 'pass', '--high', '0', '--medium', '0', '--low', '0'], io), (e) => e instanceof KitExit && e.code === 2);
+      assert.ok(f);
+    } finally { await fs.rm(t, { recursive: true, force: true }); }
+  });
+});

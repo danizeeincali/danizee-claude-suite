@@ -167,9 +167,16 @@ async function storeFile(git, env, cwd) {
   const real = await fs.realpath(common);
   const override = env.KIT_RECEIPTS_DIR;
   const dir = override || path.join(env.HOME || os.homedir(), '.claude', 'kit', 'receipts');
-  // the walk starts at the home folder (default store) or at the parent of the folder the owner named
-  const root = override ? path.dirname(path.resolve(override)) : path.resolve(env.HOME || os.homedir());
-  return { dir, file: path.join(dir, `${sha(real)}.json`), repo: real, guard: { root, protect: path.resolve(dir) } };
+  // The owner's own links above the store (~/.claude -> a dotfiles checkout) are resolved first, as they intend; the
+  // guarded walk then starts at the store's real parent and refuses any link inside the receipts folder itself.
+  const parent = path.dirname(path.resolve(dir));
+  let root;
+  try {
+    await fs.mkdir(parent, { recursive: true });
+    root = await fs.realpath(parent);
+  } catch (e) { throw new KitExit(`cannot open the receipt store folder ${parent}: ${e.message}`, 1); }
+  const protect = path.join(root, path.basename(path.resolve(dir)));
+  return { dir: protect, file: path.join(protect, `${sha(real)}.json`), repo: real, guard: { root, protect } };
 }
 
 async function readState(file, guard) {
