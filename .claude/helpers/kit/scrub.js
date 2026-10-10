@@ -89,8 +89,10 @@ async function readPatternFile(top, rel) {
   }
   if (!st.isFile()) throw invalid(`${rel} is not a regular file`);
   if (st.size > LIMITS.patternFile) throw invalid(`${rel} is larger than ${LIMITS.patternFile} bytes`);
-  let text;
-  try { text = await fs.readFile(file, 'utf-8'); } catch (e) { throw invalid(`cannot read ${rel}: ${e.code || e.message}`); }
+  let buf;
+  try { buf = await fs.readFile(file); } catch (e) { throw invalid(`cannot read ${rel}: ${e.code || e.message}`); }
+  const text = decodeText(buf);
+  if (text.includes('\0')) throw invalid(`${rel} still contains NUL characters after decoding; save it as UTF-8 or UTF-16 with a byte order mark`);
   return text;
 }
 
@@ -147,7 +149,15 @@ export function scanBuffer(buf, patterns, max = Infinity) {
 
 // ---------------------------------------------------------------- listing and reading tracked files
 
-/** HEAD tree entries via `ls-tree -r -z -l`: { files: [{path, sha, size, mode}], submodules: [path] }. */
+/** A readable name for raw (latin1-decoded) path bytes: UTF-8 when valid, else every byte >= 0x80 shown as \\xNN. */
+export function displayName(raw) {
+  const bytes = Buffer.from(raw, 'latin1');
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes); } catch {
+    return raw.replace(/[\x80-\xff]/g, c => `\\x${c.charCodeAt(0).toString(16).padStart(2, '0')}`);
+  }
+}
+
+/** HEAD tree entries via `ls-tree -r -z -l` (stdout latin1, so path bytes survive): { files: [{path, raw, sha, size, mode}], submodules: [path] }. */
 export function parseLsTree(stdout) {
   const files = [];
   const submodules = [];
@@ -156,8 +166,8 @@ export function parseLsTree(stdout) {
     const m = /^(\d+) (\w+) ([0-9a-f]+) +(-|\d+)\t([\s\S]*)$/.exec(rec);
     if (!m) throw invalid('unexpected git ls-tree output');
     const [, mode, type, sha, size, p] = m;
-    if (type === 'commit') submodules.push(p);
-    else if (type === 'blob') files.push({ path: p, sha, size: Number(size), mode });
+    if (type === 'commit') submodules.push(displayName(p));
+    else if (type === 'blob') files.push({ path: displayName(p), raw: p, sha, size: Number(size), mode });
     else throw invalid('unexpected git ls-tree output');
   }
   return { files, submodules };
@@ -175,7 +185,7 @@ export function parseLsFiles(stdout) {
     const [, mode, sha, , p] = m;
     if (seen.has(p)) continue; // a conflicted path lists once per stage
     seen.add(p);
-    if (mode === '160000') submodules.push(p); else files.push({ path: p, sha, size: null, mode });
+    if (mode === '160000') submodules.push(displayName(p)); else files.push({ path: displayName(p), raw: p, sha, size: null, mode });
   }
   return { files, submodules };
 }
@@ -202,12 +212,18 @@ export function parseBatch(buf, expected) {
   return out;
 }
 
-async function readBounded(file, cap) {
+/** Read a whole file up to `cap` bytes (null when longer). The buffer starts at the file's known size, not at the cap. */
+async function readBounded(file, cap, size = 0) {
   const fh = await fs.open(file, 'r');
   try {
-    const buf = Buffer.alloc(cap + 1);
+    let buf = Buffer.alloc(Math.min(size, cap) + 1);
     let n = 0;
     for (;;) {
+      if (n === buf.length) { // the file grew since lstat: enlarge, still capped
+        const bigger = Buffer.alloc(Math.min(buf.length * 2, cap + 1));
+        buf.copy(bigger, 0, 0, n);
+        buf = bigger;
+      }
       const { bytesRead } = await fh.read(buf, n, buf.length - n, null);
       if (bytesRead === 0) break;
       n += bytesRead;
@@ -217,11 +233,11 @@ async function readBounded(file, cap) {
   } finally { await fh.close(); }
 }
 
-/** A git runner that keeps every byte of `cat-file` output (latin1); every other command decodes as UTF-8. */
+/** A git runner that keeps every byte of `cat-file`, `ls-files` and `ls-tree` output (latin1); every other command decodes as UTF-8. */
 export function binaryRunner(base = defaultGitRunner) {
   return (args, o = {}) => {
     const cmd = args.find((a, i) => !String(a).startsWith('-') && args[i - 1] !== '-c');
-    return cmd === 'cat-file' ? base(args, { ...o, encoding: 'latin1' }) : base(args, o);
+    return ['cat-file', 'ls-files', 'ls-tree'].includes(cmd) ? base(args, { ...o, encoding: 'latin1' }) : base(args, o);
   };
 }
 
@@ -230,7 +246,7 @@ export function binaryRunner(base = defaultGitRunner) {
  * options: { patterns (from loadPatterns), worktree, git (runner), env, maxFileBytes, limits }
  */
 export async function scanRepo(top, { patterns, worktree = false, git, env = process.env, maxFileBytes, limits = LIMITS } = {}) {
-  const cap = maxFileBytes ?? limits.file;
+  const cap = Math.min(maxFileBytes ?? limits.file, limits.total);
   const runner = git || binaryRunner();
   const exec = async (args, input) => {
     const r = await safeGit(top, args, { git: runner, env, input });
@@ -242,6 +258,9 @@ export async function scanRepo(top, { patterns, worktree = false, git, env = pro
     : parseLsTree((await exec(['ls-tree', '-r', '-z', '-l', 'HEAD'])).stdout);
   if (listed.files.length + listed.submodules.length > limits.files) {
     throw refuse(`more than ${limits.files} tracked files; scrub will not claim a scan of that many`);
+  }
+  if (listed.files.some(f => f.path === PRIVATE_FILE)) {
+    throw refuse(`${PRIVATE_FILE} (the private pattern file) is tracked by git and would be published; untrack it (git rm --cached) and keep it git-ignored before pushing`);
   }
   const excluded = new Set(EXCLUDED);
   const files = listed.files.filter(f => !excluded.has(f.path));
@@ -265,7 +284,7 @@ export async function scanRepo(top, { patterns, worktree = false, git, env = pro
   if (worktree) {
     for (const f of files) {
       if (overTotal()) { notScanned.push({ file: f.path, reason: 'total size limit reached' }); continue; }
-      const abs = path.join(top, ...f.path.split('/'));
+      const abs = Buffer.concat([Buffer.from(top + path.sep), Buffer.from(f.raw, 'latin1')]);
       try {
         const st = await fs.lstat(abs);
         let buf;
@@ -273,7 +292,7 @@ export async function scanRepo(top, { patterns, worktree = false, git, env = pro
         else if (!st.isFile()) { notScanned.push({ file: f.path, reason: 'not a regular file on disk' }); continue; }
         else if (st.size > cap) { notScanned.push({ file: f.path, reason: `larger than ${cap} bytes` }); continue; }
         else {
-          buf = await readBounded(abs, cap);
+          buf = await readBounded(abs, cap, st.size);
           if (buf === null) { notScanned.push({ file: f.path, reason: `larger than ${cap} bytes` }); continue; }
         }
         scannedFiles++; scannedBytes += buf.length;
@@ -382,6 +401,7 @@ function parseArgs(args) {
     else throw invalid(`--${k} needs a value`);
   }
   if (f['max-file-bytes'] !== undefined && !/^[1-9]\d{0,15}$/.test(f['max-file-bytes'])) throw invalid('--max-file-bytes must be a positive integer');
+  if (f['max-file-bytes'] !== undefined && Number(f['max-file-bytes']) > LIMITS.total) throw invalid(`--max-file-bytes must be at most ${LIMITS.total} (see cli.js scrub --help)`);
   return f;
 }
 

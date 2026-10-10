@@ -24,6 +24,8 @@ describe('scrub — tracked-file scrub gate', () => {
   beforeEach(async () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'scrub-'));
     sh(dir, 'init', '-q', '.');
+    // the private pattern file is git-ignored, as the kit install leaves it (info/exclude keeps the tree free of extra tracked files)
+    await fs.appendFile(path.join(dir, '.git', 'info', 'exclude'), '.claude/kit/scrub-patterns.local\n');
   });
   afterEach(async () => { await fs.rm(dir, { recursive: true, force: true }); });
 
@@ -279,5 +281,82 @@ describe('scrub — tracked-file scrub gate', () => {
       await gate(['receipt', '--verdict', 'pass']);
       assert.equal((await gate()).decision, 'abstain');
     });
+  });
+});
+
+describe('scrub — review round 1 regressions', () => {
+  let dir;
+  const io = () => ({ cwd: dir, stdin: async () => '', env: process.env });
+  const put = async (rel, content) => { await fs.mkdir(path.dirname(path.join(dir, rel)), { recursive: true }); await fs.writeFile(path.join(dir, rel), content); };
+  const commit = () => { sh(dir, 'add', '-A'); sh(dir, 'add', '-f', '-A'); sh(dir, 'commit', '-q', '-m', 'c'); };
+  beforeEach(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'scrub-r1-')); sh(dir, 'init', '-q', '.'); });
+  afterEach(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('a tracked private pattern file is refused (exit 2), never reported clean; an untracked one is only skipped', async () => {
+    await put('.claude/kit/scrub-patterns.local', 'zebra-secret\n');
+    await put('a.txt', 'clean\n');
+    sh(dir, 'add', 'a.txt'); sh(dir, 'commit', '-q', '-m', 'c');
+    assert.equal((await run([], io())).exit, 0); // untracked: skipped
+    sh(dir, 'add', '-f', '.claude/kit/scrub-patterns.local'); sh(dir, 'commit', '-q', '-m', 'oops');
+    for (const args of [[], ['--worktree']]) {
+      await assert.rejects(run(args, io()), (e) => e instanceof KitExit && e.code === 2 && /private pattern file.*tracked.*published/.test(e.message) && !/zebra/.test(e.message));
+    }
+  });
+
+  it('a UTF-16LE pattern file with a BOM matches committed text; a NUL left after decoding is exit 1', async () => {
+    await put('.claude/kit/scrub-patterns.local', utf16le('zebra-secret\r\n'));
+    await put('a.txt', 'zebra-secret\n'); commit();
+    sh(dir, 'rm', '-q', '--cached', '.claude/kit/scrub-patterns.local'); sh(dir, 'commit', '-q', '-m', 'untrack');
+    const r = await run([], io());
+    assert.equal(r.exit, 2);
+    assert.deepEqual(r.hits, [{ file: 'a.txt', line: 1, private: true, pattern: 'private pattern #1' }]);
+    await put('.claude/kit/scrub-patterns.local', Buffer.from('zebra\0secret\n'));
+    await assert.rejects(run([], io()), (e) => e instanceof KitExit && e.code === 1 && /NUL/.test(e.message));
+  });
+
+  it('--worktree allocates per file size, not the cap, for every file', async () => {
+    await put('.claude/kit/scrub-patterns', 'needle\n');
+    for (let i = 0; i < 200; i++) await put(`f/${i}.txt`, `tiny ${i}\n`);
+    commit();
+    const alloc = Buffer.alloc;
+    let biggest = 0;
+    let total = 0;
+    Buffer.alloc = function (n, ...rest) { biggest = Math.max(biggest, n); total += n; return alloc.call(Buffer, n, ...rest); };
+    let r;
+    try { r = await run(['--worktree'], io()); } finally { Buffer.alloc = alloc; }
+    assert.equal(r.exit, 0);
+    assert.equal(r.scanned_files, 200);
+    assert.ok(biggest < LIMITS.file, `largest allocation was ${biggest} bytes`);
+    assert.ok(total < 16 * 1024 * 1024, `200 tiny files allocated ${total} bytes in all`);
+  });
+
+  it('--worktree still catches a hit in a file larger than a small cap-sized guess and honours the cap', async () => {
+    await put('.claude/kit/scrub-patterns', 'needle\n');
+    await put('big.txt', 'x'.repeat(5000) + '\nneedle\n'); commit();
+    const r = await run(['--worktree'], io());
+    assert.deepEqual(r.hits.map(h => [h.file, h.line]), [['big.txt', 2]]);
+    const small = await run(['--worktree', '--max-file-bytes', '100'], io());
+    assert.equal(small.complete, false);
+  });
+
+  it('--max-file-bytes above 2 GiB is refused with exit 1 pointing at --help', async () => {
+    await put('.claude/kit/scrub-patterns', 'needle\n'); await put('a.txt', 'x\n'); commit();
+    for (const v of ['2147483649', '100000000000']) {
+      await assert.rejects(run(['--worktree', '--max-file-bytes', v], io()), (e) => e instanceof KitExit && e.code === 1 && /at most 2147483648.*--help/.test(e.message));
+    }
+    assert.equal((await run(['--max-file-bytes', '2147483648'], io())).exit, 0);
+  });
+
+  it('--worktree reads a tracked file whose name is not valid UTF-8 and reports an escaped name', async () => {
+    await put('.claude/kit/scrub-patterns', 'needle\n');
+    const name = Buffer.concat([Buffer.from(dir + '/bad'), Buffer.from([0xe9]), Buffer.from('.txt')]);
+    await fs.writeFile(name, 'a\nneedle\n');
+    sh(dir, 'add', '-A'); sh(dir, 'commit', '-q', '-m', 'c');
+    for (const args of [[], ['--worktree']]) {
+      const r = await run(args, io());
+      assert.equal(r.exit, 2, JSON.stringify(r));
+      assert.deepEqual(r.not_scanned, []);
+      assert.deepEqual(r.hits, [{ file: 'bad\\xe9.txt', line: 2, private: false, pattern: 'needle' }]);
+    }
   });
 });
