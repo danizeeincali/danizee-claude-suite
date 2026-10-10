@@ -12,7 +12,8 @@
  * line numbers still match. The fingerprint path keeps only lengths and SHA-256 hashes and slides a window of
  * each length over the text (refused above maxLength, default 4096).
  *
- * Secrets file (default <git toplevel>/.claude/kit/secrets, git-ignored): one secret per line; a block from a
+ * Secrets file (default <git toplevel>/.claude/kit/secrets, else the main checkout's for a linked worktree;
+ * git-ignored): one trimmed secret per line; a block from a
  * line starting `-----BEGIN` to a line starting `-----END` is ONE multi-line secret; blank lines are ignored.
  * A missing default file means nothing to redact. No error message ever contains a secret value.
  * Built from ideas audited by /w-bbs (run 2026-10-10-openqodex-2); no foreign code.
@@ -112,16 +113,24 @@ export function parseSecretsFile(content) {
       }
       if (!closed) throw new KitExit('secrets file has a -----BEGIN block with no matching -----END line', 1);
       secrets.push(block.join('\n'));
-    } else if (line.trim() !== '') secrets.push(line);
+    } else if (line.trim() !== '') secrets.push(line.trim()); // padding from an editor or a paste is not part of the secret
   }
   return secrets;
 }
 
-function toplevel(cwd, spawn = spawnSync) {
-  const r = spawn('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf-8' });
+/**
+ * Where the default secrets file may live: the working tree the command runs in (`--show-toplevel`), then the
+ * main checkout (parent of `--git-common-dir`). The file is git-ignored, so a linked worktree usually has no copy
+ * of its own and must fall back to the main checkout's.
+ */
+export function secretsRoots(cwd, spawn = spawnSync) {
+  const r = spawn('git', ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir'], { cwd, encoding: 'utf-8' });
   if (r.error) throw new KitExit(`cannot run git: ${r.error.message}`, 1);
   if (r.status !== 0) throw new KitExit('not inside a git repository, so the default secrets file cannot be located; pass --secrets-file', 1);
-  return r.stdout.trim();
+  const [top, common] = r.stdout.split('\n').map(s => s.trim());
+  const roots = [top];
+  if (common && path.basename(common) === '.git') { const main = path.dirname(common); if (main !== top) roots.push(main); }
+  return roots;
 }
 
 async function readFileOr(file, what, optional) {
@@ -134,7 +143,7 @@ async function readFileOr(file, what, optional) {
 /** The project's secrets (default file), or [] when it does not exist. For callers that import this module. */
 export async function loadProjectSecrets(projectDir) {
   const text = await readFileOr(path.join(projectDir, DEFAULT_SECRETS), 'secrets file', true);
-  return text === null ? null : parseSecretsFile(text);
+  return text === null ? [] : parseSecretsFile(text);
 }
 
 const BOOL = ['keep-lines', 'fingerprint'];
@@ -185,8 +194,11 @@ export async function run(args, io) {
   if (flags['secrets-file']) {
     secrets = parseSecretsFile(await readFileOr(path.resolve(cwd, flags['secrets-file']), 'secrets file', false));
   } else {
-    const file = path.join(toplevel(cwd), DEFAULT_SECRETS);
-    const text = await readFileOr(file, 'secrets file', true);
+    let text = null;
+    for (const root of secretsRoots(cwd)) {
+      text = await readFileOr(path.join(root, DEFAULT_SECRETS), 'secrets file', true);
+      if (text !== null) break;
+    }
     secrets = text === null ? [] : parseSecretsFile(text);
   }
   if (flags.fingerprint) return fingerprintSecrets(secrets);

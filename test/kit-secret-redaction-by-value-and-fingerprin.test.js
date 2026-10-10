@@ -6,7 +6,7 @@ import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
-import { redactSecrets, fingerprintSecrets, redactByFingerprint, parseSecretsFile, run, verb, MARKER } from '../src/lib/kit/redact.js';
+import { redactSecrets, fingerprintSecrets, redactByFingerprint, parseSecretsFile, loadProjectSecrets, run, verb, MARKER } from '../src/lib/kit/redact.js';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
 import { DaniZeeSuiteInstaller } from '../src/installer.js';
 
@@ -125,6 +125,42 @@ describe('run (CLI contract)', () => {
     await fs.mkdir(path.join(dir, '.claude', 'kit'), { recursive: true });
     await fs.writeFile(path.join(dir, '.claude', 'kit', 'secrets'), 'passw0rd-xyz\n');
     assert.deepEqual(await run([], io(sub, 'keep passw0rd-xyz')), { text: 'keep [REDACTED]', replaced: 1 });
+  }));
+  it('a padded secrets-file line still matches, by value and by fingerprint (review r1)', () => tmp(async dir => {
+    await repo(dir);
+    assert.deepEqual(parseSecretsFile('  tok-abcdef  \r\n\ttok-ghijkl\t\n'), ['tok-abcdef', 'tok-ghijkl']);
+    await fs.writeFile(path.join(dir, 's.txt'), 'tok-abcdef   \n');
+    assert.deepEqual(await run(['--secrets-file', path.join(dir, 's.txt')], io(dir, 'x tok-abcdef y')), { text: 'x [REDACTED] y', replaced: 1 });
+    const fp = await run(['--fingerprint', '--secrets-file', path.join(dir, 's.txt')], io(dir));
+    assert.deepEqual(fp, { version: 1, prints: [{ length: 10, sha256: sha('tok-abcdef') }] });
+  }));
+  it('from a linked worktree (root and subdirectory) the main checkout\'s secrets file is used (review r1)', () => tmp(async dir => {
+    const main = path.join(dir, 'main');
+    await fs.mkdir(main);
+    const git = (args, cwd) => { const r = spawnSync('git', args, { cwd, encoding: 'utf-8' }); assert.equal(r.status, 0, r.stderr); };
+    git(['init', '-q', '.'], main);
+    await fs.writeFile(path.join(main, '.gitignore'), '.claude/kit/secrets\n');
+    await fs.mkdir(path.join(main, 'sub'));
+    await fs.writeFile(path.join(main, 'sub', 'f.txt'), 'x\n');
+    git(['add', '-A'], main);
+    git(['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'init'], main);
+    await fs.mkdir(path.join(main, '.claude', 'kit'), { recursive: true });
+    await fs.writeFile(path.join(main, '.claude', 'kit', 'secrets'), 'passw0rd-xyz\n');
+    const wt = path.join(dir, 'wt');
+    git(['worktree', 'add', '-q', wt], main);
+    for (const cwd of [wt, path.join(wt, 'sub')]) {
+      assert.deepEqual(await run([], io(cwd, 'keep passw0rd-xyz')), { text: 'keep [REDACTED]', replaced: 1 });
+    }
+    // the worktree's own file wins when it has one
+    await fs.mkdir(path.join(wt, '.claude', 'kit'), { recursive: true });
+    await fs.writeFile(path.join(wt, '.claude', 'kit', 'secrets'), 'other-secret\n');
+    assert.deepEqual(await run([], io(path.join(wt, 'sub'), 'passw0rd-xyz other-secret')), { text: 'passw0rd-xyz [REDACTED]', replaced: 1 });
+  }));
+  it('loadProjectSecrets returns [] when there is no secrets file, as documented (review r1)', () => tmp(async dir => {
+    assert.deepEqual(await loadProjectSecrets(dir), []);
+    await fs.mkdir(path.join(dir, '.claude', 'kit'), { recursive: true });
+    await fs.writeFile(path.join(dir, '.claude', 'kit', 'secrets'), 'passw0rd-xyz\n');
+    assert.deepEqual(await loadProjectSecrets(dir), ['passw0rd-xyz']);
   }));
   it('refuses unknown flags, a missing explicit file, conflicting modes and a non-repo default; never echoes values', () => tmp(async dir => {
     await repo(dir);
