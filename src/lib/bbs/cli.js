@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * bbs helper CLI — `node cli.js <verb> [flags]`.
- * Verbs here: intake · fetch · inventory · map · usage · verdict · handoff · status · report. Later streams add verbs
+ * Verbs here: intake · fetch · inventory · map · usage · targets · verdict · handoff · status · report. Later streams add verbs
  * by registering them in VERBS.
  *
  * Exit codes: 0 ok · 1 invalid input / broken state · 2 policy refusals (egress refused, illegal verdict).
@@ -24,6 +24,7 @@ import { buildMap, mapBrief, recordJudgments } from './harness-map.js';
 import { computeVerdicts, recordProbe, recordDecisions, verdictTable, PolicyRefused } from './verdict.js';
 import { buildHandoff } from './handoff.js';
 import { recordUsage } from './usage.js';
+import { targetsBrief, recordTargets, setOwnerTargets } from './targets.js';
 
 class CliExit extends Error {
   constructor(message, code) { super(message); this.code = code; }
@@ -40,6 +41,7 @@ const FLAGS = {
   inventory: { value: ['from', 'run', 'project'], bool: ['brief', 'force'], positionals: 0, usage: 'usage: cli.js inventory (--brief | --from <file|->) [--force] [--run <id>] [--project <dir>]' },
   map: { value: ['from', 'run', 'project'], bool: ['brief', 'force'], positionals: 0, usage: 'usage: cli.js map [--brief | --from <file|->] [--force] [--run <id>] [--project <dir>]' },
   usage: { value: ['run', 'project', 'days', 'root', 'workflows'], bool: ['force'], positionals: 0, repeat: ['root'], usage: 'usage: cli.js usage [--days <n>] [--root <dir>]... [--workflows <a,b>] [--force] [--run <id>] [--project <dir>]' },
+  targets: { value: ['from', 'set', 'run', 'project'], bool: ['brief', 'force'], positionals: 0, usage: 'usage: cli.js targets (--brief | --from <file|-> | --set <power>@<workflow>[,<workflow>]) [--force] [--run <id>] [--project <dir>]' },
   verdict: { value: ['probe', 'evidence', 'decide', 'from', 'run', 'project'], bool: ['table', 'force'], positionals: 0, usage: 'usage: cli.js verdict [--table | --probe <power>=<clean|found|incomplete> [--evidence <text>] | --decide <power>=<verdict> | --from <file|->] [--force] [--run <id>] [--project <dir>]' },
   handoff: { value: ['run', 'project'], bool: ['marathon', 'force'], positionals: 0, usage: 'usage: cli.js handoff [--marathon] [--force] [--run <id>] [--project <dir>]' }
 };
@@ -290,6 +292,31 @@ const VERBS = {
     }
   },
 
+  async targets({ flags, projectDir, cfg }) {
+    const usage = FLAGS.targets.usage;
+    const modes = ['brief', 'from', 'set'].filter(m => flags[m] !== undefined);
+    if (modes.length !== 1) fail(`${usage}\n  targets needs exactly one of --brief, --from <file|-> or --set <power>@<workflows>`);
+    if (flags.force && !flags.from) fail(`${usage}\n  --force goes with --from (it drops every earlier target)`);
+    const { id, dir } = await resolveRun(projectDir, flags, cfg);
+    try {
+      if (flags.brief) { process.stdout.write(await targetsBrief(projectDir, { run: id, cfg }) + '\n'); return; }
+      if (flags.set) { out({ ...await setOwnerTargets(projectDir, { run: id, set: flags.set, cfg }), next: nextStep(await loadState(dir)) }); return; }
+      let input;
+      if (flags.from === '-') input = (await readStdin()).toString('utf-8');
+      else {
+        try { input = await fs.readFile(flags.from, 'utf-8'); } catch (err) {
+          if (err.code === 'ENOENT') fail(`file not found: ${flags.from}`);
+          fail(`could not read ${flags.from}: ${err.message}`);
+        }
+      }
+      const label = flags.from === '-' ? '--from - (stdin)' : `--from ${flags.from}`;
+      out({ ...await recordTargets(projectDir, { run: id, input, force: !!flags.force, cfg, label }), next: nextStep(await loadState(dir)) });
+    } finally {
+      const { writeError } = await renderStatusSafe(dir);
+      if (writeError) warnStatusWrite(id, writeError);
+    }
+  },
+
   async handoff({ flags, projectDir, cfg }) {
     const { id, dir } = await resolveRun(projectDir, flags, cfg);
     try {
@@ -336,7 +363,7 @@ const VERBS = {
       } else if (flags.table) {
         // A view: print the recorded table when there is one, so viewing never re-runs the sandbox check
         const existing = force ? null : await readJson(path.join(dir, 'verdicts.json'));
-        if (existing && existing.rows) { out(verdictTable(existing.rows)); return; }
+        if (existing && existing.rows) { out(verdictTable(existing.rows, (await readJson(path.join(dir, 'targets.json')))?.targets)); return; }
         const computed = await computeVerdicts(projectDir, { run: id, sandbox: useSandboxOverride(sandboxOverride), now, force, cfg });
         out(computed.table);
         warnSandboxOverride(sandboxOverride);
@@ -394,7 +421,7 @@ async function main(argv) {
   const { verb, flags, positional } = parseArgs(argv);
   if (!Object.hasOwn(VERBS, verb)) {
     // Verbs in step order (the six steps, then the read-only verbs), so usage reads like the flow.
-    const order = ['intake', 'fetch', 'inventory', 'map', 'usage', 'verdict', 'handoff', 'status', 'report'];
+    const order = ['intake', 'fetch', 'inventory', 'map', 'usage', 'targets', 'verdict', 'handoff', 'status', 'report'];
     const verbs = [...order.filter(v => VERBS[v]), ...Object.keys(VERBS).filter(v => !order.includes(v))];
     const lines = verbs.map(v => '  ' + (FLAGS[v] ? FLAGS[v].usage.replace(/^usage: /, '') : `cli.js ${v}`));
     fail([`usage: cli.js <${verbs.join('|')}> ...`, ...lines, '  <source> may be - to read a paste from stdin'].join('\n'));
