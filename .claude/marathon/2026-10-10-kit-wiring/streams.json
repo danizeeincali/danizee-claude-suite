@@ -55,10 +55,10 @@
       "name": "bbs",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "4.7 fix round 6 (inventory-shaped safe-git failure, absolute clone top), then unit run, round 7",
+      "next": "4.5 round 7 opus checking review, then close",
       "tasks": [],
       "isolation": "../danizee-claude-suite-bbs",
-      "phase": "fix",
+      "phase": "review",
       "skill": "w-plan-tdd-swarm",
       "base": "c8ddc24a976fc488ae86521d82073d04724c5214"
     },
