@@ -297,10 +297,17 @@ describe('sweep-commits round 2 review fixes', () => {
       const i = c.indexOf('**Scrub before the commit:**') >= 0 ? c.indexOf('**Scrub before the commit:**') : c.indexOf('2. **Scrub before the commit:**');
       assert.ok(i >= 0);
       const s = c.slice(i, c.indexOf('scrub --worktree; RC=$?', i));
-      assert.match(s, /git diff --quiet -- <the staged paths>/);
+      assert.match(s, /run a plain `git diff --quiet` with no path \(exit 0 means none\)/);
+      assert.ok(!s.includes('<the staged paths>'), 'the check covers the whole index, not only the paths just staged');
+      assert.ok(!/git diff --quiet -- /.test(s), 'no path-limited diff check');
+      assert.match(s, /Check the whole index, not only the paths just staged: `git commit` commits everything staged, by anyone, earlier included/);
       assert.match(s, /reads each file's content from disk but git commits the index, so the two must agree/);
-      assert.match(s, /if the check fails, re-stage those paths \(`git add`\)/);
-      assert.ok(s.indexOf('git diff --quiet') >= 0);
+      assert.match(s, /Exit 1 means unstaged changes: re-stage the paths `git diff --name-only` lists \(`git add`\) and check once more before the scrub/);
+      assert.match(s, /any other exit \(128 and above\) is a git error: report it and do not commit\./);
+      assert.match(s, /If the re-check still exits non-zero, report it and do not commit\./);
+      const q = s.indexOf('git diff --quiet');
+      const r = s.indexOf('If the re-check still exits non-zero');
+      assert.ok(q >= 0 && r > q, 'the diff check and its exit rules come before the scrub run (s ends at it)');
     });
   }
 
@@ -322,8 +329,11 @@ describe('sweep-commits round 2 review fixes', () => {
   it('w-autoresearch: a scrub refusal reverts new files too and pauses after 3 in a row', () => {
     const s = commands['w-autoresearch'].content;
     const u = s.indexOf('git reset -q -- <the experiment\'s paths>');
-    const k = s.indexOf('git checkout -- . && git clean -fd -- <the experiment\'s new paths>');
+    const k = s.indexOf('git checkout -- .`; if the experiment created new paths, `git clean -fd -- <those paths>`');
     assert.ok(u >= 0 && k > u, 'unstage comes before the checkout and clean');
+    assert.match(s, /if the experiment created new paths, `git clean -fd -- <those paths>` so a refused new file does not stay on disk untracked and unscanned; with none, skip the clean; never run git clean without a path/);
+    assert.ok(!s.includes("git clean -fd -- <the experiment's new paths>"), 'no unconditional clean over a possibly empty list');
+    assert.ok(!/git clean -fd -- \.|git clean -fd`|git clean -fd;/.test(s), 'no pathless git clean');
     assert.match(s, /revert in this order: first unstage/);
     assert.match(s, /if the unstage failed, do not count it as reverted: report it and pause the loop \(create `\.autoresearch-off`\)/);
     assert.match(s, /After 3 consecutive scrub refusals pause the loop: create `\.autoresearch-off` and log why/);
