@@ -3710,7 +3710,12 @@ so two writers never commit in the same checkout at the same time:
 - **Status rows (\`status.md\`):** every stream — where it lives, its plan, its state, its next step, any running background task ids. With a marathon run active: \`node .claude/helpers/marathon/cli.js stream <name> state=... phase=... skill=... next="..." tasks=<id>,<id>\` per stream, then \`cli.js status\`. Without a marathon run: refresh the status file from \`bc config\` (default \`.claude/plans/STATUS.md\`) as a table — \`| Stream | Where | Plan | State | Next | Phase | Skill | Tasks |\` — one row per stream, \`active\` in State for the one being worked, \`done\` once finished. If a multi-phase skill such as \`/pt\` is mid-run, its row names the skill and the phase. The handoff does not need marathon.
 - **Standing rules:** anything learned the hard way this session → \`rules.md\` of the run (or the rules file from \`bc config\` without a run).
 - **Durable facts** → memory.
-- Commit these files (specific paths, not \`git add -A\`). Never push here.
+- **Scrub before the commit:** \`git add\` these specific paths first (and any new file they create): \`scrub --worktree\` scans tracked files only, so an untracked file is not scanned. Then scan the tracked files as they are on disk for secrets. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
+\`\`\`
+  Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed, **do not commit**, and say so in the summary. Exit 1 is wrong input or a broken state: report it, never read it as clean. Any other non-zero exit is a failure of the step: report it, do not commit.
+- Commit these files (specific paths, not \`git add -A\`) only after the scrub is clean (or the kit is not installed). Never push here.
 
 ---
 
@@ -3726,6 +3731,11 @@ candidates file, memory exports) — never the handoff files the lead just commi
 - Fixes: generate paired RC-F### for each diagnostic
 - Append all to .claude/ralph-candidates.md
 - Ralph candidate check
+- **Redact before writing:** when \`.claude/kit/secrets\` exists, pass the diff text (or any excerpt of it) through \`redact\` before it is written into the solution doc or any memory export. \`redact\` reads the text on stdin (there is no \`--file\` for the text), prints JSON \`{ text, replaced }\`, and write the \`text\` field, not the raw diff. Use \`--keep-lines\` so line numbers still match; \`--secrets-file <f>\` names another secrets file. When \`.claude/kit/secrets\` does not exist, say so in one line and write the text as is. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js): redact skipped, advisory"; (exit 0); elif [ ! -f .claude/kit/secrets ]; then echo "no .claude/kit/secrets: nothing to redact, text written as is"; (exit 0); else git diff HEAD~1 | node .claude/helpers/kit/cli.js redact --keep-lines; RC=$?; (exit $RC); fi
+\`\`\`
+  Exit 0 prints the redacted \`text\` and the \`replaced\` count. Exit 1 is wrong input or a broken state (an unreadable secrets file, bad flag): report it and do **not** write the unredacted diff into the solution doc or a memory export. Any other non-zero exit is a failure of the step: the same.
 
 **Phase 1.5: Agent Pi Brain — Knowledge Discovery (read-only)**
 - Search for similar memories:
@@ -3734,18 +3744,28 @@ candidates file, memory exports) — never the handoff files the lead just commi
 - Log result (found/not-found)
 
 **Phase 2: Git Commit**
-- Stage only the paths it wrote (NOT git add -A, never the lead's handoff files)
+- Stage only the paths it wrote (NOT git add -A, never the lead's handoff files). Staging them first also puts the new files under the scrub.
+- **Scrub before the commit:** If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
+\`\`\`
+  Exit 0 clean (tracked files only; an untracked file is not scanned). Exit 2 means hits or an incomplete scan: list them as printed, **do not commit**, skip Phase 3, and say so in the summary. Exit 1 is wrong input or a broken state: report it, do not commit. Any other non-zero exit is a failure of the step: report it, do not commit.
 - Commit with descriptive message
 - **Never pushes** in this phase.
 
 **Phase 3: Git Push/Merge (only with --push)**
 - Without \`--push\` this phase does nothing; the summary says "not pushed — owner's go needed (/bcp)".
-- With \`--push\`: push current branch; if not main, merge to main and clean up.
+- With \`--push\` (or \`/bcp\`), first run the push gate, before any push. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js): push-gate check skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js push-gate check; RC=$?; (exit $RC); fi
+\`\`\`
+  Read the printed \`decision\` and \`reason\`. Exit 2 is a deny (read \`decision\` and \`reason\`) or a refused receipt store (\`kit: refused:\` on stderr): **not pushed**, say so in the summary. Exit 0 with decision \`ask\`: put the question to the owner and do not push until they answer. Exit 0 with decision \`abstain\` (no receipt): the push goes on. Exit 1 is an error: report it and do not push. Any other non-zero exit is a failure of the step: report it and do not push. The gate only abstains, asks or denies; it never allows, and it never skips or answers the owner's own permission prompt.
+- Then push current branch; if not main, merge to main and clean up.
 
 **Phase 4: Final Summary Report**
 - Log what was compounded, committed, and whether it was pushed
 
-**ERROR HANDLING:** Log errors but NEVER abort. Complete as many phases as possible.
+**ERROR HANDLING:** Log errors but NEVER abort. Complete as many phases as possible. A push-gate deny or ask, and a scrub hit, are not errors to work around: the phase stops there (no commit after a scrub hit, no push after a deny or while an ask is unanswered) and the summary says why. Never retry around them, never edit the patterns or the gate, never push by another route.
 
 ---
 
