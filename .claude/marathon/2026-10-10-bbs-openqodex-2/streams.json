@@ -31,10 +31,10 @@
       "name": "lens-catalog-file-triggered-checks",
       "state": "active",
       "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/lens-catalog-file-triggered-checks.md",
-      "next": "builder writes contract tests and module",
+      "next": "review round 2",
       "tasks": [],
       "isolation": "../danizee-claude-suite-lens-catalog-file-triggered-checks",
-      "phase": "build",
+      "phase": "review",
       "base": "ddd4b25dc59076380d88a2ff7287b9f28121e831"
     },
     {

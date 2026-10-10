@@ -16,3 +16,9 @@
 {"key":"packaged_secret-redaction-by-value-and-fingerprin","value":true,"id":"2a5dbe46-7736-4200-8d4e-151d3517372c","ts":"2026-10-10T05:01:16.600Z"}
 {"key":"egress_zero_secret-redaction-by-value-and-fingerprin","value":true,"id":"ebe0516d-ad23-481b-b3b7-a9f121ba8707","ts":"2026-10-10T05:01:16.711Z"}
 {"key":"callers_secret-redaction-by-value-and-fingerprin","value":1,"id":"06d8d364-f476-44af-9f4e-fec942f5ab39","ts":"2026-10-10T05:01:16.829Z"}
+{"key":"packaged_lens-catalog-file-triggered-checks","value":true,"id":"ea2c0384-4d29-4cf6-acce-30ea18e3a246","ts":"2026-10-10T05:10:07.828Z"}
+{"key":"egress_zero_lens-catalog-file-triggered-checks","value":true,"id":"9af23cfb-2439-4efa-a643-4f6ba2512fe0","ts":"2026-10-10T05:10:07.944Z"}
+{"key":"callers_lens-catalog-file-triggered-checks","value":1,"id":"2c657bcf-0453-4a3e-96a9-3a2788d6ec5d","ts":"2026-10-10T05:10:08.041Z"}
+{"key":"packaged_lens-catalog-file-triggered-checks","value":true,"id":"0504e4f0-ece2-4b3a-883b-86a9e552a29f","ts":"2026-10-10T05:16:30.633Z"}
+{"key":"egress_zero_lens-catalog-file-triggered-checks","value":true,"id":"18b8ee01-99c3-49c8-bfae-4aac222d7714","ts":"2026-10-10T05:16:30.740Z"}
+{"key":"callers_lens-catalog-file-triggered-checks","value":1,"id":"751dcf43-84ae-4351-a498-6a61180c0e83","ts":"2026-10-10T05:16:30.840Z"}
