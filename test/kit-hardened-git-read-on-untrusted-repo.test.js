@@ -568,7 +568,9 @@ describe('safe-git — review round 1 regressions (config.worktree, linked workt
     const r = await textconvRepo('abbrev-control');
     const t = sh(r.dir, ['cat-file', '--textc', 'HEAD:f.txt']);
     assert.equal(t.status, 0, t.stderr);
-    const f = sh(r.dir, ['cat-file', '--filt', 'HEAD:f.txt']);
+    // git 2.55 added `cat-file --filter`, so `--filt` is ambiguous there and `--filters` has no abbreviation left.
+    let f = sh(r.dir, ['cat-file', '--filt', 'HEAD:f.txt']);
+    if (f.status === 129 && /ambiguous option: filt/.test(f.stderr)) f = sh(r.dir, ['cat-file', '--filters', 'HEAD:f.txt']);
     assert.equal(f.status, 0, f.stderr);
     assert.deepEqual(await r.fired(), ['smudge', 'textconv']);
   });
