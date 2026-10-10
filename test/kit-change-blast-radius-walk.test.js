@@ -496,3 +496,28 @@ describe('impact — review round 3 regressions', () => {
     assert.match(r.stderr, /git diff failed/);
   }));
 });
+
+describe('impact — review round 4 regressions', () => {
+  const stepScript = () => {
+    const c = getCommands()['w-review'].content;
+    const s = c.slice(c.indexOf('Then the blast radius'));
+    return s.slice(s.indexOf('```bash') + 7, s.indexOf('```', s.indexOf('```bash') + 7));
+  };
+  it('an untracked file named like an option is diffed as a file (-- before the paths)', { skip: process.platform === 'win32' }, () => tmp(async dir => {
+    git(dir, 'init', '-q', '.');
+    await put(dir, { 'a.js': 'export function a() {}\n' });
+    git(dir, 'add', '-A');
+    git(dir, 'commit', '-q', '-m', 'a');
+    await fs.writeFile(path.join(dir, '--output=keep.js'), 'export function sneaky() {}\n');
+    const script = stepScript().replace('node .claude/helpers/kit/cli.js', 'cat "$D" >&2; true || node');
+    const r = spawnSync('bash', ['-c', script], { cwd: dir, encoding: 'utf-8' });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stderr, /\+\+\+ --output=keep\.js|output=keep\.js/);
+    assert.equal(fsSync.existsSync(path.join(dir, 'keep.js')), false); // --output would have written keep.js
+  }));
+  it('an untracked file git cannot diff makes the step fail, not silently drop it', () => {
+    const s = stepScript();
+    assert.match(s, /--no-prefix -- \/dev\/null "\$f" \|\| \[ \$\? -eq 1 \] \|\| : > "\$D\.fail"/);
+    assert.match(s, /\[ -e "\$D\.fail" \] && DF=1/);
+  });
+});
