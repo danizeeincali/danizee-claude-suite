@@ -44,7 +44,7 @@
       "name": "marathon",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "review round 1 running; then fix round or round 2",
+      "next": "fix round 1 (2 high, 1 medium, 3 low) on opus running; then review round 2",
       "tasks": [],
       "isolation": "../danizee-claude-suite-marathon",
       "phase": "review",
