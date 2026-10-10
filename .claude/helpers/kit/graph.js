@@ -43,10 +43,11 @@ import { KitExit } from './kit-exit.js';
 import { gitPaths } from './git-paths.js';
 import { safeGit, locateRepo } from './safe-git.js';
 import { guardedRead, guardedWrite } from './guarded-fs.js';
+import { parseDiff } from './lenses.js';
 
 export const verb = 'graph';
 export const usage = 'cli.js graph [--dir <path>] [--changed <file>...] [--diff <file|->] [--budget-ms N] [--max-parses N] [--json]   '
-  + '(symbol graph of the JS/TS files in the repository, facts cached by content hash; changed files first; `partial` and `not_read` say what was cut; '
+  + '(symbol graph of the JS/TS files in the repository, facts cached by content hash; changed files first; --changed paths, like diff paths, are relative to the repository top, not the current folder; `partial` and `not_read` say what was cut; '
   + '--diff - reads a unified diff from piped stdin, never a terminal; exit 0 built, 1 invalid, 2 refused)';
 
 export const EXTRACTOR_VERSION = 'graph-facts-1';
@@ -1234,17 +1235,14 @@ function isAncestor(defs, owner, anc) {
 
 // ================================================================ CLI
 
-/** Paths a unified diff adds or changes (the `+++` lines); deleted files (`+++ /dev/null`) are skipped. */
+/**
+ * Paths a unified diff touches, top-relative, through the lens catalog's parser (lenses.parseDiff): hunks are counted,
+ * so an added line that starts with `++ ` is content, not a header; git's prefixes (a/ b/, mnemonic c/ i/ w/ o/,
+ * --no-prefix) are read from the `diff --git` header rather than guessed from the file system; quoted names are
+ * unquoted. Deleted files (new side /dev/null) are left out.
+ */
 export function diffPaths(text) {
-  const out = [];
-  for (const raw of String(text).split('\n')) {
-    if (!raw.startsWith('+++ ')) continue;
-    let p = raw.slice(4).replace(/\r$/, '').split('\t')[0];
-    if (p === '/dev/null' || p === '') continue;
-    if (p.startsWith('"')) continue; // a quoted (odd-named) path: leave it out rather than guess
-    out.push(p);
-  }
-  return out;
+  return parseDiff(text, { deleted: true }).filter((f) => !f.deleted).map((f) => f.path).filter((p) => p && p !== '/dev/null');
 }
 
 const VALUE_FLAGS = ['dir', 'diff', 'budget-ms', 'max-parses'];
@@ -1303,11 +1301,7 @@ export async function run(args, io = {}) {
   const exec = (a) => safeGit(loc.top, a, { git: io.git, env: io.env || process.env });
   const [top] = await gitPaths(exec, loc.top, ['toplevel'], 'cannot find the repository');
   const changed = [...f.changed];
-  for (const p of diffPaths(diffText)) {
-    // `git diff` without --no-prefix writes b/<path>; take the literal path when it exists, else the unprefixed one
-    const literal = await fs.lstat(path.join(top, p)).then(() => true, () => false);
-    changed.push(!literal && p.startsWith('b/') ? p.slice(2) : p);
-  }
+  changed.push(...diffPaths(diffText));
   const g = await buildGraph(top, {
     changed,
     budgetMs: f['budget-ms'] ? Number(f['budget-ms']) : undefined,

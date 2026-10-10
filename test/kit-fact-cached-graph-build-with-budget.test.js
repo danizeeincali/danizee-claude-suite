@@ -574,3 +574,28 @@ describe('graph — the /w-review caller', () => {
     assert.match(s, /never write that "nothing else calls this"/);
   });
 });
+
+describe('graph — review round 1 regressions (diff input)', () => {
+  it('an added line starting with "++ " is content, not a file header', () => {
+    const d = ['diff --git a/notes.md b/notes.md', '--- a/notes.md', '+++ b/notes.md', '@@ -1 +1,2 @@', ' x', '+++ ../outside', ''].join('\n');
+    assert.deepEqual(graph.diffPaths(d), ['notes.md']);
+  });
+
+  it('quoted (non-ASCII) paths are unquoted, not dropped', () => {
+    const d = ['diff --git "a/src/caf\\303\\251.js" "b/src/caf\\303\\251.js"', '--- "a/src/caf\\303\\251.js"', '+++ "b/src/caf\\303\\251.js"', '@@ -1 +1 @@', '-1', '+2', ''].join('\n');
+    assert.deepEqual(graph.diffPaths(d), ['src/café.js']);
+  });
+
+  it('git prefixes come from the header: a top-level b/ folder and mnemonic prefixes map to the right file', () => {
+    const plain = ['diff --git a/a.js b/a.js', '--- a/a.js', '+++ b/a.js', '@@ -1 +1 @@', '-1', '+2', ''].join('\n');
+    assert.deepEqual(graph.diffPaths(plain), ['a.js']);
+    const mnemonic = ['diff --git i/src/a.js w/src/a.js', '--- i/src/a.js', '+++ w/src/a.js', '@@ -1 +1 @@', '-1', '+2', ''].join('\n');
+    assert.deepEqual(graph.diffPaths(mnemonic), ['src/a.js']);
+    const noPrefix = ['diff --git b/a.js b/a.js', '--- b/a.js', '+++ b/a.js', '@@ -1 +1 @@', '-1', '+2', ''].join('\n');
+    assert.deepEqual(graph.diffPaths(noPrefix), ['b/a.js']);
+  });
+
+  it('the usage says --changed paths are relative to the repository top', () => {
+    assert.match(graph.usage, /--changed paths.*relative to the repository top/);
+  });
+});
