@@ -22,16 +22,19 @@
  *   A case passes only when its review completed, every bug was found and there is no false positive; a clean case passes
  *   only when the review completed with no findings. Precision = hits / (hits + near misses + false positives), recall =
  *   hits / bugs, over SUMS across cases (never an average of ratios); a ratio with nothing to divide is null, not 1.
- * Only the given folders are read; nothing is run, fetched or sent. Built from the approved brief of /w-bbs run 2026-10-10-openqodex-2.
+ * OPTIONAL --wording [--wording-cap n] [--wording-resume] [--wording-runner path] then asks wording-judge.js for a model second
+ * opinion on the matched findings' wording; it is reported under `wording` beside the scores and never read by the scorer.
+ * Without --wording, only the given folders are read and nothing is run, fetched or sent (--wording runs the judge in wording-judge.js). Built from the approved brief of /w-bbs run 2026-10-10-openqodex-2.
  */
 import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
 import { guardedRead, guardedWrite } from './guarded-fs.js';
+import { judge } from './wording-judge.js';
 
 export const verb = 'review-score';
-export const usage = 'cli.js review-score --specs <dir> --reviews <dir> --out <dir>   (scores saved reviews against planted-bug specs; see the header of review-score.js)';
+export const usage = 'cli.js review-score --specs <dir> --reviews <dir> --out <dir> [--wording]   (scores saved reviews against planted-bug specs; see the header of review-score.js)';
 export const MAX_FILES = 200;
 export const MAX_FILE_BYTES = 1024 * 1024;
 const MANIFEST = 'specs.manifest.json';
@@ -226,14 +229,25 @@ export async function scoreFolders({ specs: specDir, reviews: reviewDir, out: ou
 
 export async function run(args, io) {
   const opts = {};
+  const w = { on: false, cap: Infinity, resume: false };
   const rest = [...args];
   while (rest.length) {
     const a = rest.shift();
     if (a === '--help') return { usage };
-    if (!['--specs', '--reviews', '--out'].includes(a)) throw bad(`unknown argument "${a}"`);
+    if (a === '--wording') { w.on = true; continue; }
+    if (a === '--wording-resume') { w.resume = true; continue; }
+    if (!['--specs', '--reviews', '--out', '--wording-cap', '--wording-runner'].includes(a)) throw bad(`unknown argument "${a}"`);
     if (!rest.length) throw bad(`${a} needs a value`);
-    opts[a.slice(2)] = path.resolve(io.cwd, rest.shift());
+    const v = rest.shift();
+    if (a === '--wording-cap') { if (!/^\d+$/.test(v)) throw bad('--wording-cap must be a whole number'); w.cap = Number(v); }
+    else if (a === '--wording-runner') w.runner = path.resolve(io.cwd, v);
+    else opts[a.slice(2)] = path.resolve(io.cwd, v);
   }
   for (const k of ['specs', 'reviews', 'out']) if (!opts[k]) throw bad(`--${k} is required`);
-  return scoreFolders(opts);
+  const scored = await scoreFolders(opts);
+  if (!w.on) return scored;
+  // The wording opinion is reported beside the scores (scores.json is already written and is not touched again).
+  let wording;
+  try { wording = await judge(scored, { outDir: opts.out, cap: w.cap, resume: w.resume, ...(w.runner ? { runner: w.runner } : {}) }); } catch (e) { wording = { stopped: `wording judge failed: ${e.message}` }; }
+  return { ...scored, wording };
 }
