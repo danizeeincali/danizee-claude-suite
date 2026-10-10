@@ -8,8 +8,9 @@ import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { inventoryBrief } from '../src/lib/bbs/inventory.js';
+import { inventoryBrief, SAFE_GIT_LINES } from '../src/lib/bbs/inventory.js';
 import { mapBrief } from '../src/lib/bbs/harness-map.js';
+import { READ_SUBCOMMANDS } from '../.claude/helpers/kit/safe-git.js';
 import { getCommands } from '../src/plugins/dot-shortcuts.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -214,7 +215,7 @@ describe('/w-bbs command — kit wiring (safe-git, redact, scrub)', () => {
   const NOKIT = /kit not installed \(\.claude\/helpers\/kit\/cli\.js missing\)/;
 
   it('the real inventory brief routes git reads of fetched/ through safe-git, names the exits and the no-kit fallback', () => {
-    const b = inventoryBrief({ source: { type: 'git', ref: 'x', identity: 'y' }, files: { root: 'fetched/x', files: [{ path: 'a.js', size: 1 }], total: 1 }, maxPowers: 12 });
+    const b = inventoryBrief({ source: { type: 'repo', ref: 'x', identity: 'y' }, files: { root: 'fetched/x', files: [{ path: 'a.js', size: 1 }], total: 1 }, maxPowers: 12 });
     assert.match(b, /node \.claude\/helpers\/kit\/cli\.js safe-git --dir <clone top> -- <git args>/);
     assert.match(b, /Plain `git -C fetched\/\.\.\.` is never used/);
     for (const code of ['0 git ran', '1 bad input', '2 refused', '3 git itself failed']) assert.ok(b.includes(code), code);
@@ -250,6 +251,39 @@ describe('/w-bbs command — kit wiring (safe-git, redact, scrub)', () => {
     assert.match(s, /never runs git on the clone/);
   });
 
+  it('every git subcommand the wired text names is one safe-git allows (READ_SUBCOMMANDS)', async () => {
+    const naming = /\(((?:[a-z-]+, )+[a-z-]+)\) goes through `node \.claude\/helpers\/kit\/cli\.js safe-git/;
+    const texts = { 'CHECKPOINT 4': section('### ⛔ CHECKPOINT 4', '3. **Show the verdict table'), SAFE_GIT_LINES: SAFE_GIT_LINES.join('\n') };
+    const { mapBrief: mb } = await import('../src/lib/bbs/harness-map.js');
+    assert.ok(READ_SUBCOMMANDS.includes('ls-tree') && !READ_SUBCOMMANDS.includes('blame'));
+    for (const [where, t] of Object.entries(texts)) {
+      const m = t.match(naming);
+      assert.ok(m, `${where} names its safe-git subcommands`);
+      const names = m[1].split(', ');
+      assert.ok(names.length >= 5, where);
+      for (const n of names) assert.ok(READ_SUBCOMMANDS.includes(n), `${where}: "${n}" is not in READ_SUBCOMMANDS`);
+      assert.doesNotMatch(t, /\bblame\b/);
+    }
+    assert.equal(typeof mb, 'function');
+  });
+
+  it('SAFE_GIT_LINES is defined once: harness-map imports it from inventory', async () => {
+    const hm = await fs.readFile(path.join(PROJECT_ROOT, 'src/lib/bbs/harness-map.js'), 'utf8');
+    assert.doesNotMatch(hm, /const SAFE_GIT_LINES/);
+    assert.match(hm, /import \{[^}]*SAFE_GIT_LINES[^}]*\} from '\.\/inventory\.js'/);
+  });
+
+  it('the inventory brief has the git section for a repo source only', () => {
+    const files = { root: 'fetched', files: [{ path: 'a.js', size: 1 }], total: 1 };
+    for (const type of ['url', 'local', 'paste']) {
+      const b = inventoryBrief({ source: { type, ref: 'x', identity: 'y' }, files, maxPowers: 12 });
+      assert.doesNotMatch(b, /safe-git|Reading the clone with git/, type);
+    }
+    const r = inventoryBrief({ source: { type: 'repo', ref: 'x', identity: 'y' }, files, maxPowers: 12 });
+    assert.match(r, /## Reading the clone with git/);
+    assert.match(r, /safe-git --dir <clone top>/);
+  });
+
   it('CHECKPOINT 4 redacts probe evidence before recording, with kit guard, mktemp, trap and every exit named', () => {
     const s = section('### ⛔ CHECKPOINT 4', '3. **Show the verdict table');
     assert.match(s, NOKIT);
@@ -259,19 +293,25 @@ describe('/w-bbs command — kit wiring (safe-git, redact, scrub)', () => {
     assert.match(s, /mktemp/);
     assert.match(s, /trap 'rm -f "\$J"' EXIT INT TERM/);
     assert.match(s, /Exit 0: redacted/);
+    assert.match(s, /console\.error\("replaced="\+j\.replaced\)/);
+    assert.match(s, /stderr shows `replaced=<n>`/);
     assert.match(s, /Exit 1 is bad input/);
     assert.match(s, /never read exit 1 as "nothing to redact"/);
     assert.ok(s.indexOf('redact --keep-lines') < s.indexOf('verdict --probe'));
   });
 
-  it('CHECKPOINT 6 stages without fetched/ and scrubs before /bc, naming exits 0, 1, 2 and configured: false', () => {
+  it('CHECKPOINT 6 stages only the own paths of the run and scrubs before /bc, naming exits 0, 1, 2 and configured: false', () => {
     const s = section('### ⛔ CHECKPOINT 6', '## `--resume');
     assert.match(s, NOKIT);
-    assert.match(s, /git add -A -- \. ':!fetched'/);
+    assert.doesNotMatch(s, /git add -A|git add \.|:!fetched/);
+    assert.match(s, /git add -- "\.claude\/bbs\/runs\/<id>"/);
+    assert.match(s, /git add -- \.claude\/bbs\/registry\.jsonl/);
+    assert.match(s, /rest of the index is left as the user had it/);
+    assert.match(s, /a hit in a file outside this run's paths is reported but is not this run's and does not block `\/bc`/);
     assert.match(s, /scrub --worktree/);
     assert.match(s, /Exit 0 clean/);
     assert.match(s, /configured: false/);
-    assert.match(s, /Exit 2 means hits[^]*do \*\*not\*\* run `\/bc` until they are removed/);
+    assert.match(s, /Exit 2 means hits[^]*do \*\*not\*\* run `\/bc` until the hits in this run's paths are removed/);
     assert.match(s, /Exit 1 is wrong input/);
     assert.match(s, /never read a non-zero exit as clean/);
     assert.ok(s.indexOf('scrub --worktree') < s.indexOf('Then `/bc`'));

@@ -487,9 +487,9 @@ export async function listSourceFiles(runDir, source, { maxFiles = 500, readdir 
   };
 }
 
-const SAFE_GIT_LINES = [
+export const SAFE_GIT_LINES = [
   '## Reading the clone with git\n',
-  'Every git read of the clone under `fetched/` (log, show, ls-files, blame, cat-file) goes through `node .claude/helpers/kit/cli.js safe-git --dir <clone top> -- <git args>`. Plain `git -C fetched/...` is never used: the clone is untrusted and its config, hooks and drivers must not run.',
+  'Every git read of the clone under `fetched/` (log, show, ls-files, ls-tree, cat-file, diff, rev-list) goes through `node .claude/helpers/kit/cli.js safe-git --dir <clone top> -- <git args>`. Plain `git -C fetched/...` is never used: the clone is untrusted and its config, hooks and drivers must not run.',
   '',
   'It prints `{ stdout, stderr, code, exit }`. Read the exit: 0 git ran and `stdout` is the answer; 1 bad input (for example `--dir` is not the clone top): fix the call and retry once; 2 refused (the repository or the git call was refused): do not retry, name it in evidence; 3 git itself failed or timed out: say so. A non-zero exit is never "nothing found".',
   '',
@@ -544,7 +544,8 @@ export function inventoryBrief({ source, files, maxPowers }) {
   lines.push('## Your task\n');
   lines.push('Read the source files above. Do not execute or run anything — list reusable capabilities only.');
   lines.push('');
-  lines.push(...SAFE_GIT_LINES);
+  // Only a cloned repository (fetched/repo) has a clone to read with git; pages, local folders and pastes do not.
+  if (source.type === 'repo') lines.push(...SAFE_GIT_LINES);
 
   lines.push('## JSON shape\n');
   lines.push('Find at most ' + maxPowers + ' distinct capabilities in this source. Each capability is a power: a `{ "powers": [...] }` object or bare array.');

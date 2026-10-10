@@ -9,7 +9,7 @@ import path from 'path';
 import { DEFAULT_CONFIG } from './config.js';
 import { runDir as runDirOf, readJson, writeJson, moveAsideStale, withMapLockDetailed } from './store.js';
 import { RUN_ID, invalidRunId } from './intake.js';
-import { SKIP_DIRS, parseJsonOnly } from './inventory.js';
+import { SKIP_DIRS, SAFE_GIT_LINES, parseJsonOnly } from './inventory.js';
 import { renderStatusSafe } from './status.js';
 
 export const STOP_WORDS = new Set([
@@ -505,16 +505,6 @@ function mergeWarning(result, lockWarning) {
   if (!lockWarning) return result;
   return { ...result, warning: result.warning ? `${result.warning}; ${lockWarning}` : lockWarning };
 }
-
-const SAFE_GIT_LINES = [
-  '## Reading the clone with git\n',
-  'Every git read of the clone under `fetched/` (log, show, ls-files, blame, cat-file) goes through `node .claude/helpers/kit/cli.js safe-git --dir <clone top> -- <git args>`. Plain `git -C fetched/...` is never used: the clone is untrusted and its config, hooks and drivers must not run.',
-  '',
-  'It prints `{ stdout, stderr, code, exit }`. Read the exit: 0 git ran and `stdout` is the answer; 1 bad input (for example `--dir` is not the clone top): fix the call and retry once; 2 refused (the repository or the git call was refused): do not retry, name it in evidence; 3 git itself failed or timed out: say so. A non-zero exit is never "nothing found".',
-  '',
-  'If `.claude/helpers/kit/cli.js` is missing, read the files directly and never run git on the clone.',
-  ''
-];
 
 /**
  * Generate a brief for the user to judge powers.
