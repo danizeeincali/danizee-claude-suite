@@ -41,7 +41,7 @@
       "name": "hardened-git-read-on-untrusted-repo",
       "state": "active",
       "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/hardened-git-read-on-untrusted-repo.md",
-      "next": "review round 4",
+      "next": "review round 5",
       "tasks": [],
       "isolation": "../danizee-claude-suite-hardened-git-read-on-untrusted-repo",
       "phase": "review",

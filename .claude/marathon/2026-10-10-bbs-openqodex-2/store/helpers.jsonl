@@ -65,3 +65,8 @@
 {"helper_id":"1e9e9baf-e685-4a45-aea5-6306f162563e","tokens":0,"outcome":"green","event":"done","id":"306c275d-e03c-4038-a024-7652d16dbd10","ts":"2026-10-10T06:34:29.450Z"}
 {"role":"fix","model":"opus","stream":"hardened-git-read-on-untrusted-repo","budget":150000,"event":"spawn","id":"270006c7-64c5-4d80-9abb-fad72420a7df","ts":"2026-10-10T06:34:30.751Z"}
 {"helper_id":"1e9e9baf-e685-4a45-aea5-6306f162563e","tokens":106590,"outcome":"green","event":"done","id":"fd39055b-e437-4775-a3c6-9471a7a61acf","ts":"2026-10-10T06:34:35.234Z"}
+{"role":"review","model":"opus","stream":"hardened-git-read-on-untrusted-repo","budget":150000,"event":"spawn","id":"042b6695-fcdb-44b0-b917-61903ba0fc38","ts":"2026-10-10T06:45:55.271Z"}
+{"helper_id":"270006c7-64c5-4d80-9abb-fad72420a7df","tokens":129965,"outcome":"green","event":"done","id":"f673dd1b-a52f-4ef3-88f7-2387fec0212a","ts":"2026-10-10T06:46:00.315Z"}
+{"helper_id":"042b6695-fcdb-44b0-b917-61903ba0fc38","tokens":0,"outcome":"green","event":"done","id":"558c95bf-908b-495f-924a-c03698f0e8f3","ts":"2026-10-10T06:50:18.950Z"}
+{"role":"fix","model":"opus","stream":"hardened-git-read-on-untrusted-repo","budget":120000,"event":"spawn","id":"4531740b-e533-43ce-b6ce-0d768f765cf1","ts":"2026-10-10T06:50:19.875Z"}
+{"helper_id":"042b6695-fcdb-44b0-b917-61903ba0fc38","tokens":104338,"outcome":"green","event":"done","id":"1cd548eb-3912-46e0-b436-c71b52ea633a","ts":"2026-10-10T06:50:24.123Z"}
