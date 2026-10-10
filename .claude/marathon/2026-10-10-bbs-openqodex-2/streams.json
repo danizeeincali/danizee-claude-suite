@@ -5,7 +5,8 @@
       "state": "meta",
       "isolation": "worktree",
       "created": "2026-10-10T01:20:31.521Z",
-      "tasks": []
+      "tasks": [],
+      "finished": "2026-10-10T13:47:57.569Z"
     },
     {
       "name": "pre-push-review-gate",

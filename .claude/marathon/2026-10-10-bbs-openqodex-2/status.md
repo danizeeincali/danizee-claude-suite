@@ -1,11 +1,11 @@
 # Marathon 2026-10-10-bbs-openqodex-2
 
-- State: RUNNING
+- State: FINISHED
 - Budget: 9,803,573 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 4/2 clean reviews — build gate met, full gate met
 - Escapes: 0
-- Next for you: All streams done and the build gate is met — run `cli.js gate`, then `cli.js finish`.
+- Next for you: Run is finished. Start a new one with /w-marathon <finish line>.
 - Last handoff: 2026-10-10T13:12:01.330Z (auto) on claude/project-thread-p9gbyo@8fb286e, 4 uncommitted, tasks: none
 
 ## Streams
