@@ -684,3 +684,62 @@ describe('graph — review round 2 regressions', () => {
     assert.match(r.changed.note, /JS\/TS/);
   }));
 });
+
+describe('graph — review round 3 regressions', () => {
+  const git = (dir, ...a) => { const r = spawnSync('git', a, { cwd: dir, encoding: 'utf-8' }); assert.equal(r.status, 0, r.stderr); return r.stdout; };
+  const commit = (dir) => git(dir, '-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-qm', 'x');
+
+  it('a sparse checkout file is listed in not_read as not_on_disk and the graph is partial', () => tmp(async dir => {
+    await repo(dir, { 'src/a.js': 'export function a() {}\n', 'lib/b.js': "import { a } from '../src/a.js';\nexport function b() { a(); }\n" });
+    commit(dir);
+    git(dir, 'sparse-checkout', 'set', 'src');
+    await assert.rejects(fs.access(path.join(dir, 'lib/b.js')));
+    const g = await buildGraph(dir, { cache: false });
+    assert.equal(g.partial, true);
+    assert.deepEqual(g.not_read.filter(r => r.file === 'lib/b.js').map(r => r.reason), ['not_on_disk']);
+    assert.equal(g.stats.missing, 1);
+    assert.deepEqual(g.files.map(f => f.path), ['src/a.js']);
+  }));
+
+  it('a skip-worktree file deleted from the work tree is not_on_disk too', () => tmp(async dir => {
+    await repo(dir, { 'a.js': 'export function a() {}\n', 'b.js': 'export function b() {}\n' });
+    commit(dir);
+    git(dir, 'update-index', '--skip-worktree', 'b.js');
+    await fs.rm(path.join(dir, 'b.js'));
+    const g = await buildGraph(dir, { cache: false });
+    assert.equal(g.partial, true);
+    assert.deepEqual(g.not_read.map(r => [r.file, r.reason]), [['b.js', 'not_on_disk']]);
+  }));
+
+  it('the cache folder gets a .gitignore of * and git sees no cache file as untracked', () => tmp(async dir => {
+    await repo(dir, { 'a.js': 'export function a() {}\n' });
+    const g = await buildGraph(dir, {});
+    assert.ok(g.stats.cache_writes >= 1);
+    assert.equal(await fs.readFile(path.join(dir, '.claude/kit/cache/.gitignore'), 'utf-8'), '*\n');
+    assert.doesNotMatch(git(dir, 'status', '--porcelain', '-uall'), /cache/);
+  }));
+
+  it('a bare CR ends a // comment and the shebang line, and counts as a line', () => {
+    const f = extractFacts('// h\rexport function a(){ b(); }\rfunction b(){}\r', { path: 'x.js' });
+    assert.deepEqual(names(f.defs), ['a', 'b']);
+    assert.ok(f.calls.some(c => c.name === 'b'));
+    const sb = extractFacts('#!/usr/bin/env node\rexport function c(){}\r', { path: 'y.js' });
+    assert.deepEqual(names(sb.defs), ['c']);
+    assert.equal(sb.defs[0].start, 2);
+    const crlf = extractFacts('// h\r\nexport function d(){}\r\n', { path: 'z.js' });
+    assert.equal(crlf.defs[0].start, 2);
+  });
+
+  it('the default clock is monotonic: a wall clock stepping backwards does not stall the budget', () => tmp(async dir => {
+    await put(dir, { 'a.js': 'export const a = 1;\n', 'b.js': 'export const b = 2;\n' });
+    const realNow = Date.now;
+    Date.now = () => 1e15 - realNow(); // runs backwards
+    try {
+      const g = await buildGraph(dir, { files: ['a.js', 'b.js'], cache: false, budgetMs: 1 });
+      assert.ok(g.stats.elapsed_ms >= 0 && g.stats.elapsed_ms < 5000);
+    } finally { Date.now = realNow; }
+    const src = await fs.readFile(new URL('../src/lib/kit/graph.js', import.meta.url), 'utf-8');
+    assert.match(src, /performance\.now/);
+    assert.doesNotMatch(src, /o\.clock \|\| Date\.now/);
+  }));
+});

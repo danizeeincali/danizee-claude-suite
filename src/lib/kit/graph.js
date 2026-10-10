@@ -50,7 +50,7 @@ export const usage = 'cli.js graph [--dir <path>] [--changed <file>...] [--diff 
   + '(symbol graph of the JS/TS files in the repository, facts cached by content hash; changed files first; --changed paths, like diff paths, are relative to the repository top, not the current folder; `partial` and `not_read` say what was cut; '
   + '--diff - reads a unified diff from piped stdin, never a terminal; exit 0 built, 1 invalid, 2 refused)';
 
-export const EXTRACTOR_VERSION = 'graph-facts-1';
+export const EXTRACTOR_VERSION = 'graph-facts-2';
 export const SUPPORTED_EXT = Object.freeze(['.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx', '.mts', '.cts']);
 const TS_EXT = new Set(['.ts', '.tsx', '.mts', '.cts']);
 const OTHER_CODE_EXT = new Set(['.py', '.go', '.rs', '.java', '.kt', '.kts', '.scala', '.rb', '.php', '.c', '.h', '.cc', '.cpp', '.cxx', '.hpp',
@@ -76,6 +76,8 @@ const REGEX_AFTER_KW = new Set(['return', 'typeof', 'instanceof', 'in', 'of', 'n
 const isIdStart = (c) => (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c === 36 || c > 127;
 const isIdPart = (c) => isIdStart(c) || (c >= 48 && c <= 57);
 const isDigit = (c) => c >= 48 && c <= 57;
+// a line ends at \n, at \r (alone or before \n), U+2028 and U+2029
+const isEol = (c) => c === 10 || c === 13 || c === 0x2028 || c === 0x2029;
 const OPEN = Object.assign(Object.create(null), { '(': ')', '[': ']', '{': '}' });
 
 /** Source text → tokens {t: id|p|str|num|re, v, line}. Throws Unread on text it cannot scan to the end. */
@@ -97,26 +99,26 @@ export function tokenize(src, { clock, deadline } = {}) {
   const scanTemplate = (j) => {
     while (j < n) {
       const ch = src.charCodeAt(j);
-      if (ch === 92) { if (src[j + 1] === '\n') line++; j += 2; continue; }
-      if (ch === 10) line++;
+      if (ch === 92) { if (src[j + 1] === '\n' || (src[j + 1] === '\r' && src[j + 2] !== '\n')) line++; j += 2; continue; }
+      if (ch === 10 || (ch === 13 && src[j + 1] !== '\n')) line++;
       if (ch === 96) { toks.push({ t: 'str', v: '', line }); return j + 1; }
       if (ch === 36 && src[j + 1] === '{') { braces.push('t'); toks.push({ t: 'p', v: '{', line }); return j + 2; }
       j++;
     }
     return fail('unterminated template literal');
   };
-  if (src.startsWith('#!')) { while (i < n && src[i] !== '\n') i++; }
+  if (src.startsWith('#!')) { while (i < n && !isEol(src.charCodeAt(i))) i++; }
   while (i < n) {
     if (clock && (++tick & 1023) === 0 && clock() > deadline) throw new Unread('budget', 'time limit for one file');
     const code = src.charCodeAt(i);
-    if (code === 10) { line++; i++; continue; }
-    if (code === 32 || code === 9 || code === 13 || code === 11 || code === 12 || code === 0xfeff || code === 0xa0 || code === 0x2028 || code === 0x2029) { i++; continue; }
+    if (code === 10 || (code === 13 && src[i + 1] !== '\n') || code === 0x2028 || code === 0x2029) { line++; i++; continue; }
+    if (code === 32 || code === 9 || code === 13 || code === 11 || code === 12 || code === 0xfeff || code === 0xa0) { i++; continue; }
     const c = src[i];
-    if (c === '/' && src[i + 1] === '/') { while (i < n && src[i] !== '\n') i++; continue; }
+    if (c === '/' && src[i + 1] === '/') { while (i < n && !isEol(src.charCodeAt(i))) i++; continue; }
     if (c === '/' && src[i + 1] === '*') {
       const start = line;
       let j = i + 2;
-      for (; j < n && !(src[j] === '*' && src[j + 1] === '/'); j++) if (src[j] === '\n') line++;
+      for (; j < n && !(src[j] === '*' && src[j + 1] === '/'); j++) if (src[j] === '\n' || (src[j] === '\r' && src[j + 1] !== '\n') || src[j] === '\u2028' || src[j] === '\u2029') line++;
       if (j >= n) fail('unterminated comment', start);
       i = j + 2;
       continue;
@@ -130,7 +132,7 @@ export function tokenize(src, { clock, deadline } = {}) {
         if (ch === c) break;
         if (ch === '\\') {
           if (src[j + 1] === '\r' && src[j + 2] === '\n') { line++; j += 2; continue; }
-          if (src[j + 1] === '\n') line++;
+          if (src[j + 1] === '\n' || (src[j + 1] === '\r' && src[j + 2] !== '\n') || src[j + 1] === '\u2028' || src[j + 1] === '\u2029') line++;
           j++;
           continue;
         }
@@ -168,7 +170,7 @@ export function tokenize(src, { clock, deadline } = {}) {
       let closed = false;
       for (; j < n; j++) {
         const ch = src[j];
-        if (ch === '\n' || ch === '\r') break;
+        if (ch === '\n' || ch === '\r' || ch === '\u2028' || ch === '\u2029') break;
         if (ch === '\\') { j++; continue; }
         if (ch === '[') inClass = true;
         else if (ch === ']') inClass = false;
@@ -882,7 +884,7 @@ export async function buildGraph(root, opts = {}) {
   for (const k of ['budgetMs', 'maxParses', 'maxFileBytes', 'maxFileMs', 'maxFiles']) {
     if (!Number.isSafeInteger(o[k]) || o[k] < 1) throw invalid(`${k} must be a positive whole number`);
   }
-  const clock = o.clock || Date.now;
+  const clock = o.clock || (() => performance.now());
   const started = clock();
   const stats = { candidates: 0, read: 0, parsed: 0, cache_hits: 0, cache_writes: 0, missing: 0, ignored: 0, over_file_cap: 0 };
 
@@ -895,10 +897,11 @@ export async function buildGraph(root, opts = {}) {
     if (notRead.length < o.maxNotRead) notRead.push(detail ? { file, reason, detail } : { file, reason });
   };
   const listed = [];
+  const fromGit = new Set(); // listed by git (not an injected list): a listed file that is not on disk was not read
   for (const f of (o.files ? o.files : await listRepoFiles(root, { git: o.git, env: o.env }))) {
     const rel = listedRel(f);
     if (rel === null) addNotRead(String(f).slice(0, 200), 'unsupported', 'this name cannot be used as a path inside the repository');
-    else listed.push(rel);
+    else { listed.push(rel); if (!o.files) fromGit.add(rel); }
   }
   const all = new Set(listed);
   for (const c of changed) all.add(c);
@@ -949,11 +952,23 @@ export async function buildGraph(root, opts = {}) {
       return null; // unreadable, refused or corrupt entry: a miss for this file only (it is rewritten if it can be)
     }
   };
+  let ignored = false;
+  // the cache ignores itself wherever it lands: a `*` .gitignore in the cache folder's parent (written once per build)
+  const ensureIgnore = async () => {
+    if (ignored) return;
+    const ig = path.join(path.dirname(cacheDir), '.gitignore');
+    try { await guardedRead(ig, { root: guardRoot, maxBytes: 1024 }); } catch (e) {
+      if (!(e instanceof KitExit && e.missing)) throw e;
+      await guardedWrite(ig, '*\n', { root: guardRoot, maxBytes: 1024 });
+    }
+    ignored = true;
+  };
   const cachePut = async (key, facts) => {
     if (!cacheOn) return;
     try {
       const text = JSON.stringify({ v: EXTRACTOR_VERSION, key, facts });
       if (Buffer.byteLength(text) > o.maxCacheBytes) return; // the read limit is the write limit: never write what would be refused
+      await ensureIgnore();
       await guardedWrite(cacheFile(key), text, { root: guardRoot, protect: cacheDir, maxBytes: o.maxCacheBytes });
       stats.cache_writes++;
     } catch (e) {
@@ -977,7 +992,12 @@ export async function buildGraph(root, opts = {}) {
       bytes = await guardedRead(path.join(root, rel), { root, maxBytes: o.maxFileBytes, encoding: null });
     } catch (e) {
       if (!(e instanceof KitExit)) throw e;
-      if (e.missing) { stats.missing++; continue; }
+      if (e.missing) {
+        stats.missing++;
+        // git lists it (sparse checkout, skip-worktree, deleted in the work tree) but it is not here: never read, so partial
+        if (fromGit.has(rel)) addNotRead(rel, 'not_on_disk', 'listed by git but not in the working tree');
+        continue;
+      }
       if (e.code === 2 && /larger than|grew past/.test(e.message)) addNotRead(rel, 'too_large', `over ${o.maxFileBytes} bytes`);
       else addNotRead(rel, e.code === 2 ? 'unsupported' : 'parse_error', e.code === 2 ? 'refused: a link or special file' : 'unreadable');
       continue;
