@@ -103,7 +103,7 @@ describe('guarded-fs', () => {
     assert.deepEqual(await fs.readdir(outside), []);
   });
 
-  it('detects a swap after the folder was opened: the written file is removed, none remains anywhere', async () => {
+  it('detects a swap after the folder was opened: nothing lands outside; the file stays only in the checked folder (Linux)', async () => {
     const outside = path.join(base, 'outside');
     await fs.mkdir(outside);
     const dir = path.join(prot, 'd');
@@ -112,7 +112,9 @@ describe('guarded-fs', () => {
     const hooks = { afterOpen: async () => { await fs.rename(dir, moved); await fs.symlink(outside, dir); } };
     await assert.rejects(guardedWrite(path.join(dir, 'x'), 'no', opts({ hooks })), refused);
     assert.deepEqual(await fs.readdir(outside), []);
-    assert.deepEqual(await fs.readdir(moved), []);
+    // via /proc/self/fd the write went into the opened folder (now d-moved) and is kept there (review round 2);
+    // off Linux the rename goes by path and the pre-rename check refuses before anything is renamed
+    assert.deepEqual(await fs.readdir(moved), process.platform === 'linux' ? ['x'] : []);
   });
 
   it('the temp file never remains after a failure (final name is a non-empty folder; swap before rename)', async () => {
@@ -262,5 +264,25 @@ describe('guarded-write — review round 1 regressions', () => {
     await assert.rejects(guardedWrite(path.join(inner, 'x'), 'evil', { root: t, protect: t, byPath: true, hooks }), (e) => e instanceof KitExit && e.code === 2);
     assert.equal(await fs.readFile(path.join(outside, 'x'), 'utf-8'), 'precious\n');
     assert.deepEqual(await fs.readdir(outside), ['x']);
+  });
+});
+
+describe('guarded-write — review round 2 regressions', () => {
+  let t;
+  beforeEach(async () => { t = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'gfs-r2-'))); });
+  afterEach(async () => { await fs.rm(t, { recursive: true, force: true }); });
+
+  it('on Linux a write refused after the rename leaves the file in the checked folder, never deletes it', { skip: process.platform !== 'linux' }, async () => {
+    const d = path.join(t, 'd');
+    await fs.mkdir(d);
+    await fs.writeFile(path.join(d, 'x'), 'OLD');
+    await assert.rejects(guardedWrite(path.join(d, 'x'), 'NEW', { root: t, hooks: { afterOpen: () => fs.rename(d, d + '-moved') } }), (e) => e instanceof KitExit && e.code === 2);
+    assert.deepEqual((await fs.readdir(d + '-moved')).filter((n) => !n.endsWith('.tmp')), ['x']);
+    assert.equal(await fs.readFile(path.join(d + '-moved', 'x'), 'utf-8'), 'NEW');
+    const a = path.join(t, 'a', 'b');
+    await fs.mkdir(a, { recursive: true });
+    await fs.writeFile(path.join(a, 'f'), 'OLD');
+    await assert.rejects(guardedWrite(path.join(a, 'f'), 'NEW', { root: t, hooks: { afterRename: () => fs.rename(path.join(t, 'a'), path.join(t, 'a2')) } }), (e) => e instanceof KitExit && e.code === 2);
+    assert.equal(await fs.readFile(path.join(t, 'a2', 'b', 'f'), 'utf-8'), 'NEW');
   });
 });

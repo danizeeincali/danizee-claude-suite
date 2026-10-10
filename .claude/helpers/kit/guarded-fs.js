@@ -23,7 +23,9 @@
  *   file's permission bits; a new file is 0600.
  *   The temp file is created O_EXCL|O_NOFOLLOW (mode 0600), written, fsynced, renamed over the name. Node has no
  *   renameat, so afterwards the final path must hold the same device+inode as the temp file's handle and the walk must
- *   give the same chain; if not, what we wrote is removed and the call fails (KitExit 2). The temp file never remains
+ *   give the same chain; if not, the call fails (KitExit 2). On Linux the written file stays: it went into the folder
+ *   that was checked, so only that folder moved, and removing it would lose the old content as well. By path (off
+ *   Linux) the written file is removed, since it may sit wherever a swapped link pointed. The temp file never remains
  *   after a failure. A final name that is a link is replaced (rename never follows it), not written through.
  *   READ. guardedRead() opens the file O_NOFOLLOW (a final link is refused) with a size cap, then repeats the walk and
  *   compares the file's identity again, so a link swapped in during the read is caught.
@@ -209,16 +211,17 @@ export async function guardedWrite(target, data, opts = {}) {
     await hooks.afterRename?.(res);
     // Node has no renameat: prove the name the caller sees holds the file we wrote, in the folder we checked.
     const seen = await lstatBig(path.join(res.parent, res.name)).catch(() => null);
-    if (!sameId(seen, mine)) throw refuse(`${target} does not hold the file that was written (the folder was swapped during the write); the write was undone`);
+    if (!sameId(seen, mine)) throw refuse(`${target} does not hold the file that was written (the folder was moved or swapped during the write)${viaProc ? '; the file is in the folder that was checked, wherever it now is' : '; the written file was removed'}`);
     await recheck(target, wopts, res, 'write');
     await dirFh.sync().catch(() => {});
     return { path: path.join(res.parent, res.name), bytes: buf.length, parent: res.chain.at(-1) };
   } catch (e) {
-    if (renamed) {
+    // With /proc the rename went into the opened, verified folder: the file is where it belongs (the folder itself
+    // moved), and removing it would lose the old content too. By path it may sit wherever the swap pointed: remove it.
+    if (!renamed) await fs.unlink(tmpPath).catch(() => {});
+    else if (!viaProc) {
       const ours = await lstatBig(finalVia).catch(() => null);
       if (sameId(ours, mine)) await fs.unlink(finalVia).catch(() => {});
-    } else {
-      await fs.unlink(tmpPath).catch(() => {});
     }
     throw wrap('write', target)(e);
   } finally {
