@@ -52,15 +52,14 @@ function record(a, pairs) {
 
 /** Integration measures read this checkout's installed command files and the bbs run's targets. */
 async function integration(a) {
-  const { wiredTargets, approvedTargets, writeDelivered } = await import(path.join(ROOT, 'src', 'lib', 'bbs', 'wiring.js'));
+  const { measureWired, writeDelivered } = await import(path.join(ROOT, 'src', 'lib', 'bbs', 'wiring.js'));
   const { slugPower } = await import(path.join(ROOT, 'src', 'lib', 'bbs', 'handoff.js'));
   if (a.wired) {
-    const targets = await approvedTargets(ROOT, { run: a['bbs-run'], power: a.power });
-    const rows = await wiredTargets(ROOT, { verb: a.verb, targets });
-    const wired = rows.filter(r => r.wired).length;
+    // the verb checks workflow targets; code targets use the entry and reach tests the run's integration.json records
+    const m = await measureWired(ROOT, { run: a['bbs-run'], power: a.power, verb: a.verb });
     const key = `wired_${slugPower(a.power)}`;
-    if (!a.dry) record(a, [[key, wired]]);
-    return { power: a.power, verb: a.verb, key, wired, of: rows.length, rows, recorded: !a.dry || undefined };
+    if (!a.dry) record(a, [[key, m.value]]);
+    return { power: a.power, verb: a.verb, key, wired: m.value, of: m.of, rows: m.targets, recorded: !a.dry || undefined };
   }
   const verbs = {};
   for (const pair of a.verbs) {

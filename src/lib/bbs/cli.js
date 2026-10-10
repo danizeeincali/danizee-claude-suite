@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
  * bbs helper CLI — `node cli.js <verb> [flags]`.
- * Verbs here: intake · fetch · inventory · map · usage · targets · verdict · handoff · status · report. Later streams add verbs
+ * Verbs here: intake · fetch · inventory · map · usage · surfaces · targets · verdict · integrate · wired · delivered · handoff · status · report. Later streams add verbs
  * by registering them in VERBS.
  *
  * Exit codes: 0 ok · 1 invalid input / broken state · 2 policy refusals (egress refused, illegal verdict).
  */
 
 import fs from 'fs/promises';
-import { existsSync, realpathSync } from 'fs';
+import { existsSync, realpathSync, readFileSync } from 'fs';
 import os from 'os';
 import path from 'path';
 import { execFileSync } from 'child_process';
@@ -25,6 +25,9 @@ import { computeVerdicts, recordProbe, recordDecisions, verdictTable, tableInput
 import { buildHandoff } from './handoff.js';
 import { recordUsage } from './usage.js';
 import { targetsBrief, recordTargets, setOwnerTargets } from './targets.js';
+import { recordSurfaces } from './surfaces.js';
+import { recordIntegration, measureWired, writeDelivered } from './wiring.js';
+import { slugPower } from './handoff.js';
 
 class CliExit extends Error {
   constructor(message, code) { super(message); this.code = code; }
@@ -33,6 +36,19 @@ class CliExit extends Error {
 const INTAKE_USAGE = 'usage: cli.js intake <source|-> [--paste-file <p>] [--as repo|url|local|paste] [--slug <s>] [--run <id>] [--project <dir>]';
 
 /** Flags each verb accepts: value flags need a value, boolean flags take none. */
+/** Record measures in the marathon run this bbs run handed off to (handoff.json names it), with the project's marathon CLI. */
+function recordMarathon(projectDir, runDir, pairs) {
+  const handoff = (() => { try { return JSON.parse(readFileSync(path.join(runDir, 'handoff.json'), 'utf-8')); } catch { return null; } })();
+  const mRun = handoff?.marathonRun;
+  if (!mRun) fail('--record needs a marathon run: this bbs run was handed off without one (cli.js handoff --marathon)');
+  const cli = path.join(projectDir, '.claude', 'helpers', 'marathon', 'cli.js');
+  if (!existsSync(cli)) fail(`--record needs the marathon helpers at ${path.relative(projectDir, cli)}`);
+  for (const [key, value] of pairs) {
+    try { execFileSync(process.execPath, [cli, 'record', 'measure', `key=${key}`, `value=${value}`, '--run', mRun], { cwd: projectDir, stdio: ['ignore', 'ignore', 'pipe'] }); }
+    catch (err) { fail(`record measure ${key} failed: ${String(err.stderr || err.message).trim()}`); }
+  }
+}
+
 const FLAGS = {
   intake: { value: ['run', 'project', 'as', 'slug', 'paste-file'], bool: [], positionals: 1, usage: INTAKE_USAGE },
   fetch: { value: ['run', 'project', 'max-bytes', 'max-links'], bool: [], positionals: 0, usage: 'usage: cli.js fetch [--run <id>] [--max-bytes <n>] [--max-links <n>] [--project <dir>]' },
@@ -40,6 +56,10 @@ const FLAGS = {
   report: { value: ['run', 'project'], bool: [], positionals: 0, usage: 'usage: cli.js report [--run <id>] [--project <dir>]' },
   inventory: { value: ['from', 'run', 'project'], bool: ['brief', 'force'], positionals: 0, usage: 'usage: cli.js inventory (--brief | --from <file|->) [--force] [--run <id>] [--project <dir>]' },
   map: { value: ['from', 'run', 'project'], bool: ['brief', 'force'], positionals: 0, usage: 'usage: cli.js map [--brief | --from <file|->] [--force] [--run <id>] [--project <dir>]' },
+  integrate: { value: ['run', 'project', 'power', 'verb', 'entry', 'reach'], bool: ['force'], positionals: 0, repeat: ['reach'], usage: 'usage: cli.js integrate --power <name> [--verb <kit verb>] [--entry <module>#<symbol>] [--reach <surface id>[@<at>]=<test file>::<command>]... [--force] [--run <id>] [--project <dir>]' },
+  wired: { value: ['run', 'project', 'power', 'verb'], bool: ['record'], positionals: 0, usage: 'usage: cli.js wired --power <name> [--verb <kit verb>] [--record] [--run <id>] [--project <dir>]' },
+  delivered: { value: ['run', 'project'], bool: ['record'], positionals: 0, usage: 'usage: cli.js delivered [--record] [--run <id>] [--project <dir>]' },
+  surfaces: { value: ['run', 'project', 'add'], bool: ['force'], positionals: 0, repeat: ['add'], usage: 'usage: cli.js surfaces [--add <kind>:<file>[#<anchor>]]... [--force] [--run <id>] [--project <dir>]' },
   usage: { value: ['run', 'project', 'days', 'root', 'workflows'], bool: ['force'], positionals: 0, repeat: ['root'], usage: 'usage: cli.js usage [--days <n>] [--root <dir>]... [--workflows <a,b>] [--force] [--run <id>] [--project <dir>]' },
   targets: { value: ['from', 'set', 'run', 'project'], bool: ['brief', 'force'], positionals: 0, usage: 'usage: cli.js targets (--brief | --from <file|-> | --set <power>@<workflow>[,<workflow>]) [--force] [--run <id>] [--project <dir>]' },
   verdict: { value: ['probe', 'evidence', 'decide', 'from', 'run', 'project'], bool: ['table', 'force'], positionals: 0, usage: 'usage: cli.js verdict [--table | --probe <power>=<clean|found|incomplete> [--evidence <text>] | --decide <power>=<verdict> | --from <file|->] [--force] [--run <id>] [--project <dir>]' },
@@ -295,6 +315,42 @@ const VERBS = {
     }
   },
 
+  async integrate({ flags, projectDir, cfg }) {
+    if (!flags.power) fail(`${FLAGS.integrate.usage}\n  --power is required`);
+    if (flags.verb === undefined && flags.entry === undefined && flags.reach === undefined) fail(`${FLAGS.integrate.usage}\n  name at least one of --verb, --entry or --reach`);
+    const { id } = await resolveRun(projectDir, flags, cfg);
+    out(await recordIntegration(projectDir, { run: id, power: flags.power, verb: flags.verb, entry: flags.entry, reach: flags.reach || [], force: !!flags.force, cfg }));
+  },
+
+  async wired({ flags, projectDir, cfg }) {
+    if (!flags.power) fail(`${FLAGS.wired.usage}\n  --power is required`);
+    const { id, dir } = await resolveRun(projectDir, flags, cfg);
+    const m = await measureWired(projectDir, { run: id, power: flags.power, verb: flags.verb, cfg });
+    const key = `wired_${slugPower(flags.power)}`;
+    if (flags.record) recordMarathon(projectDir, dir, [[key, m.value]]);
+    out({ power: m.name, key, wired: m.value, of: m.of, recorded: !!flags.record, targets: m.targets.map(t => ({ where: t.kind === 'workflow' ? t.workflow : t.surface, at: t.at, wired: t.wired, why: t.why, test: t.test })) });
+  },
+
+  async delivered({ flags, projectDir, cfg }) {
+    const { id, dir } = await resolveRun(projectDir, flags, cfg);
+    const res = await writeDelivered(projectDir, { run: id, cfg });
+    if (flags.record) recordMarathon(projectDir, dir, [['delivered', res.all_wired]]);
+    out({ ...res, recorded: !!flags.record });
+  },
+
+  async surfaces({ flags, projectDir, cfg }) {
+    if (flags.add !== undefined && flags.force) fail(`${FLAGS.surfaces.usage}\n  --add adds the owner's own surfaces; --force rescans (the owner's are kept): use one`);
+    const { id, dir } = await resolveRun(projectDir, flags, cfg);
+    try {
+      out({ ...await recordSurfaces(projectDir, { run: id, add: flags.add, force: !!flags.force, cfg }), next: nextStep(await loadState(dir)) });
+    } finally {
+      try {
+        const { writeError } = await renderStatusSafe(dir);
+        if (writeError) warnStatusWrite(id, writeError);
+      } catch (err) { process.stderr.write(`bbs: warning: status.md not rendered (${err.message})\n`); }
+    }
+  },
+
   async targets({ flags, projectDir, cfg }) {
     const usage = FLAGS.targets.usage;
     const modes = ['brief', 'from', 'set'].filter(m => flags[m] !== undefined);
@@ -430,7 +486,7 @@ async function main(argv) {
   const { verb, flags, positional } = parseArgs(argv);
   if (!Object.hasOwn(VERBS, verb)) {
     // Verbs in step order (the six steps, then the read-only verbs), so usage reads like the flow.
-    const order = ['intake', 'fetch', 'inventory', 'map', 'usage', 'targets', 'verdict', 'handoff', 'status', 'report'];
+    const order = ['intake', 'fetch', 'inventory', 'map', 'usage', 'surfaces', 'targets', 'verdict', 'handoff', 'integrate', 'wired', 'delivered', 'status', 'report'];
     const verbs = [...order.filter(v => VERBS[v]), ...Object.keys(VERBS).filter(v => !order.includes(v))];
     const lines = verbs.map(v => '  ' + (FLAGS[v] ? FLAGS[v].usage.replace(/^usage: /, '') : `cli.js ${v}`));
     fail([`usage: cli.js <${verbs.join('|')}> ...`, ...lines, '  <source> may be - to read a paste from stdin'].join('\n'));

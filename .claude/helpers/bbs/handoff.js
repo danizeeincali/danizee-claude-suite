@@ -21,7 +21,7 @@ import { loadConfig as loadMarathonConfig, activeRunId as marathonActiveRun, set
 import { renderStatusSafe } from './status.js';
 import { loadConfig } from './config.js';
 import { VERDICTS, POWERS_CHANGED } from './verdict.js';
-import { standingTargets } from './targets.js';
+import { standingTargets, isWorkflow } from './targets.js';
 import { redactRef, redactUrlsInText } from './intake.js';
 
 // The five checks per power, written in the finish line before the build
@@ -103,7 +103,7 @@ export function buildFinishLine(powers, { tolerance }) {
       } else if (idBase === 'wired') {
         // integration is its own deliverable: judged on the integration stream, one per approved target
         const n = Math.max(1, Array.isArray(power.targets) ? power.targets.length : 0);
-        line = { id, label: `${slug}: wired into ${n === 1 ? 'its target workflow' : `all ${n} target workflows`}`, type: 'number', op: 'at_least', value: n, owner: 'build', source: `measure:wired_${slug}` };
+        line = { id, label: `${slug}: wired into ${n === 1 ? 'its target' : `all ${n} targets`}, reached by a user`, type: 'number', op: 'at_least', value: n, owner: 'build', source: `measure:wired_${slug}` };
       } else if (idBase === 'packaged') {
         line = { id, label: `${slug}: packaged check passes`, type: 'bool', op: 'is', value: true, owner: 'build', source: `measure:packaged_${slug}` };
       }
@@ -228,9 +228,9 @@ export function renderBrief(power, ctx) {
   md.push('## Lands in (a separate deliverable)');
   const targets = Array.isArray(ctx.targets) ? ctx.targets : [];
   if (targets.length) {
-    for (const t of targets) md.push(`- \`/${t.workflow}\` · ${t.step ?? 'step to pick in the integration stream'} · ${t.mode} — ${t.how}`);
+    for (const t of targets) md.push(`- ${landingLine(t)}`);
   } else md.push('- (no targets recorded: this run was decided before the targets step)');
-  md.push(`- Build the power so these steps can call it. The \`${INTEGRATION_STREAM}\` stream wires it in; \`wired_${slug}\` counts only a step in these workflows that runs it.`);
+  md.push(`- Build the power so these places can call it: one entry (a kit verb for a workflow, a module and function for code). The \`${INTEGRATION_STREAM}\` stream wires it in; \`wired_${slug}\` counts only a target that uses the entry and, for code, a reach test that goes in through the surface and passes.`);
   md.push('');
 
   // Finish line section
@@ -337,20 +337,40 @@ export function renderMemo(power, ctx) {
  */
 export function renderIntegration(run, outputPowers) {
   const md = [`# Integration — bbs run ${run}`, '',
-    'Building a power is not the deliverable; the owner using it is. This stream starts after every build stream is done.', '',
+    'Building a power is not the deliverable; a user using it is. This stream starts after every build stream is done.', '',
     '## Rows'];
+  const kinds = new Set();
   for (const p of outputPowers) {
     const ts = Array.isArray(p.targets) ? p.targets : [];
     if (!ts.length) md.push(`- ${p.name}: (no targets recorded — pick them with the owner before wiring)`);
-    for (const t of ts) md.push(`- ${p.name} → \`/${t.workflow}\` · ${t.step ?? 'step to pick'} · ${t.mode} — ${t.how}`);
+    for (const t of ts) { md.push(`- ${p.name} → ${landingLine(t)}`); kinds.add(isWorkflow(t) ? 'workflow' : t.kind); }
   }
-  md.push('', '## How',
-    '1. For each row, add a step to that workflow\'s command source (src/plugins/*.js for the suite\'s own commands) under the named heading that runs `node .claude/helpers/kit/cli.js <verb>`: what to do when the kit is not installed, what each exit code means, and, for `advisory`, that the workflow goes on.',
-    '2. Regenerate the installed command files from their source.',
-    `3. Measure each power: \`node scripts/marathon-measure.js --wired --bbs-run ${run} --power <power> --verb <verb>\` records \`wired_<slug>\` (targets whose step runs the verb).`,
-    `4. Tell the owner: \`node scripts/marathon-measure.js --delivered --bbs-run ${run} --verb <power>=<verb> ...\` writes delivered.md and records \`delivered\`; print delivered.md to the owner.`,
-    '5. Review this stream on the command files it changed: the reviewer checks that each step is reachable in the workflow\'s normal flow, not only that the text names the verb.');
+  md.push('', '## How', '1. Wire each row where it says, the way that surface works:');
+  for (const k of Object.keys(WIRE_HOW)) if (kinds.has(k)) md.push(`   - ${k}: ${WIRE_HOW[k]}`);
+  md.push(
+    `2. Record each power: \`node .claude/helpers/bbs/cli.js integrate --run ${run} --power <name> [--verb <kit verb>] [--entry <module>#<symbol>] [--reach <surface id>[@<at>]=<test file>::<command>]...\`. A reach test goes in through the surface (it imports the surface file or names its route, endpoint, command or flag) and checks the power's effect there; a test that only calls the power does not count.`,
+    `3. Measure each power: \`node .claude/helpers/bbs/cli.js wired --run ${run} --power <name> --record\` records \`wired_<slug>\` (targets that use the entry and whose reach test passes now).`,
+    `4. Tell the owner: \`node .claude/helpers/bbs/cli.js delivered --run ${run} --record\` writes delivered.md (where to find each power, the test that proves it, how to run it) and records \`delivered\`; print delivered.md to the owner.`,
+    '5. Review this stream on the files it changed: the reviewer checks each wiring is reached in the normal flow (a menu links the page, the router mounts the endpoint, the scheduler runs the job, the flag is read), not only that the file names the power.');
   return md.join('\n');
+}
+
+/** How each surface kind is wired, for the integration plan. */
+const WIRE_HOW = {
+  ui: 'render or call the power from the page or component at the route; make it reachable from the navigation a user already uses; the reach test renders the page (or drives it in a browser) and sees the power\'s effect',
+  api: 'call the power inside the handler at the endpoint; the reach test sends a request to the endpoint and checks the response',
+  job: 'call the power in the scheduled or queued job; the reach test runs the job\'s handler once',
+  model: 'put the power in the model or prompt step (before or after the call, as its how says); the reach test runs the step with a stub client and checks what is sent or returned',
+  cli: 'add the power to the command (a subcommand or flag) and to its help; the reach test runs the command',
+  feature: 'gate the power behind the flag and read the flag where the feature runs; the reach test turns the flag on and checks the effect',
+  lib: 'export the power from the package entry; the reach test imports it from the package entry, not from its own file',
+  workflow: 'add a step under the named heading of the workflow\'s command source (src/plugins/*.js for the suite\'s own commands) that runs `node .claude/helpers/kit/cli.js <verb>`: what to do when the kit is not installed, what each exit code means, and, for `advisory`, that the workflow goes on; regenerate the installed command files'
+};
+
+/** One target as a line: where (workflow step, or how a user reaches the surface), mode and what it does there. */
+function landingLine(t) {
+  if (isWorkflow(t)) return `\`/${t.workflow}\` · ${t.step ?? 'step to pick in the integration stream'} · ${t.mode} — ${t.how}`;
+  return `${t.kind} \`${t.surface}\` · ${t.at ?? 'place to pick in the integration stream'} · ${t.mode} — reached by: ${t.reach}; ${t.how}`;
 }
 
 /** The marathon run id shape this bridge accepts from `cli.js init` (letters, digits and dashes, starting alnum). */
@@ -719,7 +739,7 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
       const kickoff = fillKickoff(seeded, {
         'Done means': [
           ...approved.flatMap(p => [`- ${p.name}: 5 checks below`, ...finishLine.byPower[p.name].map(l => doneBullet(l, slugPower(p.name), '  '))]),
-          `- ${INTEGRATION_STREAM}: every power wired into the workflows approved at the verdict, and delivered.md tells the owner what they got (plan: ${integrationRel})`
+          `- ${INTEGRATION_STREAM}: every power wired into the places approved at the verdict (a workflow step, or a page, endpoint, job, model step, command, flag or library entry a reach test proves), and delivered.md tells the owner what they got (plan: ${integrationRel})`
         ],
         'You may decide on your own': MAY_DECIDE,
         'Ask me before': ASK_BEFORE,

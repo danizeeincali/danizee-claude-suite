@@ -14,7 +14,7 @@ import { runDir as runDirOf, readJson, readJsonl, writeJson, appendJsonl, append
 import { RUN_ID, invalidRunId, redactUrlsInText } from './intake.js';
 import { parseJsonOnly } from './inventory.js';
 import { renderStatusSafe, loadState, nextStep } from './status.js';
-import { landsIn, standingTargets } from './targets.js';
+import { landsIn, standingTargets, noLandingWhy } from './targets.js';
 
 export const VERDICTS = ['rebuild', 'use', 'buy', 'skip'];
 export const PROBES = ['clean', 'found', 'incomplete'];
@@ -415,7 +415,7 @@ export function landingDefault(name, row, targets, usage) {
 }
 
 /**
- * The verdict table. With `targets` (targets.json's map) it gains a Lands in column: workflow · step · mode per target,
+ * The verdict table. With `targets` (targets.json's map) it gains a Lands in column: where · at · mode per target,
  * and the Default column is landingDefault (judged against `usage`).
  */
 export function verdictTable(rows, targets, usage) {
@@ -428,7 +428,7 @@ export function verdictTable(rows, targets, usage) {
     if (r.probe?.result) whys.push(`probe: ${r.probe.result}`);
     const legal = (r.legal || []).map(v => (v === 'use' && r.needs_probe ? 'use (probe first)' : v)).join(', ');
     const shown = landingDefault(name, r, targets, usage);
-    if (shown !== r.default) whys.unshift(`default ${r.default} → ${shown}: it lands in no workflow you run`);
+    if (shown !== r.default) whys.unshift(`default ${r.default} → ${shown}: ${noLandingWhy(targets[name], usage)}`);
     const why = whys.join('; ');
     const cells = [name, harnessCell(r.judgment), `${r.licence ?? 'unknown'} (${r.licence_class ?? 'none'})`, legal, shown ?? ''];
     if (targets) cells.push(landsIn(targets[name]));
@@ -864,23 +864,24 @@ export async function recordDecisions(projectDir, { run, input, now = () => new 
     const repairable = async (file, verb) => {
       try { return await readJson(path.join(p.dir, file)); } catch (err) { throw new Error(`${err.message} — ${verb} to replace it`); }
     };
-    // usage.json and targets.json matter only to a decision that builds: a skip or buy is never blocked by them
-    const builds = Object.values(decisions).some(v => v === 'rebuild' || v === 'use');
+    // usage.json and targets.json matter only to a decision that newly builds: a skip, a buy or a resubmitted
+    // (repaired) decision is never blocked by them
+    const builds = Object.entries(decisions).some(([n, v]) => (v === 'rebuild' || v === 'use') && (vj.decisions[n] ?? vj.rows[n].decision) !== v);
     const counted = builds ? await repairable('usage.json', 'run cli.js usage --force (or --force --workflows <a,b>)') : null;
     const landing = builds ? (await repairable('targets.json', 'run cli.js targets --force --from <file>'))?.targets : null;
     try {
       for (const [name, v] of Object.entries(decisions)) {
         const row = vj.rows[name];
         const same = (vj.decisions[name] ?? row.decision) === v; // resubmitting a recorded decision is a repair, not a change
-        if ((v === 'rebuild' || v === 'use') && !same && (!counted || counted.evidence === 'none' || !counted.workflows?.length)) {
-          // where a power can land depends on the workflows the owner runs: never decided on a guess
-          throw new PolicyRefused(`${v} needs the owner's workflows first: ${counted ? 'usage.json has no evidence — record the owner\'s answer with cli.js usage --force --workflows <a,b>' : 'run cli.js usage (or cli.js usage --workflows <a,b> with the owner\'s own list)'}, then decide ${name}`);
+        if ((v === 'rebuild' || v === 'use') && !same && !counted) {
+          throw new PolicyRefused(`${v} needs the usage step first: run cli.js usage (or cli.js usage --workflows <a,b> with the owner's own list), then decide ${name}`);
         }
         if ((v === 'rebuild' || v === 'use') && !same && !standingTargets(landing?.[name], counted).length) {
-          // building is not the deliverable: a power lands in a workflow the owner runs, or it is not built
-          const why = !Array.isArray(landing?.[name]) ? 'no targets recorded' : landing[name].length ? 'none of its targets is a workflow the owner runs' : 'its targets are empty';
-          throw new PolicyRefused(`${v} needs a workflow for ${name} to land in: ${why} — `
-            + `record them with cli.js targets --from <file>, or the owner's own with cli.js targets --set ${name}@<workflow>[,<workflow>]; otherwise skip or buy it`);
+          // building is not the deliverable: a power lands where a user meets it, or it is not built
+          const why = noLandingWhy(landing?.[name], counted);
+          const evidenceFix = /unverified/.test(why) ? 'record the owner\'s workflows with cli.js usage --force --workflows <a,b>, or ' : '';
+          throw new PolicyRefused(`${v} needs a place for ${name} to land: ${why} — ${evidenceFix}`
+            + `record targets with cli.js targets --from <file>, or the owner's own with cli.js targets --set ${name}@<workflow|kind:file[#anchor]>[,…]; otherwise skip or buy it`);
         }
         if (v === 'use' && row.needs_probe) {
           throw new PolicyRefused(`use needs a clean network probe for ${name} first (cli.js verdict --probe ${name}=clean|found|incomplete); legal verdicts are ${row.legal.join(', ')}`);
