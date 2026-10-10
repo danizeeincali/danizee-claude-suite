@@ -95,7 +95,7 @@
  *
  * Repository state is never cached: every call re-reads the config and copies refs and index, so a changed repo is
  * always seen. The only cache is the resolved absolute git path (per PATH/PATHEXT); clearSafeGitCache() empties it.
- * Not reproduced in the shadow: reflogs (`@{n}`), core.worktree, other worktrees' HEADs, in-progress
+ * info/grafts is copied (git still honours it), so log shows the history plain git shows. Not reproduced in the shadow: reflogs (`@{n}`), core.worktree, other worktrees' HEADs, in-progress
  * rebase/bisect state, and submodule changes (ignored).
  * Built from ideas audited by /w-bbs (run 2026-10-10-openqodex-2); no foreign code.
  */
@@ -301,6 +301,7 @@ export async function locateRepo(dir) {
   if (!(await isDir(real))) throw new KitExit(`${real} is not a readable git repository (not a folder)`, 1);
   for (let d = real; ;) {
     const dotgit = path.join(d, '.git');
+    await refuseNetworkLink(dotgit, dotgit); // before stat follows it
     const st = await statOrNull(dotgit);
     if (st?.isDirectory() && await looksLikeGitDir(dotgit)) return finishLocate(real, dotgit, d);
     if (st?.isFile()) {
@@ -308,6 +309,8 @@ export async function locateRepo(dir) {
       const m = /^gitdir: (.+?)\s*$/m.exec(text || '');
       if (m && isNetworkPath(m[1])) throw refuse(`${dotgit} points at a network path; refusing to open it`);
       const target = m ? path.resolve(d, m[1]) : null;
+      if (target && isNetworkPath(target)) throw refuse(`${dotgit} points at a network path; refusing to open it`);
+      if (target) await refuseNetworkLink(target, dotgit);
       if (!target || !(await looksLikeGitDir(target))) throw new KitExit(`${real} is not a readable git repository (invalid gitfile ${dotgit})`, 1);
       return finishLocate(real, target, d);
     }
@@ -322,8 +325,11 @@ export async function locateRepo(dir) {
 async function finishLocate(real, gitDirIn, topIn) {
   const gitDir = await fs.realpath(gitDirIn);
   const cd = await readSmall(path.join(gitDir, 'commondir'));
-  if (cd && isNetworkPath(cd)) throw refuse(`${path.join(gitDir, 'commondir')} points at a network path; refusing to open it`);
-  const commonDir = cd ? await fs.realpath(path.resolve(gitDir, cd.trim())).catch(() => null) : gitDir;
+  const cdFile = path.join(gitDir, 'commondir');
+  const cdTarget = cd ? path.resolve(gitDir, cd.trim()) : null;
+  if (cd && (isNetworkPath(cd) || isNetworkPath(cdTarget))) throw refuse(`${cdFile} points at a network path; refusing to open it`);
+  if (cdTarget) await refuseNetworkLink(cdTarget, cdFile);
+  const commonDir = cd ? await fs.realpath(cdTarget).catch(() => null) : gitDir;
   if (!commonDir || !(await isDir(path.join(commonDir, 'objects')))) throw new KitExit(`${real} is not a readable git repository (no objects folder)`, 1);
   return { real, gitDir, commonDir, top: topIn ? await fs.realpath(topIn) : null };
 }
@@ -393,8 +399,9 @@ export function repoFormat(entries) {
   return { version, objectFormat, worktreeConfig };
 }
 
-const CORE_BOOL = ['bare', 'ignorecase', 'precomposeunicode', 'quotepath', 'filemode', 'symlinks'];
-const CORE_ENUM = { autocrlf: ['true', 'false', 'input'], eol: ['lf', 'crlf', 'native'] };
+const CORE_BOOL = ['bare', 'ignorecase', 'precomposeunicode', 'quotepath', 'filemode', 'symlinks', 'trustctime'];
+// trustctime / checkstat keep diff-files and diff-index right on mounts where ctime or inode numbers drift
+const CORE_ENUM = { autocrlf: ['true', 'false', 'input'], eol: ['lf', 'crlf', 'native'], checkstat: ['default', 'minimal'] };
 const AUTOCRLF_ALIASES = { yes: 'true', on: 'true', 1: 'true', no: 'false', off: 'false', 0: 'false' };
 
 /** Allow-listed core.* values (validated) from the effective entries, later entries winning. */
@@ -606,26 +613,41 @@ async function checkObjectsNotLinked(loc, limits) {
   const linked = (p) => refuse(`${p} is a symlink; git would read objects from wherever it points, so safe-git refuses to read this repository`);
   if ((await lstatOrNull(objects))?.isSymbolicLink()) throw linked(objects);
   let seen = 0;
-  const walk = async (dir, depth) => {
-    let entries;
-    try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch (err) {
-      if (err.code === 'ENOENT' || err.code === 'ENOTDIR') return;
-      // git can still open a file by name in a folder it may not list (mode 0333), so an unlistable folder could hide
-      // a symlink: fail closed
-      throw refuse(`cannot list ${dir} (${err.code || err.message}) to check it for symlinks; refusing to read this repository`);
-    }
-    for (const e of entries) {
-      if (++seen > limits.entries) throw refuse(`more than ${limits.entries} entries under ${objects} (loose objects count); refusing to check them — run git gc in a copy you trust, or raise safeGit's limits.entries`);
-      const p = path.join(dir, e.name);
-      if (e.isSymbolicLink()) throw linked(p);
-      if (e.isDirectory()) await walk(p, depth + 1); // every level: info/commit-graphs, pack, loose folders
-    }
-  };
-  await walk(objects, 0);
+  const count = () => { if (++seen > limits.entries) throw refuse(`more than ${limits.entries} entries under ${objects} (loose objects count); refusing to check them — run git gc in a copy you trust, or raise safeGit's limits.entries`); };
+  // every level (info/commit-graphs, pack, loose folders); an unlistable folder could hide a symlink git opens by name
+  const walk = (dir) => eachEntry(dir, count, async (e) => {
+    const p = path.join(dir, e.name);
+    if (e.isSymbolicLink()) throw linked(p);
+    if (e.isDirectory()) await walk(p);
+  });
+  await walk(objects);
 }
 
 /** A network path (//host/share or \\host\share): git would open it over SMB/NFS. */
-const isNetworkPath = (p) => /^(\/\/|\\\\)/.test(String(p).trim());
+/** A network path: two leading separators in any mix (//host, \\\\host, /\\host, \\/host), which Windows treats as UNC. */
+const isNetworkPath = (p) => /^[\\/]{2}/.test(String(p).trim());
+
+/** Refuse when `target` is a symlink whose text names a network path (an unpacked archive can carry one). */
+async function refuseNetworkLink(target, from) {
+  const st = await lstatOrNull(target);
+  if (!st?.isSymbolicLink()) return;
+  const link = await fs.readlink(target).catch(() => '');
+  if (isNetworkPath(link)) throw refuse(`${from} leads to ${target}, a symlink to a network path; refusing to open it`);
+}
+
+/**
+ * Entries of `dir`, one at a time (fs.opendir), so a folder with millions of entries is refused at the cap without
+ * loading it whole. `count()` is called per entry and may throw. ENOENT/ENOTDIR → no entries; any other error →
+ * refuse (fail closed: git may open a file by name in a folder it cannot list).
+ */
+async function eachEntry(dir, count, fn) {
+  let d;
+  try { d = await fs.opendir(dir); } catch (err) {
+    if (err.code === 'ENOENT' || err.code === 'ENOTDIR') return;
+    throw refuse(`cannot list ${dir} (${err.code || err.message}); refusing to read this repository`);
+  }
+  for await (const e of d) { count(); await fn(e); }
+}
 
 function overrideArgs(names) {
   const args = [];
@@ -773,17 +795,16 @@ async function copyTree(src, dst, budget, label) {
   if (!top) return;
   if (top.isSymbolicLink()) throw refuse(`${src} (${label}) is a symlink; git would read refs from wherever it points, so safe-git refuses to read this repository`);
   if (!top.isDirectory()) return;
+  const count = () => { if (++budget.entries > budget.limits.entries) throw refuse(`more than ${budget.limits.entries} entries under ${src}; refusing to copy them`); };
+  // an unlistable refs folder would silently leave a stale packed-refs value in place: fail closed (eachEntry)
   const walk = async (s0, d0) => {
-    let ents;
-    try { ents = await fs.readdir(s0, { withFileTypes: true }); } catch { return; }
     await fs.mkdir(d0, { recursive: true, mode: 0o700 });
-    for (const e of ents) {
-      if (++budget.entries > budget.limits.entries) throw refuse(`more than ${budget.limits.entries} entries under ${src}; refusing to copy them`);
+    await eachEntry(s0, count, async (e) => {
       const s = path.join(s0, e.name);
       const d = path.join(d0, e.name);
       if (e.isDirectory()) await walk(s, d);
       else if (e.isFile()) await copyCapped(s, d, budget.limits.file, budget);
-    }
+    });
   };
   await walk(src, dst);
 }
@@ -846,7 +867,7 @@ export async function buildShadow(scratch, info, limits = DEFAULT_LIMITS) {
   }
   await fs.mkdir(path.join(sg, 'info'));
   if ((await lstatOrNull(path.join(loc.commonDir, 'info')))?.isDirectory()) { // a symlinked info/ is skipped
-    for (const f of ['exclude', 'attributes']) await copyCapped(path.join(loc.commonDir, 'info', f), path.join(sg, 'info', f), budget.limits.file, budget);
+    for (const f of ['exclude', 'attributes', 'grafts']) await copyCapped(path.join(loc.commonDir, 'info', f), path.join(sg, 'info', f), budget.limits.file, budget);
   }
   await copyTree(path.join(loc.commonDir, 'refs'), path.join(sg, 'refs'), budget, 'refs/');
   if (loc.gitDir !== loc.commonDir) await copyTree(path.join(loc.gitDir, 'refs'), path.join(sg, 'refs'), budget, "the worktree's refs/"); // per-worktree refs

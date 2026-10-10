@@ -11,7 +11,7 @@ import {
   safeGit, safeGitEnv, safeGitConfig, checkReadArgs, clearSafeGitCache, defaultGitRunner,
   driversFromConfig, driversFromAttributes, run, READ_SUBCOMMANDS,
   parseConfigList, allowedCore, repoFormat, describeDirtyPlan, buildShadow, DEFAULT_LIMITS,
-  resolveGit, absolutePathEntries, unsafeIndexPath, escapingPath, usage, readsStdin
+  resolveGit, absolutePathEntries, unsafeIndexPath, escapingPath, usage, readsStdin, shadowConfigText
 } from '../src/lib/kit/safe-git.js';
 
 const CLEAN_ENV = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
@@ -2166,5 +2166,81 @@ describe('safe-git — review round 16 regressions', () => {
     };
     await assert.rejects(safeGit(r, ['status'], { git: failing({}) }), (e) => e.code === 3 && /took longer/.test(e.message));
     await assert.rejects(safeGit(r, ['status'], { git: failing({ overflow: true }) }), (e) => e.code === 2 && /too large to check/.test(e.message));
+  });
+});
+
+describe('safe-git — review round 17 regressions', () => {
+  let root;
+  before(async () => { root = await fs.mkdtemp(path.join(os.tmpdir(), 'safe-git-r17-')); });
+  after(async () => {
+    await fs.chmod(path.join(root, 'lockedrefs', '.git', 'refs', 'heads'), 0o755).catch(() => {});
+    await fs.rm(root, { recursive: true, force: true });
+  });
+  const mkRepo = async (name) => {
+    const d = path.join(root, name);
+    await fs.mkdir(d);
+    sh(d, ['init', '-q', '-b', 'main', '.']);
+    await fs.writeFile(path.join(d, 'a.txt'), `${name}\n`);
+    sh(d, ['add', 'a.txt']);
+    sh(d, ['commit', '-q', '-m', name]);
+    return d;
+  };
+
+  it('a refs folder that cannot be listed is refused, never read as the stale packed value',
+    { skip: process.platform === 'win32' || process.getuid?.() === 0 ? 'needs a non-root POSIX user' : false }, async () => {
+      const r = await mkRepo('lockedrefs');
+      sh(r, ['pack-refs', '--all']);
+      await fs.writeFile(path.join(r, 'b.txt'), 'b\n');
+      sh(r, ['add', 'b.txt']);
+      sh(r, ['commit', '-q', '-m', 'b']); // loose refs/heads/main now newer than packed-refs
+      await fs.chmod(path.join(r, '.git', 'refs', 'heads'), 0o333);
+      await assert.rejects(safeGit(r, ['rev-parse', 'HEAD']), (e) => e instanceof KitExit && e.code === 2 && /cannot list/.test(e.message));
+    });
+
+  it('core.trustctime and core.checkStat reach the shadow config, validated', () => {
+    const core = allowedCore([['core.trustctime', 'false'], ['core.checkstat', 'minimal']]);
+    assert.equal(core.trustctime, false);
+    assert.equal(core.checkstat, 'minimal');
+    assert.equal(allowedCore([['core.checkstat', 'evil; rm -rf']]).checkstat, undefined);
+    const text = shadowConfigText({ version: 0 }, core, false);
+    assert.match(text, /trustctime = false/);
+    assert.match(text, /checkstat = minimal/);
+  });
+
+  it('network paths in any separator mix are refused, also behind a local symlink, before anything opens them', { skip: process.platform === 'win32' }, async () => {
+    const wt = path.join(root, 'mixed');
+    await fs.mkdir(wt);
+    for (const target of ['/\\evil\\share\\r', '\\/evil/share/r', '//evil/share', '\\\\evil\\share']) {
+      await fs.writeFile(path.join(wt, '.git'), `gitdir: ${target}\n`);
+      await assert.rejects(safeGit(wt, ['rev-parse', 'HEAD']), (e) => e.code === 2 && /network path/.test(e.message), target);
+    }
+    await fs.symlink('//evil/share/x.git', path.join(wt, 'link'));
+    await fs.writeFile(path.join(wt, '.git'), 'gitdir: link\n');
+    await assert.rejects(safeGit(wt, ['rev-parse', 'HEAD']), (e) => e.code === 2 && /symlink to a network path/.test(e.message));
+    const dl = path.join(root, 'dotgitlink');
+    await fs.mkdir(dl);
+    await fs.symlink('//evil/share/y.git', path.join(dl, '.git'));
+    await assert.rejects(safeGit(dl, ['rev-parse', 'HEAD']), (e) => e.code === 2 && /network path/.test(e.message));
+  });
+
+  it('a refs folder with more entries than the cap is refused without loading it whole', async () => {
+    const r = await mkRepo('manyrefs');
+    const tags = path.join(r, '.git', 'refs', 'tags');
+    const head = sh(r, ['rev-parse', 'HEAD']).stdout.trim();
+    for (let i = 0; i < 60; i++) await fs.writeFile(path.join(tags, `t${i}`), `${head}\n`);
+    await assert.rejects(safeGit(r, ['rev-parse', 'HEAD'], { limits: { entries: 50 } }), (e) => e.code === 2 && /more than 50 entries/.test(e.message));
+    assert.equal((await safeGit(r, ['rev-parse', 'HEAD'])).code, 0);
+  });
+
+  it('info/grafts is honoured like plain git', async () => {
+    const r = await mkRepo('grafts');
+    for (const n of ['c2', 'c3']) { await fs.writeFile(path.join(r, `${n}.txt`), n); sh(r, ['add', '-A']); sh(r, ['commit', '-q', '-m', n]); }
+    const [c3, , c1] = sh(r, ['rev-list', 'HEAD']).stdout.trim().split('\n');
+    await fs.mkdir(path.join(r, '.git', 'info'), { recursive: true });
+    await fs.writeFile(path.join(r, '.git', 'info', 'grafts'), `${c3} ${c1}\n`);
+    const plain = spawnSync('git', ['log', '--format=%s'], { cwd: r, encoding: 'utf-8', env: CLEAN_ENV }).stdout;
+    const safe = await safeGit(r, ['log', '--format=%s']);
+    assert.equal(safe.stdout, plain);
+    assert.doesNotMatch(safe.stdout, /c2/);
   });
 });
