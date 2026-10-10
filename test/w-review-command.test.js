@@ -39,3 +39,21 @@ describe('/w-review closing step', () => {
     assert.match(s, /--incomplete/);
   });
 });
+
+describe('/w-review lens step', () => {
+  it('runs the lenses verb on a diff file inside Code Analysis, copy-pasteable as written', () => {
+    const c = commands['w-review'].content;
+    const a = c.indexOf('### ⛔ CHECKPOINT 1: Code Analysis');
+    const b = c.indexOf('### ⛔ CHECKPOINT 2', a);
+    const s = c.slice(a, b);
+    assert.match(s, /BASE=\$\(git merge-base HEAD '@\{upstream\}'[^\n]*\)\n/);
+    assert.match(s, /git diff [^\n]*--no-prefix "\$BASE"/);
+    assert.match(s, /git ls-files -z --others --exclude-standard/);
+    assert.match(s, /\nD=\$\(mktemp\)\n\{ git diff/);
+    assert.match(s, /> "\$D"\nnode \.claude\/helpers\/kit\/cli\.js lenses --diff "\$D"; RC=\$\?; rm -f "\$D"; \(exit \$RC\)\n/);
+    assert.ok(!s.includes('/tmp/w-review.diff'), 'no fixed shared temp path');
+    assert.ok(!/git diff HEAD\b/.test(s), 'the lens step must not diff against HEAD only');
+    assert.match(s, /--covered no-floating-promises/);
+    assert.ok(!s.includes('\\`'));
+  });
+});
