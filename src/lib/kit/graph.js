@@ -935,6 +935,14 @@ export async function buildGraph(root, opts = {}) {
     return m.slice(0, 200);
   };
   const cacheFail = (e) => { cacheOn = false; stats.cache_error = shortReason(e); };
+  // The cache lives in the work tree under review: a branch could commit entries whose key (a hash of the file's own
+  // bytes) anyone can compute, with empty facts that hide callers. When the repository itself lists anything in the
+  // cache folder (tracked, or untracked and not ignored), the cache is not used for this run: every file is scanned.
+  const cacheRel = path.relative(root, path.dirname(cacheDir)).split(path.sep).join('/');
+  if (cacheOn && cacheRel && !cacheRel.startsWith('..') && !path.isAbsolute(cacheRel)) {
+    const planted = listed.find((f) => f === cacheRel || f.startsWith(`${cacheRel}/`));
+    if (planted) cacheFail(`the repository lists ${planted} in the cache folder, so cached facts cannot be trusted; scanning every file`);
+  }
   // is the cache FOLDER itself usable? (probe a name that is never there: only a folder-level refusal is not "missing")
   const folderRefused = async () => {
     try { await guardedRead(cacheFile('0'.repeat(64)), { root: guardRoot, protect: cacheDir, maxBytes: o.maxCacheBytes }); return null; }

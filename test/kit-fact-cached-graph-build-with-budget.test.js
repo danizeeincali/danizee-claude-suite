@@ -743,3 +743,22 @@ describe('graph — review round 3 regressions', () => {
     assert.doesNotMatch(src, /o\.clock \|\| Date\.now/);
   }));
 });
+
+describe('graph — review round 4 regressions', () => {
+  it('cache entries committed by the repository are never trusted: the cache is off and every file is scanned', () => tmp(async dir => {
+    await repo(dir, { 'a.js': "import { danger } from './b.js';\nexport function a() { danger(); }\n", 'b.js': 'export function danger() {}\n' });
+    const io = { cwd: dir, stdin: async () => '', stdinIsTTY: false, env: process.env };
+    const first = await graph.run(['--json'], io);
+    assert.ok(first.edges.length > 0, 'the honest graph has the a -> danger edge');
+    const key = graph.cacheKey('.js', await fs.readFile(path.join(dir, 'b.js')));
+    const entry = path.join(dir, '.claude', 'kit', 'cache', 'graph', `${key}.json`);
+    const real = JSON.parse(await fs.readFile(entry, 'utf-8'));
+    real.facts = graph.extractFacts('', 'b.js');
+    await fs.writeFile(entry, JSON.stringify(real));
+    spawnSync('git', ['add', '-f', entry], { cwd: dir });
+    spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '-m', 'plant'], { cwd: dir });
+    const g = await graph.run(['--json'], io);
+    assert.ok(g.edges.length > 0, 'the planted empty facts must not hide the caller');
+    assert.match(g.stats.cache_error, /cache folder/);
+  }));
+});
