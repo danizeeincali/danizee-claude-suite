@@ -55,9 +55,11 @@
  *   named false), the pager, submodule recursion (diff.ignoreSubmodules=all), every transport (protocol.allow and
  *   protocol.<each>.allow=never), the external diff, signatures (log.showSignature=false, gpg.program /
  *   gpg.ssh.program / gpg.x509.program = a path that cannot run, format.pretty=medium), and every filter/diff/merge
- *   driver named in the repo's own config files (config, config.worktree; includes are not read), info/attributes, core.attributesFile,
+ *   driver named in the repo's own config files (config, config.worktree; includes are not read), info/attributes,
  *   or a work-tree .gitattributes that git would read — listed by the shadow's own `ls-files --cached --others
- *   --exclude-standard`, so git-ignored trees such as node_modules are never walked. A driver
+ *   --exclude-standard`, so git-ignored trees such as node_modules are never walked. Attribute files are read only
+ *   when they are regular files inside the repository (symlinks are skipped); core.attributesFile is never opened,
+ *   since the shadow config does not carry it and git does not read it. A driver
  *   name that cannot be switched off safely makes the call refuse (KitExit 2). Diff-producing subcommands get
  *   `--no-ext-diff --no-textconv --ignore-submodules=all`, status gets `--ignore-submodules=all`, and
  *   `describe --dirty/--broken` is answered with submodules ignored (describe's own check starts a git inside each
@@ -70,7 +72,8 @@
  * switches off (--ext-diff, --textconv, --filters, --output, -O/--open-files-in-pager, --no-index, --show-signature,
  * --recurse-submodules, --ignore-submodules, --submodule, %G and %(signature) format placeholders) are refused too —
  * and so is ANY long option that is a prefix of one of them (git accepts unambiguous abbreviations such as
- * `cat-file --textc`), with or without `=value`. git diff also switches to no-index ON ITS OWN when both paths lie
+ * `cat-file --textc`), with or without `=value` — except a real option the subcommand has, which git matches
+ * exactly (`--text` for the diffing commands, `rev-list --filter=<spec>`). git diff also switches to no-index ON ITS OWN when either path lies
  * outside the work tree, so for the diffing commands (log show diff diff-tree diff-index diff-files) every non-option
  * argument, and every argument after `--`, that is absolute (/x, C:x, \\host) or climbs out with '..' is refused.
  * rev-parse --git-dir / --git-common-dir / --absolute-git-dir /
@@ -79,7 +82,8 @@
  * CLI: prints { stdout, stderr, code, exit }; exit status 0 when git succeeded, 3 when git ran and failed (git's own
  * code is `code`), 1 for bad input / broken state, 2 for a policy refusal. --help prints the usage.
  *
- * Nothing is cached: every call re-reads the config and copies refs and index, so a changed repo is always seen.
+ * Repository state is never cached: every call re-reads the config and copies refs and index, so a changed repo is
+ * always seen. The only cache is the resolved absolute git path (per PATH/PATHEXT); clearSafeGitCache() empties it.
  * Not reproduced in the shadow: reflogs (`@{n}`), core.worktree, other worktrees' HEADs, in-progress
  * rebase/bisect state, and submodule changes (ignored).
  * Built from ideas audited by /w-bbs (run 2026-10-10-openqodex-2); no foreign code.
@@ -393,12 +397,39 @@ export function driversFromAttributes(text) {
   return names;
 }
 
-async function readCapped(file) {
-  let st;
-  try { st = await fs.stat(file); } catch { return ''; }
-  if (!st.isFile()) return '';
-  if (st.size > MAX_ATTR_BYTES) throw refuse(`${file} is larger than ${MAX_ATTR_BYTES} bytes; its filter drivers cannot be checked`);
-  return fs.readFile(file, 'utf-8');
+/**
+ * The text of an attributes file, read only when it is a regular file (lstat: a symlink, FIFO or anything else is
+ * skipped, as git >= 2.32 skips a symlinked in-tree .gitattributes) whose folder resolves inside `root`. Read through
+ * an O_NOFOLLOW, non-blocking descriptor and capped at MAX_ATTR_BYTES (over it: KitExit 2). '' when skipped.
+ */
+async function readAttributesFile(file, root) {
+  const st = await lstatOrNull(file);
+  if (!st || !st.isFile()) return '';
+  const [dir, realRoot] = await Promise.all([fs.realpath(path.dirname(file)).catch(() => null), fs.realpath(root).catch(() => null)]);
+  if (!dir || !realRoot || (dir !== realRoot && !dir.startsWith(realRoot.endsWith(path.sep) ? realRoot : realRoot + path.sep))) return '';
+  const tooBig = () => refuse(`${file} is larger than ${MAX_ATTR_BYTES} bytes; its filter drivers cannot be checked`);
+  if (st.size > MAX_ATTR_BYTES) throw tooBig();
+  let fh;
+  try {
+    fh = await fs.open(file, fsSync.constants.O_RDONLY | (fsSync.constants.O_NOFOLLOW || 0) | (fsSync.constants.O_NONBLOCK || 0));
+  } catch { return ''; }
+  try {
+    const fst = await fh.stat();
+    if (!fst.isFile()) return '';
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+      const buf = Buffer.alloc(MAX_SMALL_FILE);
+      const { bytesRead } = await fh.read(buf, 0, buf.length, null);
+      if (bytesRead === 0) break;
+      total += bytesRead;
+      if (total > MAX_ATTR_BYTES) throw tooBig();
+      chunks.push(buf.subarray(0, bytesRead));
+    }
+    return Buffer.concat(chunks).toString('utf-8');
+  } finally {
+    await fh.close();
+  }
 }
 
 /**
@@ -414,7 +445,7 @@ async function workTreeAttributes(exec, top) {
   for (const rel of new Set(String(r.stdout).split('\0').filter(Boolean))) {
     if (path.posix.basename(rel) !== '.gitattributes') continue;
     const file = path.join(top, ...rel.split('/'));
-    if (await lstatOrNull(file)) { out.push({ rel, text: await readCapped(file) }); continue; }
+    if (await lstatOrNull(file)) { out.push({ rel, text: await readAttributesFile(file, top) }); continue; } // a symlink: skipped, as git does
     const size = await exec(['cat-file', '-s', `:${rel}`]);
     if (size.code !== 0) continue; // untracked and gone, or not in the index: git reads nothing either
     if (Number(String(size.stdout).trim()) > MAX_ATTR_BYTES) throw refuse(`${rel} in the index is larger than ${MAX_ATTR_BYTES} bytes; its filter drivers cannot be checked`);
@@ -467,8 +498,8 @@ async function checkIndexPaths(exec) {
   }
 }
 
-/** Kept for API compatibility: there is no cache any more (every call re-reads everything). */
-export function clearSafeGitCache() {}
+/** Empties the resolved git path cache (resolveGit); repository state is never cached, every call re-reads it. */
+export function clearSafeGitCache() { gitPathCache.clear(); }
 
 const NO_PROGRAM = process.platform === 'win32' ? nullConfigPath() : '/dev/null'; // exists, is not executable
 const STATIC_OVERRIDES = [
@@ -518,20 +549,17 @@ function overrideArgs(names) {
 }
 
 /**
- * The -c overrides: static switches + every driver named in the config entries, info/attributes, core.attributesFile
- * and (with a work tree) the .gitattributes files the shadow lists. `shadowExec(args, extra)` runs git in the shadow.
+ * The -c overrides: static switches + every driver named in the config entries, info/attributes and (with a work
+ * tree) the .gitattributes files the shadow lists. core.attributesFile is never opened: the shadow config does not
+ * carry it, so git never reads it either (and its value may name a file outside the repository or a UNC share).
+ * `shadowExec(args, extra)` runs git in the shadow.
  */
 async function overridesFor(info, shadowExec) {
   const { loc, entries } = info;
   const names = driversFromKeys(entries.map(([k]) => k));
-  const files = [...new Set([loc.gitDir, loc.commonDir].map(d => path.join(d, 'info', 'attributes')))];
-  for (const [k, v] of entries) {
-    if (k !== 'core.attributesfile' || !v) continue;
-    const expanded = v.startsWith('~/') ? path.join(os.homedir(), v.slice(2)) : v;
-    // git resolves a relative value against the folder it runs in; scan every plausible base.
-    for (const base of [loc.real, loc.top, loc.gitDir, loc.commonDir]) if (base) files.push(path.resolve(base, expanded));
+  for (const d of new Set([loc.gitDir, loc.commonDir])) {
+    for (const n of driversFromAttributes(await readAttributesFile(path.join(d, 'info', 'attributes'), d))) names.add(n);
   }
-  for (const f of new Set(files)) for (const n of driversFromAttributes(await readCapped(f))) names.add(n);
   // validate the config/info names first: the listing below runs git, and must not run with a name we cannot switch off
   const base = overrideArgs(names);
   if (!info.top) return base;
@@ -580,7 +608,7 @@ async function prepare(dir, ctx) {
 /**
  * The `-c` override argv for the folder (defence in depth; git never reads the repo config through safeGit anyway):
  * static switches plus, for every driver name in its own config files (config, config.worktree — read as data,
- * without includes), info/attributes, core.attributesFile or a .gitattributes the shadow's ls-files lists, empty filter.<n>.{clean,smudge,process}, filter.<n>.required=false, empty
+ * without includes), info/attributes or a .gitattributes the shadow's ls-files lists, empty filter.<n>.{clean,smudge,process}, filter.<n>.required=false, empty
  * diff.<n>.{command,textconv} and merge.<n>.driver. KitExit 2 for a driver name outside [A-Za-z0-9._-] or an
  * unsupported repository format, KitExit 1 when git cannot answer. Computed afresh on every call.
  */
@@ -723,6 +751,12 @@ export const DENIED_LONG = Object.freeze([
   'ext-diff', 'textconv', 'filters', 'no-index', 'show-signature', 'open-files-in-pager', 'output', 'output-directory',
   'exec', 'upload-pack', 'receive-pack', 'recurse-submodules', 'ignore-submodules', 'submodule'
 ]);
+/**
+ * Real options that are also prefixes of a denied one, per subcommand: git matches an exact option name before it
+ * tries abbreviations, so these are the harmless option itself (diff's --text is -a; rev-list's --filter=<spec> is
+ * the object filter). Only where the subcommand really has the option: `cat-file --text` abbreviates --textconv.
+ */
+const EXACT_SAFE = Object.freeze({ text: DIFFING, filter: new Set(['rev-list']) });
 /** rev-parse options that would print the private shadow git dir instead of the repository's. */
 const REV_PARSE_SHADOW = new Set(['git-dir', 'absolute-git-dir', 'git-common-dir', 'git-path', 'shared-index-path']);
 const SIGNATURE_FORMAT = /%G|%\(\s*signature/i;
@@ -751,17 +785,19 @@ export function checkReadArgs(args) {
   const opts = dashdash === -1 ? rest : rest.slice(0, dashdash);
   for (const a of opts) {
     const name = a.startsWith('--') && a !== '--' ? a.slice(2).split('=')[0] : null;
-    // git's option parser accepts any unambiguous prefix of a long option, so refuse every prefix of a denied one.
-    if ((name !== null && (name === '' || DENIED_LONG.some(d => d.startsWith(name))))
+    // git's option parser accepts any unambiguous prefix of a long option, so refuse every prefix of a denied one,
+    // except a real option of this subcommand that git matches exactly (EXACT_SAFE).
+    const exactSafe = name !== null && Object.hasOwn(EXACT_SAFE, name) && EXACT_SAFE[name].has(sub);
+    if ((name !== null && !exactSafe && (name === '' || DENIED_LONG.some(d => d.startsWith(name))))
       || /^-O/.test(a) || SIGNATURE_FORMAT.test(a)) {
-      throw refuse(`git option ${a} would re-enable code execution, write a file or read a submodule`);
+      throw refuse(`git option ${a} is, or abbreviates, an option safe-git does not allow (it would re-enable code execution, write a file or read a submodule)`);
     }
     if (sub === 'rev-parse' && name !== null && REV_PARSE_SHADOW.has(name)) {
       throw refuse(`git rev-parse ${a} would print safe-git's private shadow git dir, not the repository's`);
     }
   }
   if (DIFFING.has(sub)) {
-    // git diff turns into `diff --no-index` on its own when both paths lie outside the work tree: no path argument
+    // git diff turns into `diff --no-index` on its own when either path lies outside the work tree: no path argument
     // of a diffing command may be absolute or climb out with '..'.
     for (const [k, a] of rest.entries()) {
       if ((dashdash === -1 || k < dashdash) && a.startsWith('-')) continue;

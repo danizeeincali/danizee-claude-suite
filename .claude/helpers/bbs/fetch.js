@@ -408,7 +408,10 @@ function firstLine(err) {
   return raw.split('\n').map(s => s.trim()).find(Boolean) || 'unknown error';
 }
 
-/** The kit's hardened git reader, or null when the kit is not installed next to this file (then behaviour is unchanged). */
+/**
+ * The kit's hardened git reader, or null when the kit is not installed next to this file (then headOf falls back to
+ * the plain runner: git by its absolute path, the repository named by --git-dir, cwd outside the clone).
+ */
 export async function loadSafeGit() {
   try { return await import('../kit/safe-git.js'); } catch (err) {
     if (err?.code === 'ERR_MODULE_NOT_FOUND' || err?.code === 'ENOENT') return null;

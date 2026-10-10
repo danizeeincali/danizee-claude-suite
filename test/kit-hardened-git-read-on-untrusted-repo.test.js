@@ -346,13 +346,15 @@ describe('safe-git — caller: bbs fetch rev-parse of the fetched clone', () => 
     assert.equal(await exists(dest), false);
   });
 
-  it('cloneRepo with an injected git and no hardened flag keeps the plain call (existing behaviour)', async () => {
+  it('cloneRepo with an injected git and no hardened flag uses the plain runner: --git-dir from outside the clone', async () => {
     const { cloneRepo } = await import('../src/lib/bbs/fetch.js');
     const calls = [];
-    const git = (args) => { calls.push(args); return args.includes('rev-parse') ? 'abcdef1234567890abcdef1234567890abcdef12\n' : ''; };
+    const cwds = [];
+    const git = (args, cwd) => { calls.push(args); cwds.push(cwd); return args.includes('rev-parse') ? 'abcdef1234567890abcdef1234567890abcdef12\n' : ''; };
     const r = await cloneRepo('https://github.com/a/b.git', path.join(root, 'plain-dest'), { git, lookup, onEgress: () => {} });
     assert.equal(r.sha, 'abcdef1234567890abcdef1234567890abcdef12');
     assert.deepEqual(calls[1], ['--git-dir', path.join(root, 'plain-dest', '.git'), 'rev-parse', 'HEAD']);
+    assert.equal(cwds[1], path.resolve(root), 'rev-parse runs from the clone\'s parent folder, not inside the clone');
   });
 });
 
@@ -405,7 +407,10 @@ describe('safe-git — review round 1 regressions (config.worktree, linked workt
     assert.deepEqual(await r.fired(), [], 'no marker file was created');
   });
 
-  it('a driver named only in core.attributesFile inside .git (set in config.worktree, no config key) is still switched off', async () => {
+  // review round 6: core.attributesFile is no longer opened (the shadow config does not carry it, so git never reads
+  // it); the discovery assertion is inverted: its drivers are NOT listed. That nothing runs is covered by the wtcfg
+  // test above and the shadow-only test below.
+  it('a driver named only in core.attributesFile inside .git (set in config.worktree, no config key) is not looked up: the file is never read', async () => {
     clearSafeGitCache();
     const r = await plainRepo('attrfile-only');
     sh(r.dir, ['config', 'extensions.worktreeConfig', 'true']);
@@ -414,7 +419,7 @@ describe('safe-git — review round 1 regressions (config.worktree, linked workt
     const args = await safeGitConfig(r.dir);
     for (const n of ['onlyattr', 'onlydiff', 'onlymerge']) {
       for (const k of ['filter.%.clean=', 'filter.%.smudge=', 'filter.%.process=', 'filter.%.required=false', 'diff.%.command=', 'diff.%.textconv=', 'merge.%.driver=']) {
-        assert.ok(args.includes(k.replace('%', n)), k.replace('%', n));
+        assert.ok(!args.includes(k.replace('%', n)), k.replace('%', n));
       }
     }
   });
@@ -457,7 +462,7 @@ describe('safe-git — review round 1 regressions (config.worktree, linked workt
     assert.deepEqual(await r.fired(), [], 'no marker file was created');
   });
 
-  it('a config.worktree written after the first call invalidates the cache', async () => {
+  it('a config.worktree written after the first call is seen by the next call', async () => {
     clearSafeGitCache();
     const r = await plainRepo('wtcache');
     sh(r.dir, ['config', 'extensions.worktreeConfig', 'true']);
@@ -1426,5 +1431,151 @@ describe('safe-git — review round 5 regressions (bbs fallback outside the clon
     assert.equal(escapingPath('a/../../b'), true);
     assert.equal(escapingPath('HEAD...main'), false);
     assert.match(fsSync.readFileSync(new URL('../src/lib/kit/safe-git.js', import.meta.url), 'utf-8'), /switches to no-index ON ITS OWN/);
+  });
+});
+
+describe('safe-git — review round 6 regressions (core.attributesFile never opened, symlinked attributes skipped, git path cache, exact safe options)', () => {
+  let root;
+  before(async () => { root = await fs.mkdtemp(path.join(os.tmpdir(), 'safe-git-r6-')); });
+  after(async () => { await fs.rm(root, { recursive: true, force: true }); });
+  const SAFE_GIT = new URL('../src/lib/kit/safe-git.js', import.meta.url).href;
+
+  async function repo(name) {
+    const dir = path.join(root, name);
+    await fs.mkdir(dir, { recursive: true });
+    sh(dir, ['init', '-q', '.']);
+    await fs.writeFile(path.join(dir, 'a.txt'), 'a\n');
+    sh(dir, ['add', '.']);
+    sh(dir, ['commit', '-q', '-m', 'init']);
+    await fs.writeFile(path.join(dir, 'a.txt'), 'changed\n');
+    return dir;
+  }
+
+  /**
+   * Runs safeGitConfig, then safeGit diff and status, on each repo in a child node whose fs calls are recorded: every
+   * path argument under `outside` that any fs function (promises or sync) is given. A 20 s cap: a FIFO opened by the
+   * wrapper or by git would block until killed.
+   */
+  async function probe(dirs, outside) {
+    const scripts = await fs.mkdtemp(path.join(root, 'probe-script-'));
+    const script = path.join(scripts, 'probe.mjs');
+    await fs.writeFile(script, `
+      import fsp from 'fs/promises';
+      import fsSync from 'fs';
+      const outside = ${JSON.stringify([outside, await fs.realpath(outside)])};
+      const touched = [];
+      const hits = (a) => (typeof a === 'string' || a instanceof URL) && outside.some(o => String(a).startsWith(o));
+      for (const obj of [fsp, fsSync]) {
+        for (const k of Object.keys(obj)) {
+          const f = obj[k];
+          if (typeof f !== 'function' || /^[A-Z]/.test(k)) continue;
+          obj[k] = function (...a) { if (hits(a[0])) touched.push(k + ' ' + a[0]); return f.apply(this, a); };
+        }
+      }
+      const { safeGitConfig, safeGit } = await import(${JSON.stringify(SAFE_GIT)});
+      const out = {};
+      for (const d of ${JSON.stringify(dirs)}) {
+        out[d] = { overrides: await safeGitConfig(d), diff: await safeGit(d, ['diff']), status: await safeGit(d, ['status', '--porcelain']) };
+      }
+      process.stdout.write(JSON.stringify({ out, touched }));
+    `);
+    const r = spawnSync(process.execPath, [script], { cwd: root, encoding: 'utf-8', env: CLEAN_ENV, timeout: 20000 });
+    assert.equal(r.status, 0, `the probe finished (a blocked FIFO open would time out): ${r.signal || ''} ${r.stderr}`);
+    return JSON.parse(r.stdout);
+  }
+
+  it('core.attributesFile pointing outside the repository (a file, a FIFO) is never opened, stat-ed or listed; git in the shadow never reads it either', async (t) => {
+    if (process.platform === 'win32') return t.skip('mkfifo');
+    const outside = path.join(root, 'outside-attrfile');
+    await fs.mkdir(outside);
+    await fs.writeFile(path.join(outside, 'attrs'), '* filter=fromoutside diff=fromoutside merge=fromoutside\n');
+    assert.equal(spawnSync('mkfifo', [path.join(outside, 'fifo')]).status, 0);
+    const file = await repo('attrfile-outside');
+    sh(file, ['config', 'core.attributesFile', path.join(outside, 'attrs')]);
+    const fifo = await repo('attrfile-fifo');
+    sh(fifo, ['config', 'core.attributesFile', path.join(outside, 'fifo')]);
+    const rel = await repo('attrfile-relative');
+    sh(rel, ['config', 'core.attributesFile', path.relative(rel, path.join(outside, 'attrs'))]);
+    const { out, touched } = await probe([file, fifo, rel], outside);
+    assert.deepEqual(touched, [], 'no fs call names a path outside the repository');
+    for (const d of [file, fifo, rel]) {
+      assert.ok(!out[d].overrides.some(o => o.includes('fromoutside')), `${d}: the outside file's drivers are not listed`);
+      assert.equal(out[d].diff.code, 0, out[d].diff.stderr);
+      assert.match(out[d].diff.stdout, /\+changed/);
+      assert.equal(out[d].status.code, 0, out[d].status.stderr);
+    }
+  });
+
+  it('a symlinked work-tree .gitattributes, info/attributes or info/ folder is skipped: its target outside the repository is never opened', async (t) => {
+    if (process.platform === 'win32') return t.skip('symlinks');
+    const outside = path.join(root, 'outside-symlinks');
+    await fs.mkdir(path.join(outside, 'info'), { recursive: true });
+    await fs.writeFile(path.join(outside, 'wt-attrs'), '* filter=symwt\n');
+    await fs.writeFile(path.join(outside, 'info-attrs'), '* filter=syminfo\n');
+    await fs.writeFile(path.join(outside, 'info', 'attributes'), '* filter=syminfodir\n');
+    const a = await repo('symlinked-files');
+    await fs.symlink(path.join(outside, 'wt-attrs'), path.join(a, '.gitattributes'));
+    sh(a, ['add', '.gitattributes']);
+    sh(a, ['commit', '-q', '-m', 'symlinked attrs']);
+    await fs.mkdir(path.join(a, '.git', 'info'), { recursive: true });
+    await fs.rm(path.join(a, '.git', 'info', 'attributes'), { force: true });
+    await fs.symlink(path.join(outside, 'info-attrs'), path.join(a, '.git', 'info', 'attributes'));
+    const b = await repo('symlinked-info-dir');
+    await fs.rm(path.join(b, '.git', 'info'), { recursive: true, force: true });
+    await fs.symlink(path.join(outside, 'info'), path.join(b, '.git', 'info'));
+    assert.match(sh(a, ['ls-files', '-s', '.gitattributes']).stdout, /^120000 /, 'setup: .gitattributes is a tracked symlink');
+    const { out, touched } = await probe([a, b], outside);
+    assert.deepEqual(touched, [], 'no fs call names a path outside the repository');
+    for (const d of [a, b]) {
+      assert.ok(!out[d].overrides.some(o => /symwt|syminfo/.test(o)), `${d}: drivers behind a symlink are not listed`);
+      assert.equal(out[d].diff.code, 0, out[d].diff.stderr);
+    }
+    // control: the same lines in regular files inside the repository are still discovered
+    const c = await repo('regular-files');
+    await fs.writeFile(path.join(c, '.gitattributes'), '* filter=regwt\n');
+    await fs.mkdir(path.join(c, '.git', 'info'), { recursive: true });
+    await fs.writeFile(path.join(c, '.git', 'info', 'attributes'), '* filter=reginfo\n');
+    const overrides = await safeGitConfig(c);
+    for (const s of ['filter.regwt.clean=', 'filter.reginfo.clean=']) assert.ok(overrides.includes(s), s);
+  });
+
+  it('clearSafeGitCache empties the resolved git path cache: a removed git is no longer returned', async (t) => {
+    if (process.platform === 'win32') return t.skip('POSIX PATH semantics');
+    const real = resolveGit(CLEAN_ENV);
+    const bins = [path.join(root, 'bin1'), path.join(root, 'bin2')];
+    for (const b of bins) {
+      await fs.mkdir(b);
+      await fs.writeFile(path.join(b, 'git'), `#!/bin/sh\nexec '${real}' "$@"\n`, { mode: 0o755 });
+    }
+    const env = { ...CLEAN_ENV, PATH: bins.join(path.delimiter) };
+    clearSafeGitCache();
+    assert.equal(resolveGit(env), path.join(bins[0], 'git'));
+    await fs.rm(path.join(bins[0], 'git'));
+    assert.equal(resolveGit(env), path.join(bins[0], 'git'), 'the path is cached for the same PATH');
+    clearSafeGitCache();
+    assert.equal(resolveGit(env), path.join(bins[1], 'git'), 'after clearSafeGitCache the next git on PATH is found');
+    clearSafeGitCache();
+    assert.doesNotMatch(fsSync.readFileSync(new URL('../src/lib/kit/safe-git.js', import.meta.url), 'utf-8'), /Nothing is cached|there is no cache/);
+  });
+
+  it('exact real options that prefix a denied one are allowed (diff --text, rev-list --filter=blob:none); their abbreviations and the denied options are still refused', async () => {
+    const dir = await repo('exact-safe');
+    for (const a of [['diff', '--text'], ['show', '--text', 'HEAD'], ['log', '-p', '--text'], ['rev-list', '--filter=blob:none', '--objects', 'HEAD'], ['rev-list', '--filter', 'HEAD']]) {
+      assert.doesNotThrow(() => checkReadArgs(a), a.join(' '));
+    }
+    const d = await safeGit(dir, ['diff', '--text']);
+    assert.equal(d.code, 0, d.stderr);
+    assert.match(d.stdout, /\+changed/);
+    const head = sh(dir, ['rev-parse', 'HEAD']).stdout.trim();
+    const rl = await safeGit(dir, ['rev-list', '--filter=blob:none', '--objects', 'HEAD']);
+    assert.equal(rl.code, 0, rl.stderr);
+    assert.match(rl.stdout, new RegExp(`^${head}`));
+    assert.doesNotMatch(rl.stdout, /a\.txt/, 'the blob filter applied: no blob listed');
+    const refused = [['diff', '--textc'], ['diff', '--textconv'], ['rev-list', '--filt', 'HEAD'], ['rev-list', '--filters', 'HEAD'],
+      ['cat-file', '--text', 'HEAD:a.txt'], ['cat-file', '--filter', 'HEAD:a.txt'], ['cat-file', '--filter=blob:none', '--batch-all-objects'],
+      ['cat-file', '--filters', 'HEAD:a.txt'], ['log', '--filt']];
+    for (const a of refused) {
+      assert.throws(() => checkReadArgs(a), e => e instanceof KitExit && e.code === 2 && /is, or abbreviates, an option safe-git does not allow/.test(e.message), a.join(' '));
+    }
   });
 });
