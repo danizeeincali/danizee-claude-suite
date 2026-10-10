@@ -249,3 +249,37 @@ describe('usage — review r1 regressions', () => {
     assert.equal((await ownerUsage(dir, 'team:ops:deploy')).workflows[0].name, 'team:ops:deploy');
   });
 });
+
+describe('usage — review r2 regressions', () => {
+  let dir;
+  const runId = '2026-10-10-r2';
+  before(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-usage-r2-'));
+    await project(dir);
+    await fs.mkdir(path.join(dir, '.claude', 'bbs', 'runs', runId), { recursive: true });
+  });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+  const cli = (args) => spawnSync(process.execPath, [CLI, ...args, '--run', runId, '--project', dir], { cwd: dir, encoding: 'utf-8' });
+
+  it('a corrupt usage.json is replaced by --force and named with the repair otherwise', async () => {
+    const file = path.join(dir, '.claude', 'bbs', 'runs', runId, 'usage.json');
+    await fs.writeFile(file, '{bad');
+    const plain = cli(['usage', '--workflows', 'bc']);
+    assert.equal(plain.status, 1);
+    assert.match(plain.stderr, /corrupt JSON.*--force/);
+    const forced = cli(['usage', '--force', '--workflows', 'bc']);
+    assert.equal(forced.status, 0, forced.stderr);
+    assert.equal(JSON.parse(await fs.readFile(file, 'utf-8')).evidence, 'owner');
+  });
+
+  it('usage.roots and usage.days in .claude/bbs.json are validated', async () => {
+    const cfgFile = path.join(dir, '.claude', 'bbs.json');
+    for (const [usage, re] of [[{ roots: '~/x' }, /usage\.roots must be a non-empty list/], [{ roots: [] }, /usage\.roots/], [{ roots: [''] }, /usage\.roots/], [{ days: '90x' }, /usage\.days must be a positive integer/], [{ days: 0 }, /usage\.days/]]) {
+      await fs.writeFile(cfgFile, JSON.stringify({ usage }));
+      const r = cli(['usage', '--force', '--root', dir]);
+      assert.equal(r.status, 1, JSON.stringify(usage));
+      assert.match(r.stderr, re);
+    }
+    await fs.rm(cfgFile);
+  });
+});

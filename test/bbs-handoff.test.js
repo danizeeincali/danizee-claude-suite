@@ -285,7 +285,7 @@ describe('handoff — cli verb', () => {
     run(dir, ['inventory', '--from', '-'], JSON.stringify([power()]));
     run(dir, ['map']);
     run(dir, ['map', '--from', '-'], JSON.stringify({ 'drift-monitor': 'missing' }));
-    run(dir, ['usage', '--root', path.join(dir, 'no-history')]);
+    run(dir, ['usage', '--workflows', 'w-review']);
   });
   after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
 

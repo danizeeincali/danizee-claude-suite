@@ -110,6 +110,13 @@ describe('bbs e2e — the packaged check', () => {
     const bad = run(['verdict', '--decide', 'drift-monitor=use']);
     assert.equal(bad.code, 2);
     assert.match(bad.err, /^bbs: refused: /);
+    const unconfirmed = run(['verdict', '--from', path.join(FIXTURES, 'decisions.json')]);
+    assert.equal(unconfirmed.code, 2, 'no evidence of use: a rebuild waits for the owner to name their workflows');
+    assert.match(unconfirmed.err, /usage --force --workflows/);
+    // the owner's answer to the one question names their workflows alongside the verdicts
+    const owner = run(['usage', '--force', '--workflows', 'w-review,mt']);
+    assert.equal(owner.code, 0, owner.err);
+    assert.equal(owner.json.evidence, 'owner');
     const d = run(['verdict', '--from', path.join(FIXTURES, 'decisions.json')]);
     assert.equal(d.code, 0, d.err);
     assert.equal(d.json.decided, 3);

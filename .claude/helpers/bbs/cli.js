@@ -285,8 +285,11 @@ const VERBS = {
     try {
       out(await recordUsage(projectDir, { run: id, roots: flags.root, days, workflows: flags.workflows, force: !!flags.force, cfg }));
     } finally {
-      const { writeError } = await renderStatusSafe(dir);
-      if (writeError) warnStatusWrite(id, writeError);
+      // a corrupt usage.json must not mask the error that names its --force repair
+      try {
+        const { writeError } = await renderStatusSafe(dir);
+        if (writeError) warnStatusWrite(id, writeError);
+      } catch (err) { process.stderr.write(`bbs: warning: status.md not rendered (${err.message})\n`); }
     }
   },
 
