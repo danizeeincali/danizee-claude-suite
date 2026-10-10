@@ -2127,7 +2127,7 @@ node .claude/helpers/kit/cli.js lenses --diff "$D"; RC=$?; rm -f "$D"; (exit $RC
 If the review was started with a base (\`push-gate receipt --base <ref>\`), use that ref in place of the first line's merge-base so both cover the same change. An empty or non-diff file makes the verb exit 1 ("no diff was given"): that is wrong input, so fix the range; never record it as "no lens applies".
 Each entry in \`fired\` has a \`name\`, the \`files\` it matched and a \`body\`: apply the body as an extra check on those files and add its findings to the table below. A non-empty \`capped\` list means more lenses applied than the cap (4); mention them in the table. If a deterministic check already ran for the same rule, say so with \`--covered\` (for example \`--covered no-floating-promises\`) and that lens stands down. The last line keeps the verb's exit status after removing the temp file. A non-zero exit means wrong input or a broken lens file: report it, do not skip the step.
 
-**🕸️ SYMBOL GRAPH (calls around the changed files):**
+**🕸️ SYMBOL GRAPH AND BLAST RADIUS (calls around the changed files, and what depends on them):**
 Build the call graph for the files this change touches. It reads JS/TS source only, scans each file once and caches the facts by content hash (so a second run is quick), scans the changed files first, and stops at a time budget instead of stalling. It never runs the code it reads. Same range as above, written to its own temp file:
 \`\`\`bash
 BASE=$(git merge-base HEAD '@{upstream}' 2>/dev/null || git hash-object -t tree /dev/null)
@@ -2136,6 +2136,16 @@ D=$(mktemp)
 node .claude/helpers/kit/cli.js graph --diff "$D" --budget-ms 20000 --max-parses 300; RC=$?; rm -f "$D"; (exit $RC)
 \`\`\`
 The summary has \`partial\`, \`not_read\` (each file with a reason: budget, parse_cap, too_large, unsupported or parse_error) and \`changed\` (how many of the changed files were read). Add the graph's findings (callers and callees of changed definitions, \`--json\` gives the full edge list) to the table below, and state \`partial\` and every \`not_read\` entry in the review as it is: when \`partial\` is true the graph is a floor, not the whole picture, so never write that "nothing else calls this" from it. A \`possible\` edge is a name match, not a proof. A non-zero exit means wrong input or a broken state: report it, do not skip the step.
+
+Then the blast radius: the same range, with its base, maps each changed line to the innermost definition around it and follows who calls, extends or implements it for two hops (certain edges first, production before tests, nearer folders first). With a base it also finds definitions the change removes and flags each one the tree still calls:
+\`\`\`bash
+BASE=$(git merge-base HEAD '@{upstream}' 2>/dev/null || git hash-object -t tree /dev/null)
+D=$(mktemp)
+DF=0; { git diff --no-color --no-ext-diff --no-prefix "$BASE" || DF=1; git ls-files -z --others --exclude-standard | while IFS= read -r -d '' f; do git diff --no-color --no-ext-diff --no-index --no-prefix -- /dev/null "$f" || [ $? -eq 1 ] || : > "$D.fail"; done; } > "$D"
+[ -e "$D.fail" ] && DF=1; rm -f "$D.fail"
+if [ "$DF" -ne 0 ]; then echo "git diff failed: the change range was not read" >&2; rm -f "$D"; (exit 1); else node .claude/helpers/kit/cli.js impact --diff "$D" --base "$BASE"; RC=$?; rm -f "$D"; (exit $RC); fi
+\`\`\`
+List what to check from the result: each symbol in \`touched\`, then the \`impacted\` symbols in the order given (each with its hop, \`confidence\` and \`path\`), every entry of \`removed_with_live_callers\` (a removal with a caller left behind is a defect until shown otherwise), and the \`risk\` level with its \`reasons\`. State the limits as they are: every row of \`cuts\` (\`at\`, \`kind\`, how many were \`omitted\`) and any \`hubs\` (symbols with too many callers to list), \`partial\` with \`not_read\`, \`unmapped\` and \`old_not_read\`, and the \`notes\`. When \`risk.lower_bound\` is true, or \`cuts\` is not empty, the level is a floor and the list is not everything that depends on the change: never write "nothing else is affected" from it. An empty diff exits 0 with nothing touched and a note saying so (same as the graph step): report "no change to map", not a failure. If \`git diff\` itself fails (a partial clone that cannot fetch, a bad base, an untracked file it cannot diff) the step prints "git diff failed" and exits 1 without running the verb: report that the change was not mapped, never "no change to map". Any non-zero exit means wrong input or a broken state: report it, do not skip the step.
 
 **REQUIRED OUTPUT:**
 | Category | Finding | Severity |

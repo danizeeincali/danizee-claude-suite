@@ -1341,6 +1341,27 @@ export function parseArgs(args) {
   return f;
 }
 
+/**
+ * The text of a `--diff <file|->` argument: a regular file (size-capped) or piped stdin (never a terminal). KitExit 1 for
+ * input that is not a unified diff, 2 for one over the size cap. Shared with the verbs that take the same flag.
+ */
+export async function readDiffArg(arg, io = {}, cwd = process.cwd()) {
+  let diffText;
+  if (arg === '-') {
+    if (io.stdinIsTTY) throw invalid('--diff - needs piped stdin, not a terminal (see --help)');
+    diffText = await io.stdin();
+  } else {
+    const file = path.resolve(cwd, arg);
+    const st = await fs.stat(file).catch((e) => { throw invalid(`cannot read ${arg}: ${e.code || e.message}`); });
+    if (!st.isFile()) throw invalid(`${arg} is not a regular file`);
+    if (st.size > DEFAULTS.maxDiffBytes) throw refuse(`${arg} is larger than ${DEFAULTS.maxDiffBytes} bytes`);
+    diffText = await fs.readFile(file, 'utf-8');
+  }
+  if (diffText.length > DEFAULTS.maxDiffBytes) throw refuse(`the diff is larger than ${DEFAULTS.maxDiffBytes} bytes`);
+  if (!/^(\+\+\+ |--- |diff --git )/m.test(diffText) && diffText.trim() !== '') throw invalid('that is not a unified diff');
+  return diffText;
+}
+
 const countBy = (rows, key) => rows.reduce((m, r) => { m[r[key]] = (m[r[key]] || 0) + 1; return m; }, {});
 
 export async function run(args, io = {}) {
@@ -1348,21 +1369,7 @@ export async function run(args, io = {}) {
   if (f.help) return { usage };
   const cwd = io.cwd || process.cwd();
   const dir = path.resolve(cwd, f.dir || '.');
-  let diffText = '';
-  if (f.diff !== undefined) {
-    if (f.diff === '-') {
-      if (io.stdinIsTTY) throw invalid('--diff - needs piped stdin, not a terminal (see --help)');
-      diffText = await io.stdin();
-    } else {
-      const file = path.resolve(cwd, f.diff);
-      const st = await fs.stat(file).catch((e) => { throw invalid(`cannot read ${f.diff}: ${e.code || e.message}`); });
-      if (!st.isFile()) throw invalid(`${f.diff} is not a regular file`);
-      if (st.size > DEFAULTS.maxDiffBytes) throw refuse(`${f.diff} is larger than ${DEFAULTS.maxDiffBytes} bytes`);
-      diffText = await fs.readFile(file, 'utf-8');
-    }
-    if (diffText.length > DEFAULTS.maxDiffBytes) throw refuse(`the diff is larger than ${DEFAULTS.maxDiffBytes} bytes`);
-    if (!/^(\+\+\+ |--- |diff --git )/m.test(diffText) && diffText.trim() !== '') throw invalid('that is not a unified diff');
-  }
+  const diffText = f.diff !== undefined ? await readDiffArg(f.diff, io, cwd) : '';
   const loc = await locateRepo(dir);
   if (!loc.top) throw invalid(`${dir} has no work tree (a bare repository or a path inside .git)`);
   const exec = (a) => safeGit(loc.top, a, { git: io.git, env: io.env || process.env });
