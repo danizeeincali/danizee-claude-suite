@@ -156,3 +156,4 @@
 {"helper_id":"cb7d5d75-f5b8-4e2d-94c8-eef67867f7fc","tokens":38000,"outcome":"green","event":"done","id":"ea33c69d-cfc5-421d-b1f0-5130f2837b47","ts":"2026-10-10T22:10:55.952Z"}
 {"role":"routine","model":"sonnet","stream":"bbs","budget":100000,"event":"spawn","id":"a8eafc43-1775-4a85-972d-713117a5c7cc","ts":"2026-10-10T22:10:56.850Z"}
 {"role":"build","model":"sonnet","stream":"sweep-commits","budget":150000,"event":"spawn","id":"68cad836-95fe-483c-bf04-c2ce7f23df51","ts":"2026-10-10T22:11:31.896Z"}
+{"helper_id":"a8eafc43-1775-4a85-972d-713117a5c7cc","tokens":85000,"outcome":"green","event":"done","id":"6d4c2ab7-199c-436b-ad6c-de3c22cd5b45","ts":"2026-10-10T22:12:34.063Z"}
