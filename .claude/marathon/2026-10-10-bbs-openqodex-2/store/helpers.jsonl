@@ -153,3 +153,6 @@
 {"role":"fix","model":"sonnet","stream":"tracked-file-scrub-gate","budget":120000,"event":"spawn","id":"9aff1bff-a5f7-411b-8beb-2f01d147cabc","ts":"2026-10-10T12:56:22.452Z"}
 {"helper_id":"9aff1bff-a5f7-411b-8beb-2f01d147cabc","tokens":110000,"outcome":"green","event":"done","id":"19897d0d-0868-4e98-a1cc-e8a535b25b93","ts":"2026-10-10T13:00:10.934Z"}
 {"role":"build","model":"sonnet","stream":"planted-bug-review-scoring","budget":150000,"event":"spawn","id":"84d0eae2-2d61-4a12-8e9f-6ae449a8dc17","ts":"2026-10-10T13:03:53.820Z"}
+{"helper_id":"84d0eae2-2d61-4a12-8e9f-6ae449a8dc17","tokens":150000,"outcome":"green","event":"done","id":"ef097fd8-d920-4102-9d8a-9e8f32dcf6aa","ts":"2026-10-10T13:08:24.876Z"}
+{"role":"review","model":"opus","stream":"planted-bug-review-scoring","budget":150000,"event":"spawn","id":"e9c9b02f-7bc2-422c-90b8-8587135fd089","ts":"2026-10-10T13:10:11.925Z"}
+{"helper_id":"84d0eae2-2d61-4a12-8e9f-6ae449a8dc17","tokens":83013,"outcome":"green","event":"done","id":"16e4c4f2-70d5-46e7-9cd1-9b45d8a42342","ts":"2026-10-10T13:10:19.820Z"}

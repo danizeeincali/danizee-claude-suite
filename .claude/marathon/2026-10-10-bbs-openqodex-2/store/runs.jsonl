@@ -51,3 +51,4 @@
 {"kind":"unit","status":"green","stream":"tracked-file-scrub-gate","commit":"df5d471","id":"4a2ed42a-7a8d-4af4-ae00-91f19e04f578","ts":"2026-10-10T12:40:14.333Z"}
 {"kind":"unit","status":"green","stream":"tracked-file-scrub-gate","commit":"34e61c3","id":"46b24efa-5a12-46ab-a444-9db703ffe14d","ts":"2026-10-10T12:52:22.619Z"}
 {"kind":"unit","status":"green","stream":"tracked-file-scrub-gate","commit":"ecac82e","id":"12053835-d827-410e-a170-59409884d768","ts":"2026-10-10T13:01:47.699Z"}
+{"kind":"unit","status":"green","stream":"planted-bug-review-scoring","commit":"04bda59","id":"01da0dac-b913-4d2a-ba84-2029c856256b","ts":"2026-10-10T13:10:09.173Z"}

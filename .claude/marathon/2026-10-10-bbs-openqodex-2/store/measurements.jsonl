@@ -151,3 +151,6 @@
 {"key":"packaged_tracked-file-scrub-gate","value":true,"id":"4357645c-a71c-4557-a20f-b4c1ed25dd3d","ts":"2026-10-10T13:01:52.286Z"}
 {"key":"egress_zero_tracked-file-scrub-gate","value":true,"id":"60a9111e-a757-4850-bcea-050b5df3ff3c","ts":"2026-10-10T13:01:52.409Z"}
 {"key":"callers_tracked-file-scrub-gate","value":2,"id":"91612620-1a78-4141-a8c3-63728f54b437","ts":"2026-10-10T13:01:52.525Z"}
+{"key":"packaged_planted-bug-review-scoring","value":true,"id":"5c434d9c-eec7-435a-b904-7e97dcd69d29","ts":"2026-10-10T13:10:11.039Z"}
+{"key":"egress_zero_planted-bug-review-scoring","value":true,"id":"2a826f08-4d75-4852-a4e0-7262548230ea","ts":"2026-10-10T13:10:11.203Z"}
+{"key":"callers_planted-bug-review-scoring","value":1,"id":"d323e29a-697f-46c4-b5d0-3a10c8514094","ts":"2026-10-10T13:10:11.354Z"}
