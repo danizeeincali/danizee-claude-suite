@@ -1,0 +1,14 @@
+# Review fe19ffb7-e9cd-428f-b1ba-a9f2939178ea — hardened-git-read-on-untrusted-repo, round 14
+
+- Commit: 4e95553
+- Angle: performance and memory
+- Result: over tolerance
+- 2 findings
+
+## High (1)
+
+- **Work-tree .gitattributes texts are all held in memory with no total cap: sparse files take a few MB of disk and gigabytes of RAM, and crash node** — `src/lib/kit/safe-git.js:509` (performance): workTreeAttributes reads every listed .gitattributes in full (readAttributesFile, up to MAX\_ATTR\_BYTES = 4 MiB each) and keeps every decoded text in \`out\` until overridesFor has collected the driver names (line 700). Only the per-file size is capped. Nothing limits the file count or the total bytes, unlike the copy budget's \`total\`. The file system is the only thing read, so the header's own sparse-file threat (\`truncate -s\`) applies. Traced on git 2.43 / node 22: \`git init r; git commit --allow-empty\`, then 1100 folders d$i, each holding \`truncate -s 4194303 d$i/.gitattributes\`. These are untracked, so \`ls-files --others\` lists them. \`du\` says 4.5 MB. \`safeGit(r, \['rev-parse','HEAD'\])\` peaks at 4.5 GiB RSS and takes 26 s. Under \`--max-old-space-size=4096\` (about the default heap on an 8 GB machine) it dies with 'FATAL ERROR: Reached heap limit ... JavaScript heap out of memory'. The JS reads also run under no timeout, and 300 such files already take 14 s and 1.3 GiB. Cost grows linearly, so more files crash any heap size. Every command pays it, including a bare rev-parse HEAD. — fix: Reduce each file to its driver-name Set as soon as it is read and drop the text (stream lines rather than concatenating). Put a total cap on the attribute bytes read per call, for example a limits.attributes defaulting to 64 MiB, and refuse with KitExit 2 past it, as copyCapped does with limits.total. Add a test with many sparse .gitattributes that asserts the refusal.
+
+## Low (1)
+
+- **STDIN\_OPTIONS comment says for-each-ref parses --stdin as a revision option; it is a parse-options boolean that git abbreviates** — `src/lib/kit/safe-git.js:124` (facts): for-each-ref has had --stdin since git 2.46, declared as OPT\_BOOL(0, "stdin", ...) in builtin/for-each-ref.c. parse-options accepts unambiguous abbreviations, so \`for-each-ref --std\` reads its patterns from stdin. The '\*' entry counts only the exact --stdin, and the comment names for-each-ref among the no-abbreviation commands. With git 2.46 or later, \`safe-git -- for-each-ref --std\` therefore runs with stdin closed instead of being asked for --input -. git reads no patterns and prints every ref, which is the 'empty input taken for a real answer' case the header (lines 93-95) says cannot happen. — fix: Add 'for-each-ref': \[\['stdin', 'std'\]\] to STDIN\_OPTIONS, drop for-each-ref from the comment, and add for-each-ref --std to the reader test list.

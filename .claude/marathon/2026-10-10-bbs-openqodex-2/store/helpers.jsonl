@@ -96,3 +96,6 @@
 {"helper_id":"2927b3bf-96ce-4b84-b999-77fc9662d48d","tokens":0,"outcome":"green","event":"done","id":"7eb1cbe8-8d6c-4526-95a0-5dd798bee006","ts":"2026-10-10T08:07:10.627Z"}
 {"helper_id":"2927b3bf-96ce-4b84-b999-77fc9662d48d","tokens":117722,"outcome":"green","event":"done","id":"7f0261de-9052-4b23-9e97-65d89ca06e6b","ts":"2026-10-10T08:07:29.385Z"}
 {"role":"review","model":"opus","stream":"hardened-git-read-on-untrusted-repo","budget":150000,"event":"spawn","id":"564e2308-8f2d-4052-929f-75a04b1de0fd","ts":"2026-10-10T08:09:01.820Z"}
+{"helper_id":"564e2308-8f2d-4052-929f-75a04b1de0fd","tokens":0,"outcome":"green","event":"done","id":"f4bf243c-05c3-47e8-b47f-94aca80b804d","ts":"2026-10-10T08:14:35.294Z"}
+{"helper_id":"564e2308-8f2d-4052-929f-75a04b1de0fd","tokens":100244,"outcome":"green","event":"done","id":"e0ba436c-63ca-464a-833a-aa7ded3d9377","ts":"2026-10-10T08:14:47.531Z"}
+{"role":"fix","model":"opus","stream":"hardened-git-read-on-untrusted-repo","budget":120000,"event":"spawn","id":"0118fd8b-5cbf-4bab-80dd-2e9ad99d0448","ts":"2026-10-10T08:15:58.932Z"}
