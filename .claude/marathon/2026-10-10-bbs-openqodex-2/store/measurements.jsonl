@@ -112,3 +112,6 @@
 {"key":"packaged_fact-cached-graph-build-with-budget","value":true,"id":"928e9172-0956-4c44-9dc1-3fbc0e3d432d","ts":"2026-10-10T10:58:11.458Z"}
 {"key":"egress_zero_fact-cached-graph-build-with-budget","value":true,"id":"f8236943-1e0c-4ee4-bca8-b53337312068","ts":"2026-10-10T10:58:11.579Z"}
 {"key":"callers_fact-cached-graph-build-with-budget","value":1,"id":"fed78a94-1b0a-4f9a-9b72-6bcd79c28884","ts":"2026-10-10T10:58:11.749Z"}
+{"key":"packaged_fact-cached-graph-build-with-budget","value":true,"id":"348ea6e6-4435-4611-87c8-c34779eb2f8b","ts":"2026-10-10T11:02:35.580Z"}
+{"key":"egress_zero_fact-cached-graph-build-with-budget","value":true,"id":"097dc58e-7221-4890-9c12-c195180df1d9","ts":"2026-10-10T11:02:35.710Z"}
+{"key":"callers_fact-cached-graph-build-with-budget","value":1,"id":"0f1aa4c7-6f9e-4f3e-81d8-c46c9752098e","ts":"2026-10-10T11:02:35.841Z"}
