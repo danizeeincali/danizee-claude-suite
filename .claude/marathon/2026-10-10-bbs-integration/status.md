@@ -1,7 +1,7 @@
 # Marathon 2026-10-10-bbs-integration
 
 - State: RUNNING
-- Budget: 832,514 / 10,000,000 tokens
+- Budget: 982,514 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
@@ -27,7 +27,7 @@
 | Open high findings | build | met | 0 | at_most 0 |
 | Helpers that blew their budget | build | met | 1 | at_most 2 |
 | Full npm test green after the last stream | build | failing | — | is true |
-| The new wired measure reports redact as not wired on current main for the OpenQodex powers | build | failing | — | is true |
+| The new wired measure reports redact as not wired on current main for the OpenQodex powers | build | met | true | is true |
 | Installed copies (.claude/commands/.shortcuts, .claude/helpers/bbs) equal their sources | build | failing | — | is true |
 
 ## Waiting on human

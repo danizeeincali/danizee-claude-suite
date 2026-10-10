@@ -13,3 +13,4 @@
 {"role":"review","model":"opus","stream":"targets","budget":150000,"event":"spawn","id":"ccfd023a-9fcb-4b4f-b534-3f0a0661d980","ts":"2026-10-10T17:10:38.564Z"}
 {"helper_id":"ccfd023a-9fcb-4b4f-b534-3f0a0661d980","tokens":85747,"outcome":"green","event":"done","id":"0f1a09a5-dda4-42eb-93f6-7a4a97c18008","ts":"2026-10-10T17:14:12.880Z"}
 {"role":"review","model":"opus","stream":"targets","budget":150000,"event":"spawn","id":"98f17693-156b-4e6b-9931-1196c458e331","ts":"2026-10-10T17:19:34.385Z"}
+{"role":"build","model":"sonnet","stream":"integration-gate","budget":150000,"event":"spawn","id":"612ac964-8185-498f-a098-2ca2f158c62f","ts":"2026-10-10T17:20:11.594Z"}
