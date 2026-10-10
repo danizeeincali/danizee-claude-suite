@@ -1,9 +1,9 @@
 # Marathon 2026-10-10-bbs-openqodex-2
 
 - State: RUNNING
-- Budget: 7,123,771 / 10,000,000 tokens
+- Budget: 7,273,771 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
-- Gate (run-wide, all streams): 2/2 clean reviews — build gate not met, full gate not met
+- Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
 - Next for you: Continue stream "change-blast-radius-walk" (next: review round 1) — /w-marathon --resume 2026-10-10-bbs-openqodex-2.
 - Last handoff: 2026-10-10T09:05:18.050Z (auto) on claude/project-thread-p9gbyo@3434e5b, 5 uncommitted, tasks: none
@@ -83,9 +83,9 @@
 | isolated-tool-free-wording-judge: clean reviews in a row | build | failing | 0 | at_least 2 |
 | isolated-tool-free-wording-judge: callers in the harness | build | failing | — | at_least 1 |
 | isolated-tool-free-wording-judge: packaged check passes | build | failing | — | is true |
-| Clean reviews in a row | build | met | 2 | at_least 2 |
-| High findings in the latest review | build | met | 0 | at_most 0 |
-| Open high findings | build | met | 0 | at_most 0 |
+| Clean reviews in a row | build | failing | 0 | at_least 2 |
+| High findings in the latest review | build | failing | 1 | at_most 0 |
+| Open high findings | build | failing | 1 | at_most 0 |
 
 ## Waiting on human
 
