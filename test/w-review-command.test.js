@@ -49,7 +49,9 @@ describe('/w-review lens step', () => {
     assert.match(s, /BASE=\$\(git merge-base HEAD '@\{upstream\}'[^\n]*\)\n/);
     assert.match(s, /git diff [^\n]*--no-prefix "\$BASE"/);
     assert.match(s, /git ls-files -z --others --exclude-standard/);
-    assert.match(s, /> \/tmp\/w-review\.diff\nnode \.claude\/helpers\/kit\/cli\.js lenses --diff \/tmp\/w-review\.diff\n/);
+    assert.match(s, /\nD=\$\(mktemp\)\n\{ git diff/);
+    assert.match(s, /> "\$D"\nnode \.claude\/helpers\/kit\/cli\.js lenses --diff "\$D"; rm -f "\$D"\n/);
+    assert.ok(!s.includes('/tmp/w-review.diff'), 'no fixed shared temp path');
     assert.ok(!/git diff HEAD\b/.test(s), 'the lens step must not diff against HEAD only');
     assert.match(s, /--covered no-floating-promises/);
     assert.ok(!s.includes('\\`'));

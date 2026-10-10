@@ -2120,8 +2120,9 @@ Review rules live as markdown files (built in, plus any in \`.claude/kit/lenses/
 The range is the same one the push check uses: everything since the merge base with the upstream branch (the whole history when there is no upstream), plus uncommitted edits and untracked files. \`--no-prefix\` keeps paths bare whatever \`diff.mnemonicPrefix\` says.
 \`\`\`bash
 BASE=$(git merge-base HEAD '@{upstream}' 2>/dev/null || git hash-object -t tree /dev/null)
-{ git diff --no-color --no-ext-diff --no-prefix "$BASE"; git ls-files -z --others --exclude-standard | while IFS= read -r -d '' f; do git diff --no-color --no-ext-diff --no-index --no-prefix /dev/null "$f"; done; true; } > /tmp/w-review.diff
-node .claude/helpers/kit/cli.js lenses --diff /tmp/w-review.diff
+D=$(mktemp)
+{ git diff --no-color --no-ext-diff --no-prefix "$BASE"; git ls-files -z --others --exclude-standard | while IFS= read -r -d '' f; do git diff --no-color --no-ext-diff --no-index --no-prefix /dev/null "$f"; done; true; } > "$D"
+node .claude/helpers/kit/cli.js lenses --diff "$D"; rm -f "$D"
 \`\`\`
 If the review was started with a base (\`push-gate receipt --base <ref>\`), use that ref in place of the first line's merge-base so both cover the same change. An empty or non-diff file makes the verb exit 1 ("no diff was given"): that is wrong input, so fix the range; never record it as "no lens applies".
 Each entry in \`fired\` has a \`name\`, the \`files\` it matched and a \`body\`: apply the body as an extra check on those files and add its findings to the table below. A non-empty \`capped\` list means more lenses applied than the cap (4); mention them in the table. If a deterministic check already ran for the same rule, say so with \`--covered\` (for example \`--covered no-floating-promises\`) and that lens stands down. A non-zero exit means a lens file is broken: report it, do not skip the step.

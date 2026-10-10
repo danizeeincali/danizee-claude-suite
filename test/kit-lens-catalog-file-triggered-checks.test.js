@@ -187,6 +187,24 @@ describe('lenses — parseDiff prefixes', () => {
       'diff --git c/img.png w/img.png', 'Binary files c/img.png and w/img.png differ', ''].join('\n'));
     assert.deepEqual(f.map(x => x.path), ['new.js', 'old.js', 'img.png']);
   });
+  it('real git renames keep one-letter directories under default, mnemonic and --no-prefix output', async () => {
+    const dir = await tmp();
+    const g = (...a) => execFileSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { encoding: 'utf-8' });
+    g('init', '-q');
+    for (const d of ['c', 'src', 'a']) await fs.mkdir(path.join(dir, d), { recursive: true });
+    const body = Array.from({ length: 20 }, (_, i) => `line ${i}`).join('\n') + '\n';
+    await fs.writeFile(path.join(dir, 'c', 'x.js'), body);
+    await fs.writeFile(path.join(dir, 'src', 'x.js'), body + 'more\n');
+    g('add', '.'); g('commit', '-q', '-m', 'one');
+    g('mv', 'c/x.js', 'c/y.js');
+    g('mv', 'src/x.js', 'a/x.js');
+    g('add', '-A');
+    const variants = [['diff', '--cached', '-M'], ['-c', 'diff.mnemonicPrefix=true', 'diff', '--cached', '-M'], ['diff', '--cached', '-M', '--no-prefix']];
+    for (const args of variants) {
+      const out = g(...args);
+      assert.deepEqual(parseDiff(out).map(f => f.path).sort(), ['a/x.js', 'c/y.js'], args.join(' '));
+    }
+  });
   it('real git output under diff.mnemonicPrefix, default prefixes and --no-prefix names the same files', async () => {
     const dir = await tmp();
     const g = (...a) => execFileSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { encoding: 'utf-8' });

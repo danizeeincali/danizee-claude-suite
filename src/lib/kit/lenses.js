@@ -218,8 +218,11 @@ function parseGitHeader(rest) {
     const h = (rest.length - 1) / 2;
     if (rest[h] === ' ' && rest.slice(0, h) === rest.slice(h + 1)) return { path: unquoteGit(rest.slice(0, h)), mode: 'none' };
   }
-  const m = /^"?[a-z]\/(.+?)"? "?[a-z]\/(.+?)"?$/.exec(rest);
-  if (m) return { path: m[2], mode: 'git' };
+  const m = /^"?([a-z])\/(.+?)"? "?([a-z])\/(.+?)"?$/.exec(rest);
+  // Two different one-letter prefixes (a/ b/, c/ w/): git put them there. The same letter on both sides can only be an
+  // unprefixed rename between directories (c/x.js → c/y.js); the rename lines name the real paths.
+  if (m && m[1] !== m[3]) return { path: m[4], mode: 'git' };
+  if (m) return { path: `${m[3]}/${m[4]}`, mode: 'none' };
   return { path: rest, mode: 'loose' };
 }
 
@@ -244,13 +247,21 @@ export function parseDiff(text) {
       files.push(cur);
       continue;
     }
+    const rn = /^(rename|copy) (from|to) (.*)$/.exec(line);
+    if (rn && cur && cur.fromGit && !cur.sawOld) {
+      // git never prefixes these paths, whatever the prefix settings are.
+      const p = cleanPath(rn[3].replace(/\r$/, ''), 'none');
+      if (rn[2] === 'from') cur.oldPath = p; else { cur.path = p; cur.renamed = true; }
+      continue;
+    }
     if (line.startsWith('--- ')) {
       const mode = cur && cur.fromGit ? cur.mode : 'loose';
       const p = cleanPath(line.slice(4), mode);
-      if (cur && cur.fromGit && !cur.sawOld && cur.added.length + cur.removed.length === 0) { cur.sawOld = true; cur.oldPath = p; }
+      if (cur && cur.fromGit && !cur.sawOld && cur.added.length + cur.removed.length === 0) { cur.sawOld = true; if (!cur.renamed) cur.oldPath = p; }
       else { cur = { path: p, oldPath: p, mode: 'loose', added: [], removed: [], sawOld: true }; files.push(cur); }
       continue;
     }
+    if (line.startsWith('+++ ') && cur && cur.renamed) continue;
     if (line.startsWith('+++ ') && cur) {
       const p = cleanPath(line.slice(4), cur.mode);
       cur.path = p === '/dev/null' ? (cur.oldPath && cur.oldPath !== '/dev/null' ? cur.oldPath : cur.path) : p;
