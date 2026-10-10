@@ -3,3 +3,5 @@
 {"role":"review","model":"opus","stream":"diff-range","budget":150000,"event":"spawn","id":"d2af7cbd-5410-49a3-a248-4cc1ac1231f6","ts":"2026-10-10T16:41:22.438Z"}
 {"helper_id":"d2af7cbd-5410-49a3-a248-4cc1ac1231f6","tokens":45000,"outcome":"green","event":"done","id":"6352ca3e-d3a0-4c42-bcb5-23d990fbbecd","ts":"2026-10-10T16:43:20.272Z"}
 {"role":"build","model":"sonnet","stream":"diff-range","budget":150000,"event":"spawn","id":"e85b7ca4-20ee-4ef2-8099-0511df5a7bab","ts":"2026-10-10T16:43:28.095Z"}
+{"helper_id":"e85b7ca4-20ee-4ef2-8099-0511df5a7bab","tokens":60000,"outcome":"green","event":"done","id":"8f744ec3-43f8-4bf8-abd3-d4aed05df684","ts":"2026-10-10T16:49:29.518Z"}
+{"role":"review","model":"opus","stream":"diff-range","budget":150000,"event":"spawn","id":"cdac82a5-dfb8-4713-b43c-93308fc1dead","ts":"2026-10-10T16:49:30.864Z"}
