@@ -3,6 +3,13 @@
 Versions 4.2.0 and 4.3.0 were set in `package.json` but never published to npm,
 so 4.4.0 is the first release after 4.1.0 and carries all three.
 
+## Unreleased
+
+### Added
+- `init` and `update` set `subagentPromptCacheTtl: "1h"` in `.claude/settings.json`,
+  so subagents keep a one-hour prompt cache like the main conversation. A value the
+  project already set is kept.
+
 ## 4.4.0 — 2026-10-10
 
 ### Added
