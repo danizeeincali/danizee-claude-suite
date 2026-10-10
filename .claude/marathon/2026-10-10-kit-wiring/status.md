@@ -1,17 +1,17 @@
 # Marathon 2026-10-10-kit-wiring
 
 - State: RUNNING
-- Budget: 346,440 / 10,000,000 tokens
+- Budget: 391,440 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "diff-range" (next: review round 2 (opus)) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
+- Next for you: Continue stream "diff-range" (next: fix round 2 (sonnet) on 4 findings, then review round 3) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
 
 ## Streams
 
 | Stream | Isolation | Plan | State | Gate | Phase | Next | Tasks | Escapes |
 |---|---|---|---|---|---|---|---|---|
-| diff-range | ../danizee-claude-suite-diff-range | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | clean 0/2 | /w-plan-tdd-swarm · review | review round 2 (opus) |  | 0 |
+| diff-range | ../danizee-claude-suite-diff-range | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | clean 0/2 | /w-plan-tdd-swarm · fix | fix round 2 (sonnet) on 4 findings, then review round 3 |  | 0 |
 | pt |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire CP6 Review and the closing step |  | 0 |
 | bc |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire scrub before commits and push-gate check before Phase 3 |  | 0 |
 | marathon |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire 4.5, 4.8 and CP6 |  | 0 |
