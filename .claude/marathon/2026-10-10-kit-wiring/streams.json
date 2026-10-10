@@ -55,7 +55,7 @@
       "name": "bbs",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "4.1 budget, then build: safe-git in helper briefs, redact probe evidence, scrub --worktree at CP6",
+      "next": "4.4 record unit run, then 4.5 review-brief --stream bbs",
       "tasks": [],
       "isolation": "../danizee-claude-suite-bbs",
       "phase": "build",
@@ -78,13 +78,13 @@
     }
   ],
   "handoff": {
-    "ts": "2026-10-10T18:17:14.221Z",
+    "ts": "2026-10-10T21:03:09.812Z",
     "trigger": "auto",
     "branch": "claude/project-thread-vootem",
-    "commit": "690cc36",
-    "uncommitted": 5,
+    "commit": "41dd24c",
+    "uncommitted": 0,
     "tasks": [],
-    "context_tokens": 383205,
-    "context_pct": 38.3
+    "context_tokens": 383823,
+    "context_pct": 38.4
   }
 }

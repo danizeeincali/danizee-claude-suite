@@ -5,8 +5,8 @@
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 5/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "bbs" (next: 4.1 budget, then build: safe-git in helper briefs, redact probe evidence, scrub --worktree at CP6) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
-- Last handoff: 2026-10-10T18:17:14.221Z (auto) on claude/project-thread-vootem@690cc36, 5 uncommitted, tasks: none
+- Next for you: Continue stream "bbs" (next: 4.4 record unit run, then 4.5 review-brief --stream bbs) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
+- Last handoff: 2026-10-10T21:03:09.812Z (auto) on claude/project-thread-vootem@41dd24c, 0 uncommitted, tasks: none
 
 ## Streams
 
@@ -16,7 +16,7 @@
 | pt | ../danizee-claude-suite-pt | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | /w-plan-tdd-swarm · review | done; compounded via /bc |  | 0 |
 | bc | ../danizee-claude-suite-bc | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | /w-plan-tdd-swarm · review | done; compounded via /bc |  | 0 |
 | marathon | ../danizee-claude-suite-marathon | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | /w-plan-tdd-swarm · review | done; compounded via /bc |  | 0 |
-| bbs | ../danizee-claude-suite-bbs | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | clean 0/2 | /w-plan-tdd-swarm · build | 4.1 budget, then build: safe-git in helper briefs, redact probe evidence, scrub --worktree at CP6 |  | 0 |
+| bbs | ../danizee-claude-suite-bbs | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | clean 0/2 | /w-plan-tdd-swarm · build | 4.4 record unit run, then 4.5 review-brief --stream bbs |  | 0 |
 | sweep-commits |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire the eight commit-and-push workflows |  | 0 |
 | sweep-foreign-and-logs |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire the six foreign-repo and log workflows |  | 0 |
 
