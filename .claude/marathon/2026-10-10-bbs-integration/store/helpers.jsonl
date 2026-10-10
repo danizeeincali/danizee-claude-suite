@@ -31,3 +31,4 @@
 {"role":"review","model":"opus","stream":"integration-gate","budget":150000,"event":"spawn","id":"b9c1e2c8-4dad-4fff-812c-677211bc8873","ts":"2026-10-10T18:34:48.804Z"}
 {"helper_id":"b9c1e2c8-4dad-4fff-812c-677211bc8873","tokens":150000,"outcome":"green","event":"done","id":"a78812b2-84ba-451b-879c-b384da91f53d","ts":"2026-10-10T18:36:10.099Z"}
 {"role":"review","model":"opus","stream":"integration-gate","budget":150000,"event":"spawn","id":"106b845a-c81f-457e-a0e0-0b75464d38a5","ts":"2026-10-10T18:39:14.866Z"}
+{"helper_id":"106b845a-c81f-457e-a0e0-0b75464d38a5","tokens":150000,"outcome":"green","event":"done","id":"1aa0e6c2-728e-4297-8172-7d91eb72b28c","ts":"2026-10-10T18:41:25.364Z"}

@@ -1,1 +1,3 @@
 {"key":"replay_catches_openqodex","value":true,"note":"redact 0 of 4 owner workflows wired on main 8ad06e1; 10 of 11 powers wired nowhere; old callers measure passed all 11 (redact via lens note + marathon cli)","id":"78d81dc7-439e-4c66-b905-5d5150c7ec5a","ts":"2026-10-10T17:22:06.581Z"}
+{"key":"full_suite","value":true,"id":"9b8a61d7-c3dd-4fa9-8cee-2bc2c236831a","ts":"2026-10-10T18:47:14.560Z"}
+{"key":"regenerated","value":true,"id":"08cbd44e-0478-4569-9d46-c09ef7372330","ts":"2026-10-10T18:47:14.673Z"}
