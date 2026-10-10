@@ -100,3 +100,6 @@
 {"key":"packaged_identity-checked-file-writes","value":true,"id":"5f6410fc-c603-4833-900c-95f86d464145","ts":"2026-10-10T10:12:11.859Z"}
 {"key":"egress_zero_identity-checked-file-writes","value":true,"id":"b7658760-36da-483e-942c-26e4ee123481","ts":"2026-10-10T10:12:11.975Z"}
 {"key":"callers_identity-checked-file-writes","value":1,"id":"9215564a-644b-4c20-a71c-eda92ada1d07","ts":"2026-10-10T10:12:12.118Z"}
+{"key":"packaged_fact-cached-graph-build-with-budget","value":true,"id":"f2f52352-0cfa-455e-b431-539c7a7a653d","ts":"2026-10-10T10:33:31.241Z"}
+{"key":"egress_zero_fact-cached-graph-build-with-budget","value":true,"id":"144c8869-ceaa-476d-aad4-2a205f243f24","ts":"2026-10-10T10:33:31.384Z"}
+{"key":"callers_fact-cached-graph-build-with-budget","value":1,"id":"3ebb33b1-876a-4caa-b6ab-a63ee6f268cf","ts":"2026-10-10T10:33:31.556Z"}

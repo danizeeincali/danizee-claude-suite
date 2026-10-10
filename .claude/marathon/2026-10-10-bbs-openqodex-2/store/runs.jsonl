@@ -33,3 +33,4 @@
 {"kind":"unit","status":"green","stream":"identity-checked-file-writes","commit":"2245ccc","id":"078a62ba-0a80-4492-9594-3a681572e122","ts":"2026-10-10T09:57:41.309Z"}
 {"kind":"unit","status":"green","stream":"identity-checked-file-writes","commit":"0017647","id":"86cda5c5-4fc0-4876-8e97-06c3fbf568b3","ts":"2026-10-10T10:07:51.699Z"}
 {"kind":"unit","status":"green","stream":"identity-checked-file-writes","commit":"66f8f85","id":"1032cb4c-babd-407e-b946-0d9160d43467","ts":"2026-10-10T10:12:09.450Z"}
+{"kind":"unit","status":"green","stream":"fact-cached-graph-build-with-budget","commit":"6ebdebf","id":"4816dc0c-1b4f-4cb3-b042-39dd94e5e0fe","ts":"2026-10-10T10:33:28.476Z"}
