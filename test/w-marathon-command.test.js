@@ -158,8 +158,11 @@ describe('kit wiring', () => {
   it('4.5 records a receipt after the review with a concrete pass and fail command', () => {
     const r = review();
     assert.match(r, /cli\.js record review[\s\S]*push-gate receipt/);
-    assert.match(r, /push-gate receipt --verdict pass --high 0 --medium 1 --low 3 --base [0-9a-f]{7,40}/);
-    assert.match(r, /push-gate receipt --verdict fail --high 1 --medium 2 --low 0 --base [0-9a-f]{7,40}/);
+    assert.match(r, /push-gate receipt --verdict pass --high 0 --medium 1 --low 3 --base "\$BASE"/);
+    assert.match(r, /push-gate receipt --verdict fail --high 1 --medium 2 --low 0 --base "\$BASE"/);
+    const receipts = [...r.matchAll(/```bash\n([\s\S]*?)```/g)].map(m => m[1]).filter(b => /push-gate receipt --verdict/.test(b));
+    assert.equal(receipts.length, 2);
+    for (const b of receipts) assert.match(b, /^W=[^\n]*; BASE=[0-9a-f]{7,40}\n/, `a concrete base on the first line: ${b}`);
     assert.match(r, /cd "\$W"/);
     assert.match(r, /exit 0[^.]*written/i);
     assert.match(r, /exit 1[^.]*wrong input/i);
@@ -248,6 +251,65 @@ describe('kit wiring', () => {
     assert.ok(!/the `base` field of `cli\.js stream <name>`/.test(c()), 'no step reads the base through cli.js stream');
   });
 
+  const kitBlocks = () => [...c().matchAll(/```bash\n([\s\S]*?)```/g)].map(m => m[1]);
+  const gateBlocks = () => kitBlocks().filter(b => /push-gate receipt --verdict|push-gate check --base/.test(b));
+
+  it('r2 fix 1: CHECKPOINT 6 and both receipt blocks enter the worktree before the kit test, which uses the relative path', () => {
+    const bs = gateBlocks();
+    assert.equal(bs.length, 3, 'two receipt blocks and the CHECKPOINT 6 block');
+    for (const b of bs) {
+      const word = b.includes('push-gate check') ? 'not pushed' : 'receipt not recorded';
+      const cd = b.indexOf(`cd "$W" || { echo "cannot enter the stream worktree $W: ${word}" >&2; exit 1; }`);
+      assert.ok(cd >= 0, `enters the worktree first: ${b}`);
+      assert.ok(cd < b.indexOf('if [ ! -f .claude/helpers/kit/cli.js ]'), 'the kit test runs inside the worktree');
+      assert.ok(!b.includes('"$W/.claude/helpers/kit/cli.js"'), 'no kit test against $W from outside');
+    }
+    assert.match(compound(), /a missing or wrong `W` prints "cannot enter the stream worktree"/);
+    assert.match(review(), /a missing or wrong `W` prints "cannot enter the stream worktree"/);
+  });
+
+  it('r2 fix 2: 4.8 checks each pattern file before the scrub and keeps the configured: false check', () => {
+    const b = kitBlocks().find(x => x.includes('scrub --history'));
+    const loop = b.indexOf('for P in .claude/kit/scrub-patterns .claude/kit/scrub-patterns.local; do if [ -f "$M/$P" ] && [ ! -f "$P" ]; then echo "scrub patterns missing from the worktree');
+    assert.ok(loop >= 0 && loop < b.indexOf('scrub --history'), 'the loop runs before the scrub');
+    assert.match(b, /scrub patterns missing from the worktree[^\n]*exit 2; fi; done/);
+    assert.match(b, /"configured": \*false/);
+    assert.match(gate(), /checks each pattern file on its own[\s\S]*treat it exactly like a scrub exit 2/);
+  });
+
+  it('r2 fix 3: a scrub exit 1 or any other non-zero exit keeps the stream open until a scrub exits 0', () => {
+    const g = gate();
+    assert.match(g, /A scrub exit 1, or any other non-zero exit, also keeps the stream open[^.]*no `state=done` until a scrub exits 0/);
+    assert.match(g, /exit 0 \(`buildGateMet`\) and the scrub above exited 0 → `cli\.js stream <name> state=done`/);
+  });
+
+  it('r2 fix 4: "kit not installed" only when the main checkout has no kit either; otherwise "kit missing from the worktree", exit 1', () => {
+    const bs = kitBlocks().filter(b => b.includes('cd "$W"') && b.includes('kit not installed'));
+    assert.equal(bs.length, 6, 'lenses, impact, two receipts, the 4.8 scrub and CHECKPOINT 6');
+    for (const b of bs) {
+      assert.match(b, /^M=\$PWD; \(/m, `M is set before the subshell: ${b}`);
+      const miss = b.indexOf('[ -f "$M/.claude/helpers/kit/cli.js" ]');
+      assert.ok(miss >= 0 && miss < b.indexOf('kit not installed'), `the main checkout is tested before the advisory skip: ${b}`);
+      assert.match(b, /kit missing from the worktree: commit it or copy it[^\n]*>&2; exit 1; fi/);
+    }
+    assert.match(review(), /"kit not installed" \(the advisory skip\) only when the main checkout has no `\.claude\/helpers\/kit\/cli\.js` either/);
+  });
+
+  it('r2 fix 5: the base reader catches a missing or invalid streams.json and the prose names it', () => {
+    const r = review();
+    assert.match(r, /try\{d=JSON\.parse\(require\("fs"\)\.readFileSync\(f,"utf8"\)\)\}catch\(e\)\{console\.error\("cannot read "\+f\+": "\+e\.message\);process\.exit\(1\)\}/);
+    assert.match(r, /or the run folder or streams\.json is wrong/);
+  });
+
+  it('r2 fix 6: CHECKPOINT 6 and the receipt blocks refuse an empty BASE first', () => {
+    for (const b of gateBlocks()) {
+      const word = b.includes('push-gate check') ? 'not pushed' : 'receipt not recorded';
+      const g = b.indexOf(`[ -n "$BASE" ] || { echo "BASE is empty: read it from streams.json first: ${word}" >&2; exit 1; }`);
+      assert.ok(g >= 0 && g < b.indexOf('cd "$W"'), `the BASE check is at the top: ${b}`);
+    }
+    assert.match(compound(), /refuses an empty `BASE` \("BASE is empty"/);
+  });
+
   it('every extracted bash block passes bash -n', () => {
     const blocks = [...c().matchAll(/```bash\n([\s\S]*?)```/g)].map(m => m[1]);
     assert.ok(blocks.length >= 5, 'the wired steps carry bash blocks');
@@ -281,8 +343,8 @@ function worktreeRepo() {
   mkdirSync(tmp);
   const env = { ...process.env, HOME: root, TMPDIR: tmp, KIT_RECEIPTS_DIR: path.join(root, 'receipts'), GIT_CONFIG_NOSYSTEM: '1' };
   // Each block's first line sets the placeholder W (and BASE); replace it with the fixture's.
-  const run = (block) => spawnSync('bash', ['-c', `W=../repo-s; BASE=${BASE}\n${block.replace(/^W=[^\n]*\n/, '')}`], { cwd: main, encoding: 'utf-8', env });
-  return { root, main, W, BASE, run };
+  const run = (block, w = '../repo-s', base = BASE) => spawnSync('bash', ['-c', `W=${w}; BASE=${base}\n${block.replace(/^W=[^\n]*\n/, '')}`], { cwd: main, encoding: 'utf-8', env });
+  return { root, main, W, BASE, run, env };
 }
 
 describe('kit blocks run against the real kit in a stream worktree', () => {
@@ -340,6 +402,100 @@ describe('kit blocks run against the real kit in a stream worktree', () => {
       assert.equal(after.status, 0, after.stdout + after.stderr);
       assert.match(after.stdout, /"configured": true/);
       assert.ok(!/scrub patterns missing/.test(after.stderr));
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+
+  const cp6Block = () => blocks().find(b => b.includes('push-gate check --base'));
+  const receiptBlocks = () => blocks().filter(b => b.includes('push-gate receipt --verdict') && !b.includes('push-gate check'));
+  const readerLine = () => c().split('\n').find(l => l.startsWith("BASE=$(node -e '"));
+
+  it('r2: W pointing at a missing folder: CHECKPOINT 6 and the receipt blocks exit 1 with "cannot enter"', () => {
+    const fx = worktreeRepo();
+    try {
+      for (const b of [cp6Block(), ...receiptBlocks()]) {
+        const r = fx.run(b, '../no-such-worktree');
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /cannot enter the stream worktree/);
+        assert.ok(!/kit not installed/.test(r.stdout));
+      }
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+
+  it('r2: main has both pattern files, the worktree only the public one: 4.8 exits 2 with "scrub patterns missing"', () => {
+    const fx = worktreeRepo();
+    try {
+      for (const d of [fx.main, fx.W]) {
+        mkdirSync(path.join(d, '.claude', 'kit'), { recursive: true });
+        writeFileSync(path.join(d, '.claude', 'kit', 'scrub-patterns'), 'ZQXJ-PUBLIC-[0-9]+\n');
+      }
+      writeFileSync(path.join(fx.main, '.claude', 'kit', 'scrub-patterns.local'), 'ZQXJ-PRIVATE-[0-9]+\n');
+      const r = fx.run(scrubBlock());
+      assert.equal(r.status, 2, r.stdout + r.stderr);
+      assert.match(r.stderr, /scrub patterns missing from the worktree: \.claude\/kit\/scrub-patterns\.local/);
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+
+  it('r2: the kit in main but not in W: every worktree block exits 1 with "kit missing from the worktree"; with no kit anywhere it is advisory', () => {
+    const fx = worktreeRepo();
+    try {
+      rmSync(path.join(fx.W, '.claude', 'helpers', 'kit'), { recursive: true, force: true });
+      const bs = [lensesBlock(), impactBlock(), scrubBlock(), cp6Block(), ...receiptBlocks()];
+      assert.equal(bs.length, 6);
+      for (const b of bs) {
+        const r = fx.run(b);
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /kit missing from the worktree: commit it or copy it/);
+        assert.ok(!/kit not installed/.test(r.stdout));
+      }
+      rmSync(path.join(fx.main, '.claude', 'helpers', 'kit'), { recursive: true, force: true });
+      for (const b of bs) {
+        const r = fx.run(b);
+        assert.equal(r.status, 0, r.stdout + r.stderr);
+        assert.match(r.stdout, /kit not installed/);
+      }
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+
+  it('r2: an empty BASE: CHECKPOINT 6 and the receipt blocks exit 1 with "BASE is empty"', () => {
+    const fx = worktreeRepo();
+    try {
+      for (const b of [cp6Block(), ...receiptBlocks()]) {
+        const r = fx.run(b, '../repo-s', '');
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /BASE is empty: read it from streams\.json first/);
+      }
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+
+  it('r2: the base reader: a missing streams.json exits 1 with "cannot read"; a real row prints its base', () => {
+    const fx = worktreeRepo();
+    try {
+      const line = readerLine();
+      assert.ok(line, 'the base reader line');
+      const missing = spawnSync('bash', ['-c', line], { cwd: fx.main, encoding: 'utf-8', env: fx.env });
+      assert.equal(missing.status, 1, missing.stdout + missing.stderr);
+      assert.match(missing.stderr, /cannot read \.claude\/marathon\/[^ ]+\/streams\.json: /);
+      assert.ok(!/\n\s+at /.test(missing.stderr), 'no stack trace');
+      const f = line.match(/' (\.claude\/marathon\/[^ ]+\/streams\.json) ([a-z-]+)\)/);
+      mkdirSync(path.dirname(path.join(fx.main, f[1])), { recursive: true });
+      writeFileSync(path.join(fx.main, f[1]), 'not json');
+      const bad = spawnSync('bash', ['-c', line], { cwd: fx.main, encoding: 'utf-8', env: fx.env });
+      assert.equal(bad.status, 1);
+      assert.match(bad.stderr, /cannot read /);
+      writeFileSync(path.join(fx.main, f[1]), JSON.stringify({ streams: [{ name: f[2], base: fx.BASE }] }));
+      const ok = spawnSync('bash', ['-c', line], { cwd: fx.main, encoding: 'utf-8', env: fx.env });
+      assert.equal(ok.status, 0, ok.stderr);
+      assert.equal(ok.stdout.trim(), fx.BASE);
     } finally {
       rmSync(fx.root, { recursive: true, force: true });
     }
