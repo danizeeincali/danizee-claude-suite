@@ -137,7 +137,7 @@ export function readsStdin(args) {
     if (!a.startsWith('--') || a === '--') return false;
     const name = a.slice(2).split('=')[0];
     if (!name || name === 'batch-all-objects') return false;
-    const table = [...STDIN_OPTIONS['*'], ...(STDIN_OPTIONS[args[0]] || [])];
+    const table = [...STDIN_OPTIONS['*'], ...(Object.hasOwn(STDIN_OPTIONS, args[0]) ? STDIN_OPTIONS[args[0]] : [])];
     // An exact option name means that option only (--batch is not an abbreviation of --batch-command).
     const candidates = table.some(([o]) => o === name) ? [name]
       : table.filter(([o, min]) => o.startsWith(name) && name.startsWith(min)).map(([o]) => o);
@@ -496,19 +496,24 @@ const HFS_IGNORABLE = /[‌-‏‪-‮⁪-⁯﻿]/g;
 
 /**
  * Why an index entry path would let git read outside the work tree (or into a git dir), or null when it is safe.
- * Refused: an absolute path (/x, \x, C:...), and any component (split on / and \) that is empty, '.', '..', or a git
- * dir alias — '.git' in any case, also with trailing dots/spaces, an NTFS stream suffix (.git::$INDEX_ALLOCATION),
- * HFS+ ignorable characters, or the NTFS short name git~<n>. A sparse-index directory entry may end in one '/'.
+ * The rules follow the platform's own path syntax, so a legal file name elsewhere (`a:b`, `x\\y` on Linux) is not
+ * refused. Everywhere: an absolute path, and any component that is empty, '.', '..', or '.git' in any case (also
+ * with HFS+ ignorable characters). On Windows also: '\\' separates components, a drive prefix (C:) is absolute, and
+ * '.git' with trailing dots/spaces, an NTFS stream suffix (.git::$INDEX_ALLOCATION) or the short name git~<n> is a
+ * git dir. A sparse-index directory entry may end in one '/'.
  */
-export function unsafeIndexPath(p, { dir = false } = {}) {
+export function unsafeIndexPath(p, { dir = false, platform = process.platform } = {}) {
+  const win = platform === 'win32';
   let s = String(p);
   if (s === '') return 'empty path';
   if (dir && s.endsWith('/')) s = s.slice(0, -1);
-  if (/^[\\/]/.test(s) || /^[A-Za-z]:/.test(s)) return 'absolute path';
-  for (const c of s.split(/[\\/]/)) {
+  if (s.startsWith('/') || (win && (/^\\/.test(s) || /^[A-Za-z]:/.test(s)))) return 'absolute path';
+  for (const c of s.split(win ? /[\\/]/ : '/')) {
     if (c === '' || c === '.' || c === '..') return `component ${JSON.stringify(c)}`;
-    const name = c.replace(HFS_IGNORABLE, '').split(':')[0].replace(/[. ]+$/, '').toLowerCase();
-    if (name === '.git' || /^git~\d+$/.test(name)) return `component ${JSON.stringify(c).slice(0, 40)} names a git dir`;
+    if (win && c.includes(':') && !/^\.git:/i.test(c.replace(HFS_IGNORABLE, ''))) return `component ${JSON.stringify(c).slice(0, 40)} has ':' (not a Windows file name)`;
+    let name = c.replace(HFS_IGNORABLE, '').toLowerCase();
+    if (win) name = name.split(':')[0].replace(/[. ]+$/, '');
+    if (name === '.git' || (win && /^git~\d+$/.test(name))) return `component ${JSON.stringify(c).slice(0, 40)} names a git dir`;
   }
   return null;
 }
@@ -517,10 +522,14 @@ export function unsafeIndexPath(p, { dir = false } = {}) {
  * List the SHADOW's index copy (`ls-files -z --stage`, which reads only the index) and refuse (KitExit 2) when any
  * entry is unsafe (unsafeIndexPath): git does not re-check index entries it reads from disk, so an entry named
  * ../outside/sec makes diff and status read and print a file outside the repository. The listing is bounded by the
- * index copy limit and the runner's output cap (an overflow is a git failure: KitExit 1, fail closed).
+ * index copy limit and the runner's output cap; an overflow refuses the read (KitExit 2, fail closed).
  */
 async function checkIndexPaths(exec) {
-  const r = await exec(['ls-files', '-z', '--stage']);
+  let r;
+  try { r = await exec(['ls-files', '-z', '--stage']); } catch (err) {
+    if (err instanceof KitExit && err.code === GIT_FAILED_EXIT) throw refuse(`the index is too large to check its paths (${err.message}); refusing to read this repository`);
+    throw err;
+  }
   if (r.code !== 0) throw new KitExit(`cannot list the index: ${(r.stderr || '').trim() || 'git ls-files failed'}`, 1);
   for (const rec of String(r.stdout).split('\0')) {
     if (!rec) continue;
@@ -560,11 +569,10 @@ async function inspect(dir, ctx) {
   checkRepoRoot(loc);
   await checkNoAlternates(loc, ctx.limits);
   const mainCfg = path.join(loc.commonDir, 'config');
-  const fmt = repoFormat(await readConfigFile(ctx, mainCfg));
-  const files = [mainCfg];
-  if (fmt.worktreeConfig) files.push(path.join(loc.gitDir, 'config.worktree'));
-  const entries = [];
-  for (const f of files) entries.push(...await readConfigFile(ctx, f)); // the repo's own files only, no includes
+  const mainEntries = await readConfigFile(ctx, mainCfg); // read once: a hostile config can be slow to parse
+  const fmt = repoFormat(mainEntries);
+  const entries = [...mainEntries]; // the repo's own files only, no includes
+  if (fmt.worktreeConfig) entries.push(...await readConfigFile(ctx, path.join(loc.gitDir, 'config.worktree')));
   const core = allowedCore(entries);
   const top = core.bare === true ? null : loc.top;
   return { loc, fmt, entries, core, top };
@@ -692,7 +700,8 @@ async function prepare(dir, ctx) {
 /**
  * The `-c` override argv for the folder (defence in depth; git never reads the repo config through safeGit anyway):
  * static switches plus, for every driver name in its own config files (config, config.worktree — read as data,
- * without includes), info/attributes or a .gitattributes the shadow's ls-files lists, empty filter.<n>.{clean,smudge,process}, filter.<n>.required=false, empty
+ * without includes) or info/attributes — not work-tree or index .gitattributes, which cannot run anything since the
+ * shadow config defines no driver — empty filter.<n>.{clean,smudge,process}, filter.<n>.required=false, empty
  * diff.<n>.{command,textconv} and merge.<n>.driver. KitExit 2 for a driver name outside [A-Za-z0-9._-] or an
  * unsupported repository format, KitExit 1 when git cannot answer. Computed afresh on every call.
  */

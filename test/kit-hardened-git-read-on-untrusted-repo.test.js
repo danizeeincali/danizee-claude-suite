@@ -1374,7 +1374,10 @@ describe('safe-git — review round 4 regressions (git found by absolute path, u
     const bad = ['../x', 'a/../x', 'a/..', '/etc/passwd', '\\x', 'C:/x', 'c:x', 'a//b', './x', 'a/./b', 'a/', '.git/config', 'sub/.GIT/config',
       '.Git', '.git./x', '.git /x', '.git . /x', 'GIT~1/config', 'a/git~2', '.g\u200cit/config', '.git\ufeff/x', '.git::$INDEX_ALLOCATION/x',
       'a\\..\\b', 'a\\.git\\config', ''];
-    for (const p of bad) assert.ok(unsafeIndexPath(p), JSON.stringify(p));
+    // Windows path syntax ('\\', drive letters, NTFS/8.3 aliases) applies on Windows only since round 15: checked there
+    for (const p of bad) assert.ok(unsafeIndexPath(p, { platform: 'win32' }), JSON.stringify(p));
+    for (const p of ['../x', 'a/../x', 'a/..', '/etc/passwd', 'a//b', './x', 'a/./b', 'a/', '.git/config', 'sub/.GIT/config', '.Git',
+      '.g\u200cit/config', '.git\ufeff/x', '']) assert.ok(unsafeIndexPath(p, { platform: 'linux' }), `linux ${JSON.stringify(p)}`);
     const good = ['f.txt', 'a/b/c', '.gitignore', '.gitattributes', '.gitmodules', 'x.git', '..a', 'a..', '.github/workflows/ci.yml', 'git~x', 'gitx'];
     for (const p of good) assert.equal(unsafeIndexPath(p), null, JSON.stringify(p));
     assert.equal(unsafeIndexPath('dir/', { dir: true }), null, 'a sparse-index directory entry');
@@ -2066,5 +2069,51 @@ describe('safe-git — review round 12 regressions (--exclude, deep symlinks und
     const git = (a, o) => { ran = true; return defaultGitRunner(a, o); };
     await assert.rejects(safeGit(d, ['log', '--oneline'], { git }), (e) => e instanceof KitExit && e.code === 2 && /is a symlink/.test(e.message));
     assert.equal(ran, false);
+  });
+});
+
+describe('safe-git — review round 15 regressions', () => {
+  it('index path rules follow the platform: a:b and x\\y are file names on POSIX, absolute or separators on Windows', () => {
+    for (const p of ['a:b', 'tests/fixtures/..\\..\\evil.txt', 'x/C:\\t', 'git~1/x', '.git./x']) {
+      assert.equal(unsafeIndexPath(p, { platform: 'linux' }), null, `linux: ${p}`);
+      assert.ok(unsafeIndexPath(p, { platform: 'win32' }), `win32: ${p}`);
+    }
+    for (const p of ['/etc/passwd', '../x', 'a/../../x', '.git/config', '.GIT/config', 'a//b', './a']) {
+      assert.ok(unsafeIndexPath(p, { platform: 'linux' }), `linux: ${p}`);
+      assert.ok(unsafeIndexPath(p, { platform: 'win32' }), `win32: ${p}`);
+    }
+  });
+
+  it('a repository with a file named a:b reads on POSIX', { skip: process.platform === 'win32' }, async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'safe-git-r15-'));
+    try {
+      sh(root, ['init', '-q', '.']);
+      await fs.writeFile(path.join(root, 'a:b'), 'x\n');
+      sh(root, ['add', '-A']);
+      sh(root, ['commit', '-q', '-m', 'colon']);
+      const r = await safeGit(root, ['ls-files']);
+      assert.equal(r.code, 0);
+      assert.match(r.stdout, /a:b/);
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
+  });
+
+  it('a prototype key as subcommand is a clean refusal (exit 2), not a crash', async () => {
+    assert.equal(readsStdin(['constructor', '--x']), false);
+    await assert.rejects(run(['--', 'constructor', '--x'], { cwd: os.tmpdir(), env: CLEAN_ENV, stdin: async () => '', stdinIsTTY: true }),
+      (e) => e instanceof KitExit && e.code === 2);
+  });
+
+  it('the main config file is read once per call', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'safe-git-r15c-'));
+    try {
+      sh(root, ['init', '-q', '.']);
+      await fs.writeFile(path.join(root, 'a'), 'a\n');
+      sh(root, ['add', 'a']);
+      sh(root, ['commit', '-q', '-m', 'a']);
+      let reads = 0;
+      const git = (a, o) => { if (a.includes('config') && a.includes('--file')) reads++; return defaultGitRunner(a, o); };
+      await safeGit(root, ['rev-parse', 'HEAD'], { git });
+      assert.equal(reads, 1);
+    } finally { await fs.rm(root, { recursive: true, force: true }); }
   });
 });

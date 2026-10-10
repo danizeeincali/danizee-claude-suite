@@ -66,6 +66,20 @@ describe('safe-git — packaged end to end', () => {
     assert.equal(wt.code, 0, wt.err);
     assert.match(wt.json.stdout, / M f\.txt/);
     assert.deepEqual(await fs.readdir(markers), []);
+    // a driver that DOES run under plain git, named only in a work-tree .gitattributes: its commands live in a file
+    // the repo config includes (safe-git never reads includes), so only the attributes name it
+    const inc = path.join(root, 'hidden-driver.cfg');
+    await fs.writeFile(inc, `[filter "hid"]\n\tclean = "sh -c 'touch ${markers}/hid; cat'"\n`); // quoted: ';' starts a comment
+    sh(repo, ['config', 'include.path', inc]);
+    await fs.appendFile(path.join(repo, '.gitattributes'), '*.txt filter=hid\n');
+    const hid = pkg.kit(['safe-git', '--dir', repo, '--', 'diff', '--', 'f.txt']);
+    assert.equal(hid.code, 0, hid.err);
+    assert.deepEqual(await fs.readdir(markers), [], 'the hidden driver never runs through safe-git');
+    sh(repo, ['diff', '--', 'f.txt']);
+    assert.ok((await fs.readdir(markers)).includes('hid'), 'control: plain git runs it');
+    // the plain-git control also ran the repo's other hooks (fsmonitor): clear every marker it left
+    for (const m of await fs.readdir(markers)) await fs.rm(path.join(markers, m));
+    sh(repo, ['config', '--unset', 'include.path']);
     await fs.mkdir(path.join(repo, '.git', 'info'), { recursive: true });
     await fs.appendFile(path.join(repo, '.git', 'info', 'attributes'), '*.md filter=bad;name\n');
     const bad = pkg.kit(['safe-git', '--dir', repo, '--', 'status']);
