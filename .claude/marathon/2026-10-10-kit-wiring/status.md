@@ -1,17 +1,17 @@
 # Marathon 2026-10-10-kit-wiring
 
 - State: RUNNING
-- Budget: 576,440 / 10,000,000 tokens
+- Budget: 616,440 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 2/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "diff-range" (next: fix the open security finding (opus), one checking review, then close the stream) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
+- Next for you: Continue stream "diff-range" (next: checking review (round 5) of the security fix; clean closes the stream) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
 
 ## Streams
 
 | Stream | Isolation | Plan | State | Gate | Phase | Next | Tasks | Escapes |
 |---|---|---|---|---|---|---|---|---|
-| diff-range | ../danizee-claude-suite-diff-range | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | met | /w-plan-tdd-swarm · fix | fix the open security finding (opus), one checking review, then close the stream |  | 0 |
+| diff-range | ../danizee-claude-suite-diff-range | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | met | /w-plan-tdd-swarm · review | checking review (round 5) of the security fix; clean closes the stream |  | 0 |
 | pt |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire CP6 Review and the closing step |  | 0 |
 | bc |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire scrub before commits and push-gate check before Phase 3 |  | 0 |
 | marathon |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire 4.5, 4.8 and CP6 |  | 0 |
@@ -23,7 +23,7 @@
 
 | Line | Owner | Status | Actual | Target |
 |---|---|---|---|---|
-| diff-range: green unit runs in a row | build | met | 5 | at_least 1 |
+| diff-range: green unit runs in a row | build | met | 6 | at_least 1 |
 | diff-range: clean reviews in a row | build | met | 2 | at_least 2 |
 | diff-range: open high findings | build | met | 0 | at_most 0 |
 | pt: green unit runs in a row | build | failing | 0 | at_least 1 |
@@ -45,7 +45,7 @@
 | sweep-foreign-and-logs: clean reviews in a row | build | failing | 0 | at_least 2 |
 | sweep-foreign-and-logs: open high findings | build | met | 0 | at_most 0 |
 | Repo copies under .claude/commands/.shortcuts equal the generator output | build | failing | — | is true |
-| Full npm test green after the last stream | build | met | 4 | at_least 1 |
+| Full npm test green after the last stream | build | met | 5 | at_least 1 |
 | Owner merged the PR | human | waiting on human | false | is true |
 
 ## Waiting on human
