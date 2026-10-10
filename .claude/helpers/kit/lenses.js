@@ -18,6 +18,10 @@
  * repeated key, a list where a scalar belongs (or the reverse), nested structure, YAML anchors or block scalars are
  * refused with the file and line. A bad glob (unbalanced brace) or a bad regex is refused too.
  *
+ * Input must be a unified diff with at least one changed file: an empty input, or text that is not a diff, exits 1
+ * (it is wrong input, not "no lens applies"); `--diff -` with stdin on a terminal is refused. Produce it with
+ * `git diff --no-prefix`; the parser also copes with a/ b/ and the mnemonic i/ w/ c/ o/ prefixes.
+ *
  * Globs: `*` (not across `/`), `**` (across `/`; `**\/` also matches no directory), `?` (one non-`/` character),
  * `{a,b}` alternatives (nestable), `\x` for a literal. A glob with no `/` matches the base name at any depth.
  *
@@ -191,11 +195,32 @@ export async function loadLenses(dirs) {
 
 // ---------------------------------------------------------------- diffs
 
-function cleanPath(raw) {
+// Prefixes git puts before paths: a/ b/ by default; c/ i/ w/ o/ with diff.mnemonicPrefix; none with --no-prefix.
+const LOOSE_PREFIX = /^[abciwo]\//;
+const GIT_PREFIX = /^[a-z]\//;
+
+function cleanPath(raw, mode = 'loose') {
   let p = raw.split('\t')[0].trim();
   if (p.length >= 2 && p[0] === '"' && p[p.length - 1] === '"') p = p.slice(1, -1);
-  if (p === '/dev/null') return p;
-  return p.replace(/^[ab]\//, '');
+  if (p === '/dev/null' || mode === 'none') return p;
+  return p.replace(mode === 'git' ? GIT_PREFIX : LOOSE_PREFIX, '');
+}
+
+const unquoteGit = (s) => (s.length >= 2 && s[0] === '"' && s[s.length - 1] === '"' ? s.slice(1, -1) : s);
+
+/**
+ * The path in a `diff --git` header and how it is prefixed. `--no-prefix` repeats the bare path (`x y` → both halves
+ * equal); otherwise each side carries one one-char prefix (`a/ b/`, or `i/ w/`, `c/ w/`, `c/ o/` with
+ * diff.mnemonicPrefix). Returns `{ path, mode }`, mode being 'none', 'git' or 'loose' (could not tell).
+ */
+function parseGitHeader(rest) {
+  if (rest.length % 2 === 1) {
+    const h = (rest.length - 1) / 2;
+    if (rest[h] === ' ' && rest.slice(0, h) === rest.slice(h + 1)) return { path: unquoteGit(rest.slice(0, h)), mode: 'none' };
+  }
+  const m = /^"?[a-z]\/(.+?)"? "?[a-z]\/(.+?)"?$/.exec(rest);
+  if (m) return { path: m[2], mode: 'git' };
+  return { path: rest, mode: 'loose' };
 }
 
 /** A unified diff → `[{ path, added: [...], removed: [...] }]` in file order. Lines are without the +/- marker. */
@@ -213,16 +238,21 @@ export function parseDiff(text) {
       hunk = null; // malformed counts: treat this line as a header
     }
     if (line.startsWith('\\')) continue;
-    const g = /^diff --git "?a\/(.+?)"? "?b\/(.+?)"?$/.exec(line);
-    if (g) { cur = { path: g[2], added: [], removed: [], fromGit: true, sawOld: false }; files.push(cur); continue; }
+    if (line.startsWith('diff --git ')) {
+      const g = parseGitHeader(line.slice('diff --git '.length).replace(/\r$/, ''));
+      cur = { path: g.path, mode: g.mode, added: [], removed: [], fromGit: true, sawOld: false };
+      files.push(cur);
+      continue;
+    }
     if (line.startsWith('--- ')) {
-      const p = cleanPath(line.slice(4));
+      const mode = cur && cur.fromGit ? cur.mode : 'loose';
+      const p = cleanPath(line.slice(4), mode);
       if (cur && cur.fromGit && !cur.sawOld && cur.added.length + cur.removed.length === 0) { cur.sawOld = true; cur.oldPath = p; }
-      else { cur = { path: p, oldPath: p, added: [], removed: [], sawOld: true }; files.push(cur); }
+      else { cur = { path: p, oldPath: p, mode: 'loose', added: [], removed: [], sawOld: true }; files.push(cur); }
       continue;
     }
     if (line.startsWith('+++ ') && cur) {
-      const p = cleanPath(line.slice(4));
+      const p = cleanPath(line.slice(4), cur.mode);
       cur.path = p === '/dev/null' ? (cur.oldPath && cur.oldPath !== '/dev/null' ? cur.oldPath : cur.path) : p;
       continue;
     }
@@ -295,7 +325,10 @@ async function exists(p) { try { await fs.access(p); return true; } catch { retu
 export async function run(args, io) {
   const o = parseArgs(args);
   let text;
-  if (o.diff === '-') text = await io.stdin();
+  if (o.diff === '-') {
+    if (io.stdinIsTTY) throw fail('--diff - reads the diff from stdin, but stdin is a terminal: pipe a diff in (git diff ... | cli.js lenses --diff -) or pass a file');
+    text = await io.stdin();
+  }
   else {
     const file = path.resolve(io.cwd, o.diff);
     try { text = await fs.readFile(file, 'utf-8'); } catch (e) { throw fail(`cannot read the diff ${file}: ${e.message}`); }
@@ -306,6 +339,12 @@ export async function run(args, io) {
   for (const d of o.dirs) dirs.push(path.resolve(io.cwd, d));
   const lenses = await loadLenses(dirs);
   const diff = parseDiff(text);
+  if (diff.length === 0) {
+    const what = o.diff === '-' ? 'on stdin' : `in ${o.diff}`;
+    throw fail(String(text || '').trim() === ''
+      ? `no diff was given ${what} (it is empty): check the range being reviewed — an empty input is not "no lens applies"`
+      : `the input ${what} is not a unified diff (no changed files found): check what was piped in`);
+  }
   const { fired, capped, stood_down } = selectLenses(lenses, diff, { cap: o.cap, covered: o.covered });
   return { loaded: lenses.length, changed_files: diff.length, cap: o.cap, fired, capped, stood_down };
 }

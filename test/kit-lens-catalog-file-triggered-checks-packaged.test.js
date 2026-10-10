@@ -52,6 +52,15 @@ describe('lenses — packaged, end to end', () => {
     assert.equal(r.json.fired[0].body, 'Check the docs wording.');
   });
 
+  it('an empty or non-diff input exits 1 with a message instead of a clean "nothing fired"', async () => {
+    const empty = pkg.kit(['lenses', '--diff', '-'], '');
+    assert.equal(empty.code, 1);
+    assert.match(empty.err, /no diff was given/);
+    const junk = pkg.kit(['lenses', '--diff', '-'], 'not a diff\n');
+    assert.equal(junk.code, 1);
+    assert.match(junk.err, /not a unified diff/);
+  });
+
   it('--covered stands a lens down and --cap limits what is handed over', async () => {
     await fs.rm(path.join(pkg.dir, '.claude', 'kit'), { recursive: true, force: true });
     const covered = pkg.kit(['lenses', '--diff', '-', '--covered', 'no-floating-promises'], DIFF);

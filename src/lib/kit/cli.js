@@ -48,7 +48,7 @@ export async function main(argv = process.argv.slice(2)) {
     return 1;
   }
   try {
-    const result = await entry.run(args, { cwd: process.cwd(), stdin: readStdin, env: process.env });
+    const result = await entry.run(args, { cwd: process.cwd(), stdin: readStdin, stdinIsTTY: !!process.stdin.isTTY, env: process.env });
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     return result && typeof result.exit === 'number' ? result.exit : 0;
   } catch (err) {

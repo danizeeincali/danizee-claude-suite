@@ -46,7 +46,11 @@ describe('/w-review lens step', () => {
     const a = c.indexOf('### ⛔ CHECKPOINT 1: Code Analysis');
     const b = c.indexOf('### ⛔ CHECKPOINT 2', a);
     const s = c.slice(a, b);
-    assert.match(s, /git diff HEAD > \/tmp\/w-review\.diff\nnode \.claude\/helpers\/kit\/cli\.js lenses --diff \/tmp\/w-review\.diff\n/);
+    assert.match(s, /BASE=\$\(git merge-base HEAD '@\{upstream\}'[^\n]*\)\n/);
+    assert.match(s, /git diff [^\n]*--no-prefix "\$BASE"/);
+    assert.match(s, /git ls-files -z --others --exclude-standard/);
+    assert.match(s, /> \/tmp\/w-review\.diff\nnode \.claude\/helpers\/kit\/cli\.js lenses --diff \/tmp\/w-review\.diff\n/);
+    assert.ok(!/git diff HEAD\b/.test(s), 'the lens step must not diff against HEAD only');
     assert.match(s, /--covered no-floating-promises/);
     assert.ok(!s.includes('\\`'));
   });

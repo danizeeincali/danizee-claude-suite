@@ -4,6 +4,7 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { execFileSync } from 'child_process';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
 import {
   verb, run, parseFrontmatter, parseLens, loadLenses, parseDiff, globToRegExp, globMatch, selectLenses
@@ -167,6 +168,50 @@ describe('lenses — parseDiff', () => {
   });
 });
 
+describe('lenses — parseDiff prefixes', () => {
+  const body = '@@ -1 +1 @@\n-x\n+y\n';
+  for (const [a, b] of [['a/', 'b/'], ['i/', 'w/'], ['c/', 'w/'], ['c/', 'o/'], ['', '']]) {
+    it(`reads the path under the "${a}" / "${b}" prefixes`, () => {
+      const f = parseDiff(`diff --git ${a}test/b.test.js ${b}test/b.test.js\n--- ${a}test/b.test.js\n+++ ${b}test/b.test.js\n${body}`);
+      assert.deepEqual(f, [{ path: 'test/b.test.js', added: ['y'], removed: ['x'] }]);
+    });
+  }
+  it('--no-prefix keeps a leading directory that looks like a prefix (a/x.js stays a/x.js)', () => {
+    const f = parseDiff(`diff --git a/x.js a/x.js\n--- a/x.js\n+++ a/x.js\n${body}`);
+    assert.equal(f[0].path, 'a/x.js');
+  });
+  it('a new, deleted or binary file under mnemonic prefixes gets its path from the header too', () => {
+    const f = parseDiff([
+      'diff --git i/new.js w/new.js', 'new file mode 100644', '--- /dev/null', '+++ w/new.js', '@@ -0,0 +1 @@', '+n',
+      'diff --git c/old.js w/old.js', 'deleted file mode 100644', '--- c/old.js', '+++ /dev/null', '@@ -1 +0,0 @@', '-o',
+      'diff --git c/img.png w/img.png', 'Binary files c/img.png and w/img.png differ', ''].join('\n'));
+    assert.deepEqual(f.map(x => x.path), ['new.js', 'old.js', 'img.png']);
+  });
+  it('real git output under diff.mnemonicPrefix, default prefixes and --no-prefix names the same files', async () => {
+    const dir = await tmp();
+    const g = (...a) => execFileSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { encoding: 'utf-8' });
+    g('init', '-q');
+    await fs.mkdir(path.join(dir, 'src'), { recursive: true });
+    await fs.mkdir(path.join(dir, 'test'), { recursive: true });
+    await fs.writeFile(path.join(dir, 'src', 'a.js'), 'old\n');
+    await fs.writeFile(path.join(dir, 'test', 'b.test.js'), 'old\n');
+    g('add', '.'); g('commit', '-q', '-m', 'one');
+    await fs.writeFile(path.join(dir, 'src', 'a.js'), 'await fetch(u)\n');
+    await fs.writeFile(path.join(dir, 'test', 'b.test.js'), 'it("x", () => {})\n');
+    for (const args of [['-c', 'diff.mnemonicPrefix=true', 'diff', 'HEAD'], ['-c', 'diff.mnemonicPrefix=true', 'diff'], ['diff', 'HEAD'], ['diff', '--no-prefix', 'HEAD']]) {
+      const out = g(...args);
+      assert.ok(out.length > 0, args.join(' '));
+      assert.deepEqual(parseDiff(out).map(f => f.path).sort(), ['src/a.js', 'test/b.test.js'], args.join(' '));
+    }
+    g('add', '.');
+    assert.deepEqual(parseDiff(g('-c', 'diff.mnemonicPrefix=true', 'diff', '--cached')).map(f => f.path).sort(), ['src/a.js', 'test/b.test.js']);
+    const proj = (d) => ({ cwd: d, stdin: async () => g('-c', 'diff.mnemonicPrefix=true', 'diff', '--cached'), env: {}, git: async () => ({ code: 0, stdout: d + '\n', stderr: '' }) });
+    const r = await run(['--diff', '-', '--dir', await tmp()].slice(0, 2), proj(dir));
+    assert.equal(r.changed_files, 2);
+    assert.ok(r.fired.some(f => f.name === 'missing-await' && f.files.includes('src/a.js')), 'a root-anchored glob fires under mnemonic prefixes');
+  });
+});
+
 const mk = (name, over = {}) => ({ name, globs: ['**/*.js'], re: /todo/i, covered_by: [], body: `body of ${name}`, source: `${name}.md`, ...over });
 const diffOf = (...files) => files.map(([p, a = [], r = []]) => ({ path: p, added: a, removed: r }));
 
@@ -273,8 +318,9 @@ describe('lenses — run', () => {
     const broken = async () => { throw new KitExit('cannot run git: spawn git ENOENT', 1); };
     await assert.rejects(run(['--diff', '-'], io(proj, { git: broken, stdin: async () => '' })), e => e instanceof KitExit && /cannot run git/.test(e.message));
     const notRepo = async () => ({ code: 128, stdout: '', stderr: 'fatal: not a git repository (or any of the parent directories): .git' });
-    const r = await run(['--diff', '-'], io(proj, { git: notRepo, stdin: async () => '' }));
+    const r = await run(['--diff', '-'], io(proj, { git: notRepo, stdin: async () => 'diff --git a/x.txt b/x.txt\n--- a/x.txt\n+++ b/x.txt\n@@ -1 +1 @@\n-a\n+b\n' }));
     assert.deepEqual(r.fired, []);
+    assert.equal(r.changed_files, 1);
     const odd = async () => ({ code: 1, stdout: '', stderr: 'fatal: something else broke' });
     await assert.rejects(run(['--diff', '-'], io(proj, { git: odd, stdin: async () => '' })), e => e instanceof KitExit && /something else broke/.test(e.message));
   });
@@ -283,5 +329,23 @@ describe('lenses — run', () => {
     await fs.mkdir(path.join(proj, '.claude', 'kit', 'lenses'), { recursive: true });
     await fs.writeFile(path.join(proj, '.claude', 'kit', 'lenses', 'bad.md'), lensText({ match: '(' }));
     await assert.rejects(run(['--diff', '-'], io(proj)), e => e instanceof KitExit && e.code === 1 && /bad\.md/.test(e.message));
+  });
+  it('empty stdin or an empty diff file is an error saying no diff was given (exit 1)', async () => {
+    const proj = await tmp();
+    for (const empty of ['', '\n  \n']) {
+      await assert.rejects(run(['--diff', '-'], io(proj, { stdin: async () => empty })), e => e instanceof KitExit && e.code === 1 && /no diff was given on stdin/.test(e.message));
+    }
+    await fs.writeFile(path.join(proj, 'e.diff'), '');
+    await assert.rejects(run(['--diff', path.join(proj, 'e.diff')], io(proj)), e => e instanceof KitExit && e.code === 1 && /no diff was given in .*e\.diff/.test(e.message));
+  });
+  it('text that is not a diff is an error naming that, not "no lens applies"', async () => {
+    const proj = await tmp();
+    await assert.rejects(run(['--diff', '-'], io(proj, { stdin: async () => 'hello\nnot a diff\n' })), e => e instanceof KitExit && e.code === 1 && /not a unified diff/.test(e.message));
+  });
+  it('--diff - with stdin on a terminal is refused before reading', async () => {
+    const proj = await tmp();
+    let read = false;
+    await assert.rejects(run(['--diff', '-'], io(proj, { stdinIsTTY: true, stdin: async () => { read = true; return ''; } })), e => e instanceof KitExit && e.code === 1 && /terminal/.test(e.message));
+    assert.equal(read, false);
   });
 });
