@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { spawnSync } from 'child_process';
 import { inventoryBrief, SAFE_GIT_LINES } from '../src/lib/bbs/inventory.js';
 import { mapBrief } from '../src/lib/bbs/harness-map.js';
 import { READ_SUBCOMMANDS } from '../.claude/helpers/kit/safe-git.js';
@@ -251,6 +252,21 @@ describe('/w-bbs command — kit wiring (safe-git, redact, scrub)', () => {
     assert.match(s, /never runs git on the clone/);
   });
 
+  it('r2: safe-git output is described by exit: JSON only on 0 and 3, a kit: line on stderr for 1 and 2 (CP4 and SAFE_GIT_LINES)', () => {
+    const s = section('### ⛔ CHECKPOINT 4', '3. **Show the verdict table');
+    assert.doesNotMatch(s, /safe-git prints \\`?\{ stdout, stderr, code, exit \}`? and exits/);
+    assert.match(s, /read safe-git's process exit code, not a field of its output/);
+    assert.match(s, /0 git ok \(it prints `\{ stdout, stderr, code, exit \}`/);
+    assert.match(s, /1 bad input \(stdout is empty, the reason is a `kit:` line on stderr/);
+    assert.match(s, /2 refused \(stdout is empty, the reason is a `kit: refused:` line on stderr/);
+    assert.match(s, /only exits 0 and 3 print that JSON/);
+    const g = SAFE_GIT_LINES.join('\n');
+    assert.doesNotMatch(g, /^It prints `\{ stdout, stderr, code, exit \}`/m);
+    assert.match(g, /Read the process exit code, not a field of the output: only exits 0 and 3 print `\{ stdout, stderr, code, exit \}`; exits 1 and 2 print nothing on stdout, only a `kit:` \(exit 1\) or `kit: refused:` \(exit 2\) line on stderr/);
+    assert.match(g, /1 bad input[^;]*: the reason is the `kit:` line on stderr; fix the call and retry once/);
+    assert.match(g, /2 refused[^;]*: the reason is the `kit: refused:` line on stderr; do not retry, name it in evidence/);
+  });
+
   it('every git subcommand the wired text names is one safe-git allows (READ_SUBCOMMANDS)', async () => {
     const naming = /\(((?:[a-z-]+, )+[a-z-]+)\) goes through `node \.claude\/helpers\/kit\/cli\.js safe-git/;
     const texts = { 'CHECKPOINT 4': section('### ⛔ CHECKPOINT 4', '3. **Show the verdict table'), SAFE_GIT_LINES: SAFE_GIT_LINES.join('\n') };
@@ -289,15 +305,116 @@ describe('/w-bbs command — kit wiring (safe-git, redact, scrub)', () => {
     assert.match(s, NOKIT);
     assert.match(s, /\.claude\/kit\/secrets/);
     assert.match(s, /recorded as is, nothing to redact/);
+    assert.doesNotMatch(s, /\[ ! -f [^\]]*secrets/);
+    assert.match(s, /\[ ! -e "\$S" \] && \[ ! -L "\$S" \] && \[ ! -e "\$M" \] && \[ ! -L "\$M" \]; then echo "no \.claude\/kit\/secrets: evidence recorded as is, nothing to redact/);
+    assert.match(s, /a dangling symlink or a directory there is a broken state, not "absent"/);
     assert.match(s, /redact --keep-lines/);
     assert.match(s, /mktemp/);
-    assert.match(s, /trap 'rm -f "\$J"' EXIT INT TERM/);
+    assert.match(s, /trap 'rm -f "\$J"; \[ -n "\$KEEP" \] \|\| rm -f "\$R"' EXIT INT TERM/);
     assert.match(s, /Exit 0: redacted/);
     assert.match(s, /console\.error\("replaced="\+j\.replaced\)/);
     assert.match(s, /stderr shows `replaced=<n>`/);
     assert.match(s, /Exit 1 is bad input/);
     assert.match(s, /never read exit 1 as "nothing to redact"/);
     assert.ok(s.indexOf('redact --keep-lines') < s.indexOf('verdict --probe'));
+  });
+
+  it('r2: CHECKPOINT 4 records evidence from a file, never pasted into a double-quoted argument', () => {
+    const s = section('### ⛔ CHECKPOINT 4', '3. **Show the verdict table');
+    assert.doesNotMatch(s, /--evidence "<text>"/);
+    assert.doesNotMatch(s, /Use the printed `text` as the evidence/);
+    assert.match(s, /verdict --probe <power>=<clean\|found\|incomplete> --evidence "\$\(cat "\$R"\)" \[--run <id>\]/);
+    assert.match(s, /then `rm -f "\$R" "\$E"`/);
+    assert.match(s, /fs\.writeFileSync\(process\.argv\[2\],j\.text\)/);
+    assert.match(s, /console\.log\("file="\+process\.argv\[2\]\)/);
+    assert.match(s, /\[ \$RC -eq 0 \] && KEEP=1/);
+    assert.match(s, /with the Write tool \(never `echo "<text>"` or a heredoc in the shell\)/);
+    assert.match(s, /backticks and `\$\( \)` would run as commands/);
+    assert.match(s, /the shell would evaluate text from the clone/);
+    assert.ok(s.indexOf('file=<path>') < s.indexOf('--evidence "$(cat "$R")"'));
+  });
+
+  describe('r2: the generated blocks, run in a scratch repo', () => {
+    const block = (head) => { const c = commands['w-bbs'].content; const m = c.slice(c.indexOf(head)).match(/```bash\n([^]*?)\n```/); assert.ok(m, head); return m[1]; };
+    const sh = (cwd, script, env = {}) => { const e = { ...process.env, ...env }; delete e.NODE_TEST_CONTEXT; return spawnSync('bash', ['-c', script], { cwd, env: e, encoding: 'utf8' }); };
+    const scratch = async () => {
+      const os = await import('os');
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'wbbs-r2-'));
+      const g = (...a) => assert.equal(spawnSync('git', a, { cwd: dir, encoding: 'utf8' }).status, 0, a.join(' '));
+      g('init', '-q'); g('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'i');
+      await fs.mkdir(path.join(dir, '.claude', 'helpers'), { recursive: true });
+      await fs.mkdir(path.join(dir, '.claude', 'kit'), { recursive: true });
+      await fs.cp(path.join(PROJECT_ROOT, '.claude', 'helpers', 'kit'), path.join(dir, '.claude', 'helpers', 'kit'), { recursive: true });
+      return dir;
+    };
+
+    it('CP4: nothing at the secrets path is "nothing to redact"; a dangling symlink or a directory there surfaces redact exit 1', async () => {
+      const dir = await scratch();
+      try {
+        const E = path.join(dir, 'E.txt');
+        await fs.writeFile(E, 'evidence\n');
+        const cp4 = block('### ⛔ CHECKPOINT 4');
+        let r = sh(dir, cp4, { E });
+        assert.equal(r.status, 0);
+        assert.match(r.stdout, /nothing to redact: record from file=/);
+        const sec = path.join(dir, '.claude', 'kit', 'secrets');
+        await fs.symlink(path.join(dir, 'nope'), sec);
+        r = sh(dir, cp4, { E });
+        assert.equal(r.status, 1, 'dangling symlink');
+        assert.doesNotMatch(r.stdout + r.stderr, /nothing to redact/);
+        assert.match(r.stderr, /redact failed \(exit 1\)/);
+        assert.doesNotMatch(r.stdout, /file=/);
+        await fs.rm(sec);
+        await fs.mkdir(sec);
+        r = sh(dir, cp4, { E });
+        assert.equal(r.status, 1, 'directory');
+        assert.doesNotMatch(r.stdout + r.stderr, /nothing to redact/);
+        assert.match(r.stderr, /redact failed \(exit 1\)/);
+      } finally { await fs.rm(dir, { recursive: true, force: true }); }
+    });
+
+    it('CP4: redacted evidence lands in a kept file and the documented record form does not evaluate it', async () => {
+      const dir = await scratch();
+      let R;
+      try {
+        await fs.writeFile(path.join(dir, '.claude', 'kit', 'secrets'), 'supersecretvalue123\n');
+        const E = path.join(dir, 'E.txt');
+        const evil = 'fetch(`${BASE}/t`) $(touch PWNED) `touch PWNED2` key=supersecretvalue123\n';
+        await fs.writeFile(E, evil);
+        const r = sh(dir, block('### ⛔ CHECKPOINT 4'), { E });
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stderr, /replaced=1/);
+        const m = r.stdout.match(/^file=(.+)$/m);
+        assert.ok(m, r.stdout);
+        R = m[1];
+        const kept = await fs.readFile(R, 'utf8');
+        assert.equal(kept, evil.replace('supersecretvalue123', '[REDACTED]'));
+        const rec = sh(dir, 'node -e \'process.stdout.write(process.argv[1])\' -- "$(cat "$R")"', { R });
+        assert.equal(rec.stdout, kept.replace(/\n$/, ''));
+        await assert.rejects(fs.access(path.join(dir, 'PWNED')));
+        await assert.rejects(fs.access(path.join(dir, 'PWNED2')));
+      } finally { await fs.rm(dir, { recursive: true, force: true }); if (R) await fs.rm(R, { force: true }); }
+    });
+
+    it('CP6: a refused scrub unstages the run paths; the rerun after the fix re-adds them', async () => {
+      const dir = await scratch();
+      try {
+        const cp6 = block('### ⛔ CHECKPOINT 6: Compound').replaceAll('<id>', 'r1');
+        await fs.mkdir(path.join(dir, '.claude', 'bbs', 'runs', 'r1'), { recursive: true });
+        await fs.writeFile(path.join(dir, '.claude', 'bbs', 'runs', 'r1', 'notes.md'), 'tok=SECRETHIT\n');
+        await fs.writeFile(path.join(dir, '.claude', 'bbs', 'registry.jsonl'), '{}\n');
+        await fs.writeFile(path.join(dir, '.claude', 'kit', 'scrub-patterns'), 'SECRETHIT\n');
+        const staged = () => spawnSync('git', ['diff', '--cached', '--name-only'], { cwd: dir, encoding: 'utf8' }).stdout.trim();
+        let r = sh(dir, cp6);
+        assert.equal(r.status, 2);
+        assert.match(r.stderr, /unstaged \.claude\/bbs\/runs\/r1 \.claude\/bbs\/registry\.jsonl/);
+        assert.equal(staged(), '');
+        await fs.writeFile(path.join(dir, '.claude', 'bbs', 'runs', 'r1', 'notes.md'), 'tok=clean\n');
+        r = sh(dir, cp6);
+        assert.equal(r.status, 0, r.stderr);
+        assert.deepEqual(staged().split('\n').sort(), ['.claude/bbs/registry.jsonl', '.claude/bbs/runs/r1/notes.md']);
+      } finally { await fs.rm(dir, { recursive: true, force: true }); }
+    });
   });
 
   it('CHECKPOINT 6 stages only the own paths of the run and scrubs before /bc, naming exits 0, 1, 2 and configured: false', () => {
@@ -315,6 +432,25 @@ describe('/w-bbs command — kit wiring (safe-git, redact, scrub)', () => {
     assert.match(s, /Exit 1 is wrong input/);
     assert.match(s, /never read a non-zero exit as clean/);
     assert.ok(s.indexOf('scrub --worktree') < s.indexOf('Then `/bc`'));
+  });
+
+  it('r2: CHECKPOINT 6 unstages the run paths on any non-zero exit, checks the unstage, and says the rerun re-adds them', () => {
+    const s = section('### ⛔ CHECKPOINT 6', '## `--resume');
+    assert.match(s, /scrub --worktree; RC=\$\?; if \[ \$RC -ne 0 \]; then git reset -q -- "\.claude\/bbs\/runs\/<id>" \.claude\/bbs\/registry\.jsonl; U=\$\?;/);
+    assert.match(s, /echo "unstage failed \(exit \$U\): still staged: \.claude\/bbs\/runs\/<id> \.claude\/bbs\/registry\.jsonl"/);
+    assert.match(s, /\(exit \$RC\); fi/);
+    assert.match(s, /On any non-zero exit \(scrub exit 1 or 2, or a failed `git add`\) the block unstages this run's paths/);
+    assert.match(s, /as `\/bc` does after a refused scrub/);
+    assert.match(s, /owner must unstage those paths before any commit/);
+    assert.match(s, /The paths are re-added by the rerun of this block after the hits are removed/);
+    assert.ok(s.indexOf('git reset -q') < s.indexOf('Then `/bc`'));
+  });
+
+  it('r2: CHECKPOINT 6 exit 2 also blocks on an incomplete scan of a run path or a truncated hit list', () => {
+    const s = section('### ⛔ CHECKPOINT 6', '## `--resume');
+    assert.match(s, /Exit 2 also blocks `\/bc` when `complete` is `false` and any of this run's paths is listed in `not_scanned`/);
+    assert.match(s, /or when `truncated` is `true` \(the hit list was capped, so a hit in this run's paths may be missing from it\)/);
+    assert.match(s, /an empty list of run-path hits then does not mean the run is clean/);
   });
 
   it('the closing checklist carries the kit line', () => {
