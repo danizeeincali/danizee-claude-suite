@@ -163,3 +163,9 @@
 {"key":"packaged_planted-bug-review-scoring","value":true,"id":"7e1918c9-a9d2-44c0-98b7-c3ced05f17c3","ts":"2026-10-10T13:26:19.963Z"}
 {"key":"egress_zero_planted-bug-review-scoring","value":true,"id":"6495f8c7-9364-41fc-8cb1-e7c7982eed9b","ts":"2026-10-10T13:26:20.134Z"}
 {"key":"callers_planted-bug-review-scoring","value":1,"id":"20f6a7f8-6be6-4eaf-b0fe-614ffaf1d8d1","ts":"2026-10-10T13:26:20.289Z"}
+{"key":"packaged_isolated-tool-free-wording-judge","value":false,"id":"35f46694-4df7-42f1-9356-61b0195a216c","ts":"2026-10-10T13:37:45.129Z"}
+{"key":"egress_zero_isolated-tool-free-wording-judge","value":false,"id":"0e6e2e99-73d7-41b6-960c-cfd13ece3726","ts":"2026-10-10T13:37:45.306Z"}
+{"key":"callers_isolated-tool-free-wording-judge","value":1,"id":"c1082e68-51ae-4233-9a9b-69bf40ca376a","ts":"2026-10-10T13:37:45.439Z"}
+{"key":"packaged_isolated-tool-free-wording-judge","value":true,"id":"4bd33076-d19f-416d-abc0-64db5c0cb61f","ts":"2026-10-10T13:38:00.685Z"}
+{"key":"egress_zero_isolated-tool-free-wording-judge","value":true,"id":"e75a7e55-3b89-4180-86b3-09be1a61f653","ts":"2026-10-10T13:38:00.845Z"}
+{"key":"callers_isolated-tool-free-wording-judge","value":1,"id":"91746367-b1e7-4fb8-8167-1d8609f98982","ts":"2026-10-10T13:38:01.036Z"}

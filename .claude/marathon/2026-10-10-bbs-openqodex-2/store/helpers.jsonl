@@ -161,3 +161,5 @@
 {"role":"review","model":"opus","stream":"planted-bug-review-scoring","budget":150000,"event":"spawn","id":"c29cbc8e-a261-4b9a-b379-8eed1c5a9274","ts":"2026-10-10T13:22:21.189Z"}
 {"helper_id":"c29cbc8e-a261-4b9a-b379-8eed1c5a9274","tokens":85639,"outcome":"green","event":"done","id":"e9ea241f-d0df-45d2-a7f6-4559248c4f3e","ts":"2026-10-10T13:24:04.391Z"}
 {"role":"build","model":"sonnet","stream":"isolated-tool-free-wording-judge","budget":150000,"event":"spawn","id":"84c7114f-2520-45e0-9f18-ffa0f7a436dc","ts":"2026-10-10T13:28:15.712Z"}
+{"role":"review","model":"opus","stream":"isolated-tool-free-wording-judge","budget":150000,"event":"spawn","id":"e4e9b1e8-1641-4c36-8a7e-fc3738022487","ts":"2026-10-10T13:37:45.973Z"}
+{"helper_id":"84c7114f-2520-45e0-9f18-ffa0f7a436dc","tokens":83605,"outcome":"green","event":"done","id":"e7f5fe70-8af1-41cb-90aa-444312633305","ts":"2026-10-10T13:37:52.064Z"}

@@ -1,11 +1,11 @@
 # Marathon 2026-10-10-bbs-openqodex-2
 
 - State: RUNNING
-- Budget: 9,714,253 / 10,000,000 tokens
+- Budget: 9,797,858 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 2/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "isolated-tool-free-wording-judge" (next: builder writes contract tests and module) — /w-marathon --resume 2026-10-10-bbs-openqodex-2.
+- Next for you: Continue stream "isolated-tool-free-wording-judge" (next: review round 1) — /w-marathon --resume 2026-10-10-bbs-openqodex-2.
 - Last handoff: 2026-10-10T13:12:01.330Z (auto) on claude/project-thread-p9gbyo@8fb286e, 4 uncommitted, tasks: none
 
 ## Streams
@@ -22,7 +22,7 @@
 | fact-cached-graph-build-with-budget | ../danizee-claude-suite-fact-cached-graph-build-with-budget | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/fact-cached-graph-build-with-budget.md | done | met | review | — |  | 0 |
 | tracked-file-scrub-gate | ../danizee-claude-suite-tracked-file-scrub-gate | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/tracked-file-scrub-gate.md | done | met | review | — |  | 0 |
 | planted-bug-review-scoring | ../danizee-claude-suite-planted-bug-review-scoring | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/planted-bug-review-scoring.md | done | met | review | — |  | 0 |
-| isolated-tool-free-wording-judge | ../danizee-claude-suite-isolated-tool-free-wording-judge | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/isolated-tool-free-wording-judge.md | active | clean 0/2 | build | builder writes contract tests and module |  | 0 |
+| isolated-tool-free-wording-judge | ../danizee-claude-suite-isolated-tool-free-wording-judge | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/isolated-tool-free-wording-judge.md | active | clean 0/2 | review | review round 1 |  | 0 |
 
 ## Finish line
 
@@ -78,11 +78,11 @@
 | planted-bug-review-scoring: clean reviews in a row | build | met | 2 | at_least 2 |
 | planted-bug-review-scoring: callers in the harness | build | met | 1 | at_least 1 |
 | planted-bug-review-scoring: packaged check passes | build | met | true | is true |
-| isolated-tool-free-wording-judge: green unit runs in a row | build | failing | 0 | at_least 1 |
-| isolated-tool-free-wording-judge: zero egress in the packaged check | build | failing | — | is true |
+| isolated-tool-free-wording-judge: green unit runs in a row | build | met | 1 | at_least 1 |
+| isolated-tool-free-wording-judge: zero egress in the packaged check | build | met | true | is true |
 | isolated-tool-free-wording-judge: clean reviews in a row | build | failing | 0 | at_least 2 |
-| isolated-tool-free-wording-judge: callers in the harness | build | failing | — | at_least 1 |
-| isolated-tool-free-wording-judge: packaged check passes | build | failing | — | is true |
+| isolated-tool-free-wording-judge: callers in the harness | build | met | 1 | at_least 1 |
+| isolated-tool-free-wording-judge: packaged check passes | build | met | true | is true |
 | Clean reviews in a row | build | met | 2 | at_least 2 |
 | High findings in the latest review | build | met | 0 | at_most 0 |
 | Open high findings | build | met | 0 | at_most 0 |
