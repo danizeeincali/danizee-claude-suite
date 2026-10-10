@@ -822,10 +822,14 @@ export function validFacts(f) {
   if (!f || typeof f !== 'object' || Array.isArray(f)) return false;
   if (f.unread !== undefined) return f.unread === 'parse_error' && isStr(f.detail);
   const arr = (a, ok) => Array.isArray(a) && a.every(x => x && typeof x === 'object' && ok(x));
-  return arr(f.defs, d => isStr(d.name) && isStr(d.kind) && isNum(d.start) && isNum(d.end) && isNum(d.up) && (d.parent === null || isStr(d.parent))
+  // every index must point into the arrays it indexes: a def's `up` is -1 or an EARLIER def, a call's `owner` is -1 or a def
+  if (!Array.isArray(f.defs) || !Array.isArray(f.calls)) return false;
+  const nDefs = f.defs.length;
+  let at = 0;
+  return arr(f.defs, d => isStr(d.name) && isStr(d.kind) && isNum(d.start) && isNum(d.end) && isNum(d.up) && d.up >= -1 && d.up < at++ && (d.parent === null || isStr(d.parent))
       && typeof d.exported === 'boolean' && (d.extends === undefined || isStr(d.extends) || (Array.isArray(d.extends) && d.extends.every(isStr)))
       && (d.implements === undefined || (Array.isArray(d.implements) && d.implements.every(isStr))))
-    && arr(f.calls, c => isStr(c.name) && (c.receiver === null || isStr(c.receiver)) && isStr(c.kind) && isNum(c.line) && isNum(c.owner))
+    && arr(f.calls, c => isStr(c.name) && (c.receiver === null || isStr(c.receiver)) && isStr(c.kind) && isNum(c.line) && isNum(c.owner) && c.owner >= -1 && c.owner < nDefs)
     && arr(f.imports, m => (m.source === null || isStr(m.source)) && isStr(m.kind) && Array.isArray(m.names) && m.names.every(x => x && isStr(x.imported) && isStr(x.local)))
     && arr(f.exports, e => isStr(e.name) && (e.local === null || isStr(e.local)) && (e.source === undefined || isStr(e.source)));
 }
@@ -840,7 +844,19 @@ export function cacheKey(ext, bytes) {
 const posix = path.posix;
 const toExt = (p) => path.extname(p).toLowerCase();
 
-/** A repo-relative POSIX path, or throws KitExit 1. */
+/** A name from git's own file list: top-relative POSIX already, so kept exactly (backslash and colon are ordinary
+ * characters there). Only win32 gets the Windows rules. Returns null for a name that cannot be used (it is then
+ * reported in not_read); throws KitExit 1 for one that escapes the repository. */
+export function listedRel(p, platform = process.platform) {
+  if (typeof p !== 'string' || p === '' || p.includes('\0')) return null;
+  if (platform === 'win32') { try { return normalizeRel(p); } catch { return null; } }
+  const segs = p.split('/');
+  if (p.startsWith('/') || segs.includes('..')) throw invalid(`file ${JSON.stringify(p).slice(0, 100)} is not a path inside the repository`); // git never lists this: refuse, as before
+  if (segs.some(seg => seg === '' || seg === '.')) return null;
+  return p;
+}
+
+/** A repo-relative POSIX path given by the user, or throws KitExit 1. */
 export function normalizeRel(p, what = 'file') {
   if (typeof p !== 'string' || p === '' || p.includes('\0')) throw invalid(`${what}: not a path`);
   const q = posix.normalize(p.replace(/\\/g, '/'));
@@ -871,7 +887,6 @@ export async function buildGraph(root, opts = {}) {
   const stats = { candidates: 0, read: 0, parsed: 0, cache_hits: 0, cache_writes: 0, missing: 0, ignored: 0, over_file_cap: 0 };
 
   // ---- candidates: changed files first, then the rest in path order
-  const listed = (o.files ? o.files : await listRepoFiles(root, { git: o.git, env: o.env })).map(f => normalizeRel(f));
   const changed = [...new Set((o.changed || []).map(f => normalizeRel(f, 'changed file')))];
   const notRead = [];
   let notReadTotal = 0;
@@ -879,6 +894,12 @@ export async function buildGraph(root, opts = {}) {
     notReadTotal++;
     if (notRead.length < o.maxNotRead) notRead.push(detail ? { file, reason, detail } : { file, reason });
   };
+  const listed = [];
+  for (const f of (o.files ? o.files : await listRepoFiles(root, { git: o.git, env: o.env }))) {
+    const rel = listedRel(f);
+    if (rel === null) addNotRead(String(f).slice(0, 200), 'unsupported', 'this name cannot be used as a path inside the repository');
+    else listed.push(rel);
+  }
   const all = new Set(listed);
   for (const c of changed) all.add(c);
   const candidates = [];
@@ -902,7 +923,20 @@ export async function buildGraph(root, opts = {}) {
   const cacheDir = o.cacheDir ? path.resolve(o.cacheDir) : path.join(root, '.claude', 'kit', 'cache', 'graph');
   const guardRoot = o.cacheDir ? path.dirname(cacheDir) : root;
   let cacheOn = o.cache !== false;
-  const cacheFail = (e) => { cacheOn = false; stats.cache_error = String(e.message || e).slice(0, 200); };
+  // the reason first, then the path (short, relative to the repo top), so the cap never cuts the reason off
+  const shortReason = (e) => {
+    let m = String(e.message || e).split(cacheDir).join(path.relative(root, cacheDir) || '.').split(root).join('.');
+    m = m.replace(/\b([0-9a-f]{8})[0-9a-f]{56}\.json/g, '$1.json');
+    const lead = /^(\S+) (.*)$/s.exec(m);
+    if (lead && /[\\/]/.test(lead[1])) m = `${lead[2]} (${lead[1]})`;
+    return m.slice(0, 200);
+  };
+  const cacheFail = (e) => { cacheOn = false; stats.cache_error = shortReason(e); };
+  // is the cache FOLDER itself usable? (probe a name that is never there: only a folder-level refusal is not "missing")
+  const folderRefused = async () => {
+    try { await guardedRead(cacheFile('0'.repeat(64)), { root: guardRoot, protect: cacheDir, maxBytes: o.maxCacheBytes }); return null; }
+    catch (e) { return e instanceof KitExit && e.code === 2 ? e : null; }
+  };
   const cacheFile = (key) => path.join(cacheDir, `${key}.json`);
   const cacheGet = async (key) => {
     if (!cacheOn) return null;
@@ -911,16 +945,21 @@ export async function buildGraph(root, opts = {}) {
       return f && f.v === EXTRACTOR_VERSION && f.key === key && validFacts(f.facts) ? f.facts : null;
     } catch (e) {
       if (e instanceof KitExit && e.missing) return null;
-      if (e instanceof KitExit && e.code === 2) cacheFail(e);
-      return null; // unreadable or corrupt: a miss
+      if (e instanceof KitExit && e.code === 2) { const fe = await folderRefused(); if (fe) cacheFail(fe); }
+      return null; // unreadable, refused or corrupt entry: a miss for this file only (it is rewritten if it can be)
     }
   };
   const cachePut = async (key, facts) => {
     if (!cacheOn) return;
     try {
-      await guardedWrite(cacheFile(key), JSON.stringify({ v: EXTRACTOR_VERSION, key, facts }), { root: guardRoot, protect: cacheDir });
+      const text = JSON.stringify({ v: EXTRACTOR_VERSION, key, facts });
+      if (Buffer.byteLength(text) > o.maxCacheBytes) return; // the read limit is the write limit: never write what would be refused
+      await guardedWrite(cacheFile(key), text, { root: guardRoot, protect: cacheDir, maxBytes: o.maxCacheBytes });
       stats.cache_writes++;
-    } catch (e) { cacheFail(e); }
+    } catch (e) {
+      if (e instanceof KitExit && e.code === 2) { const fe = await folderRefused(); if (fe) cacheFail(fe); } // this entry only: no cache entry, cache stays on
+      else cacheFail(e);
+    }
   };
 
   // ---- scan
@@ -1315,7 +1354,14 @@ export async function run(args, io = {}) {
     counts: { files: g.files.length, defs: g.defs.length, edges: g.edges.length, unresolved: g.stats.unresolved_total, not_read: g.stats.not_read_total },
     edges_by_confidence: countBy(g.edges, 'confidence'),
     unresolved_by_reason: countBy(g.unresolved, 'reason'),
-    changed: { requested: new Set(changed).size, read: g.files.filter(x => x.changed).length },
+    changed: (() => {
+      const src = new Set(), other = new Set();
+      for (const c of changed) (SUPPORTED_EXT.includes(toExt(c)) ? src : other).add(normalizeRel(c, 'changed file'));
+      // requested = changed JS/TS files (the only ones the graph can read); the rest are counted, not hidden
+      const out = { requested: src.size, read: g.files.filter(x => x.changed).length };
+      if (other.size) Object.assign(out, { not_source: other.size, note: 'requested counts changed JS/TS files; not_source counts changed files of other types, which the graph never reads' });
+      return out;
+    })(),
     not_read: g.not_read,
     stats: g.stats
   };

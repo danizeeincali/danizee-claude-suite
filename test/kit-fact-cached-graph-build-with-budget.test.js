@@ -599,3 +599,88 @@ describe('graph — review round 1 regressions (diff input)', () => {
     assert.match(graph.usage, /--changed paths.*relative to the repository top/);
   });
 });
+
+describe('graph — review round 2 regressions', () => {
+  const cacheDirOf = (dir) => path.join(dir, '.claude/kit/cache/graph');
+  const src = { 'a.js': 'function outer() { function inner() { helper(); } inner(); }\nfunction helper() {}\n' };
+
+  it('1. a cache entry with an out-of-range def.up or call.owner is a miss and is rewritten, never a crash', () => tmp(async dir => {
+    await put(dir, src);
+    await buildGraph(dir, { files: ['a.js'] });
+    const cdir = cacheDirOf(dir);
+    const [name] = await fs.readdir(cdir);
+    const good = JSON.parse(await fs.readFile(path.join(cdir, name), 'utf-8'));
+    assert.ok(good.facts.calls.length > 0 && good.facts.defs.length > 1);
+    for (const bad of [(e) => { e.facts.calls[0].owner = 7; }, (e) => { e.facts.defs[0].up = 9; }, (e) => { e.facts.calls[0].owner = -2; }, (e) => { e.facts.defs[0].up = 0; }]) {
+      const entry = structuredClone(good);
+      bad(entry);
+      assert.equal(graph.validFacts(entry.facts), false);
+      await fs.writeFile(path.join(cdir, name), JSON.stringify(entry));
+      const parsed = [];
+      const g = await buildGraph(dir, { files: ['a.js'], onParse: p => parsed.push(p) });
+      assert.deepEqual(parsed, ['a.js']);
+      assert.equal(g.stats.cache_writes, 1);
+      assert.equal(graph.validFacts(JSON.parse(await fs.readFile(path.join(cdir, name), 'utf-8')).facts), true);
+    }
+    assert.equal(graph.validFacts(good.facts), true);
+  }));
+
+  it('2. one refused cache entry is a miss for that file only; the cache stays on, and the read limit is the write limit', () => tmp(async dir => {
+    const many = { 'a.js': 'function a() {}\n', 'b.js': 'function b() {}\n', 'c.js': 'function c() {}\n' };
+    await put(dir, many);
+    await buildGraph(dir, { files: Object.keys(many) });
+    const cdir = cacheDirOf(dir);
+    const key = graph.cacheKey('.js', await fs.readFile(path.join(dir, 'a.js')));
+    await fs.rm(path.join(cdir, `${key}.json`));
+    await fs.symlink(path.join(dir, 'b.js'), path.join(cdir, `${key}.json`));
+    const g = await buildGraph(dir, { files: Object.keys(many), maxParses: 1 });
+    assert.equal(g.stats.cache_error, undefined);
+    assert.equal(g.stats.cache_hits, 2);
+    assert.equal(g.stats.cache_writes, 1);
+    assert.equal(g.partial, false);
+    assert.equal((await fs.lstat(path.join(cdir, `${key}.json`))).isFile(), true, 'the entry was rewritten');
+    // a big file whose entry would exceed the limit is never written, and nothing refuses a later run
+    await fs.writeFile(path.join(dir, 'big.js'), 'a()()\n'.repeat(2000));
+    const o = { files: ['big.js'], maxCacheBytes: 4096 };
+    const g1 = await buildGraph(dir, o);
+    assert.equal(g1.stats.cache_writes, 0);
+    const g2 = await buildGraph(dir, { ...o, files: ['big.js', 'a.js'] });
+    assert.equal(g2.stats.cache_error, undefined);
+    assert.equal(g2.stats.cache_hits, 1);
+  }));
+
+  it('3. legal POSIX names from git are kept exactly; an unusable name is listed in not_read and makes the build partial', { skip: process.platform === 'win32' }, () => tmp(async dir => {
+    const files = { 'c:notes.txt': 'x', 'src/we\\ird.js': 'function w() {}\n', 'ok.js': 'function ok() {}\n' };
+    await repo(dir, files);
+    const g = await buildGraph(dir, {});
+    assert.ok(g.files.some(f => f.path === 'src/we\\ird.js'), 'the backslash name is read as it is');
+    assert.equal(g.stats.missing, 0);
+    assert.equal(g.partial, false);
+    const h = await buildGraph(dir, { files: ['ok.js', 'a//odd.js', ''] });
+    assert.equal(h.partial, true);
+    assert.ok(h.not_read.some(r => r.file === 'a//odd.js' && r.reason && r.detail));
+    assert.equal(h.stats.missing, 0);
+  }));
+
+  it('4. cache_error keeps its reason: the reason comes first and the path is short', () => tmp(async dir => {
+    await put(dir, src);
+    const elsewhere = path.join(dir, 'elsewhere');
+    await fs.mkdir(elsewhere);
+    await fs.mkdir(path.join(dir, '.claude/kit/cache'), { recursive: true });
+    await fs.symlink(elsewhere, cacheDirOf(dir));
+    const g = await buildGraph(dir, { files: ['a.js'] });
+    assert.match(g.stats.cache_error, /link/);
+    assert.ok(g.stats.cache_error.length <= 200);
+    assert.ok(!g.stats.cache_error.includes(dir), 'no absolute path');
+    assert.doesNotMatch(g.stats.cache_error, /[0-9a-f]{40}/);
+  }));
+
+  it('5. changed.requested counts only JS/TS files and not_source counts the rest', () => tmp(async dir => {
+    await repo(dir, { 'a.js': 'function a() {}\n', 'b.ts': 'function b() {}\n', 'notes.md': '# x\n', 'cfg.json': '{}' });
+    const r = await graph.run(['--changed', 'a.js', '--changed', 'b.ts', '--changed', 'notes.md', '--changed', 'cfg.json'], { cwd: dir });
+    assert.equal(r.changed.requested, 2);
+    assert.equal(r.changed.read, 2);
+    assert.equal(r.changed.not_source, 2);
+    assert.match(r.changed.note, /JS\/TS/);
+  }));
+});
