@@ -713,6 +713,73 @@ describe('diff-range — the review range as one unified diff', () => {
     for (const c of calls) assert.match(c.env.GIT_CONFIG_PARAMETERS, /'core\.fsmonitor='/);
   });
 
+  it('a tracked file moved by hand to an untracked name shows the delete and the full add on both paths (no rename entry)', async () => {
+    const body = Array.from({ length: 50 }, (_, i) => `line ${i}`).join('\n') + '\n';
+    await put('old.txt', body); commit();
+    await fs.rename(path.join(dir, 'old.txt'), path.join(dir, 'new.txt'));
+    const real = defaultGit(dir, {});
+    const old = Object.assign(async (args, o = {}) => {
+      if (args.includes('--pathspec-from-file=-')) return { code: 129, stdout: '', stderr: 'error: unknown option `pathspec-from-file=-\'\nusage: git add' };
+      return real(args, o);
+    }, { cwd: dir });
+    for (const git of [undefined, old]) {
+      const r = await run(['--base', 'HEAD'], io(git ? { git } : {}));
+      assert.equal(r.exit, 0);
+      assert.doesNotMatch(r.raw, /rename (from|to)/);
+      const files = parseDiff(r.raw);
+      assert.deepEqual(files.map(x => x.path).sort(), ['new.txt', 'old.txt']);
+      assert.equal(files.find(x => x.path === 'new.txt').added.length, 50);
+    }
+  });
+
+  it('a sparse checkout: untracked files outside the cone are still in the diff, exit 0', async (t) => {
+    await put('in/a.txt', 'a\n'); await put('out/b.txt', 'b\n'); commit();
+    const sp = spawnSync('git', ['sparse-checkout', 'set', '--cone', 'in'], { cwd: dir, encoding: 'utf-8' });
+    if (sp.status !== 0) return t.skip(`this git lacks sparse-checkout: ${sp.stderr}`);
+    await put('out/new.txt', 'o\n'); await put('in/new.txt', 'i\n');
+    const r = await run(['--base', 'HEAD'], io());
+    assert.equal(r.exit, 0);
+    assert.deepEqual(parseDiff(r.raw).map(x => x.path).sort(), ['in/new.txt', 'out/new.txt']);
+  });
+
+  it('a git that rejects add -N with an unknown option (no --sparse) takes the fallback; any other add failure is labelled as the temporary index', async () => {
+    await put('a.txt', 'a\n'); commit();
+    await put('x.txt', 'x\n');
+    const real = defaultGit(dir, {});
+    const mk = (stderr) => Object.assign(async (args, o = {}) => (args.includes('--pathspec-from-file=-') ? { code: 129, stdout: '', stderr } : real(args, o)), { cwd: dir });
+    const r = await run(['--base', 'HEAD'], io({ git: mk("error: unknown option `sparse'\nusage: git add") }));
+    assert.deepEqual(parseDiff(r.raw).map(x => x.path), ['x.txt']);
+    await assert.rejects(run(['--base', 'HEAD'], io({ git: mk('fatal: boom') })), (e) => e instanceof KitExit && e.code === 1 && /cannot add the untracked files to the temporary index: fatal: boom/.test(e.message));
+  });
+
+  it('a range whose only changes were skipped by a cap is exit 1 naming the files and the flags, never exit 3; a nested repository alone stays exit 3', async () => {
+    await put('a.txt', 'a\n'); commit();
+    await fs.writeFile(path.join(dir, 'big.log'), Buffer.alloc(9 * 1024 * 1024, 0x61));
+    const err = { write: () => {} };
+    await assert.rejects(run(['--base', 'HEAD'], io({ stderr: err })), (e) => e instanceof KitExit && e.code === 1 && /big\.log/.test(e.message) && /too_large/.test(e.message) && /--max-file-bytes/.test(e.message));
+    await fs.rm(path.join(dir, 'big.log'));
+    await put('one.txt', '1\n');
+    await assert.rejects(run(['--base', 'HEAD', '--max-untracked', '0'], io({ stderr: err })), (e) => e instanceof KitExit && e.code === 1 && /one\.txt/.test(e.message) && /max_untracked/.test(e.message) && /--max-untracked/.test(e.message));
+    await fs.rm(path.join(dir, 'one.txt'));
+    await fs.mkdir(path.join(dir, 'sub'), { recursive: true });
+    sh(path.join(dir, 'sub'), 'init', '-q');
+    await put('sub/inner.txt', 'inner\n');
+    const r = await run(['--base', 'HEAD'], io({ stderr: err }));
+    assert.equal(r.exit, 3);
+  });
+
+  it('with core.splitIndex=true no sharedindex file is written into the real .git', async () => {
+    await put('a.txt', 'a\n'); await put('b.txt', 'b\n'); commit();
+    sh(dir, 'config', 'core.splitIndex', 'true');
+    sh(dir, 'update-index', '--split-index');
+    const shared = () => fsSync.readdirSync(path.join(dir, '.git')).filter(n => n.startsWith('sharedindex.')).sort();
+    const before = shared();
+    await put('x.txt', 'x\n');
+    const r = await run(['--base', 'HEAD'], io());
+    assert.equal(r.exit, 0);
+    assert.deepEqual(shared(), before);
+  });
+
   it('configParameters single-quotes each -c pair the way git does', () => {
     assert.equal(configParameters(['-c', 'core.fsmonitor=', '-c', "a.b=it's"]), `'core.fsmonitor=' 'a.b=it'\\''s'`);
   });

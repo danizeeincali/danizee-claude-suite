@@ -57,7 +57,11 @@
  * the path and git's stderr, so a range with an unread untracked path is never exit 3.
  * Bytes: the diffs are read as bytes. When they are valid UTF-8 `raw` is a string; otherwise `raw` is a Buffer the cli writes undecoded.
  *
- * Exit: 0 printed, 3 empty (nothing printed), 1 bad input or git failed, 2 refused.
+ * Exit: 0 printed, 3 empty (nothing printed), 1 bad input or git failed, 2 refused. An empty diff whose range skipped any
+ * `too_large` or `max_untracked` file is NOT empty: exit 1 naming the files, reasons and the flags that raise the caps (3 stays for
+ * a range with nothing, or only a skipped nested repository, which is not a change of this repository). --json still reports it.
+ * The temporary index runs with core.splitIndex=false (no sharedindex file in the real .git), `add -N --sparse` (an untracked file
+ * outside a sparse-checkout cone is still listed), and the diff with --no-renames (an intent-to-add file is always a new file).
  */
 import fs from 'fs/promises';
 import os from 'os';
@@ -76,7 +80,7 @@ export const verb = 'diff-range';
 export const usage = 'cli.js diff-range [--dir <repo>] [--base <ref>] [--no-untracked] [--base-only] [--json] [--timeout <ms>] [--max-untracked <n>] [--max-file-bytes <n>]   (prints the review range as one raw unified diff: '
   + 'tracked changes from the base to the working tree plus untracked files; base = --base, else the merge base with the upstream, else the empty tree; '
   + '--no-untracked leaves untracked files out, --base-only prints the resolved base, --json prints the summary (with the skipped nested repositories); --timeout <ms> stops any git call after that long (default 60000); --max-untracked <n> (default 20000) and --max-file-bytes <n> (default 8388608) leave the extra or oversized untracked files out (listed in skipped); '
-  + 'exit 0 printed, 3 empty, 1 bad input or git failed, 2 refused)';
+  + 'exit 0 printed, 3 empty (nothing at all, or only skipped nested repositories), 1 bad input or git failed or files skipped by a cap left the diff empty, 2 refused)';
 
 const BOOL_FLAGS = ['no-untracked', 'base-only', 'json', 'help'];
 const VALUE_FLAGS = ['dir', 'base', 'timeout', 'max-untracked', 'max-file-bytes'];
@@ -107,7 +111,9 @@ function parseArgs(args) {
 const fail = (what, r) => new KitExit(`${what}: ${(r.stderr || r.stdout || '').trim() || 'git failed'}`, 1);
 const DEFAULT_TIMEOUT = 60000;
 const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
-const DIFF = ['-c', 'core.quotePath=true', 'diff', '--no-color', '--no-ext-diff', '--no-textconv', '--ignore-submodules=dirty', '--no-prefix'];
+// --no-renames: an intent-to-add file is always a new-file entry (a hand-moved file shows the delete and the full add, as the --no-index fallback does).
+// core.splitIndex=false: the temporary index must not write a sharedindex.* file into the real .git.
+const DIFF = ['-c', 'core.quotePath=true', '-c', 'core.splitIndex=false', 'diff', '--no-renames', '--no-color', '--no-ext-diff', '--no-textconv', '--ignore-submodules=dirty', '--no-prefix'];
 
 /** `-c` pairs as GIT_CONFIG_PARAMETERS ('k=v' 'k2=v2', single-quoted the way git's sq_quote does). */
 export function configParameters(cArgs) {
@@ -281,13 +287,13 @@ export async function run(args, io = {}) {
       const tmp = path.join(tmpDir, 'index');
       try { await fs.copyFile(real, tmp); } catch (e) { if (e.code !== 'ENOENT') throw new KitExit(`cannot copy the index: ${e.message}`, 1); }
       const env = { GIT_INDEX_FILE: tmp, GIT_LITERAL_PATHSPECS: '1' };
-      const add = await git(['-c', 'core.safecrlf=false', 'add', '-N', '--pathspec-from-file=-', '--pathspec-file-nul'], { env, input: Buffer.from(`${candidates.join('\0')}\0`) });
+      const add = await git(['-c', 'core.safecrlf=false', '-c', 'core.splitIndex=false', 'add', '-N', '--sparse', '--pathspec-from-file=-', '--pathspec-file-nul'], { env, input: Buffer.from(`${candidates.join('\0')}\0`) });
       if (add.code === 0) {
         tracked = await diffBase({ env: { GIT_INDEX_FILE: tmp } });
         parts = [tracked];
         merged = true;
-      } else if (!/pathspec-from-file|pathspec-file-nul|unknown option|usage:/i.test(add.stderr || '')) {
-        throw new KitExit(`${fail('cannot list the untracked files for the diff', add).message}${missingNote(add, top, partial)}`, 1);
+      } else if (!/pathspec-from-file|pathspec-file-nul|unknown (option|switch)|sparse|usage:/i.test(add.stderr || '')) {
+        throw new KitExit(`${fail('cannot add the untracked files to the temporary index', add).message}${missingNote(add, top, partial)}`, 1);
       }
     } finally { await fs.rm(tmpDir, { recursive: true, force: true }); }
   }
@@ -319,7 +325,13 @@ export async function run(args, io = {}) {
   // Decode once, and only when the bytes are valid UTF-8 (otherwise `raw` is the Buffer, undecoded).
   const valid = isUtf8(all);
   const text = all.toString('utf-8');
-  const exit = !valid || text.trim() ? 0 : 3;
+  let exit = !valid || text.trim() ? 0 : 3;
+  const unread = skippedDetail.filter(d => d.reason === 'too_large' || d.reason === 'max_untracked');
+  if (exit === 3 && unread.length && !f.json) {
+    // nothing printed, but changes were left out by a cap: never exit 3 ("no change to review") with an unread change
+    const list = unread.slice(0, 20).map(d => `${d.path} (${d.reason})`).join(', ') + (unread.length > 20 ? `, and ${unread.length - 20} more` : '');
+    throw new KitExit(`the range has no printable change, but ${unread.length} untracked file(s) were skipped by a cap: ${list}; raise --max-file-bytes <n> (too_large) or --max-untracked <n> (max_untracked), or add them to .gitignore`, 1);
+  }
   if (f.json) {
     let trackedPaths;
     if (merged) {
@@ -327,7 +339,7 @@ export async function run(args, io = {}) {
       for (const p of inRange) if (candSet.has(p)) untracked.push(p);
       trackedPaths = inRange.filter(p => !candSet.has(p) && !links.includes(p));
     } else trackedPaths = parseDiff(tracked.toString('utf-8')).map(x => x.path);
-    return { base, upstream, from_upstream: fromUpstream, tracked: trackedPaths, untracked, untracked_count: untrackedCount, skipped, skipped_detail: skippedDetail, empty: exit === 3 };
+    return { base, upstream, from_upstream: fromUpstream, tracked: trackedPaths, untracked, untracked_count: untrackedCount, skipped, skipped_detail: skippedDetail, empty: exit === 3 && !unread.length };
   }
   return { raw: valid ? text : all, exit };
 }
