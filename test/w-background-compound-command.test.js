@@ -140,7 +140,7 @@ describe('bash blocks parse and carry the kit guard', () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bc-bash-'));
     try {
       const blocks = [checkpoint0(), handoff(), phase1(), phase2(), phase3()].flatMap(blocksOf);
-      assert.equal(blocks.length, 5);
+      assert.equal(blocks.length, 6);
       blocks.forEach((b, i) => {
         assert.ok(b.startsWith('if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed'), b);
         assert.match(b.trimEnd(), /\(exit \$RC\); fi$|\(exit 0\); fi$/);
@@ -192,10 +192,10 @@ describe('review round 1 fixes (wording)', () => {
   });
   it('medium: an ask or deny stops Phase 3 into the summary and the lead relays it', () => {
     const s = phase3();
-    assert.match(s, /Stop Phase 3 and write "not pushed — gate asks: <reason>" into the Phase 4 summary/);
-    assert.match(s, /Stop Phase 3 and write "not pushed — gate denied: <reason>"/);
+    assert.match(s, /Stop Phase 3 and write "not pushed \(branch\) — gate asks: <reason>" into the Phase 4 summary/);
+    assert.match(s, /Stop Phase 3 and write "not pushed \(branch\) — gate denied: <reason>"/);
     assert.match(s, /never puts the question itself and never answers it/);
-    assert.match(section('**Phase 4', '**ERROR HANDLING'), /not pushed — gate asks: <reason>/);
+    assert.match(section('**Phase 4', '**ERROR HANDLING'), /not pushed \(main\) — gate asks: <reason>/);
     const c = checkpoint4();
     assert.match(c, /\*\*Relay a gate stop \(lead\):\*\*/);
     assert.match(c, /relay that line to the owner word for word/);
@@ -479,12 +479,12 @@ describe('review round 4 fixes', () => {
     assert.ok(b.includes(DR));
     assert.match(b, /if \[ \$RC -eq 0 \]; then node \.claude\/helpers\/kit\/cli\.js redact --keep-lines < "\$D"/);
     assert.match(b, /elif \[ \$RC -eq 3 \]; then echo "no change to compound[^"]*"; RC=0/);
-    assert.match(b, /elif \[ \$RC -eq 2 \]; then echo "diff-range refused the repository/);
+    assert.match(b, /elif \[ \$RC -eq 2 \]; then echo "diff-range refused \(exit 2, reason as printed\)/);
     assert.match(b, /else echo "diff-range failed \(exit \$RC\)/);
     const step1 = section('- **Step 1:**', '- **Step 2:**');
     assert.ok(step1.includes(`\`${DR}\``));
     assert.match(step1, /Exit 3 is an empty range: no change to compound/);
-    assert.match(step1, /Exit 2 is a refused repository: report it as printed and stop that step/);
+    assert.match(step1, /Exit 2 is a refusal \(a refused repository or driver, or a range over 32 MiB\): report the reason as printed and stop that step/);
     assert.match(step1, /Exit 1 is bad input, a git failure or an unread change/);
     assert.match(step1, /Any other non-zero exit is a failure of the step/);
     assert.ok(step1.includes('Without the kit, fall back to `GIT_NO_LAZY_FETCH=1 GIT_TERMINAL_PROMPT=0 git diff --end-of-options "$BASE"` and say in one line that the kit\'s protections'));
@@ -549,7 +549,7 @@ describe('review round 4 fixes', () => {
       git(fx.dir, 'config', 'include.path', path.join(fx.root, 'nothing.cfg'));
       const r = fx.run(redactBlock(), fx.dir, { BASE });
       assert.equal(r.status, 2, r.stderr);
-      assert.match(r.stderr, /diff-range refused the repository/);
+      assert.match(r.stderr, /diff-range refused \(exit 2, reason as printed\)/);
       assert.doesNotMatch(r.stdout, /"replaced"/);
       assert.deepEqual(readdirSync(fx.tmp), [], 'temp file left behind');
     } finally {
@@ -567,6 +567,85 @@ describe('review round 4 fixes', () => {
         assert.match(r.stderr, new RegExp(`diff-range failed \\(exit ${code}\\)`));
         assert.doesNotMatch(r.stdout, /"replaced"/);
       }
+      assert.deepEqual(readdirSync(fx.tmp), [], 'temp file left behind');
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('review round 5 fixes', () => {
+  const MBREC = 'MB=$(git merge-base @{upstream} HEAD 2>/dev/null); echo "MB=$MB"';
+  const step1Text = () => section('- **Step 1:**', '- **Step 2:**');
+  const step1Block = () => blocksOf(step1Text())[0];
+  it('medium: MB is recorded and printed in one step, kept by the agent, and the main check drops --base when it is empty', () => {
+    const s = phase3();
+    assert.ok(s.includes(MBREC));
+    assert.match(s, /keeps the printed sha and sets `MB=<sha>` in the shell that runs the main check/);
+    assert.ok(s.includes('if [ -n "$MB" ]; then node .claude/helpers/kit/cli.js push-gate check --base "$MB"; else node .claude/helpers/kit/cli.js push-gate check; fi'));
+    assert.ok(s.indexOf(MBREC) < s.indexOf('git push -u origin HEAD'));
+    const r = spawnSync('bash', ['-c', MBREC], { encoding: 'utf-8' });
+    assert.equal(r.status, 0);
+    assert.match(r.stdout, /^MB=/);
+  });
+  it('medium: the redact block is the first Phase 1 step; Analyze and Append use the redacted text; no plain git diff in Phase 1', () => {
+    const p = phase1();
+    const red = p.indexOf('- **Redact first');
+    const analyze = p.indexOf('- Analyze:');
+    const append = p.indexOf('- Append all to');
+    const storage = p.indexOf('- Storage:');
+    assert.ok(red >= 0 && red < storage && red < analyze && red < append, 'redact block not first');
+    assert.ok(p.indexOf('```bash') > red && p.indexOf('```bash') < analyze);
+    assert.match(p, /- Analyze: parse the redacted `text` the redact block printed \(the range since `\$BASE`\)/);
+    assert.match(p, /- Append all to \.claude\/ralph-candidates\.md \(redacted entries only/);
+    assert.doesNotMatch(p, /git diff/);
+    assert.doesNotMatch(p.replace(/```bash\n[\s\S]*?```/g, ''), /parse git diff/);
+  });
+  it('low: Step 1 defines its temp file with the mktemp guard, trap and subshell, and removes it', () => {
+    const b = step1Block();
+    assert.ok(b, 'no Step 1 block');
+    assert.ok(b.includes('else ( D=$(mktemp 2>/dev/null) && [ -n "$D" ] ||'));
+    assert.ok(b.includes(`trap 'rm -f "$D"' EXIT INT TERM`));
+    assert.ok(b.includes('[ -z "$D" ] || rm -f "$D"'));
+    assert.ok(b.indexOf('mktemp') < b.indexOf('> "$D"'));
+    assert.match(step1Text(), /deletes `\$D` as soon as the category is detected/);
+  });
+  it('low: a stop names the ref, and the go path re-runs the main check, stopping on a deny and ignoring only an ask', () => {
+    const c = checkpoint4();
+    assert.match(c, /"not pushed \(branch\|main\) — gate asks: <reason>"/);
+    assert.match(c, /a branch stop → push the branch, merge to main, run the main check, push main; a main stop → push main only/);
+    assert.match(c, /the lead still runs the main re-check .* and stops on a deny there, ignoring only an ask/);
+    assert.ok(phase3().includes('"not pushed (main) — gate asks: <reason>"'));
+    assert.ok(phase3().includes('"not pushed (main) — gate denied: <reason>"'));
+    assert.ok(section('**Phase 4', '**ERROR HANDLING').includes('"not pushed (branch) — gate asks: <reason>", "not pushed (main) — gate asks: <reason>"'));
+  });
+  it('low: diff-range exit 2 is a refusal (repository, driver or 32 MiB), said once the same way, never only a refused repository', async () => {
+    const src = await fs.readFile(path.join(KIT_SRC, 'diff-range.js'), 'utf-8');
+    assert.match(src, /\(32 MiB\) is refused, exit 2/);
+    const W = 'Exit 2 is a refusal (a refused repository or driver, or a range over 32 MiB): report the reason as printed';
+    assert.ok(step1Text().includes(W));
+    assert.ok(phase1().includes(W));
+    assert.ok(!content.includes('refused the repository'));
+    assert.ok(!content.includes('Exit 2 is a refused repository'));
+  });
+  it('Step 1 block in the real kit: exits 0, prints a category, leaves no temp file', () => {
+    const fx = kitRepo();
+    try {
+      const BASE = git(fx.dir, 'rev-parse', 'HEAD').trim();
+      let r = fx.run(step1Block(), fx.dir, { BASE, ARG: '' });
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /CATEGORY=feature/);
+      writeFileSync(path.join(fx.dir, 'a.txt'), 'one\nfix the auth token bug\nfix a crash error\n');
+      git(fx.dir, 'commit', '-q', '-am', 'change');
+      r = fx.run(step1Block(), fx.dir, { BASE, ARG: '' });
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /CATEGORY=(security|bug)/);
+      r = fx.run(step1Block(), fx.dir, { BASE: '--output=x', ARG: '' });
+      assert.equal(r.status, 0);
+      assert.match(r.stderr, /BASE is not a commit/);
+      assert.match(r.stdout, /CATEGORY=feature/);
+      r = fx.run(step1Block(), fx.dir, { BASE, ARG: 'perf' });
+      assert.match(r.stdout, /CATEGORY=perf/);
       assert.deepEqual(readdirSync(fx.tmp), [], 'temp file left behind');
     } finally {
       rmSync(fx.root, { recursive: true, force: true });
