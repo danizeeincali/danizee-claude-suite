@@ -70,9 +70,9 @@ STOP and wait for user response.
 
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
-1. Final visual verification with agent-browser
-2. `agent-browser open <url>` → `agent-browser screenshot` → compare before/after
-3. Verify responsive layout, dark mode, accessibility
+1. Use agent-browser to verify the implementation visually
+2. `agent-browser open <url>` → `agent-browser snapshot -i` → verify elements
+3. Compare against pre-change screenshots from Search phase
 
 If agent-browser is not available, prompt: `npx playwright install`
 Skip this block for non-UI tasks.
@@ -171,6 +171,30 @@ Skip this block for non-UI tasks.
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
+**AUTORESEARCH CANDIDATE CHECK (RC-A):**
+Scan the work just completed for measurable optimization targets:
+1. **Static scan:** Analyze git diff for measurable patterns (function runtimes, test duration, bundle size, query counts, memory usage, coverage gaps)
+2. **Agent reflection:** What about this work could be measured and autonomously optimized?
+3. **Impact scoring:** Rate each candidate on 4 dimensions (weighted composite):
+   - potential (0.35): estimated improvement magnitude (1-10)
+   - blast_radius (0.15): files/systems affected, inverted (1-10)
+   - risk (0.15): breaking change likelihood, inverted (1-10)
+   - value (0.35): user/business value of improvement (1-10)
+   - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
+4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
+```
+## RC-A[NNN]: [Title]
+**KPI:** [metric_name]
+**Baseline:** [current value]
+**Benchmark:** `[command to measure]`
+**Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
+**Files in scope:** [paths]
+**Constraints:** [what must not break]
+```
+- RC-A candidates found: yes/no
+- If yes, logged with impact scores to .claude/ralph-candidates.md
+
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -191,6 +215,14 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
+
+## Closing step: record the push receipt
+Record the review's counts so the advisory push gate can recognise this exact change. Use the form that matches the verdict, with the real finding counts in place of the numbers (add `--incomplete` if any category was skipped, and `--threshold high`, `--threshold medium` or `--threshold low` if the user wants the push check to deny at that level):
+```
+node .claude/helpers/kit/cli.js push-gate receipt --verdict pass --high 0 --medium 0 --low 0
+node .claude/helpers/kit/cli.js push-gate receipt --verdict fail --high 1 --medium 2 --low 0
+```
+Then tell the user: run `node .claude/helpers/kit/cli.js push-gate check` before pushing, with the same `--threshold` level and the same `--base` (or none) used for the receipt. It only abstains, asks or denies; it never skips their permission prompt. Reviewing uncommitted edits and then committing them unchanged still matches.
 
 ## Compounds
 ```

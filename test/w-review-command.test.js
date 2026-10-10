@@ -1,0 +1,41 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { getCommands } from '../src/plugins/dot-shortcuts.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const SHORTCUTS_DIR = path.join(__dirname, '..', '.claude', 'commands', '.shortcuts');
+const commands = getCommands();
+
+describe('repo copy of the w-review shortcut is regenerated', () => {
+  it('w-review.md equals the generator output, with no backslash-escaped backticks', async () => {
+    const md = await fs.readFile(path.join(SHORTCUTS_DIR, 'w-review.md'), 'utf-8');
+    assert.equal(md, commands['w-review'].content, 'w-review.md differs from getCommands()');
+    assert.ok(!md.includes('\\`'), 'literal backslash-backtick in the repo copy');
+  });
+});
+
+describe('/w-review closing step', () => {
+  const step = () => {
+    const c = commands['w-review'].content;
+    const a = c.indexOf('## Closing step: record the push receipt');
+    const b = c.indexOf('## Compounds', a);
+    assert.ok(a >= 0 && b > a);
+    return c.slice(a, b);
+  };
+  it('shows concrete pass and fail commands, no shell-hostile placeholders', () => {
+    const s = step();
+    assert.match(s, /push-gate receipt --verdict pass --high 0 --medium 0 --low 0/);
+    assert.match(s, /push-gate receipt --verdict fail --high \d+ --medium \d+ --low \d+/);
+    assert.ok(!s.includes('pass|fail'));
+    assert.ok(!/<[HML]>/.test(s));
+  });
+  it('documents --threshold and that check must use the same level', () => {
+    const s = step();
+    assert.match(s, /--threshold high/);
+    assert.match(s, /same `--threshold`/);
+    assert.match(s, /--incomplete/);
+  });
+});
