@@ -259,12 +259,40 @@ describe('/w-bbs command — kit wiring (safe-git, redact, scrub)', () => {
     assert.match(s, /0 git ok \(it prints `\{ stdout, stderr, code, exit \}`/);
     assert.match(s, /1 bad input \(stdout is empty, the reason is a `kit:` line on stderr/);
     assert.match(s, /2 refused \(stdout is empty, the reason is a `kit: refused:` line on stderr/);
-    assert.match(s, /only exits 0 and 3 print that JSON/);
+    assert.match(s, /only exit 0 and a git-ran exit 3 print that JSON, a timeout, overflow or kill prints only a `kit:` stderr line/);
+    assert.match(s, /3 git failed or timed out \(when git ran and failed it prints `\{ stdout, stderr, code, exit \}`; when git timed out, printed over 256 MiB or was killed by a signal it prints nothing on stdout, only a `kit:` line on stderr, and `--timeout <ms>` raises the 60000 ms default/);
+    assert.doesNotMatch(s, /only exits 0 and 3 print that JSON/);
     const g = SAFE_GIT_LINES.join('\n');
     assert.doesNotMatch(g, /^It prints `\{ stdout, stderr, code, exit \}`/m);
-    assert.match(g, /Read the process exit code, not a field of the output: only exits 0 and 3 print `\{ stdout, stderr, code, exit \}`; exits 1 and 2 print nothing on stdout, only a `kit:` \(exit 1\) or `kit: refused:` \(exit 2\) line on stderr/);
+    assert.match(g, /Read the process exit code, not a field of the output: exit 0 and an exit 3 where git ran and failed print `\{ stdout, stderr, code, exit \}`; exits 1 and 2, and an exit 3 from a timeout, output over 256 MiB or a signal kill, print nothing on stdout, only a `kit:` \(exits 1 and 3\) or `kit: refused:` \(exit 2\) line on stderr/);
+    assert.match(g, /`--timeout <ms>` raises the 60000 ms default/);
     assert.match(g, /1 bad input[^;]*: the reason is the `kit:` line on stderr; fix the call and retry once/);
     assert.match(g, /2 refused[^;]*: the reason is the `kit: refused:` line on stderr; do not retry, name it in evidence/);
+  });
+
+  it('r3: the clone is depth 1, so an exit 3 from history beyond HEAD is a wrong call, not incomplete (CP4 and SAFE_GIT_LINES)', () => {
+    const s = section('### ⛔ CHECKPOINT 4', '3. **Show the verdict table');
+    const g = SAFE_GIT_LINES.join('\n');
+    for (const t of [s, g]) {
+      assert.match(t, /The clone is depth 1 \(a single commit\), so only HEAD and its tree are readable/);
+      assert.match(t, /beyond HEAD \(`HEAD~1`, `log` ranges, `rev-list` ranges, `diff` against an older commit\) means the call was wrong, so fix it and retry once; it does not make the source `?incomplete`?\./);
+    }
+  });
+
+  it('r3: safe-git --timeout 1 exits 3 with empty stdout and a kit: line (no JSON)', async () => {
+    const os = await import('os');
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'wbbs-r3-'));
+    try {
+      const g = (...a) => assert.equal(spawnSync('git', a, { cwd: dir, encoding: 'utf8' }).status, 0, a.join(' '));
+      g('init', '-q'); g('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'i');
+      await fs.mkdir(path.join(dir, '.claude', 'helpers'), { recursive: true });
+      await fs.cp(path.join(PROJECT_ROOT, '.claude', 'helpers', 'kit'), path.join(dir, '.claude', 'helpers', 'kit'), { recursive: true });
+      const e = { ...process.env }; delete e.NODE_TEST_CONTEXT;
+      const r = spawnSync('node', ['.claude/helpers/kit/cli.js', 'safe-git', '--timeout', '1', '--dir', dir, '--', 'log'], { cwd: dir, env: e, encoding: 'utf8' });
+      assert.equal(r.status, 3, r.stderr);
+      assert.equal(r.stdout, '');
+      assert.match(r.stderr, /^kit: .*--timeout <ms>/m);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
 
   it('every git subcommand the wired text names is one safe-git allows (READ_SUBCOMMANDS)', async () => {
@@ -323,15 +351,18 @@ describe('/w-bbs command — kit wiring (safe-git, redact, scrub)', () => {
     const s = section('### ⛔ CHECKPOINT 4', '3. **Show the verdict table');
     assert.doesNotMatch(s, /--evidence "<text>"/);
     assert.doesNotMatch(s, /Use the printed `text` as the evidence/);
-    assert.match(s, /verdict --probe <power>=<clean\|found\|incomplete> --evidence "\$\(cat "\$R"\)" \[--run <id>\]/);
-    assert.match(s, /then `rm -f "\$R" "\$E"`/);
+    assert.match(s, /verdict --probe <power>=<clean\|found\|incomplete> --evidence "\$\(cat -- "\$R"\)" \[--run <id>\] && rm -f -- "\$R" "\$E"/);
     assert.match(s, /fs\.writeFileSync\(process\.argv\[2\],j\.text\)/);
     assert.match(s, /console\.log\("file="\+process\.argv\[2\]\)/);
     assert.match(s, /\[ \$RC -eq 0 \] && KEEP=1/);
     assert.match(s, /with the Write tool \(never `echo "<text>"` or a heredoc in the shell\)/);
     assert.match(s, /backticks and `\$\( \)` would run as commands/);
     assert.match(s, /the shell would evaluate text from the clone/);
-    assert.ok(s.indexOf('file=<path>') < s.indexOf('--evidence "$(cat "$R")"'));
+    assert.ok(s.indexOf('file=<path>') < s.indexOf('--evidence "$(cat -- "$R")"'));
+    assert.match(s, /R=<printed path>; \[ -s "\$R" \] \|\| \{ echo "evidence file missing or empty" >&2; exit 1; \}; node \.claude\/helpers\/bbs\/cli\.js verdict/);
+    assert.match(s, /E=<the path you wrote>; <block>/);
+    assert.match(s, /Shell variables do not persist between Bash calls/);
+    assert.match(s, /git missing or not a git repository/);
   });
 
   describe('r2: the generated blocks, run in a scratch repo', () => {
@@ -389,8 +420,18 @@ describe('/w-bbs command — kit wiring (safe-git, redact, scrub)', () => {
         R = m[1];
         const kept = await fs.readFile(R, 'utf8');
         assert.equal(kept, evil.replace('supersecretvalue123', '[REDACTED]'));
-        const rec = sh(dir, 'node -e \'process.stdout.write(process.argv[1])\' -- "$(cat "$R")"', { R });
+        const rec = sh(dir, 'node -e \'process.stdout.write(process.argv[1])\' -- "$(cat -- "$R")"', { R });
         assert.equal(rec.stdout, kept.replace(/\n$/, ''));
+        // the documented record shape, with the path bound in the same command: the guard runs before node
+        const cp4 = block('### ⛔ CHECKPOINT 4').length && commands['w-bbs'].content;
+        const shape = cp4.match(/`(R=<printed path>; \[ -s "\$R" \][^`]*?)node \.claude\/helpers\/bbs\/cli\.js verdict/);
+        assert.ok(shape, 'record shape');
+        const guard = shape[1].replace('<printed path>', R);
+        assert.equal(sh(dir, guard + 'echo bound').stdout, 'bound\n');
+        const unset = sh(dir, guard.replace(/^R=[^;]*;/, 'R=;') + 'echo bound');
+        assert.equal(unset.status, 1);
+        assert.match(unset.stderr, /evidence file missing or empty/);
+        assert.doesNotMatch(unset.stdout, /bound/);
         await assert.rejects(fs.access(path.join(dir, 'PWNED')));
         await assert.rejects(fs.access(path.join(dir, 'PWNED2')));
       } finally { await fs.rm(dir, { recursive: true, force: true }); if (R) await fs.rm(R, { force: true }); }
@@ -415,6 +456,36 @@ describe('/w-bbs command — kit wiring (safe-git, redact, scrub)', () => {
         assert.deepEqual(staged().split('\n').sort(), ['.claude/bbs/registry.jsonl', '.claude/bbs/runs/r1/notes.md']);
       } finally { await fs.rm(dir, { recursive: true, force: true }); }
     });
+
+    it('r3: CP6 on a --shared clone: scrub exit 2 with a kit: refused: line and no JSON, run paths unstaged', async () => {
+      const src = await scratch();
+      const os = await import('os');
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'wbbs-r3-shared-'));
+      try {
+        assert.equal(spawnSync('git', ['clone', '-q', '--shared', src, dir], { encoding: 'utf8' }).status, 0);
+        await fs.mkdir(path.join(dir, '.claude', 'helpers'), { recursive: true });
+        await fs.mkdir(path.join(dir, '.claude', 'kit'), { recursive: true });
+        await fs.cp(path.join(PROJECT_ROOT, '.claude', 'helpers', 'kit'), path.join(dir, '.claude', 'helpers', 'kit'), { recursive: true });
+        await fs.mkdir(path.join(dir, '.claude', 'bbs', 'runs', 'r1'), { recursive: true });
+        await fs.writeFile(path.join(dir, '.claude', 'bbs', 'runs', 'r1', 'notes.md'), 'tok=SECRETHIT\n');
+        await fs.writeFile(path.join(dir, '.claude', 'kit', 'scrub-patterns'), 'SECRETHIT\n');
+        const r = sh(dir, block('### ⛔ CHECKPOINT 6: Compound').replaceAll('<id>', 'r1'));
+        assert.equal(r.status, 2, r.stderr);
+        assert.equal(r.stdout, '');
+        assert.match(r.stderr, /kit: refused:/);
+        assert.match(r.stderr, /unstaged \.claude\/bbs\/runs\/r1/);
+        assert.equal(spawnSync('git', ['diff', '--cached', '--name-only'], { cwd: dir, encoding: 'utf8' }).stdout.trim(), '');
+      } finally { await fs.rm(dir, { recursive: true, force: true }); await fs.rm(src, { recursive: true, force: true }); }
+    });
+  });
+
+  it('r3: CHECKPOINT 6 reads scrub exit 2 with a kit: refused: line and no JSON as nothing scanned, advisory, never as no run-path hits', () => {
+    const s = section('### ⛔ CHECKPOINT 6', '## `--resume');
+    assert.match(s, /Exit 2 with no JSON and a `kit: refused:` line on stderr \(object alternates from a `--shared` or `--reference` clone, over 100000 loose objects, `\.git` on a network path, over 200000 tracked files\) means nothing was scanned: report the reason verbatim/);
+    assert.match(s, /never read as "no hits in this run's paths"/);
+    assert.match(s, /the lead is not told to remove hits/);
+    assert.match(s, /Treat it as advisory like exit 1: the lead sees the reason before `\/bc`, and the block still unstages as for any non-zero exit/);
+    assert.match(s, /git failed or timed out \(raise with `--timeout <ms>`\)/);
   });
 
   it('CHECKPOINT 6 stages only the own paths of the run and scrubs before /bc, naming exits 0, 1, 2 and configured: false', () => {
