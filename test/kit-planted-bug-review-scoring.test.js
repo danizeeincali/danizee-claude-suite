@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
-import { caseRelPath, normaliseReview, scoreCase, scoreRun, keywordAtWordStart, normPath, snapshotSpecs, scoreFolders, run, MAX_FILES } from '../src/lib/kit/review-score.js';
+import { MAX_FILE_BYTES, caseRelPath, normaliseReview, scoreCase, scoreRun, keywordAtWordStart, normPath, snapshotSpecs, scoreFolders, run, MAX_FILES } from '../src/lib/kit/review-score.js';
 
 const bug = { id: 'b1', file: 'src/a.js', lines: [10, 12], categories: ['correctness'], keywords: ['leak'] };
 const spec = (over = {}) => ({ case: 'c', bugs: [bug], accepted: [], ...over });
@@ -169,5 +169,40 @@ describe('review-score — review round 1 regressions', () => {
       const res = await scoreFolders({ specs, reviews, out: path.join(dir, 'out') });
       assert.equal(res.cases[0].hits.length, 1);
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe('review-score — review round 2 regressions', () => {
+  const setup = async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'rs-'));
+    const p = (x) => path.join(dir, x);
+    await fs.mkdir(p('specs')); await fs.mkdir(p('reviews'));
+    await fs.writeFile(p('specs/c.json'), JSON.stringify(spec()));
+    return { dir, p };
+  };
+  it('a .json entry that is a link or a folder is refused, not skipped', async () => {
+    const { dir, p } = await setup();
+    try {
+      await fs.writeFile(p('real.json'), JSON.stringify([f()]));
+      await fs.symlink(p('real.json'), p('reviews/c.json'));
+      await assert.rejects(scoreFolders({ specs: p('specs'), reviews: p('reviews'), out: p('out') }), e => /not a plain file/.test(e.message) && e.code === 1);
+      await fs.rm(p('reviews/c.json')); await fs.mkdir(p('reviews/c.json'));
+      await assert.rejects(scoreFolders({ specs: p('specs'), reviews: p('reviews'), out: p('out2') }), /not a plain file/);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+  it('a review over the size cap is refused with exit 1', async () => {
+    const { dir, p } = await setup();
+    try {
+      await fs.writeFile(p('reviews/c.json'), JSON.stringify([f({ detail: 'x'.repeat(MAX_FILE_BYTES) })]));
+      await assert.rejects(scoreFolders({ specs: p('specs'), reviews: p('reviews'), out: p('out') }), e => /review c\.json/.test(e.message) && e.code === 1);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+  it('the fixture sources do not name their planted bugs', async () => {
+    for (const d of ['src/lib/kit/review-fixtures/repos', '.claude/helpers/kit/review-fixtures/repos']) {
+      for (const file of await fs.readdir(d, { recursive: true })) {
+        const full = path.join(d, file);
+        if ((await fs.stat(full)).isFile()) assert.doesNotMatch(await fs.readFile(full, 'utf-8'), /planted|accepted/i, full);
+      }
+    }
   });
 });

@@ -1,5 +1,5 @@
 export function pageCount(total, perPage) {
-  return Math.floor(total / perPage); // planted bug: the last partial page is dropped
+  return Math.floor(total / perPage);
 }
 
 export function slicePage(items, page, perPage) {

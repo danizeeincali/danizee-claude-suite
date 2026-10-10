@@ -159,7 +159,8 @@ async function listJson(dir, what) {
   const names = [];
   try {
     for await (const e of d) {
-      if (!e.isFile() || !e.name.toLowerCase().endsWith('.json') || e.name === MANIFEST) continue;
+      if (!e.name.toLowerCase().endsWith('.json') || e.name === MANIFEST) continue;
+      if (!e.isFile()) throw bad(`${what} entry "${e.name}" is not a plain file (a link or folder); refused`);
       if (names.length >= MAX_FILES) throw bad(`${what} folder has more than ${MAX_FILES} .json files; split it`);
       names.push(e.name);
     }
