@@ -199,14 +199,34 @@ export async function loadLenses(dirs) {
 const LOOSE_PREFIX = /^[abciwo]\//;
 const GIT_PREFIX = /^[a-z]\//;
 
+/**
+ * git's C-style quoting (core.quotePath, the default, quotes names with non-ASCII bytes or specials): "caf\303\251.js"
+ * → café.js. Octal escapes are bytes of UTF-8; \t \n \" \\ and friends are single characters.
+ */
+export function unquoteCPath(s) {
+  if (!(s.length >= 2 && s[0] === '"' && s[s.length - 1] === '"')) return s;
+  const bytes = [];
+  const body = s.slice(1, -1);
+  const SIMPLE = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, '\\': 92 };
+  for (let i = 0; i < body.length; i++) {
+    const c = body[i];
+    if (c !== '\\') { bytes.push(...Buffer.from(c, 'utf-8')); continue; }
+    const n = body[i + 1];
+    if (/[0-7]/.test(n || '') && /^[0-7]{3}$/.test(body.slice(i + 1, i + 4))) { bytes.push(parseInt(body.slice(i + 1, i + 4), 8)); i += 3; continue; }
+    if (n !== undefined && Object.hasOwn(SIMPLE, n)) { bytes.push(SIMPLE[n]); i++; continue; }
+    bytes.push(92);
+  }
+  return Buffer.from(bytes).toString('utf-8');
+}
+
 function cleanPath(raw, mode = 'loose') {
   let p = raw.split('\t')[0].trim();
-  if (p.length >= 2 && p[0] === '"' && p[p.length - 1] === '"') p = p.slice(1, -1);
+  p = unquoteCPath(p);
   if (p === '/dev/null' || mode === 'none') return p;
   return p.replace(mode === 'git' ? GIT_PREFIX : LOOSE_PREFIX, '');
 }
 
-const unquoteGit = (s) => (s.length >= 2 && s[0] === '"' && s[s.length - 1] === '"' ? s.slice(1, -1) : s);
+const unquoteGit = unquoteCPath;
 
 /**
  * The path in a `diff --git` header and how it is prefixed. `--no-prefix` repeats the bare path (`x y` → both halves
@@ -226,8 +246,11 @@ function parseGitHeader(rest) {
   return { path: rest, mode: 'loose' };
 }
 
-/** A unified diff → `[{ path, added: [...], removed: [...] }]` in file order. Lines are without the +/- marker. */
-export function parseDiff(text) {
+/**
+ * A unified diff → `[{ path, added: [...], removed: [...] }]` in file order. Lines are without the +/- marker.
+ * `{ deleted: true }` adds `deleted` (the new side is /dev/null) to each entry.
+ */
+export function parseDiff(text, { deleted = false } = {}) {
   const files = [];
   let cur = null;
   let hunk = null;
@@ -264,13 +287,14 @@ export function parseDiff(text) {
     if (line.startsWith('+++ ') && cur && cur.renamed) continue;
     if (line.startsWith('+++ ') && cur) {
       const p = cleanPath(line.slice(4), cur.mode);
+      if (p === '/dev/null') cur.deleted = true;
       cur.path = p === '/dev/null' ? (cur.oldPath && cur.oldPath !== '/dev/null' ? cur.oldPath : cur.path) : p;
       continue;
     }
     const h = /^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/.exec(line);
     if (h && cur) hunk = { old: h[1] === undefined ? 1 : +h[1], new: h[2] === undefined ? 1 : +h[2] };
   }
-  return files.map(f => ({ path: f.path, added: f.added, removed: f.removed }));
+  return files.map(f => (deleted ? { path: f.path, added: f.added, removed: f.removed, deleted: !!f.deleted } : { path: f.path, added: f.added, removed: f.removed }));
 }
 
 // ---------------------------------------------------------------- selection

@@ -2127,6 +2127,16 @@ node .claude/helpers/kit/cli.js lenses --diff "$D"; RC=$?; rm -f "$D"; (exit $RC
 If the review was started with a base (\`push-gate receipt --base <ref>\`), use that ref in place of the first line's merge-base so both cover the same change. An empty or non-diff file makes the verb exit 1 ("no diff was given"): that is wrong input, so fix the range; never record it as "no lens applies".
 Each entry in \`fired\` has a \`name\`, the \`files\` it matched and a \`body\`: apply the body as an extra check on those files and add its findings to the table below. A non-empty \`capped\` list means more lenses applied than the cap (4); mention them in the table. If a deterministic check already ran for the same rule, say so with \`--covered\` (for example \`--covered no-floating-promises\`) and that lens stands down. The last line keeps the verb's exit status after removing the temp file. A non-zero exit means wrong input or a broken lens file: report it, do not skip the step.
 
+**🕸️ SYMBOL GRAPH (calls around the changed files):**
+Build the call graph for the files this change touches. It reads JS/TS source only, scans each file once and caches the facts by content hash (so a second run is quick), scans the changed files first, and stops at a time budget instead of stalling. It never runs the code it reads. Same range as above, written to its own temp file:
+\`\`\`bash
+BASE=$(git merge-base HEAD '@{upstream}' 2>/dev/null || git hash-object -t tree /dev/null)
+D=$(mktemp)
+{ git diff --no-color --no-ext-diff --no-prefix "$BASE"; git ls-files -z --others --exclude-standard | while IFS= read -r -d '' f; do git diff --no-color --no-ext-diff --no-index --no-prefix /dev/null "$f"; done; true; } > "$D"
+node .claude/helpers/kit/cli.js graph --diff "$D" --budget-ms 20000 --max-parses 300; RC=$?; rm -f "$D"; (exit $RC)
+\`\`\`
+The summary has \`partial\`, \`not_read\` (each file with a reason: budget, parse_cap, too_large, unsupported or parse_error) and \`changed\` (how many of the changed files were read). Add the graph's findings (callers and callees of changed definitions, \`--json\` gives the full edge list) to the table below, and state \`partial\` and every \`not_read\` entry in the review as it is: when \`partial\` is true the graph is a floor, not the whole picture, so never write that "nothing else calls this" from it. A \`possible\` edge is a name match, not a proof. A non-zero exit means wrong input or a broken state: report it, do not skip the step.
+
 **REQUIRED OUTPUT:**
 | Category | Finding | Severity |
 |----------|---------|----------|
