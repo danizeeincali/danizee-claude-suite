@@ -11,7 +11,7 @@
       "name": "diff-range",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "builder running (sonnet); on green: commit in worktree, review round 1",
+      "next": "builder finishing w-review switch, regen and sync; then commit and review round 1",
       "tasks": [],
       "isolation": "../danizee-claude-suite-diff-range",
       "phase": "build",
