@@ -1,13 +1,15 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
 import {
   safeGit, safeGitEnv, safeGitConfig, checkReadArgs, clearSafeGitCache, defaultGitRunner,
-  driversFromConfig, driversFromAttributes, run, READ_SUBCOMMANDS
+  driversFromConfig, driversFromAttributes, run, READ_SUBCOMMANDS,
+  parseConfigList, allowedCore, repoFormat, describeDirtyPlan
 } from '../src/lib/kit/safe-git.js';
 
 const CLEAN_ENV = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
@@ -78,12 +80,13 @@ describe('safe-git — parsing', () => {
 });
 
 describe('safe-git — argument policy', () => {
-  it('allows reads and adds --no-ext-diff --no-textconv to diff-producing subcommands only', () => {
-    for (const s of ['diff', 'show', 'log', 'diff-tree']) {
+  it('allows reads and adds --no-ext-diff --no-textconv --ignore-submodules=all to diff-producing subcommands only', () => {
+    for (const s of ['diff', 'show', 'log', 'diff-tree', 'diff-index', 'diff-files']) {
       const a = checkReadArgs([s, 'HEAD', '--', 'x']);
-      assert.deepEqual(a.slice(0, 3), [s, '--no-ext-diff', '--no-textconv'], s);
-      assert.deepEqual(a.slice(3), ['HEAD', '--', 'x']);
+      assert.deepEqual(a.slice(0, 4), [s, '--no-ext-diff', '--no-textconv', '--ignore-submodules=all'], s);
+      assert.deepEqual(a.slice(4), ['HEAD', '--', 'x']);
     }
+    assert.deepEqual(checkReadArgs(['status', '--porcelain']), ['status', '--ignore-submodules=all', '--porcelain']);
     assert.deepEqual(checkReadArgs(['rev-parse', 'HEAD']), ['rev-parse', 'HEAD']);
   });
   it('refuses writing/fetching subcommands, global options, and options that undo the hardening (exit code 2)', () => {
@@ -199,27 +202,23 @@ describe('safe-git — on a real hostile repo', () => {
     assert.equal((await safeGit(mine.dir, ['rev-parse', 'HEAD'], { env })).stdout.trim(), want);
   });
 
-  it('caches the overrides per real path (a symlink to the same folder shares the entry) and re-reads when the config changes or fresh is set', async () => {
+  it('never serves stale overrides: a symlink to the same folder gives the same list, every call re-reads the config, a later driver is caught', async () => {
     clearSafeGitCache();
     const r = await evilRepo(root, 'cached');
     const link = path.join(root, 'cached-link');
     await fs.symlink(r.dir, link);
     let configReads = 0;
     const git = (a, o) => { if (a[0] === 'config') configReads++; return defaultGitRunner(a, o); };
-    await safeGitConfig(r.dir, { git });
+    const first = await safeGitConfig(r.dir, { git });
     const afterFirst = configReads;
     assert.ok(afterFirst > 0);
-    await safeGitConfig(link, { git });
-    await safeGitConfig(r.dir, { git });
-    assert.equal(configReads, afterFirst, 'no further config reads');
-    await safeGitConfig(r.dir, { git, fresh: true });
-    assert.ok(configReads > afterFirst, 'fresh re-reads');
+    assert.deepEqual(await safeGitConfig(link, { git }), first, 'the symlink resolves to the same repository');
+    assert.ok(configReads > afterFirst, 'no cache: the second call read the config again');
     const before = configReads;
-    await new Promise(res => setTimeout(res, 20));
     sh(r.dir, ['config', 'filter.late.clean', 'x']);
     const args = await safeGitConfig(r.dir, { git });
     assert.ok(configReads > before);
-    assert.ok(args.includes('filter.late.clean='), 'a driver added to the config later is caught');
+    assert.ok(args.includes('filter.late.clean='), 'a driver added to the config later is caught (no mtime race: nothing is cached)');
   });
 
   it('closes stdin without input (a git that would read stdin does not hang) and passes input when given', async () => {
@@ -529,5 +528,380 @@ describe('safe-git — review round 1 regressions (config.worktree, linked workt
     const r2 = await plainRepo('weirdmerge');
     sh(r2.dir, ['config', 'merge.has space.driver', 'x']);
     await assert.rejects(() => safeGitConfig(r2.dir), e => e instanceof KitExit && e.code === 2 && /has space/.test(e.message));
+  });
+});
+
+describe('safe-git — shadow git dir: the repository config is never read (review round 2 regressions and the whole class)', () => {
+  let root;
+  before(async () => { root = await fs.mkdtemp(path.join(os.tmpdir(), 'safe-git-r2-')); });
+  after(async () => { await fs.rm(root, { recursive: true, force: true }); });
+
+  const script = (file, marker, rc = 0) => fs.writeFile(file, `#!/bin/sh\ntouch '${marker}'\nexit ${rc}\n`, { mode: 0o755 });
+
+  async function plainRepo(name, initArgs = []) {
+    const dir = path.join(root, name);
+    const markers = path.join(root, `${name}-markers`);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.mkdir(markers, { recursive: true });
+    const init = sh(dir, ['init', '-q', ...initArgs, '.']);
+    assert.equal(init.status, 0, init.stderr);
+    await fs.writeFile(path.join(dir, 'f.txt'), 'one\n');
+    sh(dir, ['add', 'f.txt']);
+    sh(dir, ['commit', '-q', '-m', 'init']);
+    return { dir, markers, mk: (n) => path.join(markers, n), fired: async () => (await fs.readdir(markers)).sort() };
+  }
+
+  /** Strips every -c override, --no-ext-diff/--no-textconv and GIT_NO_LAZY_FETCH: what is left is the shadow alone. */
+  const stripC = (a) => { const out = []; for (let i = 0; i < a.length; i++) { if (a[i] === '-c') { i++; continue; } out.push(a[i]); } return out; };
+  const shadowOnly = (rewrite = (a) => a) => (a, o) => {
+    const env = { ...o.env };
+    delete env.GIT_NO_LAZY_FETCH;
+    return defaultGitRunner(rewrite(stripC(a).filter(x => x !== '--no-ext-diff' && x !== '--no-textconv')), { ...o, env });
+  };
+
+  /** format.pretty=%G? + gpg.program + pretty.<alias> + a commit carrying a gpgsig header. */
+  async function gpgRepo(name) {
+    const r = await plainRepo(name);
+    const tree = sh(r.dir, ['rev-parse', 'HEAD^{tree}']).stdout.trim();
+    const body = `tree ${tree}\nauthor t <t@t> 1 +0000\ncommitter t <t@t> 1 +0000\ngpgsig -----BEGIN PGP SIGNATURE-----\n \n iQEz\n -----END PGP SIGNATURE-----\n\nsigned\n`;
+    const sha = spawnSync('git', ['hash-object', '-t', 'commit', '-w', '--stdin'], { cwd: r.dir, input: body, encoding: 'utf-8', env: CLEAN_ENV }).stdout.trim();
+    sh(r.dir, ['update-ref', 'refs/heads/signed', sha]);
+    sh(r.dir, ['checkout', '-q', 'signed']);
+    const gpg = path.join(root, `${name}-gpg.sh`);
+    await script(gpg, r.mk('gpg'), 1);
+    for (const k of ['gpg.program', 'gpg.ssh.program', 'gpg.x509.program']) sh(r.dir, ['config', k, gpg]);
+    sh(r.dir, ['config', 'format.pretty', 'format:%H %G?']);
+    sh(r.dir, ['config', 'pretty.sneaky', 'format:%G? %GS']);
+    sh(r.dir, ['config', 'log.showSignature', 'true']);
+    return { ...r, sha };
+  }
+
+  it('control: plain git log -1 with the repo format.pretty=%G? runs the repo gpg.program', async () => {
+    const r = await gpgRepo('gpg-control');
+    sh(r.dir, ['log', '-1']);
+    assert.ok((await r.fired()).includes('gpg'), 'control: gpg.program fires under plain git');
+  });
+
+  it('format.pretty + gpg.program + pretty.<alias> + log.showSignature: log -1, show -s, log --format=<alias> through safeGit run nothing', async () => {
+    const r = await gpgRepo('gpg');
+    const log = await safeGit(r.dir, ['log', '-1']);
+    assert.equal(log.code, 0, log.stderr);
+    assert.match(log.stdout, new RegExp(`^commit ${r.sha}`), 'the repo format.pretty is not applied (default medium)');
+    assert.equal((await safeGit(r.dir, ['show', '-s', 'HEAD'])).code, 0);
+    for (const a of [['log', '-1', '--format=sneaky'], ['log', '-1', '--pretty=sneaky'], ['show', '-s', '--format=sneaky']]) {
+      const out = await safeGit(r.dir, a);
+      assert.notEqual(out.code, 0, `${a.join(' ')}: the alias from the repo config does not exist for git`);
+    }
+    for (const a of [['log', '-1'], ['show', '-s', 'HEAD']]) assert.equal((await safeGit(r.dir, a, { git: shadowOnly() })).code, 0);
+    assert.deepEqual(await r.fired(), [], 'gpg.program never ran');
+  });
+
+  it('refuses %G and %(signature) in any format argument (=value, separate value, for-each-ref, alias forms)', async () => {
+    const r = await gpgRepo('gpg-args');
+    const bad = [['for-each-ref', '--format=%(signature)'], ['for-each-ref', '--format', '%(signature:signer)'], ['for-each-ref', '--format=%( Signature)'],
+      ['log', '--pretty=format:%G?'], ['log', '--format', '%GS'], ['show', '--pretty=tformat:%GK'], ['log', '--forma=%G?']];
+    for (const a of bad) await assert.rejects(() => safeGit(r.dir, a), e => e instanceof KitExit && e.code === 2, a.join(' '));
+    assert.equal((await safeGit(r.dir, ['for-each-ref', '--format=%(refname)'])).code, 0);
+    assert.deepEqual(await r.fired(), []);
+  });
+
+  /** Outer repo with a populated gitlink `sub` whose OWN config + info/attributes name a clean filter, sub/f stat-dirty. */
+  async function submoduleRepo(name) {
+    const r = await plainRepo(name);
+    const sub = path.join(r.dir, 'sub');
+    await fs.mkdir(sub);
+    sh(sub, ['init', '-q', '.']);
+    await fs.writeFile(path.join(sub, 'f'), 'hello\n');
+    sh(sub, ['add', 'f']);
+    sh(sub, ['commit', '-q', '-m', 's']);
+    sh(r.dir, ['add', 'sub']);
+    sh(r.dir, ['commit', '-q', '-m', 'gitlink']);
+    sh(sub, ['config', 'filter.zz.clean', `sh -c 'touch ${r.mk('subclean')}; cat'`]);
+    await fs.writeFile(path.join(sub, '.git', 'info', 'attributes'), '* filter=zz\n');
+    await fs.writeFile(path.join(sub, 'f'), 'HELLO\n');
+    const future = new Date(Date.now() + 3600e3);
+    await fs.utimes(path.join(sub, 'f'), future, future);
+    return r;
+  }
+
+  it('control: plain git status in the outer repo runs the clean filter of a checked-out submodule', async () => {
+    const r = await submoduleRepo('sub-control');
+    sh(r.dir, ['status', '--porcelain']);
+    assert.ok((await r.fired()).includes('subclean'), `control: submodule filter fires under plain git: ${await r.fired()}`);
+  });
+
+  it('submodule-local filters: status, diff, diff-files, diff-index, describe --dirty through safeGit run nothing', async () => {
+    const r = await submoduleRepo('sub');
+    for (const a of [['status', '--porcelain'], ['diff'], ['diff-files'], ['diff-index', 'HEAD'], ['describe', '--always', '--dirty'],
+      ['describe', '--always', '--broken'], ['describe', '--always', '--di=-X'], ['ls-files', '-m'], ['log', '-p', '-1']]) {
+      const out = await safeGit(r.dir, a);
+      assert.equal(out.code, 0, `${a.join(' ')}: ${out.stderr}`);
+    }
+    assert.deepEqual(await r.fired(), [], 'the submodule filter never ran');
+    const head = sh(r.dir, ['rev-parse', '--short', 'HEAD']).stdout.trim();
+    assert.equal((await safeGit(r.dir, ['describe', '--always', '--dirty'])).stdout, `${head}\n`, 'submodule changes are ignored');
+    await fs.writeFile(path.join(r.dir, 'f.txt'), 'changed\n');
+    assert.equal((await safeGit(r.dir, ['describe', '--always', '--dirty'])).stdout, `${head}-dirty\n`);
+    assert.equal((await safeGit(r.dir, ['describe', '--always', '--dirty=.mod'])).stdout, `${head}.mod\n`);
+    assert.equal((await safeGit(r.dir, ['describe', '--always', '--dirty', '--no-dirty'])).stdout, `${head}\n`);
+    await assert.rejects(() => safeGit(r.dir, ['describe', '--dirty', 'HEAD']), e => e instanceof KitExit && e.code === 1 && /commit-ishes/.test(e.message));
+    assert.deepEqual(await r.fired(), []);
+  });
+
+  it('refuses options that reach into submodules: --recurse-submodules, --ignore-submodules=<x>, --submodule=<x> and their prefixes', async () => {
+    const r = await submoduleRepo('sub-args');
+    for (const a of [['ls-files', '--recurse-submodules'], ['ls-files', '--recurse'], ['status', '--ignore-submodules=none'], ['diff', '--ignore-sub=none'],
+      ['diff', '--submodule=diff'], ['log', '-p', '--submod=log'], ['diff-index', '--ignore-submodules', 'HEAD']]) {
+      await assert.rejects(() => safeGit(r.dir, a), e => e instanceof KitExit && e.code === 2, a.join(' '));
+    }
+    for (const a of [['diff', '--ignore-space-change'], ['status', '--ignored'], ['diff', '--stat'], ['log', '--reverse']]) assert.doesNotThrow(() => checkReadArgs(a), a.join(' '));
+    assert.deepEqual(await r.fired(), []);
+  });
+
+  /** extensions.partialClone + a promisor remote whose ext:: url runs a command + protocol.ext.allow=always. */
+  async function promisorRepo(name) {
+    const r = await plainRepo(name);
+    sh(r.dir, ['config', 'core.repositoryformatversion', '1']);
+    sh(r.dir, ['config', 'extensions.partialClone', 'origin']);
+    sh(r.dir, ['config', 'remote.origin.promisor', 'true']);
+    sh(r.dir, ['config', 'remote.origin.url', `ext::sh -c touch% ${r.mk('ext')}`]);
+    sh(r.dir, ['config', 'protocol.ext.allow', 'always']);
+    sh(r.dir, ['config', 'protocol.allow', 'always']);
+    return r;
+  }
+  const MISSING = '1234567890123456789012345678901234567890';
+
+  it('control: plain git cat-file of a missing object in a partial clone runs the promisor ext:: remote (without GIT_NO_LAZY_FETCH)', async () => {
+    const r = await promisorRepo('promisor-control');
+    sh(r.dir, ['cat-file', '-t', MISSING]);
+    assert.ok((await r.fired()).includes('ext'), 'control: ext:: transport fires under plain git');
+  });
+
+  it('partial clone + protocol.ext.allow: no promisor remote exists in the shadow, even with GIT_NO_LAZY_FETCH and every -c removed', async () => {
+    const r = await promisorRepo('promisor');
+    const out = await safeGit(r.dir, ['cat-file', '-t', MISSING]);
+    assert.notEqual(out.code, 0);
+    const bare = await safeGit(r.dir, ['cat-file', '-t', MISSING], { git: shadowOnly() });
+    assert.notEqual(bare.code, 0);
+    assert.equal((await safeGit(r.dir, ['log', '--oneline'], { git: shadowOnly() })).code, 0, 'the repo still reads (partialclone dropped)');
+    assert.deepEqual(await r.fired(), [], 'the ext:: command never ran');
+  });
+
+  it('the shadow alone stops every exploit: with all -c overrides, --no-ext-diff/--no-textconv and GIT_NO_LAZY_FETCH removed, nothing runs', async () => {
+    const r = await evilRepo(root, 'shadow-only');
+    // a deny-list that "forgot" --textconv / --filters: the runner rewrites the argv after the policy check
+    const rewrite = (a) => a.map(x => (x === '--batch-check' ? '--textconv' : x === '--batch-all-objects' ? '--filters' : x));
+    const git = shadowOnly(rewrite);
+    for (const c of [['status', '--porcelain'], ['diff'], ['diff', '--cached'], ['log', '-p'], ['show', 'HEAD'], ['diff-files'], ['ls-files', '-m'],
+      ['describe', '--always', '--dirty'], ['cat-file', '-p', 'HEAD']]) {
+      const out = await safeGit(r.dir, c, { git });
+      assert.equal(out.code, 0, `${c.join(' ')}: ${out.stderr}`);
+    }
+    await safeGit(r.dir, ['cat-file', '--batch-check', 'HEAD:a.txt'], { git }); // becomes cat-file --textconv
+    await safeGit(r.dir, ['cat-file', '--batch-all-objects', 'HEAD:a.txt'], { git }); // becomes cat-file --filters
+    assert.match((await safeGit(r.dir, ['diff'], { git })).stdout, /\+two/);
+    assert.deepEqual(await r.fired(), [], 'no hook, filter, fsmonitor, external diff or textconv ran');
+    const wt = await plainRepo('shadow-only-wt');
+    sh(wt.dir, ['config', 'extensions.worktreeConfig', 'true']);
+    await fs.writeFile(path.join(wt.dir, '.git', 'evilattrs'), '* filter=wtevil\n');
+    sh(wt.dir, ['config', '--worktree', 'filter.wtevil.clean', `sh -c 'touch ${wt.mk('clean')}; cat'`]);
+    sh(wt.dir, ['config', '--worktree', 'core.attributesFile', '.git/evilattrs']);
+    await fs.writeFile(path.join(wt.dir, 'f.txt'), 'two\n');
+    for (const c of [['diff'], ['status', '--porcelain']]) assert.equal((await safeGit(wt.dir, c, { git })).code, 0);
+    assert.deepEqual(await wt.fired(), [], 'config.worktree filter never ran');
+  });
+
+  it('the shadow config holds only allow-listed, validated keys; the shadow dir is private (0700), uses the real objects, and is removed after the call', async () => {
+    const r = await evilRepo(root, 'shadow-shape');
+    sh(r.dir, ['config', 'core.quotepath', 'false']);
+    sh(r.dir, ['config', 'core.ignorecase', 'sneaky;value']);
+    let seen = null;
+    const git = (a, o) => {
+      if (o.env?.GIT_DIR && !seen) {
+        const gd = o.env.GIT_DIR;
+        seen = {
+          gd, env: o.env,
+          config: fsSync.readFileSync(path.join(gd, 'config'), 'utf-8'),
+          mode: fsSync.statSync(path.dirname(gd)).mode & 0o777,
+          hooks: fsSync.existsSync(path.join(gd, 'hooks')),
+          index: fsSync.existsSync(path.join(gd, 'index'))
+        };
+      }
+      return defaultGitRunner(a, o);
+    };
+    const realIndex = await fs.readFile(path.join(r.dir, '.git', 'index'));
+    assert.equal((await safeGit(r.dir, ['status', '--porcelain'], { git })).code, 0);
+    assert.ok(seen, 'git ran with a GIT_DIR');
+    assert.ok(!seen.gd.startsWith(r.dir), 'GIT_DIR is not inside the repository');
+    assert.equal(seen.mode, 0o700);
+    assert.equal(seen.hooks, false, 'no hooks dir');
+    assert.equal(seen.index, true, 'the index is copied');
+    assert.equal(seen.env.GIT_OBJECT_DIRECTORY, path.join(await fs.realpath(r.dir), '.git', 'objects'));
+    assert.equal(seen.env.GIT_WORK_TREE, await fs.realpath(r.dir));
+    assert.equal(seen.env.GIT_CONFIG_NOSYSTEM, '1');
+    const keys = seen.config.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('[')).map(l => l.split(' = ')[0]);
+    const ALLOWED = ['repositoryformatversion', 'bare', 'objectformat', 'ignorecase', 'precomposeunicode', 'quotepath', 'filemode', 'symlinks', 'autocrlf', 'eol'];
+    for (const k of keys) assert.ok(ALLOWED.includes(k), `only allow-listed keys in the shadow config, got ${k}`);
+    for (const k of ['repositoryformatversion', 'bare', 'quotepath']) assert.ok(keys.includes(k), k);
+    assert.ok(!keys.includes('ignorecase'), 'an invalid boolean is dropped, not copied');
+    assert.match(seen.config, /quotepath = false/);
+    assert.doesNotMatch(seen.config, /hooks|fsmonitor|filter|diff|sneaky|recurse/i);
+    assert.equal(fsSync.existsSync(path.dirname(seen.gd)), false, 'the shadow is removed after the call');
+    // describe --dirty refreshes and writes an index: only the shadow copy
+    await safeGit(r.dir, ['describe', '--always', '--dirty']);
+    assert.deepEqual(await fs.readFile(path.join(r.dir, '.git', 'index')), realIndex, 'the real index is untouched');
+    assert.deepEqual(await r.fired(), []);
+  });
+
+  it('a filter added later through an included config file never runs and is listed in the overrides (no stale cache)', async () => {
+    const r = await plainRepo('include-late');
+    sh(r.dir, ['config', 'include.path', 'extra.cfg']);
+    await fs.writeFile(path.join(r.dir, '.git', 'extra.cfg'), '');
+    assert.ok(!(await safeGitConfig(r.dir)).includes('filter.late.clean='));
+    // both the driver and the attributes file naming it (outside the repo) are reachable only through the include
+    const attrs = path.join(root, 'include-late-attrs');
+    await fs.writeFile(attrs, '*.txt filter=late\n');
+    await fs.writeFile(path.join(r.dir, '.git', 'extra.cfg'), `[filter "late"]\n\tclean = "sh -c 'touch ${r.mk('late')}; cat'"\n[core]\n\tattributesFile = ${attrs}\n`);
+    await fs.writeFile(path.join(r.dir, 'f.txt'), 'two, a different size\n');
+    sh(r.dir, ['diff']);
+    assert.ok((await r.fired()).includes('late'), 'control: the included filter fires under plain git');
+    await fs.rm(r.mk('late'));
+    assert.ok((await safeGitConfig(r.dir)).includes('filter.late.clean='), 'the included driver is listed at once');
+    assert.match((await safeGit(r.dir, ['diff'])).stdout, /\+two, a different size/);
+    assert.equal((await safeGit(r.dir, ['status', '--porcelain'], { git: shadowOnly() })).code, 0);
+    assert.deepEqual(await r.fired(), []);
+  });
+
+  it('refs, packed refs and the index are read at call time: a commit, a new branch, pack-refs, a deleted branch and a staged file are seen by the next call', async () => {
+    const r = await plainRepo('refs-live');
+    const h1 = sh(r.dir, ['rev-parse', 'HEAD']).stdout.trim();
+    assert.equal((await safeGit(r.dir, ['rev-parse', 'HEAD'])).stdout.trim(), h1);
+    sh(r.dir, ['commit', '--allow-empty', '-q', '-m', 'second']);
+    const h2 = sh(r.dir, ['rev-parse', 'HEAD']).stdout.trim();
+    assert.notEqual(h1, h2);
+    assert.equal((await safeGit(r.dir, ['rev-parse', 'HEAD'])).stdout.trim(), h2);
+    sh(r.dir, ['branch', 'feature', h1]);
+    assert.match((await safeGit(r.dir, ['for-each-ref', '--format=%(refname) %(objectname)'])).stdout, new RegExp(`refs/heads/feature ${h1}`));
+    sh(r.dir, ['pack-refs', '--all']);
+    assert.equal(await exists(path.join(r.dir, '.git', 'refs', 'heads', 'feature')), false, 'setup: the ref is now only packed');
+    assert.equal((await safeGit(r.dir, ['rev-parse', 'feature'])).stdout.trim(), h1);
+    sh(r.dir, ['branch', '-D', 'feature']);
+    assert.notEqual((await safeGit(r.dir, ['rev-parse', '--verify', '-q', 'feature'])).code, 0);
+    await fs.writeFile(path.join(r.dir, 'new.txt'), 'n\n');
+    sh(r.dir, ['add', 'new.txt']);
+    assert.match((await safeGit(r.dir, ['status', '--porcelain'])).stdout, /^A {2}new\.txt$/m);
+    sh(r.dir, ['tag', 'v1']);
+    assert.equal((await safeGit(r.dir, ['describe', '--tags'])).stdout.trim(), 'v1');
+  });
+
+  it('a sha256 repository works', async (t) => {
+    const probe = spawnSync('git', ['init', '-q', '--object-format=sha256', path.join(root, 'sha256-probe')], { encoding: 'utf-8', env: CLEAN_ENV });
+    if (probe.status !== 0) { t.skip(`this git cannot create sha256 repositories: ${probe.stderr.trim()}`); return; }
+    const r = await plainRepo('sha256', ['--object-format=sha256']);
+    const head = sh(r.dir, ['rev-parse', 'HEAD']).stdout.trim();
+    assert.match(head, /^[0-9a-f]{64}$/);
+    assert.equal((await safeGit(r.dir, ['rev-parse', 'HEAD'])).stdout.trim(), head);
+    await fs.writeFile(path.join(r.dir, 'f.txt'), 'two\n');
+    assert.match((await safeGit(r.dir, ['diff'])).stdout, /\+two/);
+    assert.equal((await safeGit(r.dir, ['log', '--oneline'])).code, 0);
+    assert.equal((await safeGit(r.dir, ['cat-file', '-t', head])).stdout.trim(), 'commit');
+  });
+
+  it('a linked worktree reads its own HEAD, index and work tree; --show-toplevel is the real work tree', async () => {
+    const main = await plainRepo('lw-main');
+    const wt = path.join(root, 'lw-wt');
+    assert.equal(sh(main.dir, ['worktree', 'add', '-q', '-b', 'side', wt]).status, 0);
+    sh(wt, ['commit', '--allow-empty', '-q', '-m', 'on side']);
+    const wtHead = sh(wt, ['rev-parse', 'HEAD']).stdout.trim();
+    const mainHead = sh(main.dir, ['rev-parse', 'HEAD']).stdout.trim();
+    assert.notEqual(wtHead, mainHead);
+    assert.equal((await safeGit(wt, ['rev-parse', 'HEAD'])).stdout.trim(), wtHead);
+    assert.equal((await safeGit(main.dir, ['rev-parse', 'HEAD'])).stdout.trim(), mainHead);
+    assert.equal((await safeGit(wt, ['rev-parse', '--abbrev-ref', 'HEAD'])).stdout.trim(), 'side');
+    assert.equal((await safeGit(wt, ['rev-parse', '--show-toplevel'])).stdout.trim(), await fs.realpath(wt));
+    await fs.writeFile(path.join(wt, 'f.txt'), 'wt\n');
+    assert.match((await safeGit(wt, ['status', '--porcelain'])).stdout, /^ M f\.txt$/m);
+    assert.equal((await safeGit(main.dir, ['status', '--porcelain'])).stdout, '');
+    await fs.mkdir(path.join(wt, 'deep'));
+    assert.equal((await safeGit(path.join(wt, 'deep'), ['rev-parse', '--show-prefix'])).stdout.trim(), 'deep/');
+  });
+
+  it('a bare repository (and a path inside .git) reads without a work tree', async () => {
+    const src = await plainRepo('bare-src');
+    const bareDir = path.join(root, 'bare.git');
+    assert.equal(sh(root, ['clone', '-q', '--bare', src.dir, bareDir]).status, 0);
+    const head = sh(src.dir, ['rev-parse', 'HEAD']).stdout.trim();
+    assert.equal((await safeGit(bareDir, ['rev-parse', 'HEAD'])).stdout.trim(), head);
+    assert.equal((await safeGit(bareDir, ['rev-parse', '--is-bare-repository'])).stdout.trim(), 'true');
+    assert.match((await safeGit(bareDir, ['ls-tree', 'HEAD'])).stdout, /\tf\.txt$/m);
+    assert.equal((await safeGit(bareDir, ['log', '--oneline'])).code, 0);
+    assert.notEqual((await safeGit(bareDir, ['status'])).code, 0, 'status needs a work tree');
+    assert.equal((await safeGit(path.join(src.dir, '.git'), ['rev-parse', 'HEAD'])).stdout.trim(), head);
+    assert.equal((await safeGit(path.join(src.dir, '.git', 'refs'), ['rev-parse', '--is-inside-work-tree'])).stdout.trim(), 'false');
+  });
+
+  it('a shallow clone reads (the shallow file is copied)', async () => {
+    const src = await plainRepo('shallow-src');
+    sh(src.dir, ['commit', '--allow-empty', '-q', '-m', 'two']);
+    const dest = path.join(root, 'shallow');
+    assert.equal(sh(root, ['clone', '-q', '--depth', '1', `file://${src.dir}`, dest]).status, 0);
+    const out = await safeGit(dest, ['log', '--format=%s']);
+    assert.equal(out.code, 0, out.stderr);
+    assert.equal(out.stdout, 'two\n');
+  });
+
+  it('refuses (exit 2) a reftable repository, an unknown extension and a format version above 1, and runs nothing', async () => {
+    for (const [name, keys] of [['reftable', [['extensions.refStorage', 'reftable']]], ['unknown-ext', [['extensions.somethingNew', 'true']]],
+      ['compat', [['extensions.compatObjectFormat', 'sha256']]], ['badformat', [['extensions.objectFormat', 'md5']]]]) {
+      const r = await plainRepo(name);
+      sh(r.dir, ['config', 'core.repositoryformatversion', '1']);
+      for (const [k, v] of keys) sh(r.dir, ['config', k, v]);
+      const calls = [];
+      const git = (a, o) => { calls.push(a); return defaultGitRunner(a, o); };
+      await assert.rejects(() => safeGit(r.dir, ['rev-parse', 'HEAD'], { git }), e => e instanceof KitExit && e.code === 2, name);
+      assert.ok(!calls.some(c => c.includes('rev-parse')), `${name}: git rev-parse never ran`);
+    }
+    const v2 = await plainRepo('format-v2');
+    await fs.appendFile(path.join(v2.dir, '.git', 'config'), '[core]\n\trepositoryformatversion = 2\n');
+    await assert.rejects(() => safeGit(v2.dir, ['rev-parse', 'HEAD']), e => e instanceof KitExit && e.code === 2 && /repositoryformatversion/.test(e.message));
+    const ok = await plainRepo('refstorage-files');
+    sh(ok.dir, ['config', 'core.repositoryformatversion', '1']);
+    sh(ok.dir, ['config', 'extensions.refStorage', 'files']);
+    sh(ok.dir, ['config', 'extensions.preciousObjects', 'true']);
+    assert.equal((await safeGit(ok.dir, ['rev-parse', 'HEAD'])).code, 0, 'refstorage=files and preciousObjects are fine');
+  });
+
+  it('refuses rev-parse options that would print the private shadow dir', async () => {
+    const r = await plainRepo('revparse-shadow');
+    for (const o of ['--git-dir', '--absolute-git-dir', '--git-common-dir', '--shared-index-path']) {
+      await assert.rejects(() => safeGit(r.dir, ['rev-parse', o]), e => e instanceof KitExit && e.code === 2, o);
+    }
+    await assert.rejects(() => safeGit(r.dir, ['rev-parse', '--git-path', 'hooks']), e => e instanceof KitExit && e.code === 2);
+    assert.equal((await safeGit(r.dir, ['rev-parse', '--show-toplevel'])).stdout.trim(), await fs.realpath(r.dir));
+  });
+
+  it('a gitfile pointing nowhere is an error (exit 1), not a silent read of something else', async () => {
+    const dir = path.join(root, 'badgitfile');
+    await fs.mkdir(dir);
+    await fs.writeFile(path.join(dir, '.git'), 'gitdir: /nonexistent/x\n');
+    await assert.rejects(() => safeGit(dir, ['status']), e => e instanceof KitExit && e.code === 1 && /invalid gitfile/.test(e.message));
+  });
+
+  it('parses config -z lists and validates the allow-listed core values', () => {
+    assert.deepEqual(parseConfigList('core.bare\nfalse\0core.quotepath\0a.b\nx\ny\0'), [['core.bare', 'false'], ['core.quotepath', null], ['a.b', 'x\ny']]);
+    assert.deepEqual(allowedCore([['core.bare', 'no'], ['core.quotepath', null], ['core.ignorecase', 'maybe'], ['core.autocrlf', 'on'], ['core.eol', 'evil'], ['core.pager', 'x']]),
+      { bare: false, quotepath: true, autocrlf: 'true' });
+    assert.deepEqual(repoFormat([['core.repositoryformatversion', '1'], ['extensions.objectformat', 'sha256'], ['extensions.worktreeconfig', 'true'], ['extensions.partialclone', 'origin']]),
+      { version: '1', objectFormat: 'sha256', worktreeConfig: true });
+  });
+
+  it('describeDirtyPlan: finds --dirty/--broken (abbreviated, =mark, --no-), keeps --match values, refuses commit-ishes', () => {
+    assert.equal(describeDirtyPlan(['describe', '--tags']), null);
+    assert.equal(describeDirtyPlan(['log', '--dirty']), null);
+    assert.deepEqual(describeDirtyPlan(['describe', '--di', '--match', 'v*']), { argv: ['describe', '--match', 'v*'], dirty: '-dirty', broken: null });
+    assert.deepEqual(describeDirtyPlan(['describe', '--b=-B']), { argv: ['describe'], dirty: '-dirty', broken: '-B' });
+    assert.equal(describeDirtyPlan(['describe', '--dirty', '--no-dirty']), null);
+    assert.throws(() => describeDirtyPlan(['describe', '--dirty', 'HEAD']), e => e instanceof KitExit && e.code === 1);
+    assert.throws(() => describeDirtyPlan(['describe', '--dirty', '--', 'HEAD']), e => e instanceof KitExit && e.code === 1);
   });
 });

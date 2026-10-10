@@ -38,6 +38,22 @@ describe('safe-git — packaged end to end', () => {
     assert.match(pkg.kit(['safe-git', '--dir', repo, '--', 'diff']).json.stdout, /\+two/);
     assert.deepEqual(await fs.readdir(markers), []);
 
+    // the repo config names a gpg program behind format.pretty=%G? and a signed-looking commit is checked out
+    const tree = sh(repo, ['rev-parse', 'HEAD^{tree}']).stdout.trim();
+    const body = `tree ${tree}\nparent ${head}\nauthor t <t@t> 1 +0000\ncommitter t <t@t> 1 +0000\ngpgsig -----BEGIN PGP SIGNATURE-----\n \n iQEz\n -----END PGP SIGNATURE-----\n\nsigned\n`;
+    const signed = spawnSync('git', ['hash-object', '-t', 'commit', '-w', '--stdin'], { cwd: repo, input: body, encoding: 'utf-8' }).stdout.trim();
+    sh(repo, ['update-ref', 'refs/heads/signed', signed]);
+    const gpg = path.join(root, 'gpg.sh');
+    await fs.writeFile(gpg, `#!/bin/sh\ntouch '${markers}/gpg'\nexit 1\n`, { mode: 0o755 });
+    sh(repo, ['config', 'gpg.program', gpg]);
+    sh(repo, ['config', 'format.pretty', 'format:%H %G?']);
+    sh(repo, ['config', 'log.showSignature', 'true']);
+    const lg = pkg.kit(['safe-git', '--dir', repo, '--', 'log', '-1', 'signed']);
+    assert.equal(lg.code, 0, lg.err);
+    assert.match(lg.json.stdout, new RegExp(`^commit ${signed}`));
+    assert.equal(pkg.kit(['safe-git', '--dir', repo, '--', 'for-each-ref', '--format=%(signature)']).code, 2);
+    assert.deepEqual(await fs.readdir(markers), []);
+
     const w = pkg.kit(['safe-git', '--dir', repo, '--', 'fetch', 'origin']);
     assert.equal(w.code, 2);
     assert.match(w.err, /refused/);
