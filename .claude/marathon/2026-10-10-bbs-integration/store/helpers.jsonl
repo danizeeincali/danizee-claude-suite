@@ -1,0 +1,10 @@
+{"role":"build","model":"session","stream":"usage","budget":150000,"event":"spawn","id":"f5a6dee2-b0d9-4e39-a9cf-0b70f912f5d3","ts":"2026-10-10T16:38:30.763Z"}
+{"helper_id":"f5a6dee2-b0d9-4e39-a9cf-0b70f912f5d3","tokens":120000,"outcome":"green","event":"done","id":"18db4936-eb1e-4557-a5da-8ba445ce756f","ts":"2026-10-10T16:38:37.190Z"}
+{"role":"review","model":"opus","stream":"usage","budget":150000,"event":"spawn","id":"bb61c8a7-6eca-4867-bb1a-ad197d1ec5d9","ts":"2026-10-10T16:38:42.927Z"}
+{"helper_id":"bb61c8a7-6eca-4867-bb1a-ad197d1ec5d9","tokens":70888,"outcome":"green","event":"done","id":"2781aed5-9997-460a-9e5d-cba3fea88a25","ts":"2026-10-10T16:41:03.685Z"}
+{"role":"review","model":"opus","stream":"usage","budget":150000,"event":"spawn","id":"3daf72c9-0257-4a5e-a8dd-ea1a4f2b02ef","ts":"2026-10-10T16:46:16.288Z"}
+{"helper_id":"3daf72c9-0257-4a5e-a8dd-ea1a4f2b02ef","tokens":78311,"outcome":"green","event":"done","id":"cdf929e7-3ecc-4048-89a8-f91a297d612d","ts":"2026-10-10T16:48:59.711Z"}
+{"role":"review","model":"opus","stream":"usage","budget":150000,"event":"spawn","id":"a7ec5d40-478a-4f18-b958-08bfd047e3b6","ts":"2026-10-10T16:53:30.869Z"}
+{"helper_id":"a7ec5d40-478a-4f18-b958-08bfd047e3b6","tokens":72362,"outcome":"green","event":"done","id":"e77c122e-ebba-4869-8c22-2ad20e6a08ec","ts":"2026-10-10T16:56:06.616Z"}
+{"role":"review","model":"opus","stream":"usage","budget":150000,"event":"spawn","id":"9d3510ba-a75c-48e4-9236-ad35cb9ff032","ts":"2026-10-10T16:59:23.925Z"}
+{"helper_id":"9d3510ba-a75c-48e4-9236-ad35cb9ff032","tokens":75206,"outcome":"green","event":"done","id":"bfe3898a-2f2f-4703-826e-bf0ed1a95209","ts":"2026-10-10T17:03:09.543Z"}

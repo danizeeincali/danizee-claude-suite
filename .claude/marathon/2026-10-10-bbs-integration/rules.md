@@ -44,3 +44,6 @@ Add a rule the second time something goes wrong.
   names the verb is not a caller.
 - Edit sources (src/lib/bbs, src/templates or wherever the installer copies from), then regenerate the installed
   copies; never edit only the copy.
+- (promoted: correctness) A gate checks the evidence, not that a file exists: an empty or "none" record is not an
+  answer. Every state file a verb reads has a --force repair path its error names, and every config value it reads
+  is validated in loadConfig before any scan.
