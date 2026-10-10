@@ -77,8 +77,9 @@ so two writers never commit in the same checkout at the same time:
 ```bash
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
 ```
-  Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed, **do not commit**, and say so in the summary. Exit 1 is wrong input or a broken state: report it, never read it as clean. Any other non-zero exit is a failure of the step: report it, do not commit.
-- Commit these files (specific paths, not `git add -A`) only after the scrub is clean (or the kit is not installed). Never push here.
+  Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed, **do not commit**, and say so in the summary. Exit 1 is wrong input or a broken state: report it, never read it as clean, do not commit. Any other non-zero exit is a failure of the step: report it, do not commit.
+- **After a refused scrub (any non-zero exit):** unstage the handoff paths (`git restore --staged -- <those paths>`) so they cannot ride along in the agent's commit, and dispatch the background agent **without `--push`** even when invoked as `/bcp`: the write-up still runs and commits its own paths, the push is withheld, and the summary says "not pushed — handoff scrub refused".
+- Commit these files (specific paths, `git commit -- <those paths>`, not `git add -A`) only after the scrub is clean (or the kit is not installed). Never push here.
 
 ---
 
@@ -94,11 +95,13 @@ candidates file, memory exports) — never the handoff files the lead just commi
 - Fixes: generate paired RC-F### for each diagnostic
 - Append all to .claude/ralph-candidates.md
 - Ralph candidate check
-- **Redact before writing:** when `.claude/kit/secrets` exists, pass the diff text (or any excerpt of it) through `redact` before it is written into the solution doc or any memory export. `redact` reads the text on stdin (there is no `--file` for the text), prints JSON `{ text, replaced }`, and write the `text` field, not the raw diff. Use `--keep-lines` so line numbers still match; `--secrets-file <f>` names another secrets file. When `.claude/kit/secrets` does not exist, say so in one line and write the text as is. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+- **Redact before writing:** whenever the kit is installed, pass the diff text (or any excerpt of it) through `redact` before it is written into the solution doc or any memory export. Never test for the secrets file yourself: the verb looks for `.claude/kit/secrets` at the top of the worktree it runs in, then in the main checkout (the file is git-ignored, so a linked worktree usually has no copy of its own). With no secrets file anywhere nothing is replaced (`replaced: 0`) and the text comes back as is. `redact` reads the text on stdin (there is no `--file` for the text), prints JSON `{ text, replaced }`, and write the `text` field, not the raw diff. Use `--keep-lines` so line numbers still match; `--secrets-file <f>` names another secrets file. The block writes `git diff HEAD~1` to a temp file, checks git's exit, then redacts the file; the same pipeline applies to any excerpt (write it to a temp file, check the step that made it, then `redact --keep-lines < file`), never a bare pipe whose first command can fail unseen. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
 ```bash
-if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js): redact skipped, advisory"; (exit 0); elif [ ! -f .claude/kit/secrets ]; then echo "no .claude/kit/secrets: nothing to redact, text written as is"; (exit 0); else git diff HEAD~1 | node .claude/helpers/kit/cli.js redact --keep-lines; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js): redact skipped, advisory"; (exit 0); else D=$(mktemp 2>/dev/null) && [ -n "$D" ] || { echo "mktemp failed: no temp file for the diff, nothing redacted" >&2; D=; RC=1; }
+if [ -n "$D" ]; then git diff HEAD~1 > "$D"; RC=$?
+if [ $RC -eq 0 ]; then node .claude/helpers/kit/cli.js redact --keep-lines < "$D"; RC=$?; else echo "git diff failed (exit $RC): the diff was not read, nothing redacted" >&2; fi; fi; [ -z "$D" ] || rm -f "$D"; (exit $RC); fi
 ```
-  Exit 0 prints the redacted `text` and the `replaced` count. Exit 1 is wrong input or a broken state (an unreadable secrets file, bad flag): report it and do **not** write the unredacted diff into the solution doc or a memory export. Any other non-zero exit is a failure of the step: the same.
+  Exit 0 prints the redacted `text` and the `replaced` count. If the temp file cannot be made the block prints "mktemp failed"; if git fails it prints "git diff failed (exit N)" and `redact` does not run: report that, never read it as an empty, clean diff. Exit 1 is wrong input or a broken state (an unreadable secrets file, bad flag, mktemp failed): report it and do **not** write the unredacted diff into the solution doc or a memory export. Any other non-zero exit (git's own exit, 127, a signal) is a failure of the step: the same. The temp file is removed on every path.
 
 **Phase 1.5: Agent Pi Brain — Knowledge Discovery (read-only)**
 - Search for similar memories:
@@ -112,8 +115,8 @@ if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/he
 ```bash
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
 ```
-  Exit 0 clean (tracked files only; an untracked file is not scanned). Exit 2 means hits or an incomplete scan: list them as printed, **do not commit**, skip Phase 3, and say so in the summary. Exit 1 is wrong input or a broken state: report it, do not commit. Any other non-zero exit is a failure of the step: report it, do not commit.
-- Commit with descriptive message
+  Exit 0 clean (tracked files only; an untracked file is not scanned). Exit 2 means hits or an incomplete scan: list them as printed, **do not commit**, skip Phase 3, and say so in the summary. Exit 1 is wrong input or a broken state: report it, do not commit, skip Phase 3. Any other non-zero exit is a failure of the step: report it, do not commit, skip Phase 3.
+- Commit with descriptive message, limited to its own paths: `git commit -m "<message>" -- <its own paths>`, so nothing else that happens to be staged goes into this commit.
 - **Never pushes** in this phase.
 
 **Phase 3: Git Push/Merge (only with --push)**
@@ -122,13 +125,20 @@ if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/he
 ```bash
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js): push-gate check skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js push-gate check; RC=$?; (exit $RC); fi
 ```
-  Read the printed `decision` and `reason`. Exit 2 is a deny (read `decision` and `reason`) or a refused receipt store (`kit: refused:` on stderr): **not pushed**, say so in the summary. Exit 0 with decision `ask`: put the question to the owner and do not push until they answer. Exit 0 with decision `abstain` (no receipt): the push goes on. Exit 1 is an error: report it and do not push. Any other non-zero exit is a failure of the step: report it and do not push. The gate only abstains, asks or denies; it never allows, and it never skips or answers the owner's own permission prompt.
-- Then push current branch; if not main, merge to main and clean up.
+  Read the printed `decision` and `reason`. The gate stays advisory: a missing review receipt never blocks `/bcp`.
+  - Exit 0 with decision `abstain` (a passing receipt for this exact change, or an incomplete one that found nothing blocking): the push goes on.
+  - Exit 0 with decision `ask` and a `reason` starting "no review recorded for this change": no `/w-review` receipt exists (with no receipt the verb returns `ask` at threshold none, `deny` under a stricter `--threshold`). The push goes on, and the summary says "no review recorded for this change, pushed (run /w-review next time)".
+  - Exit 0 with any other `ask` (a failed review, a review of an earlier version, another threshold): **not pushed**. Stop Phase 3 and write "not pushed — gate asks: <reason>" into the Phase 4 summary. A background agent cannot hold a conversation with the owner: it never puts the question itself and never answers it; the lead relays it (CHECKPOINT 4).
+  - Exit 2 is a deny (read `decision` and `reason`) or a refused receipt store (`kit: refused:` on stderr): **not pushed**. Stop Phase 3 and write "not pushed — gate denied: <reason>" (or the refusal as printed) into the Phase 4 summary.
+  - Exit 1 is an error: report it and do not push. Any other non-zero exit is a failure of the step: report it and do not push.
+
+  The gate only abstains, asks or denies; it never allows, and it never skips or answers the owner's own permission prompt.
+- Then push current branch. If it is not main: merge to main, then run the same push-gate block again on main before pushing main (the merged tree is a different change from the branch the first check saw), and read it by the same rules; push main only when that check lets the push go on, otherwise write its "not pushed — gate asks/denied: <reason>" line for main into the summary. Then clean up.
 
 **Phase 4: Final Summary Report**
-- Log what was compounded, committed, and whether it was pushed
+- Log what was compounded, committed, and whether it was pushed; a gate stop appears as its own line, "not pushed — gate asks: <reason>" or "not pushed — gate denied: <reason>", exactly as Phase 3 wrote it
 
-**ERROR HANDLING:** Log errors but NEVER abort. Complete as many phases as possible. A push-gate deny or ask, and a scrub hit, are not errors to work around: the phase stops there (no commit after a scrub hit, no push after a deny or while an ask is unanswered) and the summary says why. Never retry around them, never edit the patterns or the gate, never push by another route.
+**ERROR HANDLING:** Log errors but NEVER abort. Complete as many phases as possible. A push-gate deny or ask, and a scrub hit, are not errors to work around: the phase stops there (no commit after a scrub hit, no push after a deny or while an ask other than "no review recorded" is unanswered) and the summary says why. Never retry around them, never edit the patterns or the gate, never push by another route.
 
 ---
 
@@ -154,6 +164,8 @@ Say plainly that only the person can run the line; you cannot compact for them.
 `bc record compaction trigger=bc tokens=<n> pct=<n> decision=<d>` (`cli.js record compaction …`) — into the run's
 store with a marathon run active, otherwise into the `db` file from `bc.json` (default `.claude/bc/compactions.jsonl`).
 Every compaction, manual or automatic, is also recorded by the `PreCompact` hook, with its trigger and size.
+
+**Relay a gate stop (lead):** when the background agent's Phase 4 summary arrives with a "not pushed — gate asks: <reason>" or "not pushed — gate denied: <reason>" line, relay that line to the owner word for word and wait. Only after the owner answers does the lead run the push in the foreground (the Phase 3 lines, push-gate block first), where the owner's own permission prompt applies; the lead never answers the gate's question or that prompt itself, and without an answer nothing is pushed.
 
 ---
 
