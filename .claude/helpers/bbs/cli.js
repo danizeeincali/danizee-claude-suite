@@ -61,7 +61,7 @@ const FLAGS = {
   delivered: { value: ['run', 'project'], bool: ['record'], positionals: 0, usage: 'usage: cli.js delivered [--record] [--run <id>] [--project <dir>]' },
   surfaces: { value: ['run', 'project', 'add'], bool: ['force'], positionals: 0, repeat: ['add'], usage: 'usage: cli.js surfaces [--add <kind>:<file>[#<anchor>]]... [--force] [--run <id>] [--project <dir>]' },
   usage: { value: ['run', 'project', 'days', 'root', 'workflows'], bool: ['force'], positionals: 0, repeat: ['root'], usage: 'usage: cli.js usage [--days <n>] [--root <dir>]... [--workflows <a,b>] [--force] [--run <id>] [--project <dir>]' },
-  targets: { value: ['from', 'set', 'run', 'project'], bool: ['brief', 'force'], positionals: 0, usage: 'usage: cli.js targets (--brief | --from <file|-> | --set <power>@<workflow>[,<workflow>]) [--force] [--run <id>] [--project <dir>]' },
+  targets: { value: ['from', 'set', 'run', 'project'], bool: ['brief', 'force'], positionals: 0, usage: 'usage: cli.js targets (--brief | --from <file|-> | --set <power>@<workflow|kind:file[#anchor]>[,...]) [--force] [--run <id>] [--project <dir>]' },
   verdict: { value: ['probe', 'evidence', 'decide', 'from', 'run', 'project'], bool: ['table', 'force'], positionals: 0, usage: 'usage: cli.js verdict [--table | --probe <power>=<clean|found|incomplete> [--evidence <text>] | --decide <power>=<verdict> | --from <file|->] [--force] [--run <id>] [--project <dir>]' },
   handoff: { value: ['run', 'project'], bool: ['marathon', 'force'], positionals: 0, usage: 'usage: cli.js handoff [--marathon] [--force] [--run <id>] [--project <dir>]' }
 };

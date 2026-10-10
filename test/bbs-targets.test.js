@@ -376,3 +376,16 @@ describe('targets — review r2 regressions', () => {
     assert.match(cli(['targets', '--from', '']).err, /--from needs a file, or - for stdin/);
   });
 });
+
+describe('targets — integration-gate review r5 regressions', () => {
+  const wf = { kind: 'workflow', workflow: 'w-review', step: 'Step 2', mode: 'advisory', by: 'proposed', unverified: true };
+  it('the Lands in mark follows the current usage: naming the workflows clears it', () => {
+    assert.equal(landsIn([wf], { evidence: 'none', workflows: [] }), 'w-review · Step 2 · advisory (unverified)');
+    assert.equal(landsIn([wf], null), 'w-review · Step 2 · advisory (unverified)', 'no usage yet');
+    assert.equal(landsIn([wf], { evidence: 'owner', workflows: [{ name: 'w-review' }] }), 'w-review · Step 2 · advisory');
+    assert.equal(landsIn([wf], { evidence: 'owner', workflows: [{ name: 'w-debug' }] }), 'w-review · Step 2 · advisory (not a workflow you run)');
+    assert.equal(landsIn([{ ...wf, by: 'owner' }], { evidence: 'none', workflows: [] }), 'w-review · Step 2 · advisory', 'the owner named it');
+    assert.equal(landsIn([wf]), 'w-review · Step 2 · advisory (unverified)', 'without usage the stored mark is shown');
+    assert.equal(landsIn([{ kind: 'api', surface: 'api:server/routes.js', at: '/x', mode: 'advisory' }], { evidence: 'none' }), 'api:server/routes.js · /x · advisory', 'a code target is never marked');
+  });
+});

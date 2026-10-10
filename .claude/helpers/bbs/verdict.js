@@ -431,7 +431,7 @@ export function verdictTable(rows, targets, usage) {
     if (targets && shown !== r.default) whys.unshift(`default ${r.default} → ${shown}: ${noLandingWhy(targets[name], usage)}`);
     const why = whys.join('; ');
     const cells = [name, harnessCell(r.judgment), `${r.licence ?? 'unknown'} (${r.licence_class ?? 'none'})`, legal, shown ?? ''];
-    if (targets) cells.push(landsIn(targets[name]));
+    if (targets) cells.push(landsIn(targets[name], usage ?? null));
     lines.push(`| ${[...cells, r.decision || '—', why].map(cell).join(' | ')} |`);
   }
   return lines.join('\n');

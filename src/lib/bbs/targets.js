@@ -295,16 +295,25 @@ export function noLandingWhy(list, usage) {
 /** Every power has a targets entry (possibly []). */
 export const targetsComplete = (targets, names) => !!targets && names.every(n => Array.isArray(targets.targets?.[n]));
 
-/** The Lands-in cell for the verdict table. */
-export function landsIn(list) {
+/** The Lands-in cell for the verdict table, marked against the current usage when it is given. */
+export function landsIn(list, usage) {
   if (!Array.isArray(list)) return 'not proposed';
   if (!list.length) return 'nowhere';
-  return list.map(targetLabel).join('; ');
+  return list.map(t => targetLabel(t, usage)).join('; ');
 }
 
-/** One target as `where · at · mode`: a workflow by name, a code surface by its id. */
-export function targetLabel(t) {
+/**
+ * One target as `where · at · mode`: a workflow by name, a code surface by its id. With `usage` (the run's current
+ * usage.json, or null when there is none) a workflow target is marked from it, so naming the workflows later clears
+ * the mark: `(unverified)` while the owner has not named their workflows, `(not a workflow you run)` when they have
+ * and it is not one. Without `usage`, the mark stored when the target was recorded is shown.
+ */
+export function targetLabel(t, usage) {
   const where = isWorkflow(t) ? t.workflow : t.surface;
   const at = (isWorkflow(t) ? t.step : t.at) ?? (isWorkflow(t) ? 'step to pick' : 'place to pick');
-  return `${where} · ${at} · ${t.mode}${t.unverified ? ' (unverified)' : ''}`;
+  let mark = t.unverified ? ' (unverified)' : '';
+  if (usage !== undefined && isWorkflow(t)) {
+    mark = standingTargets([t], usage).length ? '' : (!usage || usage.evidence === 'none') ? ' (unverified)' : ' (not a workflow you run)';
+  }
+  return `${where} · ${at} · ${t.mode}${mark}`;
 }
