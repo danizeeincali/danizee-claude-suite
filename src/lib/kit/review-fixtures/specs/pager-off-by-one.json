@@ -1,0 +1,1 @@
+{"case":"pager-off-by-one","bugs":[{"id":"floor-drops-last-page","file":"src/pager.js","lines":[2,2],"categories":["correctness"],"keywords":["floor","ceil","partial","last page","round"]}],"accepted":[{"file":"src/legacy.js","lines":[1,3],"note":"old label style, not planted"}],"tolerance":0}

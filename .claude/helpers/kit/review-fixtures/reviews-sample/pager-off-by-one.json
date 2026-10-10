@@ -1,0 +1,1 @@
+{"case":"pager-off-by-one","completed":true,"findings":[{"file":"src\\pager.js","line":2,"category":"correctness","title":"Floor drops the last partial page","detail":"Use Math.ceil."},{"file":"src/legacy.js","line":2,"category":"style","title":"Odd label","detail":"p0 is unclear."}]}
