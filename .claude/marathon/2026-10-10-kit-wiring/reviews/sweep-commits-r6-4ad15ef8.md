@@ -1,0 +1,11 @@
+# Review 4ad15ef8-610f-4d91-9ec5-ffcd60e278c2 — sweep-commits, round 6
+
+- Commit: d6fa12d
+- Angle: facts and content
+- Result: pass
+- 2 findings
+
+## Medium (2)
+
+- **Diff check in the bash block does not stop the scrub, and its non-zero exit is hidden by the block's exit code** — `src/plugins/dot-shortcuts.js:4841` (correctness): In w-end (4841), w-autoresearch (3811) and w-agent-tdd-swarm (1211), the new line \`git diff --quiet; D=$?; ...\` only echoes a message when D is 1 or 128+. The next line runs the scrub anyway, and the block's exit code is the scrub's RC, or 0 when the kit is missing. A tested run: index and disk differ for \`a\`, kit missing, the block printed 'unstaged changes' and exited 0. With the kit installed, a clean scrub would also exit 0. A non-zero git exit gets read as clean, and a plain scrub exit 0 can lead to a commit of index content that was never scanned. — fix: Only run the scrub when D is 0: \`if \[ $D -ne 0 \]; then (exit $D); elif \[ ! -f .claude/helpers/kit/cli.js \]; then ...; else ...scrub...; fi\`. Then the block exits 1 or 128+ when the check fails. Say the block must be run again after the re-stage.
+- **autoresearch revert destroys work that is not the experiment's, though the text says to leave it alone** — `src/plugins/dot-shortcuts.js:3800` (facts): Line 3809 calls the output of \`git diff --cached --name-only\` 'the experiment's paths', but the index can hold paths someone else staged earlier, so that list is the whole index. On a scrub refusal, line 3800 runs \`git reset -q -- \<list\>\`, then \`git checkout -- .\`, then \`git clean -fd -- \<recorded --diff-filter=A list\>\`. A scratch-repo test showed two losses: a new file someone else had staged earlier was unstaged and then deleted by the guarded clean; an unrelated unstaged edit to a tracked file was wiped by \`git checkout -- .\`. The revert loses data nobody can recover. — fix: Before the experiment's \`git add\`, record what is already staged and the unstaged paths; define the experiment's paths as the post-add lists minus the pre-existing ones; revert with \`git checkout -- \<the experiment's paths\>\` instead of \`git checkout -- .\`. Or require a clean index and no unstaged changes before each experiment, else pause the loop.
