@@ -179,7 +179,7 @@ describe('review round 1 fixes (wording)', () => {
   it('medium: the diff goes to a guarded temp file, git\'s exit is checked, then redact reads the file', () => {
     const b = redactBlock();
     assert.match(b, /D=\$\(mktemp 2>\/dev\/null\) && \[ -n "\$D" \] \|\| \{/);
-    assert.match(b, /git diff "\$BASE" > "\$D"; RC=\$\?/);
+    assert.match(b, /diff-range --base "\$BASE" --no-untracked > "\$D"; RC=\$\?/);
     assert.match(b, /redact --keep-lines < "\$D"/);
     assert.doesNotMatch(b, /\| node/);
     assert.match(b, /\[ -z "\$D" \] \|\| rm -f "\$D"/);
@@ -229,11 +229,11 @@ describe('review round 2 fixes (wording)', () => {
     assert.match(c0, /prints the merge-base of HEAD with `@\{upstream\}`, or, when there is no upstream, the empty-tree id/);
     assert.match(c0, /it exits non-zero on failure/);
     assert.match(c0, /the lead uses the pre-handoff HEAD instead and says so; without the kit, `BASE` is the pre-handoff HEAD/);
-    assert.match(c0, /auto-detect from `git diff "\$BASE"`/);
+    assert.match(c0, /auto-detect from the range since `\$BASE`/);
     assert.match(c0, /writes it into the dispatch prompt as the agent's `BASE`/);
     assert.match(dispatch(), /The dispatch prompt carries `BASE=<sha>`/);
-    assert.match(redactBlock(), /git diff "\$BASE" > "\$D"/);
-    assert.match(phase1(), /The block writes `git diff "\$BASE"`/);
+    assert.match(redactBlock(), /diff-range --base "\$BASE" --no-untracked > "\$D"/);
+    assert.match(phase1(), /then writes the range with the hardened verb, `node \.claude\/helpers\/kit\/cli\.js diff-range --base "\$BASE" --no-untracked > "\$D"; RC=\$\?`/);
     for (const b of [checkpoint0(), handoff(), phase1(), phase2(), phase3()].flatMap(blocksOf)) assert.doesNotMatch(b, /HEAD~1/);
     const src = await fs.readFile(path.join(KIT_SRC, 'diff-range.js'), 'utf-8');
     assert.match(src, /--base-only prints the resolved base/);
@@ -342,12 +342,12 @@ describe('blocks run against the real kit', () => {
       rmSync(fx.root, { recursive: true, force: true });
     }
   });
-  it('medium: a failing git diff is reported, never an empty clean result, and the temp file is removed', () => {
+  it('medium: a BASE that does not resolve is reported, never an empty clean result, and the temp file is removed', () => {
     const fx = kitRepo();
     try {
       const r = fx.run(redactBlock(), fx.dir, { BASE: 'no-such-ref-0000' });
       assert.notEqual(r.status, 0);
-      assert.match(r.stderr, /git diff failed \(exit \d+\)/);
+      assert.match(r.stderr, /BASE is not a commit/);
       assert.doesNotMatch(r.stdout, /"replaced"/);
       assert.deepEqual(readdirSync(fx.tmp), [], 'temp file left behind');
     } finally {
@@ -445,7 +445,7 @@ describe('review round 3 fixes', () => {
     const b = redactBlock();
     assert.match(b, /else \( D=\$\(mktemp/);
     const trap = b.indexOf(`[ -z "$D" ] || trap 'rm -f "$D"' EXIT INT TERM`);
-    assert.ok(trap > b.indexOf('mktemp failed') && trap < b.indexOf('git diff "$BASE"'), 'trap not set right after the mktemp guard');
+    assert.ok(trap > b.indexOf('mktemp failed') && trap < b.indexOf('diff-range --base'), 'trap not set right after the mktemp guard');
     assert.match(b, /exit \$RC \); RC=\$\?; \(exit \$RC\); fi\s*$/);
     const p = phase1();
     assert.doesNotMatch(p, /The temp file is removed on every path\./);
@@ -462,6 +462,111 @@ describe('review round 3 fixes', () => {
       assert.ok(r.stdout.includes(`D=${keep}`));
       assert.match(r.stdout, /caller-trap/);
       assert.deepEqual(readdirSync(fx.root).includes('keep'), true, 'the caller\'s file was deleted');
+      assert.deepEqual(readdirSync(fx.tmp), [], 'temp file left behind');
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('review round 4 fixes', () => {
+  const CHECK = 'case "$BASE" in -*) echo "BASE is not a commit" >&2; RC=1; BASE=;; *) BASE=$(git rev-parse --verify -q "$BASE^{commit}") || { echo "BASE is not a commit" >&2; RC=1; BASE=; };; esac';
+  const DR = 'node .claude/helpers/kit/cli.js diff-range --base "$BASE" --no-untracked > "$D"; RC=$?';
+  it('medium: the range comes from diff-range in the redact block and Step 1; no bare git diff "$BASE" left', () => {
+    for (const b of [checkpoint0(), handoff(), phase1(), phase2(), phase3()].flatMap(blocksOf)) assert.doesNotMatch(b, /git diff "\$BASE"/);
+    assert.doesNotMatch(content.replaceAll('GIT_NO_LAZY_FETCH=1 GIT_TERMINAL_PROMPT=0 git diff --end-of-options "$BASE"', ''), /git diff (--end-of-options )?"\$BASE"/);
+    const b = redactBlock();
+    assert.ok(b.includes(DR));
+    assert.match(b, /if \[ \$RC -eq 0 \]; then node \.claude\/helpers\/kit\/cli\.js redact --keep-lines < "\$D"/);
+    assert.match(b, /elif \[ \$RC -eq 3 \]; then echo "no change to compound[^"]*"; RC=0/);
+    assert.match(b, /elif \[ \$RC -eq 2 \]; then echo "diff-range refused the repository/);
+    assert.match(b, /else echo "diff-range failed \(exit \$RC\)/);
+    const step1 = section('- **Step 1:**', '- **Step 2:**');
+    assert.ok(step1.includes(`\`${DR}\``));
+    assert.match(step1, /Exit 3 is an empty range: no change to compound/);
+    assert.match(step1, /Exit 2 is a refused repository: report it as printed and stop that step/);
+    assert.match(step1, /Exit 1 is bad input, a git failure or an unread change/);
+    assert.match(step1, /Any other non-zero exit is a failure of the step/);
+    assert.ok(step1.includes('Without the kit, fall back to `GIT_NO_LAZY_FETCH=1 GIT_TERMINAL_PROMPT=0 git diff --end-of-options "$BASE"` and say in one line that the kit\'s protections'));
+    for (const s of [step1, phase1()]) assert.match(s, /diff-range never fetches and never prompts/);
+    assert.match(phase1(), /exits 0; the solution doc is still written/);
+  });
+  it('medium: the redact rule covers ralph-candidates, memory exports and the commit message, said where each is written', () => {
+    const RULE = 'the redact rule covers every write and commit that carries diff text: the solution doc, the RC-D/RC-F entries in `.claude/ralph-candidates.md`, memory exports, and the commit message; each takes only the redacted `text`';
+    const p1 = phase1();
+    const rc = p1.indexOf('- Append all to .claude/ralph-candidates.md');
+    const rule1 = p1.indexOf(RULE);
+    assert.ok(rc >= 0 && rule1 > rc && rule1 - rc < 200, 'redact-everywhere sentence not right after the ralph-candidates bullet');
+    const p2 = phase2();
+    const commit = p2.indexOf('git commit -m "<message>" -- <its own paths>');
+    const rule2 = p2.indexOf(RULE.replace(/^t/, 'T'));
+    assert.ok(commit >= 0 && rule2 > commit && rule2 - commit < 300, 'redact-everywhere sentence not at the commit message');
+    assert.match(p1, /do \*\*not\*\* write the unredacted diff into the solution doc, `\.claude\/ralph-candidates\.md`, a memory export or the commit message/);
+  });
+  it('low: BASE is checked as a commit, and the resolved sha is used, before any range is read', () => {
+    const b = redactBlock();
+    assert.ok(b.includes(CHECK));
+    assert.ok(b.indexOf(CHECK) < b.indexOf('diff-range --base'));
+    assert.match(b, /if \[ -n "\$BASE" \]; then node \.claude\/helpers\/kit\/cli\.js diff-range/);
+    const step1 = section('- **Step 1:**', '- **Step 2:**');
+    assert.ok(step1.includes(CHECK) && step1.indexOf(CHECK) < step1.indexOf('diff-range --base'));
+    assert.match(phase1(), /a value starting with `-` such as `--output=<path>` is refused before git sees it/);
+  });
+  it('empty range: exit 0, "no change to compound", nothing redacted, no temp file', () => {
+    const fx = kitRepo();
+    try {
+      const BASE = git(fx.dir, 'rev-parse', 'HEAD').trim();
+      const r = fx.run(redactBlock(), fx.dir, { BASE });
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /no change to compound/);
+      assert.doesNotMatch(r.stdout, /"replaced"/);
+      assert.deepEqual(readdirSync(fx.tmp), [], 'temp file left behind');
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+  it('a BASE of --output=x: exit 1, "BASE is not a commit", no file x written', () => {
+    const fx = kitRepo();
+    try {
+      for (const BASE of ['--output=x', '--output=x^{commit}']) {
+        const r = fx.run(redactBlock(), fx.dir, { BASE });
+        assert.equal(r.status, 1, r.stderr);
+        assert.match(r.stderr, /BASE is not a commit/);
+        assert.doesNotMatch(r.stdout, /"replaced"/);
+        for (const d of [fx.dir, fx.root, fx.tmp]) assert.ok(!readdirSync(d).some(n => n.startsWith('x')), `file x written in ${d}`);
+      }
+      assert.deepEqual(readdirSync(fx.tmp), [], 'temp file left behind');
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+  it('a refused repository (include.path in .git/config): exit 2, reported, nothing redacted', () => {
+    const fx = kitRepo();
+    try {
+      writeFileSync(path.join(fx.dir, 'a.txt'), 'one\ntwo\n');
+      const BASE = git(fx.dir, 'rev-parse', 'HEAD').trim();
+      git(fx.dir, 'commit', '-q', '-am', 'two');
+      git(fx.dir, 'config', 'include.path', path.join(fx.root, 'nothing.cfg'));
+      const r = fx.run(redactBlock(), fx.dir, { BASE });
+      assert.equal(r.status, 2, r.stderr);
+      assert.match(r.stderr, /diff-range refused the repository/);
+      assert.doesNotMatch(r.stdout, /"replaced"/);
+      assert.deepEqual(readdirSync(fx.tmp), [], 'temp file left behind');
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+  it('a diff-range failure (exit 1, or any other code) is reported, never an empty clean result', () => {
+    const fx = kitRepo();
+    try {
+      const BASE = git(fx.dir, 'rev-parse', 'HEAD').trim();
+      for (const code of [1, 5]) {
+        writeFileSync(path.join(fx.dir, '.claude', 'helpers', 'kit', 'cli.js'), `if (process.argv[2] === 'diff-range') process.exit(${code}); process.stdout.write('{"replaced":0}');\n`);
+        const r = fx.run(redactBlock(), fx.dir, { BASE });
+        assert.equal(r.status, code, r.stderr);
+        assert.match(r.stderr, new RegExp(`diff-range failed \\(exit ${code}\\)`));
+        assert.doesNotMatch(r.stdout, /"replaced"/);
+      }
       assert.deepEqual(readdirSync(fx.tmp), [], 'temp file left behind');
     } finally {
       rmSync(fx.root, { recursive: true, force: true });
