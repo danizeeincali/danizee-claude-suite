@@ -15,6 +15,7 @@
 | usage | ../danizee-claude-suite-usage | .claude/plans/2026-10-10-bbs-integration.md | done | met | build | write usage verb tests |  | 0 |
 | targets | ../danizee-claude-suite-targets | .claude/plans/2026-10-10-bbs-integration.md | active | clean 1/2 | build | fix usage r4 findings, then review |  | 0 |
 | integration-gate |  | .claude/plans/2026-10-10-bbs-integration.md | queued | clean 0/2 |  | build stream integration-gate per plan |  | 0 |
+| surfaces |  | .claude/plans/2026-10-10-bbs-integration.md | queued | clean 0/2 |  | generalize landing to any surface: ui, api, job, model, cli, feature, lib, workflow; reach tests prove integration |  | 0 |
 
 ## Finish line
 
