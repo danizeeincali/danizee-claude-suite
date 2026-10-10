@@ -20,7 +20,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
-import { spawnSync } from 'child_process';
+import { spawn } from 'child_process';
 import { DEFAULT_CONFIG } from './config.js';
 import { runDir as runDirOf, readJson, writeJson, writeTextAtomic } from './store.js';
 import { installedWorkflows } from './usage.js';
@@ -69,7 +69,7 @@ export function stripComments(text) {
     if (quote) {
       out += c;
       if (c === '\\') { out += n ?? ''; i += 2; continue; }
-      if (c === quote) quote = null;
+      if (c === quote || (c === '\n' && quote !== '`')) quote = null;
       i++;
       continue;
     }
@@ -111,7 +111,7 @@ export function usesEntry(text, entry) {
 
 /** The lines of `text` under the heading whose normalized text equals `step`, up to the next heading of its level or higher. */
 export function stepSection(text, step) {
-  const lines = String(text).split('\n');
+  const lines = String(text).split(/\r?\n/);
   const want = normalizeStep(step);
   let fence = false;
   let start = -1;
@@ -127,8 +127,20 @@ export function stepSection(text, step) {
   return start >= 0 ? lines.slice(start).join('\n') : null;
 }
 
+/**
+ * Is the command one runner call whose exit status is the test's? Outside quotes it may not chain, pipe or background
+ * (; & | or a newline), and nowhere may it substitute a command (` or $( ): `node --test t.js || true` always passes.
+ */
+export function singleCall(command) {
+  const s = String(command);
+  if (/`|\$\(/.test(s)) return false;
+  const bare = s.replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, '""');
+  return !/[;&|\n]/.test(bare);
+}
+
 /** Does the command run this test file: does one of its words name the file's path (as given, or from ./)? */
 export function runsTest(command, test) {
+  if (!singleCall(command)) return false;
   const words = String(command).split(/\s+/).map(w => w.replace(/^['"]|['"]$/g, '').replace(/^\.\//, ''));
   return words.includes(test) || words.some(w => w.endsWith(`=${test}`));
 }
@@ -140,10 +152,26 @@ function runReach(projectDir, command, cache, timeoutMs) {
   // `node --test` report to a parent and exit 0) must not turn a failing test into a pass
   const { NODE_TEST_CONTEXT, ...env } = process.env;
   void NODE_TEST_CONTEXT;
-  const r = spawnSync('sh', ['-c', command], { cwd: projectDir, env, encoding: 'utf-8', timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 });
-  const tail = `${r.stdout || ''}${r.stderr || ''}`.split('\n').filter(l => /not ok|Error|error|fail/i.test(l)).slice(0, 3).join(' | ');
-  const res = r.error?.code === 'ETIMEDOUT' || r.signal ? { ok: false, why: `reach test timed out or was killed: ${command}` }
-    : r.status === 0 ? { ok: true } : { ok: false, why: `reach test failed (exit ${r.status}): ${command}${tail ? ` — ${tail.slice(0, 200)}` : ''}` };
+  const res = new Promise((resolve) => {
+    // its own process group, so a timeout stops the runner and every process it started, not only the shell
+    const child = spawn('sh', ['-c', command], { cwd: projectDir, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    let text = '';
+    const keep = (d) => { if (text.length < 16 * 1024 * 1024) text += d; };
+    child.stdout.on('data', keep);
+    child.stderr.on('data', keep);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ }
+    }, timeoutMs);
+    child.on('error', (err) => { clearTimeout(timer); resolve({ ok: false, why: `reach test could not start (${err.code || err.message}): ${command}` }); });
+    child.on('close', (status, signal) => {
+      clearTimeout(timer);
+      const tail = text.split('\n').filter(l => /not ok|Error|error|fail/i.test(l)).slice(0, 3).join(' | ');
+      resolve(timedOut || signal ? { ok: false, why: `reach test timed out or was killed: ${command}` }
+        : status === 0 ? { ok: true } : { ok: false, why: `reach test failed (exit ${status}): ${command}${tail ? ` — ${tail.slice(0, 200)}` : ''}` });
+    });
+  });
   cache.set(command, res);
   return res;
 }
@@ -204,9 +232,10 @@ export async function wiredTargets(projectDir, { verb, entry, reach, targets, ru
       let tt;
       try { tt = await fs.readFile(path.join(projectDir, r.test), 'utf-8'); } catch { whys.push(`reach test ${r.test} is missing`); continue; }
       if (!entersThrough(tt, row)) { whys.push(`reach test ${r.test} never goes through ${row.file}${row.at ? ` or "${row.at}"` : ''}`); continue; }
+      if (!singleCall(r.command)) { whys.push(`reach command is not one runner call (no ;, &, |, newline or substitution): ${r.command}`); continue; }
       if (!runsTest(r.command, r.test)) { whys.push(`reach command never runs ${r.test}: ${r.command}`); continue; }
       if (!run) { whys.push(`reach test ${r.test} was not run`); continue; }
-      const res = runReach(projectDir, r.command, cache, timeoutMs);
+      const res = await runReach(projectDir, r.command, cache, timeoutMs);
       if (!res.ok) { whys.push(res.why); continue; }
       row.wired = true;
       row.test = r.test;
@@ -261,10 +290,13 @@ export async function recordIntegration(projectDir, { run, power, verb, entry, r
     if (!hit) throw new Error(`${power} has no approved target on ${left} (its targets: ${targets.map(t => t.surface ?? t.workflow).join(', ') || 'none'})`);
     const surface = hit;
     const at = left === hit ? null : left.slice(hit.length + 1).trim();
+    const ats = code.filter(t => t.surface === surface).map(t => t.at);
+    if (at && !ats.includes(at) && !ats.includes(null) && !ats.includes(undefined)) throw new Error(`${power} has no approved target on ${surface} at "${at}" (its anchors there: ${ats.join(', ')})`);
 
     const testPath = posix(path.normalize(test));
     if (testPath.startsWith('../') || path.isAbsolute(testPath)) throw new Error(`reach test "${test}" is outside the project`);
     try { await fs.stat(path.join(projectDir, testPath)); } catch { throw new Error(`reach test "${testPath}" does not exist`); }
+    if (!singleCall(command)) throw new Error(`reach command must be one runner call, with no ;, &, |, newline or substitution that could hide its exit status, got "${command}"`);
     if (!runsTest(command, testPath)) throw new Error(`reach command must run the reach test ${testPath}, got "${command}"`);
     rows.push({ surface, at: at || null, test: testPath, command });
   }

@@ -560,11 +560,11 @@ describe('wiredTargets — a code target', () => {
   });
 
   it('is not wired when the reach command fails, and the why carries the exit code and the command', async () => {
-    const [r] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ command: 'test -f reach/ok.test.js && exit 3' })], targets: [API_T] });
+    const [r] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ command: 'sh -c "exit 3" reach/ok.test.js' })], targets: [API_T] });
     assert.equal(r.wired, false);
-    assert.equal(r.why, 'reach test failed (exit 3): test -f reach/ok.test.js && exit 3');
-    const [t] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ command: 'test -f reach/ok.test.js && echo "not ok 1 - upload is masked"; exit 1' })], targets: [API_T] });
-    assert.equal(t.why, 'reach test failed (exit 1): test -f reach/ok.test.js && echo "not ok 1 - upload is masked"; exit 1 — not ok 1 - upload is masked');
+    assert.equal(r.why, 'reach test failed (exit 3): sh -c "exit 3" reach/ok.test.js');
+    const [t] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ command: `sh -c 'echo "not ok 1 - upload is masked"; exit 1' reach/ok.test.js` })], targets: [API_T] });
+    assert.equal(t.why, `reach test failed (exit 1): sh -c 'echo "not ok 1 - upload is masked"; exit 1' reach/ok.test.js — not ok 1 - upload is masked`);
   });
 
   it('is wired, with the test that proved it, when the surface uses the entry and a reach test passes', async () => {
@@ -578,7 +578,7 @@ describe('wiredTargets — a code target', () => {
   });
 
   it('the first reach test that passes proves it; a failing one before it is skipped', async () => {
-    const [r] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ command: 'test -f reach/ok.test.js && exit 2' }), reachRow({ test: 'reach/ok.test.js', command: 'true reach/ok.test.js' })], targets: [API_T] });
+    const [r] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ command: 'sh -c "exit 2" reach/ok.test.js' }), reachRow({ test: 'reach/ok.test.js', command: 'true reach/ok.test.js' })], targets: [API_T] });
     assert.equal(r.wired, true);
     assert.equal(r.test, 'reach/ok.test.js');
   });
@@ -871,5 +871,53 @@ describe('marathon-measure — --verb before or after the mode', () => {
     const r = spawnSync(process.execPath, [SCRIPT, '--verb', 'a', '--wired', '--verb', 'b', '--bbs-run', 'r', '--power', 'p'], { cwd: ROOT, encoding: 'utf-8' });
     assert.equal(r.status, 1);
     assert.match(r.stderr, /--verb is given more than once/);
+  });
+});
+
+describe('integration-gate review r2 regressions', () => {
+  let dir, rd;
+  const rec = (o) => recordIntegration(dir, { run: 'r2', power: 'redact', now: () => new Date('2026-10-10T12:00:00Z'), ...o });
+  before(async () => { dir = await codeProject('bbs-r2-'); rd = await codeRun(dir, 'r2'); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('a reach command that could hide its exit status is refused and never counts as wired', async () => {
+    for (const c of ['node --test reach/ok.test.js || true', 'node --test reach/ok.test.js; echo done', 'node --test reach/ok.test.js | cat', 'node --test reach/ok.test.js &', 'node --test reach/ok.test.js $(true)', 'node --test reach/ok.test.js `true`', 'true\nnode --test reach/ok.test.js']) {
+      await assert.rejects(rec({ entry: ENTRY, reach: [`api:server/routes.js@/api/upload=reach/ok.test.js::${c}`] }), /reach command must be one runner call/, c);
+      const [r] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ command: c })], targets: [API_T] });
+      assert.equal(r.wired, false, c);
+      assert.match(r.why, /reach command is not one runner call/, c);
+    }
+    assert.equal(await readJsonOrNull(path.join(rd, 'integration.json')), null);
+    const [q] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ command: `node -e 'process.exit(0); // a;b|c' reach/ok.test.js` })], targets: [API_T] });
+    assert.equal(q.wired, true, 'operators inside quotes are arguments, not shell syntax');
+  });
+
+  it('an @at that names no approved anchor of that surface is refused, listing the anchors', async () => {
+    await assert.rejects(rec({ entry: ENTRY, reach: ['api:server/routes.js@/api/scna=reach/ok.test.js::true reach/ok.test.js'] }), /redact has no approved target on api:server\/routes\.js at "\/api\/scna" \(its anchors there: \/api\/upload\)/);
+  });
+
+  it('a timed-out reach test stops the whole process group, not only the shell', async () => {
+    const pidFile = path.join(dir, 'child.pid');
+    await put(dir, 'reach/hang.js', `require('fs').writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setInterval(() => {}, 1000);\n`);
+    const [r] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ command: 'sh -c "node reach/hang.js; true" reach/ok.test.js' })], targets: [API_T], timeoutMs: 1500 });
+    assert.match(r.why, /reach test timed out or was killed/);
+    const pid = Number(await fs.readFile(pidFile, 'utf-8'));
+    // gone, or a zombie waiting for init to reap it (no longer running)
+    const running = async () => {
+      try { process.kill(pid, 0); } catch { return false; }
+      try { return !/^\d+ \(.*\) Z/.test(await fs.readFile(`/proc/${pid}/stat`, 'utf-8')); } catch { return true; }
+    };
+    for (let i = 0; i < 30 && await running(); i++) await new Promise(res => setTimeout(res, 100));
+    assert.equal(await running(), false, 'the runner the shell started is gone');
+  });
+
+  it('stepSection reads a CRLF command file', () => {
+    assert.equal(stepSection('# W\r\n## Phase 2\r\nnode kit/cli.js scan\r\n## Phase 3\r\n', 'Phase 2'), '## Phase 2\nnode kit/cli.js scan');
+  });
+
+  it('an apostrophe in JSX text never turns the comments after it into code', () => {
+    const page = "import { maskSecrets } from '../src/mask.js';\nexport default () => <p>Don't panic</p>;\n// it's off: maskSecrets(x)\n{/* maskSecrets(y) */}\n";
+    assert.equal(usesEntry(page, ENTRY).why, 'never calls maskSecrets');
+    assert.equal(entersThrough("it('isn't flaky', () => {});\n// await post('/api/upload')\n", { file: 'server/routes.js', at: '/api/upload' }), false);
   });
 });
