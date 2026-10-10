@@ -145,3 +145,5 @@
 {"helper_id":"cb1457ca-8bc4-4072-8fda-73ef30e31cd5","tokens":200000,"outcome":"green","event":"done","id":"915db5c1-275a-43f6-98d3-0b92da502d51","ts":"2026-10-10T12:28:31.695Z"}
 {"role":"review","model":"opus","stream":"tracked-file-scrub-gate","budget":150000,"event":"spawn","id":"9d47cc49-cefb-499e-be4d-cc71eb61364c","ts":"2026-10-10T12:30:10.126Z"}
 {"role":"fix","model":"sonnet","stream":"tracked-file-scrub-gate","budget":150000,"event":"spawn","id":"b68dc2df-9667-4146-82b5-8ff382f93f29","ts":"2026-10-10T12:33:20.864Z"}
+{"helper_id":"b68dc2df-9667-4146-82b5-8ff382f93f29","tokens":100000,"outcome":"green","event":"done","id":"901804c6-2ccd-4f65-9996-ee7f529c8b66","ts":"2026-10-10T12:38:41.307Z"}
+{"role":"review","model":"opus","stream":"tracked-file-scrub-gate","budget":150000,"event":"spawn","id":"e41ef1ca-8a13-4a73-bc3f-a5ebbb53e454","ts":"2026-10-10T12:40:19.767Z"}
