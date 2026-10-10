@@ -1,0 +1,1 @@
+{"case":"cache-leak","bugs":[{"id":"unbounded-map","file":"src/cache.js","lines":[4,6],"categories":["performance","correctness"],"keywords":["leak","evict","unbounded","grow"]}],"accepted":[],"tolerance":1}
