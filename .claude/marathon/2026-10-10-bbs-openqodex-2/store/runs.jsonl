@@ -39,3 +39,4 @@
 {"kind":"unit","status":"green","stream":"fact-cached-graph-build-with-budget","commit":"650fa8e","id":"29dd2960-d7b6-47fd-8a11-00289d635ad9","ts":"2026-10-10T10:58:07.995Z"}
 {"kind":"unit","status":"green","stream":"fact-cached-graph-build-with-budget","commit":"4e02bb1","id":"52ba6c80-bb70-42b3-a99d-1bbe13f5c0cd","ts":"2026-10-10T11:02:32.067Z"}
 {"kind":"unit","status":"green","stream":"change-blast-radius-walk","commit":"13f2b2d","id":"137216d5-4fed-4d33-ba0a-664eb9921da4","ts":"2026-10-10T11:14:45.748Z"}
+{"kind":"unit","status":"green","stream":"change-blast-radius-walk","commit":"9f30147","id":"b031bcbd-2787-41fc-aad9-9c2053b12628","ts":"2026-10-10T11:22:41.160Z"}
