@@ -384,7 +384,7 @@ describe('diff-range — the review range as one unified diff', () => {
       if (c.status !== 0 || missing().length === 0) return t.skip(`this git cannot build a blob:none partial clone: ${c.stderr}`);
       const before = missing();
       await assert.rejects(run(['--dir', clone, '--base', 'HEAD~1'], { cwd: root, env: process.env }),
-        (e) => e instanceof KitExit && e.code === 1 && /cannot diff against the base/.test(e.message) && e.message.includes(`this is a partial clone and some file contents are not downloaded; diff-range never downloads. Run \`git -C ${fsSync.realpathSync(clone)} diff <base> >/dev/null\` once to fetch them, or use a full clone.`));
+        (e) => e instanceof KitExit && e.code === 1 && /cannot diff against the base/.test(e.message) && e.message.includes(`; this is a partial clone and some file contents are not downloaded; diff-range never downloads. Run \`git -C '${fsSync.realpathSync(clone)}' diff <base> >/dev/null\` once to fetch them, or use a full clone.`));
       const r = cli(root, ['--dir', clone, '--base', 'HEAD~1']);
       assert.equal(r.code, 1);
       assert.equal(r.out, '', 'no partial diff is printed');
@@ -445,7 +445,7 @@ describe('diff-range — the review range as one unified diff', () => {
   it('an include.path or includeIf in the repository\'s own .git/config is exit 2 before any diff; a global includeIf is still allowed', async () => {
     await put('a.txt', 'a\n'); commit();
     await put('a.txt', 'b\n');
-    const msg = "the repository's .git/config has include.path/includeIf entries; diff-range does not follow includes (a driver defined there could not be switched off): remove them or run the read through safe-git";
+    const msg = "the repository's own config has an include.path/includeIf entry (scope local); diff-range does not follow includes because a driver defined there could not be switched off. Remove it (git config --local --unset-all include.path, or --worktree) and run diff-range again.";
     const gdir = await fs.mkdtemp(path.join(os.tmpdir(), 'diff-range-gcfg-'));
     try {
       const gc = path.join(gdir, '.gitconfig');
@@ -466,6 +466,96 @@ describe('diff-range — the review range as one unified diff', () => {
       }
       assert.equal((await run(['--base', 'HEAD'], io({ env: genv }))).exit, 0, 'removed again: fine');
     } finally { await fs.rm(gdir, { recursive: true, force: true }); }
+  });
+
+  it('an include in a linked worktree\'s config.worktree (extensions.worktreeConfig) is exit 2 and its filter never runs; the main .git/config include is still exit 2; a global includeIf is still allowed', { skip: process.platform === 'win32' }, async (t) => {
+    const tools = await fs.mkdtemp(path.join(os.tmpdir(), 'diff-range-wtc-'));
+    const wt = path.join(tools, 'wt');
+    try {
+      const marker = path.join(tools, 'PWNED');
+      const clean = path.join(tools, 'clean.sh');
+      await fs.writeFile(clean, `#!/bin/sh\ntouch '${marker}'\ncat\n`, { mode: 0o755 });
+      const included = path.join(tools, 'evil.cfg');
+      await fs.writeFile(included, `[filter "evil"]\n\tclean = ${clean}\n`);
+      await put('.gitattributes', '* filter=evil\n');
+      await put('a.txt', 'a\n'); commit();
+      sh(dir, 'config', 'extensions.worktreeConfig', 'true');
+      sh(dir, 'worktree', 'add', '-q', wt);
+      const w = spawnSync('git', ['config', '--worktree', 'include.path', included], { cwd: wt, encoding: 'utf-8' });
+      if (w.status !== 0) return t.skip(`this git has no per-worktree config: ${w.stderr}`);
+      await fs.writeFile(path.join(wt, 'a.txt'), 'b\n');
+      const gdir = path.join(tools, 'home');
+      await fs.mkdir(gdir);
+      await fs.writeFile(path.join(gdir, '.gitconfig'), `[includeIf "gitdir:/nowhere/"]\n\tpath = ${path.join(gdir, 'other')}\n`);
+      const genv = { ...process.env, HOME: gdir, XDG_CONFIG_HOME: path.join(gdir, 'xdg') };
+      const msg = (scope) => `the repository's own config has an include.path/includeIf entry (scope ${scope}); diff-range does not follow includes because a driver defined there could not be switched off. Remove it (git config --local --unset-all include.path, or --worktree) and run diff-range again.`;
+      await assert.rejects(run(['--base', 'HEAD'], { cwd: wt, env: genv }), (e) => e instanceof KitExit && e.code === 2 && e.message === msg('worktree'));
+      const cr = spawnSync(process.execPath, [CLI, 'diff-range', '--base', 'HEAD'], { cwd: wt, encoding: 'utf-8', env: { ...genv, GIT_DIR: '', GIT_WORK_TREE: '' } });
+      assert.equal(cr.status, 2, cr.stderr);
+      assert.ok(cr.stderr.includes(msg('worktree')), cr.stderr);
+      assert.equal(cr.stdout, '');
+      await assert.rejects(fs.access(marker), 'the filter defined in the included file must not have run');
+      // the main worktree reads only .git/config (no config.worktree there): its own include is still refused
+      await put('a.txt', 'c\n');
+      assert.equal((await run(['--base', 'HEAD'], io({ env: genv }))).exit, 0, 'a global includeIf is the user\'s own');
+      sh(dir, 'config', '--local', 'include.path', included);
+      await assert.rejects(run(['--base', 'HEAD'], io({ env: genv })), (e) => e instanceof KitExit && e.code === 2 && e.message === msg('local'));
+      await assert.rejects(fs.access(marker), 'still not run');
+      // the scenario is real: plain git in the linked worktree follows the include and runs the filter
+      spawnSync('git', ['diff', 'HEAD'], { cwd: wt, encoding: 'utf-8' });
+      await fs.access(marker);
+    } finally {
+      spawnSync('git', ['worktree', 'remove', '--force', wt], { cwd: dir });
+      await fs.rm(tools, { recursive: true, force: true });
+    }
+  });
+
+  it('a git without --show-scope (< 2.26) falls back to --local and, with extensions.worktreeConfig on, --worktree for the include refusal', async () => {
+    await put('a.txt', 'a\n'); commit();
+    await put('a.txt', 'b\n');
+    const real = defaultGit(dir, {});
+    const seen = [];
+    const old = (worktreeRows) => Object.assign(async (args, o = {}) => {
+      if (args.includes('config')) seen.push(args.filter(a => a.startsWith('--')).join(' '));
+      if (args.includes('--show-scope')) return { code: 129, stdout: '', stderr: 'error: unknown option `show-scope\'\nusage: git config [<options>]\n' };
+      if (args.includes('config') && args.includes('--worktree')) return { code: 0, stdout: worktreeRows, stderr: '' };
+      return real(args, o);
+    }, { cwd: dir });
+    assert.equal((await run(['--base', 'HEAD'], io({ git: old('') }))).exit, 0);
+    assert.ok(seen.includes('--list --no-includes') && seen.includes('--local --list --no-includes'), seen.join(' | '));
+    assert.ok(!seen.some(x => x.includes('--worktree')), 'no --worktree read while extensions.worktreeConfig is off');
+    sh(dir, 'config', 'extensions.worktreeConfig', 'true');
+    seen.length = 0;
+    await assert.rejects(run(['--base', 'HEAD'], io({ git: old('include.path\n/x\0') })), (e) => e instanceof KitExit && e.code === 2 && e.message.includes('(scope worktree)'));
+    assert.ok(seen.includes('--worktree --list --no-includes'), seen.join(' | '));
+    sh(dir, 'config', 'include.path', '/x');
+    await assert.rejects(run(['--base', 'HEAD'], io({ git: old('') })), (e) => e instanceof KitExit && e.code === 2 && e.message.includes('(scope local)'));
+  });
+
+  it('the missing-object note says "if this is a partial clone" when the config does not say so, and single-quotes the dir', async () => {
+    await put('a.txt', 'a\n'); commit();
+    const quirky = await fs.mkdtemp(path.join(os.tmpdir(), "diff-range it's-"));
+    try {
+      sh(quirky, 'init', '-q', '.');
+      await fs.writeFile(path.join(quirky, 'a.txt'), 'a\n');
+      sh(quirky, 'add', '-A'); sh(quirky, 'commit', '-q', '-m', 'c');
+      const real = defaultGit(quirky, {});
+      const broken = Object.assign(async (args, o = {}) => (args.includes('diff') && !args.includes('--no-index')
+        ? { code: 128, stdout: Buffer.alloc(0), stderr: 'fatal: bad object 0123456789abcdef0123456789abcdef01234567\n' }
+        : real(args, o)), { cwd: quirky });
+      const top = fsSync.realpathSync(quirky);
+      const q = `'${top.replace(/'/g, "'\\''")}'`;
+      await assert.rejects(run(['--dir', quirky, '--base', 'HEAD'], io({ git: broken })),
+        (e) => e instanceof KitExit && e.code === 1 && e.message.includes(`; if this is a partial clone, some file contents are not downloaded; diff-range never downloads. Run \`git -C ${q} diff <base> >/dev/null\` once to fetch them, or use a full clone.`) && !e.message.includes('; this is a partial clone'), 'not asserted as a partial clone');
+      assert.ok(q.includes("'\\''"), 'the quote in the path is escaped');
+    } finally { await fs.rm(quirky, { recursive: true, force: true }); }
+  });
+
+  it('a git child killed by a signal that is not the timeout is reported as killed, not as a timeout (injected spawn)', async () => {
+    const killed = defaultGit(dir, { timeout: 1234, spawn: () => ({ status: null, signal: 'SIGKILL', stdout: '', stderr: '' }) });
+    await assert.rejects(run([], io({ git: killed })), (e) => e instanceof KitExit && e.code === 1 && e.message === 'git config was killed by SIGKILL' && !/took longer/.test(e.message));
+    const noTimeout = defaultGit(dir, { spawn: () => ({ status: null, signal: 'SIGPIPE', stdout: '', stderr: '' }) });
+    await assert.rejects(noTimeout(['-c', 'a.b=c', 'rev-parse', 'HEAD']), (e) => e instanceof KitExit && e.code === 1 && e.message === 'git rev-parse was killed by SIGPIPE');
   });
 
   it('a git child that outlives --timeout is exit 1 naming the git command (injected spawn)', async () => {

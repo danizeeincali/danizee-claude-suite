@@ -70,6 +70,7 @@ describe('/w-review exit-3 wording in all three steps', () => {
     for (const p of paras) {
       assert.match(p, /Exit 3 from `diff-range` means an empty range: report "no change to review", never a failure and never "no lens applies"/);
       assert.match(p, /Any other non-zero exit is wrong input or a broken state: report it, never skip the step/);
+      assert.match(p, /Any other non-zero exit is wrong input or a broken state: report it, never skip the step\. Exit 2 means `diff-range` refused the repository \(for example an include in its own config\): report the refusal as printed\./);
     }
   });
 });

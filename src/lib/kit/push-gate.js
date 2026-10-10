@@ -55,11 +55,12 @@ export function defaultGit(cwd, { runner, spawn = spawnSync, env = process.env, 
     if (runner) return runner(full, { cwd, env: e, input });
     // binary: stdout comes back as a Buffer (undecoded); stderr is text either way
     const r = spawn('git', full, { cwd, env: e, input, encoding: binary ? 'buffer' : 'utf-8', maxBuffer: 64 * 1024 * 1024, ...(timeout ? { timeout } : {}) });
-    if (timeout && (r.error?.code === 'ETIMEDOUT' || (r.signal && !r.error))) {
-      let i = 0;
-      while (i < args.length && args[i] === '-c') i += 2;
-      throw new KitExit(`git ${args[i] || ''} took longer than ${timeout} ms and was stopped (raise it with --timeout <ms>)`.replace('git  ', 'git '), 1);
-    }
+    let i = 0;
+    while (i < args.length && args[i] === '-c') i += 2;
+    const cmd = `git ${args[i] || ''}`.trimEnd();
+    if (r.error?.code === 'ETIMEDOUT') throw new KitExit(`${cmd} took longer than ${timeout} ms and was stopped (raise it with --timeout <ms>)`, 1);
+    // any other signal death (OOM killer, SIGPIPE, an external kill) is not a timeout
+    if (r.signal && !r.error) throw new KitExit(`${cmd} was killed by ${r.signal}`, 1);
     if (r.error) throw new KitExit(`cannot run git: ${r.error.message}`, 1);
     const stderr = r.stderr ? r.stderr.toString('utf-8') : '';
     return { code: r.status ?? 1, stdout: r.stdout || (binary ? Buffer.alloc(0) : ''), stderr };

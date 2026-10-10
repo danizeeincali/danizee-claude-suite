@@ -18,7 +18,8 @@
  * (core.pager=cat), the external diff (diff.external=), submodule recursion (submodule.recurse=false,
  * diff.ignoreSubmodules=all), every transport (protocol.allow=never and
  * protocol.<file|git|ssh|http|https|ext>.allow=never), the credential helper (credential.helper=) and signature programs;
- * plus every filter/diff/merge driver name found in `git config -z --list --no-includes` (all scopes; read as data; an include.path is NEVER followed by this read, so a FIFO or a share it names cannot hang it)
+ * plus every filter/diff/merge driver name found in `git config --list -z --no-includes --show-scope` (all scopes, incl. the per-worktree
+ * config.worktree; read as data; an include.path is NEVER followed by this read, so a FIFO or a share it names cannot hang it)
  * gets empty filter.<n>.{clean,smudge,process}, filter.<n>.required=false, empty diff.<n>.{command,textconv} and
  * merge.<n>.driver (a name outside [A-Za-z0-9._-] is refused, exit 2). The static overrides go in GIT_CONFIG_PARAMETERS (what `-c`
  * itself sets, inherited by any git child; a caller's own value is dropped, not appended), the per-driver pairs go on argv as
@@ -26,10 +27,16 @@
  * GIT_LFS_SKIP_SMUDGE=1. Every git child has a timeout (--timeout <ms>, default 60000): on expiry the verb is exit 1 naming the
  * git command. Both diffs also get --no-ext-diff --no-textconv --ignore-submodules=dirty (overrides diff.ignoreSubmodules=all, so a
  * committed submodule pointer change IS in the range; `dirty` runs nothing from the submodule's config, `none` would run its
- * clean filter) and no colour. So nothing named in .git/config
- * (or any config git reads) is executed, and textconv output never replaces the real content. In a partial clone a blob
+ * clean filter) and no colour. So nothing named in a config file git reads directly (.git/config, config.worktree, the
+ * global and system files) is executed, and textconv output never replaces the real content; drivers defined in files your
+ * own global/system config includes are yours and are not switched off. In a partial clone a blob
  * that is not local is NOT fetched (lazy fetch off, transports refused): the verb exits 1 naming the missing object and
- * that lazy fetch is off, never printing a partial diff. An include.path / includeIf in the repository's OWN config (.git/config) is refused, exit 2, before any diff (a driver defined in an included file could not be switched off); includes in the user's global/system config are the user's own and stay allowed. The remaining trust: the work tree's own files (and the
+ * that lazy fetch is off, never printing a partial diff (the note says it is a partial clone only when extensions.partialClone or a
+ * remote.<name>.promisor says so, else "if this is a partial clone"). An include.path / includeIf in the repository's OWN config
+ * (scope local, .git/config, or scope worktree, $GIT_DIR/config.worktree when extensions.worktreeConfig is on) is refused,
+ * exit 2, before any diff (a driver defined in an included file could not be switched off); the scopes come from the same
+ * --show-scope read as the driver names (git older than 2.26: `--local` plus, when extensions.worktreeConfig is true,
+ * `--worktree`). Includes in the user's global/system config are the user's own and stay allowed. The remaining trust: the work tree's own files (and the
  * .gitattributes / .gitignore in it) are read as DATA, the object store is read as is, and git itself is trusted.
  *
  * Untracked paths: a path is listed under `untracked` (--json) only when its diff text is non-empty. A nested git repository
@@ -53,6 +60,8 @@ import { defaultGit } from './push-gate.js';
 import { gitPaths } from './git-paths.js';
 import { parseDiff } from './lenses.js';
 import { overrideArgs, driversFromConfig, parseConfigList } from './safe-git.js';
+
+const driversFromKeys = (keys) => driversFromConfig(keys.map(k => `${k}\n`).join('\0'));
 
 export const verb = 'diff-range';
 export const usage = 'cli.js diff-range [--dir <repo>] [--base <ref>] [--no-untracked] [--base-only] [--json] [--timeout <ms>]   (prints the review range as one raw unified diff: '
@@ -107,9 +116,52 @@ function hardened(git, cArgs, nStatic) {
   return h;
 }
 
-// A blob a partial clone does not hold locally: with lazy fetch off git cannot read it.
+// A blob a partial clone does not hold locally: with lazy fetch off git cannot read it. The same text also fits a corrupt
+// full clone, so the note says "this is a partial clone" only when the config says so (partial: true).
 const MISSING = /unable to read|missing (blob|object)|bad object|could not fetch|promisor|lazy fetch|unable to access|not our ref/i;
-const missingNote = (r, dir) => (MISSING.test(r.stderr || '') ? `; this is a partial clone and some file contents are not downloaded; diff-range never downloads. Run \`git -C ${dir} diff <base> >/dev/null\` once to fetch them, or use a full clone.` : '');
+/** A path single-quoted for a POSIX shell (a ' inside becomes '\''). */
+export const shQuote = (s) => `'${String(s).replace(/'/g, "'\\''")}'`;
+export const missingNote = (r, dir, partial) => (MISSING.test(r.stderr || '')
+  ? `; ${partial ? 'this is a partial clone and some file contents are not downloaded' : 'if this is a partial clone, some file contents are not downloaded'}; diff-range never downloads. Run \`git -C ${shQuote(dir)} diff <base> >/dev/null\` once to fetch them, or use a full clone.`
+  : '');
+const noConfig = (r) => r.code === 1 && !(r.stdout || '').length && !(r.stderr || '').trim(); // exit 1 with no output: no config at all
+const INCLUDE = /^include(if\..+)?\.path$/i;
+const truthy = (v) => v === null || /^(true|yes|on|1)$/i.test(String(v).trim());
+
+/** `git config --list -z --show-scope` output: scope\0key\nvalue\0 ... as [scope, key, value]. */
+export function parseScopedConfigList(stdout) {
+  const parts = String(stdout || '').split('\0');
+  const out = [];
+  for (let i = 0; i + 1 < parts.length; i += 2) {
+    const rec = parts[i + 1];
+    const nl = rec.indexOf('\n');
+    out.push([parts[i], nl === -1 ? rec : rec.slice(0, nl), nl === -1 ? null : rec.slice(nl + 1)]);
+  }
+  return out;
+}
+
+/**
+ * The whole config as [scope, key, value], read once with --no-includes. On a git without --show-scope (< 2.26): the
+ * unscoped list (driver names), plus `--local` and, when extensions.worktreeConfig is true, `--worktree` for the scopes
+ * that matter to the include refusal (entries from other scopes are tagged 'other').
+ */
+async function readScopedConfig(git) {
+  const r = await git(['config', '--list', '-z', '--no-includes', '--show-scope']);
+  if (r.code === 0 || noConfig(r)) return parseScopedConfigList(r.stdout);
+  if (!/show-scope|unknown option|usage:/i.test(r.stderr || '')) throw fail('cannot read the git config', r);
+  const all = await git(['config', '-z', '--list', '--no-includes']);
+  if (all.code !== 0 && !noConfig(all)) throw fail('cannot read the git config', all);
+  const rows = parseConfigList(all.stdout).map(([k, v]) => ['other', k, v]);
+  const scoped = async (scope) => {
+    const s = await git(['config', `--${scope}`, '--list', '-z', '--no-includes']);
+    if (s.code === 0 || noConfig(s)) return parseConfigList(s.stdout).map(([k, v]) => [scope, k, v]);
+    if (/not in a git (directory|repository)|outside a repository/i.test(s.stderr || '')) return [];
+    throw fail('cannot read the repository config', s);
+  };
+  const local = await scoped('local');
+  const wtc = local.find(([, k]) => k.toLowerCase() === 'extensions.worktreeconfig');
+  return [...rows, ...local, ...(wtc && truthy(wtc[2]) ? await scoped('worktree') : [])];
+}
 const ESC = { 7: 'a', 8: 'b', 9: 't', 10: 'n', 11: 'v', 12: 'f', 13: 'r', 34: '"', 92: '\\' };
 
 /** A path as git spells it in a diff header: C-quoted when it has a control char, `"`, `\` or a byte >= 0x80 (core.quotePath on). */
@@ -132,19 +184,18 @@ export async function run(args, io = {}) {
   const timeout = f.timeout ? Number(f.timeout) : DEFAULT_TIMEOUT;
   const rawAt = io.git || defaultGit(dir, { env, timeout });
   const statics = overrideArgs([]);
-  const cfg = await hardened(rawAt, statics, statics.length)(['config', '-z', '--list', '--no-includes']);
-  // exit 1 with no output is "no config at all"; anything else that failed is a failure (never run unprotected)
-  if (cfg.code !== 0 && !(cfg.code === 1 && !(cfg.stdout || '').length && !(cfg.stderr || '').trim())) throw fail('cannot read the git config', cfg);
-  const cArgs = overrideArgs(driversFromConfig(cfg.stdout || ''));
+  // ONE read (never run unprotected) gives both the driver names and the scopes the include refusal checks, so they agree.
+  const cfg = await readScopedConfig(hardened(rawAt, statics, statics.length));
+  // The repo's OWN config (.git/config, and config.worktree) must not carry an include: a driver defined in an included file could not be switched off.
+  const inc = cfg.find(([scope, k]) => (scope === 'local' || scope === 'worktree') && INCLUDE.test(k));
+  if (inc) {
+    throw new KitExit(`the repository's own config has an include.path/includeIf entry (scope ${inc[0]}); diff-range does not follow includes because a driver defined there could not be switched off. Remove it (git config --local --unset-all include.path, or --worktree) and run diff-range again.`, 2);
+  }
+  const cArgs = overrideArgs(driversFromKeys(cfg.map(([, k]) => k)));
+  const partial = cfg.some(([, k, v]) => (k.toLowerCase() === 'extensions.partialclone' && v) || (/^remote\..+\.promisor$/i.test(k) && truthy(v)));
   const at = hardened(rawAt, cArgs, statics.length);
   const [top] = await gitPaths(at, dir, ['toplevel'], 'cannot locate the git repository');
   const git = hardened(io.git || defaultGit(top, { env, timeout }), cArgs, statics.length);
-  // The repo's OWN config (.git/config) must not carry an include: a driver defined in an included file could not be switched off.
-  const local = await git(['config', '--local', '--list', '-z', '--no-includes']);
-  if (local.code !== 0 && !(local.code === 1 && !(local.stdout || '').length && !(local.stderr || '').trim())) throw fail('cannot read the repository config', local);
-  if (parseConfigList(local.stdout).some(([k]) => /^include(if\..+)?\.path$/i.test(k))) {
-    throw new KitExit("the repository's .git/config has include.path/includeIf entries; diff-range does not follow includes (a driver defined there could not be switched off): remove them or run the read through safe-git", 2);
-  }
 
   let base;
   let upstream = null;
@@ -173,7 +224,7 @@ export async function run(args, io = {}) {
 
   const buf = (x) => (Buffer.isBuffer(x) ? x : Buffer.from(x || ''));
   const t = await git([...DIFF, base], { binary: true });
-  if (t.code !== 0 && t.code !== 1) throw new KitExit(`${fail('cannot diff against the base', t).message}${missingNote(t, top)}`, 1);
+  if (t.code !== 0 && t.code !== 1) throw new KitExit(`${fail('cannot diff against the base', t).message}${missingNote(t, top, partial)}`, 1);
   const tracked = buf(t.stdout);
   const parts = [tracked];
   const untracked = [];
@@ -194,7 +245,7 @@ export async function run(args, io = {}) {
       }
       const d = await git(['-c', 'core.safecrlf=false', ...DIFF, '--no-index', '--', '/dev/null', file], { binary: true });
       const out = buf(d.stdout);
-      if (d.code > 1 || (d.code === 1 && (!out.length || (d.stderr || '').split('\n').some(l => l.trim() && !BENIGN.test(l))))) throw new KitExit(`${fail(`cannot diff untracked file ${file}`, d).message}${missingNote(d, top)}`, 1);
+      if (d.code > 1 || (d.code === 1 && (!out.length || (d.stderr || '').split('\n').some(l => l.trim() && !BENIGN.test(l))))) throw new KitExit(`${fail(`cannot diff untracked file ${file}`, d).message}${missingNote(d, top, partial)}`, 1);
       if (!out.length) continue;
       untracked.push(file);
       parts.push(out);
