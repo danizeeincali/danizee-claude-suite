@@ -45,13 +45,13 @@
     }
   ],
   "handoff": {
-    "ts": "2026-10-10T17:12:56.218Z",
+    "ts": "2026-10-10T18:04:39.935Z",
     "trigger": "auto",
     "branch": "claude/project-thread-9ow0sy",
-    "commit": "ac0778c",
-    "uncommitted": 4,
+    "commit": "9a7285c",
+    "uncommitted": 5,
     "tasks": [],
-    "context_tokens": 380711,
-    "context_pct": 38.1
+    "context_tokens": 383204,
+    "context_pct": 38.3
   }
 }

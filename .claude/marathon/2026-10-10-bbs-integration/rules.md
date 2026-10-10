@@ -47,3 +47,4 @@ Add a rule the second time something goes wrong.
 - (promoted: correctness) A gate checks the evidence, not that a file exists: an empty or "none" record is not an
   answer. Every state file a verb reads has a --force repair path its error names, and every config value it reads
   is validated in loadConfig before any scan.
+- **performance (promoted):** a loop over a capped list never rescans or re-reads per item (build the index once, e.g. a Map or Set, then look up); every scan of the owner's project has a file count and byte cap, and an eviction or cap loop must make progress each pass (no saturation spin).

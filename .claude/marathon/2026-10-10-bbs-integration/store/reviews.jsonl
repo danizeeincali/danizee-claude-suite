@@ -5,3 +5,4 @@
 {"stream":"targets","commit":"ec92870","counts":{"high":1,"medium":1,"low":2},"angle":"correctness r1","tokens":85747,"pass":false,"round":1,"id":"20ba6e2a-af28-41ed-96aa-4e19d5564546","ts":"2026-10-10T17:14:13.019Z"}
 {"stream":"targets","commit":"c85e19c","counts":{"high":0,"medium":2,"low":3},"angle":"failure conditions and error paths","tokens":107368,"pass":true,"round":2,"id":"14185e28-5511-4a5b-845f-bd38738541bd","ts":"2026-10-10T17:22:51.962Z"}
 {"stream":"targets","commit":"a59228c","counts":{"high":0,"medium":2,"low":1},"angle":"older environments and degraded networks","tokens":91592,"pass":true,"round":3,"id":"b23fe058-a6a5-4074-b273-7901403471c3","ts":"2026-10-10T17:31:54.667Z"}
+{"stream":"integration-gate","commit":"fb48992","counts":{"high":1,"medium":4,"low":3},"angle":"one input method at a time","tokens":150000,"pass":false,"round":1,"id":"d7ddfafa-9f52-4896-9ceb-1d8c6fa25451","ts":"2026-10-10T18:01:14.028Z"}
