@@ -28,3 +28,6 @@
 {"key":"packaged_lens-catalog-file-triggered-checks","value":true,"id":"abe034f2-d4af-4f69-b048-180e83101699","ts":"2026-10-10T05:25:19.045Z"}
 {"key":"egress_zero_lens-catalog-file-triggered-checks","value":true,"id":"a37a0780-9add-4d37-9117-c975fba71db6","ts":"2026-10-10T05:25:19.140Z"}
 {"key":"callers_lens-catalog-file-triggered-checks","value":1,"id":"5d9fc6c9-4a9e-4501-8763-c68ac5424652","ts":"2026-10-10T05:25:19.237Z"}
+{"key":"packaged_hardened-git-read-on-untrusted-repo","value":true,"id":"31a26d2a-8d9e-4465-9f24-eb25a653e56c","ts":"2026-10-10T05:35:32.945Z"}
+{"key":"egress_zero_hardened-git-read-on-untrusted-repo","value":true,"id":"959f18a9-e403-45f5-90c3-11fd2d92f7ca","ts":"2026-10-10T05:35:33.040Z"}
+{"key":"callers_hardened-git-read-on-untrusted-repo","value":1,"id":"ebcea9c9-a4e6-4a35-a69e-e119342b7bf6","ts":"2026-10-10T05:35:33.135Z"}
