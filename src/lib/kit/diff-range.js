@@ -6,16 +6,22 @@
  * The range: tracked changes from <base> to the working tree (committed since the base plus uncommitted edits), plus
  * every untracked, not-ignored file as an added file (unless --no-untracked). <base> is --base <ref> (a commit, or the empty-tree id that --base-only prints when there is no upstream), else the merge
  * base of HEAD and @{upstream}, else the empty tree (the whole history). Paths are bare and relative to the repository
- * top. Git runs with hooks off, no external diff, no colour and no inherited GIT_* variables.
+ * top. When an upstream exists but `git merge-base HEAD <upstream>` fails (a shallow clone, or a git error) the verb is exit 1
+ * ("no merge base with <upstream> (shallow clone?): pass --base <ref>"); the empty-tree fallback is only for no upstream.
+ * --base also accepts the repository's own empty-tree id (`git hash-object -t tree /dev/null`: SHA-1 or SHA-256) as well as the
+ * SHA-1 constant. Git runs with hooks off, no external diff, no colour and no inherited GIT_* variables.
  *
  * Untracked paths: a path is listed under `untracked` (--json) only when its diff text is non-empty. A nested git repository
  * (ls-files shows it as `sub/`) is not this repository's file: it is SKIPPED, never diffed, and reported in `skipped` (--json).
+ * An untracked SYMLINK is never followed (git would fail on a link to a directory): its added-file diff is written here in git's
+ * own shape for a mode-120000 blob (`new file mode 120000`, one added line holding the link target, `\ No newline at end of file`).
  * Any other `git diff --no-index` failure (exit above 1, or exit 1 with empty stdout or text on stderr) is a failure, exit 1 naming
  * the path and git's stderr, so a range with an unread untracked path is never exit 3.
  * Bytes: the diffs are read as bytes. When they are valid UTF-8 `raw` is a string; otherwise `raw` is a Buffer the cli writes undecoded.
  *
  * Exit: 0 printed, 3 empty (nothing printed), 1 bad input or git failed, 2 refused.
  */
+import fs from 'fs/promises';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
 import { defaultGit } from './push-gate.js';
@@ -67,20 +73,24 @@ export async function run(args, io = {}) {
   let fromUpstream = false;
   const up = await git(['rev-parse', '--verify', '-q', '@{upstream}']);
   if (up.code === 0 && up.stdout.trim()) upstream = up.stdout.trim();
+  let emptyTree; // the repository's own empty-tree id, computed once
+  const getEmptyTree = async () => {
+    if (emptyTree) return emptyTree;
+    const r = await git(['hash-object', '-t', 'tree', '/dev/null']);
+    if (r.code !== 0 || !r.stdout.trim()) throw fail('cannot find the empty tree', r);
+    return (emptyTree = r.stdout.trim());
+  };
   if (f.base !== undefined) {
     const r = await git(['rev-parse', '--verify', '-q', `${f.base}^{commit}`]);
     if (r.code === 0 && r.stdout.trim()) base = r.stdout.trim();
-    else if (f.base === EMPTY_TREE) base = EMPTY_TREE; // what --base-only prints when there is no upstream: the whole history
+    else if (f.base === EMPTY_TREE || f.base === await getEmptyTree()) base = f.base; // what --base-only prints when there is no upstream: the whole history
     else throw invalid(`--base "${f.base}" does not resolve to a commit`);
   } else if (upstream) {
     const mb = await git(['merge-base', 'HEAD', upstream]);
     if (mb.code === 0 && mb.stdout.trim()) { base = mb.stdout.trim(); fromUpstream = true; }
+    else throw invalid(`no merge base with ${upstream} (shallow clone?): pass --base <ref>`);
   }
-  if (!base) {
-    const r = await git(['hash-object', '-t', 'tree', '/dev/null']);
-    if (r.code !== 0 || !r.stdout.trim()) throw fail('cannot find the empty tree', r);
-    base = r.stdout.trim();
-  }
+  if (!base) base = await getEmptyTree();
   if (f['base-only']) return { raw: `${base}\n` };
 
   const buf = (x) => (Buffer.isBuffer(x) ? x : Buffer.from(x || ''));
@@ -95,6 +105,14 @@ export async function run(args, io = {}) {
     if (l.code !== 0) throw fail('cannot list untracked files', l);
     for (const file of l.stdout.split('\0').filter(Boolean)) {
       if (file.endsWith('/')) { skipped.push(file); continue; } // a nested repository
+      let st = null;
+      try { st = await fs.lstat(path.join(top, file)); } catch { /* gone or unreadable: let git report it */ }
+      if (st && st.isSymbolicLink()) {
+        const target = await fs.readlink(path.join(top, file), { encoding: 'buffer' });
+        untracked.push(file);
+        parts.push(Buffer.concat([Buffer.from(`diff --git ${file} ${file}\nnew file mode 120000\n--- /dev/null\n+++ ${file}\n@@ -0,0 +1 @@\n+`), target, Buffer.from('\n\\ No newline at end of file\n')]));
+        continue;
+      }
       const d = await git([...DIFF, '--no-index', '--', '/dev/null', file], { binary: true });
       const out = buf(d.stdout);
       if (d.code > 1 || (d.code === 1 && (!out.length || (d.stderr || '').trim()))) throw fail(`cannot diff untracked file ${file}`, d);

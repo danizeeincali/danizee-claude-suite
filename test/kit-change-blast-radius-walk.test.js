@@ -428,7 +428,7 @@ describe('impact — review round 1 regressions', () => {
     assert.match(s, /Exit 3 from `diff-range`/);
     assert.match(s, /Any other non-zero exit is wrong input or a broken state: report it, never skip the step/);
     assert.match(s, /never a failure and never "no lens applies"/);
-    assert.match(s, /B=\$\(node \.claude\/helpers\/kit\/cli\.js diff-range --base-only\); D=\$\(mktemp\); node \.claude\/helpers\/kit\/cli\.js diff-range --base "\$B" > "\$D"/);
+    assert.match(s, /B=\$\(node \.claude\/helpers\/kit\/cli\.js diff-range --base-only\) \|\| \{ echo "diff-range --base-only failed: the base was not resolved" >&2; B=; \}\nif \[ -z "\$B" \]; then RC=1; else D=\$\(mktemp\); node \.claude\/helpers\/kit\/cli\.js diff-range --base "\$B" > "\$D"/);
     assert.match(s, /impact --diff "\$D" --base "\$B"/);
     const md = await fs.readFile(new URL('../.claude/commands/.shortcuts/w-review.md', import.meta.url), 'utf-8');
     assert.equal(md, c);
@@ -495,7 +495,7 @@ describe('impact — review round 3 regressions', () => {
     const bin = path.join(dir, 'bin');
     await fs.mkdir(bin);
     // a node whose diff-range fails (a git that cannot diff); any other verb call is logged
-    await fs.writeFile(path.join(bin, 'node'), `#!/bin/sh\nif [ "$2" = diff-range ]; then exit 1; fi\necho "$2" >> "${dir}/calls"\nexit 0\n`, { mode: 0o755 });
+    await fs.writeFile(path.join(bin, 'node'), `#!/bin/sh\nif [ "$2" = diff-range ]; then case "$3" in --base-only) echo abc123; exit 0;; esac; exit 1; fi\necho "$2" >> "${dir}/calls"\nexit 0\n`, { mode: 0o755 });
     const r = spawnSync('bash', ['-c', script], { cwd: dir, encoding: 'utf-8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
     assert.equal(r.status, 1);
     assert.match(r.stderr, /diff-range failed \(exit 1\)/);
@@ -524,6 +524,16 @@ describe('impact — review round 4 regressions', () => {
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stderr, /\+\+\+ --output=keep\.js|output=keep\.js/);
     assert.equal(fsSync.existsSync(path.join(dir, 'keep.js')), false); // --output would have written keep.js
+  }));
+  it('a failed --base-only stops the step: it says so, exits non-zero and runs nothing else', { skip: process.platform === 'win32' }, () => tmp(async dir => {
+    const bin = path.join(dir, 'bin');
+    await fs.mkdir(bin);
+    await fs.writeFile(path.join(bin, 'node'), `#!/bin/sh\necho "$@" >> "${dir}/calls"\nexit 1\n`, { mode: 0o755 });
+    const r = spawnSync('bash', ['-c', stepScript()], { cwd: dir, encoding: 'utf-8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
+    assert.notEqual(r.status, 0);
+    assert.match(r.stderr, /diff-range --base-only failed: the base was not resolved/);
+    assert.doesNotMatch(r.stderr, /--base needs a ref/);
+    assert.equal(fsSync.readFileSync(path.join(dir, 'calls'), 'utf-8').trim().split('\n').length, 1, 'only the --base-only call ran');
   }));
   it('an untracked file git cannot diff makes the step fail, not silently drop it', () => {
     const s = stepScript();

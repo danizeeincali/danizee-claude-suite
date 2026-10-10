@@ -238,4 +238,51 @@ describe('diff-range — the review range as one unified diff', () => {
     assert.deepEqual(parseDiff(r.raw).map(f => f.path), ['a.txt']);
     await assert.rejects(run(['--base', '1111111111111111111111111111111111111111'], io()), (e) => e instanceof KitExit && e.code === 1);
   });
+
+  it('an untracked symlink (to a directory or a file) is added as a mode-120000 file, never followed and never a failure', { skip: process.platform === 'win32' }, async () => {
+    await put('a.txt', 'a\n'); commit();
+    await fs.mkdir(path.join(dir, 'realdir'));
+    await put('real.txt', 'r\n');
+    await fs.symlink('realdir', path.join(dir, 'dirlink'));
+    await fs.symlink('real.txt', path.join(dir, 'filelink'));
+    const r = await run(['--base', 'HEAD'], io());
+    assert.equal(r.exit, 0);
+    assert.deepEqual(parseDiff(r.raw).map(f => f.path).sort(), ['dirlink', 'filelink', 'real.txt']);
+    assert.ok(r.raw.includes('diff --git dirlink dirlink\nnew file mode 120000\n--- /dev/null\n+++ dirlink\n@@ -0,0 +1 @@\n+realdir\n\\ No newline at end of file\n'));
+    const j = await run(['--base', 'HEAD', '--json'], io());
+    assert.deepEqual(j.untracked.sort(), ['dirlink', 'filelink', 'real.txt']);
+    // the same shape git itself prints for a committed link
+    sh(dir, 'add', '-A'); sh(dir, 'commit', '-q', '-m', 'l');
+    const shown = sh(dir, 'show', '--no-prefix', '--format=', 'HEAD', '--', 'dirlink');
+    assert.ok(shown.replace(/^index .*\n/m, '').startsWith('diff --git dirlink dirlink\nnew file mode 120000'));
+    assert.ok(shown.endsWith('+realdir\n\\ No newline at end of file'));
+  });
+
+  it('an upstream whose merge base cannot be found is exit 1 naming the upstream, not the whole history', async () => {
+    await put('a.txt', 'a\n'); commit();
+    const real = defaultGit(dir, {});
+    const fake = Object.assign(async (args, o) => {
+      if (args[0] === 'rev-parse' && args.includes('@{upstream}')) return { code: 0, stdout: 'origin/main\n', stderr: '' };
+      if (args[0] === 'merge-base') return { code: 1, stdout: '', stderr: '' };
+      return real(args, o);
+    }, { cwd: dir });
+    await assert.rejects(run([], io({ git: fake })), (e) => e instanceof KitExit && e.code === 1 && e.message.includes('no merge base with origin/main (shallow clone?): pass --base <ref>'));
+    const ok = await run(['--base', 'HEAD', '--json'], io({ git: fake }));
+    assert.equal(ok.empty, true); // --base still works
+  });
+
+  it('in a SHA-256 repository --base accepts the empty-tree id --base-only prints', async (t) => {
+    const d2 = await fs.mkdtemp(path.join(os.tmpdir(), 'diff-range-256-'));
+    try {
+      const i = spawnSync('git', ['init', '-q', '--object-format=sha256', '.'], { cwd: d2, encoding: 'utf-8' });
+      if (i.status !== 0) return t.skip('this git cannot create a sha256 repository');
+      await fs.writeFile(path.join(d2, 'a.txt'), 'a\n');
+      sh(d2, 'add', '-A'); sh(d2, 'commit', '-q', '-m', 'c');
+      const b = await run(['--base-only'], { cwd: d2, env: process.env });
+      assert.match(b.raw, /^[0-9a-f]{64}\n$/);
+      const r = await run(['--base', b.raw.trim()], { cwd: d2, env: process.env });
+      assert.equal(r.exit, 0);
+      assert.deepEqual(parseDiff(r.raw).map(f => f.path), ['a.txt']);
+    } finally { await fs.rm(d2, { recursive: true, force: true }); }
+  });
 });
