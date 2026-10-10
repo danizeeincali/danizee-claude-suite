@@ -506,6 +506,16 @@ function mergeWarning(result, lockWarning) {
   return { ...result, warning: result.warning ? `${result.warning}; ${lockWarning}` : lockWarning };
 }
 
+const SAFE_GIT_LINES = [
+  '## Reading the clone with git\n',
+  'Every git read of the clone under `fetched/` (log, show, ls-files, blame, cat-file) goes through `node .claude/helpers/kit/cli.js safe-git --dir <clone top> -- <git args>`. Plain `git -C fetched/...` is never used: the clone is untrusted and its config, hooks and drivers must not run.',
+  '',
+  'It prints `{ stdout, stderr, code, exit }`. Read the exit: 0 git ran and `stdout` is the answer; 1 bad input (for example `--dir` is not the clone top): fix the call and retry once; 2 refused (the repository or the git call was refused): do not retry, name it in evidence; 3 git itself failed or timed out: say so. A non-zero exit is never "nothing found".',
+  '',
+  'If `.claude/helpers/kit/cli.js` is missing, read the files directly and never run git on the clone.',
+  ''
+];
+
 /**
  * Generate a brief for the user to judge powers.
  * Returns plain text markdown with powers, ideas, candidates, and instructions.
@@ -557,6 +567,8 @@ export async function mapBrief(projectDir, { run }, cfg = DEFAULT_CONFIG) {
   lines.push('- **partial**: The tool partially implements this power.');
   lines.push('- **missing**: No tool among these candidates implements this power.');
   lines.push('');
+
+  lines.push(...SAFE_GIT_LINES);
 
   lines.push('## Response Format');
   lines.push('');

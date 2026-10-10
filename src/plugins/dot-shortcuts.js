@@ -4347,7 +4347,7 @@ If the fetch JSON says \`known: true\` (a repository or URL source is only recog
 ### ⛔ CHECKPOINT 2: Inventory
 
 1. \`node .claude/helpers/bbs/cli.js inventory --brief [--run <id>]\` prints the helper brief: what to read, the JSON shape, the 12-power cap.
-2. Spawn inventory helpers with \`model: haiku\` (one per ≤ 15 files or per page), each with the brief, the file list and a token budget. They return **JSON only**.
+2. Spawn inventory helpers with \`model: haiku\` (one per ≤ 15 files or per page), each with the brief, the file list and a token budget. They return **JSON only**. Tell each helper that every git read of the clone under \`fetched/\` goes through \`node .claude/helpers/kit/cli.js safe-git --dir <clone top> -- <git args>\` (the brief says so), never plain \`git -C fetched/...\`.
 3. Concatenate their powers into one file and run \`node .claude/helpers/bbs/cli.js inventory --from <file> [--run <id>]\`. A schema miss exits 1 with the field; re-ask that helper once with the error. If every helper returns \`none_found\`, pass one \`{ \"powers\": [], \"none_found\": \"<reason>\" }\` object to \`cli.js inventory --from\` instead, report 'no powers found' and stop before map — no question, no hand-off.
 
 **REQUIRED OUTPUT:** \`found\`, \`not_inventoried\` (powers past the cap of 12 are named, not read).
@@ -4371,7 +4371,13 @@ If the fetch JSON says \`known: true\` (a repository or URL source is only recog
 ### ⛔ CHECKPOINT 4: Verdict (HIL — the only approval)
 
 1. \`node .claude/helpers/bbs/cli.js verdict [--run <id>]\` computes, per power, the legal verdicts, the default and the reasons from the licence policy and the sandbox check.
-2. For every power where \`use\` is still a candidate, spawn one probe helper with \`model: sonnet\` that reads the fetched source for hidden network calls and returns \`clean\`, \`found\` or \`incomplete\` with evidence. Record each: \`node .claude/helpers/bbs/cli.js verdict --probe <power>=<clean|found|incomplete> --evidence "<text>" [--run <id>]\`. \`found\` and \`incomplete\` remove \`use\`.
+2. For every power where \`use\` is still a candidate, spawn one probe helper with \`model: sonnet\` that reads the fetched source for hidden network calls and returns \`clean\`, \`found\` or \`incomplete\` with evidence. Tell the helper: every git read of the clone under \`fetched/\` (log, show, ls-files, blame, cat-file) goes through \`node .claude/helpers/kit/cli.js safe-git --dir <clone top> -- <git args>\`, never plain \`git -C fetched/...\`; safe-git prints \`{ stdout, stderr, code, exit }\` and exits 0 git ok, 1 bad input (fix the call, retry once), 2 refused (do not retry, return \`incomplete\`), 3 git failed or timed out (return \`incomplete\`); a non-zero exit is never "nothing found". If \`.claude/helpers/kit/cli.js\` is missing the helper reads the files directly and never runs git on the clone.
+
+   Before recording, the lead redacts each evidence text: it can quote the source. Write the evidence to a temp file \`$E\`, then run the block (one line when the kit is not installed, and the evidence is recorded as is):
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): evidence redaction skipped, advisory"; elif [ ! -f .claude/kit/secrets ] && [ ! -f "$(git rev-parse --git-common-dir 2>/dev/null)/../.claude/kit/secrets" ]; then echo "no .claude/kit/secrets: evidence recorded as is, nothing to redact"; else ( J=$(mktemp 2>/dev/null) && [ -n "$J" ] || { echo "mktemp failed: evidence not redacted" >&2; exit 1; }; trap 'rm -f "$J"' EXIT INT TERM; node .claude/helpers/kit/cli.js redact --keep-lines < "$E" > "$J"; RC=$?; if [ $RC -eq 0 ]; then node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).text)' "$J"; else echo "redact failed (exit $RC)" >&2; fi; exit $RC ); fi
+\`\`\`
+   Use the printed \`text\` as the evidence. Exit 0: redacted (\`replaced\` in the JSON counts the replacements). Exit 1 is bad input or a broken state (an unreadable secrets file, bad flag, mktemp failed): report the error and record the evidence only after the lead has looked at it; never read exit 1 as "nothing to redact". Any other non-zero exit is a failure of the step: the same. Then record each: \`node .claude/helpers/bbs/cli.js verdict --probe <power>=<clean|found|incomplete> --evidence "<text>" [--run <id>]\`. \`found\` and \`incomplete\` remove \`use\`.
 3. **Show the verdict table:** \`node .claude/helpers/bbs/cli.js verdict --table [--run <id>]\`, printed inline.
 4. **Exactly one AskUserQuestion** — "Verdicts above. Approve as shown, or change which? To change some, pick the second option and answer it via Other with \`<power>=<verdict>\` pairs separated by spaces, for example \`drift-monitor=skip log-tail=rebuild\`." Options: ["Approve as shown (defaults)", "Approve with changes — I will type them", "Stop here (skip everything)"]. Build the decisions file from the answer: the table's defaults, with each typed pair overriding its power, or \`skip\` for every power on "Stop here". Its shape is \`{ "<power>": "rebuild|use|buy|skip" }\` (one verdict per power), written to a file and recorded with \`cli.js verdict --from <file>\`. No second question is ever asked: if the typed answer is unparsable (a power not in the table, a verdict not in the list, or a verdict not in that row's \`legal\` list from the verdict JSON), do not guess and do not decide — print the table again with the resume line (\`/w-bbs --resume <run-id>\`) and stop.
 5. \`node .claude/helpers/bbs/cli.js verdict --from <file> [--run <id>]\` records every decision as a label and, once all are decided, the registry row. On exit 2 (an illegal verdict, refused): report the refusal verbatim and stop with the same resume line (\`/w-bbs --resume <run-id>\`); do not ask a second question. Never edit an owner's choice.
@@ -4403,7 +4409,13 @@ On a machine without a sandbox \`use\` is removed from every row with the reason
 
 ### ⛔ CHECKPOINT 6: Compound (MANDATORY)
 
-\`/bc\`: write-up, the run's registry row and labels, durable facts to memory, commit, never push. \`fetched/\` is git-ignored and must not be added.
+Before \`/bc\`, stage and scan the tracked files: \`scrub --worktree\` scans tracked files only. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): scrub skipped, advisory"; else git add -A -- . ':!fetched' && node .claude/helpers/kit/cli.js scrub --worktree; fi
+\`\`\`
+Exit 0 clean for the tracked files; if the JSON says \`configured: false\` no pattern file is present and nothing was scanned: say so and continue. Exit 2 means hits or an incomplete scan: print the hits as printed and do **not** run \`/bc\` until they are removed. Exit 1 is wrong input or a broken state: report it (advisory, continue to \`/bc\` only after the lead has seen the error); never read a non-zero exit as clean. Any other non-zero exit (including a failed \`git add\`) is a failure of the step: the same.
+
+Then \`/bc\`: write-up, the run's registry row and labels, durable facts to memory, commit, never push. \`fetched/\` is git-ignored and must not be added.
 
 ---
 
@@ -4431,6 +4443,7 @@ On a machine without a sandbox \`use\` is removed from every row with the reason
 - [ ] Helpers returned JSON only; inventory and map on \`haiku\`, probes on \`sonnet\`
 - [ ] Verdict table shown; exactly one AskUserQuestion
 - [ ] Marathon run created and resume line printed — or, with no approved power, the note and memos printed
+- [ ] Kit steps (safe-git for reads of \`fetched/\`, redact of probe evidence, scrub before \`/bc\`) ran, or one line said the kit is not installed
 - [ ] \`/bc\` run; nothing pushed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
