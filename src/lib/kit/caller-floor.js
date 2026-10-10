@@ -211,7 +211,7 @@ export function parseArgs(args) {
     if (a === '--help' || a === '-h') { f.help = true; continue; }
     if (a === '--symbol') {
       let k = i + 1;
-      while (k < args.length && !args[k].startsWith('--')) f.symbols.push(args[k++]);
+      while (k < args.length && !args[k].startsWith('-')) f.symbols.push(args[k++]); // a following -h / --flag ends the list
       if (k === i + 1) throw invalid('--symbol needs at least one file:name (see --help)');
       i = k - 1;
       continue;
@@ -273,7 +273,9 @@ export async function run(args, io = {}) {
   for (const w of wanted) {
     const hits = (graph.defs || []).filter((d) => d.file === w.file && (d.qualified === w.name || d.name === w.name));
     if (hits.length) { for (const d of hits) take(index.get(d.id)); continue; }
-    missing.push({ file: w.file, name: w.name, reason: notRead.has(w.file) ? `the file was not read (${notRead.get(w.file)}); this says nothing about its callers` : 'no definition with that name in the file as read' });
+    const readFile = (graph.files || []).some((x) => x.path === w.file);
+    missing.push({ file: w.file, name: w.name, reason: notRead.has(w.file) ? `the file was not read (${notRead.get(w.file)}); this says nothing about its callers`
+      : readFile ? 'no definition with that name in the file as read' : 'no such source file in the repository (nothing was read for it)' });
   }
   let unmapped = [];
   let module_level = [];
@@ -285,7 +287,10 @@ export async function run(args, io = {}) {
   }
   const partial = !!(graph.partial || unmapped.length || missing.some((m) => m.reason.startsWith('the file was not read')));
   const notes = ['a caller list is a floor: zero callers is not proof that a symbol is unused'];
-  if (impact && !entries.length) notes.push('the diff touched no definition that the graph could read');
+  // callers looks at definitions that still exist; a removed one (and a deleted file) is impact --base's job
+  const removals_unchecked = [...new Set(changes.filter((c) => (c.deleted || c.removed.length) && isSrc(c.oldPath || c.path)).map((c) => c.oldPath || c.path))];
+  if (removals_unchecked.length) notes.push(`lines were removed in ${removals_unchecked.length} source file(s): definitions that were removed are not checked here; run impact --diff with --base to find removed definitions that are still called`);
+  if (impact && !entries.length) notes.push(removals_unchecked.length ? 'the diff touched no remaining definition that the graph could read (removals: see above)' : 'the diff touched no definition that the graph could read');
   return {
     root: top,
     partial,
@@ -295,6 +300,7 @@ export async function run(args, io = {}) {
     missing,
     unmapped,
     module_level,
+    removals_unchecked,
     notes,
     stats: graph.stats
   };

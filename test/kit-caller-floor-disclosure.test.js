@@ -234,3 +234,30 @@ describe('callers — CLI', () => {
     });
   });
 });
+
+describe('callers — review round 1 regressions', () => {
+  it('a diff that only removes a definition says removals were not checked, never "nothing to check"', async () => {
+    await repo({ 'lib.js': 'export function keep() {}\nexport function gone() {}\n', 'main.js': "import { gone } from './lib.js';\nexport function main() { gone(); }\n" }, async (root, g) => {
+      await fs.writeFile(path.join(root, 'lib.js'), 'export function keep() {}\n');
+      const diff = g('diff', '--no-color', '--no-ext-diff', '--no-prefix');
+      const r = await cli(root, ['--diff', '-'], { stdin: async () => diff });
+      assert.deepEqual(r.removals_unchecked, ['lib.js']);
+      assert.ok(r.notes.some((n) => /definitions that were removed are not checked here.*impact --diff with --base/.test(n)));
+      assert.ok(!r.notes.includes('the diff touched no definition that the graph could read'));
+    });
+  });
+
+  it('a --symbol in a file that does not exist says so', async () => {
+    await repo({ 'lib.js': 'export function keep() {}\n' }, async (root) => {
+      const r = await cli(root, ['--symbol', 'nope.js:f']);
+      assert.match(r.missing[0].reason, /no such source file/);
+      const k = await cli(root, ['--symbol', 'lib.js:absent']);
+      assert.match(k.missing[0].reason, /no definition with that name in the file as read/);
+    });
+  });
+
+  it('-h after --symbol ends the list and prints help', () => {
+    assert.equal(cf.parseArgs(['--symbol', 'lib.js:keep', '-h']).help, true);
+    assert.deepEqual(cf.parseArgs(['--symbol', 'lib.js:keep', '-h']).symbols, ['lib.js:keep']);
+  });
+});
