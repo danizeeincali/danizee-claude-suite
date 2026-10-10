@@ -611,10 +611,10 @@ describe('verdict r1 — cli verb input shapes and switches', () => {
     assert.ok(!(await fs.readFile(p.verdicts, 'utf-8')).includes('abc'), 'stored evidence is redacted');
     const t1 = cli(p.d, ['verdict', '--table', '--run', p.run]);
     assert.equal(t1.code, 0, t1.err);
-    assert.match(t1.out, /\| drift-monitor \| missing \| MIT \(permissive\) \| rebuild, skip \| rebuild \| — \| use removed: network probe found/);
+    assert.match(t1.out, /\| drift-monitor \| missing \| MIT \(permissive\) \| rebuild, skip \| rebuild \| w-review · w-review · advisory \| — \| use removed: network probe found/);
     const t2 = cli(p.d, ['verdict', '--table', '--force', '--run', p.run], undefined, { BBS_SANDBOX: 'absent' });
     assert.equal(t2.code, 0, t2.err);
-    assert.match(t2.out, /\| rebuild, skip \| rebuild \| — \| use removed: no sandbox on this machine: BBS_SANDBOX=absent \|/);
+    assert.match(t2.out, /\| rebuild, skip \| rebuild \| w-review · w-review · advisory \| — \| use removed: no sandbox on this machine: BBS_SANDBOX=absent \|/);
     assert.ok(!/probe found/.test(t2.out), '--force dropped the probe and recomputed');
     assert.equal((await readJson(p.verdicts)).rows['drift-monitor'].probe, null);
   });
@@ -1300,5 +1300,22 @@ describe('verdict — the owner\'s workflows come first (marathon 2026-10-10-bbs
     assert.equal(ok.decided, 1);
     await landed(dir, r.runId);
     assert.equal((await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'rebuild' }), now })).decided, 2);
+  });
+});
+
+describe('verdict — no evidence of use is not an answer (usage review r2)', () => {
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-vnone-')); await makeHarness(dir); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('rebuild after an evidence:none usage.json is refused, naming the --workflows repair', async () => {
+    const r = await intake(dir, '-', { stdin: 'none evidence', now, slug: 'none' });
+    await writeInventory(dir, { run: r.runId, input: JSON.stringify([power()]), now });
+    await buildMap(dir, { run: r.runId, now });
+    await recordJudgments(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'missing' }), now });
+    await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now });
+    await fs.writeFile(path.join(dir, '.claude', 'bbs', 'runs', r.runId, 'usage.json'), JSON.stringify({ evidence: 'none', workflows: [] }));
+    await assert.rejects(() => recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'rebuild' }), now }),
+      (err) => err instanceof PolicyRefused && /no evidence.*usage --force --workflows/.test(err.message));
   });
 });

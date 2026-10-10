@@ -158,6 +158,9 @@ describe('bbs plugin — review r1 regressions', () => {
     step(['inventory', '--from', path.join(FX, 'inventory.json')]);
     step(['map']);
     step(['map', '--from', path.join(FX, 'judgments.json')]);
+    // a bbs-only install has no commands: the owner's one workflow is seeded so they can name it
+    await fs.mkdir(path.join(claudeDir, 'commands', '.shortcuts'), { recursive: true });
+    await fs.writeFile(path.join(claudeDir, 'commands', '.shortcuts', 'w-review.md'), '# /w-review\n\n### ⛔ CHECKPOINT 0: Search\n\n### ⛔ CHECKPOINT 1: Code Analysis\n');
     step(['usage', '--workflows', 'w-review']);
     step(['targets', '--from', path.join(FX, 'targets.json')]);
     step(['verdict']);

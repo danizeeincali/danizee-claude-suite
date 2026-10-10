@@ -834,7 +834,7 @@ export async function recordDecisions(projectDir, { run, input, now = () => new 
     try {
       for (const [name, v] of Object.entries(decisions)) {
         const row = vj.rows[name];
-        if ((v === 'rebuild' || v === 'use') && (!counted || counted.evidence === 'none')) {
+        if ((v === 'rebuild' || v === 'use') && (!counted || counted.evidence === 'none' || !counted.workflows?.length)) {
           // where a power can land depends on the workflows the owner runs: never decided on a guess
           throw new PolicyRefused(`${v} needs the owner's workflows first: ${counted ? 'usage.json has no evidence — record the owner\'s answer with cli.js usage --force --workflows <a,b>' : 'run cli.js usage (or cli.js usage --workflows <a,b> with the owner\'s own list)'}, then decide ${name}`);
         }

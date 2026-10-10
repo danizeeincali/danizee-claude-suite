@@ -206,8 +206,11 @@ export async function ownerUsage(projectDir, list) {
 export async function recordUsage(projectDir, { run, roots, days, workflows, now = () => new Date(), force = false, cfg = DEFAULT_CONFIG }) {
   const dir = runDirOf(projectDir, run, cfg);
   const file = path.join(dir, 'usage.json');
-  const prior = await readJson(file);
-  if (prior && !force) throw new Error(`usage.json already exists for run ${run}; pass --force to recount`);
+  if (!force) {
+    let prior;
+    try { prior = await readJson(file); } catch (err) { throw new Error(`${err.message} — pass --force to recount and replace it`); }
+    if (prior) throw new Error(`usage.json already exists for run ${run}; pass --force to recount`);
+  }
   const result = workflows !== undefined
     ? await ownerUsage(projectDir, workflows)
     : await scanUsage(projectDir, { roots: roots?.length ? roots : (cfg.usage?.roots || DEFAULT_ROOTS), days: days ?? cfg.usage?.days ?? DEFAULT_DAYS, now });

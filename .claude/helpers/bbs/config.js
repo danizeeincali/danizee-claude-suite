@@ -45,7 +45,18 @@ export async function loadConfig(projectDir) {
   if (!isPlainObject(user)) throw new Error(`invalid config in ${file}: expected an object`);
   const cfg = deepMerge(structuredClone(DEFAULT_CONFIG), user);
   validatePaths(cfg, projectDir, file);
+  validateUsage(cfg, file);
   return cfg;
+}
+
+/** usage.roots is a non-empty list of non-empty paths; usage.days a positive integer. A bad value never scans silently. */
+function validateUsage(cfg, file) {
+  const u = cfg.usage;
+  if (!isPlainObject(u)) throw new Error(`invalid config in ${file}: usage must be an object`);
+  if (!Array.isArray(u.roots) || !u.roots.length || !u.roots.every(r => typeof r === 'string' && r.trim() !== '')) {
+    throw new Error(`invalid config in ${file}: usage.roots must be a non-empty list of paths, e.g. ["~/.claude/projects"]`);
+  }
+  if (!Number.isSafeInteger(u.days) || u.days <= 0) throw new Error(`invalid config in ${file}: usage.days must be a positive integer, got ${JSON.stringify(u.days)}`);
 }
 
 /** Every configured path stays inside the project: runs and registry under .claude/bbs, marathon_cli under the project. */
