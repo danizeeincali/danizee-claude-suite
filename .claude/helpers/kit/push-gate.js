@@ -17,7 +17,9 @@
  * through guarded-fs. The owner's own links above the receipts folder (~/.claude -> a dotfiles checkout, wherever it
  * lives) are resolved first; the identity-checked walk then starts at the receipts folder's real parent, and a symlink
  * at or inside the receipts folder is refused (KitExit 2). The same holds with $KIT_RECEIPTS_DIR.
- * Built from ideas
+ * Before it looks at receipts, `check` runs the scrub verb (scrub.js) when .claude/kit/scrub-patterns or
+ * .claude/kit/scrub-patterns.local exists: any hit, an incomplete scan, or a scrub that cannot run while configured is a
+ * deny (exit 2) whatever the receipt says; with no pattern file nothing changes. Built from ideas
  * audited by /w-bbs (run 2026-10-10-openqodex-2); no foreign code.
  */
 import crypto from 'crypto';
@@ -28,6 +30,7 @@ import { spawnSync } from 'child_process';
 import { KitExit } from './kit-exit.js';
 import { gitPaths } from './git-paths.js';
 import { guardedWrite, guardedRead, resolveGuarded } from './guarded-fs.js';
+import { scrubIfConfigured } from './scrub.js';
 
 export const verb = 'push-gate';
 export const usage = 'cli.js push-gate receipt --verdict pass|fail [--high H --medium M --low L] [--threshold none|high|medium|low] [--incomplete] [--base <ref>] | cli.js push-gate check [--threshold ...] [--base <ref>]';
@@ -226,6 +229,21 @@ export async function withLock(dir, file, fn, { staleMs = 30000, waitMs = 10000,
   try { return await fn(); } finally { await fs.rm(lock, { force: true }); }
 }
 
+/**
+ * The scrub check (scrub.js) when the repository has a scrub pattern file: a deny decision on any hit, on an incomplete
+ * scan, and when the scrub cannot run while configured (fail closed). null when not configured or when it passes.
+ * The result never carries private pattern text or matched text.
+ */
+async function scrubBlock(cwd, env) {
+  let r;
+  try { r = await scrubIfConfigured(cwd, { env }); } catch (e) {
+    const msg = e instanceof KitExit ? e.message : `unexpected error: ${e.message}`;
+    return { decision: 'deny', reason: `the scrub check is configured but could not run: ${msg}`, scrub: { ran: false } };
+  }
+  if (!r || r.clean) return null;
+  return { decision: 'deny', reason: `the scrub check refused this push: ${r.reason} (run cli.js scrub for the list)`, scrub: { ran: true, hit_count: r.hit_count, complete: r.complete, hits: r.hits.slice(0, 20), not_scanned: r.not_scanned.slice(0, 20) } };
+}
+
 export async function run(args, io) {
   const { cmd, flags } = parse(args);
   if (cmd !== 'receipt' && cmd !== 'check') throw new KitExit(`expected "receipt" or "check"\n${usage}`, 1);
@@ -240,6 +258,8 @@ export async function run(args, io) {
 
   if (cmd === 'check') {
     const state = file ? await readState(file, guard) : null;
+    const blocked = await scrubBlock(git.cwd || io.cwd, env);
+    if (blocked) return { ...blocked, change_id: change.id, threshold, exit: 2 };
     const d = decide(state, change.id, threshold);
     const result = { ...d, change_id: change.id, threshold };
     if (d.decision === 'deny') result.exit = 2;

@@ -1,0 +1,283 @@
+import { describe, it, beforeEach, afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'fs/promises';
+import os from 'os';
+import path from 'path';
+import { spawnSync } from 'child_process';
+import { KitExit } from '../src/lib/kit/kit-exit.js';
+import { run, parsePatterns, decodeText, scanBuffer, parseBatch, scrubIfConfigured, LIMITS } from '../src/lib/kit/scrub.js';
+import { run as pushGate } from '../src/lib/kit/push-gate.js';
+
+const sh = (cwd, ...a) => {
+  const r = spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { cwd, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024 });
+  assert.equal(r.status, 0, r.stderr);
+  return r.stdout;
+};
+const utf16le = (s) => Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(s, 'utf16le')]);
+const utf16be = (s) => { const b = Buffer.from(s, 'utf16le'); b.swap16(); return Buffer.concat([Buffer.from([0xfe, 0xff]), b]); };
+
+describe('scrub — tracked-file scrub gate', () => {
+  let dir;
+  const io = (extra = {}) => ({ cwd: dir, stdin: async () => '', env: process.env, ...extra });
+  const put = async (rel, content) => { await fs.mkdir(path.dirname(path.join(dir, rel)), { recursive: true }); await fs.writeFile(path.join(dir, rel), content); };
+  const commit = (msg = 'c') => { sh(dir, 'add', '-A'); sh(dir, 'commit', '-q', '-m', msg); };
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'scrub-'));
+    sh(dir, 'init', '-q', '.');
+  });
+  afterEach(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('a repository without pattern files is exit 0 with configured:false, stated plainly', async () => {
+    await put('a.txt', 'hello\n'); commit();
+    const r = await run([], io());
+    assert.equal(r.configured, false);
+    assert.equal(r.exit, 0);
+    assert.match(r.reason, /nothing was scanned/);
+  });
+
+  it('a clean repository is exit 0, complete, and counts what it read', async () => {
+    await put('.claude/kit/scrub-patterns', '# none of these appear\nforbidden-word\n');
+    await put('a.txt', 'hello\n'); await put('b/c.txt', 'world\n'); commit();
+    const r = await run([], io());
+    assert.equal(r.exit, 0);
+    assert.equal(r.clean, true);
+    assert.equal(r.complete, true);
+    assert.equal(r.scanned_files, 2); // the pattern file is not scanned
+    assert.deepEqual(r.not_scanned, []);
+  });
+
+  it('reports file, line and pattern for a public hit and exits 2', async () => {
+    await put('.claude/kit/scrub-patterns', 'internal-host: corp\\.example\\.com\n');
+    await put('src/a.txt', 'one\ntwo corp.example.com\nthree\n'); commit();
+    const r = await run([], io());
+    assert.equal(r.exit, 2);
+    assert.deepEqual(r.hits, [{ file: 'src/a.txt', line: 2, private: false, pattern: 'internal-host: corp\\.example\\.com' }]);
+    assert.ok(!JSON.stringify(r).includes('two corp'), 'the matched line is never printed');
+  });
+
+  it('a private hit prints neither the pattern nor the matched text, only its number or label', async () => {
+    await put('.claude/kit/scrub-patterns.local', 'zebra-secret-name\nboss: hunter2-[a-z]+\n');
+    await put('a.txt', 'x\nthe zebra-secret-name is here\nhunter2-abc\n'); commit();
+    const r = await run(['--json'], io());
+    assert.equal(r.exit, 2);
+    assert.deepEqual(r.hits, [
+      { file: 'a.txt', line: 2, private: true, pattern: 'private pattern #1' },
+      { file: 'a.txt', line: 3, private: true, pattern: 'boss' }
+    ]);
+    const all = JSON.stringify(r);
+    for (const leak of ['zebra', 'hunter2', 'secret-name']) assert.ok(!all.includes(leak), `leaked ${leak}`);
+  });
+
+  it('decodes UTF-16LE and UTF-16BE with a BOM', async () => {
+    await put('.claude/kit/scrub-patterns.local', 'zebra-secret\n');
+    await put('le.txt', utf16le('first\r\nsecond zebra-secret\r\n'));
+    await put('be.txt', utf16be('a\nb\nzebra-secret'));
+    await put('plain.txt', 'nothing\n');
+    commit();
+    const r = await run([], io());
+    assert.deepEqual(r.hits.map(h => `${h.file}:${h.line}`).sort(), ['be.txt:3', 'le.txt:2']);
+  });
+
+  it('finds an ASCII secret inside a binary file', async () => {
+    await put('.claude/kit/scrub-patterns.local', 'AKIA[0-9A-Z]{8}\n');
+    await put('blob.bin', Buffer.concat([Buffer.from([0, 1, 2, 0xff, 0xfe, 0xfd, 0x80]), Buffer.from('xxAKIA12345678yy'), Buffer.from([0, 0xc3, 0x28, 10])]));
+    commit();
+    const r = await run([], io());
+    assert.equal(r.exit, 2);
+    assert.equal(r.hits[0].file, 'blob.bin');
+  });
+
+  it('the pattern files and the scrub module are not scanned', async () => {
+    await put('.claude/kit/scrub-patterns', 'needle\n');
+    await put('.claude/kit/scrub-patterns.local', 'needle\n');
+    await put('src/lib/kit/scrub.js', '// needle\n');
+    await put('.claude/helpers/kit/scrub.js', '// needle\n');
+    commit();
+    const r = await run([], io());
+    assert.equal(r.exit, 0);
+    assert.equal(r.scanned_files, 0);
+  });
+
+  it('an invalid regex is exit 1 naming the file and line, not the pattern', async () => {
+    await put('.claude/kit/scrub-patterns.local', 'ok\n\n# c\nbad-[unclosed\n');
+    await put('a.txt', 'x\n'); commit();
+    await assert.rejects(run([], io()), e => e instanceof KitExit && e.code === 1
+      && e.message.includes('.claude/kit/scrub-patterns.local line 4') && !e.message.includes('unclosed'));
+  });
+
+  it('a pattern that matches the empty string is refused', () => {
+    assert.throws(() => parsePatterns('a*\n', 'f'), e => e.code === 1 && /empty string/.test(e.message));
+    assert.throws(() => parsePatterns('^\n', 'f'), e => e.code === 1);
+  });
+
+  it('labels, comments, blank lines and (?i) parse as documented', () => {
+    const p = parsePatterns('# c\n\nname: foo+\n(?i)Bar\nhttp://x\n', 'f');
+    assert.deepEqual(p.map(x => [x.n, x.label, x.source]), [[1, 'name', 'foo+'], [2, null, 'Bar'], [3, null, 'http://x']]);
+    assert.ok(p[1].regex.test('BAR'));
+  });
+
+  it('scans HEAD by default and the tracked files on disk with --worktree', async () => {
+    await put('.claude/kit/scrub-patterns', 'needle\n');
+    await put('a.txt', 'clean\n'); commit();
+    await put('a.txt', 'a needle appears\n');          // uncommitted edit
+    await put('untracked.txt', 'needle\n');             // never tracked
+    const head = await run([], io());
+    assert.equal(head.exit, 0);
+    assert.equal(head.mode, 'head');
+    const wt = await run(['--worktree'], io());
+    assert.equal(wt.exit, 2);
+    assert.deepEqual(wt.hits.map(h => h.file), ['a.txt']);
+    assert.equal(wt.mode, 'worktree');
+  });
+
+  it('--worktree: a tracked file that is missing on disk makes the scan incomplete (exit 2)', async () => {
+    await put('.claude/kit/scrub-patterns', 'needle\n');
+    await put('a.txt', 'clean\n'); await put('b.txt', 'clean\n'); commit();
+    await fs.rm(path.join(dir, 'b.txt'));
+    const r = await run(['--worktree'], io());
+    assert.equal(r.exit, 2);
+    assert.equal(r.complete, false);
+    assert.deepEqual(r.not_scanned, [{ file: 'b.txt', reason: 'tracked but missing on disk' }]);
+    assert.match(r.reason, /not scanned/);
+  });
+
+  it('a file over the size cap is listed as not scanned and the scan is not complete', async () => {
+    await put('.claude/kit/scrub-patterns', 'needle\n');
+    await put('big.txt', 'x'.repeat(5000)); await put('small.txt', 'needle\n'); commit();
+    for (const flags of [[], ['--worktree']]) {
+      const r = await run([...flags, '--max-file-bytes', '1000'], io());
+      assert.equal(r.exit, 2);
+      assert.equal(r.complete, false);
+      assert.deepEqual(r.not_scanned.map(n => n.file), ['big.txt']);
+      assert.deepEqual(r.hits.map(h => h.file), ['small.txt']);
+    }
+  });
+
+  it('odd file names: spaces, quotes, non-ASCII, leading dash, newline', async () => {
+    await put('.claude/kit/scrub-patterns', 'needle\n');
+    const names = ['sp ace.txt', 'q"uote\'s.txt', 'ünï-中文.txt', '-dash.txt', 'new\nline.txt'];
+    for (const n of names) await put(n, 'a needle\n');
+    commit();
+    for (const flags of [[], ['--worktree']]) {
+      const r = await run([...flags, '--json'], io());
+      assert.equal(r.exit, 2);
+      assert.deepEqual(r.hits.map(h => h.file).sort(), [...names].sort());
+    }
+  });
+
+  it('a submodule entry is listed, not scanned, and does not fail the scan', async () => {
+    await put('.claude/kit/scrub-patterns', 'needle\n');
+    await put('a.txt', 'clean\n'); commit();
+    const sha = sh(dir, 'rev-parse', 'HEAD').trim();
+    sh(dir, 'update-index', '--add', '--cacheinfo', `160000,${sha},vendor/lib`);
+    sh(dir, 'commit', '-q', '-m', 'gitlink');
+    const r = await run([], io());
+    assert.equal(r.exit, 0);
+    assert.deepEqual(r.submodules, ['vendor/lib']);
+  });
+
+  it('a repository whose own config names a filter does not run it', async () => {
+    await put('.claude/kit/scrub-patterns', 'needle\n');
+    await put('.gitattributes', '* filter=evil\n');
+    await put('a.txt', 'clean\n'); commit();
+    const marker = path.join(dir, 'ran-marker');
+    sh(dir, 'config', 'filter.evil.smudge', `touch ${marker}`);
+    sh(dir, 'config', 'filter.evil.clean', `touch ${marker}`);
+    await run(['--worktree'], io());
+    await run([], io());
+    await assert.rejects(fs.access(marker));
+  });
+
+  it('git failing is exit 1, never a pass (no commits, HEAD tree cannot be listed)', async () => {
+    await put('.claude/kit/scrub-patterns', 'needle\n');
+    await assert.rejects(run([], io()), e => e instanceof KitExit && e.code === 1 && /ls-tree failed/.test(e.message));
+  });
+
+  it('refuses unknown flags and bad values, and --help prints usage', async () => {
+    await assert.rejects(run(['--wat'], io()), e => e.code === 1 && /--help/.test(e.message));
+    await assert.rejects(run(['stray'], io()), e => e.code === 1);
+    await assert.rejects(run(['--max-file-bytes', '0'], io()), e => e.code === 1);
+    await assert.rejects(run(['--dir'], io()), e => e.code === 1);
+    assert.match((await run(['--help'], io())).usage, /scrub/);
+  });
+
+  it('--dir points at another repository', async () => {
+    await put('.claude/kit/scrub-patterns', 'needle\n');
+    await put('a.txt', 'needle\n'); commit();
+    const r = await run(['--dir', dir], io({ cwd: os.tmpdir() }));
+    assert.equal(r.exit, 2);
+  });
+
+  it('more tracked files than the walk cap is a refusal, not a pass', async () => {
+    await put('.claude/kit/scrub-patterns', 'needle\n');
+    await put('a.txt', 'x\n'); await put('b.txt', 'x\n'); commit();
+    await assert.rejects(scrubIfConfigured(dir, { limits: { ...LIMITS, files: 1 } }), e => e instanceof KitExit && e.code === 2);
+  });
+
+  it('the hit list is capped and says so', async () => {
+    await put('.claude/kit/scrub-patterns', 'needle\n');
+    await put('a.txt', 'needle\n'.repeat(10)); commit();
+    const r = await scrubIfConfigured(dir, { limits: { ...LIMITS, hits: 3 } });
+    assert.equal(r.hit_count, 3);
+    assert.equal(r.truncated, true);
+    assert.equal(r.exit, 2);
+  });
+
+  it('pure helpers: decodeText, scanBuffer, parseBatch', () => {
+    assert.equal(decodeText(utf16le('héllo')), 'héllo');
+    assert.equal(decodeText(utf16be('héllo')), 'héllo');
+    assert.equal(decodeText(Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('x')])), 'x');
+    const p = parsePatterns('b+\n', 'f').map(x => ({ ...x, kind: 'public' }));
+    assert.deepEqual(scanBuffer(Buffer.from('a\r\nabb\nccc\nb'), p).map(h => h.line), [2, 4]);
+    const sha = 'a'.repeat(40);
+    const buf = Buffer.concat([Buffer.from(`${sha} blob 3\n`), Buffer.from('abc\n')]);
+    assert.equal(parseBatch(buf, [{ sha, size: 3 }])[0].toString(), 'abc');
+    assert.throws(() => parseBatch(buf, [{ sha: 'b'.repeat(40), size: 3 }]), e => e.code === 1);
+    assert.throws(() => parseBatch(Buffer.from(`${sha} missing\n`), [{ sha, size: 3 }]), e => e.code === 1);
+    assert.throws(() => parseBatch(buf.subarray(0, 50 - 40), [{ sha, size: 3 }]), e => e.code === 1);
+  });
+
+  describe('push-gate check wiring', () => {
+    let store;
+    beforeEach(async () => { store = await fs.mkdtemp(path.join(os.tmpdir(), 'scrub-store-')); });
+    afterEach(async () => { await fs.rm(store, { recursive: true, force: true }); });
+    const gate = (args = ['check']) => pushGate(args, io({ env: { ...process.env, KIT_RECEIPTS_DIR: store } }));
+
+    it('without pattern files push-gate behaves as before', async () => {
+      await put('a.txt', 'needle\n'); commit();
+      const r = await gate();
+      assert.equal(r.decision, 'ask');
+      assert.equal(r.scrub, undefined);
+    });
+
+    it('a hit denies the push even when a passing receipt exists, without leaking the private pattern', async () => {
+      await put('a.txt', 'clean\n'); commit();
+      await gate(['receipt', '--verdict', 'pass']);
+      assert.equal((await gate()).decision, 'abstain');
+      await put('.claude/kit/scrub-patterns.local', 'zebra-secret\n');
+      await put('a.txt', 'zebra-secret\n'); commit();
+      await gate(['receipt', '--verdict', 'pass']);
+      const r = await gate();
+      assert.equal(r.decision, 'deny');
+      assert.equal(r.exit, 2);
+      assert.deepEqual(r.scrub.hits, [{ file: 'a.txt', line: 1, private: true, pattern: 'private pattern #1' }]);
+      assert.ok(!JSON.stringify(r).includes('zebra'));
+    });
+
+    it('a configured scrub that cannot run is a deny (fail closed)', async () => {
+      await put('a.txt', 'clean\n');
+      await put('.claude/kit/scrub-patterns.local', 'bad-[unclosed\n'); commit();
+      const r = await gate();
+      assert.equal(r.decision, 'deny');
+      assert.equal(r.exit, 2);
+      assert.match(r.reason, /could not run/);
+      assert.match(r.reason, /scrub-patterns\.local line 1/);
+    });
+
+    it('a clean configured scrub leaves the receipt decision alone', async () => {
+      await put('.claude/kit/scrub-patterns', 'needle\n'); await put('a.txt', 'clean\n'); commit();
+      await gate(['receipt', '--verdict', 'pass']);
+      assert.equal((await gate()).decision, 'abstain');
+    });
+  });
+});

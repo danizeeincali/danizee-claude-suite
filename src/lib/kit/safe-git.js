@@ -261,10 +261,10 @@ function gitCommandName(args) {
  * Default runner: `git(args, { cwd, env, input, timeout })` → { code, stdout, stderr }. stdin is closed without input.
  * git is spawned by its absolute path (resolveGit), never by bare name.
  */
-export function defaultGitRunner(args, { cwd, env, input, timeout } = {}) {
+export function defaultGitRunner(args, { cwd, env, input, timeout, encoding = 'utf-8' } = {}) {
   const hasInput = input !== undefined && input !== null;
   const r = spawnSync(resolveGit(env || process.env), args, {
-    cwd, env, maxBuffer: 256 * 1024 * 1024, timeout, encoding: 'utf-8',
+    cwd, env, maxBuffer: 256 * 1024 * 1024, timeout, encoding, // 'latin1' keeps every byte (a caller that reads blobs)
     input: hasInput ? input : undefined,
     stdio: [hasInput ? 'pipe' : 'ignore', 'pipe', 'pipe']
   });
