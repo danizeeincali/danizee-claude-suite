@@ -22,7 +22,7 @@
       "name": "pt",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "review round 2 running; then fix round or gate",
+      "next": "fix round 2 (5 findings) running; then a checking review",
       "tasks": [],
       "isolation": "../danizee-claude-suite-pt",
       "phase": "review",
