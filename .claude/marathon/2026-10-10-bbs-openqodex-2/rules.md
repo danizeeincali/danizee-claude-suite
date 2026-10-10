@@ -68,3 +68,6 @@ Add a rule the second time something goes wrong.
 
 ## Owner decision (2026-10-10): no parser dependency
 Dani chose "No dependency" for the symbol-graph streams (fact-cached-graph-build-with-budget, change-blast-radius-walk, caller-floor-disclosure). Build a small JS/TS-only fact extractor inside the kit; any file it cannot parse (other languages, unparseable syntax) is reported as not read, and results are labelled partial. Build fact-cached-graph-build-with-budget before the two streams that use its graph.
+
+## Lesson (hardened-git, rounds 1-2): allow-list, don't deny-list, untrusted config
+Four high findings in two rounds were the same class: the untrusted repo's own config named a command that a read ran (filters, textconv, signing program, submodule filters, transport). Patching keys one by one kept losing. When code must not trust a repo's config, give git a config we write from an allow-list of keys; keep key overrides only as defence in depth.
