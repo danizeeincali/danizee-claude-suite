@@ -57,17 +57,56 @@ export function parseEntry(entry) {
   return { module: module && posix(path.normalize(module)), symbol, stem };
 }
 
-/** Does `text` (a surface file) use the entry: import its module, and name its symbol outside the import lines? */
+/** Source text with comments blanked (strings are kept: import paths and route literals live in them). */
+export function stripComments(text) {
+  let out = '';
+  const src = String(text);
+  let i = 0;
+  let quote = null;
+  while (i < src.length) {
+    const c = src[i];
+    const n = src[i + 1];
+    if (quote) {
+      out += c;
+      if (c === '\\') { out += n ?? ''; i += 2; continue; }
+      if (c === quote) quote = null;
+      i++;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { quote = c; out += c; i++; continue; }
+    if (c === '/' && n === '/') { while (i < src.length && src[i] !== '\n') i++; continue; }
+    if (c === '/' && n === '*') { const e = src.indexOf('*/', i + 2); const end = e < 0 ? src.length : e + 2; out += src.slice(i, end).replace(/[^\n]/g, ' '); i = end; continue; }
+    if (c === '#' && (i === 0 || src[i - 1] === '\n' || /\s/.test(src[i - 1])) && !/^#!/.test(src.slice(i, i + 2))) {
+      // a Python or shell comment; JS private fields (#x) follow a dot or an identifier, never whitespace
+      if (/^#\s/.test(src.slice(i, i + 2)) || src[i + 1] === undefined) { while (i < src.length && src[i] !== '\n') i++; continue; }
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+const IMPORT_STATEMENT = /\bimport\s+(?:type\s+)?(?:[\w$*{}\s,]+?\s+from\s+)?['"][^'"]+['"]\s*;?|\bimport\(\s*['"][^'"]+['"]\s*\)|\b(?:const|let|var)\s+[\w${}\s,:]+=\s*require\(\s*['"][^'"]+['"]\s*\)\s*;?|\brequire\(\s*['"][^'"]+['"]\s*\)|^[ \t]*from[ \t]+[\w.]+[ \t]+import[ \t]+(?:\([^)]*\)|[^\n]+)|^[ \t]*import[ \t]+[\w., \t]+$/gm;
+
+/**
+ * Does `text` (a surface file) use the entry: import its module, and call or render its symbol outside the imports?
+ * Comments never count; a multi-line import is one statement; a bare mention is not a use.
+ */
 export function usesEntry(text, entry) {
   const { stem, symbol } = typeof entry === 'string' ? parseEntry(entry) : entry;
-  const lines = String(text).split('\n');
-  const importRe = stem ? new RegExp(`(?:\\bimport\\b|\\bfrom\\b|\\brequire\\s*\\(|\\bimport\\s*\\()[^\\n]*['"](?:[^'"]*/)?${esc(stem)}(?:\\.[\\w]+)?['"]`) : null;
-  const pyImport = stem ? new RegExp(`^\\s*(?:from\\s+[\\w.]*\\b${esc(stem)}\\b\\s+import|import\\s+[\\w.]*\\b${esc(stem)}\\b)`) : null;
-  const isImport = (l) => (importRe && importRe.test(l)) || (pyImport && pyImport.test(l)) || /^\s*(?:import|from)\b/.test(l);
-  if (stem && !lines.some(l => importRe.test(l) || pyImport.test(l))) return { ok: false, why: `never imports ${stem}` };
+  const code = stripComments(text);
+  const imports = code.match(IMPORT_STATEMENT) || [];
+  if (stem) {
+    const from = new RegExp(`['"](?:[^'"]*/)?${esc(stem)}(?:\\.[\\w]+)?['"]`);
+    const py = new RegExp(`(?:^|\\s)(?:from\\s+[\\w.]*\\b${esc(stem)}\\b\\s+import|import\\s+[\\w.]*\\b${esc(stem)}\\b)`);
+    if (!imports.some(st => from.test(st) || py.test(st))) return { ok: false, why: `never imports ${stem}` };
+  }
   if (!symbol) return { ok: true };
-  const sym = new RegExp(`(?<![\\w$])${esc(symbol)}(?![\\w$])`);
-  return lines.some(l => sym.test(l) && !isImport(l)) ? { ok: true } : { ok: false, why: `never calls ${symbol}` };
+  const body = code.replace(IMPORT_STATEMENT, (m) => m.replace(/[^\n]/g, ' '));
+  const s = esc(symbol);
+  // a call, a JSX element, a member of it, a tagged template, or passed on as a handler (`onClick={symbol}`, `use(symbol)`)
+  const use = new RegExp(`(?<![\\w$])${s}\\s*(?:\\(|\\.|\`)|<${s}[\\s/>]|[({,=:]\\s*\\{?\\s*${s}\\s*[)},]`);
+  return use.test(body) ? { ok: true } : { ok: false, why: `never calls ${symbol}` };
 }
 
 /** The lines of `text` under the heading whose normalized text equals `step`, up to the next heading of its level or higher. */
@@ -88,6 +127,12 @@ export function stepSection(text, step) {
   return start >= 0 ? lines.slice(start).join('\n') : null;
 }
 
+/** Does the command run this test file: does one of its words name the file's path (as given, or from ./)? */
+export function runsTest(command, test) {
+  const words = String(command).split(/\s+/).map(w => w.replace(/^['"]|['"]$/g, '').replace(/^\.\//, ''));
+  return words.includes(test) || words.some(w => w.endsWith(`=${test}`));
+}
+
 /** Run a reach test command once per call; exit 0 within the timeout is a pass. */
 function runReach(projectDir, command, cache, timeoutMs) {
   if (cache.has(command)) return cache.get(command);
@@ -103,14 +148,21 @@ function runReach(projectDir, command, cache, timeoutMs) {
   return res;
 }
 
-/** Does a reach test go in through the surface: name its anchor, or import the surface file? */
+/**
+ * Does a reach test go in through the surface: import the surface file, or name its anchor as a whole string literal
+ * (a route, an endpoint, a command, a flag) in code, not in a comment? An anchor shorter than 4 characters (`/`, `x`)
+ * names nothing on its own: the test must import the surface file.
+ */
 export function entersThrough(testText, target) {
-  if (target.at && String(testText).includes(target.at)) return true;
+  const code = stripComments(testText);
   const stem = path.posix.basename(target.file).replace(/\.[^.]+$/, '');
   const dir = path.posix.basename(path.posix.dirname(target.file));
   // file-system routers name every page "page"/"route": the import must carry the folder too
-  const needle = /^(page|route|index|\+page|\+server)$/.test(stem) ? `${dir}/${stem}` : stem;
-  return new RegExp(`['"](?:[^'"]*/)?${esc(needle)}(?:\\.[\\w]+)?['"]`).test(testText);
+  const needle = /^(page|route|index|layout|\+page|\+server)$/.test(stem) ? `${dir}/${stem}` : stem;
+  if (new RegExp(`['"](?:[^'"]*/)?${esc(needle)}(?:\\.[\\w]+)?['"]`).test(code)) return true;
+  const at = target.at;
+  if (!at || at.length < 4) return false;
+  return new RegExp(`['"\`](?:[A-Z]+\\s+)?(?:https?://[^'"\`/]+)?${esc(at)}(?:[?#][^'"\`]*)?['"\`]`).test(code);
 }
 
 /**
@@ -152,6 +204,7 @@ export async function wiredTargets(projectDir, { verb, entry, reach, targets, ru
       let tt;
       try { tt = await fs.readFile(path.join(projectDir, r.test), 'utf-8'); } catch { whys.push(`reach test ${r.test} is missing`); continue; }
       if (!entersThrough(tt, row)) { whys.push(`reach test ${r.test} never goes through ${row.file}${row.at ? ` or "${row.at}"` : ''}`); continue; }
+      if (!runsTest(r.command, r.test)) { whys.push(`reach command never runs ${r.test}: ${r.command}`); continue; }
       if (!run) { whys.push(`reach test ${r.test} was not run`); continue; }
       const res = runReach(projectDir, r.command, cache, timeoutMs);
       if (!res.ok) { whys.push(res.why); continue; }
@@ -191,15 +244,28 @@ export async function recordIntegration(projectDir, { run, power, verb, entry, r
   if (verb !== undefined) verbCall(verb);
   if (entry !== undefined) parseEntry(entry);
   const targets = await approvedTargets(projectDir, { run, power, cfg });
+  if (entry !== undefined) await checkEntryExists(projectDir, power, entry);
+  const code = targets.filter(t => !isWorkflow(t));
   const rows = [];
   for (const spec of reach) {
-    const m = /^([a-z]+:[^@=]+?)(?:@([^=]+))?=([^=:]+)::(.+)$/.exec(String(spec));
-    if (!m) throw new Error(`--reach needs <surface id>[@<at>]=<test file>::<command>, got "${spec}"`);
-    const [surface, at, test, command] = m.slice(1).map(x => x?.trim());
-    if (!targets.some(t => t.surface === surface && !isWorkflow(t))) throw new Error(`${power} has no approved target on ${surface} (its targets: ${targets.map(t => t.surface ?? t.workflow).join(', ') || 'none'})`);
+    // <surface id>[@<at>]=<test file>::<command>: the id is matched against the approved targets, so a path may hold an @
+    const raw = String(spec);
+    const sep = raw.indexOf('::');
+    const eq = sep < 0 ? -1 : raw.lastIndexOf('=', sep);
+    if (sep < 0 || eq <= 0) throw new Error(`--reach needs <surface id>[@<at>]=<test file>::<command>, got "${spec}"`);
+    const left = raw.slice(0, eq).trim();
+    const test = raw.slice(eq + 1, sep).trim();
+    const command = raw.slice(sep + 2).trim();
+    if (!test || !command) throw new Error(`--reach needs <surface id>[@<at>]=<test file>::<command>, got "${spec}"`);
+    const hit = code.map(t => t.surface).sort((x, y) => y.length - x.length).find(id => left === id || left.startsWith(`${id}@`));
+    if (!hit) throw new Error(`${power} has no approved target on ${left} (its targets: ${targets.map(t => t.surface ?? t.workflow).join(', ') || 'none'})`);
+    const surface = hit;
+    const at = left === hit ? null : left.slice(hit.length + 1).trim();
+
     const testPath = posix(path.normalize(test));
     if (testPath.startsWith('../') || path.isAbsolute(testPath)) throw new Error(`reach test "${test}" is outside the project`);
     try { await fs.stat(path.join(projectDir, testPath)); } catch { throw new Error(`reach test "${testPath}" does not exist`); }
+    if (!runsTest(command, testPath)) throw new Error(`reach command must run the reach test ${testPath}, got "${command}"`);
     rows.push({ surface, at: at || null, test: testPath, command });
   }
   const doc = await readIntegration(projectDir, { run, cfg }).catch(err => { if (force) return { run, powers: {} }; throw err; });
@@ -211,6 +277,15 @@ export async function recordIntegration(projectDir, { run, power, verb, entry, r
   };
   await writeJson(path.join(dir, 'integration.json'), { run, ts: now().toISOString(), powers: { ...(doc.powers || {}), [power]: merged } });
   return { run, power, ...merged, targets: targets.length };
+}
+
+/** The entry must be something the build made: its module is a file in the project that names its symbol. */
+async function checkEntryExists(projectDir, power, entry) {
+  const e = parseEntry(entry);
+  if (!e.module) return;
+  let text;
+  try { text = await fs.readFile(path.join(projectDir, e.module), 'utf-8'); } catch { throw new Error(`${power}: entry module ${e.module} is not a file in the project`); }
+  if (e.symbol && !new RegExp(`(?<![\\w$])${esc(e.symbol)}(?![\\w$])`).test(stripComments(text))) throw new Error(`${power}: ${e.module} never defines ${e.symbol}`);
 }
 
 /** One power's wiring now, from integration.json; `verbs` overrides its verb. */

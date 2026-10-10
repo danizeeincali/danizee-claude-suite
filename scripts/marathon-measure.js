@@ -32,8 +32,12 @@ function args(argv) {
     if (k === 'dry' || k === 'wired' || k === 'delivered') { out[k] = true; continue; }
     const v = argv[++i];
     if (v === undefined || v.startsWith('--')) throw new Error(`--${k} needs a value`);
-    if (k === 'verb' && out.delivered) out.verbs.push(v);
+    if (k === 'verb') out.verbs.push(v); // its meaning depends on the mode, known only once every flag is read
     else out[k] = v;
+  }
+  if (!out.delivered) {
+    if (out.verbs.length > 1) throw new Error('--verb is given more than once');
+    if (out.verbs.length) out.verb = out.verbs[0];
   }
   const need = out.wired ? ['bbs-run', 'power', 'verb'] : out.delivered ? ['bbs-run'] : ['stream', 'verb', 'module', 'test'];
   for (const k of need) if (!out[k]) throw new Error(`--${k} is required`);

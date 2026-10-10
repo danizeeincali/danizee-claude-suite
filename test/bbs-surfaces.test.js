@@ -476,3 +476,54 @@ describe('surfaces — an owner surface through a symlink out of the project', (
     } finally { await fs.rm(outside, { recursive: true, force: true }); await fs.rm(proj, { recursive: true, force: true }); }
   });
 });
+
+describe('surfaces — integration-gate review r1 regressions', () => {
+  it('routers under any name, Go and gin handlers are api endpoints', () => {
+    assert.deepEqual(only('server/users.js', "userRouter.get('/users', h); adminApp.post('/admin', h)").map(s => s.anchors), [['/users', '/admin']]);
+    assert.deepEqual(only('main.go', 'http.HandleFunc("/health", h)\nr.GET("/items", h)\nmux.Handle("/static", fs)').map(s => s.anchors), [['/health', '/items', '/static']]);
+  });
+
+  it('a NestJS controller joins its base path with each method route', () => {
+    const text = "@Controller('scan')\nexport class ScanController {\n  @Get()\n  list() {}\n  @Post('run')\n  run() {}\n}\n";
+    assert.deepEqual(only('src/scan.controller.ts', text), [{ kind: 'api', anchors: ['/scan', '/scan/run'], evidence: 'HTTP router' }]);
+  });
+
+  it('Rails config/routes.rb verbs and resources are api endpoints', () => {
+    const text = "Rails.application.routes.draw do\n  get '/health', to: 'h#show'\n  post 'scan', to: 's#run'\n  resources :tickets\nend\n";
+    assert.deepEqual(only('config/routes.rb', text).map(s => s.anchors), [['/health', '/scan', '/tickets']]);
+  });
+
+  it('a route folder named build or test is a page; a test file never is', () => {
+    assert.deepEqual(only('app/build/page.js', 'x'), [{ kind: 'ui', anchors: ['/build'], evidence: 'file-system page' }]);
+    assert.deepEqual(only('app/test/page.js', 'x'), [{ kind: 'ui', anchors: ['/test'], evidence: 'file-system page' }]);
+    assert.deepEqual(only('app/settings/page.test.js', 'x'), []);
+    assert.deepEqual(only('test/app/settings/page.js', 'x'), [], 'a page under a test folder is a fixture');
+  });
+
+  it('build output is skipped at the root and at a package root, not inside a route', async () => {
+    const d = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-surf-build-'));
+    try {
+      for (const f of ['build/app/x/page.js', 'packages/web/dist/app/y/page.js', 'app/build/page.js']) {
+        await fs.mkdir(path.dirname(path.join(d, f)), { recursive: true });
+        await fs.writeFile(path.join(d, f), 'export default 1;\n');
+      }
+      const scan = await scanSurfaces(d, { now });
+      assert.deepEqual(scan.surfaces.map(s => s.id), ['ui:app/build/page.js']);
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+
+  it('activity counts commits when the project is a folder inside a repository', async () => {
+    const repo = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-surf-sub-'));
+    try {
+      const sub = path.join(repo, 'web');
+      await fs.mkdir(path.join(sub, 'app', 'home'), { recursive: true });
+      await fs.writeFile(path.join(sub, 'app', 'home', 'page.js'), 'export default 1;\n');
+      const git = (...a) => spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { cwd: repo });
+      git('init', '-q', '.');
+      git('add', '-A');
+      git('commit', '-q', '-m', 'x');
+      const scan = await scanSurfaces(sub, { now: () => new Date() });
+      assert.deepEqual(scan.surfaces.map(s => [s.id, s.activity]), [['ui:app/home/page.js', 1]]);
+    } finally { await fs.rm(repo, { recursive: true, force: true }); }
+  });
+});

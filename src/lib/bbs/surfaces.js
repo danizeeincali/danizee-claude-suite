@@ -31,9 +31,19 @@ export const MAX_FILE_BYTES = 512 * 1024;
 export const MAX_ANCHORS = 40;
 export const ACTIVITY_DAYS = 90;
 
-const SKIP_DIR = /(^|\/)(node_modules|\.git|dist|build|out|coverage|vendor|\.next|\.nuxt|\.svelte-kit|\.venv|venv|__pycache__|\.turbo|\.cache|target|fetched)(\/|$)/;
+// Tool folders are skipped at any depth; build output only where a build writes it: the project root or a package root
+// (packages/<name>/, apps/<name>/), so a route folder named build or out (app/build/page.js) is still a page.
+const SKIP_DIR = /(^|\/)(node_modules|\.git|coverage|vendor|\.next|\.nuxt|\.svelte-kit|\.venv|venv|__pycache__|\.turbo|\.cache|fetched)(\/|$)|^(?:(?:packages|apps|services|libs)\/[^/]+\/)?(?:dist|build|out|target)\//;
 const SKIP_RUN_DIRS = /^\.claude\/(bbs|marathon)\//;
-const TEST_FILE = /(^|\/)(tests?|__tests__|spec|e2e|fixtures?)\/|\.(test|spec)\.[cm]?[jt]sx?$|(^|\/)test_[^/]*\.py$|_test\.py$/;
+const TEST_DIR = /(^|\/)(tests?|__tests__|spec|e2e|fixtures?)\//;
+const TEST_NAME = /\.(test|spec)\.[cm]?[jt]sx?$|(^|\/)test_[^/]*\.py$|_test\.(py|go)$/;
+/** A test file is never a surface. A folder inside a file-system router (app/test/page.js) is a route, not a test folder. */
+const isTestFile = (file) => TEST_NAME.test(file) || (TEST_DIR.test(file) && !routerRelative(file).ok) || TEST_DIR.test(routerRelative(file).before);
+/** Split a path at its file-system router folder: { ok, before } (before = the part ahead of app/, pages/ or src/routes/). */
+function routerRelative(file) {
+  const m = /^(.*?)(?:^|\/)(?:app|pages|src\/routes)\//.exec(file);
+  return m ? { ok: true, before: m[1] ? m[1] + '/' : '' } : { ok: false, before: '' };
+}
 const CODE = /\.(m?[jt]sx?|cjs|cts|mts|py|rb|go|vue|svelte)$/;
 
 const posix = (p) => p.split(path.sep).join('/');
@@ -57,7 +67,7 @@ export function fileRoute(file) {
 export function detect(file, text) {
   const out = [];
   const add = (kind, anchors, evidence) => out.push({ kind, anchors: uniq(anchors).slice(0, MAX_ANCHORS), evidence });
-  if (TEST_FILE.test(file)) return out;
+  if (isTestFile(file)) return out;
   const route = fileRoute(file);
   if (route !== null) {
     const api = /(?:^|\/)app\/.*\/?route\.[cm]?[jt]s$|(?:^|\/)pages\/api\/|\+server\.[jt]s$/.test(file);
@@ -68,8 +78,20 @@ export function detect(file, text) {
   if (CODE.test(file)) {
     const routes = all(/<Route\b[^>]*\bpath=\{?["'`]([^"'`]+)/g, text).concat(all(/\bpath:\s*["'`](\/[^"'`]*)["'`]/g, text).filter(() => /createBrowserRouter|createRouter|routes\s*[:=]/.test(text)));
     if (routes.length) add('ui', routes, 'client router');
-    const http = all(/\b(?:app|router|server|api|fastify|r)\.(?:get|post|put|patch|delete|all|route)\(\s*["'`](\/[^"'`]*)["'`]/g, text)
-      .concat(all(/@(?:app|router|bp|blueprint|api)\.(?:get|post|put|patch|delete|route|api_route)\(\s*["'](\/[^"']*)["']/g, text));
+    // express/koa/fastify/hono routers under any name (app, router, userRouter, api, server, r, e, g, mux), Go net/http,
+    // gin and echo, FastAPI/Flask decorators, NestJS controllers, Rails routes
+    const http = all(/\b(?:\w*[Rr]outer|\w*[Aa]pp|server|api|fastify|hono|r|e|g|mux|http)\.(?:get|post|put|patch|delete|all|route|GET|POST|PUT|PATCH|DELETE|Any|Handle|HandleFunc)\(\s*["'`](\/[^"'`]*)["'`]/g, text)
+      .concat(all(/@(?:\w*app|\w*router|bp|blueprint|api)\.(?:get|post|put|patch|delete|route|api_route)\(\s*["'](\/[^"']*)["']/g, text));
+    const nest = /@Controller\(\s*["'`]?([^"'`)]*)["'`]?\s*\)/.exec(text);
+    if (nest) {
+      const base = '/' + nest[1].replace(/^\/+|\/+$/g, '');
+      const subs = [...text.matchAll(/@(?:Get|Post|Put|Patch|Delete|All)\(\s*(?:["'`]([^"'`]*)["'`])?\s*\)/g)].map(m => m[1] ?? '');
+      for (const sub of subs.length ? subs : ['']) http.push((base + (sub ? '/' + sub.replace(/^\/+/, '') : '')).replace(/\/+$/, '') || '/');
+    }
+    if (/(^|\/)config\/routes\.rb$/.test(file)) {
+      http.push(...all(/^\s*(?:get|post|put|patch|delete|match)\s+["'](\/?[^"']+)["']/gm, text).map(p => p.startsWith('/') ? p : '/' + p));
+      http.push(...all(/^\s*resources?\s+:(\w+)/gm, text).map(r => '/' + r));
+    }
     if (http.length) add('api', http, 'HTTP router');
     if (/(^|\/)urls\.py$/.test(file)) { const p = all(/\b(?:re_)?path\(\s*r?["']([^"']*)["']/g, text); if (p.length) add('api', p.map(x => '/' + x.replace(/^\^?\/?/, '')), 'Django urls'); }
     const jobs = all(/\bcron\.schedule\(\s*["'`]([^"'`]+)/g, text).concat(all(/\bnew\s+Worker\(\s*["'`]([^"'`]+)/g, text), all(/@(?:shared_task|celery\.task|app\.task)\b[^\n]*\n\s*(?:async\s+)?def\s+(\w+)/g, text), all(/\.process\(\s*["'`]([^"'`]+)/g, text));
@@ -130,7 +152,8 @@ async function listFiles(projectDir) {
 /** Commits per file in the window (counts only), from one git log call; empty when git is unavailable. */
 async function activity(projectDir, days, now) {
   const since = new Date(now().getTime() - days * 86400000).toISOString();
-  const outText = await run('git', ['log', `--since=${since}`, '--name-only', '--format=', '--no-renames'], projectDir);
+  // --relative: paths relative to the project, like git ls-files, also when the project is a folder inside a repository
+  const outText = await run('git', ['log', `--since=${since}`, '--name-only', '--format=', '--no-renames', '--relative'], projectDir);
   const counts = new Map();
   for (const f of (outText || '').split('\n')) if (f) counts.set(f, (counts.get(f) || 0) + 1);
   return counts;

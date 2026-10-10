@@ -520,7 +520,7 @@ async function codeProject(prefix) {
   await put(dir, 'reach/other.test.js', "await post('/api/health');\nimport { maskSecrets } from '../src/mask.js';\n");
   return dir;
 }
-const reachRow = (o = {}) => ({ surface: 'api:server/routes.js', at: '/api/upload', test: 'reach/ok.test.js', command: 'true', ...o });
+const reachRow = (o = {}) => ({ surface: 'api:server/routes.js', at: '/api/upload', test: 'reach/ok.test.js', command: 'true reach/ok.test.js', ...o });
 
 describe('wiredTargets — a code target', () => {
   let dir;
@@ -560,11 +560,11 @@ describe('wiredTargets — a code target', () => {
   });
 
   it('is not wired when the reach command fails, and the why carries the exit code and the command', async () => {
-    const [r] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ command: 'exit 3' })], targets: [API_T] });
+    const [r] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ command: 'test -f reach/ok.test.js && exit 3' })], targets: [API_T] });
     assert.equal(r.wired, false);
-    assert.equal(r.why, 'reach test failed (exit 3): exit 3');
-    const [t] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ command: 'echo "not ok 1 - upload is masked"; exit 1' })], targets: [API_T] });
-    assert.equal(t.why, 'reach test failed (exit 1): echo "not ok 1 - upload is masked"; exit 1 — not ok 1 - upload is masked');
+    assert.equal(r.why, 'reach test failed (exit 3): test -f reach/ok.test.js && exit 3');
+    const [t] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ command: 'test -f reach/ok.test.js && echo "not ok 1 - upload is masked"; exit 1' })], targets: [API_T] });
+    assert.equal(t.why, 'reach test failed (exit 1): test -f reach/ok.test.js && echo "not ok 1 - upload is masked"; exit 1 — not ok 1 - upload is masked');
   });
 
   it('is wired, with the test that proved it, when the surface uses the entry and a reach test passes', async () => {
@@ -578,7 +578,7 @@ describe('wiredTargets — a code target', () => {
   });
 
   it('the first reach test that passes proves it; a failing one before it is skipped', async () => {
-    const [r] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ command: 'exit 2' }), reachRow({ test: 'reach/ok.test.js', command: 'true' })], targets: [API_T] });
+    const [r] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ command: 'test -f reach/ok.test.js && exit 2' }), reachRow({ test: 'reach/ok.test.js', command: 'true reach/ok.test.js' })], targets: [API_T] });
     assert.equal(r.wired, true);
     assert.equal(r.test, 'reach/ok.test.js');
   });
@@ -632,12 +632,12 @@ describe('recordIntegration', () => {
   });
 
   it('refuses a reach test on a surface the power has no approved target on, naming its targets', async () => {
-    await assert.rejects(rec({ reach: ['api:server/other.js=reach/ok.test.js::true'] }), /redact has no approved target on api:server\/other\.js \(its targets: api:server\/routes\.js\)/);
+    await assert.rejects(rec({ reach: ['api:server/other.js=reach/ok.test.js::true reach/ok.test.js'] }), /redact has no approved target on api:server\/other\.js \(its targets: api:server\/routes\.js\)/);
   });
 
   it('refuses a reach test file that does not exist or is outside the project', async () => {
-    await assert.rejects(rec({ reach: ['api:server/routes.js=reach/none.test.js::true'] }), /reach test "reach\/none\.test\.js" does not exist/);
-    await assert.rejects(rec({ reach: ['api:server/routes.js=../x.test.js::true'] }), /reach test "\.\.\/x\.test\.js" is outside the project/);
+    await assert.rejects(rec({ reach: ['api:server/routes.js=reach/none.test.js::true reach/none.test.js'] }), /reach test "reach\/none\.test\.js" does not exist/);
+    await assert.rejects(rec({ reach: ['api:server/routes.js=../x.test.js::true ../x.test.js'] }), /reach test "\.\.\/x\.test\.js" is outside the project/);
     assert.equal(await readJsonOrNull(path.join(rd, 'integration.json')), null, 'nothing is written by a refused call');
   });
 
@@ -651,12 +651,12 @@ describe('recordIntegration', () => {
   });
 
   it('merges: a later call keeps what it does not name and replaces a reach row for the same surface and anchor', async () => {
-    const r = await rec({ reach: ['api:server/routes.js@/api/upload=reach/other.test.js::true', 'api:server/routes.js=reach/ok.test.js::true'] });
+    const r = await rec({ reach: ['api:server/routes.js@/api/upload=reach/other.test.js::true reach/other.test.js', 'api:server/routes.js=reach/ok.test.js::true reach/ok.test.js'] });
     assert.equal(r.verb, 'redact');
     assert.equal(r.entry, ENTRY);
     assert.deepEqual(r.reach.map(x => [x.test, x.at]), [['reach/other.test.js', '/api/upload'], ['reach/ok.test.js', null]]);
-    const again = await rec({ entry: 'src/mask.js#other' });
-    assert.equal(again.entry, 'src/mask.js#other');
+    const again = await rec({ entry: 'src/mask.js' });
+    assert.equal(again.entry, 'src/mask.js');
     assert.equal(again.verb, 'redact');
     assert.equal(again.reach.length, 2);
   });
@@ -703,7 +703,7 @@ describe('measureWired and writeDelivered — code targets', () => {
   });
 
   it('once integration.json records the entry and a passing reach test, it is wired, proved by the test, with a use-in-code line', async () => {
-    await recordIntegration(dir, { run: 'cd', power: 'redact', entry: ENTRY, reach: ['api:server/routes.js@/api/upload=reach/ok.test.js::true'] });
+    await recordIntegration(dir, { run: 'cd', power: 'redact', entry: ENTRY, reach: ['api:server/routes.js@/api/upload=reach/ok.test.js::true reach/ok.test.js'] });
     const m = await measureWired(dir, { run: 'cd', power: 'redact' });
     assert.equal(m.value, 1);
     assert.equal(m.of, 1);
@@ -759,9 +759,9 @@ describe('cli — integrate, wired, delivered', () => {
     const bad = cli(['integrate', '--power', 'redact', '--run', 'c1', '--reach', 'nonsense']);
     assert.equal(bad.code, 1);
     assert.match(bad.err, /--reach needs <surface id>\[@<at>\]=<test file>::<command>, got "nonsense"/);
-    const ok = cli(['integrate', '--power', 'redact', '--run', 'c1', '--entry', ENTRY, '--reach', 'api:server/routes.js@/api/upload=reach/ok.test.js::true']);
+    const ok = cli(['integrate', '--power', 'redact', '--run', 'c1', '--entry', ENTRY, '--reach', 'api:server/routes.js@/api/upload=reach/ok.test.js::true reach/ok.test.js']);
     assert.equal(ok.code, 0, ok.err);
-    assert.deepEqual(ok.json, { run: 'c1', power: 'redact', verb: null, entry: ENTRY, reach: [{ surface: 'api:server/routes.js', at: '/api/upload', test: 'reach/ok.test.js', command: 'true' }], targets: 1 });
+    assert.deepEqual(ok.json, { run: 'c1', power: 'redact', verb: null, entry: ENTRY, reach: [{ surface: 'api:server/routes.js', at: '/api/upload', test: 'reach/ok.test.js', command: 'true reach/ok.test.js' }], targets: 1 });
   });
 
   it('wired prints each target with its test; --record without a marathon run fails with the message', () => {
@@ -794,5 +794,82 @@ describe('cli — integrate, wired, delivered', () => {
     const rec = cli(['wired', '--power', 'redact', '--run', 'c2', '--record']);
     assert.equal(rec.code, 1);
     assert.match(rec.err, /--record needs the marathon helpers at \.claude\/helpers\/marathon\/cli\.js/);
+  });
+});
+
+describe('integration-gate review r1 regressions', () => {
+  let dir, rd;
+  const rec = (o) => recordIntegration(dir, { run: 'r1', power: 'redact', now: () => new Date('2026-10-10T12:00:00Z'), ...o });
+  before(async () => { dir = await codeProject('bbs-r1-'); rd = await codeRun(dir, 'r1'); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('a reach command that never names its test file is refused, and never counts as wired', async () => {
+    await assert.rejects(rec({ entry: ENTRY, reach: ['api:server/routes.js@/api/upload=reach/ok.test.js::true'] }), /reach command must run the reach test reach\/ok\.test\.js, got "true"/);
+    await assert.rejects(rec({ entry: ENTRY, reach: ['api:server/routes.js@/api/upload=reach/ok.test.js::node --test reach/other.test.js'] }), /must run the reach test reach\/ok\.test\.js/);
+    assert.equal(await readJsonOrNull(path.join(rd, 'integration.json')), null);
+    const [r] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ command: 'true' })], targets: [API_T] });
+    assert.equal(r.wired, false);
+    assert.equal(r.why, 'reach command never runs reach/ok.test.js: true');
+    const [ok] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ command: 'true ./reach/ok.test.js' })], targets: [API_T] });
+    assert.equal(ok.wired, true, 'a ./ prefix still names the file');
+  });
+
+  it('an entry whose module is missing, or never defines the symbol, is refused', async () => {
+    await assert.rejects(rec({ entry: 'src/gone.js#maskSecrets' }), /redact: entry module src\/gone\.js is not a file in the project/);
+    await assert.rejects(rec({ entry: 'src/mask.js#unmask' }), /redact: src\/mask\.js never defines unmask/);
+    await put(dir, 'src/commented.js', '// export function hidden() {}\n');
+    await assert.rejects(rec({ entry: 'src/commented.js#hidden' }), /never defines hidden/, 'a comment is not a definition');
+  });
+
+  it('a surface path holding an @ (a parallel route) parses against the approved targets', async () => {
+    const d = await codeProject('bbs-r1-at-');
+    try {
+      await put(d, 'app/@modal/scan/page.js', "import { maskSecrets } from '../../../src/mask.js';\nexport default () => maskSecrets('x');\n");
+      await put(d, 'reach/modal.test.js', "import Page from '../app/@modal/scan/page.js';\nPage();\n");
+      const od = await codeRun(d, 'at');
+      const UI = { kind: 'ui', surface: 'ui:app/@modal/scan/page.js', file: 'app/@modal/scan/page.js', at: '/scan', reach: 'open /scan', mode: 'advisory', by: 'proposed', how: 'h' };
+      await writeJson(path.join(od, 'targets.json'), { run: 'at', targets: { redact: [UI] } });
+      const r = await recordIntegration(d, { run: 'at', power: 'redact', entry: ENTRY, reach: ['ui:app/@modal/scan/page.js@/scan=reach/modal.test.js::true reach/modal.test.js', 'ui:app/@modal/scan/page.js=reach/modal.test.js::true reach/modal.test.js'] });
+      assert.deepEqual(r.reach.map(x => [x.surface, x.at]), [['ui:app/@modal/scan/page.js', '/scan'], ['ui:app/@modal/scan/page.js', null]]);
+      const [w] = await wiredTargets(d, { entry: ENTRY, reach: r.reach, targets: [UI] });
+      assert.equal(w.wired, true);
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+
+  it('entersThrough: a short anchor names nothing, a comment never counts, a quoted URL with a host, method or query does', () => {
+    const root = { file: 'server/routes.js', at: '/' };
+    assert.equal(entersThrough("await get('/');", root), false, '"/" alone names every route');
+    assert.equal(entersThrough("import { router } from '../server/routes.js';\nawait get('/');", root), true);
+    const api = { file: 'server/routes.js', at: '/api/upload' };
+    assert.equal(entersThrough("// await post('/api/upload')\nawait post('/api/health');", api), false, 'a commented-out call is not a call');
+    assert.equal(entersThrough("/* '/api/upload' */ x()", api), false);
+    assert.equal(entersThrough("await post('/api/upload/extra');", api), false, 'a longer route is another route');
+    assert.equal(entersThrough("await fetch('http://localhost:3000/api/upload?dry=1');", api), true);
+    assert.equal(entersThrough('await request(`POST /api/upload`);', api), true);
+    assert.equal(entersThrough("// import { router } from '../server/routes.js'", { ...api, at: null }), false);
+  });
+
+  it('usesEntry: a multi-line import with no call, or a call only in a comment, is not a use', () => {
+    assert.equal(usesEntry("import {\n  maskSecrets,\n  other\n} from '../src/mask.js';\nexport const x = other();\n", ENTRY).ok, false);
+    assert.equal(usesEntry("import {\n  maskSecrets\n} from '../src/mask.js';\nexport const x = maskSecrets(y);\n", ENTRY).ok, true);
+    assert.equal(usesEntry("import { maskSecrets } from '../src/mask.js';\n// maskSecrets(body)\n", ENTRY).why, 'never calls maskSecrets');
+    assert.equal(usesEntry("// import { maskSecrets } from '../src/mask.js';\nmaskSecrets(x);\n", ENTRY).why, 'never imports mask');
+    assert.equal(usesEntry("const m = await import('../src/mask.js');\nm.maskSecrets(x);\n", ENTRY).ok, true);
+    assert.equal(usesEntry("import { maskSecrets } from '../src/mask.js';\napp.use(maskSecrets);\n", ENTRY).ok, true, 'passed on as a handler');
+  });
+});
+
+describe('marathon-measure — --verb before or after the mode', () => {
+  const SCRIPT = path.join(ROOT, 'scripts', 'marathon-measure.js');
+  it('--verb p=v ahead of --delivered is read as a delivered pair, not a wired verb', () => {
+    const r = spawnSync(process.execPath, [SCRIPT, '--verb', 'p=v', '--verb', 'q=w', '--delivered', '--bbs-run', 'no-such-run-xyz', '--dry'], { cwd: ROOT, encoding: 'utf-8' });
+    assert.equal(r.status, 1);
+    assert.doesNotMatch(r.stderr, /--verb is given more than once|--delivered needs at least one --verb/);
+    assert.match(r.stderr, /no-such-run-xyz/);
+  });
+  it('outside --delivered, a second --verb is refused', () => {
+    const r = spawnSync(process.execPath, [SCRIPT, '--verb', 'a', '--wired', '--verb', 'b', '--bbs-run', 'r', '--power', 'p'], { cwd: ROOT, encoding: 'utf-8' });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /--verb is given more than once/);
   });
 });
