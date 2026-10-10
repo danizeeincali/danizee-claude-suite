@@ -1,11 +1,11 @@
 # Marathon 2026-10-10-kit-wiring
 
 - State: RUNNING
-- Budget: 4,105,440 / 10,000,000 tokens
+- Budget: 4,167,440 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "bbs" (next: 4.5 round 3 opus review) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
+- Next for you: Continue stream "bbs" (next: 4.7 fix round 3 (3 medium, 3 low), then unit run, round 4) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
 - Last handoff: 2026-10-10T21:03:09.812Z (auto) on claude/project-thread-vootem@41dd24c, 0 uncommitted, tasks: none
 
 ## Streams
@@ -16,7 +16,7 @@
 | pt | ../danizee-claude-suite-pt | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | /w-plan-tdd-swarm · review | done; compounded via /bc |  | 0 |
 | bc | ../danizee-claude-suite-bc | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | /w-plan-tdd-swarm · review | done; compounded via /bc |  | 0 |
 | marathon | ../danizee-claude-suite-marathon | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | /w-plan-tdd-swarm · review | done; compounded via /bc |  | 0 |
-| bbs | ../danizee-claude-suite-bbs | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | clean 0/2 | /w-plan-tdd-swarm · review | 4.5 round 3 opus review |  | 0 |
+| bbs | ../danizee-claude-suite-bbs | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | clean 0/2 | /w-plan-tdd-swarm · fix | 4.7 fix round 3 (3 medium, 3 low), then unit run, round 4 |  | 0 |
 | sweep-commits |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire the eight commit-and-push workflows |  | 0 |
 | sweep-foreign-and-logs |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire the six foreign-repo and log workflows |  | 0 |
 

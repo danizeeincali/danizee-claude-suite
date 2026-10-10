@@ -30,3 +30,4 @@
 {"stream":"marathon","counts":{"high":0,"medium":0,"low":1},"angle":"facts and content","tokens":30000,"pass":true,"round":6,"commit":"c8ddc24","id":"f1013d46-50fa-4702-9f94-dc80f7c2552e","ts":"2026-10-10T21:02:52.110Z"}
 {"stream":"bbs","counts":{"high":0,"medium":2,"low":4},"angle":"one input method at a time","tokens":60000,"pass":true,"round":1,"commit":"3d46f4a","id":"805b4bb4-a961-4bf1-8c69-c27b729ebca6","ts":"2026-10-10T21:12:36.183Z"}
 {"stream":"bbs","counts":{"high":0,"medium":3,"low":2},"angle":"failure conditions and error paths","tokens":60000,"pass":false,"round":2,"commit":"dc86fa4","id":"b8e3ddfc-3530-457e-8e7c-358ac9dfddc9","ts":"2026-10-10T21:25:37.625Z"}
+{"stream":"bbs","counts":{"high":0,"medium":3,"low":3},"angle":"older environments and degraded networks","tokens":62000,"pass":false,"round":3,"commit":"8fe75a6","id":"9f154d4d-2f86-4710-a9f4-a116dc939dd3","ts":"2026-10-10T21:38:50.699Z"}
