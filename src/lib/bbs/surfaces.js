@@ -153,7 +153,7 @@ async function listFiles(projectDir) {
 async function activity(projectDir, days, now) {
   const since = new Date(now().getTime() - days * 86400000).toISOString();
   // --relative: paths relative to the project, like git ls-files, also when the project is a folder inside a repository
-  const outText = await run('git', ['log', `--since=${since}`, '--name-only', '--format=', '--no-renames', '--relative'], projectDir);
+  const outText = await run('git', ['-c', 'core.quotePath=false', 'log', `--since=${since}`, '--name-only', '--format=', '--no-renames', '--relative'], projectDir);
   const counts = new Map();
   for (const f of (outText || '').split('\n')) if (f) counts.set(f, (counts.get(f) || 0) + 1);
   return counts;

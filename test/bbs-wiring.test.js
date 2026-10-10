@@ -186,7 +186,7 @@ describe('approvedTargets', () => {
 
   it('refuses a run decided before the targets step', async () => {
     await writeJson(path.join(dir, '.claude', 'bbs', 'runs', 'old', 'usage.json'), { evidence: 'none', workflows: [] });
-    await assert.rejects(() => approvedTargets(dir, { run: 'old', power: 'p' }), /run old has no targets\.json/);
+    await assert.rejects(() => approvedTargets(dir, { run: 'old', power: 'p' }), /run old has no targets\.json — it was decided before the targets step; record where each power lands: cli\.js usage --run old --force, cli\.js surfaces --run old, then cli\.js targets --run old --set <power>@<where> --force/);
   });
 });
 

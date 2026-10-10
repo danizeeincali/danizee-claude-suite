@@ -980,3 +980,17 @@ describe('handoff — review r5 regressions', () => {
     for (const l of lines) assert.ok(kickoff.includes(`\n  - ${l.id} — ${l.label.replace(/^drift-monitor: /, '')}\n`), kickoff);
   });
 });
+
+describe('handoff — integration-gate review r3 regressions', () => {
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-ho-r3-')); await makeHarness(dir); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('a run with an approved build and no targets.json is refused, naming how to record where each power lands', async () => {
+    const r = await decided(dir, 'nt', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
+    const runDir = path.join(dir, '.claude', 'bbs', 'runs', r.runId);
+    await fs.rm(path.join(runDir, 'targets.json'));
+    await assert.rejects(() => buildHandoff(dir, { run: r.runId, now }), new RegExp(`run ${r.runId} has no targets\\.json .* cli\\.js usage --run ${r.runId} --force, cli\\.js surfaces --run ${r.runId}, cli\\.js targets --run ${r.runId} --set <power>@<where> --force`));
+    await assert.rejects(fs.stat(path.join(runDir, 'handoff.json')), { code: 'ENOENT' }, 'nothing is written');
+  });
+});

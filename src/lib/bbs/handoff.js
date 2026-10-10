@@ -342,7 +342,7 @@ export function renderIntegration(run, outputPowers) {
   const kinds = new Set();
   for (const p of outputPowers) {
     const ts = Array.isArray(p.targets) ? p.targets : [];
-    if (!ts.length) md.push(`- ${p.name}: (no targets recorded — pick them with the owner before wiring)`);
+    if (!ts.length) md.push(`- ${p.name}: (no targets recorded — ask the owner where it lands, then cli.js targets --set ${p.name}@<where> --force)`);
     for (const t of ts) { md.push(`- ${p.name} → ${landingLine(t)}`); kinds.add(isWorkflow(t) ? 'workflow' : t.kind); }
   }
   md.push('', '## How', '1. Wire each row where it says, the way that surface works:');
@@ -516,6 +516,12 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
   const targetsDoc = await readJson(path.join(runDir, 'targets.json'));
   const usageDoc = await readJson(path.join(runDir, 'usage.json'));
   const landsOf = (name) => (targetsDoc ? standingTargets(targetsDoc.targets?.[name], usageDoc) : null);
+
+  // a power approved to be built must have somewhere to land, or its wired_<slug> line can never be met
+  const rid = path.basename(runDir);
+  if (!targetsDoc && allPowers.some(p => ['rebuild', 'use'].includes(verdicts.rows[p.name].decision))) {
+    throw new Error(`run ${rid} has no targets.json — it was decided before the targets step, so no power has a place to land. Record where each lands, then hand off: cli.js usage --run ${rid} --force, cli.js surfaces --run ${rid}, cli.js targets --run ${rid} --set <power>@<where> --force`);
+  }
 
   // Separate powers by decision
   const approved = []; // rebuild and use go into the finish line

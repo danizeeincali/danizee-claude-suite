@@ -154,7 +154,10 @@ function runReach(projectDir, command, cache, timeoutMs) {
   void NODE_TEST_CONTEXT;
   const res = new Promise((resolve) => {
     // its own process group, so a timeout stops the runner and every process it started, not only the shell
-    const child = spawn('sh', ['-c', command], { cwd: projectDir, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const win = process.platform === 'win32';
+    // POSIX: sh in its own process group; Windows: the platform shell (cmd.exe), its tree stopped with taskkill
+    const child = win ? spawn(command, { cwd: projectDir, env, shell: true, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      : spawn('sh', ['-c', command], { cwd: projectDir, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let text = '';
     const keep = (d) => { if (text.length < 16 * 1024 * 1024) text += d; };
     child.stdout.on('data', keep);
@@ -162,7 +165,10 @@ function runReach(projectDir, command, cache, timeoutMs) {
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ }
+      try {
+        if (win) spawn('taskkill', ['/T', '/F', '/PID', String(child.pid)], { windowsHide: true, stdio: 'ignore' });
+        else process.kill(-child.pid, 'SIGKILL');
+      } catch { /* already gone */ }
     }, timeoutMs);
     child.on('error', (err) => { clearTimeout(timer); resolve({ ok: false, why: `reach test could not start (${err.code || err.message}): ${command}` }); });
     child.on('close', (status, signal) => {
@@ -251,7 +257,7 @@ export async function approvedTargets(projectDir, { run, power, cfg = DEFAULT_CO
   const dir = runDirOf(projectDir, run, cfg);
   const targets = await readJson(path.join(dir, 'targets.json'));
   const usage = await readJson(path.join(dir, 'usage.json'));
-  if (!targets) throw new Error(`run ${run} has no targets.json — it was decided before the targets step`);
+  if (!targets) throw new Error(`run ${run} has no targets.json — it was decided before the targets step; record where each power lands: cli.js usage --run ${run} --force, cli.js surfaces --run ${run}, then cli.js targets --run ${run} --set <power>@<where> --force`);
   return standingTargets(targets.targets?.[power], usage);
 }
 

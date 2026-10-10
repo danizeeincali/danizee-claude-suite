@@ -527,3 +527,19 @@ describe('surfaces — integration-gate review r1 regressions', () => {
     } finally { await fs.rm(repo, { recursive: true, force: true }); }
   });
 });
+
+describe('surfaces — integration-gate review r3 regressions', () => {
+  it('activity counts a file whose path is not ASCII (git log must not quote it)', async () => {
+    const repo = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-surf-utf-'));
+    try {
+      await fs.mkdir(path.join(repo, 'app', 'caf\u00e9'), { recursive: true });
+      await fs.writeFile(path.join(repo, 'app', 'caf\u00e9', 'page.js'), 'export default 1;\n');
+      const git = (...a) => spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { cwd: repo });
+      git('init', '-q', '.');
+      git('add', '-A');
+      git('commit', '-q', '-m', 'x');
+      const scan = await scanSurfaces(repo, { now: () => new Date() });
+      assert.deepEqual(scan.surfaces.map(s => [s.id, s.activity]), [['ui:app/caf\u00e9/page.js', 1]]);
+    } finally { await fs.rm(repo, { recursive: true, force: true }); }
+  });
+});
