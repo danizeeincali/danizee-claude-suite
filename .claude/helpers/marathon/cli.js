@@ -682,6 +682,36 @@ function reviewBase(reviews, stream, streamRow, flagBase, needed) {
   return { base: null, why: null };
 }
 
+/**
+ * Scrub the project's known secrets (.claude/kit/secrets) from text that is about to go to a model.
+ * The kit is optional: its redact module is imported dynamically, so marathon works without it when there is
+ * no secrets file. Once a secrets file is present (in any form, even a dangling symlink) redaction fails CLOSED:
+ * an unreachable or malformed file, or a missing kit, stops the command naming what is missing (never a value).
+ * Returns { text, count, active }: active is false only when there is no secrets file.
+ */
+async function redactForModel(projectDir, text) {
+  const rel = path.join('.claude', 'kit', 'secrets');
+  const secretsFile = path.join(projectDir, rel);
+  try { await fs.lstat(secretsFile); } catch (e) {
+    if (e?.code === 'ENOENT') return { text, count: 0, active: false };
+    fail(`review-brief: ${rel} cannot be checked (${e?.code || 'stat failed'}) — refusing to emit an unredacted diff`);
+  }
+  let mod;
+  try { mod = await import('../kit/redact.js'); } catch (e) {
+    fail(`review-brief: ${rel} exists but the kit redact module (.claude/helpers/kit/redact.js) cannot be loaded (${e?.code || 'import failed'}) — install the kit plugin or remove the secrets file; refusing to emit an unredacted diff`);
+  }
+  let content;
+  try { content = await fs.readFile(secretsFile, 'utf-8'); } catch (e) {
+    fail(`review-brief: cannot read ${rel} (${e?.code || 'read failed'}) — refusing to emit an unredacted diff`);
+  }
+  let secrets;
+  try { secrets = mod.parseSecretsFile(content); } catch (e) {
+    fail(`review-brief: ${rel} is malformed (${e?.message || 'parse failed'})`);
+  }
+  const r = mod.redactSecrets(text, secrets, { keepLines: true });
+  return { text: r.text, count: r.replaced, active: true };
+}
+
 async function verbReviewBrief(projectDir, flags) {
   const stream = str(flags.stream);
   if (!stream) fail('usage: cli.js review-brief --stream <name> [--base <commit>] [--cwd <worktree>]');
@@ -700,6 +730,9 @@ async function verbReviewBrief(projectDir, flags) {
   const head = gitStrict(['rev-parse', 'HEAD'], cwd).trim();
   const range = `${base}..HEAD`;
   let diff = gitStrict(['diff', '--end-of-options', range, '--', ...DIFF_EXCLUDES], cwd);
+  // Redact the whole diff before it is truncated, so a cut can never leave half a secret behind.
+  const first = await redactForModel(projectDir, diff);
+  diff = first.text;
   const stat = gitStrict(['diff', '--stat', '--end-of-options', range], cwd);
   // Excluded files are never inlined, but the reviewer must know they changed (a dependency swap
   // or a weakened snapshot hides there).
@@ -714,12 +747,18 @@ async function verbReviewBrief(projectDir, flags) {
   if (excludedStat) {
     diff += `\n\n## Changed but excluded from the inline diff (lock files, snapshots, generated assets) — inspect directly\n\n${excludedStat}`;
   }
+  // Second pass over the assembled text (file names in the stat lists can carry a value too).
+  const second = await redactForModel(projectDir, diff);
+  diff = second.text;
+  const redacted = first.count + second.count;
+  const redactNote = (first.active ? `Redacted ${redacted} secret value${redacted === 1 ? '' : 's'} from the diff (.claude/kit/secrets).` : null);
   const brief = renderBrief({
     stream, round, angle, severityMd, diff,
     tolerance: g.finishLine.tolerance || {}, categories: g.config.review.categories
   });
   const scope = `Scope: diff since ${why} (${range}, HEAD = ${head}) in ${path.relative(projectDir, cwd) || '.'}. Lock files and generated assets are excluded from the inline diff and listed separately. Record the review with commit=${head.slice(0, 7)}.\n` +
-    (anglesMd ? `\nFull angle list: ${path.relative(projectDir, path.join(kit, 'angles.md'))}\n` : '');
+    (anglesMd ? `\nFull angle list: ${path.relative(projectDir, path.join(kit, 'angles.md'))}\n` : '') +
+    (redactNote ? `\n${redactNote}\n` : '');
   out(`${brief}\n\n${scope}`);
 }
 

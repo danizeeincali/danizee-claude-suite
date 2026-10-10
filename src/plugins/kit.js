@@ -10,6 +10,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const GITIGNORE_RULES = ['.claude/kit/secrets'];
 const LIB_DIR = path.join(__dirname, '..', 'lib', 'kit');
 
 export function getNamespace() {
@@ -40,6 +41,18 @@ export async function install(claudeDir, options = {}) {
     if (dry) continue;
     await fs.mkdir(path.dirname(dest), { recursive: true });
     await fs.copyFile(path.join(LIB_DIR, rel), dest);
+  }
+  // The redact verb reads .claude/kit/secrets: real secret values, never committed.
+  if (!dry && options.targetDir) {
+    const gi = path.join(options.targetDir, '.gitignore');
+    const current = (await exists(gi)) ? await fs.readFile(gi, 'utf-8') : '';
+    const have = new Set(current.split('\n').map(l => l.trim()));
+    const missing = GITIGNORE_RULES.filter(r => !have.has(r));
+    if (missing.length) {
+      const sep = current.length && !current.endsWith('\n') ? '\n' : '';
+      await fs.writeFile(gi, `${current}${sep}\n# Kit: the redact verb's list of secret values is machine-local and never committed\n${missing.join('\n')}\n`, 'utf-8');
+      files.push(`.gitignore (+ ${missing.length} kit rule)`);
+    }
   }
   return { plugin: 'kit', namespace: getNamespace(), files };
 }

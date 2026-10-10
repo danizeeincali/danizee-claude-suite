@@ -22,6 +22,7 @@ import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { KitExit } from './kit-exit.js';
+import { gitPaths } from './git-paths.js';
 
 export const verb = 'push-gate';
 export const usage = 'cli.js push-gate receipt --verdict pass|fail [--high H --medium M --low L] [--threshold none|high|medium|low] [--incomplete] [--base <ref>] | cli.js push-gate check [--threshold ...] [--base <ref>]';
@@ -37,7 +38,7 @@ export function defaultGit(cwd, { runner, spawn = spawnSync, env = process.env }
   for (const [k, v] of Object.entries(env)) if (!k.startsWith('GIT_')) clean[k] = v;
   clean.GIT_TERMINAL_PROMPT = '0';
   clean.GIT_OPTIONAL_LOCKS = '0';
-  return async (args, { input, env: extra } = {}) => {
+  const git = async (args, { input, env: extra } = {}) => {
     const full = ['-c', 'core.hooksPath=/dev/null', ...args];
     const e = extra ? { ...clean, ...extra } : clean;
     if (runner) return runner(full, { cwd, env: e, input });
@@ -45,6 +46,8 @@ export function defaultGit(cwd, { runner, spawn = spawnSync, env = process.env }
     if (r.error) throw new KitExit(`cannot run git: ${r.error.message}`, 1);
     return { code: r.status ?? 1, stdout: r.stdout || '', stderr: r.stderr || '' };
   };
+  git.cwd = cwd; // rev-parse prints relative paths against this (see git-paths.js)
+  return git;
 }
 
 async function must(git, args, what) {
@@ -54,10 +57,10 @@ async function must(git, args, what) {
 }
 
 /** The tree of HEAD plus uncommitted tracked changes, via a temporary copy of the index. */
-async function workingTree(git, headTree) {
+async function workingTree(git, headTree, cwd) {
   const status = await must(git, ['status', '--porcelain', '--untracked-files=no'], 'cannot read status');
   if (!status) return headTree;
-  const real = await must(git, ['rev-parse', '--path-format=absolute', '--git-path', 'index'], 'cannot find the index');
+  const [real] = await gitPaths(git, cwd, [{ gitPath: 'index' }], 'cannot find the index');
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pg-index-'));
   const tmp = path.join(dir, 'index');
   try {
@@ -77,7 +80,7 @@ async function workingTree(git, headTree) {
  * The change id, plus what went into it. `working: true` (receipt) hashes the reviewed working state;
  * the default (check) hashes HEAD's tree, which is what a push sends.
  */
-export async function changeId(git, { base, working = false } = {}) {
+export async function changeId(git, { base, working = false, cwd = git.cwd || process.cwd() } = {}) {
   const inside = await git(['rev-parse', '--is-inside-work-tree']);
   if (inside.code !== 0) throw new KitExit('not inside a git repository', 1);
   const headTree = await must(git, ['rev-parse', 'HEAD^{tree}'], 'cannot read HEAD (no commits yet?)');
@@ -91,7 +94,7 @@ export async function changeId(git, { base, working = false } = {}) {
       if (mb.code === 0) baseSha = mb.stdout.trim();
     }
   }
-  const tree = working ? await workingTree(git, headTree) : headTree;
+  const tree = working ? await workingTree(git, headTree, cwd) : headTree;
   const id = sha(`${baseSha || 'root'}\0${tree}`);
   return { id, base: baseSha, tree, dirty: tree !== headTree };
 }
@@ -155,8 +158,8 @@ const thresholdOf = v => {
   return v;
 };
 
-async function storeFile(git, env) {
-  const common = await must(git, ['rev-parse', '--path-format=absolute', '--git-common-dir'], 'cannot find the git dir');
+async function storeFile(git, env, cwd) {
+  const [common] = await gitPaths(git, cwd, ['commonDir'], 'cannot find the git dir');
   const real = await fs.realpath(common);
   const dir = env.KIT_RECEIPTS_DIR || path.join(env.HOME || os.homedir(), '.claude', 'kit', 'receipts');
   return { dir, file: path.join(dir, `${sha(real)}.json`), repo: real };
@@ -210,8 +213,8 @@ export async function run(args, io) {
   if (cmd === 'receipt' && !['pass', 'fail'].includes(flags.verdict)) throw new KitExit('--verdict must be pass or fail', 1);
   const counts = cmd === 'receipt' ? { high: count(flags.high, 'high'), medium: count(flags.medium, 'medium'), low: count(flags.low, 'low') } : null;
 
-  const change = await changeId(git, { base: flags.base, working: cmd === 'receipt' });
-  const { dir, file, repo } = await storeFile(git, env);
+  const change = await changeId(git, { base: flags.base, working: cmd === 'receipt', cwd: git.cwd || io.cwd });
+  const { dir, file, repo } = await storeFile(git, env, git.cwd || io.cwd);
 
   if (cmd === 'check') {
     const state = await readState(file);

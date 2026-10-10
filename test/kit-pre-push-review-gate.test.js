@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import { spawnSync } from 'child_process';
 import { verb, usage, run, decide, defaultGit, changeId, writeAtomic } from '../src/lib/kit/push-gate.js';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
+import { oldGitSpawn } from './helpers/old-git.js';
 
 const sh = (cwd, ...a) => spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { cwd, encoding: 'utf-8' });
 let root, repo, store;
@@ -262,6 +263,25 @@ describe('push-gate — review r2 fixes', () => {
     assert.doesNotMatch(r.reason || '', /no review recorded/);
     assert.equal(r.change_id, (await run(['check'], io())).change_id);
     await run(receiptArgs(), io({ cwd: path.join(repo, 'sub') }));
+  });
+  it('git < 2.31 (echoes unknown flags on stdout, exits 0) finds the same index and store from a subdirectory (review r3)', async () => {
+    const old = await oldGitSpawn(root);
+    const sub = path.join(repo, 'sub');
+    await fs.mkdir(sub, { recursive: true });
+    await fs.writeFile(path.join(repo, 'a.txt'), 'one\nold-git edit\n');
+    try {
+      const viaOld = await run(receiptArgs(), io({ cwd: sub, git: defaultGit(sub, { spawn: old }) }));
+      const viaNew = await run(receiptArgs(), io({ cwd: sub }));
+      assert.equal(viaOld.dirty, true);
+      assert.equal(viaOld.change_id, viaNew.change_id);
+      const files = await fs.readdir(store);
+      assert.ok(!files.some(f => f.includes('path-format')), files.join(','));
+      assert.ok(files.includes(`${crypto.createHash('sha256').update(await fs.realpath(path.join(repo, '.git'))).digest('hex')}.json`), files.join(','));
+      const r = await run(['check'], io({ cwd: sub, git: defaultGit(sub, { spawn: old }) }));
+      assert.doesNotMatch(r.reason || '', /no review recorded/);
+    } finally {
+      await fs.writeFile(path.join(repo, 'a.txt'), 'one\n');
+    }
   });
   it('an unspawnable git is reported as that, not as "not a repository"', async () => {
     const spawn = () => ({ error: new Error('spawn git ENOENT'), status: null, stdout: null, stderr: null });
