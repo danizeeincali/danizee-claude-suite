@@ -342,3 +342,192 @@ describe('safe-git — caller: bbs fetch rev-parse of the fetched clone', () => 
     assert.deepEqual(calls[1], ['rev-parse', 'HEAD']);
   });
 });
+
+describe('safe-git — review round 1 regressions (config.worktree, linked worktrees, abbreviated options)', () => {
+  let root;
+  before(async () => { root = await fs.mkdtemp(path.join(os.tmpdir(), 'safe-git-r1-')); });
+  after(async () => { await fs.rm(root, { recursive: true, force: true }); });
+
+  /** A plain committed repo plus a markers folder; nothing hostile yet. */
+  async function plainRepo(name) {
+    const dir = path.join(root, name);
+    const markers = path.join(root, `${name}-markers`);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.mkdir(markers, { recursive: true });
+    sh(dir, ['init', '-q', '.']);
+    await fs.writeFile(path.join(dir, 'f.txt'), 'one\n');
+    sh(dir, ['add', 'f.txt']);
+    sh(dir, ['commit', '-q', '-m', 'init']);
+    return { dir, markers, mk: (n) => path.join(markers, n), fired: async () => (await fs.readdir(markers)).sort() };
+  }
+
+  /** extensions.worktreeConfig + a clean filter and core.attributesFile (a file inside .git) set only in config.worktree. */
+  async function worktreeConfigRepo(name) {
+    const r = await plainRepo(name);
+    sh(r.dir, ['config', 'extensions.worktreeConfig', 'true']);
+    await fs.writeFile(path.join(r.dir, '.git', 'evilattrs'), '* filter=wtevil\n');
+    sh(r.dir, ['config', '--worktree', 'filter.wtevil.clean', `sh -c 'touch ${r.mk('clean')}; cat'`]);
+    sh(r.dir, ['config', '--worktree', 'core.attributesFile', '.git/evilattrs']);
+    assert.equal(sh(r.dir, ['config', '--local', '--get', 'filter.wtevil.clean']).status, 1, 'setup: the driver is NOT in .git/config');
+    await fs.writeFile(path.join(r.dir, 'f.txt'), 'two\n');
+    return r;
+  }
+
+  it('control: a clean filter set only in config.worktree DOES run under plain git diff', async () => {
+    const r = await worktreeConfigRepo('wtcfg-control');
+    sh(r.dir, ['diff']);
+    assert.ok((await r.fired()).includes('clean'), 'control: config.worktree clean filter fires under plain git');
+  });
+
+  it('a clean filter + core.attributesFile set only in config.worktree is neutralised: diff/status through safeGit run nothing', async () => {
+    clearSafeGitCache();
+    const r = await worktreeConfigRepo('wtcfg');
+    const args = await safeGitConfig(r.dir);
+    assert.ok(args.includes('filter.wtevil.clean='), 'driver from config.worktree is listed');
+    for (const c of [['diff'], ['status', '--porcelain'], ['diff-files'], ['log', '-p']]) {
+      const out = await safeGit(r.dir, c);
+      assert.equal(out.code, 0, `${c.join(' ')}: ${out.stderr}`);
+    }
+    assert.match((await safeGit(r.dir, ['diff'])).stdout, /\+two/);
+    assert.deepEqual(await r.fired(), [], 'no marker file was created');
+  });
+
+  it('a driver named only in core.attributesFile inside .git (set in config.worktree, no config key) is still switched off', async () => {
+    clearSafeGitCache();
+    const r = await plainRepo('attrfile-only');
+    sh(r.dir, ['config', 'extensions.worktreeConfig', 'true']);
+    await fs.writeFile(path.join(r.dir, '.git', 'evilattrs'), '* filter=onlyattr diff=onlydiff merge=onlymerge\n');
+    sh(r.dir, ['config', '--worktree', 'core.attributesFile', '.git/evilattrs']);
+    const args = await safeGitConfig(r.dir);
+    for (const n of ['onlyattr', 'onlydiff', 'onlymerge']) {
+      for (const k of ['filter.%.clean=', 'filter.%.smudge=', 'filter.%.process=', 'filter.%.required=false', 'diff.%.command=', 'diff.%.textconv=', 'merge.%.driver=']) {
+        assert.ok(args.includes(k.replace('%', n)), k.replace('%', n));
+      }
+    }
+  });
+
+  /** A main repo plus a linked worktree whose own config.worktree names a clean filter; returns the linked worktree. */
+  async function linkedWorktree(name) {
+    const main = await plainRepo(name);
+    const wt = path.join(root, `${name}-wt`);
+    const add = sh(main.dir, ['worktree', 'add', '-q', wt]);
+    assert.equal(add.status, 0, add.stderr);
+    sh(main.dir, ['config', 'extensions.worktreeConfig', 'true']);
+    sh(wt, ['config', '--worktree', 'filter.lwevil.clean', `sh -c 'touch ${main.mk('clean')}; cat'`]);
+    sh(wt, ['config', '--worktree', 'diff.lwdiff.textconv', `sh -c 'touch ${main.mk('textconv')}; cat' #`]);
+    // the attributes come from the COMMON dir's info/attributes, not .git/worktrees/<x>/info/attributes
+    await fs.mkdir(path.join(main.dir, '.git', 'info'), { recursive: true });
+    await fs.writeFile(path.join(main.dir, '.git', 'info', 'attributes'), '* filter=lwevil diff=lwdiff\n*.none filter=commonattr\n');
+    assert.equal(sh(main.dir, ['config', '--get', 'filter.lwevil.clean']).status, 1, 'setup: the main worktree does not see it');
+    await fs.writeFile(path.join(wt, 'f.txt'), 'two\n');
+    return { ...main, wt };
+  }
+
+  it('control: in a linked worktree the config.worktree clean filter (attributes from the common dir) DOES run under plain git', async () => {
+    const r = await linkedWorktree('linked-control');
+    sh(r.wt, ['diff']);
+    assert.ok((await r.fired()).includes('clean'), `clean filter fires under plain git: ${await r.fired()}`);
+  });
+
+  it('a linked worktree: drivers from its config.worktree and from the common dir info/attributes are switched off; nothing runs', async () => {
+    clearSafeGitCache();
+    const r = await linkedWorktree('linked');
+    const args = await safeGitConfig(r.wt);
+    for (const s of ['filter.lwevil.clean=', 'diff.lwdiff.textconv=', 'filter.commonattr.clean=', 'filter.commonattr.required=false']) {
+      assert.ok(args.includes(s), s);
+    }
+    for (const c of [['diff'], ['status', '--porcelain'], ['diff-files'], ['log', '-p'], ['show', 'HEAD']]) {
+      const out = await safeGit(r.wt, c);
+      assert.equal(out.code, 0, `${c.join(' ')}: ${out.stderr}`);
+    }
+    assert.match((await safeGit(r.wt, ['diff'])).stdout, /\+two/);
+    assert.deepEqual(await r.fired(), [], 'no marker file was created');
+  });
+
+  it('a config.worktree written after the first call invalidates the cache', async () => {
+    clearSafeGitCache();
+    const r = await plainRepo('wtcache');
+    sh(r.dir, ['config', 'extensions.worktreeConfig', 'true']);
+    await safeGitConfig(r.dir);
+    await new Promise(res => setTimeout(res, 20));
+    sh(r.dir, ['config', '--worktree', 'filter.later.clean', 'x']);
+    assert.ok((await safeGitConfig(r.dir)).includes('filter.later.clean='));
+  });
+
+  /** A repo whose committed .gitattributes sends f.txt through a textconv and a smudge filter that drop markers. */
+  async function textconvRepo(name) {
+    const r = await plainRepo(name);
+    await fs.writeFile(path.join(r.dir, '.gitattributes'), '* diff=tc filter=sm\n');
+    sh(r.dir, ['add', '.gitattributes']);
+    sh(r.dir, ['commit', '-q', '-m', 'attrs']);
+    sh(r.dir, ['config', 'diff.tc.textconv', `sh -c 'touch ${r.mk('textconv')}; cat' #`]);
+    sh(r.dir, ['config', 'filter.sm.smudge', `sh -c 'touch ${r.mk('smudge')}; cat'`]);
+    return r;
+  }
+
+  it('control: plain git cat-file with an ABBREVIATED --textc / --filt runs the repository textconv / smudge', async () => {
+    const r = await textconvRepo('abbrev-control');
+    const t = sh(r.dir, ['cat-file', '--textc', 'HEAD:f.txt']);
+    assert.equal(t.status, 0, t.stderr);
+    const f = sh(r.dir, ['cat-file', '--filt', 'HEAD:f.txt']);
+    assert.equal(f.status, 0, f.stderr);
+    assert.deepEqual(await r.fired(), ['smudge', 'textconv']);
+  });
+
+  it('refuses (exit 2) every abbreviation of a denied long option, with or without =value, and runs nothing', async () => {
+    clearSafeGitCache();
+    const r = await textconvRepo('abbrev');
+    const calls = [];
+    const git = (a, o) => { calls.push(a); return defaultGitRunner(a, o); };
+    const bad = [['cat-file', '--textc', 'HEAD:f.txt'], ['cat-file', '--textconv', 'HEAD:f.txt'], ['cat-file', '--tex', 'HEAD:f.txt'],
+      ['cat-file', '--filt', 'HEAD:f.txt'], ['cat-file', '--filters', 'HEAD:f.txt'], ['cat-file', '--batch', '--filt'],
+      ['cat-file', '--batch=%(objectname)', '--textc'], ['cat-file', '--batch-command', '--filters'],
+      ['diff', '--ext-d'], ['log', '--ext'], ['log', '--show-sig'], ['diff', '--outp=/tmp/x'], ['diff', '--out', '/tmp/x'],
+      ['diff', '--no-ind', 'a', 'b'], ['show', '--textc=yes'], ['log', '--='], ['diff', '--open-files']];
+    for (const a of bad) {
+      assert.throws(() => checkReadArgs(a), e => e instanceof KitExit && e.code === 2, a.join(' '));
+      await assert.rejects(() => safeGit(r.dir, a, { git }), e => e instanceof KitExit && e.code === 2, a.join(' '));
+    }
+    assert.ok(!calls.some(c => c.includes('cat-file') || c.includes('diff') || c.includes('log')), 'the refused command never ran');
+    assert.deepEqual(await r.fired(), []);
+  });
+
+  it('keeps ordinary long options working (no-textconv, name-only, output-indicator-new, batch-check, exit-code)', async () => {
+    clearSafeGitCache();
+    const r = await textconvRepo('abbrev-ok');
+    for (const a of [['diff', '--no-textconv', '--name-only'], ['diff', '--output-indicator-new=>'], ['diff', '--exit-code'], ['cat-file', '--batch-check'], ['log', '--format=%H']]) {
+      assert.doesNotThrow(() => checkReadArgs(a), a.join(' '));
+    }
+    assert.equal((await safeGit(r.dir, ['cat-file', '-p', 'HEAD:f.txt'])).stdout, 'one\n');
+    assert.deepEqual(await r.fired(), []);
+  });
+
+  it('defence in depth: the overrides alone empty every diff driver textconv — a raw cat-file --textconv with them runs nothing', async () => {
+    clearSafeGitCache();
+    const r = await textconvRepo('tcoverride');
+    const overrides = await safeGitConfig(r.dir);
+    assert.ok(overrides.includes('diff.tc.textconv='));
+    assert.ok(overrides.includes('diff.tc.command='));
+    sh(r.dir, [...overrides, 'cat-file', '--textconv', 'HEAD:f.txt'], safeGitEnv(CLEAN_ENV));
+    sh(r.dir, [...overrides, 'cat-file', '--filters', 'HEAD:f.txt'], safeGitEnv(CLEAN_ENV));
+    assert.deepEqual(await r.fired(), [], 'no textconv or smudge with the overrides');
+    sh(r.dir, ['cat-file', '--textconv', 'HEAD:f.txt']);
+    assert.ok((await r.fired()).includes('textconv'), 'control: textconv fires without the overrides');
+  });
+
+  it('parses diff=/merge= drivers from attributes and diff./merge. subsections from config', () => {
+    assert.deepEqual([...driversFromAttributes('* diff=a merge=b filter=c -diff !merge diff\n')].sort(), ['a', 'b', 'c']);
+    assert.deepEqual([...driversFromConfig('diff.x.y.textconv\nz\0merge.m.driver\nq\0diff.external\nw\0merge.renormalize\ntrue\0')].sort(), ['m', 'x.y']);
+  });
+
+  it('refuses (exit 2) a diff= or merge= driver name it cannot switch off safely', async () => {
+    clearSafeGitCache();
+    const r = await plainRepo('weirddiff');
+    await fs.writeFile(path.join(r.dir, '.gitattributes'), '* diff=a=b\n');
+    await assert.rejects(() => safeGitConfig(r.dir), e => e instanceof KitExit && e.code === 2 && /a=b/.test(e.message));
+    clearSafeGitCache();
+    const r2 = await plainRepo('weirdmerge');
+    sh(r2.dir, ['config', 'merge.has space.driver', 'x']);
+    await assert.rejects(() => safeGitConfig(r2.dir), e => e instanceof KitExit && e.code === 2 && /has space/.test(e.message));
+  });
+});

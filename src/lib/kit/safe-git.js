@@ -8,17 +8,21 @@
  *   - runs with every inherited GIT_* variable removed (an outer shell cannot aim git at another repository),
  *     no system or global config, no prompts, no lazy object fetches, no optional locks, no lfs smudge;
  *   - gets `-c` overrides (see `safeGitConfig`) that switch off hooks, fsmonitor, submodule recursion, every
- *     transport, the external diff, and every filter driver the folder's own config or any .gitattributes names;
+ *     transport, the external diff, and every driver the folder's config (every file git reads apart from system and
+ *     global: .git/config, config.worktree, includes) or any attributes file names — for each name found as
+ *     filter.<n>.*, diff.<n>.*, merge.<n>.* or filter=/diff=/merge=, all of filter.<n>.{clean,smudge,process},
+ *     diff.<n>.{command,textconv} and merge.<n>.driver are emptied;
  *   - has a closed stdin unless input is given;
  *   - for diff-producing subcommands gets `--no-ext-diff --no-textconv`.
- * A filter driver name that cannot be switched off safely makes the call refuse (KitExit 2); it is never skipped.
+ * A driver name that cannot be switched off safely makes the call refuse (KitExit 2); it is never skipped.
  *
  * READ-ONLY ALLOW-LIST (first argument must be exactly one of these; global options such as -c, -C, --git-dir,
  * --exec-path cannot be passed): rev-parse rev-list log show diff diff-tree diff-index diff-files ls-files ls-tree
  * cat-file status show-ref for-each-ref merge-base name-rev describe. Everything else (fetch, pull, push, clone,
  * submodule, checkout, config, blame, grep, archive, ...) is refused. Options that re-enable what the wrapper
- * switches off (--ext-diff, --textconv, --output, -O/--open-files-in-pager, --no-index, --show-signature, %G
- * placeholders) are refused too.
+ * switches off (--ext-diff, --textconv, --filters, --output, -O/--open-files-in-pager, --no-index, --show-signature,
+ * %G placeholders) are refused too — and so is ANY long option that is a prefix of one of them (git accepts
+ * unambiguous abbreviations such as `cat-file --textc`), with or without `=value`.
  *
  * Overrides are cached per real path of the folder, keyed by the stat of its config; a changed .gitattributes
  * needs `{ fresh: true }` (or clearSafeGitCache()) to be re-read.
@@ -87,26 +91,26 @@ export function defaultGitRunner(args, { cwd, env, input, timeout } = {}) {
 
 // ---------------------------------------------------------------- driver discovery
 
-/** Filter driver names from `git config -z --get-regexp` output ("key\nvalue\0"...). */
+/** Driver names (filter/diff/merge subsections) from `git config -z --get-regexp` output ("key\nvalue\0"...). */
 export function driversFromConfig(stdout) {
   const names = new Set();
   for (const rec of String(stdout || '').split('\0')) {
     if (!rec) continue;
     const key = rec.split('\n')[0];
-    const m = /^filter\.(.+)\.[^.]+$/i.exec(key);
+    const m = /^(?:filter|diff|merge)\.(.+)\.[^.]+$/i.exec(key);
     if (m) names.add(m[1]);
   }
   return names;
 }
 
-/** Filter driver names used by the text of one .gitattributes-style file. */
+/** Driver names used by filter=/diff=/merge= in the text of one .gitattributes-style file. */
 export function driversFromAttributes(text) {
   const names = new Set();
   for (const raw of String(text || '').split(/\r?\n/)) {
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
     for (const tok of line.split(/\s+/)) {
-      const m = /^filter=(.*)$/.exec(tok);
+      const m = /^(?:filter|diff|merge)=(.*)$/.exec(tok);
       if (m && m[1] !== '') names.add(m[1]);
     }
   }
@@ -121,8 +125,8 @@ async function readCapped(file) {
   return fs.readFile(file, 'utf-8');
 }
 
-async function attributeFiles(top, gitDir, extra) {
-  const files = [path.join(gitDir, 'info', 'attributes'), ...extra];
+async function attributeFiles(top, gitDirs, extra) {
+  const files = [...new Set(gitDirs.map(d => path.join(d, 'info', 'attributes'))), ...extra];
   if (!top) return files;
   const queue = [top];
   let seen = 0;
@@ -150,58 +154,79 @@ const STATIC_OVERRIDES = [
   'diff.external=', 'log.showSignature=false', 'credential.helper='
 ];
 
-async function fingerprint(gitDir) {
+async function fingerprint(gitDir, commonDir) {
   const parts = [];
-  for (const f of [path.join(gitDir, 'config'), path.join(gitDir, 'info', 'attributes')]) {
+  const files = [];
+  for (const d of [gitDir, commonDir]) for (const f of ['config', 'config.worktree', path.join('info', 'attributes')]) files.push(path.join(d, f));
+  for (const f of files) {
     try { const s = await fs.stat(f); parts.push(`${s.mtimeMs}:${s.size}`); } catch { parts.push('-'); }
   }
   return parts.join('|');
 }
 
 /**
- * The `-c` override argv for the folder: static switches plus every filter driver named in its local config
- * (including included files) or in any .gitattributes / info/attributes / core.attributesFile. Throws KitExit 2 for
- * a driver name outside [A-Za-z0-9._-], KitExit 1 when git cannot answer. `git` is the injectable runner.
+ * The `-c` override argv for the folder: static switches plus, for every driver name found in its config (every file
+ * git reads for it with system and global config disabled: .git/config, config.worktree of this worktree, included
+ * files) or in any .gitattributes / info/attributes (of the git dir and of the common dir) / core.attributesFile,
+ * empty filter.<n>.{clean,smudge,process}, filter.<n>.required=false, empty diff.<n>.{command,textconv} and empty
+ * merge.<n>.driver. Throws KitExit 2 for a driver name outside [A-Za-z0-9._-], KitExit 1 when git cannot answer.
+ * `git` is the injectable runner.
  */
 export async function safeGitConfig(dir, { git = defaultGitRunner, env = process.env, fresh = false } = {}) {
   let real;
   try { real = await fs.realpath(dir); } catch (err) { throw new KitExit(`cannot open ${dir}: ${err.message}`, 1); }
   const genv = safeGitEnv(env);
   const exec = (args) => git(args, { cwd: real, env: genv });
-  const [gitDir] = await gitPaths(exec, real, ['gitDir'], `${real} is not a readable git repository`);
+  const [gitDir, commonDir] = await gitPaths(exec, real, ['gitDir', 'commonDir'], `${real} is not a readable git repository`);
   let top = null;
   try { [top] = await gitPaths(exec, real, ['toplevel']); } catch { top = null; /* bare repository */ }
 
-  const fp = await fingerprint(gitDir);
+  const fp = await fingerprint(gitDir, commonDir);
   const hit = cache.get(real);
   if (!fresh && hit && hit.fp === fp) return [...hit.args];
 
-  const cfgOut = await git(['config', '--local', '--includes', '-z', '--get-regexp', '^filter\\.'], { cwd: real, env: genv });
-  if (cfgOut.code !== 0 && cfgOut.code !== 1) throw new KitExit(`cannot read the repository config: ${(cfgOut.stderr || '').trim() || 'git failed'}`, 1);
-  const names = driversFromConfig(cfgOut.code === 0 ? cfgOut.stdout : '');
+  // No --local: under safeGitEnv git reads no system or global config, so this is exactly the config git will use for
+  // this folder — .git/config, config.worktree (extensions.worktreeConfig, also of a linked worktree) and includes.
+  const readCfg = async (args, what) => {
+    const r = await git(['config', '--includes', '-z', ...args], { cwd: real, env: genv });
+    if (r.code !== 0 && r.code !== 1) throw new KitExit(`cannot read the repository config (${what}): ${(r.stderr || '').trim() || 'git failed'}`, 1);
+    return r.code === 0 ? r.stdout : '';
+  };
+  const names = driversFromConfig(await readCfg(['--get-regexp', '^(filter|diff|merge)\\.'], 'drivers'));
 
   const extra = [];
-  const af = await git(['config', '--local', '--includes', '--get', 'core.attributesfile'], { cwd: real, env: genv });
-  if (af.code === 0 && af.stdout.trim()) {
-    const p = af.stdout.trim();
-    extra.push(path.resolve(real, p.startsWith('~/') ? path.join(os.homedir(), p.slice(2)) : p));
+  for (const raw of (await readCfg(['--get-all', 'core.attributesfile'], 'core.attributesFile')).split('\0')) {
+    const p = raw.replace(/\n$/, '');
+    if (!p) continue;
+    const expanded = p.startsWith('~/') ? path.join(os.homedir(), p.slice(2)) : p;
+    // git resolves a relative value against the folder it runs in (the top of the work tree for most commands);
+    // scan every plausible base so a file inside .git is never missed.
+    for (const base of [real, top, gitDir, commonDir]) if (base) extra.push(path.resolve(base, expanded));
   }
-  for (const f of await attributeFiles(top, gitDir, extra)) {
+  for (const f of await attributeFiles(top, [gitDir, commonDir], [...new Set(extra)])) {
     for (const n of driversFromAttributes(await readCapped(f))) names.add(n);
   }
 
   const args = [];
   for (const o of STATIC_OVERRIDES) args.push('-c', o);
   for (const name of [...names].sort()) {
-    if (!DRIVER_NAME.test(name)) throw refuse(`filter driver name ${JSON.stringify(name).slice(0, 80)} cannot be switched off safely; refusing to run git`);
+    if (!DRIVER_NAME.test(name)) throw refuse(`driver name ${JSON.stringify(name).slice(0, 80)} (filter/diff/merge) cannot be switched off safely; refusing to run git`);
     for (const v of ['clean', 'smudge', 'process']) args.push('-c', `filter.${name}.${v}=`);
     args.push('-c', `filter.${name}.required=false`);
+    for (const v of ['command', 'textconv']) args.push('-c', `diff.${name}.${v}=`);
+    args.push('-c', `merge.${name}.driver=`);
   }
   cache.set(real, { fp, args });
   return [...args];
 }
 
 // ---------------------------------------------------------------- the wrapper
+
+/** Long options that run a repository-named program or write a file (any prefix of these is refused too). */
+export const DENIED_LONG = Object.freeze([
+  'ext-diff', 'textconv', 'filters', 'no-index', 'show-signature', 'open-files-in-pager', 'output', 'output-directory',
+  'exec', 'upload-pack', 'receive-pack'
+]);
 
 /** Validate a read-only git argv; returns it with the diff-hardening flags inserted. Throws KitExit 2. */
 export function checkReadArgs(args) {
@@ -215,7 +240,9 @@ export function checkReadArgs(args) {
   const dashdash = rest.indexOf('--');
   const opts = dashdash === -1 ? rest : rest.slice(0, dashdash);
   for (const a of opts) {
-    if (/^--(ext-diff|textconv|no-index|show-signature|open-files-in-pager|output|exec|upload-pack|receive-pack)(=.*)?$/.test(a)
+    const name = a.startsWith('--') && a !== '--' ? a.slice(2).split('=')[0] : null;
+    // git's option parser accepts any unambiguous prefix of a long option, so refuse every prefix of a denied one.
+    if ((name !== null && (name === '' || DENIED_LONG.some(d => d.startsWith(name))))
       || /^-O/.test(a) || /%G/.test(a)) {
       throw refuse(`git option ${a} would re-enable code execution or write a file; refused`);
     }
