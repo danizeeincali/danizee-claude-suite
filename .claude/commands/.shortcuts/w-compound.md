@@ -233,31 +233,62 @@ Skip if auto_share.enabled is false.
 curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[recipe title]" --data top_k=3
 ```
 
-3. **If similar memory found (score > 0.7):** Submit as a fork to inherit grade
-4. **If no match:** Submit as a new recipe
+3. **If similar memory found (score > 0.7):** Submit as a fork to inherit grade (the `@forked_from` block below)
+4. **If no match:** Submit as a new recipe (no `@forked_from` block)
 5. If auto_share.confirm = true: ask user before submitting
 
-**🔒 Redact before the POST:** the recipe body can quote the session's code, which can carry a secret. When `.claude/kit/secrets` exists, no recipe text is sent before it has passed through `redact --keep-lines`. Write the JSON body (`title`, `description`, `tags`, `version`, `steps`, and `forked_from` for a fork) to a temp file `$E` outside the repository with the Write tool, never into a double-quoted shell argument and never `echo "<body>"` or a heredoc (backticks and `$( )` in recipe text would run as commands), then run the block with `E` bound in the same command (`E=<the path you wrote>; <block>`). One line when the kit is not installed, and one line when there is no secrets file:
+**🔒 Redact before the POST, on the raw text, before JSON encoding:** the recipe can quote the session's code, which can carry a secret. When `.claude/kit/secrets` exists, no recipe text is sent before it has passed through `redact --keep-lines`, and that redaction runs on the raw recipe fields, never on the JSON body: `JSON.stringify` escapes a quote, a backslash, a tab or another control character, so a secret holding one of them no longer matches once encoded and would be posted. Write the raw recipe fields as plain text to a temp file `$E` outside the repository with the Write tool, never into a double-quoted shell argument and never `echo "<text>"` or a heredoc (backticks and `$( )` in recipe text would run as commands). One field per labelled block: a line holding only the label starts the block, and its text runs to the next label line:
+
+```text
+@title
+<one line>
+@description
+<any number of lines>
+@tags
+<tags, comma-separated or one per line>
+@steps
+<one ordered step per line, with its inputs and outputs>
+@forked_from
+<the matched recipe id: only for a fork; leave this whole block out for a new recipe>
+```
+
+Then run the block with `E` bound in the same command (`E=<the path you wrote>; <block>`). One line when the kit is not installed, and one line when there is no secrets file:
 ```bash
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): redact skipped, advisory: use the text from file=$E"; elif S=.claude/kit/secrets; M="$(git rev-parse --git-common-dir 2>/dev/null)/../.claude/kit/secrets"; [ ! -e "$S" ] && [ ! -L "$S" ] && [ ! -e "$M" ] && [ ! -L "$M" ]; then echo "no .claude/kit/secrets: text used as is, nothing to redact: use the text from file=$E"; else ( J=; R=; J=$(mktemp 2>/dev/null) && R=$(mktemp 2>/dev/null) && [ -n "$J" ] && [ -n "$R" ] || { echo "mktemp failed: text not redacted" >&2; rm -f "$J" "$R"; exit 1; }; KEEP=; trap 'rm -f "$J"; [ -n "$KEEP" ] || rm -f "$R"' EXIT INT TERM; node .claude/helpers/kit/cli.js redact --keep-lines < "$E" > "$J"; RC=$?; if [ $RC -eq 0 ]; then node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));fs.writeFileSync(process.argv[2],j.text);console.error("replaced="+j.replaced);console.log("file="+process.argv[2])' "$J" "$R"; RC=$?; [ $RC -eq 0 ] && KEEP=1; else echo "redact failed (exit $RC)" >&2; fi; exit $RC ); fi
 ```
 The pre-check sends anything present at either secrets path to `redact` (`-e` or `-L`: a dangling symlink or a directory there is a broken state, not "absent"), so only a path with nothing at it prints "no .claude/kit/secrets"; say that in one line and continue with the text as is. Exit 0: redacted; the redacted `text` is in the file the block prints as `file=<path>` (call it `$R`), which the block leaves behind, and stderr shows `replaced=<n>`. Exit 1 is bad input or a broken state (an unreadable secrets file, a dangling symlink or a directory at the secrets path, bad flag, mktemp failed, git missing or not a git repository): no file is named; report it, never read it as "nothing to redact", and do **not** POST the unredacted body (submitted as: skipped, reason: redact failed, exit N). Any other non-zero exit (for example 127, or a signal) is a failure of that step: the same. If `.claude/helpers/kit/cli.js` is missing the block says so in one line and continues; the kit is advisory and never blocks a workflow that worked before.
-With no kit or no secrets file the block names `file=$E` and the body is sent as it is: read it once first. Send the body from the file, never by pasting it into the command. Shell variables do not persist between Bash calls, so bind the printed path in the same command, or an unset `$R` posts an empty body:
+With no kit or no secrets file the block names `file=$E` and the text is used as it is: read it once first, and use that path for `R` below.
+
+**Build the JSON body from the redacted text.** Shell variables do not persist between Bash calls, so bind `R` to the printed `file=` path and `E` to the path you wrote in the same command. The block encodes the fields with `JSON.stringify` into a new temp file `$B` (`title`, `description`, `tags`, `version` "1.0.0", `steps`, and `forked_from` only when the `@forked_from` block is there), and when the kit and a secrets file exist it runs the encoded body through `redact` once more and refuses to send when that finds anything:
+```bash
+R=<printed path>; E=<the path you wrote>
+(
+  [ -s "$R" ] || { echo "redacted text file missing or empty" >&2; exit 1; }
+  KEEP=; B=$(mktemp 2>/dev/null) && [ -n "$B" ] || { echo "mktemp failed: body not built" >&2; exit 1; }
+  trap '[ -n "$KEEP" ] || rm -f "$B"; rm -f "$B.chk"' EXIT INT TERM
+  node -e 'const fs=require("fs");const K=["title","description","tags","steps","forked_from"];const f={};let k=null;for(const l of fs.readFileSync(process.argv[1],"utf8").split(/\r?\n/)){const m=/^@([a-z_]+)$/.exec(l);if(m&&K.includes(m[1])){if(m[1] in f){console.error("@"+m[1]+" given twice");process.exit(1)}k=m[1];f[k]=[];continue}if(k===null){if(l.trim()){console.error("text before the first @field line");process.exit(1)}continue}f[k].push(l)}const one=n=>(f[n]||[]).join("\n").trim();const list=n=>(f[n]||[]).flatMap(s=>n==="tags"?s.split(","):[s]).map(s=>s.trim()).filter(Boolean);const b={title:one("title"),description:one("description"),tags:list("tags"),version:"1.0.0",steps:list("steps")};if(one("forked_from"))b.forked_from=one("forked_from");for(const n of ["title","description","steps"])if(!b[n].length){console.error("missing @"+n);process.exit(1)}fs.writeFileSync(process.argv[2],JSON.stringify(b))' "$R" "$B" || { echo "body not built (exit $?): fix the field file and run again" >&2; exit 1; }
+  S=.claude/kit/secrets; M="$(git rev-parse --git-common-dir 2>/dev/null)/../.claude/kit/secrets"
+  if [ -f .claude/helpers/kit/cli.js ] && { [ -e "$S" ] || [ -L "$S" ] || [ -e "$M" ] || [ -L "$M" ]; }; then
+    node .claude/helpers/kit/cli.js redact < "$B" > "$B.chk"; RC=$?
+    [ $RC -eq 0 ] || { echo "redact check failed (exit $RC): body not sent" >&2; exit 1; }
+    N=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).replaced)' "$B.chk")
+    [ "$N" = 0 ] || { echo "body still holds a secret after encoding: not sent (replaced=$N)" >&2; exit 2; }
+  fi
+  KEEP=1; echo "body=$B"
+)
+```
+Exit 0 prints `body=<path>` (call it `$B`). Exit 1 is a missing or empty text file, mktemp failed, a field file the encoder cannot read (text before the first label, a label given twice, or no `@title`, `@description` or `@steps`), or a failed check; exit 2 is the refusal "body still holds a secret after encoding". On any non-zero exit no body file is left and nothing is sent: report it as printed (submitted as: skipped, reason: the printed line), never read it as "nothing to redact".
+
+**POST the body file.** One fence, one POST: a fork and a new recipe differ only by the `@forked_from` block in `$E`, so the same curl sends either. Send the body from the file, never by pasting it into the command; bind the printed path in the same command, or an unset `$B` posts an empty body:
 
 ```bash
-R=<printed path>; [ -s "$R" ] || { echo "body file missing or empty" >&2; exit 1; }
-# Submit as a fork (when similar memory found; the body file carries "forked_from":"[matched_recipe_id]")
+B=<printed body path>; R=<printed path>; E=<the path you wrote>; [ -s "$B" ] || { echo "body file missing or empty" >&2; exit 1; }
 curl -X POST https://pi.ruv.io/v1/memories \
   -H "Content-Type: application/json" \
-  --data-binary @"$R" && rm -f -- "$R" "$E"
-
-# Submit as new (when no match; the body file has no forked_from)
-curl -X POST https://pi.ruv.io/v1/memories \
-  -H "Content-Type: application/json" \
-  --data-binary @"$R" && rm -f -- "$R" "$E"
+  --data-binary @"$B" && rm -f -- "$B" "$R" "$E"
 ```
 
-Write the literal printed path for `R=` and the path you wrote for `E=`. `$E` holds the unredacted body, so it is removed on every path, sent or abandoned: after a redact exit 1, a failed POST, or a body you decide not to send, run `rm -f -- "$E" "$R"` with the literal paths (`$R` only when a `file=` path was printed). The `&&` leaves the files in place when the POST fails, so a retry needs no rebuild.
+Write the literal printed paths for `B=` and `R=` and the path you wrote for `E=`. `$E` holds the unredacted text, so it is removed on every path, sent or abandoned: after a redact exit 1, a build exit 1 or 2, a failed POST, or a body you decide not to send, run `rm -f -- "$E" "$R" "$B"` with the literal paths (`$R` and `$B` only when a path was printed). The `&&` leaves the files in place when the POST fails, so a retry needs no rebuild.
 
 **REQUIRED OUTPUT:**
 - Recipe-worthy: yes/no
@@ -273,7 +304,7 @@ Write the literal printed path for `R=` and the path you wrote for `E=`. `$E` ho
 - [ ] Category confirmed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
-- [ ] Doc text and Pi Brain body redacted when .claude/kit/secrets exists (or one line said why not)
+- [ ] Doc text and the raw Pi Brain fields (before JSON encoding) redacted when .claude/kit/secrets exists (or one line said why not)
 - [ ] Changes analyzed
 - [ ] Diagnostics generated: RC-D___ to RC-D___
 - [ ] Fixes generated: RC-F___ to RC-F___

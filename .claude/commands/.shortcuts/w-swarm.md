@@ -62,6 +62,26 @@ STOP and wait for user response.
 
 ---
 
+### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
+**Search the Pi Brain network for existing knowledge matching this task:**
+
+```bash
+# curl, query URL-encoded (preferred)
+curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[task description]" --data top_k=3
+
+# HTTP fallback
+curl -s "https://pi.ruv.io/v1/memories/search?q=[task description]&top_k=3"
+```
+
+**If matching memories found:** Review steps for applicable patterns. Adapt proven approaches. Note memory IDs for voting later.
+**If no matches:** Proceed normally.
+
+**REQUIRED OUTPUT:**
+- Pi Brain memories found: _____ (0+ results)
+- Applicable patterns: _____
+
+---
+
 ### ⛔ CHECKPOINT 1: Task Decomposition & Agent Assignment
 **Analyze the task and break it into parallel work units.**
 
@@ -248,6 +268,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] RuFlo swarm initialized (Checkpoint 2)
 - [ ] Agents actually spawned and completed work
 - [ ] Results collected and integrated (Checkpoint 3)
+- [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
 - [ ] Callers (Checkpoint 1) and lenses (Verification) run, or one line said the kit is not installed
 - [ ] Compound phase executed (Checkpoint 4)
 - [ ] Memory key stored: _____

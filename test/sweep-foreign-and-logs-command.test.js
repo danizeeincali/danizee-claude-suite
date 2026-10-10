@@ -2,7 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import os from 'os';
-import { spawnSync } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
+import http from 'http';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getCommands } from '../src/plugins/dot-shortcuts.js';
@@ -83,6 +84,10 @@ const assertRedactBlock = (s) => {
   assert.ok(!s.includes('\\`'), 'no backslash-backtick in the rendered text');
 };
 
+// CHECKPOINT 7 of w-compound: its bash fences, in order (search, redact, build, post), and a filler for the placeholders.
+const cp7Fences = () => [...section('w-compound', '### 🧠 CHECKPOINT 7', '## Completion Checklist').matchAll(/```bash\n([\s\S]*?)```/g)].map(m => m[1]);
+const fill = (f, v = {}) => f.replace('<printed body path>', v.B ?? '/tmp/b').replace('<printed path>', v.R ?? '/tmp/r').replace('<the path you wrote>', v.E ?? '/tmp/e').replace('[recipe title]', 't');
+
 describe('repo copies of the six swept shortcuts equal the generator output', () => {
   for (const name of SIX) {
     it(`${name}.md equals getCommands()`, async () => {
@@ -115,10 +120,12 @@ describe('generator-wide: no quadruple-backslash line continuation, no triple-es
       const c = commands[name].content;
       assert.ok(!/\\\\$/m.test(c), `${name}: a line ends in two backslashes`);
     }
-    const s = section('w-compound', 'R=<printed path>; [ -s "$R" ]', '```\n');
-    assert.match(s, /pi\.ruv\.io\/v1\/memories \\\n  -H "Content-Type: application\/json" \\\n  --data-binary @"\$R"/);
-    const r = spawnSync('bash', ['-n'], { input: s.replace('<printed path>', '/tmp/x') });
-    assert.equal(r.status, 0, r.stderr.toString());
+    const s = section('w-compound', 'B=<printed body path>; R=<printed path>; E=<the path you wrote>; [ -s "$B" ]', '```\n');
+    assert.match(s, /pi\.ruv\.io\/v1\/memories \\\n  -H "Content-Type: application\/json" \\\n  --data-binary @"\$B"/);
+    for (const f of cp7Fences()) {
+      const r = spawnSync('bash', ['-n'], { input: fill(f) });
+      assert.equal(r.status, 0, r.stderr.toString());
+    }
   });
 });
 
@@ -192,18 +199,27 @@ describe('w-compound: redact to a file before the doc and before the Pi Brain PO
     assertRedactBlock(s);
     assert.match(s, /do \*\*not\*\* POST the unredacted body/);
     const iRedact = s.indexOf('redact --keep-lines < "$E"');
+    const iBuild = s.indexOf('JSON.stringify(b)');
     const iPost = s.indexOf('curl -X POST https://pi.ruv.io/v1/memories');
-    assert.ok(iRedact >= 0 && iPost > iRedact, 'redact before the POST');
-    assert.equal(s.split('--data-binary @"$R"').length - 1, 2, 'both POSTs send the file');
+    assert.ok(iRedact >= 0 && iBuild > iRedact && iPost > iBuild, 'redact the raw fields, then encode, then POST');
+    assert.match(s, /never on the JSON body/);
+    assert.match(s, /`JSON\.stringify` escapes a quote, a backslash, a tab or another control character/);
+    assert.match(s, /```text\n@title\n[\s\S]*\n@description\n[\s\S]*\n@tags\n[\s\S]*\n@steps\n[\s\S]*\n@forked_from\n/);
+    assert.match(s, /node \.claude\/helpers\/kit\/cli\.js redact < "\$B" > "\$B\.chk"; RC=\$\?/);
+    assert.match(s, /echo "body still holds a secret after encoding: not sent \(replaced=\$N\)" >&2; exit 2;/);
+    assert.equal(s.split('--data-binary @"$B"').length - 1, 1, 'one POST, of the encoded body file');
+    assert.ok(!s.includes('--data-binary @"$R"'), 'the redacted text file is never posted as the body');
     assert.ok(!/ -d '/.test(s), 'no inline -d body');
-    assert.match(s, /unset `\$R` posts an empty body/);
-    assert.match(s, /\[ -s "\$R" \] \|\| \{ echo "body file missing or empty" >&2; exit 1; \}/);
+    assert.match(s, /unset `\$B` posts an empty body/);
+    assert.match(s, /\[ -s "\$B" \] \|\| \{ echo "body file missing or empty" >&2; exit 1; \}/);
     assert.match(s, /rm -f -- "\$E" "\$R"/);
+    for (const f of cp7Fences()) assert.ok((f.match(/curl -X POST/g) || []).length <= 1, 'at most one POST per fence');
   });
 });
 
 describe('w-ralph-batch: the generated log pipe runs through redact', () => {
-  const gen = () => section('w-ralph-batch', 'set -e\nLOG_FILE=', 'log "╔');
+  const gen = () => section('w-ralph-batch', 'set -e  # Exit on error\nLOG_FILE=', 'log "Starting Ralph Batch Processing..."');
+  const script = () => section('w-ralph-batch', '#!/bin/bash\n# Ralph Batch - Generated [DATE]', '```\n');
   it('has a runtime guard on the kit and the secrets file, plain tee otherwise', () => {
     const s = gen();
     assert.match(s, /KIT=\.claude\/helpers\/kit\/cli\.js/);
@@ -212,11 +228,19 @@ describe('w-ralph-batch: the generated log pipe runs through redact', () => {
     assert.match(s, /\[redact failed exit %s\]/);
     assert.match(s, /printf '%s\\n' "\$line" \| tee -a "\$LOG_FILE"/);
     assert.ok(!s.includes('echo "[$(date'), 'the bare echo | tee pipe is gone');
+    const all = script();
+    assert.ok(!/^echo .*\| tee/m.test(all), 'no line of the script writes the log with a bare echo | tee');
+    assert.ok(!/2>&1 \| tee/.test(all), 'claude output does not bypass log()');
+    assert.equal(all.split('2>&1 | while IFS= read -r out || [ -n "$out" ]; do log "$out"; done').length - 1, 2, 'each claude -p is streamed through log()');
+    assert.ok(all.indexOf('log() {') < all.indexOf('log "Starting Ralph Batch Processing..."'));
+    const rs = spawnSync('bash', ['-n'], { input: all });
+    assert.equal(rs.status, 0, rs.stderr.toString());
     const r = spawnSync('bash', ['-n'], { input: s });
     assert.equal(r.status, 0, r.stderr.toString());
   });
   it('names the redact exit codes and the marker', () => {
-    const s = section('w-ralph-batch', '**Log redaction (inside the generated script):**', '**For Multi-Project Script:**');
+    const s = section('w-ralph-batch', '**Log redaction (inside the generated script):**', '**Phased Mode - Sequential Priority Execution:**');
+    assert.match(s, /the script's own lines and, one by one, every line `claude -p` prints/);
     assert.match(s, /at run time, `\.claude\/helpers\/kit\/cli\.js` exists and so does a secrets file/);
     assert.match(s, /`redact` exit 0 is the redacted line/);
     assert.match(s, /Exit 1 is bad input or an unreadable secrets file, never "nothing to redact"/);
@@ -274,6 +298,242 @@ describe('w-ralph-batch: the generated log pipe runs through redact', () => {
       assert.equal(r.status, 0, r.stderr);
       assert.match(log, /\] ran SECRET job\n/);
       assert.ok(!log.includes('redact failed'));
+    }
+  });
+});
+
+describe('w-compound CHECKPOINT 7 run as written with the real kit against a local endpoint', () => {
+  const KIT = path.join(__dirname, '..', '.claude', 'helpers', 'kit');
+  const PW = 'pa"ss\\word99';
+  const PEM = '-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASC\nAKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj\n-----END PRIVATE KEY-----';
+  const SECRET_BITS = [PW, JSON.stringify(PW).slice(1, -1), 'SUPERSECRET123', 'MIIEvQIBADANBgkqhkiG9w0BAQEFAASC', 'AKcwggSjAgEAAoIBAQC7VJTUt9Us8cKj'];
+  const fields = (fork) => `@title\nRotate creds ${PW}\n@description\nUse ${PW} and\tSUPERSECRET123 with:\n${PEM}\n@tags\nsecurity, rotate\n@steps\nexport PW='${PW}' -> env\nload ${PEM.split('\n')[1]} -> agent\n${fork ? '@forked_from\nrec-42\n' : ''}`;
+
+  const bash = (code, cwd) => new Promise((ok) => {
+    const ch = spawn('bash', ['-c', code], { cwd });
+    let stdout = '', stderr = '';
+    ch.stdout.on('data', (d) => { stdout += d; });
+    ch.stderr.on('data', (d) => { stderr += d; });
+    ch.on('close', (status) => ok({ status, stdout, stderr }));
+  });
+  const withRepo = async ({ kit = true, secrets = `${PW}\nSUPERSECRET123\n${PEM}\n`, fork = true }, fn) => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'compound-cp7-'));
+    const received = [];
+    const srv = http.createServer((q, r) => { let b = ''; q.on('data', (d) => { b += d; }).on('end', () => { received.push(b); r.end('{"id":"m1"}'); }); });
+    await new Promise((ok) => srv.listen(0, '127.0.0.1', ok));
+    try {
+      const repo = path.join(dir, 'repo');
+      await fs.mkdir(path.join(repo, '.claude', 'kit'), { recursive: true });
+      if (kit) await fs.cp(KIT, path.join(repo, '.claude', 'helpers', 'kit'), { recursive: true });
+      if (secrets !== null) await fs.writeFile(path.join(repo, '.claude', 'kit', 'secrets'), secrets);
+      spawnSync('git', ['init', '-q'], { cwd: repo });
+      const E = path.join(dir, 'fields.txt');
+      await fs.writeFile(E, fields(fork));
+      const [, redact, build, post] = cp7Fences();
+      const url = `http://127.0.0.1:${srv.address().port}`;
+      const steps = {
+        redact: () => bash(`E=${E}; ${redact}`, repo),
+        build: (R) => bash(fill(build, { R, E }), repo),
+        post: (B, R) => bash(fill(post, { B, R, E }).replace('https://pi.ruv.io', url), repo),
+      };
+      return await fn({ E, steps, received });
+    } finally {
+      srv.close();
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  };
+  const exists = (f) => fs.access(f).then(() => true, () => false);
+
+  for (const fork of [true, false]) {
+    it(`${fork ? 'a fork' : 'a new recipe'}: one POST, no secret in the received body, temp files removed`, async () => {
+      await withRepo({ fork }, async ({ E, steps, received }) => {
+        const r1 = await steps.redact();
+        assert.equal(r1.status, 0, r1.stderr);
+        assert.match(r1.stderr, /replaced=[1-9]/);
+        const R = /^file=(\S+)$/m.exec(r1.stdout)[1];
+        const r2 = await steps.build(R);
+        assert.equal(r2.status, 0, r2.stderr);
+        const B = /^body=(\S+)$/m.exec(r2.stdout)[1];
+        assert.ok(!(await exists(`${B}.chk`)), 'the check file is gone');
+        const r3 = await steps.post(B, R);
+        assert.equal(r3.status, 0, r3.stderr);
+        assert.equal(received.length, 1, 'exactly one POST from the fence');
+        const body = JSON.parse(received[0]);
+        for (const bit of SECRET_BITS) assert.ok(!received[0].includes(bit), `the body holds no ${JSON.stringify(bit)}`);
+        assert.match(body.title, /^Rotate creds \[REDACTED\]$/);
+        assert.deepEqual(body.tags, ['security', 'rotate']);
+        assert.equal(body.version, '1.0.0');
+        assert.equal(body.steps.length, 2);
+        if (fork) assert.equal(body.forked_from, 'rec-42'); else assert.ok(!('forked_from' in body));
+        for (const f of [E, R, B]) assert.ok(!(await exists(f)), `${f} removed after the POST`);
+      });
+    });
+  }
+
+  it('refuses with exit 2 when the encoded body still holds a secret, leaving no body file and sending nothing', async () => {
+    await withRepo({ secrets: '"version":"1.0.0"\n' }, async ({ steps, received }) => {
+      const r1 = await steps.redact();
+      assert.equal(r1.status, 0, r1.stderr);
+      const R = /^file=(\S+)$/m.exec(r1.stdout)[1];
+      const r2 = await steps.build(R);
+      assert.equal(r2.status, 2);
+      assert.match(r2.stderr, /body still holds a secret after encoding: not sent \(replaced=1\)/);
+      assert.ok(!/body=/.test(r2.stdout), 'no body file named');
+      assert.equal(received.length, 0);
+      await fs.rm(R, { force: true });
+    });
+  });
+
+  it('a field file the encoder cannot read is exit 1 and names no body', async () => {
+    await withRepo({}, async ({ E, steps }) => {
+      await fs.writeFile(E, 'stray line\n@title\nx\n');
+      const r2 = await steps.build(E);
+      assert.equal(r2.status, 1);
+      assert.match(r2.stderr, /text before the first @field line/);
+      assert.ok(!/body=/.test(r2.stdout));
+    });
+  });
+
+  it('with no kit, and with no secrets file, the redact fence names file=$E in one line and the text is used as is', async () => {
+    for (const o of [{ kit: false }, { secrets: null }]) {
+      await withRepo(o, async ({ E, steps, received }) => {
+        const r1 = await steps.redact();
+        assert.equal(r1.status, 0, r1.stderr);
+        assert.equal(r1.stdout.trim().split('\n').length, 1, 'one line');
+        assert.match(r1.stdout, o.kit === false
+          ? /^kit not installed \(\.claude\/helpers\/kit\/cli\.js missing\): redact skipped, advisory: use the text from file=/
+          : /^no \.claude\/kit\/secrets: text used as is, nothing to redact: use the text from file=/);
+        assert.ok(r1.stdout.trim().endsWith(`file=${E}`), 'names the field file itself');
+        const r2 = await steps.build(E);
+        assert.equal(r2.status, 0, r2.stderr);
+        const B = /^body=(\S+)$/m.exec(r2.stdout)[1];
+        const r3 = await steps.post(B, E);
+        assert.equal(r3.status, 0, r3.stderr);
+        assert.equal(received.length, 1);
+        assert.equal(JSON.parse(received[0]).title, `Rotate creds ${PW}`, 'advisory path sends the text as written');
+      });
+    }
+  });
+});
+
+describe('w-ralph-batch: the shipped copy is ported into the generator, not replaced by it', () => {
+  const c = () => commands['w-ralph-batch'].content;
+  it('keeps the shipped modes, rules, per-candidate execution, summary report and diagnostic format', () => {
+    const s = c();
+    for (const usage of ['/w-ralph-batch --priority P1      # Only process P1 candidates', '/w-ralph-batch --all              # Process all ready candidates sequentially', '/w-ralph-batch --phased           # Execute by priority (P1 → P2 → P3)', '/w-ralph-batch --diagnostics      # Run all diagnostics first, then fixes if needed']) {
+      assert.ok(s.includes(usage), usage);
+    }
+    assert.match(s, /## Rules\n\n- NEVER skip checkpoints - each requires user confirmation\n[\s\S]*- For diagnostics: ALWAYS run RC-D### before paired RC-F###/);
+    assert.match(s, /\*\*Interactive Mode - Per Candidate:\*\*\n1\. Load candidate spec\n[\s\S]*5\. Update status \(complete\/in-progress\/blocked\)\n6\. Move to next candidate/);
+    assert.match(s, /### ⛔ CHECKPOINT 3: Summary Report/);
+    assert.match(s, /\*\*Status Updates:\*\*\n- Candidates marked complete: \[IDs\][\s\S]*- Archived: \[IDs\]/);
+    assert.match(s, /\*\*Diagnostic Output Format:\*\*\n```\nDIAGNOSTIC: \[NAME\]\nPATTERN_FOUND: YES\|NO\nLOCATION: \[file:line\] or NONE\nSTATUS: PASS\|FAIL\nACTION: VERIFIED\|RESTORED\|FAILED\n```/);
+    assert.match(s, /\*\*Phased Mode - Sequential Priority Execution:\*\*/);
+    assert.match(s, /- \[ \] All candidate statuses updated in \.claude\/ralph-candidates\.md\n- \[ \] Successful candidates archived/);
+  });
+  it('differs from the shipped copy at base 38552ec only by the log() redaction wiring', () => {
+    const r = spawnSync('git', ['show', '38552ec:.claude/commands/.shortcuts/w-ralph-batch.md'], { cwd: path.join(__dirname, '..'), encoding: 'utf-8' });
+    if (r.status !== 0) return; // shallow clone without the base: the pins above still hold
+    const strip = (t) => t.split('\n').filter((l) => !/^echo ".*" \| tee -a \$LOG_FILE$|^log "|^Max iterations: 50" 2>&1/.test(l)).join('\n');
+    const shipped = r.stdout;
+    const ported = c();
+    const a = ported.indexOf('KIT=.claude/helpers/kit/cli.js');
+    const b = ported.indexOf('}\n', ported.indexOf('log() {')) + 2;
+    const p = ported.indexOf('\n**Log redaction (inside the generated script):**');
+    const q = ported.indexOf('\n', p + 1) + 1;
+    const core = ported.slice(0, a) + ported.slice(b, p) + ported.slice(q);
+    assert.equal(strip(core).replace(/\n\n\n/g, '\n\n'), strip(shipped).replace(/\n\n\n/g, '\n\n'));
+  });
+});
+
+describe('w-ralph-batch log() runs: claude output streamed, and a linked worktree with secrets only in the main checkout', () => {
+  const block = () => section('w-ralph-batch', 'set -e  # Exit on error\nLOG_FILE=', 'log "Starting Ralph Batch Processing..."').replace(/LOG_FILE="[^\n]*\n/, 'LOG_FILE=out.log\n');
+  const git = (cwd, ...a) => { const r = spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...a], { cwd, encoding: 'utf-8' }); assert.equal(r.status, 0, r.stderr); return r; };
+  it('redacts with the real kit in a linked worktree whose secrets file is only in the main checkout', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ralph-wt-'));
+    try {
+      const main = path.join(dir, 'main');
+      const wt = path.join(dir, 'wt');
+      await fs.mkdir(path.join(main, '.claude', 'kit'), { recursive: true });
+      await fs.cp(path.join(__dirname, '..', '.claude', 'helpers', 'kit'), path.join(main, '.claude', 'helpers', 'kit'), { recursive: true });
+      await fs.writeFile(path.join(main, '.gitignore'), '.claude/kit/\n');
+      git(main, 'init', '-q');
+      git(main, 'add', '.');
+      git(main, 'commit', '-q', '-m', 'kit');
+      await fs.writeFile(path.join(main, '.claude', 'kit', 'secrets'), 'pa"ss\\word99\n');
+      git(main, 'worktree', 'add', '-q', wt);
+      assert.ok(!(await fs.access(path.join(wt, '.claude', 'kit', 'secrets')).then(() => true, () => false)), 'no secrets file in the worktree');
+      const env = { ...process.env };
+      delete env.GIT_CEILING_DIRECTORIES;
+      const r = spawnSync('bash', ['-c', `${block()}\nlog "$1"`, 'x', 'token pa"ss\\word99 used'], { cwd: wt, env, encoding: 'utf-8' });
+      assert.equal(r.status, 0, r.stderr);
+      const log = await fs.readFile(path.join(wt, 'out.log'), 'utf-8');
+      assert.match(log, /\] token \[REDACTED\] used\n$/);
+      assert.ok(!log.includes('word99'));
+      assert.ok(!log.includes('redact failed'));
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+  it('every line claude -p prints goes through log() and is redacted, and the script carries on', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ralph-claude-'));
+    try {
+      await fs.mkdir(path.join(dir, '.claude', 'kit'), { recursive: true });
+      await fs.cp(path.join(__dirname, '..', '.claude', 'helpers', 'kit'), path.join(dir, '.claude', 'helpers', 'kit'), { recursive: true });
+      await fs.writeFile(path.join(dir, '.claude', 'kit', 'secrets'), 'SUPERSECRET123\n');
+      spawnSync('git', ['init', '-q'], { cwd: dir });
+      const s = section('w-ralph-batch', '#!/bin/bash\n# Ralph Batch - Generated [DATE]', '```\n').replace(/LOG_FILE="[^\n]*\n/, 'LOG_FILE=out.log\n');
+      const fake = 'claude() { printf "using SUPERSECRET123\\nsecond SUPERSECRET123 line\\nno newline at end"; return 3; }\n';
+      const r = spawnSync('bash', ['-c', fake + s], { cwd: dir, encoding: 'utf-8' });
+      assert.equal(r.status, 0, r.stderr);
+      const log = await fs.readFile(path.join(dir, 'out.log'), 'utf-8');
+      assert.ok(!log.includes('SUPERSECRET123'));
+      assert.equal(log.split('] using [REDACTED]\n').length - 1, 2, 'both candidates');
+      assert.equal(log.split('] no newline at end\n').length - 1, 2, 'a last line without a newline is kept');
+      assert.match(log, /\] Ralph Batch Complete: /);
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('w-swarm: Pi Brain CHECKPOINT 0.5 kept in the ported RuFlo variant', () => {
+  it('sits after CHECKPOINT 0 Search and before CHECKPOINT 1, as in w-fix, with its checklist line', async () => {
+    for (const c of [commands['w-swarm'].content, await fs.readFile(path.join(SHORTCUTS_DIR, 'w-swarm.md'), 'utf-8')]) {
+      const i0 = c.indexOf('### ⛔ CHECKPOINT 0: Search');
+      const i05 = c.indexOf('### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery');
+      const i1 = c.indexOf('### ⛔ CHECKPOINT 1: Task Decomposition');
+      assert.ok(i0 >= 0 && i05 > i0 && i1 > i05);
+      const s = c.slice(i05, i1);
+      assert.match(s, /curl -s -G "https:\/\/pi\.ruv\.io\/v1\/memories\/search" --data-urlencode "q=\[task description\]" --data top_k=3/);
+      assert.match(s, /\*\*REQUIRED OUTPUT:\*\*\n- Pi Brain memories found: _____ \(0\+ results\)\n- Applicable patterns: _____/);
+      const cl = c.slice(c.indexOf('## Completion Checklist'));
+      assert.ok(cl.indexOf('- [ ] Pi Brain discovery completed (CHECKPOINT 0.5)') >= 0);
+      assert.ok(cl.indexOf('- [ ] Pi Brain discovery completed (CHECKPOINT 0.5)') < cl.indexOf('- [ ] Callers (Checkpoint 1) and lenses'));
+      // The exact block the generator's w-swarm carried before the RuFlo port (94c7f56).
+      assert.equal(s, [
+        '### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery',
+        '**Search the Pi Brain network for existing knowledge matching this task:**',
+        '',
+        '```bash',
+        '# curl, query URL-encoded (preferred)',
+        'curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[task description]" --data top_k=3',
+        '',
+        '# HTTP fallback',
+        'curl -s "https://pi.ruv.io/v1/memories/search?q=[task description]&top_k=3"',
+        '```',
+        '',
+        '**If matching memories found:** Review steps for applicable patterns. Adapt proven approaches. Note memory IDs for voting later.',
+        '**If no matches:** Proceed normally.',
+        '',
+        '**REQUIRED OUTPUT:**',
+        '- Pi Brain memories found: _____ (0+ results)',
+        '- Applicable patterns: _____',
+        '',
+        '---',
+        '',
+        '',
+      ].join('\n'));
     }
   });
 });

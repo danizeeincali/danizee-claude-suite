@@ -78,6 +78,26 @@ STOP and wait for user response.
 
 ---
 
+### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
+**Search the Pi Brain network for existing knowledge matching this task:**
+
+\`\`\`bash
+# curl, query URL-encoded (preferred)
+curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[task description]" --data top_k=3
+
+# HTTP fallback
+curl -s "https://pi.ruv.io/v1/memories/search?q=[task description]&top_k=3"
+\`\`\`
+
+**If matching memories found:** Review steps for applicable patterns. Adapt proven approaches. Note memory IDs for voting later.
+**If no matches:** Proceed normally.
+
+**REQUIRED OUTPUT:**
+- Pi Brain memories found: _____ (0+ results)
+- Applicable patterns: _____
+
+---
+
 ### ⛔ CHECKPOINT 1: Task Decomposition & Agent Assignment
 **Analyze the task and break it into parallel work units.**
 
@@ -264,6 +284,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] RuFlo swarm initialized (Checkpoint 2)
 - [ ] Agents actually spawned and completed work
 - [ ] Results collected and integrated (Checkpoint 3)
+- [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
 - [ ] Callers (Checkpoint 1) and lenses (Verification) run, or one line said the kit is not installed
 - [ ] Compound phase executed (Checkpoint 4)
 - [ ] Memory key stored: _____
@@ -3704,31 +3725,62 @@ Skip if auto_share.enabled is false.
 curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[recipe title]" --data top_k=3
 \`\`\`
 
-3. **If similar memory found (score > 0.7):** Submit as a fork to inherit grade
-4. **If no match:** Submit as a new recipe
+3. **If similar memory found (score > 0.7):** Submit as a fork to inherit grade (the \`@forked_from\` block below)
+4. **If no match:** Submit as a new recipe (no \`@forked_from\` block)
 5. If auto_share.confirm = true: ask user before submitting
 
-**🔒 Redact before the POST:** the recipe body can quote the session's code, which can carry a secret. When \`.claude/kit/secrets\` exists, no recipe text is sent before it has passed through \`redact --keep-lines\`. Write the JSON body (\`title\`, \`description\`, \`tags\`, \`version\`, \`steps\`, and \`forked_from\` for a fork) to a temp file \`$E\` outside the repository with the Write tool, never into a double-quoted shell argument and never \`echo "<body>"\` or a heredoc (backticks and \`$( )\` in recipe text would run as commands), then run the block with \`E\` bound in the same command (\`E=<the path you wrote>; <block>\`). One line when the kit is not installed, and one line when there is no secrets file:
+**🔒 Redact before the POST, on the raw text, before JSON encoding:** the recipe can quote the session's code, which can carry a secret. When \`.claude/kit/secrets\` exists, no recipe text is sent before it has passed through \`redact --keep-lines\`, and that redaction runs on the raw recipe fields, never on the JSON body: \`JSON.stringify\` escapes a quote, a backslash, a tab or another control character, so a secret holding one of them no longer matches once encoded and would be posted. Write the raw recipe fields as plain text to a temp file \`$E\` outside the repository with the Write tool, never into a double-quoted shell argument and never \`echo "<text>"\` or a heredoc (backticks and \`$( )\` in recipe text would run as commands). One field per labelled block: a line holding only the label starts the block, and its text runs to the next label line:
+
+\`\`\`text
+@title
+<one line>
+@description
+<any number of lines>
+@tags
+<tags, comma-separated or one per line>
+@steps
+<one ordered step per line, with its inputs and outputs>
+@forked_from
+<the matched recipe id: only for a fork; leave this whole block out for a new recipe>
+\`\`\`
+
+Then run the block with \`E\` bound in the same command (\`E=<the path you wrote>; <block>\`). One line when the kit is not installed, and one line when there is no secrets file:
 \`\`\`bash
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): redact skipped, advisory: use the text from file=$E"; elif S=.claude/kit/secrets; M="$(git rev-parse --git-common-dir 2>/dev/null)/../.claude/kit/secrets"; [ ! -e "$S" ] && [ ! -L "$S" ] && [ ! -e "$M" ] && [ ! -L "$M" ]; then echo "no .claude/kit/secrets: text used as is, nothing to redact: use the text from file=$E"; else ( J=; R=; J=$(mktemp 2>/dev/null) && R=$(mktemp 2>/dev/null) && [ -n "$J" ] && [ -n "$R" ] || { echo "mktemp failed: text not redacted" >&2; rm -f "$J" "$R"; exit 1; }; KEEP=; trap 'rm -f "$J"; [ -n "$KEEP" ] || rm -f "$R"' EXIT INT TERM; node .claude/helpers/kit/cli.js redact --keep-lines < "$E" > "$J"; RC=$?; if [ $RC -eq 0 ]; then node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));fs.writeFileSync(process.argv[2],j.text);console.error("replaced="+j.replaced);console.log("file="+process.argv[2])' "$J" "$R"; RC=$?; [ $RC -eq 0 ] && KEEP=1; else echo "redact failed (exit $RC)" >&2; fi; exit $RC ); fi
 \`\`\`
 The pre-check sends anything present at either secrets path to \`redact\` (\`-e\` or \`-L\`: a dangling symlink or a directory there is a broken state, not "absent"), so only a path with nothing at it prints "no .claude/kit/secrets"; say that in one line and continue with the text as is. Exit 0: redacted; the redacted \`text\` is in the file the block prints as \`file=<path>\` (call it \`$R\`), which the block leaves behind, and stderr shows \`replaced=<n>\`. Exit 1 is bad input or a broken state (an unreadable secrets file, a dangling symlink or a directory at the secrets path, bad flag, mktemp failed, git missing or not a git repository): no file is named; report it, never read it as "nothing to redact", and do **not** POST the unredacted body (submitted as: skipped, reason: redact failed, exit N). Any other non-zero exit (for example 127, or a signal) is a failure of that step: the same. If \`.claude/helpers/kit/cli.js\` is missing the block says so in one line and continues; the kit is advisory and never blocks a workflow that worked before.
-With no kit or no secrets file the block names \`file=$E\` and the body is sent as it is: read it once first. Send the body from the file, never by pasting it into the command. Shell variables do not persist between Bash calls, so bind the printed path in the same command, or an unset \`$R\` posts an empty body:
+With no kit or no secrets file the block names \`file=$E\` and the text is used as it is: read it once first, and use that path for \`R\` below.
+
+**Build the JSON body from the redacted text.** Shell variables do not persist between Bash calls, so bind \`R\` to the printed \`file=\` path and \`E\` to the path you wrote in the same command. The block encodes the fields with \`JSON.stringify\` into a new temp file \`$B\` (\`title\`, \`description\`, \`tags\`, \`version\` "1.0.0", \`steps\`, and \`forked_from\` only when the \`@forked_from\` block is there), and when the kit and a secrets file exist it runs the encoded body through \`redact\` once more and refuses to send when that finds anything:
+\`\`\`bash
+R=<printed path>; E=<the path you wrote>
+(
+  [ -s "$R" ] || { echo "redacted text file missing or empty" >&2; exit 1; }
+  KEEP=; B=$(mktemp 2>/dev/null) && [ -n "$B" ] || { echo "mktemp failed: body not built" >&2; exit 1; }
+  trap '[ -n "$KEEP" ] || rm -f "$B"; rm -f "$B.chk"' EXIT INT TERM
+  node -e 'const fs=require("fs");const K=["title","description","tags","steps","forked_from"];const f={};let k=null;for(const l of fs.readFileSync(process.argv[1],"utf8").split(/\\r?\\n/)){const m=/^@([a-z_]+)$/.exec(l);if(m&&K.includes(m[1])){if(m[1] in f){console.error("@"+m[1]+" given twice");process.exit(1)}k=m[1];f[k]=[];continue}if(k===null){if(l.trim()){console.error("text before the first @field line");process.exit(1)}continue}f[k].push(l)}const one=n=>(f[n]||[]).join("\\n").trim();const list=n=>(f[n]||[]).flatMap(s=>n==="tags"?s.split(","):[s]).map(s=>s.trim()).filter(Boolean);const b={title:one("title"),description:one("description"),tags:list("tags"),version:"1.0.0",steps:list("steps")};if(one("forked_from"))b.forked_from=one("forked_from");for(const n of ["title","description","steps"])if(!b[n].length){console.error("missing @"+n);process.exit(1)}fs.writeFileSync(process.argv[2],JSON.stringify(b))' "$R" "$B" || { echo "body not built (exit $?): fix the field file and run again" >&2; exit 1; }
+  S=.claude/kit/secrets; M="$(git rev-parse --git-common-dir 2>/dev/null)/../.claude/kit/secrets"
+  if [ -f .claude/helpers/kit/cli.js ] && { [ -e "$S" ] || [ -L "$S" ] || [ -e "$M" ] || [ -L "$M" ]; }; then
+    node .claude/helpers/kit/cli.js redact < "$B" > "$B.chk"; RC=$?
+    [ $RC -eq 0 ] || { echo "redact check failed (exit $RC): body not sent" >&2; exit 1; }
+    N=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).replaced)' "$B.chk")
+    [ "$N" = 0 ] || { echo "body still holds a secret after encoding: not sent (replaced=$N)" >&2; exit 2; }
+  fi
+  KEEP=1; echo "body=$B"
+)
+\`\`\`
+Exit 0 prints \`body=<path>\` (call it \`$B\`). Exit 1 is a missing or empty text file, mktemp failed, a field file the encoder cannot read (text before the first label, a label given twice, or no \`@title\`, \`@description\` or \`@steps\`), or a failed check; exit 2 is the refusal "body still holds a secret after encoding". On any non-zero exit no body file is left and nothing is sent: report it as printed (submitted as: skipped, reason: the printed line), never read it as "nothing to redact".
+
+**POST the body file.** One fence, one POST: a fork and a new recipe differ only by the \`@forked_from\` block in \`$E\`, so the same curl sends either. Send the body from the file, never by pasting it into the command; bind the printed path in the same command, or an unset \`$B\` posts an empty body:
 
 \`\`\`bash
-R=<printed path>; [ -s "$R" ] || { echo "body file missing or empty" >&2; exit 1; }
-# Submit as a fork (when similar memory found; the body file carries "forked_from":"[matched_recipe_id]")
+B=<printed body path>; R=<printed path>; E=<the path you wrote>; [ -s "$B" ] || { echo "body file missing or empty" >&2; exit 1; }
 curl -X POST https://pi.ruv.io/v1/memories \\
   -H "Content-Type: application/json" \\
-  --data-binary @"$R" && rm -f -- "$R" "$E"
-
-# Submit as new (when no match; the body file has no forked_from)
-curl -X POST https://pi.ruv.io/v1/memories \\
-  -H "Content-Type: application/json" \\
-  --data-binary @"$R" && rm -f -- "$R" "$E"
+  --data-binary @"$B" && rm -f -- "$B" "$R" "$E"
 \`\`\`
 
-Write the literal printed path for \`R=\` and the path you wrote for \`E=\`. \`$E\` holds the unredacted body, so it is removed on every path, sent or abandoned: after a redact exit 1, a failed POST, or a body you decide not to send, run \`rm -f -- "$E" "$R"\` with the literal paths (\`$R\` only when a \`file=\` path was printed). The \`&&\` leaves the files in place when the POST fails, so a retry needs no rebuild.
+Write the literal printed paths for \`B=\` and \`R=\` and the path you wrote for \`E=\`. \`$E\` holds the unredacted text, so it is removed on every path, sent or abandoned: after a redact exit 1, a build exit 1 or 2, a failed POST, or a body you decide not to send, run \`rm -f -- "$E" "$R" "$B"\` with the literal paths (\`$R\` and \`$B\` only when a path was printed). The \`&&\` leaves the files in place when the POST fails, so a retry needs no rebuild.
 
 **REQUIRED OUTPUT:**
 - Recipe-worthy: yes/no
@@ -3744,7 +3796,7 @@ Write the literal printed path for \`R=\` and the path you wrote for \`E=\`. \`$
 - [ ] Category confirmed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
-- [ ] Doc text and Pi Brain body redacted when .claude/kit/secrets exists (or one line said why not)
+- [ ] Doc text and the raw Pi Brain fields (before JSON encoding) redacted when .claude/kit/secrets exists (or one line said why not)
 - [ ] Changes analyzed
 - [ ] Diagnostics generated: RC-D___ to RC-D___
 - [ ] Fixes generated: RC-F___ to RC-F___
@@ -5813,25 +5865,20 @@ Before marking workflow complete, verify ALL boxes:
 
     'w-ralph-batch': {
       name: 'w-ralph-batch',
-      description: 'Ralph Batch - Generate overnight bash scripts for multiple projects',
+      description: 'Ralph Batch - Process ready candidates in batch or generate an overnight script',
       content: `# /w-ralph-batch
 
-Generate overnight bash scripts that run Pure Ralph loops on multiple projects or candidates.
-
-## What This Does
-
-Uses the **Pure Ralph bash loop approach** for batch processing:
-- Each candidate/project gets its own Ralph loop
-- Scripts use \`.claude/ralph/loop.sh\` for execution
-- Fresh context for every iteration
-- State persisted through IMPLEMENTATION_PLAN.md files
+Batch process multiple Ralph candidates sequentially, or generate an overnight script for unattended execution.
+Supports Diagnostic→Fix flow for automated QA verification.
 
 ## Usage
 \`\`\`
-/w-ralph-batch                    # Interactive mode
-/w-ralph-batch --script           # Generate overnight-ralph.sh
-/w-ralph-batch --multi-project    # Multiple project directories
-/w-ralph-batch --diagnostics      # Run diagnostics from ralph-candidates.md
+/w-ralph-batch                    # Interactive mode - process one by one
+/w-ralph-batch --script           # Generate overnight batch script
+/w-ralph-batch --priority P1      # Only process P1 candidates
+/w-ralph-batch --all              # Process all ready candidates sequentially
+/w-ralph-batch --phased           # Execute by priority (P1 → P2 → P3)
+/w-ralph-batch --diagnostics      # Run all diagnostics first, then fixes if needed
 \`\`\`
 
 ---
@@ -5839,99 +5886,135 @@ Uses the **Pure Ralph bash loop approach** for batch processing:
 ## ⚠️ MANDATORY FIRST ACTION
 
 Use TodoWrite NOW to create todos for ALL phases:
-1. Scan for candidates/projects
-2. Configure batch parameters
-3. Generate overnight script
-4. Output execution instructions
+1. Load candidates from .claude/ralph-candidates.md
+2. Filter by status (ready) and priority (if specified)
+3. Select execution mode
+4. Execute batch or generate script
+5. Update candidate statuses
+6. Generate summary report
 
 ⚠️ VIOLATION: Any action before TodoWrite = restart workflow
 
 ---
 
-## Batch Modes
+## Rules
 
-| Mode | Description | Output |
-|------|-------------|--------|
-| Script | Generate overnight bash script | overnight-ralph.sh |
-| Multi-project | Batch multiple project dirs | overnight-multi.sh |
-| Diagnostics | Process ralph-candidates.md | overnight-diagnostics.sh |
-| Interactive | Select and configure interactively | User choice |
+- NEVER skip checkpoints - each requires user confirmation
+- NEVER execute without reviewing candidate list first
+- NEVER skip status updates after completion
+- ALWAYS generate summary report at end
+- For diagnostics: ALWAYS run RC-D### before paired RC-F###
+
+---
+
+## Execution Modes
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| Interactive | Process one by one with verification | Supervised execution |
+| Script | Generate overnight-work.sh | Unattended overnight runs |
+| Phased | Execute by priority order | Structured batch processing |
+| All | Process all ready candidates | Quick batch run |
+| Diagnostics | Run diagnostics first, fixes only if needed | QA verification |
+
+---
+
+## Candidate Types
+
+| ID Format | Type | Purpose |
+|-----------|------|---------|
+| RC-### | General | Standard Ralph candidates |
+| RC-D### | Diagnostic | Verify patterns/code exists |
+| RC-F### | Fix | Restore code if diagnostic fails |
+
+**Diagnostic→Fix Flow:**
+1. Run RC-D### diagnostic command
+2. If STATUS: PASS → log "VERIFIED" → skip paired RC-F###
+3. If STATUS: FAIL → run RC-F### fix → re-run RC-D### to verify
+4. Report final status
 
 ---
 
 ## Execution Protocol
 
-### ⛔ CHECKPOINT 0: Scan Candidates
-**Check for Ralph candidates and projects:**
-
-\`\`\`bash
-# Check for candidates file
-cat .claude/ralph-candidates.md
-
-# Check for Ralph setup in current project
-ls -la .claude/ralph/
-
-# Check for multi-project config
-ls ../*/.claude/ralph/ 2>/dev/null
-\`\`\`
-
+### ⛔ CHECKPOINT 0: Load & Filter Candidates
 **REQUIRED OUTPUT:**
-- Candidates file exists: yes/no
-- Ready candidates: N (RC-### IDs)
-- Ready diagnostics: N (RC-D### IDs)
-- Ralph setup in current project: yes/no
-- Other projects with Ralph: [list paths]
+- Candidates file: .claude/ralph-candidates.md
+- Total candidates: _____
+- Ready candidates: _____
+- Ready diagnostics (RC-D###): _____
+- Ready fixes (RC-F###): _____
+- Filtered candidates (if priority specified): _____
+
+**General Candidates:**
+| ID | Priority | Name | Completion Tests | Status |
+|----|----------|------|------------------|--------|
+| RC-___ | P_ | _____ | ___ tests | ready |
+
+**Diagnostics & Fixes (if any):**
+| Diagnostic | Verifies | Paired Fix | Status |
+|------------|----------|------------|--------|
+| RC-D___ | _____ | RC-F___ | ready |
 
 **USER GATE:** Use AskUserQuestion
-- Question: "Found [N] candidates, [M] diagnostics, [P] projects. Select mode:"
-- Options: ["Generate overnight script", "Multi-project batch", "Diagnostics only", "Interactive"]
+- Question: "Found [N] ready candidates ([X] diagnostics, [Y] fixes, [Z] general). Select execution mode:"
+- Options: ["Interactive (one by one)", "Generate script", "Phased (P1→P2→P3)", "Diagnostics first", "All at once"]
 
 STOP and wait for user response.
 
 ---
 
-### ⛔ CHECKPOINT 1: Configure Batch
+### ⛔ CHECKPOINT 1: Mode Configuration
 
-**For Overnight Script:**
-\`\`\`
-Max iterations per candidate: 50 (default)
-Stop on first failure: no (default)
-Log to file: yes (default)
-Notification on complete: no (default)
-\`\`\`
+**For Interactive Mode:**
+- Processing order: by priority (P1 first) or by ID
+- Pause between candidates: yes/no
+- Auto-archive on success: yes/no
 
-**For Multi-Project:**
-\`\`\`
-Projects to include: [list]
-Order: sequential/parallel
-Shared log file: yes/no
-\`\`\`
+**For Script Mode:**
+- Script path: ./overnight-ralph.sh
+- Max iterations per candidate: 50 (default)
+- Include status updates: yes/no
+- Log output to file: yes/no
 
-**For Diagnostics:**
-\`\`\`
-Run fixes on failure: yes (default)
-Re-verify after fix: yes (default)
-\`\`\`
+**For Phased Mode:**
+- Phase 1 (P1 Critical): [list IDs]
+- Phase 2 (P2 Important): [list IDs]
+- Phase 3 (P3 Nice-to-have): [list IDs]
+- Completion promises: <promise>P1_COMPLETE</promise>, etc.
+
+**For Diagnostics Mode:**
+- Diagnostic pairs to process: [list RC-D### → RC-F### pairs]
+- Run fixes only on failure: yes (default)
+- Re-verify after fix: yes (default)
+- Processing order: by diagnostic ID
 
 **USER GATE:** Use AskUserQuestion
-- Question: "Configuration ready. Generate script?"
-- Options: ["Generate", "Adjust settings", "Add more projects"]
+- Question: "Configuration ready. Proceed with [mode]?"
+- Options: ["Start execution", "Adjust config", "Change mode"]
 
 STOP and wait for user response.
 
 ---
 
-### ⛔ CHECKPOINT 2: Generate Script
+### ⛔ CHECKPOINT 2: Execute/Generate
 
-**Generate overnight-ralph.sh:**
+**Interactive Mode - Per Candidate:**
+1. Load candidate spec
+2. Verify completion tests
+3. Execute Ralph loop (max 50 iterations)
+4. Run completion tests
+5. Update status (complete/in-progress/blocked)
+6. Move to next candidate
+
+**Script Mode - Generate overnight-work.sh:**
 \`\`\`bash
 #!/bin/bash
-# Pure Ralph Batch - Generated [DATE]
-#
-# This script runs Pure Ralph loops on multiple candidates/projects.
-# Each loop gets FRESH CONTEXT - no accumulation.
+# Ralph Batch - Generated [DATE]
+# Candidates: [IDs]
+# Total: [N] candidates
 
-set -e
+set -e  # Exit on error
 LOG_FILE="ralph-batch-$(date +%Y%m%d-%H%M%S).log"
 KIT=.claude/helpers/kit/cli.js
 SECRETS=.claude/kit/secrets
@@ -5955,183 +6038,194 @@ log() {
   fi
 }
 
-log "╔════════════════════════════════════════════════╗"
-log "║  Pure Ralph Batch Starting                      ║"
-log "║  Candidates: [N]                                ║"
-log "║  Log: $LOG_FILE                                 ║"
-log "╚════════════════════════════════════════════════╝"
+log "Starting Ralph Batch Processing..."
+log "Start time: $(date)"
 
-#───────────────────────────────────────────────────────
-# Candidate: RC-001 - [Name]
-#───────────────────────────────────────────────────────
-log ""
+# RC-001: [Name]
 log "Processing RC-001: [Name]..."
-
-# Create/update IMPLEMENTATION_PLAN.md for this candidate
-cat > .claude/ralph/IMPLEMENTATION_PLAN.md << 'PLAN_EOF'
-# Implementation Plan: RC-001
-
-## Status
-- Total tasks: N
-- Completed: 0
-- Remaining: N
-
-## Tasks
-- [ ] Task 1
-- [ ] Task 2
-...
-
-## Discoveries
-PLAN_EOF
-
-# Run the Pure Ralph loop
-./.claude/ralph/loop.sh build 50
-
+claude -p "/w-ralph-this '[spec]'
+Output <promise>RC001_DONE</promise> when all tests pass.
+Max iterations: 50" 2>&1 | while IFS= read -r out || [ -n "$out" ]; do log "$out"; done
 log "RC-001 complete: $(date)"
 
-#───────────────────────────────────────────────────────
-# Candidate: RC-002 - [Name]
-#───────────────────────────────────────────────────────
-log ""
+# RC-002: [Name]
 log "Processing RC-002: [Name]..."
+claude -p "/w-ralph-this '[spec]'
+Output <promise>RC002_DONE</promise> when all tests pass.
+Max iterations: 50" 2>&1 | while IFS= read -r out || [ -n "$out" ]; do log "$out"; done
+log "RC-002 complete: $(date)"
 
-# [Similar pattern for each candidate]
-
-log ""
-log "╔════════════════════════════════════════════════╗"
-log "║  Pure Ralph Batch Complete!                     ║"
-log "║  End time: $(date)                              ║"
-log "║  Log: $LOG_FILE                                 ║"
-log "╚════════════════════════════════════════════════╝"
+log "Ralph Batch Complete: $(date)"
+echo "Results logged to: $LOG_FILE"
 \`\`\`
 
-**Log redaction (inside the generated script):** the \`log()\` function above pipes each line through \`node .claude/helpers/kit/cli.js redact --keep-lines\` (stdin to JSON \`{ text, replaced }\`; the \`text\` is what is logged) only when, at run time, \`.claude/helpers/kit/cli.js\` exists and so does a secrets file (\`.claude/kit/secrets\` in the worktree top, or in the main checkout: \`-e\` or \`-L\`, so a dangling symlink or a directory there still goes to \`redact\` and fails loudly). Otherwise it is the plain \`printf | tee -a "$LOG_FILE"\`: with no kit the script behaves as it did before, and the test is the script's own \`[ -f ... ]\`, not a decision made when it was generated. \`redact\` exit 0 is the redacted line. Exit 1 is bad input or an unreadable secrets file, never "nothing to redact": the line is still written to the log, with the marker \`[redact failed exit 1]\` after it, and the script continues (a failed redact never drops a line and never stops an overnight run). Any other non-zero exit (for example 127, or a signal) is a failure of that step and gets the same marker with its exit status. A log line that carries the marker was not redacted: review the log before sharing it.
+**Log redaction (inside the generated script):** the \`log()\` function above pipes each line (the script's own lines and, one by one, every line \`claude -p\` prints) through \`node .claude/helpers/kit/cli.js redact --keep-lines\` (stdin to JSON \`{ text, replaced }\`; the \`text\` is what is logged) only when, at run time, \`.claude/helpers/kit/cli.js\` exists and so does a secrets file (\`.claude/kit/secrets\` in the worktree top, or in the main checkout: \`-e\` or \`-L\`, so a dangling symlink or a directory there still goes to \`redact\` and fails loudly). Otherwise it is the plain \`printf | tee -a "$LOG_FILE"\`: with no kit the script behaves as it did before, and the test is the script's own \`[ -f ... ]\`, not a decision made when it was generated. \`redact\` exit 0 is the redacted line. Exit 1 is bad input or an unreadable secrets file, never "nothing to redact": the line is still written to the log, with the marker \`[redact failed exit 1]\` after it, and the script continues (a failed redact never drops a line and never stops an overnight run). Any other non-zero exit (for example 127, or a signal) is a failure of that step and gets the same marker with its exit status. A log line that carries the marker was not redacted: review the log before sharing it.
 
-**For Multi-Project Script:**
-\`\`\`bash
-#!/bin/bash
-# Pure Ralph Multi-Project Batch
+**Phased Mode - Sequential Priority Execution:**
+\`\`\`
+# Phase 1: P1 Critical
+Processing RC-001, RC-005...
+Output <promise>P1_COMPLETE</promise>
 
-PROJECTS=(
-  "/path/to/project1"
-  "/path/to/project2"
-)
+# Phase 2: P2 Important
+Processing RC-002, RC-003...
+Output <promise>P2_COMPLETE</promise>
 
-for project in "\${PROJECTS[@]}"; do
-  echo "═══ Processing: $project ═══"
-  cd "$project"
+# Phase 3: P3 Nice-to-have
+Processing RC-004...
+Output <promise>P3_COMPLETE</promise>
 
-  if [[ -f ".claude/ralph/loop.sh" ]]; then
-    ./.claude/ralph/loop.sh build 50
-  else
-    echo "Warning: No Ralph setup in $project"
-  fi
-done
+Output <promise>ALL_PHASES_COMPLETE</promise>
 \`\`\`
 
-**For Diagnostics Script:**
-\`\`\`bash
-#!/bin/bash
-# Pure Ralph Diagnostics
+**Diagnostics Mode - Verify & Fix Flow:**
+For each RC-D### diagnostic:
+\`\`\`
+┌─────────────────────────────────────────────────┐
+│ DIAGNOSTIC: RC-D001 - getOrderBookDepth exists  │
+├─────────────────────────────────────────────────┤
+│ Running: grep -n "export function getOrder..."  │
+│                                                 │
+│ RESULT: PATTERN_FOUND: YES                      │
+│         LOCATION: src/api/depth.ts:42           │
+│         STATUS: PASS                            │
+│                                                 │
+│ → VERIFIED. Skipping RC-F001.                   │
+└─────────────────────────────────────────────────┘
 
-run_diagnostic() {
-  local id="$1"
-  local cmd="$2"
-  local fix_id="$3"
-
-  echo "DIAGNOSTIC: $id"
-  if eval "$cmd"; then
-    echo "STATUS: PASS"
-    echo "ACTION: VERIFIED"
-  else
-    echo "STATUS: FAIL"
-    if [[ -n "$fix_id" ]]; then
-      echo "Running fix: $fix_id"
-      # Run fix via Ralph loop
-      ./.claude/ralph/loop.sh build 10
-      # Re-verify
-      if eval "$cmd"; then
-        echo "ACTION: RESTORED"
-      else
-        echo "ACTION: FAILED"
-      fi
-    fi
-  fi
-}
-
-# RC-D001: [Name] Exists
-run_diagnostic "RC-D001" "grep -q 'pattern' file.ts" "RC-F001"
+┌─────────────────────────────────────────────────┐
+│ DIAGNOSTIC: RC-D002 - validateOrderParams       │
+├─────────────────────────────────────────────────┤
+│ Running: grep -n "export function validate..."  │
+│                                                 │
+│ RESULT: PATTERN_FOUND: NO                       │
+│         LOCATION: NONE                          │
+│         STATUS: FAIL                            │
+│                                                 │
+│ → Running paired fix: RC-F002                   │
+│ → Fix applied.                                  │
+│ → Re-running diagnostic...                      │
+│ → STATUS: PASS                                  │
+│ → RESTORED.                                     │
+└─────────────────────────────────────────────────┘
 \`\`\`
 
-**Make executable:**
-\`\`\`bash
-chmod +x overnight-ralph.sh
+**Diagnostic Output Format:**
+\`\`\`
+DIAGNOSTIC: [NAME]
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+ACTION: VERIFIED|RESTORED|FAILED
 \`\`\`
 
-**REQUIRED OUTPUT:**
-- Script path: ./overnight-ralph.sh
-- Candidates included: [list]
-- Executable: yes
+**AUTO-PROCEED:** Continue until all candidates processed or script generated.
 
 ---
 
-### ⛔ CHECKPOINT 3: Output Instructions
-
+### ⛔ CHECKPOINT 3: Summary Report
 **REQUIRED OUTPUT:**
-\`\`\`
-╔════════════════════════════════════════════════════════════╗
-║  Overnight Script Generated!                                ║
-╠════════════════════════════════════════════════════════════╣
-║  Script: ./overnight-ralph.sh                               ║
-║  Candidates: [N]                                            ║
-║  Max iterations per candidate: 50                           ║
-╠════════════════════════════════════════════════════════════╣
-║  To run overnight:                                          ║
-║                                                             ║
-║    nohup ./overnight-ralph.sh > overnight.log 2>&1 &        ║
-║                                                             ║
-║  Or with screen:                                            ║
-║    screen -S ralph ./overnight-ralph.sh                     ║
-║                                                             ║
-║  Check progress:                                            ║
-║    tail -f ralph-batch-*.log                                ║
-╚════════════════════════════════════════════════════════════╝
-\`\`\`
+
+**Execution Summary:**
+| Metric | Value |
+|--------|-------|
+| Total candidates | _____ |
+| Processed | _____ |
+| Successful | _____ |
+| Failed/Blocked | _____ |
+| Skipped | _____ |
+
+**General Candidate Results:**
+| ID | Name | Result | Iterations | Notes |
+|----|------|--------|------------|-------|
+| RC-___ | _____ | success/failed/blocked | ___ | _____ |
+
+**Diagnostic Results (if applicable):**
+| Diagnostic | Verifies | Status | Action | Fix Run |
+|------------|----------|--------|--------|---------|
+| RC-D___ | _____ | PASS/FAIL | VERIFIED/RESTORED/FAILED | RC-F___/skipped |
+
+**Diagnostic Summary:**
+| Metric | Count |
+|--------|-------|
+| Total diagnostics run | _____ |
+| Verified (PASS, no fix needed) | _____ |
+| Restored (FAIL → fix → PASS) | _____ |
+| Failed (FAIL → fix → still FAIL) | _____ |
+
+**Script Generated (if applicable):**
+- Path: ./overnight-ralph.sh
+- Chmod: +x applied
+- Run command: \`./overnight-ralph.sh\`
+
+**Status Updates:**
+- Candidates marked complete: [IDs]
+- Candidates still in-progress: [IDs]
+- Candidates blocked: [IDs]
+- Diagnostics verified: [RC-D### IDs]
+- Diagnostics restored: [RC-D### IDs]
+- Archived: [IDs]
+
+**USER GATE:** Use AskUserQuestion
+- Question: "Batch complete. [X/Y] successful. [Z] diagnostics verified. Next action?"
+- Options: ["Done", "Retry failed", "View details", "Run generated script"]
+
+STOP and wait for user response.
 
 ---
 
 ## Completion Checklist
 
-- [ ] TodoWrite used at start
-- [ ] Candidates/projects scanned
-- [ ] Batch parameters configured
-- [ ] overnight-ralph.sh generated
-- [ ] Script made executable
-- [ ] Run instructions provided
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 6 phases
+- [ ] Checkpoints 0-1 completed with user confirmation
+- [ ] Checkpoint 2 completed (execution/generation)
+- [ ] Checkpoint 3 completed with summary
+- [ ] All candidate statuses updated in .claude/ralph-candidates.md
+- [ ] Successful candidates archived
+- [ ] Diagnostics verified/restored (if applicable)
+- [ ] Summary report generated
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
+
+## Script Output Location
+- Default: ./overnight-ralph.sh
+- Log file: ./ralph-batch-YYYYMMDD-HHMMSS.log
 
 ## Best Practices
 
 **For Overnight Runs:**
-1. Generate script: \`/w-ralph-batch --script\`
-2. Review the generated script
-3. Run with nohup or screen:
-   \`\`\`bash
-   nohup ./overnight-ralph.sh > overnight.log 2>&1 &
-   \`\`\`
-4. Check logs in morning: \`tail -f ralph-batch-*.log\`
+1. Generate script with \`/w-ralph-batch --script\`
+2. Review generated script
+3. Run \`chmod +x overnight-ralph.sh\`
+4. Execute before bed: \`./overnight-ralph.sh\`
+5. Check logs in morning
 
-**Key Principle:** The script runs \`loop.sh\` which gives each iteration fresh context. Bad work gets rejected by tests. Good work accumulates in git.
+**For Phased Execution:**
+1. Use \`/w-ralph-batch --phased\`
+2. Monitor P1 completion first
+3. Review results between phases
+4. Continue or abort as needed
+
+**For Diagnostic Verification:**
+1. Use \`/w-ralph-batch --diagnostics\` after /w-compound
+2. Verifies patterns built in previous session still exist
+3. Auto-fixes any regressions detected
+4. Run nightly to catch accidental deletions
 
 ## Example
 \`\`\`
 /w-ralph-batch --script
-# Generates overnight-ralph.sh for all ready candidates
+# Generates overnight-ralph.sh with all ready candidates
 
-./overnight-ralph.sh
-# Runs all Ralph loops sequentially
-# Each iteration: fresh context, one task, commit, exit
+/w-ralph-batch --priority P1
+# Only processes P1 (critical) candidates
+
+/w-ralph-batch --phased
+# Executes P1 → P2 → P3 with completion promises
+
+/w-ralph-batch --diagnostics
+# Runs all RC-D### diagnostics, fixes only if needed
 \`\`\`
 `
     },
