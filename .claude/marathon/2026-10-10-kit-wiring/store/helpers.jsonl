@@ -100,3 +100,4 @@
 {"helper_id":"ef7797d1-fe59-49d7-8064-b9c457f325df","tokens":42000,"outcome":"green","event":"done","id":"9f5b8792-ee2c-42de-bbfc-d6ed90a43853","ts":"2026-10-10T20:08:41.256Z"}
 {"role":"routine","model":"sonnet","stream":"bc","budget":100000,"event":"spawn","id":"6ced2e5a-6f36-465e-8c93-50dac062aca2","ts":"2026-10-10T20:08:42.882Z"}
 {"role":"build","model":"sonnet","stream":"marathon","budget":150000,"event":"spawn","id":"da6bd9ea-7370-4cfc-8529-fc087d1cc66a","ts":"2026-10-10T20:08:43.073Z"}
+{"helper_id":"6ced2e5a-6f36-465e-8c93-50dac062aca2","tokens":40000,"outcome":"green","event":"done","id":"7e0d398f-09de-41a1-9f5a-da28b68b1b96","ts":"2026-10-10T20:10:07.656Z"}
