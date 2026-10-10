@@ -14,6 +14,9 @@ if (prompt.startsWith('Reply with')) {
   say('OK');
 } else {
   const ids = [...prompt.trim().split("\n").pop().matchAll(/"id":"([^"]+)"/g)].map(m => m[1]);
+  if (mode === 'batch-limit') { say('Claude usage limit reached.', true); process.exit(1); }
+  if (mode === 'batch-login') { say('Please log in to continue'); process.exit(0); }
+  if (mode === 'batch-crash') { process.stderr.write('runner crashed'); process.exit(3); }
   if (mode === 'garbage') say('I think these are fine!');
   else if (mode === 'half') say(JSON.stringify({ verdicts: ids.slice(0, Math.floor(ids.length / 2)).map(id => ({ id, plain: true, correct: true })) }));
   else if (mode === 'extra') say(JSON.stringify({ verdicts: [...ids.map(id => ({ id, plain: 'yes', correct: false })), { id: 'ghost#1', plain: true, correct: true }] }));

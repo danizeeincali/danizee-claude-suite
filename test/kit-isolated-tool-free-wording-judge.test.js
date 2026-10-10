@@ -141,4 +141,22 @@ describe('wording-judge', () => {
     assert.match(seen[0][0], /judging call\(s\) plus 1 probe/);
     assert.equal(await seen[0][1], '', 'no runner call had happened when the plan was written');
   });
+
+  it('review round 2: a limit or login wall after the probe stops the batch at once; other failures are errors resume retries', async () => {
+    for (const mode of ['batch-limit', 'batch-login']) {
+      const out = await fresh(); const scored = await score(out); const log = path.join(out, 'calls.log');
+      const r = await withEnv({ STUB_LOG: log, STUB_MODE: mode }, () => judge(scored, { runner: STUB, outDir: out, log: () => {} }));
+      assert.match(r.stopped, /during the batch/, mode);
+      assert.equal(r.calls, 1, mode);
+      assert.deepEqual(r.cases, {}, `${mode}: the stopped case is not recorded`);
+      assert.equal((await fs.readFile(log, 'utf-8')).trim().split('\n').map(JSON.parse).filter(l => !l.probe).length, 1, mode);
+    }
+    const out = await fresh(); const scored = await score(out); const specs = await specsOf(out);
+    const r = await withEnv({ STUB_MODE: 'batch-crash' }, () => judge(scored, { runner: STUB, outDir: out, specs, log: () => {} }));
+    assert.equal(r.stopped, null);
+    assert.ok(Object.values(r.cases).length && Object.values(r.cases).every(c => c.status === 'error' && /crashed/.test(c.detail)));
+    const r2 = await withEnv({ STUB_MODE: 'ok' }, () => judge(scored, { runner: STUB, outDir: out, specs, resume: true, log: () => {} }));
+    assert.equal(r2.calls, Object.keys(r.cases).length);
+    assert.ok(Object.values(r2.cases).every(c => c.status === 'judged'));
+  });
 });

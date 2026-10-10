@@ -159,9 +159,9 @@ export async function judge(scored, { runner = DEFAULT_RUNNER, model = DEFAULT_M
     result.calls++;
     const a = answerText(r.stdout);
     const blob = `${a.text}\n${r.stderr}`;
-    if (LIMIT_RE.test(blob) && (r.code !== 0 || a.error)) { result.stopped = `usage limit or login wall during the batch: ${blob.trim().slice(0, 160)}`; break; }
+    const v = r.code === 0 && !a.error ? parseVerdicts(a.text, c.ids) : null;
+    if (LIMIT_RE.test(blob) && (!v || !v.verdicts.length)) { result.stopped = `usage limit or login wall during the batch: ${blob.trim().slice(0, 160)}`; break; }
     if (r.code !== 0 || a.error) { result.cases[c.case] = { status: 'error', detail: blob.trim().slice(0, 160), verdicts: [], unparsed_ids: c.ids, dropped: [] }; await save(); continue; }
-    const v = parseVerdicts(a.text, c.ids);
     result.cases[c.case] = { status: !v.unparsed_ids.length ? 'judged' : v.verdicts.length ? 'partial' : 'unparsed', key: c.key, ...v };
     await save();
   }
