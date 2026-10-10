@@ -52,6 +52,8 @@ export function getDefaultSettings() {
         'Bash(node .claude/helpers/marathon/cli.js:*)',
         // /w-bbs drives its helper CLI step by step; a prompt per verb would stall the run.
         'Bash(node .claude/helpers/bbs/cli.js:*)',
+        // /bc measures context and writes its handoff through its helper CLI.
+        'Bash(node .claude/helpers/bc/cli.js:*)',
         'Read(docs/solutions/**)',
         'Write(docs/solutions/**)'
       ]

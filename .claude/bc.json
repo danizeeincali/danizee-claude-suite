@@ -1,0 +1,7 @@
+{
+  "status": ".claude/plans/STATUS.md",
+  "kickoff": null,
+  "rules": ".claude/plans/RULES.md",
+  "memory": "docs/solutions",
+  "db": ".claude/bc/compactions.jsonl"
+}

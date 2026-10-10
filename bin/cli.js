@@ -3,7 +3,9 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
+import os from 'os';
 import { DaniZeeSuiteInstaller } from '../src/installer.js';
+import * as bc from '../src/plugins/bc.js';
 
 const program = new Command();
 
@@ -18,6 +20,9 @@ function printShadowing(shadowing = []) {
   console.log(chalk.dim('   ~/.claude/commands/<name>.md is loaded instead of the project copy. Rename or remove:'));
   for (const name of shadowing) {
     console.log(chalk.dim(`     mv ~/.claude/commands/${name}.md ~/.claude/commands/${name}-old.md`));
+  }
+  if (shadowing.some(n => bc.USER_COMMANDS.includes(n))) {
+    console.log(chalk.dim('   For /bc, then run `danizee-claude-suite install-user` so one suite copy serves every project.'));
   }
 }
 
@@ -105,7 +110,8 @@ program
       console.log(`  ${status.plugins.compoundEngineering ? chalk.green('✓') : chalk.red('✗')} Compound Engineering plugin`);
       console.log(`  ${status.plugins.frontendDesign ? chalk.green('✓') : chalk.red('✗')} Frontend Design plugin`);
       console.log(`  ${status.plugins.dotShortcuts ? chalk.green('✓') : chalk.red('✗')} Workflow Shortcuts (/w-tdd-swarm, /w-swarm, /w-fix, etc.)`);
-      console.log(`  ${status.plugins.marathon ? chalk.green('✓') : chalk.red('✗')} Marathon helpers + hooks (/w-marathon, /bc, /bcp)`);
+      console.log(`  ${status.plugins.marathon ? chalk.green('✓') : chalk.red('✗')} Marathon helpers + hooks (/w-marathon)`);
+      console.log(`  ${status.plugins.bc ? chalk.green('✓') : chalk.red('✗')} /bc helper + compaction hooks (/bc, /bcp)`);
       console.log(`  ${status.plugins.bbs ? chalk.green('✓') : chalk.red('✗')} BBS helpers (/w-bbs, /bbs)`);
       console.log(`  ${status.plugins.agentCookbook ? chalk.green('✓') : chalk.dim('○')} Agent Cookbook (optional)`);
       console.log(`  ${status.plugins.pmShortcuts ? chalk.green('✓') : chalk.dim('○')} PM Module (optional, --with-pm)`);
@@ -156,6 +162,40 @@ program
       spinner.succeed(chalk.green('Danizee Claude Suite uninstalled.'));
     } catch (error) {
       spinner.fail(chalk.red('Uninstall failed'));
+      console.error(chalk.red(error.message));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('install-user')
+  .description('Install /bc, /bcp and the compaction hooks once, in ~/.claude, for every project')
+  .option('--dry-run', 'Preview changes without applying them')
+  .option('-f, --force', 'Replace your own ~/.claude/commands/bc.md (kept as bc.md.bak)')
+  .option('--home <dir>', 'Home directory to install into', os.homedir())
+  .action(async (options) => {
+    try {
+      const result = await bc.installUser(options.home, { dryRun: !!options.dryRun, force: !!options.force });
+      console.log(chalk.green(`${options.dryRun ? 'Would install' : 'Installed'} /bc for every project in ${result.dir}`));
+      for (const f of result.files) console.log(chalk.dim(`  ${f}`));
+      for (const n of result.replaced) console.log(chalk.yellow(`  replaced your own /${n} (saved as commands/${n}.md.bak)`));
+      console.log('\n' + chalk.cyan('In each project, add .claude/bc.json naming its status, kickoff and rules files:'));
+      console.log(chalk.dim('  ' + JSON.stringify(bc.defaultProjectConfig())));
+    } catch (error) {
+      console.error(chalk.red(error.message));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('uninstall-user')
+  .description('Remove the user-level /bc copy and its hooks from ~/.claude')
+  .option('--home <dir>', 'Home directory to uninstall from', os.homedir())
+  .action(async (options) => {
+    try {
+      await bc.uninstallUser(options.home);
+      console.log(chalk.green('Removed the user-level /bc.'));
+    } catch (error) {
       console.error(chalk.red(error.message));
       process.exit(1);
     }
