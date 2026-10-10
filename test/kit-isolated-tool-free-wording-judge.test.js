@@ -4,7 +4,7 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { parseVerdicts, plan, judge, sealedArgs, buildPrompt, itemsFor } from '../src/lib/kit/wording-judge.js';
+import { itemsKey, parseVerdicts, plan, judge, sealedArgs, buildPrompt, itemsFor } from '../src/lib/kit/wording-judge.js';
 import { scoreFolders } from '../src/lib/kit/review-score.js';
 import { run as scoreRun } from '../src/lib/kit/review-score.js';
 
@@ -111,5 +111,34 @@ describe('wording-judge', () => {
     const strip = (x) => JSON.stringify({ ...x, specs_snapshot: null });
     assert.equal(strip(rest), strip(plainRun));
     assert.equal(await fs.readFile(path.join(a, 'scores.json'), 'utf-8'), (await fs.readFile(path.join(b, 'scores.json'), 'utf-8')).replaceAll(b, a));
+  });
+
+  it('review round 1: resume retries a partly judged case and re-judges a case whose sentences changed', async () => {
+    const out = await fresh(); const scored = await score(out); const specs = await specsOf(out);
+    const cases = plan(scored, { specs }).calls;
+    await withEnv({ STUB_MODE: 'half' }, async () => {
+      const r = await judge(scored, { runner: STUB, outDir: out, specs, log: () => {} });
+      assert.ok(Object.values(r.cases).every(c => c.status !== 'judged' && c.unparsed_ids.length));
+    });
+    await withEnv({ STUB_MODE: 'ok' }, async () => {
+      const r = await judge(scored, { runner: STUB, outDir: out, specs, resume: true, log: () => {} });
+      assert.equal(r.calls, cases, 'every partly judged case is retried');
+      assert.ok(Object.values(r.cases).every(c => c.status === 'judged'));
+      const changed = structuredClone(scored); changed.cases.find(c => c.hits?.length).hits[0].title = 'a new sentence';
+      const r2 = await judge(changed, { runner: STUB, outDir: out, specs, resume: true, log: () => {} });
+      assert.equal(r2.calls, 1, 'only the case whose sentence changed is judged again');
+      assert.equal(r2.plan.skipped_resume, cases - 1);
+    });
+    assert.notEqual(itemsKey([{ id: 'a', sentence: 'x' }]), itemsKey([{ id: 'a', sentence: 'y' }]));
+  });
+  it('review round 1: the plan is written before the probe or any judging call', async () => {
+    const out = await fresh(); const scored = await score(out); const log = path.join(out, 'calls.log');
+    const seen = [];
+    await withEnv({ STUB_LOG: log, STUB_MODE: 'ok' }, async () => {
+      await judge(scored, { runner: STUB, outDir: out, log: (m) => seen.push([m, fs.readFile(log, 'utf-8').catch(() => '')]) });
+    });
+    assert.equal(seen.length, 1);
+    assert.match(seen[0][0], /judging call\(s\) plus 1 probe/);
+    assert.equal(await seen[0][1], '', 'no runner call had happened when the plan was written');
   });
 });

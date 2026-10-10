@@ -24,7 +24,7 @@
  *   hits / bugs, over SUMS across cases (never an average of ratios); a ratio with nothing to divide is null, not 1.
  * OPTIONAL --wording [--wording-cap n] [--wording-resume] [--wording-runner path] then asks wording-judge.js for a model second
  * opinion on the matched findings' wording; it is reported under `wording` beside the scores and never read by the scorer.
- * Only the given folders are read; nothing is run, fetched or sent. Built from the approved brief of /w-bbs run 2026-10-10-openqodex-2.
+ * Without --wording, only the given folders are read and nothing is run, fetched or sent (--wording runs the judge in wording-judge.js). Built from the approved brief of /w-bbs run 2026-10-10-openqodex-2.
  */
 import crypto from 'crypto';
 import fs from 'fs/promises';

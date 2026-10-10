@@ -15,6 +15,7 @@ if (prompt.startsWith('Reply with')) {
 } else {
   const ids = [...prompt.trim().split("\n").pop().matchAll(/"id":"([^"]+)"/g)].map(m => m[1]);
   if (mode === 'garbage') say('I think these are fine!');
+  else if (mode === 'half') say(JSON.stringify({ verdicts: ids.slice(0, Math.floor(ids.length / 2)).map(id => ({ id, plain: true, correct: true })) }));
   else if (mode === 'extra') say(JSON.stringify({ verdicts: [...ids.map(id => ({ id, plain: 'yes', correct: false })), { id: 'ghost#1', plain: true, correct: true }] }));
   else say('```json\n' + JSON.stringify({ verdicts: ids.map(id => ({ id, plain: true, correct: true })) }) + '\n```');
 }

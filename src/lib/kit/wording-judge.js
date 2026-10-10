@@ -9,7 +9,8 @@
  * settings, no MCP servers, no saved session. The model answers JSON, a yes/no on plainness and on correctness per id.
  *   - The script parses the answer itself (parseVerdicts); verdicts for ids it did not ask about are dropped; an
  *     answer that cannot be read is recorded as `unparsed`, never guessed.
- *   - Before any spend it reports the plan (number of calls). --cap limits judging calls. --resume skips cases already judged.
+ *   - Before any spend it writes the plan (number of calls) to stderr; --dry shows it without spending. --cap limits
+ *     judging calls. --resume skips a case only when all its ids were judged and its ids and sentences are unchanged.
  *   - A probe call with the same sealed flags runs first; a non-zero exit, an is_error answer, or text matching a
  *     usage limit / login wall stops the batch at once ({ stopped: reason }). Exit code is still 0.
  *   - The scorer never reads this file, and scores.json is not touched.
@@ -46,10 +47,13 @@ export function itemsFor(scoredCase, spec) {
   });
 }
 
+/** What a case's verdicts were given for: its ids and sentences. A resumed case is skipped only while this still matches. */
+export const itemsKey = (items) => JSON.stringify(items.map(i => [i.id, i.sentence]));
+
 /** What would be sent: { cases:[{case, ids}], calls, probe:1 }. `scored` is a scores.json object; `specs` maps case to spec. */
 export function plan(scored, { cap = Infinity, specs = {}, judged = {} } = {}) {
-  const all = (scored?.cases ?? []).map(c => ({ case: c.case, ids: itemsFor(c, specs[c.case]).map(i => i.id) })).filter(c => c.ids.length);
-  const todo = all.filter(c => judged[c.case]?.status !== 'judged');
+  const all = (scored?.cases ?? []).map(c => { const items = itemsFor(c, specs[c.case]); return { case: c.case, ids: items.map(i => i.id), key: itemsKey(items) }; }).filter(c => c.ids.length);
+  const todo = all.filter(c => judged[c.case]?.status !== 'judged' || judged[c.case]?.key !== c.key);
   const send = todo.slice(0, Number.isFinite(cap) ? Math.max(0, cap) : todo.length);
   return { cases: send, calls: send.length, probe: send.length ? 1 : 0, skipped_resume: all.length - todo.length, over_cap: todo.length - send.length };
 }
@@ -132,7 +136,7 @@ async function readSpecs(outDir) {
 }
 
 /** Judge the hits of `scored`. Writes <outDir>/wording.json. Never throws for model or runner trouble: it reports it. */
-export async function judge(scored, { runner = DEFAULT_RUNNER, model = DEFAULT_MODEL, cap = Infinity, resume = false, outDir, probe = true, specs, args } = {}) {
+export async function judge(scored, { runner = DEFAULT_RUNNER, model = DEFAULT_MODEL, cap = Infinity, resume = false, outDir, probe = true, specs, args, log = (m) => process.stderr.write(m) } = {}) {
   if (!outDir) throw bad('judge needs an output folder');
   specs = specs ?? await readSpecs(outDir);
   const prev = (resume ? await readJsonIn(outDir, 'wording.json') : null) ?? {};
@@ -141,6 +145,7 @@ export async function judge(scored, { runner = DEFAULT_RUNNER, model = DEFAULT_M
   const sealed = args ?? sealedArgs(model);
   const result = { plan: p, runner, cases: done, calls: 0, stopped: null };
   const save = () => guardedWrite(path.join(outDir, 'wording.json'), JSON.stringify(result, null, 2) + '\n', { root: outDir });
+  log(`wording-judge: ${p.calls} judging call(s)${p.calls && probe ? ' plus 1 probe' : ''}; ${p.skipped_resume} skipped by --resume, ${p.over_cap} over --cap\n`);
   if (p.calls && probe) {
     const r = await callRunner(runner, sealed, 'Reply with the single word OK.');
     result.probe = { code: r.code };
@@ -157,7 +162,7 @@ export async function judge(scored, { runner = DEFAULT_RUNNER, model = DEFAULT_M
     if (LIMIT_RE.test(blob) && (r.code !== 0 || a.error)) { result.stopped = `usage limit or login wall during the batch: ${blob.trim().slice(0, 160)}`; break; }
     if (r.code !== 0 || a.error) { result.cases[c.case] = { status: 'error', detail: blob.trim().slice(0, 160), verdicts: [], unparsed_ids: c.ids, dropped: [] }; await save(); continue; }
     const v = parseVerdicts(a.text, c.ids);
-    result.cases[c.case] = { status: v.verdicts.length ? 'judged' : 'unparsed', ...v };
+    result.cases[c.case] = { status: !v.unparsed_ids.length ? 'judged' : v.verdicts.length ? 'partial' : 'unparsed', key: c.key, ...v };
     await save();
   }
   await save();
