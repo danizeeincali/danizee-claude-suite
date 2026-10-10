@@ -89,11 +89,11 @@ describe('handoff — slugs and finish line', () => {
       'clean_reviews', 'latest_high', 'open_high'
     ]);
     const by = Object.fromEntries(fl.lines.map(l => [l.id, l]));
-    assert.deepEqual(by['tests_green_drift-monitor'], { id: 'tests_green_drift-monitor', label: 'drift-monitor: green unit runs in a row', type: 'number', op: 'at_least', value: 1, owner: 'build', source: 'runs.streak:unit' });
-    assert.deepEqual(by['egress_zero_drift-monitor'], { id: 'egress_zero_drift-monitor', label: 'drift-monitor: zero egress in the packaged check', type: 'bool', op: 'is', value: true, owner: 'build', source: 'measure:egress_zero_drift-monitor' });
-    assert.deepEqual(by['six_sigma_drift-monitor'], { id: 'six_sigma_drift-monitor', label: 'drift-monitor: clean reviews in a row', type: 'number', op: 'at_least', value: 2, owner: 'build', source: 'reviews.streak' });
-    assert.deepEqual(by['callers_drift-monitor'], { id: 'callers_drift-monitor', label: 'drift-monitor: callers in the harness', type: 'number', op: 'at_least', value: 1, owner: 'build', source: 'measure:callers_drift-monitor' });
-    assert.deepEqual(by['packaged_drift-monitor'], { id: 'packaged_drift-monitor', label: 'drift-monitor: packaged check passes', type: 'bool', op: 'is', value: true, owner: 'build', source: 'measure:packaged_drift-monitor' });
+    assert.deepEqual(by['tests_green_drift-monitor'], { id: 'tests_green_drift-monitor', label: 'drift-monitor: green unit runs in a row', type: 'number', op: 'at_least', value: 1, owner: 'build', source: 'runs.streak:unit', stream: 'drift-monitor' });
+    assert.deepEqual(by['egress_zero_drift-monitor'], { id: 'egress_zero_drift-monitor', label: 'drift-monitor: zero egress in the packaged check', type: 'bool', op: 'is', value: true, owner: 'build', source: 'measure:egress_zero_drift-monitor', stream: 'drift-monitor' });
+    assert.deepEqual(by['six_sigma_drift-monitor'], { id: 'six_sigma_drift-monitor', label: 'drift-monitor: clean reviews in a row', type: 'number', op: 'at_least', value: 2, owner: 'build', source: 'reviews.streak', stream: 'drift-monitor' });
+    assert.deepEqual(by['callers_drift-monitor'], { id: 'callers_drift-monitor', label: 'drift-monitor: callers in the harness', type: 'number', op: 'at_least', value: 1, owner: 'build', source: 'measure:callers_drift-monitor', stream: 'drift-monitor' });
+    assert.deepEqual(by['packaged_drift-monitor'], { id: 'packaged_drift-monitor', label: 'drift-monitor: packaged check passes', type: 'bool', op: 'is', value: true, owner: 'build', source: 'measure:packaged_drift-monitor', stream: 'drift-monitor' });
     assert.equal(by.clean_reviews.value, 2, 'clean_reviews follows passes_in_a_row');
     assert.deepEqual(fl.tolerance, { high: 0, medium: 2, low: 5, passes_in_a_row: 2 });
     assert.deepEqual(validateFinishLine(fl), [], 'the marathon gate accepts every line');

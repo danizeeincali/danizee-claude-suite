@@ -36,3 +36,18 @@ Add a rule the second time something goes wrong.
 - Lines only the human can close are listed once under "Waiting on human" and never retried.
 - A problem the owner finds while using the build is an escape: record it with
   `cli.js record escape` so skipped reviews show their cost.
+
+## This run (2026-10-10-bbs-openqodex-2)
+
+- Every power lands in `src/lib/kit/<module>.js`, exporting `verb` and `run(args, io)`; `kit/cli.js` discovers it.
+  Copy `src/lib/kit/.` into `.claude/helpers/kit/` after every change (a test checks the copy).
+- Briefs carry the idea only. Never open `.claude/bbs/runs/*/fetched/`; nothing from the source is copied.
+- The packaged check for a stream is `test/kit-<stream>-packaged.test.js`, built on `test/helpers/packaged.js`
+  (installs the suite into a temp project, drives the installed kit CLI under the no-egress preload).
+- The three measured lines come from `node scripts/marathon-measure.js --stream <s> --verb <v> --module <m.js>
+  --test test/kit-<s>-packaged.test.js` — never recorded by hand.
+- A caller is a real harness file in its normal flow (a command step, a hook, another helper) that runs the verb
+  or imports the module. A doc that only mentions the verb is not a caller.
+- Streams run one at a time: each stream branch merges into the run branch `claude/project-thread-p9gbyo`
+  before the next starts, so `dot-shortcuts.js` and `installer.js` never conflict.
+- Finish-line lines carry `stream`: `gate --stream <s>` judges only that stream's lines (others are other_stream).

@@ -13,7 +13,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "runs.streak:unit"
+      "source": "runs.streak:unit",
+      "stream": "pre-push-review-gate"
     },
     {
       "id": "egress_zero_pre-push-review-gate",
@@ -22,7 +23,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:egress_zero_pre-push-review-gate"
+      "source": "measure:egress_zero_pre-push-review-gate",
+      "stream": "pre-push-review-gate"
     },
     {
       "id": "six_sigma_pre-push-review-gate",
@@ -31,7 +33,8 @@
       "op": "at_least",
       "value": 2,
       "owner": "build",
-      "source": "reviews.streak"
+      "source": "reviews.streak",
+      "stream": "pre-push-review-gate"
     },
     {
       "id": "callers_pre-push-review-gate",
@@ -40,7 +43,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "measure:callers_pre-push-review-gate"
+      "source": "measure:callers_pre-push-review-gate",
+      "stream": "pre-push-review-gate"
     },
     {
       "id": "packaged_pre-push-review-gate",
@@ -49,7 +53,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:packaged_pre-push-review-gate"
+      "source": "measure:packaged_pre-push-review-gate",
+      "stream": "pre-push-review-gate"
     },
     {
       "id": "tests_green_secret-redaction-by-value-and-fingerprin",
@@ -58,7 +63,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "runs.streak:unit"
+      "source": "runs.streak:unit",
+      "stream": "secret-redaction-by-value-and-fingerprin"
     },
     {
       "id": "egress_zero_secret-redaction-by-value-and-fingerprin",
@@ -67,7 +73,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:egress_zero_secret-redaction-by-value-and-fingerprin"
+      "source": "measure:egress_zero_secret-redaction-by-value-and-fingerprin",
+      "stream": "secret-redaction-by-value-and-fingerprin"
     },
     {
       "id": "six_sigma_secret-redaction-by-value-and-fingerprin",
@@ -76,7 +83,8 @@
       "op": "at_least",
       "value": 2,
       "owner": "build",
-      "source": "reviews.streak"
+      "source": "reviews.streak",
+      "stream": "secret-redaction-by-value-and-fingerprin"
     },
     {
       "id": "callers_secret-redaction-by-value-and-fingerprin",
@@ -85,7 +93,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "measure:callers_secret-redaction-by-value-and-fingerprin"
+      "source": "measure:callers_secret-redaction-by-value-and-fingerprin",
+      "stream": "secret-redaction-by-value-and-fingerprin"
     },
     {
       "id": "packaged_secret-redaction-by-value-and-fingerprin",
@@ -94,7 +103,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:packaged_secret-redaction-by-value-and-fingerprin"
+      "source": "measure:packaged_secret-redaction-by-value-and-fingerprin",
+      "stream": "secret-redaction-by-value-and-fingerprin"
     },
     {
       "id": "tests_green_lens-catalog-file-triggered-checks",
@@ -103,7 +113,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "runs.streak:unit"
+      "source": "runs.streak:unit",
+      "stream": "lens-catalog-file-triggered-checks"
     },
     {
       "id": "egress_zero_lens-catalog-file-triggered-checks",
@@ -112,7 +123,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:egress_zero_lens-catalog-file-triggered-checks"
+      "source": "measure:egress_zero_lens-catalog-file-triggered-checks",
+      "stream": "lens-catalog-file-triggered-checks"
     },
     {
       "id": "six_sigma_lens-catalog-file-triggered-checks",
@@ -121,7 +133,8 @@
       "op": "at_least",
       "value": 2,
       "owner": "build",
-      "source": "reviews.streak"
+      "source": "reviews.streak",
+      "stream": "lens-catalog-file-triggered-checks"
     },
     {
       "id": "callers_lens-catalog-file-triggered-checks",
@@ -130,7 +143,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "measure:callers_lens-catalog-file-triggered-checks"
+      "source": "measure:callers_lens-catalog-file-triggered-checks",
+      "stream": "lens-catalog-file-triggered-checks"
     },
     {
       "id": "packaged_lens-catalog-file-triggered-checks",
@@ -139,7 +153,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:packaged_lens-catalog-file-triggered-checks"
+      "source": "measure:packaged_lens-catalog-file-triggered-checks",
+      "stream": "lens-catalog-file-triggered-checks"
     },
     {
       "id": "tests_green_hardened-git-read-on-untrusted-repo",
@@ -148,7 +163,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "runs.streak:unit"
+      "source": "runs.streak:unit",
+      "stream": "hardened-git-read-on-untrusted-repo"
     },
     {
       "id": "egress_zero_hardened-git-read-on-untrusted-repo",
@@ -157,7 +173,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:egress_zero_hardened-git-read-on-untrusted-repo"
+      "source": "measure:egress_zero_hardened-git-read-on-untrusted-repo",
+      "stream": "hardened-git-read-on-untrusted-repo"
     },
     {
       "id": "six_sigma_hardened-git-read-on-untrusted-repo",
@@ -166,7 +183,8 @@
       "op": "at_least",
       "value": 2,
       "owner": "build",
-      "source": "reviews.streak"
+      "source": "reviews.streak",
+      "stream": "hardened-git-read-on-untrusted-repo"
     },
     {
       "id": "callers_hardened-git-read-on-untrusted-repo",
@@ -175,7 +193,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "measure:callers_hardened-git-read-on-untrusted-repo"
+      "source": "measure:callers_hardened-git-read-on-untrusted-repo",
+      "stream": "hardened-git-read-on-untrusted-repo"
     },
     {
       "id": "packaged_hardened-git-read-on-untrusted-repo",
@@ -184,7 +203,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:packaged_hardened-git-read-on-untrusted-repo"
+      "source": "measure:packaged_hardened-git-read-on-untrusted-repo",
+      "stream": "hardened-git-read-on-untrusted-repo"
     },
     {
       "id": "tests_green_identity-checked-file-writes",
@@ -193,7 +213,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "runs.streak:unit"
+      "source": "runs.streak:unit",
+      "stream": "identity-checked-file-writes"
     },
     {
       "id": "egress_zero_identity-checked-file-writes",
@@ -202,7 +223,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:egress_zero_identity-checked-file-writes"
+      "source": "measure:egress_zero_identity-checked-file-writes",
+      "stream": "identity-checked-file-writes"
     },
     {
       "id": "six_sigma_identity-checked-file-writes",
@@ -211,7 +233,8 @@
       "op": "at_least",
       "value": 2,
       "owner": "build",
-      "source": "reviews.streak"
+      "source": "reviews.streak",
+      "stream": "identity-checked-file-writes"
     },
     {
       "id": "callers_identity-checked-file-writes",
@@ -220,7 +243,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "measure:callers_identity-checked-file-writes"
+      "source": "measure:callers_identity-checked-file-writes",
+      "stream": "identity-checked-file-writes"
     },
     {
       "id": "packaged_identity-checked-file-writes",
@@ -229,7 +253,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:packaged_identity-checked-file-writes"
+      "source": "measure:packaged_identity-checked-file-writes",
+      "stream": "identity-checked-file-writes"
     },
     {
       "id": "tests_green_change-blast-radius-walk",
@@ -238,7 +263,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "runs.streak:unit"
+      "source": "runs.streak:unit",
+      "stream": "change-blast-radius-walk"
     },
     {
       "id": "egress_zero_change-blast-radius-walk",
@@ -247,7 +273,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:egress_zero_change-blast-radius-walk"
+      "source": "measure:egress_zero_change-blast-radius-walk",
+      "stream": "change-blast-radius-walk"
     },
     {
       "id": "six_sigma_change-blast-radius-walk",
@@ -256,7 +283,8 @@
       "op": "at_least",
       "value": 2,
       "owner": "build",
-      "source": "reviews.streak"
+      "source": "reviews.streak",
+      "stream": "change-blast-radius-walk"
     },
     {
       "id": "callers_change-blast-radius-walk",
@@ -265,7 +293,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "measure:callers_change-blast-radius-walk"
+      "source": "measure:callers_change-blast-radius-walk",
+      "stream": "change-blast-radius-walk"
     },
     {
       "id": "packaged_change-blast-radius-walk",
@@ -274,7 +303,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:packaged_change-blast-radius-walk"
+      "source": "measure:packaged_change-blast-radius-walk",
+      "stream": "change-blast-radius-walk"
     },
     {
       "id": "tests_green_caller-floor-disclosure",
@@ -283,7 +313,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "runs.streak:unit"
+      "source": "runs.streak:unit",
+      "stream": "caller-floor-disclosure"
     },
     {
       "id": "egress_zero_caller-floor-disclosure",
@@ -292,7 +323,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:egress_zero_caller-floor-disclosure"
+      "source": "measure:egress_zero_caller-floor-disclosure",
+      "stream": "caller-floor-disclosure"
     },
     {
       "id": "six_sigma_caller-floor-disclosure",
@@ -301,7 +333,8 @@
       "op": "at_least",
       "value": 2,
       "owner": "build",
-      "source": "reviews.streak"
+      "source": "reviews.streak",
+      "stream": "caller-floor-disclosure"
     },
     {
       "id": "callers_caller-floor-disclosure",
@@ -310,7 +343,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "measure:callers_caller-floor-disclosure"
+      "source": "measure:callers_caller-floor-disclosure",
+      "stream": "caller-floor-disclosure"
     },
     {
       "id": "packaged_caller-floor-disclosure",
@@ -319,7 +353,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:packaged_caller-floor-disclosure"
+      "source": "measure:packaged_caller-floor-disclosure",
+      "stream": "caller-floor-disclosure"
     },
     {
       "id": "tests_green_fact-cached-graph-build-with-budget",
@@ -328,7 +363,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "runs.streak:unit"
+      "source": "runs.streak:unit",
+      "stream": "fact-cached-graph-build-with-budget"
     },
     {
       "id": "egress_zero_fact-cached-graph-build-with-budget",
@@ -337,7 +373,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:egress_zero_fact-cached-graph-build-with-budget"
+      "source": "measure:egress_zero_fact-cached-graph-build-with-budget",
+      "stream": "fact-cached-graph-build-with-budget"
     },
     {
       "id": "six_sigma_fact-cached-graph-build-with-budget",
@@ -346,7 +383,8 @@
       "op": "at_least",
       "value": 2,
       "owner": "build",
-      "source": "reviews.streak"
+      "source": "reviews.streak",
+      "stream": "fact-cached-graph-build-with-budget"
     },
     {
       "id": "callers_fact-cached-graph-build-with-budget",
@@ -355,7 +393,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "measure:callers_fact-cached-graph-build-with-budget"
+      "source": "measure:callers_fact-cached-graph-build-with-budget",
+      "stream": "fact-cached-graph-build-with-budget"
     },
     {
       "id": "packaged_fact-cached-graph-build-with-budget",
@@ -364,7 +403,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:packaged_fact-cached-graph-build-with-budget"
+      "source": "measure:packaged_fact-cached-graph-build-with-budget",
+      "stream": "fact-cached-graph-build-with-budget"
     },
     {
       "id": "tests_green_tracked-file-scrub-gate",
@@ -373,7 +413,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "runs.streak:unit"
+      "source": "runs.streak:unit",
+      "stream": "tracked-file-scrub-gate"
     },
     {
       "id": "egress_zero_tracked-file-scrub-gate",
@@ -382,7 +423,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:egress_zero_tracked-file-scrub-gate"
+      "source": "measure:egress_zero_tracked-file-scrub-gate",
+      "stream": "tracked-file-scrub-gate"
     },
     {
       "id": "six_sigma_tracked-file-scrub-gate",
@@ -391,7 +433,8 @@
       "op": "at_least",
       "value": 2,
       "owner": "build",
-      "source": "reviews.streak"
+      "source": "reviews.streak",
+      "stream": "tracked-file-scrub-gate"
     },
     {
       "id": "callers_tracked-file-scrub-gate",
@@ -400,7 +443,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "measure:callers_tracked-file-scrub-gate"
+      "source": "measure:callers_tracked-file-scrub-gate",
+      "stream": "tracked-file-scrub-gate"
     },
     {
       "id": "packaged_tracked-file-scrub-gate",
@@ -409,7 +453,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:packaged_tracked-file-scrub-gate"
+      "source": "measure:packaged_tracked-file-scrub-gate",
+      "stream": "tracked-file-scrub-gate"
     },
     {
       "id": "tests_green_planted-bug-review-scoring",
@@ -418,7 +463,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "runs.streak:unit"
+      "source": "runs.streak:unit",
+      "stream": "planted-bug-review-scoring"
     },
     {
       "id": "egress_zero_planted-bug-review-scoring",
@@ -427,7 +473,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:egress_zero_planted-bug-review-scoring"
+      "source": "measure:egress_zero_planted-bug-review-scoring",
+      "stream": "planted-bug-review-scoring"
     },
     {
       "id": "six_sigma_planted-bug-review-scoring",
@@ -436,7 +483,8 @@
       "op": "at_least",
       "value": 2,
       "owner": "build",
-      "source": "reviews.streak"
+      "source": "reviews.streak",
+      "stream": "planted-bug-review-scoring"
     },
     {
       "id": "callers_planted-bug-review-scoring",
@@ -445,7 +493,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "measure:callers_planted-bug-review-scoring"
+      "source": "measure:callers_planted-bug-review-scoring",
+      "stream": "planted-bug-review-scoring"
     },
     {
       "id": "packaged_planted-bug-review-scoring",
@@ -454,7 +503,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:packaged_planted-bug-review-scoring"
+      "source": "measure:packaged_planted-bug-review-scoring",
+      "stream": "planted-bug-review-scoring"
     },
     {
       "id": "tests_green_isolated-tool-free-wording-judge",
@@ -463,7 +513,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "runs.streak:unit"
+      "source": "runs.streak:unit",
+      "stream": "isolated-tool-free-wording-judge"
     },
     {
       "id": "egress_zero_isolated-tool-free-wording-judge",
@@ -472,7 +523,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:egress_zero_isolated-tool-free-wording-judge"
+      "source": "measure:egress_zero_isolated-tool-free-wording-judge",
+      "stream": "isolated-tool-free-wording-judge"
     },
     {
       "id": "six_sigma_isolated-tool-free-wording-judge",
@@ -481,7 +533,8 @@
       "op": "at_least",
       "value": 2,
       "owner": "build",
-      "source": "reviews.streak"
+      "source": "reviews.streak",
+      "stream": "isolated-tool-free-wording-judge"
     },
     {
       "id": "callers_isolated-tool-free-wording-judge",
@@ -490,7 +543,8 @@
       "op": "at_least",
       "value": 1,
       "owner": "build",
-      "source": "measure:callers_isolated-tool-free-wording-judge"
+      "source": "measure:callers_isolated-tool-free-wording-judge",
+      "stream": "isolated-tool-free-wording-judge"
     },
     {
       "id": "packaged_isolated-tool-free-wording-judge",
@@ -499,7 +553,8 @@
       "op": "is",
       "value": true,
       "owner": "build",
-      "source": "measure:packaged_isolated-tool-free-wording-judge"
+      "source": "measure:packaged_isolated-tool-free-wording-judge",
+      "stream": "isolated-tool-free-wording-judge"
     },
     {
       "id": "clean_reviews",
