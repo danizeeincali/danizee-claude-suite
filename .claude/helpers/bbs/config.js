@@ -15,7 +15,7 @@ export const DEFAULT_CONFIG = {
     commercial: ['Commercial', 'Proprietary', 'BUSL-1.1', 'Elastic-2.0', 'All-Rights-Reserved']
   },
   sandbox: { required_for_use: true },
-  usage: { roots: ['~/.claude/projects'], days: 90 },
+  usage: { roots: process.env.CLAUDE_CONFIG_DIR ? [process.env.CLAUDE_CONFIG_DIR.replace(/\/+$/, '') + '/projects'] : ['~/.claude/projects'], days: 90 },
   paths: { runs: '.claude/bbs/runs', registry: '.claude/bbs/registry.jsonl', marathon_cli: '.claude/helpers/marathon/cli.js' }
 };
 
