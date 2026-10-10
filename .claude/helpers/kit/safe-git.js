@@ -62,11 +62,10 @@
  *   named false), the pager, submodule recursion (diff.ignoreSubmodules=all), every transport (protocol.allow and
  *   protocol.<each>.allow=never), the external diff, signatures (log.showSignature=false, gpg.program /
  *   gpg.ssh.program / gpg.x509.program = a path that cannot run, format.pretty=medium), and every filter/diff/merge
- *   driver named in the repo's own config files (config, config.worktree; includes are not read), info/attributes,
- *   or a work-tree .gitattributes that git would read — listed by the shadow's own `ls-files --cached --others
- *   --exclude-standard`, so git-ignored trees such as node_modules are never walked. Attribute files are read only
- *   when they are regular files inside the repository (symlinks are skipped); core.attributesFile is never opened,
- *   since the shadow config does not carry it and git does not read it. A driver
+ *   driver named in the repo's own config files (config, config.worktree; includes are not read) or info/attributes
+ *   (read only when a regular file inside the git dir). Work-tree and index .gitattributes are not read for names:
+ *   the shadow config defines no driver, so a name there can never run anything. core.attributesFile is never
+ *   opened, since the shadow config does not carry it and git does not read it. A driver
  *   name that cannot be switched off safely makes the call refuse (KitExit 2). Diff-producing subcommands get
  *   `--no-ext-diff --no-textconv --ignore-submodules=all`, status gets `--ignore-submodules=all`, and
  *   `describe --dirty/--broken` is answered with submodules ignored (describe's own check starts a git inside each
@@ -121,10 +120,11 @@ export const usage = 'cli.js safe-git [--dir <repo top or git dir>] -- <git args
  * that shares a start (log --exclude, diff --stat, ls-files --stage) is never taken for one of these.
  */
 export const STDIN_OPTIONS = Object.freeze({
-  // rev-list, log, diff-tree and for-each-ref parse --stdin as a revision option: git accepts no abbreviation there
+  // rev-list, log and diff-tree parse --stdin as a revision option: git accepts no abbreviation there
   '*': [['stdin', 'stdin']],
   'cat-file': [['batch', 'batch'], ['batch-check', 'batch-ch'], ['batch-command', 'batch-co']],
   'name-rev': [['annotate-stdin', 'an'], ['stdin', 'std']],
+  'for-each-ref': [['stdin', 'std']], // a parse-options boolean since git 2.46, so abbreviations count there
   'show-ref': [['exclude-existing', 'ex']]
 });
 export const STDIN_LONG = Object.freeze([...new Set(Object.values(STDIN_OPTIONS).flat().map(([o]) => o))]);
@@ -248,24 +248,21 @@ function gitCommandName(args) {
 }
 
 /**
- * Default runner: `git(args, { cwd, env, input, timeout, binary })` → { code, stdout, stderr }. stdin is closed without
- * input. `binary: true` returns stdout as a Buffer (exact bytes, for cat-file --batch parsing).
+ * Default runner: `git(args, { cwd, env, input, timeout })` → { code, stdout, stderr }. stdin is closed without input.
  * git is spawned by its absolute path (resolveGit), never by bare name.
  */
-export function defaultGitRunner(args, { cwd, env, input, timeout, binary = false } = {}) {
+export function defaultGitRunner(args, { cwd, env, input, timeout } = {}) {
   const hasInput = input !== undefined && input !== null;
   const r = spawnSync(resolveGit(env || process.env), args, {
-    cwd, env, maxBuffer: 256 * 1024 * 1024, timeout,
-    ...(binary ? {} : { encoding: 'utf-8' }),
-    input: hasInput ? (binary ? Buffer.from(String(input), 'utf-8') : input) : undefined,
+    cwd, env, maxBuffer: 256 * 1024 * 1024, timeout, encoding: 'utf-8',
+    input: hasInput ? input : undefined,
     stdio: [hasInput ? 'pipe' : 'ignore', 'pipe', 'pipe']
   });
   const cmd = gitCommandName(args);
   if (r.error?.code === 'ETIMEDOUT') throw new KitExit(`git ${cmd} took longer than ${timeout} ms and was stopped (raise it with --timeout <ms>)`, GIT_FAILED_EXIT);
   if (r.error?.code === 'ENOBUFS') throw new KitExit(`git ${cmd} wrote more than 256 MiB of output; narrow the command`, GIT_FAILED_EXIT);
   if (r.error) throw new KitExit(`cannot run git: ${r.error.message}`, 1);
-  const stderr = binary ? (r.stderr ? r.stderr.toString('utf-8') : '') : (r.stderr || '');
-  return { code: r.status ?? 1, stdout: r.stdout || (binary ? Buffer.alloc(0) : ''), stderr };
+  return { code: r.status ?? 1, stdout: r.stdout || '', stderr: r.stderr || '' };
 }
 
 // ---------------------------------------------------------------- small fs helpers
@@ -492,54 +489,6 @@ async function readAttributesFile(file, root) {
   }
 }
 
-/**
- * The work-tree .gitattributes files git would read, as the shadow's own index sees them: tracked ones plus untracked
- * ones outside git-ignored folders (`ls-files --others --exclude-standard` does not descend into an ignored
- * node_modules). Returns [{ rel, text }]; a tracked file missing from the work tree (deleted, sparse) is read from the
- * index, as git does. KitExit 1 when git cannot list them (fail closed).
- */
-async function workTreeAttributes(exec, top) {
-  const r = await exec(['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ':(top,glob)**/.gitattributes']);
-  if (r.code !== 0) throw new KitExit(`cannot list the .gitattributes files of ${top}: ${(r.stderr || '').trim() || 'git ls-files failed'}`, 1);
-  const out = [];
-  const missing = [];
-  for (const rel of new Set(String(r.stdout).split('\0').filter(Boolean))) {
-    if (path.posix.basename(rel) !== '.gitattributes') continue;
-    const file = path.join(top, ...rel.split('/'));
-    if (await lstatOrNull(file)) { out.push({ rel, text: await readAttributesFile(file, top) }); continue; } // a symlink: skipped, as git does
-    if (!/[\n\r]/.test(rel)) missing.push(rel); // gone from the work tree (deleted, sparse): git reads the index copy
-  }
-  if (!missing.length) return out;
-  // Two git processes for all of them, however many (a sparse checkout can leave thousands outside the cone).
-  // Ask for stage 0 and, during a conflicted merge, stage 2 ("ours", which git reads then) of each one.
-  const specs = missing.flatMap((rel) => [`:${rel}`, `:2:${rel}`]);
-  const check = await exec(['cat-file', '--batch-check'], { input: specs.map((x) => `${x}\n`).join('') });
-  if (check.code !== 0) throw new KitExit(`cannot read the index copies of .gitattributes in ${top}: ${(check.stderr || '').trim() || 'git cat-file failed'}`, 1);
-  const lines = String(check.stdout).split('\n');
-  const found = [];
-  missing.forEach((rel, i) => {
-    const hit = [lines[2 * i], lines[2 * i + 1]].map((l, k) => ({ m: /^[0-9a-f]+ blob (\d+)$/.exec(l || ''), spec: specs[2 * i + k] })).find((x) => x.m);
-    if (!hit) return; // not in the index (untracked and gone): git reads nothing either
-    if (Number(hit.m[1]) > MAX_ATTR_BYTES) throw refuse(`${rel} in the index is larger than ${MAX_ATTR_BYTES} bytes; its filter drivers cannot be checked`);
-    found.push({ rel, spec: hit.spec, size: Number(hit.m[1]) });
-  });
-  if (!found.length) return out;
-  // Exact bytes (binary: true): sizes are byte counts, so the stream is parsed without any decoding first.
-  const batch = await exec(['cat-file', '--batch'], { input: found.map((f) => `${f.spec}\n`).join(''), binary: true });
-  if (batch.code !== 0) throw new KitExit(`cannot read the index copies of .gitattributes in ${top}: ${(batch.stderr || '').trim() || 'git cat-file failed'}`, 1);
-  const buf = Buffer.isBuffer(batch.stdout) ? batch.stdout : Buffer.from(String(batch.stdout), 'utf-8');
-  let at = 0;
-  for (const f of found) {
-    const nl = buf.indexOf(0x0a, at);
-    const m = nl < 0 ? null : /^[0-9a-f]+ blob (\d+)$/.exec(buf.subarray(at, nl).toString('latin1'));
-    if (!m || Number(m[1]) !== f.size || buf[nl + 1 + f.size] !== 0x0a) throw new KitExit(`unexpected git cat-file --batch output for ${f.rel}`, 1);
-    // git matches attribute patterns and names as bytes; latin1 keeps one char per byte, so nothing is dropped.
-    out.push({ rel: f.rel, text: buf.subarray(nl + 1, nl + 1 + f.size).toString('latin1') });
-    at = nl + 1 + f.size + 1;
-  }
-  return out;
-}
-
 // ---------------------------------------------------------------- index paths
 
 // Characters HFS+ ignores in names (so ".g‌it" is ".git" there), as git's is_hfs_dotgit lists them.
@@ -678,10 +627,9 @@ function overrideArgs(names) {
 }
 
 /**
- * The -c overrides: static switches + every driver named in the config entries, info/attributes and (with a work
- * tree) the .gitattributes files the shadow lists. A .gitattributes under a path that is not valid UTF-8 is not
- * listed (its name does not survive decoding), so its drivers are not named here; nothing runs for them either, as
- * the shadow config defines no driver. core.attributesFile is never opened: the shadow config does not
+ * The -c overrides: static switches + every driver named in the config entries and info/attributes (defence in
+ * depth; the shadow config defines no driver). With a work tree, the index paths are checked first (checkIndexPaths).
+ * core.attributesFile is never opened: the shadow config does not
  * carry it, so git never reads it either (and its value may name a file outside the repository or a UNC share).
  * `shadowExec(args, extra)` runs git in the shadow.
  */
@@ -691,14 +639,13 @@ async function overridesFor(info, shadowExec) {
   for (const d of new Set([loc.gitDir, loc.commonDir])) {
     for (const n of driversFromAttributes(await readAttributesFile(path.join(d, 'info', 'attributes'), d))) names.add(n);
   }
-  // validate the config/info names first: the listing below runs git, and must not run with a name we cannot switch off
-  const base = overrideArgs(names);
-  if (!info.top) return base;
-  const listExec = (a, extra) => shadowExec([...base, ...a], extra);
-  // before anything reads the work tree (the listing below, then the user's command): no index entry may lead out of it
-  await checkIndexPaths(listExec);
-  for (const { text } of await workTreeAttributes(listExec, info.top)) for (const n of driversFromAttributes(text)) names.add(n);
-  return overrideArgs(names);
+  const args = overrideArgs(names);
+  // before the user's command reads the work tree: no index entry may lead out of it
+  if (info.top) await checkIndexPaths((a, extra) => shadowExec([...args, ...a], extra));
+  // Work-tree and index .gitattributes are NOT read for driver names. The shadow config defines no driver, so a
+  // name there can never run anything; reading thousands of (sparse, 4 MiB) files on every call cost memory and time
+  // for no protection (review rounds 10-14).
+  return args;
 }
 
 async function withScratch(fn) {

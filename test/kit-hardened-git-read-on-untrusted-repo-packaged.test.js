@@ -59,9 +59,18 @@ describe('safe-git — packaged end to end', () => {
     assert.match(w.err, /refused/);
     assert.equal(pkg.kit(['safe-git', '--dir', repo, '--nope', '--', 'status']).code, 1);
 
-    await fs.appendFile(path.join(repo, '.gitattributes'), '*.md filter=bad;name\n');
+    // a driver name that cannot be switched off: refused from info/attributes; only in a work-tree .gitattributes it is
+    // not read (the shadow config defines no driver), so the read succeeds and runs nothing
+    await fs.appendFile(path.join(repo, '.gitattributes'), '*.txt filter=bad;name\n');
+    const wt = pkg.kit(['safe-git', '--dir', repo, '--', 'status', '--porcelain']);
+    assert.equal(wt.code, 0, wt.err);
+    assert.match(wt.json.stdout, / M f\.txt/);
+    assert.deepEqual(await fs.readdir(markers), []);
+    await fs.mkdir(path.join(repo, '.git', 'info'), { recursive: true });
+    await fs.appendFile(path.join(repo, '.git', 'info', 'attributes'), '*.md filter=bad;name\n');
     const bad = pkg.kit(['safe-git', '--dir', repo, '--', 'status']);
     assert.equal(bad.code, 2);
+    assert.match(bad.err, /bad;name/);
     assert.deepEqual(await fs.readdir(markers), []);
     assert.deepEqual(pkg.egress(), []);
   });

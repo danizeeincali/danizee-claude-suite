@@ -52,6 +52,42 @@ async function evilRepo(root, name = 'evil') {
   return { dir, markers, fired, mk };
 }
 
+/**
+ * Driver `name` (filter clean/smudge and diff textconv, each touching a marker in `markers`) defined in a config file
+ * the repository's .git/config pulls in through include.path. Plain git runs it wherever a .gitattributes names it;
+ * safe-git reads config with --no-includes, so the name can reach safe-git only through that .gitattributes, which
+ * safe-git does not read for driver names. fired() lists the markers this driver wrote.
+ */
+async function hiddenDriver(dir, name, markers) {
+  const label = `hidden-${name.replace(/[^A-Za-z0-9]/g, '_')}`;
+  const cfg = path.join(dir, '.git', `${label}.cfg`);
+  const mk = (k) => path.join(markers, `${label}-${k}`);
+  const set = (k, v) => assert.equal(sh(dir, ['config', '--file', cfg, k, v]).status, 0, `setup: ${k}`);
+  await fs.mkdir(markers, { recursive: true });
+  set(`filter.${name}.clean`, `sh -c 'touch ${mk('clean')}; cat'`);
+  set(`filter.${name}.smudge`, `sh -c 'touch ${mk('smudge')}; cat'`);
+  set(`diff.${name}.textconv`, `sh -c 'touch ${mk('textconv')}; cat "$1"' -`);
+  assert.equal(sh(dir, ['config', '--add', 'include.path', cfg]).status, 0, 'setup: include.path');
+  return { name, markers, fired: async () => (await fs.readdir(markers)).filter((f) => f.startsWith(`${label}-`)).sort() };
+}
+
+const HIDDEN_READS = [['status', '--porcelain'], ['diff'], ['diff', 'HEAD']];
+
+/**
+ * The security check for a driver named only in a .gitattributes: through safeGit the reads succeed and no marker at
+ * all appears in its markers folder; then (control, so the check means something) the same reads under plain git DO
+ * run the driver. Run on a work tree where a file the attributes cover is modified.
+ */
+async function assertHiddenDriverNeverRuns(dir, h, reads = HIDDEN_READS) {
+  for (const c of reads) {
+    const out = await safeGit(dir, c);
+    assert.equal(out.code, 0, `${c.join(' ')}: ${out.stderr}`);
+  }
+  assert.deepEqual(await fs.readdir(h.markers), [], `nothing runs through safeGit (${h.name})`);
+  for (const c of reads) sh(dir, c);
+  assert.ok((await h.fired()).length > 0, `control: plain git runs the ${h.name} driver named in the .gitattributes`);
+}
+
 describe('safe-git — env', () => {
   it('removes every GIT_* variable (any case of the prefix) and sets the hardening variables; does not mutate its input', () => {
     const base = { PATH: '/bin', HOME: '/h', GIT_DIR: '/elsewhere', GIT_WORK_TREE: '/w', GIT_INDEX_FILE: '/i', GIT_CONFIG_COUNT: '1', GIT_ALTERNATE_OBJECT_DIRECTORIES: '/o' };
@@ -148,18 +184,27 @@ describe('safe-git — on a real hostile repo', () => {
     assert.ok(!(await r.fired()).includes('smudge'));
   });
 
-  it('lists every driver from the config AND from nested .gitattributes, info/attributes, with all four switches each', async () => {
+  it('lists every driver from the config AND info/attributes with all four switches each; a name only in a nested .gitattributes is not listed and never runs', async () => {
     clearSafeGitCache();
     const r = await evilRepo(root, 'drivers');
     await fs.mkdir(path.join(r.dir, 'sub', 'deep'), { recursive: true });
-    await fs.writeFile(path.join(r.dir, 'sub', 'deep', '.gitattributes'), '*.x filter=nested\n');
+    await fs.writeFile(path.join(r.dir, 'sub', 'deep', 'f.x'), 'one\n');
+    sh(r.dir, ['add', 'sub/deep/f.x']);
+    sh(r.dir, ['commit', '-q', '--no-verify', '-m', 'f.x']);
+    await fs.writeFile(path.join(r.dir, 'sub', 'deep', '.gitattributes'), '*.x filter=nested diff=nested\n');
     await fs.appendFile(path.join(r.dir, '.git', 'info', 'attributes'), '*.y filter=infoattr\n');
+    const h = await hiddenDriver(r.dir, 'nested', r.markers);
+    await fs.writeFile(path.join(r.dir, 'sub', 'deep', 'f.x'), 'two, a different size\n');
+    await fs.rm(r.markers, { recursive: true });
+    await fs.mkdir(r.markers);
     const args = await safeGitConfig(r.dir);
     const set = args.filter((_, i) => args[i - 1] === '-c');
-    for (const n of ['evil', 'nested', 'infoattr']) {
+    for (const n of ['evil', 'infoattr']) {
       for (const v of ['clean', 'smudge', 'process']) assert.ok(set.includes(`filter.${n}.${v}=`), `${n}.${v}`);
       assert.ok(set.includes(`filter.${n}.required=false`));
     }
+    assert.ok(!set.some(s => s.includes('nested')), `a work-tree .gitattributes is not read for names: ${set.filter(s => /nested/.test(s))}`);
+    await assertHiddenDriverNeverRuns(r.dir, h);
     for (const s of ['core.hooksPath=/dev/null', 'core.fsmonitor=', 'submodule.recurse=false', 'protocol.allow=never', 'diff.external=']) assert.ok(set.includes(s), s);
     // before git 2.36 core.fsmonitor is a hook path: "false" would run a program named false; only EMPTY is off everywhere
     assert.ok(!set.some(s => /^core\.fsmonitor=./i.test(s)), `fsmonitor override is empty: ${set.filter(s => /fsmonitor/i.test(s))}`);
@@ -184,10 +229,10 @@ describe('safe-git — on a real hostile repo', () => {
     assert.ok(!(await r.fired()).includes('included'), `the included filter never runs: ${await r.fired()}`);
   });
 
-  it('refuses (exit 2) a driver name it cannot switch off safely, from config or attributes, and runs nothing', async () => {
+  it('refuses (exit 2) a driver name it cannot switch off safely, from config or info/attributes, and runs nothing; the same name only in a work-tree .gitattributes is not read: the call succeeds and runs nothing', async () => {
     clearSafeGitCache();
     const r = await evilRepo(root, 'weird');
-    await fs.appendFile(path.join(r.dir, '.gitattributes'), '*.z filter=bad=name\n');
+    await fs.appendFile(path.join(r.dir, '.git', 'info', 'attributes'), '*.z filter=bad=name\n');
     const calls = [];
     const git = (a, o) => { calls.push(a); return defaultGitRunner(a, o); };
     await assert.rejects(() => safeGit(r.dir, ['status'], { git }), e => e instanceof KitExit && e.code === 2 && /bad=name/.test(e.message));
@@ -198,6 +243,17 @@ describe('safe-git — on a real hostile repo', () => {
     const r2 = await evilRepo(root, 'weird2');
     sh(r2.dir, ['config', 'filter.has space.clean', 'x']);
     await assert.rejects(() => safeGitConfig(r2.dir), e => e instanceof KitExit && e.code === 2 && /has space/.test(e.message));
+
+    // only in a work-tree .gitattributes (driver defined where safe-git never looks, so plain git runs it): not read
+    clearSafeGitCache();
+    const r3 = await evilRepo(root, 'weird3');
+    await fs.appendFile(path.join(r3.dir, '.gitattributes'), '* filter=bad=name diff=bad=name\n');
+    const h = await hiddenDriver(r3.dir, 'bad=name', r3.markers);
+    const out = await safeGit(r3.dir, ['status', '--porcelain']);
+    assert.equal(out.code, 0, out.stderr);
+    assert.ok(!(await safeGitConfig(r3.dir)).some(a => a.includes('bad=name')), 'the name is not listed');
+    assert.deepEqual(await r3.fired(), []);
+    await assertHiddenDriverNeverRuns(r3.dir, h);
   });
 
   it('ignores an inherited GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE pointing at another repository', async () => {
@@ -330,15 +386,40 @@ describe('safe-git — caller: bbs fetch rev-parse of the fetched clone', () => 
     await assert.rejects(() => headOf('/x', {}, { hardened: true, load: async () => { throw new SyntaxError('broken kit'); } }), /broken kit/);
   });
 
-  it('cloneRepo fails closed (and removes the clone) when the fetched repo names a driver that cannot be switched off', async () => {
+  it('cloneRepo succeeds and runs nothing when the fetched repo names an unusual driver only in its .gitattributes (a fresh clone has no config drivers)', async () => {
     const { cloneRepo } = await import('../src/lib/bbs/fetch.js');
     const dest = path.join(root, 'clone-weird');
+    const markers = path.join(root, 'clone-weird-markers');
+    let h;
+    const git = async (args) => {
+      if (args[0] !== 'clone') throw new Error('unexpected');
+      await fs.mkdir(dest);
+      sh(dest, ['init', '-q', '.']);
+      await fs.writeFile(path.join(dest, 'a.txt'), 'one\n');
+      sh(dest, ['add', 'a.txt']);
+      sh(dest, ['commit', '-q', '-m', 'x']);
+      await fs.writeFile(path.join(dest, '.gitattributes'), '* filter=a=b diff=a=b\n');
+      // more than a real clone can carry, so "nothing runs" means something: plain git would run this driver
+      h = await hiddenDriver(dest, 'a=b', markers);
+      await fs.writeFile(path.join(dest, 'a.txt'), 'two, a different size\n');
+      return '';
+    };
+    const r = await cloneRepo('https://github.com/a/b.git', dest, { git, lookup, hardened: true, onEgress: () => {} });
+    assert.equal(r.sha, sh(dest, ['rev-parse', 'HEAD']).stdout.trim());
+    assert.equal(await exists(dest), true, 'the clone is kept');
+    assert.deepEqual(await fs.readdir(markers), [], 'nothing ran during the fetch');
+    await assertHiddenDriverNeverRuns(dest, h);
+  });
+
+  it('cloneRepo fails closed (and removes the clone) when the fetched repo config names a driver that cannot be switched off', async () => {
+    const { cloneRepo } = await import('../src/lib/bbs/fetch.js');
+    const dest = path.join(root, 'clone-weird-config');
     const git = async (args) => {
       if (args[0] !== 'clone') throw new Error('unexpected');
       await fs.mkdir(dest);
       sh(dest, ['init', '-q', '.']);
       sh(dest, ['commit', '--allow-empty', '-q', '-m', 'x']);
-      await fs.writeFile(path.join(dest, '.gitattributes'), '* filter=a=b\n');
+      sh(dest, ['config', 'filter.a=b.clean', 'x']);
       return '';
     };
     await assert.rejects(() => cloneRepo('https://github.com/a/b.git', dest, { git, lookup, hardened: true, onEgress: () => {} }),
@@ -538,15 +619,23 @@ describe('safe-git — review round 1 regressions (config.worktree, linked workt
     assert.deepEqual([...driversFromConfig('diff.x.y.textconv\nz\0merge.m.driver\nq\0diff.external\nw\0merge.renormalize\ntrue\0')].sort(), ['m', 'x.y']);
   });
 
-  it('refuses (exit 2) a diff= or merge= driver name it cannot switch off safely', async () => {
+  it('refuses (exit 2) a diff= or merge= driver name it cannot switch off safely from info/attributes or config; only in a work-tree .gitattributes it is not read and never runs', async () => {
     clearSafeGitCache();
     const r = await plainRepo('weirddiff');
-    await fs.writeFile(path.join(r.dir, '.gitattributes'), '* diff=a=b\n');
+    await fs.mkdir(path.join(r.dir, '.git', 'info'), { recursive: true });
+    await fs.writeFile(path.join(r.dir, '.git', 'info', 'attributes'), '* diff=a=b\n');
     await assert.rejects(() => safeGitConfig(r.dir), e => e instanceof KitExit && e.code === 2 && /a=b/.test(e.message));
     clearSafeGitCache();
     const r2 = await plainRepo('weirdmerge');
     sh(r2.dir, ['config', 'merge.has space.driver', 'x']);
     await assert.rejects(() => safeGitConfig(r2.dir), e => e instanceof KitExit && e.code === 2 && /has space/.test(e.message));
+    clearSafeGitCache();
+    const r3 = await plainRepo('weirddiff-worktree');
+    await fs.writeFile(path.join(r3.dir, '.gitattributes'), '* diff=a=b merge=a=b\n');
+    const h = await hiddenDriver(r3.dir, 'a=b', r3.markers);
+    await fs.writeFile(path.join(r3.dir, 'f.txt'), 'two, a different size\n');
+    assert.ok(!(await safeGitConfig(r3.dir)).some(a => a.includes('a=b')), 'the name is not listed');
+    await assertHiddenDriverNeverRuns(r3.dir, h);
   });
 });
 
@@ -1061,12 +1150,14 @@ describe('safe-git — review round 3 regressions (copy limits, symlinked refs, 
     assert.equal((await safeGit(r.dir, ['rev-parse', 'b11'])).code, 0, 'the default limit reads them');
   });
 
-  it('a checkout with >20000 folders in a git-ignored node_modules reads fine; .gitattributes in it are not read, tracked/untracked ones elsewhere are', async () => {
+  it('a checkout with >20000 folders in a git-ignored node_modules reads fine; no work-tree .gitattributes (ignored, tracked or untracked) is read for names, and their drivers never run', async () => {
     const r = await plainRepo('node-modules');
+    const markers = path.join(root, 'node-modules-markers');
     await fs.writeFile(path.join(r.real, '.gitignore'), 'node_modules/\n');
     await fs.mkdir(path.join(r.real, 'src'));
-    await fs.writeFile(path.join(r.real, 'src', '.gitattributes'), '*.js filter=tracked\n');
-    sh(r.dir, ['add', '.gitignore', 'src/.gitattributes']);
+    await fs.writeFile(path.join(r.real, 'src', '.gitattributes'), '*.js filter=tracked diff=tracked\n');
+    await fs.writeFile(path.join(r.real, 'src', 'm.js'), 'one\n');
+    sh(r.dir, ['add', '.gitignore', 'src/.gitattributes', 'src/m.js']);
     sh(r.dir, ['commit', '-q', '-m', 'ignore']);
     await fs.mkdir(path.join(r.real, 'lib'));
     await fs.writeFile(path.join(r.real, 'lib', '.gitattributes'), '*.c filter=untracked\n');
@@ -1074,7 +1165,7 @@ describe('safe-git — review round 3 regressions (copy limits, symlinked refs, 
     for (let i = 0; i < 210; i++) {
       await Promise.all(Array.from({ length: 101 }, (_, j) => fs.mkdir(path.join(nm, `p${i}`, `d${j}`), { recursive: true })));
     }
-    // a name safe-git would refuse if it read this file: it must not be read (git never reads it for an ignored tree)
+    // a name safe-git would refuse if it read this file: it must not be read
     await fs.writeFile(path.join(nm, 'p0', '.gitattributes'), '* filter=bad;name\n');
     const head = sh(r.dir, ['rev-parse', 'HEAD']).stdout.trim();
     const t0 = Date.now();
@@ -1083,19 +1174,24 @@ describe('safe-git — review round 3 regressions (copy limits, symlinked refs, 
     assert.equal(out.stdout.trim(), head);
     assert.equal((await safeGit(r.dir, ['status', '--porcelain'])).stdout, '?? lib/\n');
     const args = await safeGitConfig(r.dir);
-    assert.ok(args.includes('filter.tracked.clean='), 'a tracked nested .gitattributes is still read');
-    assert.ok(args.includes('filter.untracked.clean='), 'an untracked, not ignored .gitattributes is still read');
-    assert.ok(!args.some(a => a.includes('bad;name')));
     assert.ok(Date.now() - t0 < 30000, `three calls in ${Date.now() - t0} ms`);
+    assert.ok(!args.some(a => /tracked|bad;name/.test(a)), `no work-tree .gitattributes name is listed: ${args.filter(a => /tracked|bad;name/.test(a))}`);
+    const h = await hiddenDriver(r.dir, 'tracked', markers);
+    await fs.writeFile(path.join(r.real, 'src', 'm.js'), 'two, a different size\n');
+    await assertHiddenDriverNeverRuns(r.dir, h);
   });
 
-  it('a tracked .gitattributes deleted from the work tree is read from the index (as git does)', async () => {
+  it('a tracked .gitattributes deleted from the work tree is not read from the index for names; its driver, which plain git runs from the index copy, never runs', async () => {
     const r = await plainRepo('attr-index');
-    await fs.writeFile(path.join(r.real, '.gitattributes'), '* filter=fromindex\n');
+    const markers = path.join(root, 'attr-index-markers');
+    await fs.writeFile(path.join(r.real, '.gitattributes'), '* filter=fromindex diff=fromindex\n');
     sh(r.dir, ['add', '.gitattributes']);
     sh(r.dir, ['commit', '-q', '-m', 'attrs']);
     await fs.rm(path.join(r.real, '.gitattributes'));
-    assert.ok((await safeGitConfig(r.dir)).includes('filter.fromindex.clean='));
+    const h = await hiddenDriver(r.dir, 'fromindex', markers);
+    await fs.writeFile(path.join(r.real, 'f.txt'), 'two, a different size\n');
+    assert.ok(!(await safeGitConfig(r.dir)).some(a => a.includes('fromindex')), 'not listed');
+    await assertHiddenDriverNeverRuns(r.dir, h);
   });
 
   it('every git child runs with HOME and XDG_CONFIG_HOME at an empty private folder, GIT_CONFIG_GLOBAL kept', async () => {
@@ -1506,7 +1602,7 @@ describe('safe-git — review round 6 regressions (core.attributesFile never ope
     }
   });
 
-  it('a symlinked work-tree .gitattributes, info/attributes or info/ folder is skipped: its target outside the repository is never opened', async (t) => {
+  it('a symlinked work-tree .gitattributes, info/attributes or info/ folder: its target outside the repository is never opened; a regular info/attributes is still read, a regular work-tree .gitattributes is not read for names and its driver never runs', async (t) => {
     if (process.platform === 'win32') return t.skip('symlinks');
     const outside = path.join(root, 'outside-symlinks');
     await fs.mkdir(path.join(outside, 'info'), { recursive: true });
@@ -1530,13 +1626,17 @@ describe('safe-git — review round 6 regressions (core.attributesFile never ope
       assert.ok(!out[d].overrides.some(o => /symwt|syminfo/.test(o)), `${d}: drivers behind a symlink are not listed`);
       assert.equal(out[d].diff.code, 0, out[d].diff.stderr);
     }
-    // control: the same lines in regular files inside the repository are still discovered
+    // control: the same line in a regular info/attributes is still discovered; a regular work-tree .gitattributes is
+    // not read for names (the shadow config defines no driver), and its driver never runs through safe-git
     const c = await repo('regular-files');
-    await fs.writeFile(path.join(c, '.gitattributes'), '* filter=regwt\n');
+    await fs.writeFile(path.join(c, '.gitattributes'), '* filter=regwt diff=regwt\n');
     await fs.mkdir(path.join(c, '.git', 'info'), { recursive: true });
-    await fs.writeFile(path.join(c, '.git', 'info', 'attributes'), '* filter=reginfo\n');
+    await fs.writeFile(path.join(c, '.git', 'info', 'attributes'), '*.none filter=reginfo\n');
+    const h = await hiddenDriver(c, 'regwt', path.join(root, 'regular-files-markers'));
     const overrides = await safeGitConfig(c);
-    for (const s of ['filter.regwt.clean=', 'filter.reginfo.clean=']) assert.ok(overrides.includes(s), s);
+    assert.ok(overrides.includes('filter.reginfo.clean='), 'info/attributes is still read');
+    assert.ok(!overrides.some(o => o.includes('regwt')), 'the work-tree .gitattributes is not read for names');
+    await assertHiddenDriverNeverRuns(c, h);
   });
 
   it('clearSafeGitCache empties the resolved git path cache: a removed git is no longer returned', async (t) => {
@@ -1762,36 +1862,75 @@ describe('safe-git — review round 10 regressions (alternates, network paths, m
     await assert.rejects(safeGit(r, ['rev-parse', 'HEAD']), (e) => e.code === 2 && /network path/.test(e.message));
   });
 
-  it('1500 tracked .gitattributes missing from the work tree cost two git processes, and their drivers are still found', async () => {
+  it('1500 tracked .gitattributes missing from the work tree: no cat-file reads them, the call is fast, their drivers are not listed and never run', async () => {
     const r = await mkRepo('many-attrs');
     for (let i = 0; i < 1500; i++) {
       await fs.mkdir(path.join(r, `d${i}`));
-      await fs.writeFile(path.join(r, `d${i}`, '.gitattributes'), `* filter=drv${i % 3}\n`);
+      await fs.writeFile(path.join(r, `d${i}`, '.gitattributes'), `* filter=drv${i % 3} diff=drv${i % 3}\n`);
     }
+    await fs.writeFile(path.join(r, 'd0', 'k.txt'), 'one\n');
     sh(r, ['add', '-A']);
     sh(r, ['commit', '-q', '-m', 'attrs']);
-    for (let i = 0; i < 1500; i++) await fs.rm(path.join(r, `d${i}`), { recursive: true });
-    let catFiles = 0;
-    const git = (a, o) => { if (a.includes('cat-file')) catFiles++; return defaultGitRunner(a, o); };
+    for (let i = 1; i < 1500; i++) await fs.rm(path.join(r, `d${i}`), { recursive: true });
+    await fs.rm(path.join(r, 'd0', '.gitattributes'));
+    const h = await hiddenDriver(r, 'drv0', path.join(root, 'many-attrs-markers'));
+    await fs.writeFile(path.join(r, 'd0', 'k.txt'), 'two, a different size\n');
+    const calls = [];
+    const git = (a, o) => { calls.push(a); return defaultGitRunner(a, o); };
     const t0 = Date.now();
     const args = await safeGitConfig(r, { git });
     assert.ok(Date.now() - t0 < 15000, `took ${Date.now() - t0} ms`);
-    assert.equal(catFiles, 2);
-    for (const n of ['drv0', 'drv1', 'drv2']) assert.ok(args.includes(`filter.${n}.clean=`), n);
+    assert.equal(calls.filter(a => a.includes('cat-file')).length, 0, 'no cat-file reads index copies of .gitattributes');
+    assert.ok(!calls.some(a => a.some(x => String(x).includes('.gitattributes'))), 'no git call lists .gitattributes files');
+    for (const n of ['drv0', 'drv1', 'drv2']) assert.ok(!args.some(x => x.includes(n)), `${n} is not listed`);
+    await assertHiddenDriverNeverRuns(r, h);
   });
 
-  it('an index-only .gitattributes that is not UTF-8 is read as exact bytes: the files after it keep their drivers', async () => {
+  it('300 untracked sparse .gitattributes of 4 MiB - 1 each: rev-parse completes quickly with bounded memory and their drivers are not listed', async () => {
+    const r = await mkRepo('sparse-attrs');
+    for (let i = 0; i < 300; i++) {
+      const f = path.join(r, `s${i}`, '.gitattributes');
+      await fs.mkdir(path.dirname(f));
+      await fs.writeFile(f, `* filter=sparse${i}\n`);
+      await fs.truncate(f, 4 * 1024 * 1024 - 1);
+    }
+    // in a child node, so its peak RSS measures only these calls (git's own memory is in its own processes)
+    const scripts = await fs.mkdtemp(path.join(root, 'sparse-probe-'));
+    const script = path.join(scripts, 'probe.mjs');
+    await fs.writeFile(script, `
+      const { safeGit, safeGitConfig } = await import(${JSON.stringify(new URL('../src/lib/kit/safe-git.js', import.meta.url).href)});
+      const t0 = Date.now();
+      const head = await safeGit(${JSON.stringify(r)}, ['rev-parse', 'HEAD']);
+      const ms = Date.now() - t0;
+      const overrides = await safeGitConfig(${JSON.stringify(r)});
+      process.stdout.write(JSON.stringify({ head, ms, overrides, maxRssKiB: process.resourceUsage().maxRSS }));
+    `);
+    const p = spawnSync(process.execPath, [script], { cwd: root, encoding: 'utf-8', env: CLEAN_ENV, timeout: 60000 });
+    assert.equal(p.status, 0, `${p.signal || ''} ${p.stderr}`);
+    const { head, ms, overrides, maxRssKiB } = JSON.parse(p.stdout);
+    assert.equal(head.code, 0, head.stderr);
+    assert.equal(head.stdout.trim(), sh(r, ['rev-parse', 'HEAD']).stdout.trim());
+    assert.ok(ms < 10000, `rev-parse took ${ms} ms`);
+    assert.ok(maxRssKiB < 512 * 1024, `peak RSS ${Math.round(maxRssKiB / 1024)} MiB`);
+    assert.ok(!overrides.some(o => o.includes('sparse')), 'their drivers are not listed');
+  });
+
+  it('an index-only .gitattributes after a non-UTF-8 one: its driver is not listed and never runs (plain git runs it from the index copy)', async () => {
     const r = await mkRepo('bad-utf8');
     await fs.mkdir(path.join(r, 'x'));
     await fs.mkdir(path.join(r, 'y'));
     await fs.writeFile(path.join(r, 'x', '.gitattributes'), Buffer.from([0xff, 0xfe, 0x0a]));
-    await fs.writeFile(path.join(r, 'y', '.gitattributes'), '* filter=later\n');
+    await fs.writeFile(path.join(r, 'y', '.gitattributes'), '* filter=later diff=later\n');
+    await fs.writeFile(path.join(r, 'y', 'f.txt'), 'one\n');
     sh(r, ['add', '-A']);
     sh(r, ['commit', '-q', '-m', 'a']);
     await fs.rm(path.join(r, 'x'), { recursive: true });
-    await fs.rm(path.join(r, 'y'), { recursive: true });
+    await fs.rm(path.join(r, 'y', '.gitattributes'));
+    const h = await hiddenDriver(r, 'later', path.join(root, 'bad-utf8-markers'));
+    await fs.writeFile(path.join(r, 'y', 'f.txt'), 'two, a different size\n');
     const args = await safeGitConfig(r);
-    assert.ok(args.includes('filter.later.clean='), 'the driver in the file after the non-UTF-8 one is found');
+    assert.ok(!args.some(a => a.includes('later')), 'not listed');
+    await assertHiddenDriverNeverRuns(r, h);
   });
 
   it('a timeout message names the git subcommand, not the -c overrides', async () => {
@@ -1837,28 +1976,40 @@ describe('safe-git — review round 11 regressions (symlinked objects, exact byt
     }
   });
 
-  it('crafted invalid bytes in an index-only .gitattributes cannot hide a driver (bytes are parsed exactly)', async () => {
+  it('crafted invalid bytes in an index-only .gitattributes: the driver after them is not listed and never runs (plain git runs it)', async () => {
     const r = await mkRepo('crafted');
     await fs.mkdir(path.join(r, 'x'));
-    await fs.writeFile(path.join(r, 'x', '.gitattributes'), Buffer.concat([Buffer.alloc(7, 0xff), Buffer.from('# x\n* filter=evil\n')]));
+    await fs.writeFile(path.join(r, 'x', '.gitattributes'), Buffer.concat([Buffer.alloc(7, 0xff), Buffer.from('# x\n* filter=evil diff=evil\n')]));
+    await fs.writeFile(path.join(r, 'x', 'f.txt'), 'one\n');
     sh(r, ['add', '-A']);
     sh(r, ['commit', '-q', '-m', 'c']);
-    await fs.rm(path.join(r, 'x'), { recursive: true });
-    assert.ok((await safeGitConfig(r)).includes('filter.evil.clean='));
+    await fs.rm(path.join(r, 'x', '.gitattributes'));
+    const h = await hiddenDriver(r, 'evil', path.join(root, 'crafted-markers'));
+    await fs.writeFile(path.join(r, 'x', 'f.txt'), 'two, a different size\n');
+    assert.ok(!(await safeGitConfig(r)).some(a => a.includes('evil')), 'not listed');
+    await assertHiddenDriverNeverRuns(r, h);
   });
 
-  it('during a conflicted merge, a .gitattributes missing from the work tree is read from stage 2, as git does', async () => {
-    const r = await mkRepo('conflict', '.gitattributes', '* filter=base\n');
+  it('during a conflicted merge, the stage-2 .gitattributes git reads is not read for names; its driver never runs through safe-git (plain git runs it)', async () => {
+    const r = await mkRepo('conflict', '.gitattributes', '* filter=base diff=base\n');
+    await fs.writeFile(path.join(r, 'a.txt'), 'one\n');
+    sh(r, ['add', 'a.txt']);
+    sh(r, ['commit', '-q', '-m', 'a']);
     sh(r, ['checkout', '-q', '-b', 'side']);
-    await fs.writeFile(path.join(r, '.gitattributes'), '* filter=theirs3\n');
+    await fs.writeFile(path.join(r, '.gitattributes'), '* filter=theirs3 diff=theirs3\n');
     sh(r, ['commit', '-q', '-am', 'side']);
     sh(r, ['checkout', '-q', 'main']);
-    await fs.writeFile(path.join(r, '.gitattributes'), '* filter=ours2\n');
+    await fs.writeFile(path.join(r, '.gitattributes'), '* filter=ours2 diff=ours2\n');
     sh(r, ['commit', '-q', '-am', 'main']);
     sh(r, ['merge', '-q', 'side']);
     await fs.rm(path.join(r, '.gitattributes'));
     assert.match(sh(r, ['check-attr', 'filter', 'a.txt']).stdout, /ours2/, 'control: git reads stage 2');
-    assert.ok((await safeGitConfig(r)).includes('filter.ours2.clean='));
+    const markers = path.join(root, 'conflict-markers');
+    const h = await hiddenDriver(r, 'ours2', markers);
+    for (const n of ['base', 'theirs3']) await hiddenDriver(r, n, markers);
+    await fs.writeFile(path.join(r, 'a.txt'), 'two, a different size\n');
+    assert.ok(!(await safeGitConfig(r)).some(a => /ours2|theirs3|base/.test(a)), 'no stage\'s names are listed');
+    await assertHiddenDriverNeverRuns(r, h);
   });
 
   it('cat-file --batch-all-objects --batch reads no stdin, so it runs from a terminal; --batch alone still needs --input -', async () => {
