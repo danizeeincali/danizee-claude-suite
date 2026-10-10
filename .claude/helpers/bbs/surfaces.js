@@ -179,7 +179,8 @@ export async function scanSurfaces(projectDir, { now = () => new Date(), days = 
     if (!manifest && !CODE.test(file) && !/\.(md|txt|ya?ml|json|j2|jinja|prompt|ipynb|toml)$/.test(file) && !/MLproject$/.test(file)) continue;
     let text;
     try {
-      const st = await fs.stat(path.join(projectDir, file));
+      // lstat: a tracked symlink is never followed (it may point out of the project, as ownerSurface refuses)
+      const st = await fs.lstat(path.join(projectDir, file));
       if (!st.isFile() || st.size > MAX_FILE_BYTES) { skipped++; continue; }
       text = await fs.readFile(path.join(projectDir, file), 'utf-8');
     } catch { skipped++; continue; }

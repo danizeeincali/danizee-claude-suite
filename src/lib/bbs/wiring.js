@@ -128,21 +128,88 @@ export function stepSection(text, step) {
 }
 
 /**
- * Is the command one runner call whose exit status is the test's? Outside quotes it may not chain, pipe or background
- * (; & | or a newline), and nowhere may it substitute a command (` or $( ): `node --test t.js || true` always passes.
+ * Split a reach command into argv the way a plain shell word list would: whitespace separates words, '...' and "..."
+ * group them (no escapes, no expansion). Anything that would make a shell run more than one program, substitute a
+ * command or redirect is refused, so the program's exit status is the test's: `node --test t.js || true` always passes.
+ * Returns { argv } or { why }. The command is then run without a shell, so nothing in it is ever interpreted.
  */
-export function singleCall(command) {
-  const s = String(command);
-  if (/`|\$\(/.test(s)) return false;
-  const bare = s.replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, '""');
-  return !/[;&|\n]/.test(bare);
+export function parseCommand(command) {
+  const src = String(command);
+  const argv = [];
+  let word = null;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (c === "'" || c === '"') {
+      const end = src.indexOf(c, i + 1);
+      if (end < 0) return { why: `an unclosed ${c}` };
+      word = (word ?? '') + src.slice(i + 1, end);
+      i = end;
+    } else if (c === ' ' || c === '\t') {
+      if (word !== null) argv.push(word);
+      word = null;
+    } else if (/[;&|<>`$\\\n\r(){}*?[\]~#!]/.test(c)) {
+      return { why: `shell syntax "${c}" outside quotes` };
+    } else word = (word ?? '') + c;
+  }
+  if (word !== null) argv.push(word);
+  if (!argv.length) return { why: 'an empty command' };
+  return { argv };
+}
+
+/** Programs that run a project's own tests. A runner that downloads or evaluates code given inline is not one. */
+const RUNNERS = new Set(['node', 'npm', 'pnpm', 'yarn', 'bun', 'deno', 'vitest', 'jest', 'mocha', 'ava', 'tap', 'playwright', 'tsx', 'ts-node',
+  'pytest', 'python', 'python3', 'py', 'uv', 'poetry', 'go', 'cargo', 'ruby', 'rspec', 'bundle', 'rake', 'rails', 'mix', 'dotnet', 'mvn', 'gradle', 'gradlew', 'php', 'phpunit']);
+const PACKAGE_RUNNERS = new Set(['npx', 'bunx', 'pnpx']);
+const TEST_TOOLS = new Set(['vitest', 'jest', 'mocha', 'ava', 'tap', 'playwright', 'tsx', 'ts-node', 'c8', 'nyc', 'node']);
+// flags that run code given on the command line, per runner family
+const INLINE_CODE = { node: /^(?:-e|--eval|-p|--print)(?:=|$)/, python: /^-c/, ruby: /^-e/, php: /^-r/ };
+const familyOf = (base) => (['node', 'bun', 'deno', 'tsx', 'ts-node'].includes(base) ? 'node' : /^(python3?|py|uv|poetry)$/.test(base) ? 'python' : ['ruby', 'bundle'].includes(base) ? 'ruby' : base === 'php' ? 'php' : null);
+
+/** Why the argv is not a test runner call, or null when it is one. */
+export function runnerWhy(argv) {
+  const prog = argv[0].replace(/\\/g, '/');
+  const base = prog.split('/').pop().replace(/\.(cmd|exe|bat)$/i, '');
+  const local = /^(?:\.\/)?node_modules\/\.bin\//.test(prog) || prog === './gradlew' || prog === 'gradlew';
+  if (prog.includes('/') && !local) return `${prog} is not a test runner (name the runner, or one under node_modules/.bin)`;
+  if (PACKAGE_RUNNERS.has(base)) {
+    const tool = argv.slice(1).find(a => !a.startsWith('-'));
+    if (!tool || !TEST_TOOLS.has(tool) || argv.slice(1).some(a => /^(?:-y|--yes|-p|--package)(?:=|$)/.test(a))) return `${base} may only run an installed test tool (${[...TEST_TOOLS].join(', ')})`;
+  } else if (!RUNNERS.has(base) && !local) return `${base} is not a test runner (one of ${[...RUNNERS].join(', ')})`;
+  if (['yarn', 'pnpm', 'npm', 'bun', 'deno'].includes(base) && argv.slice(1).some(a => /^(?:dlx|x|exec|eval|repl)$/.test(a))) return `${base} ${argv.find(a => /^(?:dlx|x|exec|eval|repl)$/.test(a))} runs code that is not the project's tests`;
+  const fam = familyOf(base);
+  const inline = fam ? argv.slice(1).find(a => INLINE_CODE[fam].test(a)) : null;
+  if (inline) return `${inline} runs code given inline, not a test file`;
+  return null;
+}
+
+/** Why a reach command cannot prove its test, or null: one runner call, run without a shell, that names the test file. */
+export function reachCommandWhy(command, test) {
+  const p = parseCommand(command);
+  if (p.why) return `reach command must be one runner call with no shell syntax (${p.why}): ${command}`;
+  const r = runnerWhy(p.argv);
+  if (r) return `reach command must run a test runner: ${r}`;
+  if (!runsTest(command, test)) return `reach command never runs ${test}: ${command}`;
+  return null;
 }
 
 /** Does the command run this test file: does one of its words name the file's path (as given, or from ./)? */
 export function runsTest(command, test) {
-  if (!singleCall(command)) return false;
-  const words = String(command).split(/\s+/).map(w => w.replace(/^['"]|['"]$/g, '').replace(/^\.\//, ''));
+  const p = parseCommand(command);
+  if (p.why) return false;
+  const words = p.argv.map(w => w.replace(/^\.\//, ''));
   return words.includes(test) || words.some(w => w.endsWith(`=${test}`));
+}
+
+/**
+ * The environment a reach test runs with: the caller's, without the test runner's own state (NODE_TEST_CONTEXT makes
+ * a nested `node --test` report to a parent and exit 0) and without anything that looks like a credential. A reach
+ * test proves a user reaches the power; it needs no key, and code the integration stream wrote never sees one.
+ */
+const SECRET_NAME = /KEY|TOKEN|SECRET|PASSW|CREDENTIAL|AUTH|COOKIE|SESSION|PRIVATE|_PAT$|^AWS_|^GH_|^GITHUB_|^NPM_CONFIG_|^ANTHROPIC|^OPENAI/i;
+export function reachEnv(source) {
+  const env = {};
+  for (const [k, v] of Object.entries(source)) if (k !== 'NODE_TEST_CONTEXT' && !SECRET_NAME.test(k)) env[k] = v;
+  return env;
 }
 
 /** Run a reach test command once per call; exit 0 within the timeout is a pass. */
@@ -150,14 +217,17 @@ function runReach(projectDir, command, cache, timeoutMs) {
   if (cache.has(command)) return cache.get(command);
   // a reach test runs as its own top-level test run: inherited test-runner state (NODE_TEST_CONTEXT makes a nested
   // `node --test` report to a parent and exit 0) must not turn a failing test into a pass
-  const { NODE_TEST_CONTEXT, ...env } = process.env;
-  void NODE_TEST_CONTEXT;
+  const env = reachEnv(process.env);
   const res = new Promise((resolve) => {
     // its own process group, so a timeout stops the runner and every process it started, not only the shell
     const win = process.platform === 'win32';
-    // POSIX: sh in its own process group; Windows: the platform shell (cmd.exe), its tree stopped with taskkill
-    const child = win ? spawn(command, { cwd: projectDir, env, shell: true, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
-      : spawn('sh', ['-c', command], { cwd: projectDir, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const { argv } = parseCommand(command);
+    // no shell: the argv is the program and its arguments, nothing in it is interpreted. POSIX: its own process group,
+    // so a timeout stops the runner and every process it started; Windows: the tree is stopped with taskkill
+    // (a .cmd runner such as npx.cmd needs cmd.exe there; parseCommand already refused every cmd.exe metacharacter but %)
+    if (win && argv.some(a => a.includes('%'))) { resolve({ ok: false, why: `reach command may not hold % on Windows: ${command}` }); return; }
+    const child = win ? spawn(argv[0], argv.slice(1), { cwd: projectDir, env, shell: true, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      : spawn(argv[0], argv.slice(1), { cwd: projectDir, env, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let text = '';
     const keep = (d) => { if (text.length < 16 * 1024 * 1024) text += d; };
     child.stdout.on('data', keep);
@@ -238,8 +308,8 @@ export async function wiredTargets(projectDir, { verb, entry, reach, targets, ru
       let tt;
       try { tt = await fs.readFile(path.join(projectDir, r.test), 'utf-8'); } catch { whys.push(`reach test ${r.test} is missing`); continue; }
       if (!entersThrough(tt, row)) { whys.push(`reach test ${r.test} never goes through ${row.file}${row.at ? ` or "${row.at}"` : ''}`); continue; }
-      if (!singleCall(r.command)) { whys.push(`reach command is not one runner call (no ;, &, |, newline or substitution): ${r.command}`); continue; }
-      if (!runsTest(r.command, r.test)) { whys.push(`reach command never runs ${r.test}: ${r.command}`); continue; }
+      const bad = reachCommandWhy(r.command, r.test);
+      if (bad) { whys.push(bad); continue; }
       if (!run) { whys.push(`reach test ${r.test} was not run`); continue; }
       const res = await runReach(projectDir, r.command, cache, timeoutMs);
       if (!res.ok) { whys.push(res.why); continue; }
@@ -302,8 +372,8 @@ export async function recordIntegration(projectDir, { run, power, verb, entry, r
     const testPath = posix(path.normalize(test));
     if (testPath.startsWith('../') || path.isAbsolute(testPath)) throw new Error(`reach test "${test}" is outside the project`);
     try { await fs.stat(path.join(projectDir, testPath)); } catch { throw new Error(`reach test "${testPath}" does not exist`); }
-    if (!singleCall(command)) throw new Error(`reach command must be one runner call, with no ;, &, |, newline or substitution that could hide its exit status, got "${command}"`);
-    if (!runsTest(command, testPath)) throw new Error(`reach command must run the reach test ${testPath}, got "${command}"`);
+    const bad = reachCommandWhy(command, testPath);
+    if (bad) throw new Error(bad);
     rows.push({ surface, at: at || null, test: testPath, command });
   }
   const doc = await readIntegration(projectDir, { run, cfg }).catch(err => { if (force) return { run, powers: {} }; throw err; });

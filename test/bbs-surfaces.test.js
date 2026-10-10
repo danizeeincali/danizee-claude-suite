@@ -543,3 +543,24 @@ describe('surfaces — integration-gate review r3 regressions', () => {
     } finally { await fs.rm(repo, { recursive: true, force: true }); }
   });
 });
+
+describe('surfaces — integration-gate review r4 regressions', () => {
+  it('a tracked symlink is never followed, even to a file the scan would read', async () => {
+    const repo = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-surf-link-'));
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-surf-out-'));
+    try {
+      await fs.writeFile(path.join(outside, 'secrets.json'), JSON.stringify({ stripeKey: 'x', dbPassword: 'y' }));
+      await fs.mkdir(path.join(repo, 'config'), { recursive: true });
+      await fs.symlink(path.join(outside, 'secrets.json'), path.join(repo, 'config', 'flags.json'));
+      spawnSync('git', ['init', '-q', '.'], { cwd: repo });
+      spawnSync('git', ['add', '-A'], { cwd: repo });
+      const scan = await scanSurfaces(repo, { now });
+      assert.equal(scan.via, 'git');
+      assert.deepEqual(scan.surfaces, [], 'the link target is never read');
+      assert.equal(scan.skipped, 1);
+    } finally {
+      await fs.rm(repo, { recursive: true, force: true });
+      await fs.rm(outside, { recursive: true, force: true });
+    }
+  });
+});
