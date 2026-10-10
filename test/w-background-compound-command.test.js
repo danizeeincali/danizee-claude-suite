@@ -484,7 +484,7 @@ describe('review round 4 fixes', () => {
     const step1 = section('- **Step 1:**', '- **Step 2:**');
     assert.ok(step1.includes(`\`${DR}\``));
     assert.match(step1, /Exit 3 is an empty range: no change to compound/);
-    assert.match(step1, /Exit 2 is a refusal \(a refused repository or driver, or a range over 32 MiB\): report the reason as printed and stop that step/);
+    assert.match(step1, /Exit 2 is a refusal \(a refused repository or driver, or a range over 32 MiB; a range whose git output passes 64 MiB is exit 1 instead\): report the reason as printed and stop that step/);
     assert.match(step1, /Exit 1 is bad input, a git failure or an unread change/);
     assert.match(step1, /Any other non-zero exit is a failure of the step/);
     assert.ok(step1.includes('Without the kit, fall back to `GIT_NO_LAZY_FETCH=1 GIT_TERMINAL_PROMPT=0 git diff --end-of-options "$BASE"` and say in one line that the kit\'s protections'));
@@ -615,14 +615,14 @@ describe('review round 5 fixes', () => {
     assert.match(c, /"not pushed \(branch\|main\) — gate asks: <reason>"/);
     assert.match(c, /a branch stop → push the branch, merge to main, run the main check, push main; a main stop → push main only/);
     assert.match(c, /the lead still runs the main re-check .* and stops on a deny there, ignoring only an ask/);
-    assert.ok(phase3().includes('"not pushed (main) — gate asks: <reason>"'));
+    assert.ok(phase3().includes('"not pushed (main) — gate asks: <reason>; MB=<sha>"')); // retargeted: the main-stop line now carries MB
     assert.ok(phase3().includes('"not pushed (main) — gate denied: <reason>"'));
     assert.ok(section('**Phase 4', '**ERROR HANDLING').includes('"not pushed (branch) — gate asks: <reason>", "not pushed (main) — gate asks: <reason>"'));
   });
   it('low: diff-range exit 2 is a refusal (repository, driver or 32 MiB), said once the same way, never only a refused repository', async () => {
     const src = await fs.readFile(path.join(KIT_SRC, 'diff-range.js'), 'utf-8');
     assert.match(src, /\(32 MiB\) is refused, exit 2/);
-    const W = 'Exit 2 is a refusal (a refused repository or driver, or a range over 32 MiB): report the reason as printed';
+    const W = 'Exit 2 is a refusal (a refused repository or driver, or a range over 32 MiB; a range whose git output passes 64 MiB is exit 1 instead): report the reason as printed';
     assert.ok(step1Text().includes(W));
     assert.ok(phase1().includes(W));
     assert.ok(!content.includes('refused the repository'));
@@ -639,7 +639,7 @@ describe('review round 5 fixes', () => {
       git(fx.dir, 'commit', '-q', '-am', 'change');
       r = fx.run(step1Block(), fx.dir, { BASE, ARG: '' });
       assert.equal(r.status, 0, r.stderr);
-      assert.match(r.stdout, /CATEGORY=(security|bug)/);
+      assert.match(r.stdout, /CATEGORY=bug/);
       r = fx.run(step1Block(), fx.dir, { BASE: '--output=x', ARG: '' });
       assert.equal(r.status, 0);
       assert.match(r.stderr, /BASE is not a commit/);
@@ -650,5 +650,65 @@ describe('review round 5 fixes', () => {
     } finally {
       rmSync(fx.root, { recursive: true, force: true });
     }
+  });
+  it('Step 1: diff-range exit 2 (include.path in .git/config) prints the refusal and falls back to feature', () => {
+    const fx = kitRepo();
+    try {
+      const BASE = git(fx.dir, 'rev-parse', 'HEAD').trim();
+      writeFileSync(path.join(fx.dir, 'a.txt'), 'one\nfix the auth token bug\n');
+      git(fx.dir, 'commit', '-q', '-am', 'change');
+      git(fx.dir, 'config', 'include.path', '../extra.cfg');
+      const r = fx.run(step1Block(), fx.dir, { BASE, ARG: '' });
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stderr, /diff-range refused \(exit 2/);
+      assert.match(r.stdout, /CATEGORY=feature/);
+      assert.deepEqual(readdirSync(fx.tmp), [], 'temp file left behind');
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+  it('Step 1: diff-range exit 1 (stub kit) prints the failure and falls back to feature', () => {
+    const fx = kitRepo();
+    try {
+      const BASE = git(fx.dir, 'rev-parse', 'HEAD').trim();
+      writeFileSync(path.join(fx.dir, '.claude', 'helpers', 'kit', 'cli.js'), 'console.error("stub: git failed"); process.exit(1);\n');
+      const r = fx.run(step1Block(), fx.dir, { BASE, ARG: '' });
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stderr, /diff-range failed \(exit 1/);
+      assert.match(r.stdout, /CATEGORY=feature/);
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+  it('Step 1: a path containing "auth" with plain added lines is feature (+++ headers are not scored)', () => {
+    const fx = kitRepo();
+    try {
+      const BASE = git(fx.dir, 'rev-parse', 'HEAD').trim();
+      mkdirSync(path.join(fx.dir, 'auth-token'));
+      writeFileSync(path.join(fx.dir, 'auth-token', 'secret-cache-error.txt'), 'plain\nlines\n');
+      git(fx.dir, 'add', '.');
+      git(fx.dir, 'commit', '-q', '-m', 'plain');
+      const r = fx.run(step1Block(), fx.dir, { BASE, ARG: '' });
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /CATEGORY=feature/);
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+  it('round 6 wording: fallback pointer, 64 MiB exit 1, headers skipped, MB handed to the lead', async () => {
+    assert.ok(step1Block().includes("use the git diff fallback in Step 1's text"));
+    assert.ok(!step1Block().includes('fallback below'));
+    assert.match(step1Text(), /same keyword weights on the fallback's added lines/);
+    const dr = await fs.readFile(path.join(KIT_SRC, 'diff-range.js'), 'utf-8');
+    const pg = await fs.readFile(path.join(KIT_SRC, 'push-gate.js'), 'utf-8');
+    assert.match(dr, /\(32 MiB\)/);
+    assert.match(pg, /maxBuffer: 64 \* 1024 \* 1024/);
+    assert.ok(step1Text().includes('a range whose git output passes 64 MiB is exit 1 instead'));
+    assert.ok(phase1().includes('a range whose git output passes 64 MiB is exit 1 instead'));
+    assert.ok(step1Block().includes("grep -v '^+++ '"));
+    assert.match(step1Text(), /file headers are skipped/);
+    const c = checkpoint4();
+    assert.match(c, /on a branch stop the agent never pushed, so the lead records `MB` itself with Phase 3's record line/);
+    assert.match(c, /on a main stop the agent's summary line carries it, "not pushed \(main\) — gate asks: <reason>; MB=<sha>"/);
   });
 });
