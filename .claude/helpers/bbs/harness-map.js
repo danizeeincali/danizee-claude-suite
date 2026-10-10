@@ -10,7 +10,7 @@ import { DEFAULT_CONFIG } from './config.js';
 import { runDir as runDirOf, readJson, writeJson, moveAsideStale, withMapLockDetailed } from './store.js';
 import { RUN_ID, invalidRunId } from './intake.js';
 import { SKIP_DIRS, parseJsonOnly } from './inventory.js';
-import { renderStatusSafe } from './status.js';
+import { renderStatusSafe, loadState, nextStep } from './status.js';
 
 export const STOP_WORDS = new Set([
   'the', 'a', 'an', 'and', 'or', 'of', 'to', 'in', 'on', 'for', 'with', 'by',
@@ -686,13 +686,15 @@ export async function recordJudgments(projectDir, { run, input, now, force = fal
   const { warning, unread } = await renderAfterCommit(runDirPath);
 
   const remaining = Array.from(powerNames).filter(n => !map.judgments[n]).sort();
+  // every power judged: the step after map comes from the step order (usage, unless the run already has it)
+  const after = unread || remaining.length ? null : nextStep(await loadState(runDirPath));
 
   return {
     runId: run,
     judged: Object.keys(map.judgments).length,
     remaining,
     stale_moved: [...stale_moved],
-    next: unread ? null : remaining.length === 0 ? 'verdict' : 'map',
+    next: unread ? null : remaining.length === 0 ? after : 'map',
     ...(warning ? { warning } : {})
   };
   }, lockOpts);
