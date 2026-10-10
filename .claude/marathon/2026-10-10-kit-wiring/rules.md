@@ -44,3 +44,4 @@ Add a rule the second time something goes wrong.
 - After any change to a command's text, regenerate `.claude/commands/.shortcuts/` from the generator and keep the repo copy equal to it (the command tests check this).
 - Every stream edits only its own workflow blocks in src/plugins/dot-shortcuts.js; a verb change belongs to the `diff-range` stream only.
 - Command text that explains a verb's exit codes names every code the verb can return, in every paragraph that runs it; a sentence that says "any non-zero exit" next to a documented non-failure exit is a docs finding (seen in diff-range rounds 1 and 2).
+- A kit verb that runs git on a folder the user may not have written goes through safe-git's protections (no drivers, no hooks, no includes, no lazy fetch, no transports, a timeout on every child) or says in its header why not; "hooks off" alone is not a hardened read (seen in diff-range rounds 4 and 5).

@@ -1,2 +1,3 @@
 {"category":"correctness","kind":"test","ref":"test/kit-diff-range.test.js","area":null,"id":"eb518e9a-6ae1-4e15-adf4-eba4d2deec45","ts":"2026-10-10T16:56:53.360Z"}
 {"category":"docs","kind":"rule","ref":".claude/marathon/2026-10-10-kit-wiring/rules.md","area":null,"id":"55f5fe65-fa28-4757-ba38-12202c65c7ab","ts":"2026-10-10T16:59:47.769Z"}
+{"category":"security","kind":"rule","ref":".claude/marathon/2026-10-10-kit-wiring/rules.md","area":null,"id":"b2b3eceb-6f01-4c31-8482-fadbbea5003f","ts":"2026-10-10T17:22:41.600Z"}
