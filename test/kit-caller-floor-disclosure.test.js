@@ -261,3 +261,27 @@ describe('callers — review round 1 regressions', () => {
     assert.deepEqual(cf.parseArgs(['--symbol', 'lib.js:keep', '-h']).symbols, ['lib.js:keep']);
   });
 });
+
+describe('callers — review round 2 regressions', () => {
+  it('a removed method of a class that implements an interface keeps the interface floor', async () => {
+    const before = 'export interface Store { save(): void }\nexport class Mem implements Store {\n  save() {}\n  extra() {}\n}\n';
+    await repo({ 'store.ts': before }, async (root, g) => {
+      await fs.writeFile(path.join(root, 'store.ts'), 'export interface Store { save(): void }\nexport class Mem implements Store {\n  save() {}\n}\n');
+      const diff = g('diff', '--no-color', '--no-ext-diff', '--no-prefix');
+      const { run: impactRun } = await import('../src/lib/kit/impact.js');
+      const r = await impactRun(['--diff', '-', '--base', 'HEAD'], { cwd: root, env: process.env, stdin: async () => diff });
+      const gone = r.removed.find((x) => x.qualified === 'Mem.extra');
+      assert.ok(gone, JSON.stringify(r.removed));
+      assert.equal(gone.floor, true);
+      assert.ok(gone.reasons.some((x) => x.code === 'interface_dispatch'));
+    });
+  });
+
+  it('a capped not_read list adds up: rows beyond the cap are named as such', () => {
+    const graph = { defs: [{ id: 'a.js::f', file: 'a.js', name: 'f', qualified: 'f', kind: 'function' }], edges: [], unresolved: [], files: [{ path: 'a.js' }],
+      not_read: [{ file: 'x.py', reason: 'unsupported' }], stats: { not_read_total: 500 } };
+    const e = cf.callerIndex(graph).get('a.js::f');
+    const s = e.reasons.find((x) => x.code === 'unread_files').sentence;
+    assert.match(s, /^500 project files were not read \(unsupported: 1, beyond the listed rows, reason not known: 499\)/);
+  });
+});

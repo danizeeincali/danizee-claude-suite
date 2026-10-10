@@ -112,7 +112,8 @@ function reasonsFor(c, sym, interfaceCount) {
     ? `${plural(interfaceCount, 'class implements or extends', 'classes implement or extend')} \`${sym.name}\`, so calls typed as the interface reach ${interfaceCount === 1 ? 'it' : 'them'} without naming ${interfaceCount === 1 ? 'it' : 'them'}.`
     : `\`${sym.name}\` belongs to a class that implements ${plural(interfaceCount, 'interface', 'interfaces')}, so calls typed as the interface may reach it without naming it.`);
   const L = c.level;
-  const readable = Object.entries(L.byReason).filter(([r]) => !BUDGET_REASONS.has(r)).map(([r, n]) => `${r}: ${n}`).join(', ');
+  const readable = [...Object.entries(L.byReason).filter(([r]) => !BUDGET_REASONS.has(r)).map(([r, n]) => `${r}: ${n}`),
+    ...(L.unlisted ? [`beyond the listed rows, reason not known: ${L.unlisted}`] : [])].join(', ');
   add('unread_files', L.unread, `${plural(L.unread, 'project file was', 'project files were')} not read${readable ? ` (${readable})` : ''}; a caller may be in ${L.unread === 1 ? 'it' : 'them'}.`);
   const budgetN = L.budget + L.unresolvedCut;
   const parts = [];
@@ -158,7 +159,11 @@ export function callerIndex(graph) {
   }
   Object.defineProperty(index, 'forName', { // an entry for a symbol the graph does not hold (a removed one, a module-level caller)
     value: (sym, callerList = []) => {
-      const reasons = reasonsFor(c, { name: sym.name, kind: sym.kind, file: sym.file, parent: sym.parent }, 0);
+      // a removed method keeps its class's interfaces: the class (still in the graph) is named by its qualified name
+      const q = String(sym.qualified || sym.name).split('.');
+      const parent = sym.parent ?? (q.length > 1 ? q[q.length - 2] : undefined);
+      const probe = { name: sym.name, kind: sym.kind, file: sym.file, parent };
+      const reasons = reasonsFor(c, probe, interfaceCountOf(graph, probe, h));
       return { id: sym.id, file: sym.file, name: sym.name, qualified: sym.qualified || sym.name, kind: sym.kind, callers: callerList, floor: reasons.length > 0, reasons };
     }
   });
