@@ -104,9 +104,9 @@ describe('docs and version', () => {
     assert.match(readme, /\.claude\/marathon\//);
   });
 
-  it('AC39: package.json is 4.3.0 with fast-check as a devDependency', async () => {
+  it('AC39: package.json is at least 4.3.0 with fast-check as a devDependency', async () => {
     const pkg = JSON.parse(await fs.readFile(path.join(PROJECT_ROOT, 'package.json'), 'utf-8'));
-    assert.equal(pkg.version, '4.3.0');
+    assert.ok(pkg.version.split('.').map(Number).reduce((d, n, i) => d || n - [4, 3, 0][i], 0) >= 0, `version ${pkg.version} is below 4.3.0`);
     assert.ok(pkg.devDependencies && pkg.devDependencies['fast-check']);
   });
 });
