@@ -22,6 +22,8 @@ const section = (from, to) => {
   assert.ok(b > a, `missing ${to}`);
   return content.slice(a, b);
 };
+const checkpoint0 = () => section('### ⛔ CHECKPOINT 0: Pre-flight', '### ⛔ CHECKPOINT 1');
+const dispatch = () => section('### ⛔ CHECKPOINT 2: Background Dispatch', '**Phase 1: Inline Compound**');
 const handoff = () => section('### ⛔ CHECKPOINT 1: Handoff', '### ⛔ CHECKPOINT 2');
 const phase1 = () => section('**Phase 1: Inline Compound**', '**Phase 1.5');
 const phase2 = () => section('**Phase 2: Git Commit**', '**Phase 3');
@@ -50,11 +52,14 @@ function kitRepo() {
   const tmp = path.join(root, 'tmp');
   mkdirSync(tmp);
   const env = { ...process.env, HOME: root, TMPDIR: tmp, KIT_RECEIPTS_DIR: path.join(root, 'receipts'), GIT_CONFIG_NOSYSTEM: '1' };
-  const run = (b, cwd = dir) => spawnSync('bash', ['-c', b], { cwd, encoding: 'utf-8', env });
+  const run = (b, cwd = dir, extra = {}) => spawnSync('bash', ['-c', b], { cwd, encoding: 'utf-8', env: { ...env, ...extra } });
   return { root, dir, tmp, run };
 }
 const redactBlock = () => blocksOf(phase1())[0];
 const gateBlock = () => blocksOf(phase3())[0];
+const baseBlock = () => blocksOf(checkpoint0())[0];
+const EARLIER = 'only an earlier review exists, for a different version of this change; run /w-review on the current one';
+const REFUSED = '"not committed, not pushed — handoff scrub refused: <hits>"';
 const NO_REVIEW = 'no review recorded for this change';
 
 describe('repo copy of the w-background-compound shortcut is regenerated', () => {
@@ -134,8 +139,8 @@ describe('bash blocks parse and carry the kit guard', () => {
   it('every bash block passes bash -n and starts with the guard', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bc-bash-'));
     try {
-      const blocks = [handoff(), phase1(), phase2(), phase3()].flatMap(blocksOf);
-      assert.equal(blocks.length, 4);
+      const blocks = [checkpoint0(), handoff(), phase1(), phase2(), phase3()].flatMap(blocksOf);
+      assert.equal(blocks.length, 5);
       blocks.forEach((b, i) => {
         assert.ok(b.startsWith('if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed'), b);
         assert.match(b.trimEnd(), /\(exit \$RC\); fi$|\(exit 0\); fi$/);
@@ -151,7 +156,7 @@ describe('bash blocks parse and carry the kit guard', () => {
   it('without the kit each block exits 0 and says so', () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'bc-nokit-'));
     try {
-      for (const b of [handoff(), phase1(), phase2(), phase3()].flatMap(blocksOf)) {
+      for (const b of [checkpoint0(), handoff(), phase1(), phase2(), phase3()].flatMap(blocksOf)) {
         const r = spawnSync('bash', ['-c', b], { cwd: dir, encoding: 'utf-8' });
         assert.equal(r.status, 0);
         assert.match(r.stdout, /kit not installed/);
@@ -174,7 +179,7 @@ describe('review round 1 fixes (wording)', () => {
   it('medium: the diff goes to a guarded temp file, git\'s exit is checked, then redact reads the file', () => {
     const b = redactBlock();
     assert.match(b, /D=\$\(mktemp 2>\/dev\/null\) && \[ -n "\$D" \] \|\| \{/);
-    assert.match(b, /git diff HEAD~1 > "\$D"; RC=\$\?/);
+    assert.match(b, /git diff "\$BASE" > "\$D"; RC=\$\?/);
     assert.match(b, /redact --keep-lines < "\$D"/);
     assert.doesNotMatch(b, /\| node/);
     assert.match(b, /\[ -z "\$D" \] \|\| rm -f "\$D"/);
@@ -194,7 +199,7 @@ describe('review round 1 fixes (wording)', () => {
     const c = checkpoint4();
     assert.match(c, /\*\*Relay a gate stop \(lead\):\*\*/);
     assert.match(c, /relay that line to the owner word for word/);
-    assert.match(c, /Only after the owner answers does the lead run the push in the foreground/);
+    assert.match(c, /only after the owner explicitly says go does the lead push in the foreground/);
     assert.match(c, /never answers the gate's question or that prompt itself/);
     assert.doesNotMatch(s, /put the question to the owner and do not push until they answer/);
   });
@@ -213,6 +218,57 @@ describe('review round 1 fixes (wording)', () => {
     assert.match(h, /git restore --staged -- <those paths>/);
     assert.match(h, /dispatch the background agent \*\*without `--push`\*\*/);
     assert.match(h, /git commit -- <those paths>/);
+  });
+});
+
+describe('review round 2 fixes (wording)', () => {
+  it('high: the lead records the session base and passes BASE; the redact block diffs "$BASE", no HEAD~1 in any block', async () => {
+    const c0 = checkpoint0();
+    assert.match(c0, /\*\*Step 0: Record the session base\*\*/);
+    assert.match(baseBlock(), /diff-range --base-only/);
+    assert.match(c0, /prints the merge-base of HEAD with `@\{upstream\}`, or, when there is no upstream, the empty-tree id/);
+    assert.match(c0, /it exits non-zero on failure/);
+    assert.match(c0, /the lead uses the pre-handoff HEAD instead and says so; without the kit, `BASE` is the pre-handoff HEAD/);
+    assert.match(c0, /auto-detect from `git diff "\$BASE"`/);
+    assert.match(c0, /writes it into the dispatch prompt as the agent's `BASE`/);
+    assert.match(dispatch(), /The dispatch prompt carries `BASE=<sha>`/);
+    assert.match(redactBlock(), /git diff "\$BASE" > "\$D"/);
+    assert.match(phase1(), /The block writes `git diff "\$BASE"`/);
+    for (const b of [checkpoint0(), handoff(), phase1(), phase2(), phase3()].flatMap(blocksOf)) assert.doesNotMatch(b, /HEAD~1/);
+    const src = await fs.readFile(path.join(KIT_SRC, 'diff-range.js'), 'utf-8');
+    assert.match(src, /--base-only prints the resolved base/);
+  });
+  it('medium/low: a refused handoff scrub is reported "not committed, not pushed", the same in the handoff and Phase 2', () => {
+    const h = handoff();
+    assert.match(h, /`scrub --worktree` scans every tracked file as it is on disk, so while a tracked file still holds the hit the agent's Phase 2 scrub refuses too/);
+    assert.match(h, /write "handoff scrub refused: <hits>" \(the hits as printed\) into its dispatch prompt/);
+    assert.match(h, /skips Phase 2 and Phase 3/);
+    assert.match(h, /The lead does not write that line itself/);
+    assert.ok(h.includes(REFUSED));
+    const p = phase2();
+    assert.match(p, /when the dispatch prompt carries "handoff scrub refused: <hits>", skip Phase 2 and Phase 3/);
+    assert.ok(p.includes(REFUSED));
+    assert.ok(phase3().includes(REFUSED));
+    assert.doesNotMatch(content, /"not pushed — handoff scrub refused"/);
+    assert.doesNotMatch(h, /commits its own paths/);
+  });
+  it('medium: main is re-checked with --base "$MB", the branch base; a new tree gets the earlier-review ask, relayed', async () => {
+    const src = await fs.readFile(path.join(KIT_SRC, 'push-gate.js'), 'utf-8');
+    assert.ok(src.includes(`block('${EARLIER}'`), 'push-gate.js no longer returns the earlier-review reason this text quotes');
+    const s = phase3();
+    const mb = s.indexOf('MB=$(git merge-base @{upstream} HEAD)');
+    const merge = s.indexOf('merge to main');
+    assert.ok(mb > 0 && merge > mb, 'MB not recorded before the merge');
+    assert.ok(s.indexOf('push-gate check --base "$MB"') > merge);
+    assert.match(s, /a fast-forward merge of the reviewed tree matches its receipt/);
+    assert.ok(s.includes(`A non-fast-forward merge yields a new tree, for which the gate returns ask "${EARLIER}"; that goes to the relay (CHECKPOINT 4) like any other ask`));
+  });
+  it('medium: relay — an explicit go on an ask pushes without rerunning the stop rule; a deny is never pushed past', () => {
+    const c = checkpoint4();
+    assert.match(c, /On an ask, only after the owner explicitly says go does the lead push in the foreground \(the push and merge lines of Phase 3\) without rerunning the gate's stop rule/);
+    assert.match(c, /the owner's own permission prompt still applies, the lead never answers the gate's question or that prompt itself/);
+    assert.match(c, /A deny is never pushed past, not even on the owner's word: the owner fixes the cause and runs \/bcp again/);
+    assert.doesNotMatch(c, /push-gate block first/);
   });
 });
 
@@ -236,8 +292,9 @@ describe('blocks run against the real kit', () => {
       mkdirSync(path.join(fx.dir, '.claude', 'kit'), { recursive: true });
       writeFileSync(path.join(fx.dir, '.claude', 'kit', 'secrets'), `${secret}\n`);
       writeFileSync(path.join(fx.dir, 'a.txt'), `one\ntoken = ${secret}\n`);
+      const BASE = git(fx.dir, 'rev-parse', 'HEAD').trim();
       git(fx.dir, 'commit', '-q', '-am', 'leak');
-      const r = fx.run(redactBlock());
+      const r = fx.run(redactBlock(), fx.dir, { BASE });
       assert.equal(r.status, 0, r.stderr);
       const j = JSON.parse(r.stdout);
       assert.ok(j.replaced >= 1);
@@ -255,11 +312,12 @@ describe('blocks run against the real kit', () => {
       mkdirSync(path.join(fx.dir, '.claude', 'kit'), { recursive: true });
       writeFileSync(path.join(fx.dir, '.claude', 'kit', 'secrets'), `${secret}\n`);
       writeFileSync(path.join(fx.dir, 'a.txt'), `one\n${secret}\n`);
+      const BASE = git(fx.dir, 'rev-parse', 'HEAD').trim();
       git(fx.dir, 'commit', '-q', '-am', 'leak');
       const wt = path.join(fx.root, 'wt');
       git(fx.dir, 'worktree', 'add', '-q', '--detach', wt);
       putKit(wt);
-      const r = fx.run(redactBlock(), wt);
+      const r = fx.run(redactBlock(), wt, { BASE });
       assert.equal(r.status, 0, r.stderr);
       const j = JSON.parse(r.stdout);
       assert.ok(j.replaced >= 1);
@@ -272,8 +330,9 @@ describe('blocks run against the real kit', () => {
     const fx = kitRepo();
     try {
       writeFileSync(path.join(fx.dir, 'a.txt'), 'one\ntwo\n');
+      const BASE = git(fx.dir, 'rev-parse', 'HEAD').trim();
       git(fx.dir, 'commit', '-q', '-am', 'two');
-      const r = fx.run(redactBlock());
+      const r = fx.run(redactBlock(), fx.dir, { BASE });
       assert.equal(r.status, 0, r.stderr);
       const j = JSON.parse(r.stdout);
       assert.equal(j.replaced, 0);
@@ -283,11 +342,60 @@ describe('blocks run against the real kit', () => {
     }
   });
   it('medium: a failing git diff is reported, never an empty clean result, and the temp file is removed', () => {
-    const fx = kitRepo(); // one commit: HEAD~1 does not exist
+    const fx = kitRepo();
     try {
-      const r = fx.run(redactBlock());
+      const r = fx.run(redactBlock(), fx.dir, { BASE: 'no-such-ref-0000' });
       assert.notEqual(r.status, 0);
       assert.match(r.stderr, /git diff failed \(exit \d+\)/);
+      assert.doesNotMatch(r.stdout, /"replaced"/);
+      assert.deepEqual(readdirSync(fx.tmp), [], 'temp file left behind');
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+  it('high: the base block resolves the merge-base with the upstream, so the redact diff covers every session commit', () => {
+    const fx = kitRepo();
+    try {
+      const start = git(fx.dir, 'rev-parse', 'HEAD').trim();
+      git(fx.dir, 'branch', 'up');
+      git(fx.dir, 'branch', '-u', 'up');
+      writeFileSync(path.join(fx.dir, 'a.txt'), 'one\nfirst-commit-line\n');
+      git(fx.dir, 'commit', '-q', '-am', 'first');
+      writeFileSync(path.join(fx.dir, 'b.txt'), 'second-commit-line\n');
+      git(fx.dir, 'add', 'b.txt');
+      git(fx.dir, 'commit', '-q', '-m', 'second');
+      const b = fx.run(baseBlock());
+      assert.equal(b.status, 0, b.stderr);
+      const BASE = b.stdout.match(/^BASE=(\S+)$/m)[1];
+      assert.equal(BASE, start);
+      const r = fx.run(redactBlock(), fx.dir, { BASE });
+      assert.equal(r.status, 0, r.stderr);
+      const j = JSON.parse(r.stdout);
+      assert.match(j.text, /\+first-commit-line/);
+      assert.match(j.text, /\+second-commit-line/);
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+  it('high: with no upstream the base block falls back to the pre-handoff HEAD and says so', () => {
+    const fx = kitRepo();
+    try {
+      const head = git(fx.dir, 'rev-parse', 'HEAD').trim();
+      const b = fx.run(baseBlock());
+      assert.equal(b.status, 0, b.stderr);
+      assert.match(b.stdout, /no upstream \(diff-range printed the empty-tree id\): BASE is the pre-handoff HEAD/);
+      assert.equal(b.stdout.match(/^BASE=(\S+)$/m)[1], head);
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+  it('high: the redact block with BASE unset reads nothing and says so', () => {
+    const fx = kitRepo();
+    try {
+      const env = { BASE: '' };
+      const r = fx.run(redactBlock(), fx.dir, env);
+      assert.notEqual(r.status, 0);
+      assert.match(r.stderr, /BASE not set/);
       assert.doesNotMatch(r.stdout, /"replaced"/);
       assert.deepEqual(readdirSync(fx.tmp), [], 'temp file left behind');
     } finally {
