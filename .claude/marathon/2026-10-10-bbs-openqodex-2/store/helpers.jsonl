@@ -99,3 +99,5 @@
 {"helper_id":"564e2308-8f2d-4052-929f-75a04b1de0fd","tokens":0,"outcome":"green","event":"done","id":"f4bf243c-05c3-47e8-b47f-94aca80b804d","ts":"2026-10-10T08:14:35.294Z"}
 {"helper_id":"564e2308-8f2d-4052-929f-75a04b1de0fd","tokens":100244,"outcome":"green","event":"done","id":"e0ba436c-63ca-464a-833a-aa7ded3d9377","ts":"2026-10-10T08:14:47.531Z"}
 {"role":"fix","model":"opus","stream":"hardened-git-read-on-untrusted-repo","budget":120000,"event":"spawn","id":"0118fd8b-5cbf-4bab-80dd-2e9ad99d0448","ts":"2026-10-10T08:15:58.932Z"}
+{"role":"review","model":"opus","stream":"hardened-git-read-on-untrusted-repo","budget":150000,"event":"spawn","id":"a73a635e-1e6a-4693-a0d2-8790e3619da8","ts":"2026-10-10T08:29:52.965Z"}
+{"helper_id":"0118fd8b-5cbf-4bab-80dd-2e9ad99d0448","tokens":128245,"outcome":"green","event":"done","id":"300b3ea0-3471-4a17-82bf-5b3eb8eb75c7","ts":"2026-10-10T08:29:58.549Z"}

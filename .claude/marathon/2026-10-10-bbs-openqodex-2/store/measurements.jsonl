@@ -64,3 +64,6 @@
 {"key":"packaged_hardened-git-read-on-untrusted-repo","value":true,"id":"f3dc51e1-ecd1-4b0a-b045-0b35a6f981ab","ts":"2026-10-10T08:09:01.258Z"}
 {"key":"egress_zero_hardened-git-read-on-untrusted-repo","value":true,"id":"4ee8ed10-c7d2-4b83-bacd-202ca12df160","ts":"2026-10-10T08:09:01.379Z"}
 {"key":"callers_hardened-git-read-on-untrusted-repo","value":1,"id":"25340219-d6eb-46b8-85a6-8714ce756799","ts":"2026-10-10T08:09:01.493Z"}
+{"key":"packaged_hardened-git-read-on-untrusted-repo","value":true,"id":"24c28c61-8fea-45dc-92e9-755ea0422798","ts":"2026-10-10T08:29:52.199Z"}
+{"key":"egress_zero_hardened-git-read-on-untrusted-repo","value":true,"id":"4524c5f4-801d-4258-9c4f-5ace26acdf53","ts":"2026-10-10T08:29:52.336Z"}
+{"key":"callers_hardened-git-read-on-untrusted-repo","value":1,"id":"0af0c3ac-b341-4f0d-91fb-5ef4fd674127","ts":"2026-10-10T08:29:52.461Z"}

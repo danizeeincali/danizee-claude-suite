@@ -1,11 +1,11 @@
 # Marathon 2026-10-10-bbs-openqodex-2
 
 - State: RUNNING
-- Budget: 4,145,575 / 10,000,000 tokens
+- Budget: 4,303,820 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "hardened-git-read-on-untrusted-repo" (next: review round 9) — /w-marathon --resume 2026-10-10-bbs-openqodex-2.
+- Next for you: Continue stream "hardened-git-read-on-untrusted-repo" (next: review round 15) — /w-marathon --resume 2026-10-10-bbs-openqodex-2.
 - Last handoff: 2026-10-10T05:06:45.604Z (auto) on claude/project-thread-p9gbyo@ddd4b25, 3 uncommitted, tasks: none
 
 ## Streams
@@ -15,7 +15,7 @@
 | pre-push-review-gate | ../danizee-claude-suite-pre-push-review-gate | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/pre-push-review-gate.md | done | met | review | — |  | 0 |
 | secret-redaction-by-value-and-fingerprin | ../danizee-claude-suite-secret-redaction-by-value-and-fingerprin | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/secret-redaction-by-value-and-fingerprin.md | done | met | review | — |  | 0 |
 | lens-catalog-file-triggered-checks | ../danizee-claude-suite-lens-catalog-file-triggered-checks | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/lens-catalog-file-triggered-checks.md | done | met | review | — |  | 0 |
-| hardened-git-read-on-untrusted-repo | ../danizee-claude-suite-hardened-git-read-on-untrusted-repo | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/hardened-git-read-on-untrusted-repo.md | active | clean 0/2 | review | review round 9 |  | 0 |
+| hardened-git-read-on-untrusted-repo | ../danizee-claude-suite-hardened-git-read-on-untrusted-repo | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/hardened-git-read-on-untrusted-repo.md | active | clean 0/2 | review | review round 15 |  | 0 |
 | identity-checked-file-writes |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/identity-checked-file-writes.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | change-blast-radius-walk |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/change-blast-radius-walk.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | caller-floor-disclosure |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/caller-floor-disclosure.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
@@ -43,7 +43,7 @@
 | lens-catalog-file-triggered-checks: clean reviews in a row | build | met | 5 | at_least 2 |
 | lens-catalog-file-triggered-checks: callers in the harness | build | met | 1 | at_least 1 |
 | lens-catalog-file-triggered-checks: packaged check passes | build | met | true | is true |
-| hardened-git-read-on-untrusted-repo: green unit runs in a row | build | met | 13 | at_least 1 |
+| hardened-git-read-on-untrusted-repo: green unit runs in a row | build | met | 14 | at_least 1 |
 | hardened-git-read-on-untrusted-repo: zero egress in the packaged check | build | met | true | is true |
 | hardened-git-read-on-untrusted-repo: clean reviews in a row | build | failing | 0 | at_least 2 |
 | hardened-git-read-on-untrusted-repo: callers in the harness | build | met | 1 | at_least 1 |
@@ -85,7 +85,7 @@
 | isolated-tool-free-wording-judge: packaged check passes | build | failing | — | is true |
 | Clean reviews in a row | build | failing | 0 | at_least 2 |
 | High findings in the latest review | build | failing | 1 | at_most 0 |
-| Open high findings | build | failing | 1 | at_most 0 |
+| Open high findings | build | met | 0 | at_most 0 |
 
 ## Waiting on human
 
