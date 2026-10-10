@@ -163,3 +163,5 @@
 {"role":"build","model":"sonnet","stream":"isolated-tool-free-wording-judge","budget":150000,"event":"spawn","id":"84c7114f-2520-45e0-9f18-ffa0f7a436dc","ts":"2026-10-10T13:28:15.712Z"}
 {"role":"review","model":"opus","stream":"isolated-tool-free-wording-judge","budget":150000,"event":"spawn","id":"e4e9b1e8-1641-4c36-8a7e-fc3738022487","ts":"2026-10-10T13:37:45.973Z"}
 {"helper_id":"84c7114f-2520-45e0-9f18-ffa0f7a436dc","tokens":83605,"outcome":"green","event":"done","id":"e7f5fe70-8af1-41cb-90aa-444312633305","ts":"2026-10-10T13:37:52.064Z"}
+{"helper_id":"e4e9b1e8-1641-4c36-8a7e-fc3738022487","tokens":76537,"outcome":"green","event":"done","id":"f0dc9ba0-0745-469f-a98f-4653bfe1469d","ts":"2026-10-10T13:39:30.764Z"}
+{"role":"review","model":"opus","stream":"isolated-tool-free-wording-judge","budget":150000,"event":"spawn","id":"7f974dcd-5265-45a0-bad3-dac1bfc560dd","ts":"2026-10-10T13:42:08.622Z"}
