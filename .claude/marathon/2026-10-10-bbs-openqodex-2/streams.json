@@ -109,9 +109,9 @@
     },
     {
       "name": "isolated-tool-free-wording-judge",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/isolated-tool-free-wording-judge.md",
-      "next": "review round 2",
+      "next": "—",
       "tasks": [],
       "isolation": "../danizee-claude-suite-isolated-tool-free-wording-judge",
       "phase": "review",
