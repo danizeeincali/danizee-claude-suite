@@ -3,9 +3,9 @@
 - State: RUNNING
 - Budget: 7,673,771 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
-- Gate (run-wide, all streams): 1/2 clean reviews — build gate not met, full gate not met
+- Gate (run-wide, all streams): 2/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "change-blast-radius-walk" (next: review round 4) — /w-marathon --resume 2026-10-10-bbs-openqodex-2.
+- Next for you: Next stream "caller-floor-disclosure": create its worktree (`git worktree add ../<repo>-caller-floor-disclosure -b marathon/2026-10-10-bbs-openqodex-2/caller-floor-disclosure`) and activate it with `cli.js stream caller-floor-disclosure state=active isolation=<path>`, then /w-marathon --resume 2026-10-10-bbs-openqodex-2.
 - Last handoff: 2026-10-10T09:05:18.050Z (auto) on claude/project-thread-p9gbyo@3434e5b, 5 uncommitted, tasks: none
 
 ## Streams
@@ -17,7 +17,7 @@
 | lens-catalog-file-triggered-checks | ../danizee-claude-suite-lens-catalog-file-triggered-checks | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/lens-catalog-file-triggered-checks.md | done | met | review | — |  | 0 |
 | hardened-git-read-on-untrusted-repo | ../danizee-claude-suite-hardened-git-read-on-untrusted-repo | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/hardened-git-read-on-untrusted-repo.md | done | met | review | — |  | 0 |
 | identity-checked-file-writes | ../danizee-claude-suite-identity-checked-file-writes | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/identity-checked-file-writes.md | done | met | review | — |  | 0 |
-| change-blast-radius-walk | ../danizee-claude-suite-change-blast-radius-walk | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/change-blast-radius-walk.md | active | clean 1/2 | review | review round 4 |  | 0 |
+| change-blast-radius-walk | ../danizee-claude-suite-change-blast-radius-walk | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/change-blast-radius-walk.md | done | met | review | — |  | 0 |
 | caller-floor-disclosure |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/caller-floor-disclosure.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | fact-cached-graph-build-with-budget | ../danizee-claude-suite-fact-cached-graph-build-with-budget | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/fact-cached-graph-build-with-budget.md | done | met | review | — |  | 0 |
 | tracked-file-scrub-gate |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/tracked-file-scrub-gate.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
@@ -53,9 +53,9 @@
 | identity-checked-file-writes: clean reviews in a row | build | met | 2 | at_least 2 |
 | identity-checked-file-writes: callers in the harness | build | met | 1 | at_least 1 |
 | identity-checked-file-writes: packaged check passes | build | met | true | is true |
-| change-blast-radius-walk: green unit runs in a row | build | met | 4 | at_least 1 |
+| change-blast-radius-walk: green unit runs in a row | build | met | 5 | at_least 1 |
 | change-blast-radius-walk: zero egress in the packaged check | build | met | true | is true |
-| change-blast-radius-walk: clean reviews in a row | build | failing | 1 | at_least 2 |
+| change-blast-radius-walk: clean reviews in a row | build | met | 2 | at_least 2 |
 | change-blast-radius-walk: callers in the harness | build | met | 1 | at_least 1 |
 | change-blast-radius-walk: packaged check passes | build | met | true | is true |
 | caller-floor-disclosure: green unit runs in a row | build | failing | 0 | at_least 1 |
@@ -83,7 +83,7 @@
 | isolated-tool-free-wording-judge: clean reviews in a row | build | failing | 0 | at_least 2 |
 | isolated-tool-free-wording-judge: callers in the harness | build | failing | — | at_least 1 |
 | isolated-tool-free-wording-judge: packaged check passes | build | failing | — | is true |
-| Clean reviews in a row | build | failing | 1 | at_least 2 |
+| Clean reviews in a row | build | met | 2 | at_least 2 |
 | High findings in the latest review | build | met | 0 | at_most 0 |
 | Open high findings | build | met | 0 | at_most 0 |
 

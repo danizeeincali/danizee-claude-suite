@@ -59,9 +59,9 @@
     },
     {
       "name": "change-blast-radius-walk",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/change-blast-radius-walk.md",
-      "next": "review round 4",
+      "next": "—",
       "tasks": [],
       "isolation": "../danizee-claude-suite-change-blast-radius-walk",
       "phase": "review",
