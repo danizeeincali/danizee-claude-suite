@@ -681,6 +681,14 @@ describe('diff-range — the review range as one unified diff', () => {
     const k = await run(['--base', 'HEAD', '--json', '--max-file-bytes', '1'], io({ stderr: { write: () => {} } }));
     assert.deepEqual(k.untracked, []);
     assert.equal(k.skipped.length, 2);
+    // cap-only range with --json: exit 0 path, empty false, nothing listed, the skipped file named
+    await fs.rm(path.join(dir, 'small.txt'));
+    const c = await run(['--base', 'HEAD', '--json'], io({ stderr: { write: () => {} } }));
+    assert.equal(c.empty, false);
+    assert.deepEqual(c.tracked, []);
+    assert.deepEqual(c.untracked, []);
+    assert.deepEqual(c.skipped_detail, [{ path: 'big.log', reason: 'too_large' }]);
+    assert.ok(usage.includes('--json: always exit 0; read empty and skipped_detail'));
   });
 
   it('a range above graph\'s maxDiffBytes is refused (exit 2) naming the remedies', async () => {
@@ -782,5 +790,42 @@ describe('diff-range — the review range as one unified diff', () => {
 
   it('configParameters single-quotes each -c pair the way git does', () => {
     assert.equal(configParameters(['-c', 'core.fsmonitor=', '-c', "a.b=it's"]), `'core.fsmonitor=' 'a.b=it'\\''s'`);
+  });
+
+  it('add -N: --sparse only in a sparse repo; a git rejecting only --sparse retries once; other failures are not routed to the fallback; merged diff failure is labelled', async () => {
+    await put('a.txt', 'a\n'); commit();
+    await put('docs/sparse.md', 'x\n');
+    const real = defaultGit(dir, {});
+    const rec = (rejectSparse, addFail) => { const calls = { add: [], diff: 0 }; const g = Object.assign(async (args, o = {}) => {
+      if (args.includes('add') && args.includes('--pathspec-from-file=-')) {
+        calls.add.push(args.includes('--sparse'));
+        if (addFail) return { code: 128, stdout: '', stderr: addFail };
+        if (rejectSparse && args.includes('--sparse')) return { code: 129, stdout: '', stderr: "error: unknown option `sparse'\nusage: git add" };
+      }
+      if (args.includes('--no-renames')) calls.diff++;
+      return real(args, o);
+    }, { cwd: dir }); return { calls, g }; };
+    // non-sparse repo: no --sparse, one add, one diff
+    let x = rec(false);
+    let r = await run(['--base', 'HEAD'], io({ git: x.g }));
+    assert.deepEqual(parseDiff(r.raw).map(p => p.path), ['docs/sparse.md']);
+    assert.deepEqual(x.calls, { add: [false], diff: 1 });
+    // sparse repo: --sparse passed
+    sh(dir, 'config', 'core.sparseCheckout', 'true');
+    x = rec(false);
+    r = await run(['--base', 'HEAD'], io({ git: x.g }));
+    assert.deepEqual(x.calls, { add: [true], diff: 1 });
+    // git that rejects only --sparse: the retry, one diff, merged result
+    x = rec(true);
+    r = await run(['--base', 'HEAD'], io({ git: x.g }));
+    assert.deepEqual(parseDiff(r.raw).map(p => p.path), ['docs/sparse.md']);
+    assert.deepEqual(x.calls, { add: [true, false], diff: 1 });
+    // a real add failure naming a "sparse" path is reported, not routed to the fallback
+    x = rec(false, "fatal: pathspec 'docs/sparse.md' did not match any files");
+    await assert.rejects(run(['--base', 'HEAD'], io({ git: x.g })), (e) => e instanceof KitExit && e.code === 1 && /^cannot add the untracked files to the temporary index: fatal: pathspec 'docs\/sparse\.md' did not match/.test(e.message));
+    assert.equal(x.calls.diff, 0);
+    // a failing merged diff is labelled as the range, not the base
+    const bad = Object.assign(async (args, o = {}) => (args.includes('--no-renames') && o.env && o.env.GIT_INDEX_FILE ? { code: 128, stdout: '', stderr: "error: open(\"docs/sparse.md\"): Permission denied" } : real(args, o)), { cwd: dir });
+    await assert.rejects(run(['--base', 'HEAD'], io({ git: bad })), (e) => e instanceof KitExit && e.code === 1 && /^cannot diff the range \(tracked changes plus 1 untracked files\): error: open/.test(e.message) && !/against the base/.test(e.message));
   });
 });
