@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
-import { scoreCase, scoreRun, keywordAtWordStart, normPath, snapshotSpecs, scoreFolders, run, MAX_FILES } from '../src/lib/kit/review-score.js';
+import { caseRelPath, normaliseReview, scoreCase, scoreRun, keywordAtWordStart, normPath, snapshotSpecs, scoreFolders, run, MAX_FILES } from '../src/lib/kit/review-score.js';
 
 const bug = { id: 'b1', file: 'src/a.js', lines: [10, 12], categories: ['correctness'], keywords: ['leak'] };
 const spec = (over = {}) => ({ case: 'c', bugs: [bug], accepted: [], ...over });
@@ -137,5 +137,37 @@ describe('snapshot and the CLI', () => {
   it('bad arguments are short errors that point at --help', async () => {
     await assert.rejects(run(['--nope'], { cwd: '.' }), /unknown argument.*--help/);
     await assert.rejects(run(['--specs', 'a'], { cwd: '.' }), /--reviews is required/);
+  });
+});
+
+describe('review-score — review round 1 regressions', () => {
+  it('paths given from the repo root are cut back to the case root', () => {
+    assert.equal(caseRelPath('.claude/helpers/kit/review-fixtures/repos/c/src/a.js', 'c'), 'src/a.js');
+    assert.equal(caseRelPath('repos/c/src/a.js', 'c'), 'src/a.js');
+    assert.equal(caseRelPath('/abs/repos/c/src/a.js', 'c'), 'src/a.js');
+    assert.equal(caseRelPath('repos/other/src/a.js', 'c'), 'repos/other/src/a.js');
+    assert.equal(caseRelPath('src/a.js', 'c'), 'src/a.js');
+    assert.equal(scoreCase(spec(), rev([f({ file: '.claude/helpers/kit/review-fixtures/repos/c/src/a.js' })])).hits.length, 1);
+  });
+  it('a line given as text is read as a number when it is a whole number', () => {
+    for (const line of [' 11', '11.0', '11 ']) assert.equal(scoreCase(spec(), rev([f({ line })])).hits.length, 1, line);
+    assert.equal(scoreCase(spec(), rev([f({ line: '11.5' })])).hits.length, 0);
+  });
+  it('a bare array of rows takes its case from the caller', () => {
+    const rows = [{ severity: 'high', category: 'correctness', file: 'src/a.js', line: 10, title: 'leak', detail: 'x' }];
+    const r = normaliseReview(rows, 'c');
+    assert.deepEqual([r.case, r.completed, r.findings.length], ['c', true, 1]);
+    assert.equal(scoreCase(spec(), r).hits.length, 1);
+  });
+  it('review files ending in .JSON are read', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'rs-'));
+    const specs = path.join(dir, 'specs'); const reviews = path.join(dir, 'reviews');
+    await fs.mkdir(specs); await fs.mkdir(reviews);
+    await fs.writeFile(path.join(specs, 'c.json'), JSON.stringify(spec()));
+    await fs.writeFile(path.join(reviews, 'c.JSON'), JSON.stringify([f()]));
+    try {
+      const res = await scoreFolders({ specs, reviews, out: path.join(dir, 'out') });
+      assert.equal(res.cases[0].hits.length, 1);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
 });

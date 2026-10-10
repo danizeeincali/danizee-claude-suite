@@ -12,7 +12,7 @@
  *   { case, completed, findings:[{id?,file,line,category,title,detail}] } (`rows` is accepted for `findings`). A bare array
  *   of marathon review rows is read as a finished review whose case is the file name without ".json". A case with no review
  *   file scores as an unfinished review that found nothing; a review whose case has no spec is invalid input.
- *   SCORING (scoreCase). Paths are normalised (backslashes, "./", repeated slashes) before comparing. A finding is
+ *   SCORING (scoreCase). Paths are normalised (backslashes, "./", repeated slashes, and any prefix through "repos/<case>/") before comparing. A finding is
  *     hit          file + line inside [a-tolerance, b+tolerance] + an allowed category + a keyword at the START of a word
  *                  in title or detail, all for one planted bug that was not found yet;
  *     duplicate    the same, for a bug already found (kept out of precision);
@@ -92,6 +92,15 @@ export function normaliseReview(raw, fallbackCase = null, label = 'review') {
   return { case: obj.case, completed: obj.completed, findings };
 }
 
+/** A path given from the repo root (".../repos/<case>/src/a.js") is cut back to the case's own root ("src/a.js"). */
+export function caseRelPath(p, caseName) {
+  const s = normPath(p);
+  const mark = `repos/${normPath(caseName)}/`;
+  if (s.startsWith(mark)) return s.slice(mark.length);
+  const at = s.lastIndexOf(`/${mark}`);
+  return at < 0 ? s : s.slice(at + 1 + mark.length);
+}
+
 /** Score one review against one spec. Pure. */
 export function scoreCase(spec, review) {
   validateSpec(spec);
@@ -102,8 +111,8 @@ export function scoreCase(spec, review) {
   const out = { case: spec.case, clean: !!spec.clean, completed: rev.completed, hits: [], near_misses: [], duplicates: [], false_positives: [], accepted: [], missed: [] };
   const inRange = (line, [a, b]) => Number.isInteger(line) && line >= a - tol && line <= b + tol;
   for (const f of rev.findings) {
-    const file = normPath(f.file);
-    const line = typeof f.line === 'string' && /^\d+$/.test(f.line) ? Number(f.line) : f.line;
+    const file = caseRelPath(f.file, spec.case);
+    const line = typeof f.line === 'string' && /^\s*\d+(\.0*)?\s*$/.test(f.line) ? Number(f.line) : f.line;
     const text = `${f.title ?? ''} ${f.detail ?? ''}`;
     const cat = String(f.category ?? '').toLowerCase();
     const ref = { id: f.id ?? null, file, line: Number.isInteger(line) ? line : null, category: cat, title: String(f.title ?? '') };
@@ -150,7 +159,7 @@ async function listJson(dir, what) {
   const names = [];
   try {
     for await (const e of d) {
-      if (!e.isFile() || !e.name.endsWith('.json') || e.name === MANIFEST) continue;
+      if (!e.isFile() || !e.name.toLowerCase().endsWith('.json') || e.name === MANIFEST) continue;
       if (names.length >= MAX_FILES) throw bad(`${what} folder has more than ${MAX_FILES} .json files; split it`);
       names.push(e.name);
     }
