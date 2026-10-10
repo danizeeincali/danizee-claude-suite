@@ -300,7 +300,9 @@ const qualifiedDefs = (facts) => facts.defs.map((d) => {
 
 /**
  * Facts of the changed files as they were at `base`: `{ files: { path → defs }, not_read }`. `exec(args)` runs read-only
- * git (safe-git). A file that did not exist at base is simply absent; one that cannot be read or scanned is in not_read.
+ * git (safe-git). A file that did not exist at base (not in `ls-tree <base> -- <path>`) is simply absent; one that
+ * existed but whose blob cannot be read (a partial clone: safe-git never fetches) or scanned is in not_read, so the
+ * result is partial rather than silently missing a removal.
  */
 export async function buildOldSide(exec, base, changes, { maxFiles = LIMITS.maxOldFiles, clock } = {}) {
   const files = {};
@@ -309,7 +311,12 @@ export async function buildOldSide(exec, base, changes, { maxFiles = LIMITS.maxO
   for (const p of todo.slice(maxFiles)) not_read.push({ file: p, reason: 'budget' });
   for (const p of todo.slice(0, maxFiles)) {
     const r = await exec(['cat-file', 'blob', `${base}:${p}`]);
-    if (r.code !== 0) { continue; } // not in base: a new file has nothing removed
+    if (r.code !== 0) {
+      const ls = await exec(['ls-tree', '-z', '--name-only', base, '--', p]);
+      if (ls.code === 0 && !String(ls.stdout).split('\0').includes(p)) continue; // not in base: a new file has nothing removed
+      not_read.push({ file: p, reason: 'missing_object' }); // it was there, but its content is not available here
+      continue;
+    }
     if (Buffer.byteLength(r.stdout) > LIMITS.maxOldBytes) { not_read.push({ file: p, reason: 'too_large' }); continue; }
     const facts = extractFacts(r.stdout, { path: p, clock, maxMs: 2000 });
     if (facts.unread) { not_read.push({ file: p, reason: facts.unread }); continue; }

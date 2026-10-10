@@ -461,3 +461,38 @@ describe('impact — review round 2 regressions', () => {
     assert.equal((await impactOf(dir, '', ['--base', 'HEAD'])).touched.length, 0);
   }));
 });
+
+describe('impact — review round 3 regressions', () => {
+  it('a file present at base whose blob is missing (partial clone) is not_read, never silently skipped', async () => {
+    const exec = async (a) => {
+      if (a[0] === 'cat-file') return { code: 128, stdout: '', stderr: 'fatal: missing blob' };
+      if (a[0] === 'ls-tree') return { code: 0, stdout: a.at(-1) === 'old.js' ? 'old.js\0' : '', stderr: '' };
+      throw new Error(`unexpected ${a.join(' ')}`);
+    };
+    const changes = [{ path: 'old.js', oldPath: 'old.js', removed: [[1, 3]], added: [] }, { path: 'new.js', oldPath: 'new.js', removed: [[1, 1]], added: [] }];
+    const o = await impact.buildOldSide(exec, 'HEAD', changes);
+    assert.deepEqual(o.not_read, [{ file: 'old.js', reason: 'missing_object' }]);
+    assert.deepEqual(o.files, {});
+  });
+
+  it('the /w-review impact step catches a failed git diff instead of reporting "no change to map"', () => {
+    const c = getCommands()['w-review'].content;
+    const s = c.slice(c.indexOf('Then the blast radius'), c.indexOf('**REQUIRED OUTPUT:**', c.indexOf('Then the blast radius')));
+    assert.match(s, /"\$BASE" \|\| DF=1;/);
+    assert.match(s, /if \[ "\$DF" -ne 0 \]; then echo "git diff failed/);
+    assert.match(s, /never "no change to map"/);
+  });
+
+  it('the step script itself: a failing git diff exits 1 and never runs the verb', { skip: process.platform === 'win32' }, () => tmp(async dir => {
+    const c = getCommands()['w-review'].content;
+    const s = c.slice(c.indexOf('Then the blast radius'));
+    const script = s.slice(s.indexOf('```bash') + 7, s.indexOf('```', s.indexOf('```bash') + 7));
+    const bin = path.join(dir, 'bin');
+    await fs.mkdir(bin);
+    // a git that fails `diff` against the base, as a partial clone with an unreachable remote does
+    await fs.writeFile(path.join(bin, 'git'), '#!/bin/sh\nif [ "$1" = merge-base ]; then exit 1; fi\nif [ "$1" = hash-object ]; then echo 4b825dc642cb6eb9a060e54bf8d69288fbbebe04; exit 0; fi\nif [ "$1" = diff ]; then exit 128; fi\nexit 0\n', { mode: 0o755 });
+    const r = spawnSync('bash', ['-c', script], { cwd: dir, encoding: 'utf-8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /git diff failed/);
+  }));
+});
