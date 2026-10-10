@@ -67,7 +67,7 @@ Launch a background agent that runs the experiment loop autonomously:
 3. **Run:** Execute `./autoresearch.sh`, capture output
 4. **Parse:** Extract `METRIC name=number` lines
 5. **Evaluate:**
-   - **Keep:** metric improved → run the scrub below, then `git commit` with Result trailer; a scrub refusal means no commit: treat it as a Crash (log the hits, revert, try a different approach)
+   - **Keep:** metric improved → run the scrub below, then `git commit` with Result trailer; a scrub refusal means no commit: treat it as a Crash (log the hits, revert with `git checkout -- . && git clean -fd -- <the experiment's new paths>` so a refused new file does not stay on disk untracked and unscanned, try a different approach). After 3 consecutive scrub refusals pause the loop: create `.autoresearch-off` and log why ("paused: 3 consecutive scrub refusals"); a Keep or Discard resets the count
    - **Discard:** metric worse/equal → `git checkout -- .` to revert
    - **Crash:** non-zero exit → log error, revert, try different approach
 6. **Log:** Append result to `autoresearch.jsonl`, update dashboard
@@ -76,7 +76,7 @@ Launch a background agent that runs the experiment loop autonomously:
 **ERROR HANDLING:** Log errors but NEVER abort. Revert and try a different approach.
 
 **Put this in the background agent's prompt (scrub before every Keep commit):**
-**Scrub before the commit:** `git add` the files this experiment changed first (and any new file they create): `scrub --worktree` scans tracked files only, so an untracked file is not scanned. Then scan the tracked files as they are on disk for secrets. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+**Scrub before the commit:** `git add` the files this experiment changed first (and any new file they create): `scrub --worktree` scans tracked files only, so an untracked file is not scanned. Then scan the tracked files as they are on disk for secrets. Before the scrub, check that the staged tracked paths have no unstaged changes: run `git diff --quiet -- <the staged paths>` (exit 0 means none). The scrub reads each file's content from disk but git commits the index, so the two must agree; if the check fails, re-stage those paths (`git add`) and run the check again before the scrub. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
 ```bash
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
 ```

@@ -463,14 +463,14 @@ After Verification passes and before Compound, first run \`git add\` on the new 
 \`\`\`bash
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
 \`\`\`
-Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed and stop, do not commit. Exit 1 is wrong input or a broken state: report it, never read it as clean. Any other non-zero exit is a failure of the step: report it.
+Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed and do not commit. Exit 1 is wrong input or a broken state: report it, never read it as clean, do not commit. Any other non-zero exit is a failure of the step: report it, do not commit. After a scrub refusal or failure record no receipt (skip the receipt commands below) and continue to Compound.
 
 Then record the counts from the review findings, with the real finding counts in place of the numbers (add \`--incomplete\` if any category was skipped). With no kit, skip this too and say so ("kit not installed (.claude/helpers/kit/cli.js missing): receipt skipped, advisory"). Use the form that matches the verdict:
 \`\`\`
 node .claude/helpers/kit/cli.js push-gate receipt --verdict pass --high 0 --medium 0 --low 0
 node .claude/helpers/kit/cli.js push-gate receipt --verdict fail --high 1 --medium 2 --low 0
 \`\`\`
-Exit 0 means the receipt was written; exit 1 is wrong input or a broken state and exit 2 a refused receipt store: report either as printed, never read a failed receipt as recorded. Compound may change tracked files: after Compound, \`git add\` its new files and, if the tracked tree changed, record the receipt again so it matches what is committed. Then tell the user: run \`node .claude/helpers/kit/cli.js push-gate check\` before pushing (same \`--base\`, or none, used for the receipt). Its exit 0 means abstain or ask (read \`decision\`), exit 2 deny (read \`decision\` and \`reason\`) or a refused receipt store (\`kit: refused:\` on stderr), and exit 1 an error; none is an allow. It only abstains, asks or denies; it never skips their permission prompt.
+Exit 0 means the receipt was written; exit 1 is wrong input or a broken state and exit 2 a refused receipt store: report either as printed, never read a failed receipt as recorded. Any other non-zero exit is a failure of the step: name the exit code, never read it as recorded. Compound may change tracked files: after Compound, \`git add\` its new files and, if the tracked tree changed, record the receipt again so it matches what is committed. Then tell the user: run \`node .claude/helpers/kit/cli.js push-gate check\` before pushing (same \`--base\`, or none, used for the receipt). Its exit 0 means abstain or ask (read \`decision\`), exit 2 deny (read \`decision\` and \`reason\`) or a refused receipt store (\`kit: refused:\` on stderr), and exit 1 an error; none is an allow. It only abstains, asks or denies; it never skips their permission prompt.
 
 ---
 
@@ -1059,7 +1059,7 @@ Use TodoWrite NOW to create todos for ALL phases:
 - ZERO user gates — this workflow runs fully autonomously
 - NEVER proceed to Build before all tests exist and FAIL
 - NEVER skip compound phase at the end
-- ALWAYS create a PR at the end with \`gh pr create --fill\`
+- ALWAYS create a PR at the end with \`gh pr create --fill\` when the push gate lets the push go on; otherwise report "not pushed — <reason>" and create none
 - ALWAYS commit with descriptive messages
 
 ---
@@ -1206,7 +1206,7 @@ Exit 3 from \`diff-range\` means an empty range: report "no change to review", n
 ### PHASE 7: Commit & PR (AUTO-PROCEED)
 **REQUIRED ACTIONS:**
 1. Stage all changes: \`git add -A\`
-2. **Scrub before the commit:** \`git add\` the paths to commit first (and any new file they create): \`scrub --worktree\` scans tracked files only, so an untracked file is not scanned. Then scan the tracked files as they are on disk for secrets. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+2. **Scrub before the commit:** \`git add\` the paths to commit first (and any new file they create): \`scrub --worktree\` scans tracked files only, so an untracked file is not scanned. Then scan the tracked files as they are on disk for secrets. Before the scrub, check that the staged tracked paths have no unstaged changes: run \`git diff --quiet -- <the staged paths>\` (exit 0 means none). The scrub reads each file's content from disk but git commits the index, so the two must agree; if the check fails, re-stage those paths (\`git add\`) and run the check again before the scrub. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
 \`\`\`bash
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
 \`\`\`
@@ -1225,7 +1225,7 @@ if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/he
    Read the printed \`decision\` and \`reason\`. The gate stays advisory: it only abstains, asks or denies, and it never allows, skips or answers the owner's own permission prompt for the push.
    - Exit 0 with decision \`abstain\`: the push goes on.
    - Exit 0 with decision \`ask\` and a \`reason\` starting "no review recorded for this change": the push goes on, and the summary says "no review recorded for this change, pushed (run /w-review next time)".
-   - Exit 0 with any other \`ask\` (a failed review, a review of an earlier version, another threshold): **not pushed**. Write "not pushed — gate asks: <reason>" (the \`reason\` as printed) into the final output and stop Phase 7 there: this workflow has no user gate, so the owner reads the line and decides; never answer the ask yourself.
+   - Exit 0 with any other \`ask\` (a failed review, another threshold, or "only an earlier review exists, for a different version of this change", which also fires when the repository's store holds a receipt for another version or for another branch or change in the same repository): **not pushed**; only the "no review recorded" ask lets the push go on. Write "not pushed — gate asks: <reason>" (the \`reason\` as printed) into the final output and stop Phase 7 there: this workflow has no user gate, so the owner reads the line and decides; never answer the ask yourself. The remedy for the "earlier review" ask is to run /w-review (or record a receipt) on the current change and rerun the check.
    - Exit 2 is a deny (read \`decision\` and \`reason\`) or a refused receipt store (\`kit: refused:\` on stderr): **not pushed**; report it as printed.
    - Exit 1 is an error: report it and do not push. Any other non-zero exit is a failure of the step: report it and do not push.
 6. Push branch (only when step 5 let it go on): \`git push -u origin HEAD\`
@@ -1233,7 +1233,8 @@ if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/he
 
 **REQUIRED OUTPUT:**
 - Commit hash: _____
-- PR URL: _____
+- Push: pushed / not pushed — <reason>
+- PR URL: _____ (or none when not pushed)
 
 **AUTO-PROCEED:** Continue to Compound.
 
@@ -1255,14 +1256,15 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 - Task summary (what was built)
 - Files changed (list with brief descriptions)
 - Test results (pass/fail counts)
-- PR URL
+- Push: pushed / not pushed — <reason> (the reason as printed by the scrub, the receipt or the push gate)
+- PR URL (or none when not pushed)
 - Any issues encountered or decisions made
 
 Your agent-id was specified in the initial prompt. If unclear, use the branch name.
 
 **If a parent agent was specified in your initial prompt**, use the \`redirect_terminal_agent\` MCP tool to send:
 \`\`\`
-Agent {id} completed. PR: {url}. Report: .claude/agent-reports/{id}.md
+Agent {id} finished: pushed PR {url} | not pushed — {reason}. Report: .claude/agent-reports/{id}.md
 \`\`\`
 
 **REQUIRED OUTPUT:**
@@ -1276,7 +1278,7 @@ Agent {id} completed. PR: {url}. Report: .claude/agent-reports/{id}.md
 - [ ] TodoWrite used at start
 - [ ] All 9 phases completed (zero user gates)
 - [ ] Tests written and pass
-- [ ] PR created with \`gh pr create --fill\`
+- [ ] PR created with \`gh pr create --fill\`, or "not pushed — <reason>" reported (when the push gate did not let the push go on)
 - [ ] Compound phase executed
 - [ ] Completion report written to .claude/agent-reports/
 - [ ] Parent agent notified (if applicable)
@@ -1905,14 +1907,14 @@ After Verification passes and before Compound, first run \`git add\` on the new 
 \`\`\`bash
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
 \`\`\`
-Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed and stop, do not commit. Exit 1 is wrong input or a broken state: report it, never read it as clean. Any other non-zero exit is a failure of the step: report it.
+Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed and do not commit. Exit 1 is wrong input or a broken state: report it, never read it as clean, do not commit. Any other non-zero exit is a failure of the step: report it, do not commit. After a scrub refusal or failure record no receipt (skip the receipt commands below) and continue to Compound.
 
 Then record the counts from the review findings, with the real finding counts in place of the numbers (add \`--incomplete\` if any category was skipped). With no kit, skip this too and say so ("kit not installed (.claude/helpers/kit/cli.js missing): receipt skipped, advisory"). Use the form that matches the verdict:
 \`\`\`
 node .claude/helpers/kit/cli.js push-gate receipt --verdict pass --high 0 --medium 0 --low 0
 node .claude/helpers/kit/cli.js push-gate receipt --verdict fail --high 1 --medium 2 --low 0
 \`\`\`
-Exit 0 means the receipt was written; exit 1 is wrong input or a broken state and exit 2 a refused receipt store: report either as printed, never read a failed receipt as recorded. Compound may change tracked files: after Compound, \`git add\` its new files and, if the tracked tree changed, record the receipt again so it matches what is committed. Then tell the user: run \`node .claude/helpers/kit/cli.js push-gate check\` before pushing (same \`--base\`, or none, used for the receipt). Its exit 0 means abstain or ask (read \`decision\`), exit 2 deny (read \`decision\` and \`reason\`) or a refused receipt store (\`kit: refused:\` on stderr), and exit 1 an error; none is an allow. It only abstains, asks or denies; it never skips their permission prompt.
+Exit 0 means the receipt was written; exit 1 is wrong input or a broken state and exit 2 a refused receipt store: report either as printed, never read a failed receipt as recorded. Any other non-zero exit is a failure of the step: name the exit code, never read it as recorded. Compound may change tracked files: after Compound, \`git add\` its new files and, if the tracked tree changed, record the receipt again so it matches what is committed. Then tell the user: run \`node .claude/helpers/kit/cli.js push-gate check\` before pushing (same \`--base\`, or none, used for the receipt). Its exit 0 means abstain or ask (read \`decision\`), exit 2 deny (read \`decision\` and \`reason\`) or a refused receipt store (\`kit: refused:\` on stderr), and exit 1 an error; none is an allow. It only abstains, asks or denies; it never skips their permission prompt.
 
 ---
 
@@ -2182,14 +2184,14 @@ After Verification passes and before Compound, first run \`git add\` on the new 
 \`\`\`bash
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
 \`\`\`
-Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed and stop, do not commit. Exit 1 is wrong input or a broken state: report it, never read it as clean. Any other non-zero exit is a failure of the step: report it.
+Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed and do not commit. Exit 1 is wrong input or a broken state: report it, never read it as clean, do not commit. Any other non-zero exit is a failure of the step: report it, do not commit. After a scrub refusal or failure record no receipt (skip the receipt commands below) and continue to Compound.
 
 Then record the counts from the review findings, with the real finding counts in place of the numbers (add \`--incomplete\` if any category was skipped). With no kit, skip this too and say so ("kit not installed (.claude/helpers/kit/cli.js missing): receipt skipped, advisory"). Use the form that matches the verdict:
 \`\`\`
 node .claude/helpers/kit/cli.js push-gate receipt --verdict pass --high 0 --medium 0 --low 0
 node .claude/helpers/kit/cli.js push-gate receipt --verdict fail --high 1 --medium 2 --low 0
 \`\`\`
-Exit 0 means the receipt was written; exit 1 is wrong input or a broken state and exit 2 a refused receipt store: report either as printed, never read a failed receipt as recorded. Compound may change tracked files: after Compound, \`git add\` its new files and, if the tracked tree changed, record the receipt again so it matches what is committed. Then tell the user: run \`node .claude/helpers/kit/cli.js push-gate check\` before pushing (same \`--base\`, or none, used for the receipt). Its exit 0 means abstain or ask (read \`decision\`), exit 2 deny (read \`decision\` and \`reason\`) or a refused receipt store (\`kit: refused:\` on stderr), and exit 1 an error; none is an allow. It only abstains, asks or denies; it never skips their permission prompt.
+Exit 0 means the receipt was written; exit 1 is wrong input or a broken state and exit 2 a refused receipt store: report either as printed, never read a failed receipt as recorded. Any other non-zero exit is a failure of the step: name the exit code, never read it as recorded. Compound may change tracked files: after Compound, \`git add\` its new files and, if the tracked tree changed, record the receipt again so it matches what is committed. Then tell the user: run \`node .claude/helpers/kit/cli.js push-gate check\` before pushing (same \`--base\`, or none, used for the receipt). Its exit 0 means abstain or ask (read \`decision\`), exit 2 deny (read \`decision\` and \`reason\`) or a refused receipt store (\`kit: refused:\` on stderr), and exit 1 an error; none is an allow. It only abstains, asks or denies; it never skips their permission prompt.
 
 ---
 
@@ -2697,14 +2699,14 @@ After Verification passes and before Compound, first run \`git add\` on the new 
 \`\`\`bash
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
 \`\`\`
-Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed and stop, do not commit. Exit 1 is wrong input or a broken state: report it, never read it as clean. Any other non-zero exit is a failure of the step: report it.
+Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed and do not commit. Exit 1 is wrong input or a broken state: report it, never read it as clean, do not commit. Any other non-zero exit is a failure of the step: report it, do not commit. After a scrub refusal or failure record no receipt (skip the receipt commands below) and continue to Compound.
 
 Then record the counts from the review findings, with the real finding counts in place of the numbers (add \`--incomplete\` if any category was skipped). With no kit, skip this too and say so ("kit not installed (.claude/helpers/kit/cli.js missing): receipt skipped, advisory"). Use the form that matches the verdict:
 \`\`\`
 node .claude/helpers/kit/cli.js push-gate receipt --verdict pass --high 0 --medium 0 --low 0
 node .claude/helpers/kit/cli.js push-gate receipt --verdict fail --high 1 --medium 2 --low 0
 \`\`\`
-Exit 0 means the receipt was written; exit 1 is wrong input or a broken state and exit 2 a refused receipt store: report either as printed, never read a failed receipt as recorded. Compound may change tracked files: after Compound, \`git add\` its new files and, if the tracked tree changed, record the receipt again so it matches what is committed. Then tell the user: run \`node .claude/helpers/kit/cli.js push-gate check\` before pushing (same \`--base\`, or none, used for the receipt). Its exit 0 means abstain or ask (read \`decision\`), exit 2 deny (read \`decision\` and \`reason\`) or a refused receipt store (\`kit: refused:\` on stderr), and exit 1 an error; none is an allow. It only abstains, asks or denies; it never skips their permission prompt.
+Exit 0 means the receipt was written; exit 1 is wrong input or a broken state and exit 2 a refused receipt store: report either as printed, never read a failed receipt as recorded. Any other non-zero exit is a failure of the step: name the exit code, never read it as recorded. Compound may change tracked files: after Compound, \`git add\` its new files and, if the tracked tree changed, record the receipt again so it matches what is committed. Then tell the user: run \`node .claude/helpers/kit/cli.js push-gate check\` before pushing (same \`--base\`, or none, used for the receipt). Its exit 0 means abstain or ask (read \`decision\`), exit 2 deny (read \`decision\` and \`reason\`) or a refused receipt store (\`kit: refused:\` on stderr), and exit 1 an error; none is an allow. It only abstains, asks or denies; it never skips their permission prompt.
 
 ---
 
@@ -3794,7 +3796,7 @@ Launch a background agent that runs the experiment loop autonomously:
 3. **Run:** Execute \`./autoresearch.sh\`, capture output
 4. **Parse:** Extract \`METRIC name=number\` lines
 5. **Evaluate:**
-   - **Keep:** metric improved → run the scrub below, then \`git commit\` with Result trailer; a scrub refusal means no commit: treat it as a Crash (log the hits, revert, try a different approach)
+   - **Keep:** metric improved → run the scrub below, then \`git commit\` with Result trailer; a scrub refusal means no commit: treat it as a Crash (log the hits, revert with \`git checkout -- . && git clean -fd -- <the experiment's new paths>\` so a refused new file does not stay on disk untracked and unscanned, try a different approach). After 3 consecutive scrub refusals pause the loop: create \`.autoresearch-off\` and log why ("paused: 3 consecutive scrub refusals"); a Keep or Discard resets the count
    - **Discard:** metric worse/equal → \`git checkout -- .\` to revert
    - **Crash:** non-zero exit → log error, revert, try different approach
 6. **Log:** Append result to \`autoresearch.jsonl\`, update dashboard
@@ -3803,7 +3805,7 @@ Launch a background agent that runs the experiment loop autonomously:
 **ERROR HANDLING:** Log errors but NEVER abort. Revert and try a different approach.
 
 **Put this in the background agent's prompt (scrub before every Keep commit):**
-**Scrub before the commit:** \`git add\` the files this experiment changed first (and any new file they create): \`scrub --worktree\` scans tracked files only, so an untracked file is not scanned. Then scan the tracked files as they are on disk for secrets. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+**Scrub before the commit:** \`git add\` the files this experiment changed first (and any new file they create): \`scrub --worktree\` scans tracked files only, so an untracked file is not scanned. Then scan the tracked files as they are on disk for secrets. Before the scrub, check that the staged tracked paths have no unstaged changes: run \`git diff --quiet -- <the staged paths>\` (exit 0 means none). The scrub reads each file's content from disk but git commits the index, so the two must agree; if the check fails, re-stage those paths (\`git add\`) and run the check again before the scrub. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
 \`\`\`bash
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
 \`\`\`
@@ -4832,7 +4834,7 @@ Scan the work just completed for measurable optimization targets:
 ### ⛔ CHECKPOINT 2: Commit (MANDATORY - NEVER SKIP)
 Stage the specific session files (not \`git add -A\`), then scrub them, then commit.
 
-**Scrub before the commit:** \`git add\` the paths to commit first (and any new file they create): \`scrub --worktree\` scans tracked files only, so an untracked file is not scanned. Then scan the tracked files as they are on disk for secrets. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+**Scrub before the commit:** \`git add\` the paths to commit first (and any new file they create): \`scrub --worktree\` scans tracked files only, so an untracked file is not scanned. Then scan the tracked files as they are on disk for secrets. Before the scrub, check that the staged tracked paths have no unstaged changes: run \`git diff --quiet -- <the staged paths>\` (exit 0 means none). The scrub reads each file's content from disk but git commits the index, so the two must agree; if the check fails, re-stage those paths (\`git add\`) and run the check again before the scrub. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
 \`\`\`bash
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
 \`\`\`
@@ -4859,7 +4861,7 @@ if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/he
 Read the printed \`decision\` and \`reason\`. The gate stays advisory: it only abstains, asks or denies, and it never allows, skips or answers the owner's own permission prompt for the push.
 - Exit 0 with decision \`abstain\`: push (\`git push -u origin HEAD\`).
 - Exit 0 with decision \`ask\` and a \`reason\` starting "no review recorded for this change": the push goes on, and the summary says "no review recorded for this change, pushed (run /w-review next time)".
-- Exit 0 with any other \`ask\`: **not pushed**. Write "not pushed — gate asks: <reason>" (the \`reason\` as printed) and let the owner decide; never answer the ask yourself.
+- Exit 0 with any other \`ask\` (a failed review, another threshold, or "only an earlier review exists, for a different version of this change", which also fires when the repository's store holds a receipt for another version or for another branch or change in the same repository): **not pushed**; only the "no review recorded" ask lets the push go on. Write "not pushed — gate asks: <reason>" (the \`reason\` as printed) and let the owner decide; never answer the ask yourself. The remedy for the "earlier review" ask is to run /w-review (or record a receipt) on the current change and rerun the check.
 - Exit 2 is a deny (read \`decision\` and \`reason\`) or a refused receipt store (\`kit: refused:\` on stderr): **not pushed**; report it as printed.
 - Exit 1 is an error: report it and do not push. Any other non-zero exit is a failure of the step: report it and do not push.
 
@@ -5630,7 +5632,7 @@ Execute the Ralph loop with the candidate spec:
 - If failed: which tests still failing
 - Lens findings: _____
 
-**🔎 Code Analysis (lenses over the change under review):** Run this over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files; the whole history when there is no upstream: then \`removed_with_live_callers\` cannot find removals, so say the removal check did not run). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
+**🔎 Code Analysis (lenses over the change under review):** Run this over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files; the whole history when there is no upstream; no removal check runs in this workflow (lenses only)). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
 
 1. Lenses: which review rules apply to the changed files.
 \`\`\`bash

@@ -179,7 +179,12 @@ describe('sweep-commits round 1 review fixes', () => {
     it(`${name}: the range sentence covers the no-upstream case`, () => {
       const c = commands[name].content;
       const s = c.slice(c.indexOf('Code Analysis ('));
-      assert.match(s, /the whole history when there is no upstream: then `removed_with_live_callers` cannot find removals, so say the removal check did not run\)/);
+      if (name === 'w-ralph-pick') {
+        assert.match(s, /the whole history when there is no upstream; no removal check runs in this workflow \(lenses only\)\)/);
+        assert.ok(!s.includes('removed_with_live_callers'));
+      } else {
+        assert.match(s, /the whole history when there is no upstream: then `removed_with_live_callers` cannot find removals, so say the removal check did not run\)/);
+      }
       assert.ok(!c.includes('review output below'));
     });
   }
@@ -211,7 +216,7 @@ describe('sweep-commits round 1 review fixes', () => {
     assert.ok(s.indexOf('push-gate check; RC=$?') < s.indexOf('git push -u origin HEAD'));
     assert.match(s, /Exit 0 with decision `abstain`: push/);
     assert.match(s, /starting "no review recorded for this change": the push goes on/);
-    assert.match(s, /any other `ask`: \*\*not pushed\*\*/);
+    assert.match(s, /any other `ask` \([^)]*\): \*\*not pushed\*\*; only the "no review recorded" ask lets the push go on/);
     assert.match(s, /Exit 2 is a deny .*\*\*not pushed\*\*/);
     assert.match(s, /`kit: refused:` on stderr/);
     assert.match(s, /Exit 1 is an error: report it and do not push/);
@@ -253,5 +258,69 @@ describe('sweep-commits round 1 review fixes', () => {
   it('w-end: Checkpoint 1 ends with AUTO-PROCEED to the Commit phase', () => {
     const s = section('w-end', '### ⛔ CHECKPOINT 1: Compound', '### ⛔ CHECKPOINT 2: Commit');
     assert.match(s, /RALPH CANDIDATE CHECK[\s\S]*\*\*AUTO-PROCEED:\*\* Continue to Commit phase\./);
+  });
+});
+
+describe('sweep-commits round 2 review fixes', () => {
+  it('w-agent-tdd-swarm step 5 and w-end: the earlier-review ask is described correctly and stays not pushed', () => {
+    const c = commands['w-agent-tdd-swarm'].content;
+    const e = commands['w-end'].content;
+    const parts = [
+      c.slice(c.indexOf('5. Run the push gate'), c.indexOf('6. Push branch')),
+      e.slice(e.indexOf('**On "Push to remote"'), e.indexOf('## What Gets Captured')),
+    ];
+    for (const s of parts) {
+      assert.match(s, /"only an earlier review exists, for a different version of this change"/);
+      assert.match(s, /another branch or change in the same repository/);
+      assert.match(s, /\*\*not pushed\*\*; only the "no review recorded" ask lets the push go on/);
+      assert.match(s, /run \/w-review \(or record a receipt\) on the current change and rerun the check/);
+      assert.ok(!/a review of an earlier version/.test(s));
+    }
+  });
+
+  it('w-agent-tdd-swarm: the not-pushed case is reported in Phase 7, Phase 9, the notify line, rules and checklist', () => {
+    const c = commands['w-agent-tdd-swarm'].content;
+    const p7 = c.slice(c.indexOf('### PHASE 7'), c.indexOf('### PHASE 8'));
+    assert.match(p7, /\*\*REQUIRED OUTPUT:\*\*[\s\S]*- Push: pushed \/ not pushed — <reason>[\s\S]*- PR URL: _____ \(or none when not pushed\)/);
+    const p9 = c.slice(c.indexOf('### PHASE 9'), c.indexOf('## Completion Checklist'));
+    assert.match(p9, /- Push: pushed \/ not pushed — <reason>/);
+    assert.match(p9, /Agent \{id\} finished: pushed PR \{url\} \| not pushed — \{reason\}\. Report:/);
+    assert.ok(!c.includes('Agent {id} completed. PR:'));
+    assert.match(c, /ALWAYS create a PR at the end with `gh pr create --fill` when the push gate lets the push go on; otherwise report "not pushed — <reason>" and create none/);
+    assert.match(c, /- \[ \] PR created with `gh pr create --fill`, or "not pushed — <reason>" reported/);
+  });
+
+  const scrubNames = ['w-end', 'w-agent-tdd-swarm', 'w-autoresearch'];
+  for (const name of scrubNames) {
+    it(`${name}: no unstaged changes to the staged paths before the scrub, and why`, () => {
+      const c = commands[name].content;
+      const i = c.indexOf('**Scrub before the commit:**') >= 0 ? c.indexOf('**Scrub before the commit:**') : c.indexOf('2. **Scrub before the commit:**');
+      assert.ok(i >= 0);
+      const s = c.slice(i, c.indexOf('scrub --worktree; RC=$?', i));
+      assert.match(s, /git diff --quiet -- <the staged paths>/);
+      assert.match(s, /reads each file's content from disk but git commits the index, so the two must agree/);
+      assert.match(s, /if the check fails, re-stage those paths \(`git add`\)/);
+      assert.ok(s.indexOf('git diff --quiet') < s.length);
+    });
+  }
+
+  for (const name of ['w-tdd-swarm', 'w-debug', 'w-hotfix', 'w-security']) {
+    it(`${name}: closing step ties the receipt to the scrub and names other exits`, () => {
+      const c = commands[name].content;
+      const a = c.indexOf('scrub --worktree; RC=$?');
+      const s = c.slice(a, c.indexOf('push-gate check', a));
+      assert.match(s, /Exit 2 means hits or an incomplete scan: list them as printed and do not commit\./);
+      assert.match(s, /Exit 1 is wrong input or a broken state: report it, never read it as clean, do not commit\./);
+      assert.match(s, /Any other non-zero exit is a failure of the step: report it, do not commit\./);
+      assert.match(s, /After a scrub refusal or failure record no receipt \(skip the receipt commands below\) and continue to Compound\./);
+      assert.ok(!/list them as printed and stop/.test(s));
+      assert.match(s, /Any other non-zero exit is a failure of the step: name the exit code, never read it as recorded\./);
+    });
+  }
+
+  it('w-autoresearch: a scrub refusal reverts new files too and pauses after 3 in a row', () => {
+    const s = commands['w-autoresearch'].content;
+    assert.match(s, /revert with `git checkout -- \. && git clean -fd -- <the experiment's new paths>`/);
+    assert.match(s, /After 3 consecutive scrub refusals pause the loop: create `\.autoresearch-off` and log why/);
   });
 });

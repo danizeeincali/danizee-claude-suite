@@ -128,7 +128,7 @@ Execute the Ralph loop with the candidate spec:
 - If failed: which tests still failing
 - Lens findings: _____
 
-**🔎 Code Analysis (lenses over the change under review):** Run this over the range printed by `diff-range` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files; the whole history when there is no upstream: then `removed_with_live_callers` cannot find removals, so say the removal check did not run). If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
+**🔎 Code Analysis (lenses over the change under review):** Run this over the range printed by `diff-range` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files; the whole history when there is no upstream; no removal check runs in this workflow (lenses only)). If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
 
 1. Lenses: which review rules apply to the changed files.
 ```bash

@@ -33,7 +33,7 @@ Use TodoWrite NOW to create todos for ALL phases:
 - ZERO user gates — this workflow runs fully autonomously
 - NEVER proceed to Build before all tests exist and FAIL
 - NEVER skip compound phase at the end
-- ALWAYS create a PR at the end with `gh pr create --fill`
+- ALWAYS create a PR at the end with `gh pr create --fill` when the push gate lets the push go on; otherwise report "not pushed — <reason>" and create none
 - ALWAYS commit with descriptive messages
 
 ---
@@ -180,7 +180,7 @@ Exit 3 from `diff-range` means an empty range: report "no change to review", nev
 ### PHASE 7: Commit & PR (AUTO-PROCEED)
 **REQUIRED ACTIONS:**
 1. Stage all changes: `git add -A`
-2. **Scrub before the commit:** `git add` the paths to commit first (and any new file they create): `scrub --worktree` scans tracked files only, so an untracked file is not scanned. Then scan the tracked files as they are on disk for secrets. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+2. **Scrub before the commit:** `git add` the paths to commit first (and any new file they create): `scrub --worktree` scans tracked files only, so an untracked file is not scanned. Then scan the tracked files as they are on disk for secrets. Before the scrub, check that the staged tracked paths have no unstaged changes: run `git diff --quiet -- <the staged paths>` (exit 0 means none). The scrub reads each file's content from disk but git commits the index, so the two must agree; if the check fails, re-stage those paths (`git add`) and run the check again before the scrub. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
 ```bash
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
 ```
@@ -199,7 +199,7 @@ if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/he
    Read the printed `decision` and `reason`. The gate stays advisory: it only abstains, asks or denies, and it never allows, skips or answers the owner's own permission prompt for the push.
    - Exit 0 with decision `abstain`: the push goes on.
    - Exit 0 with decision `ask` and a `reason` starting "no review recorded for this change": the push goes on, and the summary says "no review recorded for this change, pushed (run /w-review next time)".
-   - Exit 0 with any other `ask` (a failed review, a review of an earlier version, another threshold): **not pushed**. Write "not pushed — gate asks: <reason>" (the `reason` as printed) into the final output and stop Phase 7 there: this workflow has no user gate, so the owner reads the line and decides; never answer the ask yourself.
+   - Exit 0 with any other `ask` (a failed review, another threshold, or "only an earlier review exists, for a different version of this change", which also fires when the repository's store holds a receipt for another version or for another branch or change in the same repository): **not pushed**; only the "no review recorded" ask lets the push go on. Write "not pushed — gate asks: <reason>" (the `reason` as printed) into the final output and stop Phase 7 there: this workflow has no user gate, so the owner reads the line and decides; never answer the ask yourself. The remedy for the "earlier review" ask is to run /w-review (or record a receipt) on the current change and rerun the check.
    - Exit 2 is a deny (read `decision` and `reason`) or a refused receipt store (`kit: refused:` on stderr): **not pushed**; report it as printed.
    - Exit 1 is an error: report it and do not push. Any other non-zero exit is a failure of the step: report it and do not push.
 6. Push branch (only when step 5 let it go on): `git push -u origin HEAD`
@@ -207,7 +207,8 @@ if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/he
 
 **REQUIRED OUTPUT:**
 - Commit hash: _____
-- PR URL: _____
+- Push: pushed / not pushed — <reason>
+- PR URL: _____ (or none when not pushed)
 
 **AUTO-PROCEED:** Continue to Compound.
 
@@ -229,14 +230,15 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 - Task summary (what was built)
 - Files changed (list with brief descriptions)
 - Test results (pass/fail counts)
-- PR URL
+- Push: pushed / not pushed — <reason> (the reason as printed by the scrub, the receipt or the push gate)
+- PR URL (or none when not pushed)
 - Any issues encountered or decisions made
 
 Your agent-id was specified in the initial prompt. If unclear, use the branch name.
 
 **If a parent agent was specified in your initial prompt**, use the `redirect_terminal_agent` MCP tool to send:
 ```
-Agent {id} completed. PR: {url}. Report: .claude/agent-reports/{id}.md
+Agent {id} finished: pushed PR {url} | not pushed — {reason}. Report: .claude/agent-reports/{id}.md
 ```
 
 **REQUIRED OUTPUT:**
@@ -250,7 +252,7 @@ Agent {id} completed. PR: {url}. Report: .claude/agent-reports/{id}.md
 - [ ] TodoWrite used at start
 - [ ] All 9 phases completed (zero user gates)
 - [ ] Tests written and pass
-- [ ] PR created with `gh pr create --fill`
+- [ ] PR created with `gh pr create --fill`, or "not pushed — <reason>" reported (when the push gate did not let the push go on)
 - [ ] Compound phase executed
 - [ ] Completion report written to .claude/agent-reports/
 - [ ] Parent agent notified (if applicable)

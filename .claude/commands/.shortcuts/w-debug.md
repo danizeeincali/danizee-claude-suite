@@ -255,14 +255,14 @@ After Verification passes and before Compound, first run `git add` on the new fi
 ```bash
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
 ```
-Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed and stop, do not commit. Exit 1 is wrong input or a broken state: report it, never read it as clean. Any other non-zero exit is a failure of the step: report it.
+Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed and do not commit. Exit 1 is wrong input or a broken state: report it, never read it as clean, do not commit. Any other non-zero exit is a failure of the step: report it, do not commit. After a scrub refusal or failure record no receipt (skip the receipt commands below) and continue to Compound.
 
 Then record the counts from the review findings, with the real finding counts in place of the numbers (add `--incomplete` if any category was skipped). With no kit, skip this too and say so ("kit not installed (.claude/helpers/kit/cli.js missing): receipt skipped, advisory"). Use the form that matches the verdict:
 ```
 node .claude/helpers/kit/cli.js push-gate receipt --verdict pass --high 0 --medium 0 --low 0
 node .claude/helpers/kit/cli.js push-gate receipt --verdict fail --high 1 --medium 2 --low 0
 ```
-Exit 0 means the receipt was written; exit 1 is wrong input or a broken state and exit 2 a refused receipt store: report either as printed, never read a failed receipt as recorded. Compound may change tracked files: after Compound, `git add` its new files and, if the tracked tree changed, record the receipt again so it matches what is committed. Then tell the user: run `node .claude/helpers/kit/cli.js push-gate check` before pushing (same `--base`, or none, used for the receipt). Its exit 0 means abstain or ask (read `decision`), exit 2 deny (read `decision` and `reason`) or a refused receipt store (`kit: refused:` on stderr), and exit 1 an error; none is an allow. It only abstains, asks or denies; it never skips their permission prompt.
+Exit 0 means the receipt was written; exit 1 is wrong input or a broken state and exit 2 a refused receipt store: report either as printed, never read a failed receipt as recorded. Any other non-zero exit is a failure of the step: name the exit code, never read it as recorded. Compound may change tracked files: after Compound, `git add` its new files and, if the tracked tree changed, record the receipt again so it matches what is committed. Then tell the user: run `node .claude/helpers/kit/cli.js push-gate check` before pushing (same `--base`, or none, used for the receipt). Its exit 0 means abstain or ask (read `decision`), exit 2 deny (read `decision` and `reason`) or a refused receipt store (`kit: refused:` on stderr), and exit 1 an error; none is an allow. It only abstains, asks or denies; it never skips their permission prompt.
 
 ---
 
