@@ -89,10 +89,13 @@
     },
     {
       "name": "tracked-file-scrub-gate",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/tracked-file-scrub-gate.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract tests and module",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-tracked-file-scrub-gate",
+      "phase": "build",
+      "base": "e1e218bb4987ea18c2d19d60b42fe42dcd9e3185"
     },
     {
       "name": "planted-bug-review-scoring",
