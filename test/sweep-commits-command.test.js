@@ -306,6 +306,12 @@ describe('sweep-commits round 2 review fixes', () => {
         assert.match(s, /Exit 1 means unstaged changes: re-stage the paths `git diff --name-only` lists \(`git add`\) and check once more before the scrub/);
         assert.match(s, /any other exit \(128 and above\) is a git error: report it and do not commit\./);
         assert.ok(!c.includes('AskUserQuestion'), 'the swarm has no user gate');
+      } else if (name === 'w-autoresearch') {
+        assert.match(s, /Exit 1 means unstaged changes: re-stage the paths `git diff --name-only` lists \(`git add`\) and check once more before the scrub; with the clean-tree precondition every one of them is the experiment's own, so list the three path lists again and save them in place of the earlier ones\./);
+        assert.match(s, /Any other exit \(128 and above\) is a git error: report it and do not commit\./);
+        assert.ok(!/git diff --quiet -- /.test(s), 'no path-limited diff check');
+        assert.ok(!/leave it unstaged|leave other paths unstaged/.test(c), 'no leave-unstaged branch: the clean-tree precondition leaves nothing else');
+        assert.ok(!/re-stage \(`git add`\) only the paths that appear in both/.test(s));
       } else {
         assert.match(s, /Exit 1 means unstaged changes: re-stage \(`git add`\) only the paths that appear in both `git diff --name-only` and `git diff --cached --name-only`/);
         assert.match(s, /For any other path `git diff --name-only` lists, do not run `git add` on it: /);
@@ -316,10 +322,13 @@ describe('sweep-commits round 2 review fixes', () => {
         assert.match(s, /AskUserQuestion: "Unstaged edits in <paths> are not part of this session's files\. Include them, leave them out, or stop\?" with options \["Leave them out and commit", "Include them", "Stop"\]/);
         assert.match(s, /"Leave them out and commit" means the check is run as `git diff --quiet -- \$\(git diff --cached --name-only\)` over the staged paths only/);
       }
+      if (name === 'w-end') {
+        assert.match(s, /run the block with that command in place of its first `git diff --quiet`, so the scrub still runs only when that check exits 0\./);
+      }
       if (name === 'w-autoresearch') {
-        assert.match(s, /leave it unstaged and log the paths in the experiment's log entry/);
         assert.ok(!s.includes('AskUserQuestion'));
       }
+      assert.match(s, /The block below runs the scrub only when this check exits 0: on exit 1 it prints the message, runs no scrub and exits 1, on 128 and above it runs no scrub and exits with that code, so after the re-stage run the whole block again \(never only its scrub line\) and commit only when that run exits 0\./);
       assert.match(s, /If the re-check still exits non-zero, report it and do not commit\./);
       const q = s.indexOf('git diff --quiet');
       const r = s.indexOf('If the re-check still exits non-zero');
@@ -329,7 +338,42 @@ describe('sweep-commits round 2 review fixes', () => {
       const sc = c.indexOf('scrub --worktree; RC=$?', blk);
       const endBlk = c.indexOf('```', blk + 7);
       assert.ok(blk >= 0 && dq > blk && dq < sc && sc < endBlk, 'the whole-index check is inside the fenced block before the scrub');
-      assert.match(c.slice(dq, sc), /elif \[ \$D -ne 0 \]; then echo "git error \(exit \$D\): do not commit"; fi/);
+      const chain = c.slice(dq, c.indexOf('\n', sc));
+      assert.ok(!c.slice(dq, sc).includes('\n'), 'the check and the scrub are one if-chain on one line');
+      assert.match(chain, /then run this block again"; \(exit 1\); elif \[ \$D -ne 0 \]; then echo "git error \(exit \$D\): do not commit"; \(exit \$D\); elif \[ ! -f \.claude\/helpers\/kit\/cli\.js \]; then echo "kit not installed \(\.claude\/helpers\/kit\/cli\.js missing\): scrub skipped, advisory"; \(exit 0\); else node \.claude\/helpers\/kit\/cli\.js scrub --worktree; RC=\$\?; \(exit \$RC\); fi$/);
+    });
+
+    it(`${name}: with index and disk differing the block exits 1 and runs no scrub, with and without the kit`, async () => {
+      const os = await import('os');
+      const c = commands[name].content;
+      const i = c.indexOf('**Scrub before the commit:**');
+      const blk = c.indexOf('```bash\n', i) + 8;
+      const code = c.slice(blk, c.indexOf('\n```', blk));
+      const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sweep6-'));
+      try {
+        const git = (...a) => { const r = spawnSync('git', a, { cwd: dir, encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr); };
+        git('init', '-q'); git('config', 'user.email', 't@t'); git('config', 'user.name', 't');
+        await fs.writeFile(path.join(dir, 'a'), 'a\n'); git('add', 'a'); git('commit', '-qm', 'init');
+        await fs.writeFile(path.join(dir, 'a'), 'staged\n'); git('add', 'a');
+        await fs.writeFile(path.join(dir, 'a'), 'disk differs\n');
+        for (const kit of [false, true]) {
+          const marker = path.join(dir, 'SCRUB_RAN');
+          if (kit) {
+            await fs.mkdir(path.join(dir, '.claude', 'helpers', 'kit'), { recursive: true });
+            await fs.writeFile(path.join(dir, '.claude', 'helpers', 'kit', 'cli.js'), `require('fs').writeFileSync(${JSON.stringify(marker)}, 'x'); process.exit(0);\n`);
+          }
+          const r = spawnSync('bash', ['-c', code], { cwd: dir, encoding: 'utf8' });
+          assert.equal(r.status, 1, `kit=${kit}: exit ${r.status}, ${r.stdout}${r.stderr}`);
+          assert.match(r.stdout, /^unstaged changes: /);
+          await assert.rejects(fs.access(marker), `kit=${kit}: the scrub must not run`);
+        }
+        await fs.writeFile(path.join(dir, '.claude', 'helpers', 'kit', 'cli.js'), `process.exit(0);\n`);
+        git('add', 'a');
+        const ok = spawnSync('bash', ['-c', code], { cwd: dir, encoding: 'utf8' });
+        assert.equal(ok.status, 0, 'a clean check runs the scrub and takes its exit');
+      } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+      }
     });
   }
 
@@ -348,19 +392,63 @@ describe('sweep-commits round 2 review fixes', () => {
     });
   }
 
-  it('w-autoresearch: a scrub refusal reverts new files too and pauses after 3 in a row', () => {
+  it('w-autoresearch: a scrub refusal reverts only the experiment\'s paths and pauses after 3 in a row', () => {
     const s = commands['w-autoresearch'].content;
     const u = s.indexOf('git reset -q -- <the experiment\'s paths>');
-    const k = s.indexOf('git checkout -- .`; if the experiment created new paths, `git clean -fd -- <those paths>`');
-    assert.ok(u >= 0 && k > u, 'unstage comes before the checkout and clean');
+    const k = s.indexOf('`git checkout -- <its tracked paths>` (only those, never `git checkout -- .`, which would also wipe edits that are not the experiment\'s; a new path in that list makes the whole checkout fail; with none, skip the checkout); if the experiment created new paths, `git clean -fd -- <those paths>`');
+    assert.ok(u >= 0 && k > u, 'unstage comes before the scoped checkout and the clean');
+    assert.ok(!s.replace(/never `git checkout -- \.`/g, '').includes('git checkout -- .'), 'git checkout -- . appears only as a prohibition');
+    assert.equal(s.split('git checkout -- .').length - 1, (s.match(/never `git checkout -- \.`/g) || []).length, 'every git checkout -- . is a never');
     assert.match(s, /if the experiment created new paths, `git clean -fd -- <those paths>` so a refused new file does not stay on disk untracked and unscanned; with none, skip the clean; never run git clean without a path/);
     assert.ok(!s.includes("git clean -fd -- <the experiment's new paths>"), 'no unconditional clean over a possibly empty list');
     assert.ok(!/git clean -fd -- \.|git clean -fd`|git clean -fd;/.test(s), 'no pathless git clean');
     assert.match(s, /revert in this order: first unstage/);
-    assert.match(s, /right after that `git add`, and before any `git reset`, list the experiment's paths with `git diff --cached --name-only` and its new paths with `git diff --cached --name-only --diff-filter=A`, and save both lists in the experiment's log entry/);
-    assert.match(s, /<the experiment's paths> is the recorded list from `git diff --cached --name-only` and <those paths> the recorded list of new paths from `git diff --cached --name-only --diff-filter=A`/);
+    assert.match(s, /right after that `git add`, and before any `git reset`, list the experiment's paths with `git diff --cached --name-only --no-renames`, its new paths with `git diff --cached --name-only --no-renames --diff-filter=A` and its tracked paths \(all but the new ones\) with `git diff --cached --name-only --no-renames --diff-filter=a`, and save the three lists in the experiment's log entry \(`--no-renames` so a rename lists both its old and its new path/);
+    assert.match(s, /by path \(never `git add -A` or `git add \.`: they would stage the loop's untracked state\)/);
+    assert.match(s, /the clean-tree precondition means the index held nothing before this `git add`, so these lists are exactly the experiment's own paths and nobody else's/);
+    assert.match(s, /<the experiment's paths> is the recorded list from `git diff --cached --name-only --no-renames`, <its tracked paths> the recorded list from `git diff --cached --name-only --no-renames --diff-filter=a` and <those paths> the recorded list of new paths from `git diff --cached --name-only --no-renames --diff-filter=A`/);
     assert.match(s, /log the hits, take the path lists recorded in the scrub step, revert in this order/);
     assert.match(s, /if the unstage failed, do not count it as reverted: report it and pause the loop \(create `\.autoresearch-off`\)/);
     assert.match(s, /After 3 consecutive scrub refusals pause the loop: create `\.autoresearch-off` and log why/);
+    assert.match(s, /\*\*Discard:\*\* metric worse\/equal → revert the experiment's changes only: `git add` the files it changed by path, save the three path lists as in the scrub step, then revert in the same order as after a scrub refusal \(unstage, checkout of its tracked paths, guarded clean of its new paths\); never `git checkout -- \.`/);
+    assert.match(s, /\*\*Crash:\*\* non-zero exit → log error, revert as for Discard/);
+  });
+
+  it('w-autoresearch: a clean-tree precondition before each experiment, else the loop pauses and touches nothing', () => {
+    const s = commands['w-autoresearch'].content;
+    const p = s.indexOf('**Before each experiment (clean-tree precondition):**');
+    const t = s.indexOf('1. **Think:**');
+    assert.ok(p >= 0 && t > p, 'the precondition comes before the loop\'s first step');
+    assert.match(s, /run `git diff --quiet && git diff --cached --quiet` and `git ls-files --others --exclude-standard`\. The tree is clean when both diff checks exit 0 and the untracked list holds nothing but the loop's own state files/);
+    assert.match(s, /If the tree is not clean \(a staged path, an unstaged edit or another untracked file, any of which may be someone else's work\), do not start the experiment and touch nothing \(no stash, reset, checkout or clean\): pause the loop \(create `\.autoresearch-off`\) and log why \("paused: tree not clean before experiment: <paths>"\)\. So the index only ever holds the experiment's own changes\./);
+  });
+
+  it('w-autoresearch: the precondition fails on a staged file and an unrelated edit, and the revert loses nothing else', async () => {
+    const os = await import('os');
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sweep6ar-'));
+    const run = (cmd) => spawnSync('bash', ['-c', cmd], { cwd: dir, encoding: 'utf8' });
+    const pre = 'git diff --quiet && git diff --cached --quiet && [ -z "$(git ls-files --others --exclude-standard | grep -vxE \'autoresearch\\.jsonl|\\.autoresearch-off\')" ]';
+    try {
+      assert.equal(run('git init -q && git config user.email t@t && git config user.name t && echo a>a && echo b>b && echo z>z && git add . && git commit -qm init && echo st>autoresearch.jsonl').status, 0);
+      assert.equal(run(pre).status, 0, 'only the loop state is untracked: clean');
+      assert.equal(run('echo other>other && git add other && echo mine>b').status, 0);
+      assert.notEqual(run(pre).status, 0, 'a staged file and an unrelated unstaged edit fail the precondition');
+      assert.equal(run('cat other b').stdout, 'other\nmine\n', 'nothing is lost: the loop touches nothing');
+      assert.equal(run('git diff --cached --name-only').stdout, 'other\n');
+      assert.equal(run('git reset -q && rm other && git checkout -- b').status, 0);
+      assert.equal(run(pre).status, 0);
+      // experiment: modify a, delete b, new c, rename z -> z2; then the recorded revert
+      const r = run([
+        'echo exp>a && rm b && echo c>c && mv z z2 && git add -- a b c z z2',
+        'P=$(git diff --cached --name-only --no-renames); N=$(git diff --cached --name-only --no-renames --diff-filter=A); T=$(git diff --cached --name-only --no-renames --diff-filter=a)',
+        'git reset -q -- $P && git checkout -- $T && git clean -fd -- $N',
+        'git status --porcelain',
+      ].join('\n'));
+      assert.equal(r.status, 0, r.stderr);
+      assert.equal(r.stdout.split('\n').filter((l) => !l.startsWith('Removing')).join('\n'), '?? autoresearch.jsonl\n', 'tree back to clean, loop state kept');
+      assert.equal(run('cat a b z').stdout, 'a\nb\nz\n');
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
 });
