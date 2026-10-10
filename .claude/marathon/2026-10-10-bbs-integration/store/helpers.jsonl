@@ -18,3 +18,4 @@
 {"role":"review","model":"opus","stream":"targets","budget":150000,"event":"spawn","id":"c29af8d2-c6d6-44b9-90fd-47c0aeec6e8b","ts":"2026-10-10T17:27:35.445Z"}
 {"helper_id":"612ac964-8185-498f-a098-2ca2f158c62f","tokens":150000,"outcome":"green","event":"done","id":"bb09877a-b8a2-4366-963b-3d9a11507cee","ts":"2026-10-10T17:28:59.647Z"}
 {"helper_id":"c29af8d2-c6d6-44b9-90fd-47c0aeec6e8b","tokens":91592,"outcome":"green","event":"done","id":"9784ec80-1bdc-4b9e-8e0d-e6ff36cebd0e","ts":"2026-10-10T17:31:54.508Z"}
+{"role":"build","model":"sonnet","stream":"integration-gate","budget":200000,"event":"spawn","id":"6eca7364-83df-4a82-a387-1fc09b07475f","ts":"2026-10-10T17:38:54.189Z"}

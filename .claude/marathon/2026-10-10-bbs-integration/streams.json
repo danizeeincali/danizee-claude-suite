@@ -34,7 +34,7 @@
       "next": "generalize landing to any surface, reach tests, sample-app proof",
       "tasks": [],
       "isolation": "../danizee-claude-suite-gate",
-      "base": "5443a2a720049512ef578e536573bd541144f208"
+      "base": "a59228cf78b32de6790b86c1fa8fd058936072c9"
     },
     {
       "name": "surfaces",
