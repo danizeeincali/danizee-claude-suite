@@ -45,14 +45,47 @@ STOP and wait for user response.
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
-**AUTO-PROCEED:** Continue to Commit phase.
+**AUTORESEARCH CANDIDATE CHECK (RC-A):**
+Scan the work just completed for measurable optimization targets:
+1. **Static scan:** Analyze git diff for measurable patterns (function runtimes, test duration, bundle size, query counts, memory usage, coverage gaps)
+2. **Agent reflection:** What about this work could be measured and autonomously optimized?
+3. **Impact scoring:** Rate each candidate on 4 dimensions (weighted composite):
+   - potential (0.35): estimated improvement magnitude (1-10)
+   - blast_radius (0.15): files/systems affected, inverted (1-10)
+   - risk (0.15): breaking change likelihood, inverted (1-10)
+   - value (0.35): user/business value of improvement (1-10)
+   - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
+4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
+\`\`\`
+## RC-A[NNN]: [Title]
+**KPI:** [metric_name]
+**Baseline:** [current value]
+**Benchmark:** \`[command to measure]\`
+**Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
+**Files in scope:** [paths]
+**Constraints:** [what must not break]
+\`\`\`
+- RC-A candidates found: yes/no
+- If yes, logged with impact scores to .claude/ralph-candidates.md
+
 
 ---
 
 ### ⛔ CHECKPOINT 2: Commit (MANDATORY - NEVER SKIP)
+Stage the specific session files (not `git add -A`), then scrub them, then commit.
+
+**Scrub before the commit:** `git add` the paths to commit first (and any new file they create): `scrub --worktree` scans tracked files only, so an untracked file is not scanned. Then scan the tracked files as they are on disk for secrets. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+```bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
+```
+Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed and **do not commit**. Exit 1 is wrong input or a broken state: report it, never read it as clean, do not commit. Any other non-zero exit is a failure of the step: report it, do not commit. After any refusal unstage the paths so they cannot ride along in a later commit: `git reset -q -- <those paths>; RC=$?`, and if that exit is non-zero report "unstage failed (exit $RC): still staged: <those paths>" and say the owner must unstage them.
+
+Commit only after the scrub exited 0 (or the kit is not installed); after a refusal write "not committed — scrub refused: <hits>" as the commit message line below; nothing was committed.
+
 **REQUIRED OUTPUT:**
 - Commit message: _____
 - Files staged: _____
+- Scrub: clean / refused (<hits>) / kit not installed
 - Commit hash: _____
 
 **USER GATE:** Use AskUserQuestion

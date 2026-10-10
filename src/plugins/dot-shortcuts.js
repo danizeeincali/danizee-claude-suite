@@ -360,6 +360,17 @@ NEVER proceed to Build until:
 
 ### ⛔ CHECKPOINT 4: Build
 
+**RuFlo Swarm Execution (optional — for complex builds):**
+If the implementation is complex enough to benefit from parallel agents, initialize a ruflo swarm:
+\`\`\`bash
+npx ruflo@latest swarm init --topology hierarchical --agents 3
+npx ruflo@latest agent spawn --domain core --role coder --task "Implement core feature logic"
+npx ruflo@latest agent spawn --domain support --role tester --task "Verify tests pass with implementation"
+npx ruflo@latest agent spawn --domain support --role reviewer --task "Review implementation quality"
+\`\`\`
+Alternatively, use the Agent tool to spawn parallel agents with \`isolation: "worktree"\`.
+For simple builds, proceed with serial implementation.
+
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to verify the implementation visually
@@ -395,6 +406,27 @@ Skip this block for non-UI tasks.
 | Performance | _____ | _____ |
 | Architecture | _____ | _____ |
 
+**🔎 Code Analysis (lenses and impact over the change under review):** Run these two, in order, over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
+
+1. Lenses: which review rules apply to the changed files.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else D=$(mktemp 2>/dev/null) && [ -n "$D" ] || { echo "mktemp failed: no temp file for the range" >&2; D=; RC=1; }
+if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range > "$D"; RC=$?
+case $RC in 0) node .claude/helpers/kit/cli.js lenses --diff "$D"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; (exit $RC); fi
+\`\`\`
+
+2. Impact: what depends on the change. The base is resolved once into \`B\` and given to both \`diff-range\` and \`impact\` so they cannot disagree.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else B=$(node .claude/helpers/kit/cli.js diff-range --base-only); RC=$?
+if [ $RC -ne 0 ] || [ -z "$B" ]; then [ $RC -eq 0 ] && RC=1; echo "diff-range --base-only failed (exit $RC): the base was not resolved" >&2; else D=$(mktemp 2>/dev/null) && [ -n "$D" ] || { echo "mktemp failed: no temp file for the range" >&2; D=; RC=1; }
+if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range --base "$B" > "$D"; RC=$?
+case $RC in 0) node .claude/helpers/kit/cli.js impact --diff "$D" --base "$B"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; fi; (exit $RC); fi
+\`\`\`
+
+How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review output below, and mention a non-empty \`capped\` list. For impact, check every entry of \`removed_with_live_callers\` (a removal with a caller left behind is a defect until shown otherwise), the \`risk\` level with its \`reasons\` and every row of \`cuts\`; when \`risk.lower_bound\` is true or \`cuts\` is not empty the level is a floor, never write "nothing else is affected". Print each symbol's \`sentences\` as they are; a symbol with \`floor: true\` and no callers found is not unused.
+Exit 3 from \`diff-range\` means an empty range: report "no change to review", never a failure and never "no lens applies"; the block sets its own status to 0 in that case. Exit 1 is wrong input or a broken state: report it, never skip the step. Exit 2 is a refusal (the repository, a range over 32 MiB, or the verb itself): report it as printed and stop that step, never retry it. Exit 0 from \`diff-range\` can still leave files out: it writes a note to stderr for an untracked file over the size cap (\`too_large\`, named) and for untracked files over the count cap (\`max_untracked\`, a count only); name each skipped file in the findings, say it was not analysed, and treat every result as a floor. If \`diff-range\` itself fails the step prints "diff-range failed" and the verb does not run; if the temp file cannot be made it prints "mktemp failed": report that the change was not analysed, never "nothing found". Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found.
+
+
 **AUTO-PROCEED:** Continue to Verification phase.
 
 ---
@@ -423,6 +455,22 @@ Skip this block for non-UI tasks.
 
 ---
 
+
+---
+
+### 🔒 CLOSING STEP: Scrub and receipt
+After Verification passes and before Compound, first run \`git add\` on the new files the work created: \`scrub --worktree\` scans tracked files only and the receipt is keyed on the base and the tracked tree, so untracked files are in neither until they are added. Then scan the tracked files as they are on disk for secrets, and record the review verdict. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
+\`\`\`
+Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed and stop, do not commit. Exit 1 is wrong input or a broken state: report it, never read it as clean. Any other non-zero exit is a failure of the step: report it.
+
+Then record the counts from the review findings, with the real finding counts in place of the numbers (add \`--incomplete\` if any category was skipped). With no kit, skip this too and say so ("kit not installed (.claude/helpers/kit/cli.js missing): receipt skipped, advisory"). Use the form that matches the verdict:
+\`\`\`
+node .claude/helpers/kit/cli.js push-gate receipt --verdict pass --high 0 --medium 0 --low 0
+node .claude/helpers/kit/cli.js push-gate receipt --verdict fail --high 1 --medium 2 --low 0
+\`\`\`
+Exit 0 means the receipt was written; exit 1 is wrong input or a broken state and exit 2 a refused receipt store: report either as printed, never read a failed receipt as recorded. Compound may change tracked files: after Compound, \`git add\` its new files and, if the tracked tree changed, record the receipt again so it matches what is committed. Then tell the user: run \`node .claude/helpers/kit/cli.js push-gate check\` before pushing (same \`--base\`, or none, used for the receipt). Its exit 0 means abstain or ask (read \`decision\`), exit 2 deny (read \`decision\` and \`reason\`) or a refused receipt store (\`kit: refused:\` on stderr), and exit 1 an error; none is an allow. It only abstains, asks or denies; it never skips their permission prompt.
 
 ---
 
@@ -1124,6 +1172,27 @@ Quick self-review. Fix any critical/high findings before proceeding.
 - Build status: pass/fail/n-a
 - Regressions: none / [list]
 
+**🔎 Code Analysis (lenses and impact over the change under review):** Run these two, in order, over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
+
+1. Lenses: which review rules apply to the changed files.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else D=$(mktemp 2>/dev/null) && [ -n "$D" ] || { echo "mktemp failed: no temp file for the range" >&2; D=; RC=1; }
+if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range > "$D"; RC=$?
+case $RC in 0) node .claude/helpers/kit/cli.js lenses --diff "$D"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; (exit $RC); fi
+\`\`\`
+
+2. Impact: what depends on the change. The base is resolved once into \`B\` and given to both \`diff-range\` and \`impact\` so they cannot disagree.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else B=$(node .claude/helpers/kit/cli.js diff-range --base-only); RC=$?
+if [ $RC -ne 0 ] || [ -z "$B" ]; then [ $RC -eq 0 ] && RC=1; echo "diff-range --base-only failed (exit $RC): the base was not resolved" >&2; else D=$(mktemp 2>/dev/null) && [ -n "$D" ] || { echo "mktemp failed: no temp file for the range" >&2; D=; RC=1; }
+if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range --base "$B" > "$D"; RC=$?
+case $RC in 0) node .claude/helpers/kit/cli.js impact --diff "$D" --base "$B"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; fi; (exit $RC); fi
+\`\`\`
+
+How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review output below, and mention a non-empty \`capped\` list. For impact, check every entry of \`removed_with_live_callers\` (a removal with a caller left behind is a defect until shown otherwise), the \`risk\` level with its \`reasons\` and every row of \`cuts\`; when \`risk.lower_bound\` is true or \`cuts\` is not empty the level is a floor, never write "nothing else is affected". Print each symbol's \`sentences\` as they are; a symbol with \`floor: true\` and no callers found is not unused.
+Exit 3 from \`diff-range\` means an empty range: report "no change to review", never a failure and never "no lens applies"; the block sets its own status to 0 in that case. Exit 1 is wrong input or a broken state: report it, never skip the step. Exit 2 is a refusal (the repository, a range over 32 MiB, or the verb itself): report it as printed and stop that step, never retry it. Exit 0 from \`diff-range\` can still leave files out: it writes a note to stderr for an untracked file over the size cap (\`too_large\`, named) and for untracked files over the count cap (\`max_untracked\`, a count only); name each skipped file in the findings, say it was not analysed, and treat every result as a floor. If \`diff-range\` itself fails the step prints "diff-range failed" and the verb does not run; if the temp file cannot be made it prints "mktemp failed": report that the change was not analysed, never "nothing found". Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found.
+
+
 **RETRY LOGIC (max 3 retries):**
 - PASS → proceed to next phase
 - FAIL + retries remaining → log failure reason, fix the issue, re-verify
@@ -1136,10 +1205,31 @@ Quick self-review. Fix any critical/high findings before proceeding.
 
 ### PHASE 7: Commit & PR (AUTO-PROCEED)
 **REQUIRED ACTIONS:**
-1. Stage all changes: \\\`git add -A\\\`
-2. Commit with descriptive message
-3. Push branch: \\\`git push -u origin HEAD\\\`
-4. Create PR: \\\`gh pr create --fill\\\`
+1. Stage all changes: \`git add -A\`
+2. **Scrub before the commit:** \`git add\` the paths to commit first (and any new file they create): \`scrub --worktree\` scans tracked files only, so an untracked file is not scanned. Then scan the tracked files as they are on disk for secrets. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
+\`\`\`
+Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed and **do not commit**. Exit 1 is wrong input or a broken state: report it, never read it as clean, do not commit. Any other non-zero exit is a failure of the step: report it, do not commit. After any refusal unstage the paths so they cannot ride along in a later commit: \`git reset -q -- <those paths>; RC=$?\`, and if that exit is non-zero report "unstage failed (exit $RC): still staged: <those paths>" and say the owner must unstage them.
+3. Commit with descriptive message, only after the scrub exited 0 (or the kit is not installed). On any refusal stop here: no commit, no push, no PR.
+4. Record the review receipt (after the commit, so it matches the committed tree), with the real finding counts from the Verification and Code Analysis output (add \`--incomplete\` if any category was skipped). With no kit say "kit not installed (.claude/helpers/kit/cli.js missing): receipt skipped, advisory" and continue:
+\`\`\`
+node .claude/helpers/kit/cli.js push-gate receipt --verdict pass --high 0 --medium 0 --low 0
+node .claude/helpers/kit/cli.js push-gate receipt --verdict fail --high 1 --medium 2 --low 0
+\`\`\`
+   Exit 0 means the receipt was written; exit 1 is wrong input or a broken state and exit 2 a refused receipt store: report either as printed, never read it as recorded.
+5. Run the push gate before the push. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): push-gate check skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js push-gate check; RC=$?; (exit $RC); fi
+\`\`\`
+   Read the printed \`decision\` and \`reason\`. The gate stays advisory: it only abstains, asks or denies, and it never allows, skips or answers the owner's own permission prompt for the push.
+   - Exit 0 with decision \`abstain\`: the push goes on.
+   - Exit 0 with decision \`ask\` and a \`reason\` starting "no review recorded for this change": the push goes on, and the summary says "no review recorded for this change, pushed (run /w-review next time)".
+   - Exit 0 with any other \`ask\` (a failed review, a review of an earlier version, another threshold): **not pushed**. Write "not pushed — gate asks: <reason>" (the \`reason\` as printed) into the final output and stop Phase 7 there: this workflow has no user gate, so the owner reads the line and decides; never answer the ask yourself.
+   - Exit 2 is a deny (read \`decision\` and \`reason\`) or a refused receipt store (\`kit: refused:\` on stderr): **not pushed**; report it as printed.
+   - Exit 1 is an error: report it and do not push. Any other non-zero exit is a failure of the step: report it and do not push.
+6. Push branch (only when step 5 let it go on): \`git push -u origin HEAD\`
+7. Create PR (only when the push exited 0): \`gh pr create --fill\`
 
 **REQUIRED OUTPUT:**
 - Commit hash: _____
@@ -1711,6 +1801,17 @@ NEVER proceed to Build until:
 
 ### ⛔ CHECKPOINT 5: Build
 
+**RuFlo Swarm Execution (optional — for complex fixes):**
+If the fix spans multiple files or requires parallel investigation, initialize a ruflo swarm:
+\`\`\`bash
+npx ruflo@latest swarm init --topology hierarchical --agents 3
+npx ruflo@latest agent spawn --domain core --role coder --task "Implement the fix"
+npx ruflo@latest agent spawn --domain support --role tester --task "Verify regression tests pass"
+npx ruflo@latest agent spawn --domain security --role security-sentinel --task "Check fix doesn't introduce vulnerabilities"
+\`\`\`
+Alternatively, use the Agent tool to spawn parallel agents with \`isolation: "worktree"\`.
+For simple fixes, proceed with serial implementation.
+
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to verify the implementation visually
@@ -1747,6 +1848,27 @@ Skip this block for non-UI tasks.
 | Performance | _____ | _____ |
 | Regressions | _____ | _____ |
 
+**🔎 Code Analysis (lenses and impact over the change under review):** Run these two, in order, over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
+
+1. Lenses: which review rules apply to the changed files.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else D=$(mktemp 2>/dev/null) && [ -n "$D" ] || { echo "mktemp failed: no temp file for the range" >&2; D=; RC=1; }
+if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range > "$D"; RC=$?
+case $RC in 0) node .claude/helpers/kit/cli.js lenses --diff "$D"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; (exit $RC); fi
+\`\`\`
+
+2. Impact: what depends on the change. The base is resolved once into \`B\` and given to both \`diff-range\` and \`impact\` so they cannot disagree.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else B=$(node .claude/helpers/kit/cli.js diff-range --base-only); RC=$?
+if [ $RC -ne 0 ] || [ -z "$B" ]; then [ $RC -eq 0 ] && RC=1; echo "diff-range --base-only failed (exit $RC): the base was not resolved" >&2; else D=$(mktemp 2>/dev/null) && [ -n "$D" ] || { echo "mktemp failed: no temp file for the range" >&2; D=; RC=1; }
+if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range --base "$B" > "$D"; RC=$?
+case $RC in 0) node .claude/helpers/kit/cli.js impact --diff "$D" --base "$B"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; fi; (exit $RC); fi
+\`\`\`
+
+How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review output below, and mention a non-empty \`capped\` list. For impact, check every entry of \`removed_with_live_callers\` (a removal with a caller left behind is a defect until shown otherwise), the \`risk\` level with its \`reasons\` and every row of \`cuts\`; when \`risk.lower_bound\` is true or \`cuts\` is not empty the level is a floor, never write "nothing else is affected". Print each symbol's \`sentences\` as they are; a symbol with \`floor: true\` and no callers found is not unused.
+Exit 3 from \`diff-range\` means an empty range: report "no change to review", never a failure and never "no lens applies"; the block sets its own status to 0 in that case. Exit 1 is wrong input or a broken state: report it, never skip the step. Exit 2 is a refusal (the repository, a range over 32 MiB, or the verb itself): report it as printed and stop that step, never retry it. Exit 0 from \`diff-range\` can still leave files out: it writes a note to stderr for an untracked file over the size cap (\`too_large\`, named) and for untracked files over the count cap (\`max_untracked\`, a count only); name each skipped file in the findings, say it was not analysed, and treat every result as a floor. If \`diff-range\` itself fails the step prints "diff-range failed" and the verb does not run; if the temp file cannot be made it prints "mktemp failed": report that the change was not analysed, never "nothing found". Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found.
+
+
 **AUTO-PROCEED:** Continue to Verification phase.
 
 ---
@@ -1775,6 +1897,22 @@ Skip this block for non-UI tasks.
 
 ---
 
+
+---
+
+### 🔒 CLOSING STEP: Scrub and receipt
+After Verification passes and before Compound, first run \`git add\` on the new files the work created: \`scrub --worktree\` scans tracked files only and the receipt is keyed on the base and the tracked tree, so untracked files are in neither until they are added. Then scan the tracked files as they are on disk for secrets, and record the review verdict. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
+\`\`\`
+Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed and stop, do not commit. Exit 1 is wrong input or a broken state: report it, never read it as clean. Any other non-zero exit is a failure of the step: report it.
+
+Then record the counts from the review findings, with the real finding counts in place of the numbers (add \`--incomplete\` if any category was skipped). With no kit, skip this too and say so ("kit not installed (.claude/helpers/kit/cli.js missing): receipt skipped, advisory"). Use the form that matches the verdict:
+\`\`\`
+node .claude/helpers/kit/cli.js push-gate receipt --verdict pass --high 0 --medium 0 --low 0
+node .claude/helpers/kit/cli.js push-gate receipt --verdict fail --high 1 --medium 2 --low 0
+\`\`\`
+Exit 0 means the receipt was written; exit 1 is wrong input or a broken state and exit 2 a refused receipt store: report either as printed, never read a failed receipt as recorded. Compound may change tracked files: after Compound, \`git add\` its new files and, if the tracked tree changed, record the receipt again so it matches what is committed. Then tell the user: run \`node .claude/helpers/kit/cli.js push-gate check\` before pushing (same \`--base\`, or none, used for the receipt). Its exit 0 means abstain or ask (read \`decision\`), exit 2 deny (read \`decision\` and \`reason\`) or a refused receipt store (\`kit: refused:\` on stderr), and exit 1 an error; none is an allow. It only abstains, asks or denies; it never skips their permission prompt.
 
 ---
 
@@ -2010,11 +2148,48 @@ Skip this block for non-UI tasks.
 | Data exposure | _____ | _____ |
 | Injection risks | _____ | _____ |
 
+**🔎 Code Analysis (lenses and impact over the change under review):** Run these two, in order, over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
+
+1. Lenses: which review rules apply to the changed files.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else D=$(mktemp 2>/dev/null) && [ -n "$D" ] || { echo "mktemp failed: no temp file for the range" >&2; D=; RC=1; }
+if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range > "$D"; RC=$?
+case $RC in 0) node .claude/helpers/kit/cli.js lenses --diff "$D"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; (exit $RC); fi
+\`\`\`
+
+2. Impact: what depends on the change. The base is resolved once into \`B\` and given to both \`diff-range\` and \`impact\` so they cannot disagree.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else B=$(node .claude/helpers/kit/cli.js diff-range --base-only); RC=$?
+if [ $RC -ne 0 ] || [ -z "$B" ]; then [ $RC -eq 0 ] && RC=1; echo "diff-range --base-only failed (exit $RC): the base was not resolved" >&2; else D=$(mktemp 2>/dev/null) && [ -n "$D" ] || { echo "mktemp failed: no temp file for the range" >&2; D=; RC=1; }
+if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range --base "$B" > "$D"; RC=$?
+case $RC in 0) node .claude/helpers/kit/cli.js impact --diff "$D" --base "$B"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; fi; (exit $RC); fi
+\`\`\`
+
+How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review output below, and mention a non-empty \`capped\` list. For impact, check every entry of \`removed_with_live_callers\` (a removal with a caller left behind is a defect until shown otherwise), the \`risk\` level with its \`reasons\` and every row of \`cuts\`; when \`risk.lower_bound\` is true or \`cuts\` is not empty the level is a floor, never write "nothing else is affected". Print each symbol's \`sentences\` as they are; a symbol with \`floor: true\` and no callers found is not unused.
+Exit 3 from \`diff-range\` means an empty range: report "no change to review", never a failure and never "no lens applies"; the block sets its own status to 0 in that case. Exit 1 is wrong input or a broken state: report it, never skip the step. Exit 2 is a refusal (the repository, a range over 32 MiB, or the verb itself): report it as printed and stop that step, never retry it. Exit 0 from \`diff-range\` can still leave files out: it writes a note to stderr for an untracked file over the size cap (\`too_large\`, named) and for untracked files over the count cap (\`max_untracked\`, a count only); name each skipped file in the findings, say it was not analysed, and treat every result as a floor. If \`diff-range\` itself fails the step prints "diff-range failed" and the verb does not run; if the temp file cannot be made it prints "mktemp failed": report that the change was not analysed, never "nothing found". Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found.
+
+
 **USER GATE:** Use AskUserQuestion
 - Question: "Security review complete. Proceed to Compound?"
 - Options: ["Continue", "Address security concerns", "Show more detail"]
 
 STOP and wait for user response.
+
+---
+
+### 🔒 CLOSING STEP: Scrub and receipt
+After Verification passes and before Compound, first run \`git add\` on the new files the work created: \`scrub --worktree\` scans tracked files only and the receipt is keyed on the base and the tracked tree, so untracked files are in neither until they are added. Then scan the tracked files as they are on disk for secrets, and record the review verdict. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
+\`\`\`
+Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed and stop, do not commit. Exit 1 is wrong input or a broken state: report it, never read it as clean. Any other non-zero exit is a failure of the step: report it.
+
+Then record the counts from the review findings, with the real finding counts in place of the numbers (add \`--incomplete\` if any category was skipped). With no kit, skip this too and say so ("kit not installed (.claude/helpers/kit/cli.js missing): receipt skipped, advisory"). Use the form that matches the verdict:
+\`\`\`
+node .claude/helpers/kit/cli.js push-gate receipt --verdict pass --high 0 --medium 0 --low 0
+node .claude/helpers/kit/cli.js push-gate receipt --verdict fail --high 1 --medium 2 --low 0
+\`\`\`
+Exit 0 means the receipt was written; exit 1 is wrong input or a broken state and exit 2 a refused receipt store: report either as printed, never read a failed receipt as recorded. Compound may change tracked files: after Compound, \`git add\` its new files and, if the tracked tree changed, record the receipt again so it matches what is committed. Then tell the user: run \`node .claude/helpers/kit/cli.js push-gate check\` before pushing (same \`--base\`, or none, used for the receipt). Its exit 0 means abstain or ask (read \`decision\`), exit 2 deny (read \`decision\` and \`reason\`) or a refused receipt store (\`kit: refused:\` on stderr), and exit 1 an error; none is an allow. It only abstains, asks or denies; it never skips their permission prompt.
 
 ---
 
@@ -2468,6 +2643,27 @@ Skip this block for non-UI tasks.
 - Prioritized remediation list (by severity)
 - Recommended fixes
 
+**🔎 Code Analysis (lenses and impact over the change under review):** Run these two, in order, over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
+
+1. Lenses: which review rules apply to the changed files.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else D=$(mktemp 2>/dev/null) && [ -n "$D" ] || { echo "mktemp failed: no temp file for the range" >&2; D=; RC=1; }
+if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range > "$D"; RC=$?
+case $RC in 0) node .claude/helpers/kit/cli.js lenses --diff "$D"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; (exit $RC); fi
+\`\`\`
+
+2. Impact: what depends on the change. The base is resolved once into \`B\` and given to both \`diff-range\` and \`impact\` so they cannot disagree.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else B=$(node .claude/helpers/kit/cli.js diff-range --base-only); RC=$?
+if [ $RC -ne 0 ] || [ -z "$B" ]; then [ $RC -eq 0 ] && RC=1; echo "diff-range --base-only failed (exit $RC): the base was not resolved" >&2; else D=$(mktemp 2>/dev/null) && [ -n "$D" ] || { echo "mktemp failed: no temp file for the range" >&2; D=; RC=1; }
+if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range --base "$B" > "$D"; RC=$?
+case $RC in 0) node .claude/helpers/kit/cli.js impact --diff "$D" --base "$B"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; fi; (exit $RC); fi
+\`\`\`
+
+How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review output below, and mention a non-empty \`capped\` list. For impact, check every entry of \`removed_with_live_callers\` (a removal with a caller left behind is a defect until shown otherwise), the \`risk\` level with its \`reasons\` and every row of \`cuts\`; when \`risk.lower_bound\` is true or \`cuts\` is not empty the level is a floor, never write "nothing else is affected". Print each symbol's \`sentences\` as they are; a symbol with \`floor: true\` and no callers found is not unused.
+Exit 3 from \`diff-range\` means an empty range: report "no change to review", never a failure and never "no lens applies"; the block sets its own status to 0 in that case. Exit 1 is wrong input or a broken state: report it, never skip the step. Exit 2 is a refusal (the repository, a range over 32 MiB, or the verb itself): report it as printed and stop that step, never retry it. Exit 0 from \`diff-range\` can still leave files out: it writes a note to stderr for an untracked file over the size cap (\`too_large\`, named) and for untracked files over the count cap (\`max_untracked\`, a count only); name each skipped file in the findings, say it was not analysed, and treat every result as a floor. If \`diff-range\` itself fails the step prints "diff-range failed" and the verb does not run; if the temp file cannot be made it prints "mktemp failed": report that the change was not analysed, never "nothing found". Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found.
+
+
 **AUTO-PROCEED:** Continue to Verification phase.
 
 ---
@@ -2493,6 +2689,22 @@ Skip this block for non-UI tasks.
 - PASS → proceed to next phase
 - FAIL + retries remaining → log failure reason, fix the issue, re-verify
 - FAIL + max retries exceeded → escalate to user with AskUserQuestion
+
+---
+
+### 🔒 CLOSING STEP: Scrub and receipt
+After Verification passes and before Compound, first run \`git add\` on the new files the work created: \`scrub --worktree\` scans tracked files only and the receipt is keyed on the base and the tracked tree, so untracked files are in neither until they are added. Then scan the tracked files as they are on disk for secrets, and record the review verdict. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
+\`\`\`
+Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed and stop, do not commit. Exit 1 is wrong input or a broken state: report it, never read it as clean. Any other non-zero exit is a failure of the step: report it.
+
+Then record the counts from the review findings, with the real finding counts in place of the numbers (add \`--incomplete\` if any category was skipped). With no kit, skip this too and say so ("kit not installed (.claude/helpers/kit/cli.js missing): receipt skipped, advisory"). Use the form that matches the verdict:
+\`\`\`
+node .claude/helpers/kit/cli.js push-gate receipt --verdict pass --high 0 --medium 0 --low 0
+node .claude/helpers/kit/cli.js push-gate receipt --verdict fail --high 1 --medium 2 --low 0
+\`\`\`
+Exit 0 means the receipt was written; exit 1 is wrong input or a broken state and exit 2 a refused receipt store: report either as printed, never read a failed receipt as recorded. Compound may change tracked files: after Compound, \`git add\` its new files and, if the tracked tree changed, record the receipt again so it matches what is committed. Then tell the user: run \`node .claude/helpers/kit/cli.js push-gate check\` before pushing (same \`--base\`, or none, used for the receipt). Its exit 0 means abstain or ask (read \`decision\`), exit 2 deny (read \`decision\` and \`reason\`) or a refused receipt store (\`kit: refused:\` on stderr), and exit 1 an error; none is an allow. It only abstains, asks or denies; it never skips their permission prompt.
 
 ---
 
@@ -3582,13 +3794,21 @@ Launch a background agent that runs the experiment loop autonomously:
 3. **Run:** Execute \\\`./autoresearch.sh\\\`, capture output
 4. **Parse:** Extract \\\`METRIC name=number\\\` lines
 5. **Evaluate:**
-   - **Keep:** metric improved → \\\`git commit\\\` with Result trailer
+   - **Keep:** metric improved → run the scrub below, then \`git commit\` with Result trailer; a scrub refusal means no commit: treat it as a Crash (log the hits, revert, try a different approach)
    - **Discard:** metric worse/equal → \\\`git checkout -- .\\\` to revert
    - **Crash:** non-zero exit → log error, revert, try different approach
 6. **Log:** Append result to \\\`autoresearch.jsonl\\\`, update dashboard
 7. **Loop:** Go to step 1
 
 **ERROR HANDLING:** Log errors but NEVER abort. Revert and try a different approach.
+
+**Put this in the background agent's prompt (scrub before every Keep commit):**
+**Scrub before the commit:** \`git add\` the files this experiment changed first (and any new file they create): \`scrub --worktree\` scans tracked files only, so an untracked file is not scanned. Then scan the tracked files as they are on disk for secrets. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
+\`\`\`
+Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed and **do not commit**. Exit 1 is wrong input or a broken state: report it, never read it as clean, do not commit. Any other non-zero exit is a failure of the step: report it, do not commit. After any refusal unstage the paths so they cannot ride along in a later commit: \`git reset -q -- <those paths>; RC=$?\`, and if that exit is non-zero report "unstage failed (exit $RC): still staged: <those paths>" and say the owner must unstage them.
+
 
 **Pausing:** Create \\\`.autoresearch-off\\\` sentinel file, or user sends \\\`/autoresearch off\\\`
 
@@ -4609,9 +4829,20 @@ Scan the work just completed for measurable optimization targets:
 ---
 
 ### ⛔ CHECKPOINT 2: Commit (MANDATORY - NEVER SKIP)
+Stage the specific session files (not \`git add -A\`), then scrub them, then commit.
+
+**Scrub before the commit:** \`git add\` the paths to commit first (and any new file they create): \`scrub --worktree\` scans tracked files only, so an untracked file is not scanned. Then scan the tracked files as they are on disk for secrets. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): scrub skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js scrub --worktree; RC=$?; (exit $RC); fi
+\`\`\`
+Exit 0 is clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed and **do not commit**. Exit 1 is wrong input or a broken state: report it, never read it as clean, do not commit. Any other non-zero exit is a failure of the step: report it, do not commit. After any refusal unstage the paths so they cannot ride along in a later commit: \`git reset -q -- <those paths>; RC=$?\`, and if that exit is non-zero report "unstage failed (exit $RC): still staged: <those paths>" and say the owner must unstage them.
+
+Commit only after the scrub exited 0 (or the kit is not installed); after a refusal write "not committed — scrub refused: <hits>" as the commit message line below; nothing was committed.
+
 **REQUIRED OUTPUT:**
 - Commit message: _____
 - Files staged: _____
+- Scrub: clean / refused (<hits>) / kit not installed
 - Commit hash: _____
 
 **USER GATE:** Use AskUserQuestion
@@ -5385,6 +5616,19 @@ Execute the Ralph loop with the candidate spec:
 - All tests pass: yes/no
 - Total iterations: _____
 - If failed: which tests still failing
+
+**🔎 Code Analysis (lenses over the change under review):** Run this over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
+
+1. Lenses: which review rules apply to the changed files.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else D=$(mktemp 2>/dev/null) && [ -n "$D" ] || { echo "mktemp failed: no temp file for the range" >&2; D=; RC=1; }
+if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range > "$D"; RC=$?
+case $RC in 0) node .claude/helpers/kit/cli.js lenses --diff "$D"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; (exit $RC); fi
+\`\`\`
+
+How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review output below, and mention a non-empty \`capped\` list.
+Exit 3 from \`diff-range\` means an empty range: report "no change to review", never a failure and never "no lens applies"; the block sets its own status to 0 in that case. Exit 1 is wrong input or a broken state: report it, never skip the step. Exit 2 is a refusal (the repository, a range over 32 MiB, or the verb itself): report it as printed and stop that step, never retry it. Exit 0 from \`diff-range\` can still leave files out: it writes a note to stderr for an untracked file over the size cap (\`too_large\`, named) and for untracked files over the count cap (\`max_untracked\`, a count only); name each skipped file in the findings, say it was not analysed, and treat every result as a floor. If \`diff-range\` itself fails the step prints "diff-range failed" and the verb does not run; if the temp file cannot be made it prints "mktemp failed": report that the change was not analysed, never "nothing found". Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found.
+
 
 **If ALL tests PASS:**
 - Update candidate status to: complete
