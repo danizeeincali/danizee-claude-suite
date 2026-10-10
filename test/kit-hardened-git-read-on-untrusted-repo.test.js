@@ -1656,7 +1656,7 @@ describe('safe-git — review round 9 regressions (stdin readers, timeout)', () 
     const readers = [
       ['name-rev', '--annotate-stdin'], ['name-rev', '--annotate'], ['name-rev', '--stdin'],
       ['show-ref', '--exclude-existing'], ['show-ref', '--exclude-existing=refs/'], ['show-ref', '--exclude'],
-      ['rev-list', '--std'], ['cat-file', '--batch'], ['cat-file', '--batch-check=%(objectname)'], ['diff-tree', '--stdin']
+      ['name-rev', '--std'], ['cat-file', '--batch'], ['cat-file', '--batch-check=%(objectname)'], ['diff-tree', '--stdin']
     ];
     for (const g of readers) {
       assert.ok(readsStdin(g), `${g.join(' ')} reads stdin`);
@@ -1880,10 +1880,11 @@ describe('safe-git — review round 12 regressions (--exclude, deep symlinks und
 
   it('real options that share a start with a stdin option are not asked for --input -', async () => {
     for (const g of [['describe', '--exclude=v*'], ['ls-files', '--exclude=*.o'], ['log', '--all', '--exclude=refs/x'],
-      ['rev-list', '--all', '--exclude=refs/x'], ['name-rev', '--exclude=x', 'HEAD'], ['diff', '--stat'], ['ls-files', '--stage']]) {
+      ['rev-list', '--all', '--exclude=refs/x'], ['name-rev', '--exclude=x', 'HEAD'], ['diff', '--stat'], ['ls-files', '--stage'],
+      ['rev-list', '--std'], ['log', '--stdi']]) { // git rejects those abbreviations itself: they are not stdin readers
       assert.ok(!readsStdin(g), g.join(' '));
     }
-    for (const g of [['show-ref', '--exclude-existing'], ['show-ref', '--exclude-ex'], ['rev-list', '--std'], ['name-rev', '--annotate']]) {
+    for (const g of [['show-ref', '--exclude-existing'], ['show-ref', '--exclude-ex'], ['name-rev', '--std'], ['name-rev', '--annotate']]) {
       assert.ok(readsStdin(g), g.join(' '));
     }
     const d = path.join(root, 'ex');

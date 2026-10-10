@@ -9,7 +9,7 @@
  * to read the untrusted repository's config at all:
  *
  *   SHADOW GIT DIR. Each call builds a fresh private git dir (mkdtemp, mode 0700, removed afterwards) and runs git
- *   with GIT_DIR pointing at it, GIT_OBJECT_DIRECTORY at the repo's real objects (alternates there are object-only)
+ *   with GIT_DIR pointing at it, GIT_OBJECT_DIRECTORY at the repo's real objects (object alternates are refused, below)
  *   and GIT_WORK_TREE at the repo's work tree (none for a bare repo or a path inside the git dir). The shadow holds:
  *     - a config WE write, holding only allow-listed keys whose values are validated (core.repositoryformatversion,
  *       extensions.objectformat, core.bare, and the booleans/enums core.ignorecase, precomposeunicode, quotepath,
@@ -25,15 +25,17 @@
  *       it and read refs from a folder outside the repository, and copying it could pull in any tree (/usr, $HOME);
  *     - objects: the real objects folder (GIT_OBJECT_DIRECTORY). Object alternates, and a symlinked objects/ or any
  *       symlink inside it (pack, info, loose folders and files), are refused (KitExit 2): they would read another
- *       repository's objects. A .git file (gitdir:) or commondir is followed like git follows it — that is how
- *       linked worktrees work — so a folder whose .git names another repository reads that repository; network
- *       paths (//host, \\host) there are refused;
+ *       repository's objects. A .git file (gitdir:), a .git that is itself a symlink, and commondir are followed
+ *       like git follows them — that is how linked worktrees and some checkouts work — so a folder whose .git
+ *       names or links to another repository reads THAT repository, exactly as plain git would; network paths
+ *       (//host, \\host) in a gitdir: file or commondir are refused;
  *     - shallow, a copy of the index (and sharedindex.* files), info/exclude and info/attributes (attributes cannot
  *       name a program when no config defines a driver; work-tree .gitattributes stay as they are).
  *   COPY LIMITS. Every copied file is lstat'ed, must be a regular file, and is copied with a bounded read that stops at
  *   its cap, so a sparse file (`truncate -s 1T`, no disk in the repo) cannot fill the temp disk. Defaults, overridable
  *   with the `limits` option: index and each sharedindex 256 MiB, packed-refs 64 MiB, any other file 64 MiB, 512 MiB
- *   in all per call, 100000 entries walked under refs/. Over a limit the call is refused (KitExit 2) naming the file.
+ *   in all per call, 100000 entries walked under refs/ (and, separately, under objects/ by the symlink check, which
+ *   counts every loose object). Over a limit the call is refused (KitExit 2) naming the file or folder.
  *   INDEX PATHS. git does not re-check index entries it reads from disk, so before anything reads the work tree the
  *   shadow's index copy is listed (`ls-files -z --stage`) and an entry that is absolute or has an empty, '.', '..' or
  *   git-dir component ('.git' in any case, with trailing dots/spaces, NTFS/HFS aliases such as git~1) is refused
@@ -89,7 +91,8 @@
  * Every git child runs with a timeout (the `timeout` option / --timeout <ms>, default 60000 ms): a hostile repo (a FIFO
  * .gitattributes) cannot hang a read. A timeout, or output over 256 MiB, is exit 3 with a message saying which.
  * git's stdin is closed unless input is given (--input - in the CLI); the CLI refuses options that read stdin
- * (STDIN_LONG, any abbreviation) without it, so an empty answer is never mistaken for a real one.
+ * (STDIN_OPTIONS, per subcommand, with the abbreviations git accepts there) without it, so an empty answer is never
+ * mistaken for a real one.
  *
  * Repository state is never cached: every call re-reads the config and copies refs and index, so a changed repo is
  * always seen. The only cache is the resolved absolute git path (per PATH/PATHEXT); clearSafeGitCache() empties it.
@@ -118,9 +121,10 @@ export const usage = 'cli.js safe-git [--dir <repo top or git dir>] -- <git args
  * that shares a start (log --exclude, diff --stat, ls-files --stage) is never taken for one of these.
  */
 export const STDIN_OPTIONS = Object.freeze({
-  '*': [['stdin', 'std']],
+  // rev-list, log, diff-tree and for-each-ref parse --stdin as a revision option: git accepts no abbreviation there
+  '*': [['stdin', 'stdin']],
   'cat-file': [['batch', 'batch'], ['batch-check', 'batch-ch'], ['batch-command', 'batch-co']],
-  'name-rev': [['annotate-stdin', 'an']],
+  'name-rev': [['annotate-stdin', 'an'], ['stdin', 'std']],
   'show-ref': [['exclude-existing', 'ex']]
 });
 export const STDIN_LONG = Object.freeze([...new Set(Object.values(STDIN_OPTIONS).flat().map(([o]) => o))]);
@@ -648,7 +652,7 @@ async function checkObjectsNotLinked(loc, limits) {
     let entries;
     try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
     for (const e of entries) {
-      if (++seen > limits.entries) throw refuse(`more than ${limits.entries} entries under ${objects}; refusing to check them`);
+      if (++seen > limits.entries) throw refuse(`more than ${limits.entries} entries under ${objects} (loose objects count); refusing to check them — run git gc in a copy you trust, or raise safeGit's limits.entries`);
       const p = path.join(dir, e.name);
       if (e.isSymbolicLink()) throw linked(p);
       if (e.isDirectory()) await walk(p, depth + 1); // every level: info/commit-graphs, pack, loose folders
