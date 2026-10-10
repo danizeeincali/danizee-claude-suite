@@ -566,8 +566,8 @@ describe('graph — the /w-review caller', () => {
   };
   it('runs graph on the reviewed range, copy-pasteable, and tells the reviewer to report partial and not_read', () => {
     const s = step();
-    assert.match(s, /node \.claude\/helpers\/kit\/cli\.js graph --diff "\$D" --budget-ms 20000 --max-parses 300; RC=\$\?; rm -f "\$D"; \(exit \$RC\)/);
-    assert.match(s, /git diff --no-color --no-ext-diff --no-prefix "\$BASE"/);
+    assert.match(s, /node \.claude\/helpers\/kit\/cli\.js graph --diff "\$D" --budget-ms 20000 --max-parses 300; RC=\$\?;; 3\) echo "no change to review"/);
+    assert.match(s, /diff-range > "\$D"; RC=\$\?/);
     assert.ok(!s.includes('\\`') && !/<[a-z-]+>|\w\|\w/.test(s.split('```')[1]), 'no escaped backticks or placeholders in the command');
     assert.match(s, /`partial`/);
     assert.match(s, /`not_read`/);

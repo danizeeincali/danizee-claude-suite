@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import fsSync from 'fs';
+import { fileURLToPath } from 'url';
 import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
@@ -358,7 +359,8 @@ describe('impact — the /w-review caller', () => {
   it('has a blast-radius step that runs impact on the reviewed range with its base, copy-pasteable', () => {
     const s = step();
     assert.match(s, /BLAST RADIUS/);
-    assert.match(s, /node \.claude\/helpers\/kit\/cli\.js impact --diff "\$D" --base "\$BASE"; RC=\$\?; rm -f "\$D"; \(exit \$RC\)/);
+    assert.match(s, /node \.claude\/helpers\/kit\/cli\.js impact --diff "\$D" --base "\$\(node \.claude\/helpers\/kit\/cli\.js diff-range --base-only\)"; RC=\$\?;; 3\) echo "no change to review"/);
+    assert.match(s, /diff-range > "\$D"; RC=\$\?/);
     const blocks = s.split('```').filter((_, k) => k % 2 === 1);
     assert.equal(blocks.length, 2, 'the graph block and the impact block');
     assert.ok(blocks.every(b => !/<[a-z-]+>|\w\|\w/.test(b)));
@@ -423,7 +425,7 @@ describe('impact — review round 1 regressions', () => {
     assert.ok(r.notes.some(n => /names no files/.test(n)));
     const c = getCommands()['w-review'].content;
     const s = c.slice(c.indexOf('Then the blast radius'), c.indexOf('**REQUIRED OUTPUT:**', c.indexOf('Then the blast radius')));
-    assert.match(s, /empty diff exits 0/);
+    assert.match(s, /exit 3 from `diff-range`/);
     assert.match(s, /non-zero exit means wrong input or a broken state/);
     const md = await fs.readFile(new URL('../.claude/commands/.shortcuts/w-review.md', import.meta.url), 'utf-8');
     assert.equal(md, c);
@@ -478,8 +480,8 @@ describe('impact — review round 3 regressions', () => {
   it('the /w-review impact step catches a failed git diff instead of reporting "no change to map"', () => {
     const c = getCommands()['w-review'].content;
     const s = c.slice(c.indexOf('Then the blast radius'), c.indexOf('**REQUIRED OUTPUT:**', c.indexOf('Then the blast radius')));
-    assert.match(s, /"\$BASE" \|\| DF=1;/);
-    assert.match(s, /if \[ "\$DF" -ne 0 \]; then echo "git diff failed/);
+    assert.match(s, /\*\) echo "diff-range failed \(exit \$RC\): the change range was not read" >&2;;/);
+    assert.match(s, /If `diff-range` itself fails the step prints "diff-range failed"/);
     assert.match(s, /never "no change to map"/);
   });
 
@@ -489,11 +491,12 @@ describe('impact — review round 3 regressions', () => {
     const script = s.slice(s.indexOf('```bash') + 7, s.indexOf('```', s.indexOf('```bash') + 7));
     const bin = path.join(dir, 'bin');
     await fs.mkdir(bin);
-    // a git that fails `diff` against the base, as a partial clone with an unreachable remote does
-    await fs.writeFile(path.join(bin, 'git'), '#!/bin/sh\nif [ "$1" = merge-base ]; then exit 1; fi\nif [ "$1" = hash-object ]; then echo 4b825dc642cb6eb9a060e54bf8d69288fbbebe04; exit 0; fi\nif [ "$1" = diff ]; then exit 128; fi\nexit 0\n', { mode: 0o755 });
+    // a node whose diff-range fails (a git that cannot diff); any other verb call is logged
+    await fs.writeFile(path.join(bin, 'node'), `#!/bin/sh\nif [ "$2" = diff-range ]; then exit 1; fi\necho "$2" >> "${dir}/calls"\nexit 0\n`, { mode: 0o755 });
     const r = spawnSync('bash', ['-c', script], { cwd: dir, encoding: 'utf-8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
     assert.equal(r.status, 1);
-    assert.match(r.stderr, /git diff failed/);
+    assert.match(r.stderr, /diff-range failed \(exit 1\)/);
+    assert.equal(fsSync.existsSync(path.join(dir, 'calls')), false, 'the verb never ran');
   }));
 });
 
@@ -509,15 +512,19 @@ describe('impact — review round 4 regressions', () => {
     git(dir, 'add', '-A');
     git(dir, 'commit', '-q', '-m', 'a');
     await fs.writeFile(path.join(dir, '--output=keep.js'), 'export function sneaky() {}\n');
-    const script = stepScript().replace('node .claude/helpers/kit/cli.js', 'cat "$D" >&2; true || node');
-    const r = spawnSync('bash', ['-c', script], { cwd: dir, encoding: 'utf-8' });
+    // the real diff-range verb, with the downstream verb replaced by a cat of the diff file
+    const bin = path.join(dir, 'bin');
+    await fs.mkdir(bin);
+    const cliPath = fileURLToPath(new URL('../src/lib/kit/cli.js', import.meta.url));
+    await fs.writeFile(path.join(bin, 'node'), `#!/bin/sh\nif [ "$2" = diff-range ]; then shift 1; exec "${process.execPath}" "${cliPath}" "$@"; fi\ncat "$4" >&2\n`, { mode: 0o755 });
+    const r = spawnSync('bash', ['-c', stepScript()], { cwd: dir, encoding: 'utf-8', env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stderr, /\+\+\+ --output=keep\.js|output=keep\.js/);
     assert.equal(fsSync.existsSync(path.join(dir, 'keep.js')), false); // --output would have written keep.js
   }));
   it('an untracked file git cannot diff makes the step fail, not silently drop it', () => {
     const s = stepScript();
-    assert.match(s, /--no-prefix -- \/dev\/null "\$f" \|\| \[ \$\? -eq 1 \] \|\| : > "\$D\.fail"/);
-    assert.match(s, /\[ -e "\$D\.fail" \] && DF=1/);
+    assert.match(s, /diff-range > "\$D"; RC=\$\?/);
+    assert.match(s, /\*\) echo "diff-range failed/);
   });
 });
