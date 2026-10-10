@@ -19,7 +19,7 @@
     },
     {
       "name": "targets",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/plans/2026-10-10-bbs-integration.md",
       "next": "fix usage r4 findings, then review",
       "tasks": [],
@@ -29,16 +29,18 @@
     },
     {
       "name": "integration-gate",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/plans/2026-10-10-bbs-integration.md",
-      "next": "build stream integration-gate per plan",
-      "tasks": []
+      "next": "generalize landing to any surface, reach tests, sample-app proof",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-gate",
+      "base": "5443a2a720049512ef578e536573bd541144f208"
     },
     {
       "name": "surfaces",
-      "state": "queued",
+      "state": "blocked",
       "plan": ".claude/plans/2026-10-10-bbs-integration.md",
-      "next": "generalize landing to any surface: ui, api, job, model, cli, feature, lib, workflow; reach tests prove integration",
+      "next": "merged into integration-gate",
       "tasks": []
     }
   ],
