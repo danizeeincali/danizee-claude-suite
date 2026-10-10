@@ -437,6 +437,20 @@ export function verdictTable(rows, targets, usage) {
   return lines.join('\n');
 }
 
+/**
+ * targets.json and usage.json for the table. A corrupt file never fails the view: the table drops the Lands in column
+ * and the warning names the repair.
+ */
+export async function tableInputs(dir) {
+  const read = async (file, fix) => {
+    try { return { v: await readJson(path.join(dir, file)) }; } catch (err) { return { w: `${err.message} — ${fix} to replace it; the table is shown without Lands in` }; }
+  };
+  const t = await read('targets.json', 'run cli.js targets --force --from <file>');
+  const u = await read('usage.json', 'run cli.js usage --force');
+  const warning = [t.w, u.w].filter(Boolean).join('; ') || null;
+  return { targets: warning ? undefined : t.v?.targets, usage: u.v ?? null, warning };
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Run files
 
@@ -729,12 +743,14 @@ export async function computeVerdicts(projectDir, { run, sandbox, now = () => ne
     if (regWarning) warnings.push(regWarning);
     const { warning, unread } = await renderAfterCommit(p.dir);
     if (warning) warnings.push(warning);
+    const tin = await tableInputs(p.dir); // verdicts.json is committed: an unreadable input is a warning, never a failure
+    if (tin.warning) warnings.push(tin.warning);
     const w = joinWarnings(...warnings);
     return {
       runId: run,
       sandbox: sb,
       rows,
-      table: verdictTable(rows, (await readJson(path.join(p.dir, 'targets.json')))?.targets, await readJson(path.join(p.dir, 'usage.json'))),
+      table: verdictTable(rows, tin.targets, tin.usage),
       needs_probe: Object.keys(rows).filter(n => rows[n].needs_probe),
       dropped,
       next: await nextOf(p.dir, unread),
@@ -855,11 +871,12 @@ export async function recordDecisions(projectDir, { run, input, now = () => new 
     try {
       for (const [name, v] of Object.entries(decisions)) {
         const row = vj.rows[name];
-        if ((v === 'rebuild' || v === 'use') && (!counted || counted.evidence === 'none' || !counted.workflows?.length)) {
+        const same = (vj.decisions[name] ?? row.decision) === v; // resubmitting a recorded decision is a repair, not a change
+        if ((v === 'rebuild' || v === 'use') && !same && (!counted || counted.evidence === 'none' || !counted.workflows?.length)) {
           // where a power can land depends on the workflows the owner runs: never decided on a guess
           throw new PolicyRefused(`${v} needs the owner's workflows first: ${counted ? 'usage.json has no evidence — record the owner\'s answer with cli.js usage --force --workflows <a,b>' : 'run cli.js usage (or cli.js usage --workflows <a,b> with the owner\'s own list)'}, then decide ${name}`);
         }
-        if ((v === 'rebuild' || v === 'use') && !standingTargets(landing?.[name], counted).length) {
+        if ((v === 'rebuild' || v === 'use') && !same && !standingTargets(landing?.[name], counted).length) {
           // building is not the deliverable: a power lands in a workflow the owner runs, or it is not built
           const why = !Array.isArray(landing?.[name]) ? 'no targets recorded' : landing[name].length ? 'none of its targets is a workflow the owner runs' : 'its targets are empty';
           throw new PolicyRefused(`${v} needs a workflow for ${name} to land in: ${why} — `

@@ -21,7 +21,7 @@ import { loadState, nextStep, summary, renderStatusSafe } from './status.js';
 import { fetchRun, EgressRefused } from './fetch.js';
 import { writeInventory, inventoryBrief, listSourceFiles } from './inventory.js';
 import { buildMap, mapBrief, recordJudgments } from './harness-map.js';
-import { computeVerdicts, recordProbe, recordDecisions, verdictTable, PolicyRefused } from './verdict.js';
+import { computeVerdicts, recordProbe, recordDecisions, verdictTable, tableInputs, PolicyRefused } from './verdict.js';
 import { buildHandoff } from './handoff.js';
 import { recordUsage } from './usage.js';
 import { targetsBrief, recordTargets, setOwnerTargets } from './targets.js';
@@ -303,7 +303,8 @@ const VERBS = {
     const { id, dir } = await resolveRun(projectDir, flags, cfg);
     try {
       if (flags.brief) { process.stdout.write(await targetsBrief(projectDir, { run: id, cfg }) + '\n'); return; }
-      if (flags.set) { out({ ...await setOwnerTargets(projectDir, { run: id, set: flags.set, force: !!flags.force, cfg }), next: nextStep(await loadState(dir)) }); return; }
+      if (flags.set !== undefined) { out({ ...await setOwnerTargets(projectDir, { run: id, set: flags.set, force: !!flags.force, cfg }), next: nextStep(await loadState(dir)) }); return; }
+      if (!flags.from) fail(`${usage}\n  --from needs a file, or - for stdin`);
       let input;
       if (flags.from === '-') input = (await readStdin()).toString('utf-8');
       else {
@@ -315,8 +316,11 @@ const VERBS = {
       const label = flags.from === '-' ? '--from - (stdin)' : `--from ${flags.from}`;
       out({ ...await recordTargets(projectDir, { run: id, input, force: !!flags.force, cfg, label }), next: nextStep(await loadState(dir)) });
     } finally {
-      const { writeError } = await renderStatusSafe(dir);
-      if (writeError) warnStatusWrite(id, writeError);
+      // a corrupt targets.json must not mask the error that names its --force repair
+      try {
+        const { writeError } = await renderStatusSafe(dir);
+        if (writeError) warnStatusWrite(id, writeError);
+      } catch (err) { process.stderr.write(`bbs: warning: status.md not rendered (${err.message})\n`); }
     }
   },
 
@@ -366,7 +370,9 @@ const VERBS = {
       } else if (flags.table) {
         // A view: print the recorded table when there is one, so viewing never re-runs the sandbox check
         const existing = force ? null : await readJson(path.join(dir, 'verdicts.json'));
-        if (existing && existing.rows) { out(verdictTable(existing.rows, (await readJson(path.join(dir, 'targets.json')))?.targets, await readJson(path.join(dir, 'usage.json')))); return; }
+        if (existing && existing.rows) { const { targets, usage: counted, warning } = await tableInputs(dir);
+          if (warning) process.stderr.write(`bbs: warning: ${warning}\n`);
+          out(verdictTable(existing.rows, targets, counted)); return; }
         const computed = await computeVerdicts(projectDir, { run: id, sandbox: useSandboxOverride(sandboxOverride), now, force, cfg });
         out(computed.table);
         warnSandboxOverride(sandboxOverride);
