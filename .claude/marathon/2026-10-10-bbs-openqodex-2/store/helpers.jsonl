@@ -150,3 +150,4 @@
 {"role":"fix","model":"sonnet","stream":"tracked-file-scrub-gate","budget":150000,"event":"spawn","id":"9cdf7898-a856-496e-b3fa-22f7fd71bfd8","ts":"2026-10-10T12:43:29.248Z"}
 {"helper_id":"9cdf7898-a856-496e-b3fa-22f7fd71bfd8","tokens":120000,"outcome":"green","event":"done","id":"00066947-ebc4-4c31-bd45-3ac8966458d7","ts":"2026-10-10T12:50:45.822Z"}
 {"role":"review","model":"opus","stream":"tracked-file-scrub-gate","budget":150000,"event":"spawn","id":"8f5b8fae-26f3-452f-9b34-6d62b93de3f9","ts":"2026-10-10T12:52:28.704Z"}
+{"role":"fix","model":"sonnet","stream":"tracked-file-scrub-gate","budget":120000,"event":"spawn","id":"9aff1bff-a5f7-411b-8beb-2f01d147cabc","ts":"2026-10-10T12:56:22.452Z"}
