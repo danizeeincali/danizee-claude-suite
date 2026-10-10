@@ -473,3 +473,109 @@ describe('scrub — review round 2 regressions', () => {
     }
   });
 });
+
+describe('scrub — review round 3 regressions', () => {
+  let dir; let store; let extra = [];
+  const io = (o = {}) => ({ cwd: dir, stdin: async () => '', env: { ...process.env, KIT_RECEIPTS_DIR: store }, ...o });
+  const put = async (rel, content) => { await fs.mkdir(path.dirname(path.join(dir, rel)), { recursive: true }); await fs.writeFile(path.join(dir, rel), content); };
+  const commit = (msg = 'c') => { sh(dir, 'add', '-A'); sh(dir, 'commit', '-q', '-m', msg); };
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'scrub3-'));
+    store = await fs.mkdtemp(path.join(os.tmpdir(), 'scrub3-store-'));
+    extra = [];
+    sh(dir, 'init', '-q', '-b', 'main', '.');
+    await fs.appendFile(path.join(dir, '.git', 'info', 'exclude'), '.claude/kit/scrub-patterns.local\n');
+  });
+  afterEach(async () => {
+    await fs.rm(dir, { recursive: true, force: true });
+    await fs.rm(store, { recursive: true, force: true });
+    for (const d of extra) await fs.rm(d, { recursive: true, force: true });
+  });
+  const withRemote = async () => {
+    const bare = await fs.mkdtemp(path.join(os.tmpdir(), 'scrub3-bare-'));
+    extra.push(bare);
+    sh(bare, 'init', '-q', '--bare', '.');
+    sh(dir, 'remote', 'add', 'origin', bare);
+    return bare;
+  };
+
+  it('with no base, push-gate check scans only the commits no remote has; a secret in new commits still denies', async () => {
+    await withRemote();
+    await put('.claude/kit/scrub-patterns.local', 'zebra-secret\n');
+    await put('a.txt', 'hello\n'); commit('base');
+    await put('leak/k.txt', 'the zebra-secret\n'); commit('leak');
+    sh(dir, 'rm', '-q', '-r', 'leak'); sh(dir, 'commit', '-q', '-m', 'remove');
+    sh(dir, 'push', '-q', 'origin', 'main');
+    sh(dir, 'checkout', '-q', '-b', 'feature');
+    await put('b.txt', 'clean\n'); commit('clean');
+    assert.equal(sh(dir, 'rev-list', 'HEAD', '--not', '--remotes').trim().split('\n').length, 1);
+    const ok = await pushGate(['check'], io());
+    assert.notEqual(ok.decision, 'deny', JSON.stringify(ok));
+    await put('c.txt', 'now zebra-secret again\n'); commit('bad');
+    sh(dir, 'rm', '-q', 'c.txt'); sh(dir, 'commit', '-q', '-m', 'oops');
+    const d = await pushGate(['check'], io());
+    assert.equal(d.decision, 'deny', JSON.stringify(d));
+    assert.deepEqual(d.scrub.hits.map(h => h.file), ['c.txt']);
+    // without any remote-tracking ref the whole of HEAD's history is scanned
+    sh(dir, 'update-ref', '-d', 'refs/remotes/origin/main');
+    const all = await run(['--history', '-'], io());
+    assert.deepEqual(all.hits.map(h => h.file).sort(), ['c.txt', 'leak/k.txt']);
+  });
+
+  it('a git timeout is exit 1 (git failed) with a reason naming a --timeout that scrub and push-gate check accept', async () => {
+    await put('.claude/kit/scrub-patterns', 'needle\n');
+    await put('a.txt', 'x\n'); commit();
+    const slow = (args, o) => { const e = new KitExit(`git ${args.find(a => a === 'ls-tree')} took longer than ${o.timeout} ms and was stopped (raise it with --timeout <ms>)`, 3); throw e; };
+    await assert.rejects(() => run(['--timeout', '5000'], io({ git: (a, o) => (a.includes('ls-tree') ? slow(a, o) : spawnGit(a, o)) })),
+      e => e instanceof KitExit && e.code === 1 && /took longer than 5000 ms/.test(e.message) && /--timeout <ms>/.test(e.message));
+    const ok = await run(['--timeout', '90000'], io());
+    assert.equal(ok.exit, 0);
+    await assert.rejects(() => run(['--timeout', 'x'], io()), e => e.code === 1);
+    const d = await pushGate(['check', '--timeout', '90000'], io());
+    assert.notEqual(d.decision, 'deny', JSON.stringify(d));
+    await assert.rejects(() => run(['--timeout', '5000'], io({ git: (a, o) => { throw Object.assign(new KitExit('git cat-file wrote more than 256 MiB of output; narrow the command', 3), { overflow: true }); } })),
+      e => e.code === 1 && /--history <base>/.test(e.message));
+  });
+
+  it('the deny reason names the scan that refused and the command that reproduces it', async () => {
+    await put('.claude/kit/scrub-patterns.local', 'zebra-secret\n');
+    await put('a.txt', 'hello\n'); commit('base');
+    const base = sh(dir, 'rev-parse', 'HEAD').trim();
+    await put('k.txt', 'zebra-secret\n'); commit('leak');
+    sh(dir, 'rm', '-q', 'k.txt'); sh(dir, 'commit', '-q', '-m', 'remove');
+    const d = await pushGate(['check', '--base', base], io());
+    assert.equal(d.decision, 'deny');
+    assert.match(d.reason, new RegExp(`history scan refused; run cli\\.js scrub --history ${base}`));
+    const again = await run(['--history', base], io());
+    assert.equal(again.exit, 2, 'the named command reproduces the hit');
+    const d2 = await pushGate(['check'], io());
+    assert.match(d2.reason, /run cli\.js scrub --history - /);
+    await put('h.txt', 'zebra-secret\n'); commit('head hit');
+    const d3 = await pushGate(['check'], io());
+    assert.match(d3.reason, /HEAD scan refused; run cli\.js scrub for the list/);
+  });
+
+  it('ls-tree sizes of - (blob) and BAD are listed as not available locally, not as unexpected output', async () => {
+    const { parseLsTree } = await import('../src/lib/kit/scrub.js');
+    const r = parseLsTree(['100644 blob ' + 'a'.repeat(40) + '       BAD\tgone.txt', '100644 blob ' + 'b'.repeat(40) + '       -\tgone2.txt',
+      '160000 commit ' + 'c'.repeat(40) + '       -\tsub', '100644 blob ' + 'd'.repeat(40) + '       3\tok.txt', ''].join('\0'));
+    assert.deepEqual(r.missing, ['gone.txt', 'gone2.txt']);
+    assert.deepEqual(r.submodules, ['sub']);
+    assert.deepEqual(r.files.map(f => f.path), ['ok.txt']);
+    await put('.claude/kit/scrub-patterns', 'needle\n');
+    await put('a.txt', 'needle\n'); commit();
+    const fake = (args, o) => {
+      if (args.includes('ls-tree')) return { code: 0, stdout: '100644 blob ' + 'a'.repeat(40) + '       BAD\tmissing.txt\0', stderr: '' };
+      return spawnGit(args, o);
+    };
+    const res = await run([], io({ git: fake }));
+    assert.equal(res.exit, 2);
+    assert.equal(res.complete, false);
+    assert.deepEqual(res.not_scanned, [{ file: 'missing.txt', reason: 'object not available locally (partial clone?)' }]);
+  });
+
+  function spawnGit(args, o = {}) {
+    const r = spawnSync('git', args, { cwd: o.cwd, env: o.env, input: o.input, encoding: o.encoding || 'utf-8', maxBuffer: 256 * 1024 * 1024 });
+    return { code: r.status ?? 1, stdout: r.stdout || '', stderr: r.stderr || '' };
+  }
+});

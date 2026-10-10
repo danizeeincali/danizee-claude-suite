@@ -4,10 +4,10 @@
  *
  *   push-gate receipt --verdict pass|fail [--high H] [--medium M] [--low L]
  *                     [--threshold none|high|medium|low] [--incomplete] [--base <ref>]
- *   push-gate check   [--threshold none|high|medium|low] [--base <ref>]
+ *   push-gate check   [--threshold none|high|medium|low] [--base <ref>] [--timeout <ms>]
  *
  * A review writes a receipt keyed by the change id: sha256 of (base commit, tree).
- * Base: --base, else the merge-base with @{upstream}, else none (the whole history is the change).
+ * Base: --base, else the merge-base with @{upstream}, else none (the commits no remote-tracking ref has, else the whole history, is the change for the scrub).
  * At check time the tree is HEAD's (what a push sends). At receipt time it is the tree of the working state as
  * reviewed: HEAD plus uncommitted tracked changes, computed through a temporary index copy (the user's index is
  * never touched). So reviewing uncommitted work, committing it unchanged and pushing matches; any other commit
@@ -19,7 +19,7 @@
  * at or inside the receipts folder is refused (KitExit 2). The same holds with $KIT_RECEIPTS_DIR.
  * Before it looks at receipts, `check` runs the scrub verb (scrub.js) when .claude/kit/scrub-patterns or
  * .claude/kit/scrub-patterns.local exists (found on the file system, before any git is run): it scans the HEAD tree AND
- * every blob in <base>..HEAD (the same base as the change id; no base: all of HEAD's history), so a secret committed
+ * every blob in <base>..HEAD (the same base as the change id; no base: the commits no remote-tracking ref has, else all of HEAD's history), so a secret committed
  * and removed again inside the pushed range is found. Any hit, an incomplete scan (also an incomplete history), or a
  * scrub that cannot run while configured is a deny (exit 2) whatever the receipt says; with no pattern file nothing
  * changes, and no git is run for it. Built from ideas
@@ -36,7 +36,7 @@ import { guardedWrite, guardedRead, resolveGuarded } from './guarded-fs.js';
 import { scrubIfConfigured } from './scrub.js';
 
 export const verb = 'push-gate';
-export const usage = 'cli.js push-gate receipt --verdict pass|fail [--high H --medium M --low L] [--threshold none|high|medium|low] [--incomplete] [--base <ref>] | cli.js push-gate check [--threshold ...] [--base <ref>]';
+export const usage = 'cli.js push-gate receipt --verdict pass|fail [--high H --medium M --low L] [--threshold none|high|medium|low] [--incomplete] [--base <ref>] | cli.js push-gate check [--threshold ...] [--base <ref>] [--timeout <ms>]';
 
 const LEVELS = ['high', 'medium', 'low'];
 const THRESHOLDS = ['none', ...LEVELS];
@@ -140,7 +140,7 @@ export function decide(state, id, threshold = 'none') {
   return block('no review recorded for this change; run /w-review before pushing');
 }
 
-const KNOWN = { receipt: ['verdict', 'high', 'medium', 'low', 'threshold', 'incomplete', 'base'], check: ['threshold', 'base'] };
+const KNOWN = { receipt: ['verdict', 'high', 'medium', 'low', 'threshold', 'incomplete', 'base'], check: ['threshold', 'base', 'timeout'] };
 
 function parse(args) {
   const out = { flags: {} };
@@ -237,17 +237,21 @@ export async function withLock(dir, file, fn, { staleMs = 30000, waitMs = 10000,
  * scan, and when the scrub cannot run while configured (fail closed). null when not configured or when it passes.
  * The result never carries private pattern text or matched text.
  */
-async function scrubBlock(cwd, env, base) {
+async function scrubBlock(cwd, env, base, timeout) {
   let r;
+  let scan = 'scrub';
   try {
-    r = await scrubIfConfigured(cwd, { env });
-    if (r && r.clean) r = await scrubIfConfigured(cwd, { env, history: { base: base || null } });
+    r = await scrubIfConfigured(cwd, { env, timeout });
+    if (r && r.clean) {
+      scan = `scrub --history ${base || '-'}`;
+      r = await scrubIfConfigured(cwd, { env, timeout, history: { base: base || null } });
+    }
   } catch (e) {
     const msg = e instanceof KitExit ? e.message : `unexpected error: ${e.message}`;
     return { decision: 'deny', reason: `the scrub check is configured but could not run: ${msg}`, scrub: { ran: false } };
   }
   if (!r || r.clean) return null;
-  return { decision: 'deny', reason: `the scrub check refused this push: ${r.reason} (run cli.js scrub for the list)`, scrub: { ran: true, hit_count: r.hit_count, complete: r.complete, hits: r.hits.slice(0, 20), not_scanned: r.not_scanned.slice(0, 20) } };
+  return { decision: 'deny', reason: `the scrub check refused this push: ${r.reason} (the ${scan === 'scrub' ? 'HEAD scan' : 'history scan'} refused; run cli.js ${scan}${timeout ? ` --timeout ${timeout}` : ''} for the list)`, scrub: { ran: true, hit_count: r.hit_count, complete: r.complete, hits: r.hits.slice(0, 20), not_scanned: r.not_scanned.slice(0, 20) } };
 }
 
 export async function run(args, io) {
@@ -264,7 +268,8 @@ export async function run(args, io) {
 
   if (cmd === 'check') {
     const state = file ? await readState(file, guard) : null;
-    const blocked = await scrubBlock(git.cwd || io.cwd, env, change.base);
+    if (flags.timeout !== undefined && !/^[1-9]\d{0,9}$/.test(flags.timeout)) throw new KitExit('--timeout must be a positive whole number of milliseconds', 1);
+    const blocked = await scrubBlock(git.cwd || io.cwd, env, change.base, flags.timeout ? Number(flags.timeout) : undefined);
     if (blocked) return { ...blocked, change_id: change.id, threshold, exit: 2 };
     const d = decide(state, change.id, threshold);
     const result = { ...d, change_id: change.id, threshold };
