@@ -36,11 +36,13 @@ describe('graph — packaged end to end', () => {
     assert.equal(spawnSync('git', ['status', '--porcelain', '--', '.claude/kit/cache'], { cwd: pkg.dir, encoding: 'utf-8' }).stdout, '', 'the cache never shows up as a change');
 
     const second = pkg.kit(['graph'], '');
+    assert.equal(second.code, 0, `${second.err} signal=${second.signal}`);
     assert.equal(second.json.stats.parsed, 0);
     assert.equal(second.json.stats.cache_hits, first.json.counts.files);
 
     await put('src/util.js', 'export function helper() { return 2; }\nexport function more() {}\n');
     const third = pkg.kit(['graph', '--json', '--changed', 'src/util.js'], '');
+    assert.equal(third.code, 0, `${third.err} signal=${third.signal} bytes=${third.out.length}`);
     assert.equal(third.json.stats.parsed, 1);
     assert.equal(third.json.stats.cache_hits, first.json.counts.files - 1);
     assert.ok(third.json.edges.some(e => e.from.startsWith('src/main.js::main') && e.to.startsWith('src/util.js::helper') && e.confidence === 'certain'));
