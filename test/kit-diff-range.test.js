@@ -213,7 +213,7 @@ describe('diff-range — the review range as one unified diff', () => {
     const real = defaultGit(dir, {});
     const fake = (stderr, stdout) => Object.assign(async (args, o) => {
       if (args.includes('--no-index')) return { code: 1, stdout, stderr };
-      if (args.includes('--pathspec-from-file=-')) return { code: 129, stdout: '', stderr: 'error: unknown option `pathspec-from-file=-\'\nusage: git add' }; // an old git: the per-file --no-index fallback runs
+      if (args.includes('--pathspec-from-file=-')) return { code: 129, stdout: '', stderr: 'error: unknown option `pathspec-from-file=-\'\nusage: git add [<options>] [--] [<pathspec>...]\n   --pathspec-from-file <file>\n                         read pathspec from file\n   --pathspec-file-nul   with --pathspec-from-file, pathspec elements are separated with NUL character\n' }; // an old git: the per-file --no-index fallback runs
       return real(args, o);
     }, { cwd: dir });
     await put('x.txt', 'x\n');
@@ -688,7 +688,9 @@ describe('diff-range — the review range as one unified diff', () => {
     assert.deepEqual(c.tracked, []);
     assert.deepEqual(c.untracked, []);
     assert.deepEqual(c.skipped_detail, [{ path: 'big.log', reason: 'too_large' }]);
-    assert.ok(usage.includes('--json: always exit 0; read empty and skipped_detail'));
+    assert.ok(usage.includes('--json: exit 0 whenever a summary is printed, empty or not (read empty and skipped_detail); bad input, git failures and refusals keep exit 1/2'));
+    assert.ok(usage.includes('skipped/skipped_detail cover nested repositories and files left out by a cap: too_large, max_untracked'));
+    assert.ok(!/always exit 0|with the skipped nested repositories/.test(usage));
   });
 
   it('a range above graph\'s maxDiffBytes is refused (exit 2) naming the remedies', async () => {
@@ -712,7 +714,7 @@ describe('diff-range — the review range as one unified diff', () => {
     const calls = [];
     const old = Object.assign(async (args, o = {}) => {
       calls.push({ args, env: o.env || {} });
-      if (args.includes('--pathspec-from-file=-')) return { code: 129, stdout: '', stderr: 'error: unknown option `pathspec-from-file=-\'\nusage: git add' };
+      if (args.includes('--pathspec-from-file=-')) return { code: 129, stdout: '', stderr: 'error: unknown option `pathspec-from-file=-\'\nusage: git add [<options>] [--] [<pathspec>...]\n   --pathspec-from-file <file>\n                         read pathspec from file\n   --pathspec-file-nul   with --pathspec-from-file, pathspec elements are separated with NUL character\n' };
       return real(args, o);
     }, { cwd: dir });
     const j = await run(['--base', 'HEAD', '--json'], io({ git: old }));
@@ -721,13 +723,23 @@ describe('diff-range — the review range as one unified diff', () => {
     for (const c of calls) assert.match(c.env.GIT_CONFIG_PARAMETERS, /'core\.fsmonitor='/);
   });
 
+  it('an unwritable TMPDIR falls back to per-file diffs with a note on stderr, exit 0, never a bare EACCES', async () => {
+    await put('a.txt', 'a\n'); commit();
+    await put('u.txt', 'untracked\n');
+    const r = spawnSync(process.execPath, [CLI, 'diff-range', '--base', 'HEAD'], { cwd: dir, encoding: 'utf-8', env: { ...process.env, GIT_DIR: '', GIT_WORK_TREE: '', TMPDIR: path.join(dir, 'no-such-tmp', 'x') } });
+    assert.equal(r.status, 0, r.stderr);
+    assert.deepEqual(parseDiff(r.stdout).map(x => x.path), ['u.txt']);
+    assert.match(r.stderr, /cannot create a temporary index in .*no-such-tmp.*: ENOENT; diffing untracked files one by one/);
+    assert.doesNotMatch(r.stderr, /EACCES.*\n\s+at /);
+  });
+
   it('a tracked file moved by hand to an untracked name shows the delete and the full add on both paths (no rename entry)', async () => {
     const body = Array.from({ length: 50 }, (_, i) => `line ${i}`).join('\n') + '\n';
     await put('old.txt', body); commit();
     await fs.rename(path.join(dir, 'old.txt'), path.join(dir, 'new.txt'));
     const real = defaultGit(dir, {});
     const old = Object.assign(async (args, o = {}) => {
-      if (args.includes('--pathspec-from-file=-')) return { code: 129, stdout: '', stderr: 'error: unknown option `pathspec-from-file=-\'\nusage: git add' };
+      if (args.includes('--pathspec-from-file=-')) return { code: 129, stdout: '', stderr: 'error: unknown option `pathspec-from-file=-\'\nusage: git add [<options>] [--] [<pathspec>...]\n   --pathspec-from-file <file>\n                         read pathspec from file\n   --pathspec-file-nul   with --pathspec-from-file, pathspec elements are separated with NUL character\n' };
       return real(args, o);
     }, { cwd: dir });
     for (const git of [undefined, old]) {
@@ -755,7 +767,7 @@ describe('diff-range — the review range as one unified diff', () => {
     await put('x.txt', 'x\n');
     const real = defaultGit(dir, {});
     const mk = (stderr) => Object.assign(async (args, o = {}) => (args.includes('--pathspec-from-file=-') ? { code: 129, stdout: '', stderr } : real(args, o)), { cwd: dir });
-    const r = await run(['--base', 'HEAD'], io({ git: mk("error: unknown option `sparse'\nusage: git add") }));
+    const r = await run(['--base', 'HEAD'], io({ git: mk("error: unknown option `sparse'\nusage: git add [<options>] [--] [<pathspec>...]\n   --pathspec-from-file <file>\n   --pathspec-file-nul   with --pathspec-from-file, pathspec elements are separated with NUL character\n") }));
     assert.deepEqual(parseDiff(r.raw).map(x => x.path), ['x.txt']);
     await assert.rejects(run(['--base', 'HEAD'], io({ git: mk('fatal: boom') })), (e) => e instanceof KitExit && e.code === 1 && /cannot add the untracked files to the temporary index: fatal: boom/.test(e.message));
   });
@@ -800,7 +812,7 @@ describe('diff-range — the review range as one unified diff', () => {
       if (args.includes('add') && args.includes('--pathspec-from-file=-')) {
         calls.add.push(args.includes('--sparse'));
         if (addFail) return { code: 128, stdout: '', stderr: addFail };
-        if (rejectSparse && args.includes('--sparse')) return { code: 129, stdout: '', stderr: "error: unknown option `sparse'\nusage: git add" };
+        if (rejectSparse && args.includes('--sparse')) return { code: 129, stdout: '', stderr: "error: unknown option `sparse'\nusage: git add [<options>] [--] [<pathspec>...]\n   --pathspec-from-file <file>\n                         read pathspec from file\n   --pathspec-file-nul   with --pathspec-from-file, pathspec elements are separated with NUL character\n" };
       }
       if (args.includes('--no-renames')) calls.diff++;
       return real(args, o);

@@ -59,7 +59,7 @@
  *
  * Exit: 0 printed, 3 empty (nothing printed), 1 bad input or git failed, 2 refused. An empty diff whose range skipped any
  * `too_large` or `max_untracked` file is NOT empty: exit 1 naming the files, reasons and the flags that raise the caps (3 stays for
- * a range with nothing, or only a skipped nested repository, which is not a change of this repository). --json always exits 0 (read `empty` and `skipped_detail`).
+ * a range with nothing, or only a skipped nested repository, which is not a change of this repository). --json exits 0 whenever a summary is printed, empty or not (read `empty` and `skipped_detail`); bad input, git failures and refusals keep exit 1/2.
  * The temporary index runs with core.splitIndex=false (no sharedindex file in the real .git), `add -N` (plus `--sparse`, git 2.34+, only when core.sparseCheckout is true, retried once without it if git rejects it; an untracked file
  * outside a sparse-checkout cone is still listed), and the diff with --no-renames (an intent-to-add file is always a new file).
  */
@@ -79,8 +79,8 @@ const driversFromKeys = (keys) => driversFromConfig(keys.map(k => `${k}\n`).join
 export const verb = 'diff-range';
 export const usage = 'cli.js diff-range [--dir <repo>] [--base <ref>] [--no-untracked] [--base-only] [--json] [--timeout <ms>] [--max-untracked <n>] [--max-file-bytes <n>]   (prints the review range as one raw unified diff: '
   + 'tracked changes from the base to the working tree plus untracked files; base = --base, else the merge base with the upstream, else the empty tree; '
-  + '--no-untracked leaves untracked files out, --base-only prints the resolved base, --json prints the summary (with the skipped nested repositories); --timeout <ms> stops any git call after that long (default 60000); --max-untracked <n> (default 20000) and --max-file-bytes <n> (default 8388608) leave the extra or oversized untracked files out (listed in skipped); '
-  + 'exit 0 printed, 3 empty (nothing at all, or only skipped nested repositories), 1 bad input or git failed or files skipped by a cap left the diff empty, 2 refused; --json: always exit 0; read empty and skipped_detail)';
+  + '--no-untracked leaves untracked files out, --base-only prints the resolved base, --json prints the summary (skipped/skipped_detail cover nested repositories and files left out by a cap: too_large, max_untracked); --timeout <ms> stops any git call after that long (default 60000); --max-untracked <n> (default 20000) and --max-file-bytes <n> (default 8388608) leave the extra or oversized untracked files out (listed in skipped); '
+  + 'exit 0 printed, 3 empty (nothing at all, or only skipped nested repositories), 1 bad input or git failed or files skipped by a cap left the diff empty, 2 refused; --json: exit 0 whenever a summary is printed, empty or not (read empty and skipped_detail); bad input, git failures and refusals keep exit 1/2)';
 
 const BOOL_FLAGS = ['no-untracked', 'base-only', 'json', 'help'];
 const VALUE_FLAGS = ['dir', 'base', 'timeout', 'max-untracked', 'max-file-bytes'];
@@ -195,6 +195,8 @@ export function gitQuote(name) {
 // With core.autocrlf / eol=crlf git warns on stderr that LF will become CRLF; the diff on stdout is still right.
 // git's option-parse failure for the options add -N is given (not any stderr that merely mentions "sparse" or "usage:").
 const OPTION_FAIL = /unknown (option|switch) [`'"]?-*(sparse|pathspec-from-file|pathspec-file-nul)/i;
+// Only git's own error line decides: the usage body that follows names --pathspec-from-file even when only --sparse was rejected.
+const firstError = (stderr) => ((stderr || '').split('\n').find(l => /^(error|fatal):/i.test(l)) || '');
 const BENIGN = /^warning: in the working copy of /;
 
 export async function run(args, io = {}) {
@@ -284,17 +286,25 @@ export async function run(args, io = {}) {
   };
   if (candidates.length) {
     const [real] = await gitPaths(git, top, [{ gitPath: 'index' }], 'cannot find the index');
-    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'diff-range-index-'));
+    let tmpDir = null;
+    let tmp = null;
     try {
-      const tmp = path.join(tmpDir, 'index');
-      try { await fs.copyFile(real, tmp); } catch (e) { if (e.code !== 'ENOENT') throw new KitExit(`cannot copy the index: ${e.message}`, 1); }
+      tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'diff-range-index-'));
+      tmp = path.join(tmpDir, 'index');
+      try { await fs.copyFile(real, tmp); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+    } catch (e) {
+      note(`cannot create a temporary index in ${os.tmpdir()}: ${e.code || e.message}; diffing untracked files one by one`);
+      if (tmpDir) await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+      tmpDir = null;
+    }
+    if (tmpDir) try {
       const env = { GIT_INDEX_FILE: tmp, GIT_LITERAL_PATHSPECS: '1' };
       const input = Buffer.from(`${candidates.join('\0')}\0`);
       const addWith = (sparse) => git(['-c', 'core.safecrlf=false', '-c', 'core.splitIndex=false', 'add', '-N', ...(sparse ? ['--sparse'] : []), '--pathspec-from-file=-', '--pathspec-file-nul'], { env, input });
       // --sparse (git 2.34+) only where the config says the repository is a sparse checkout; older gits reject it, so retry once without it.
       const sparse = cfg.some(([, k, v]) => k.toLowerCase() === 'core.sparsecheckout' && truthy(v));
       let add = await addWith(sparse);
-      if (sparse && add.code !== 0 && OPTION_FAIL.test(add.stderr || '') && /unknown (option|switch) [`'"]?-*sparse/i.test(add.stderr || '') && !/pathspec-/i.test(add.stderr || '')) add = await addWith(false);
+      if (sparse && add.code !== 0 && /unknown (option|switch) [`'"]?-*sparse/i.test(firstError(add.stderr)) && !/pathspec-/i.test(firstError(add.stderr))) add = await addWith(false);
       if (add.code === 0) {
         tracked = await diffBase({ env: { GIT_INDEX_FILE: tmp } }, `cannot diff the range (tracked changes plus ${candidates.length} untracked files)`);
         parts = [tracked];
