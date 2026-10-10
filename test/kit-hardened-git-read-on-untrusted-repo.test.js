@@ -1746,7 +1746,8 @@ describe('safe-git — review round 10 regressions (alternates, network paths, m
     assert.equal((await safeGit(r, ['rev-parse', 'HEAD'])).code, 0);
     await fs.rm(alt);
     await fs.symlink(path.join(root, 'nowhere'), alt);
-    await assert.rejects(safeGit(r, ['rev-parse', 'HEAD']), (e) => e.code === 2 && /not a regular file/.test(e.message));
+    // refused either as a symlink under objects/ (round 11) or as a non-regular alternates file
+    await assert.rejects(safeGit(r, ['rev-parse', 'HEAD']), (e) => e.code === 2 && /is a symlink|not a regular file/.test(e.message));
   });
 
   it('a gitfile or commondir naming a network path (//host/share, \\\\host\\share) is refused before anything opens it', async () => {
@@ -1779,7 +1780,7 @@ describe('safe-git — review round 10 regressions (alternates, network paths, m
     for (const n of ['drv0', 'drv1', 'drv2']) assert.ok(args.includes(`filter.${n}.clean=`), n);
   });
 
-  it('an index-only .gitattributes that is not UTF-8 fails closed (exit 1) instead of shifting the parse', async () => {
+  it('an index-only .gitattributes that is not UTF-8 is read as exact bytes: the files after it keep their drivers', async () => {
     const r = await mkRepo('bad-utf8');
     await fs.mkdir(path.join(r, 'x'));
     await fs.mkdir(path.join(r, 'y'));
@@ -1789,7 +1790,8 @@ describe('safe-git — review round 10 regressions (alternates, network paths, m
     sh(r, ['commit', '-q', '-m', 'a']);
     await fs.rm(path.join(r, 'x'), { recursive: true });
     await fs.rm(path.join(r, 'y'), { recursive: true });
-    await assert.rejects(safeGitConfig(r), (e) => e instanceof KitExit && e.code === 1 && /not valid UTF-8/.test(e.message));
+    const args = await safeGitConfig(r);
+    assert.ok(args.includes('filter.later.clean='), 'the driver in the file after the non-UTF-8 one is found');
   });
 
   it('a timeout message names the git subcommand, not the -c overrides', async () => {
@@ -1800,5 +1802,73 @@ describe('safe-git — review round 10 regressions (alternates, network paths, m
       catch (e) { console.log(e.message); }`], { encoding: 'utf-8', env });
     if (/no-timeout/.test(r.stdout)) return; // git answered within 1 ms: nothing to check on this machine
     assert.match(r.stdout, /^git cat-file took longer than 1 ms/);
+  });
+});
+
+describe('safe-git — review round 11 regressions (symlinked objects, exact bytes, conflicted attributes, --batch)', () => {
+  let root;
+  before(async () => { root = await fs.mkdtemp(path.join(os.tmpdir(), 'safe-git-r11-')); });
+  after(() => fs.rm(root, { recursive: true, force: true }));
+  const mkRepo = async (name, file = 'a.txt', text = `${name}\n`) => {
+    const d = path.join(root, name);
+    await fs.mkdir(d, { recursive: true });
+    sh(d, ['init', '-q', '-b', 'main', '.']);
+    await fs.writeFile(path.join(d, file), text);
+    sh(d, ['add', file]);
+    sh(d, ['commit', '-q', '-m', name]);
+    return d;
+  };
+
+  it('a symlinked objects/ or objects/pack (another repo\'s objects) is refused before git runs; plain git would print its secret', async () => {
+    const other = await mkRepo('secret-src', 's.txt', 'TOPSECRET_MARKER\n');
+    sh(other, ['gc', '-q']);
+    for (const which of ['objects', 'pack']) {
+      const r = await mkRepo(`linked-${which}`);
+      const target = which === 'objects' ? path.join(r, '.git', 'objects') : path.join(r, '.git', 'objects', 'pack');
+      await fs.rm(target, { recursive: true, force: true });
+      await fs.symlink(which === 'objects' ? path.join(other, '.git', 'objects') : path.join(other, '.git', 'objects', 'pack'), target);
+      const plain = spawnSync('git', ['cat-file', '--batch-all-objects', '--batch'], { cwd: r, encoding: 'utf-8', env: CLEAN_ENV, input: '' });
+      assert.match(plain.stdout, /TOPSECRET_MARKER/, `control (${which})`);
+      let ran = false;
+      const git = (a, o) => { ran = true; return defaultGitRunner(a, o); };
+      await assert.rejects(safeGit(r, ['cat-file', '--batch-all-objects', '--batch'], { git }),
+        (e) => e instanceof KitExit && e.code === 2 && /is a symlink/.test(e.message), which);
+      assert.equal(ran, false);
+    }
+  });
+
+  it('crafted invalid bytes in an index-only .gitattributes cannot hide a driver (bytes are parsed exactly)', async () => {
+    const r = await mkRepo('crafted');
+    await fs.mkdir(path.join(r, 'x'));
+    await fs.writeFile(path.join(r, 'x', '.gitattributes'), Buffer.concat([Buffer.alloc(7, 0xff), Buffer.from('# x\n* filter=evil\n')]));
+    sh(r, ['add', '-A']);
+    sh(r, ['commit', '-q', '-m', 'c']);
+    await fs.rm(path.join(r, 'x'), { recursive: true });
+    assert.ok((await safeGitConfig(r)).includes('filter.evil.clean='));
+  });
+
+  it('during a conflicted merge, a .gitattributes missing from the work tree is read from stage 2, as git does', async () => {
+    const r = await mkRepo('conflict', '.gitattributes', '* filter=base\n');
+    sh(r, ['checkout', '-q', '-b', 'side']);
+    await fs.writeFile(path.join(r, '.gitattributes'), '* filter=theirs3\n');
+    sh(r, ['commit', '-q', '-am', 'side']);
+    sh(r, ['checkout', '-q', 'main']);
+    await fs.writeFile(path.join(r, '.gitattributes'), '* filter=ours2\n');
+    sh(r, ['commit', '-q', '-am', 'main']);
+    sh(r, ['merge', '-q', 'side']);
+    await fs.rm(path.join(r, '.gitattributes'));
+    assert.match(sh(r, ['check-attr', 'filter', 'a.txt']).stdout, /ours2/, 'control: git reads stage 2');
+    assert.ok((await safeGitConfig(r)).includes('filter.ours2.clean='));
+  });
+
+  it('cat-file --batch-all-objects --batch reads no stdin, so it runs from a terminal; --batch alone still needs --input -', async () => {
+    const r = await mkRepo('allobj');
+    const head = sh(r, ['rev-parse', 'HEAD']).stdout.trim();
+    assert.ok(!readsStdin(['cat-file', '--batch-all-objects', '--batch']));
+    assert.ok(readsStdin(['cat-file', '--batch']));
+    assert.ok(readsStdin(['cat-file', '--batch-c']), 'an abbreviation still counts');
+    const out = await run(['--', 'cat-file', '--batch-all-objects', '--batch'], { cwd: r, env: CLEAN_ENV, stdin: async () => '', stdinIsTTY: true });
+    assert.equal(out.exit, 0);
+    assert.match(out.stdout, new RegExp(`${head} commit`));
   });
 });

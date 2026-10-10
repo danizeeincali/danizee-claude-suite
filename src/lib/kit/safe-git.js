@@ -23,6 +23,11 @@
  *       with the worktree's own refs) and packed-refs, copied at call time — regular files only, symlinks below refs/
  *       skipped. A refs/ (or worktree refs/) that is ITSELF a symlink is refused (KitExit 2): plain git would follow
  *       it and read refs from a folder outside the repository, and copying it could pull in any tree (/usr, $HOME);
+ *     - objects: the real objects folder (GIT_OBJECT_DIRECTORY). Object alternates, and a symlinked objects/ or any
+ *       symlink inside it (pack, info, loose folders and files), are refused (KitExit 2): they would read another
+ *       repository's objects. A .git file (gitdir:) or commondir is followed like git follows it — that is how
+ *       linked worktrees work — so a folder whose .git names another repository reads that repository; network
+ *       paths (//host, \\host) there are refused;
  *     - shallow, a copy of the index (and sharedindex.* files), info/exclude and info/attributes (attributes cannot
  *       name a program when no config defines a driver; work-tree .gitattributes stay as they are).
  *   COPY LIMITS. Every copied file is lstat'ed, must be a regular file, and is copied with a bounded read that stops at
@@ -120,7 +125,9 @@ export function readsStdin(args) {
     if (!a.startsWith('--') || a === '--') return false;
     const name = a.slice(2).split('=')[0];
     if (!name || name === 'batch-all-objects') return false;
-    return STDIN_LONG.some((o) => o.startsWith(name) && !(allObjects && (o === 'batch' || o === 'batch-check')));
+    // An exact option name means that option only (--batch is not an abbreviation of --batch-command).
+    const candidates = STDIN_LONG.includes(name) ? [name] : STDIN_LONG.filter((o) => o.startsWith(name));
+    return candidates.some((o) => !(allObjects && (o === 'batch' || o === 'batch-check')));
   });
 }
 
@@ -227,21 +234,24 @@ function gitCommandName(args) {
 }
 
 /**
- * Default runner: `git(args, { cwd, env, input, timeout })` → { code, stdout, stderr }. stdin is closed without input.
+ * Default runner: `git(args, { cwd, env, input, timeout, binary })` → { code, stdout, stderr }. stdin is closed without
+ * input. `binary: true` returns stdout as a Buffer (exact bytes, for cat-file --batch parsing).
  * git is spawned by its absolute path (resolveGit), never by bare name.
  */
-export function defaultGitRunner(args, { cwd, env, input, timeout } = {}) {
+export function defaultGitRunner(args, { cwd, env, input, timeout, binary = false } = {}) {
   const hasInput = input !== undefined && input !== null;
   const r = spawnSync(resolveGit(env || process.env), args, {
-    cwd, env, encoding: 'utf-8', maxBuffer: 256 * 1024 * 1024, timeout,
-    input: hasInput ? input : undefined,
+    cwd, env, maxBuffer: 256 * 1024 * 1024, timeout,
+    ...(binary ? {} : { encoding: 'utf-8' }),
+    input: hasInput ? (binary ? Buffer.from(String(input), 'utf-8') : input) : undefined,
     stdio: [hasInput ? 'pipe' : 'ignore', 'pipe', 'pipe']
   });
   const cmd = gitCommandName(args);
   if (r.error?.code === 'ETIMEDOUT') throw new KitExit(`git ${cmd} took longer than ${timeout} ms and was stopped (raise it with --timeout <ms>)`, GIT_FAILED_EXIT);
   if (r.error?.code === 'ENOBUFS') throw new KitExit(`git ${cmd} wrote more than 256 MiB of output; narrow the command`, GIT_FAILED_EXIT);
   if (r.error) throw new KitExit(`cannot run git: ${r.error.message}`, 1);
-  return { code: r.status ?? 1, stdout: r.stdout || '', stderr: r.stderr || '' };
+  const stderr = binary ? (r.stderr ? r.stderr.toString('utf-8') : '') : (r.stderr || '');
+  return { code: r.status ?? 1, stdout: r.stdout || (binary ? Buffer.alloc(0) : ''), stderr };
 }
 
 // ---------------------------------------------------------------- small fs helpers
@@ -487,32 +497,31 @@ async function workTreeAttributes(exec, top) {
   }
   if (!missing.length) return out;
   // Two git processes for all of them, however many (a sparse checkout can leave thousands outside the cone).
-  const check = await exec(['cat-file', '--batch-check'], { input: missing.map((rel) => `:${rel}\n`).join('') });
+  // Ask for stage 0 and, during a conflicted merge, stage 2 ("ours", which git reads then) of each one.
+  const specs = missing.flatMap((rel) => [`:${rel}`, `:2:${rel}`]);
+  const check = await exec(['cat-file', '--batch-check'], { input: specs.map((x) => `${x}\n`).join('') });
   if (check.code !== 0) throw new KitExit(`cannot read the index copies of .gitattributes in ${top}: ${(check.stderr || '').trim() || 'git cat-file failed'}`, 1);
+  const lines = String(check.stdout).split('\n');
   const found = [];
-  String(check.stdout).split('\n').slice(0, missing.length).forEach((line, i) => {
-    const m = /^[0-9a-f]+ blob (\d+)$/.exec(line);
-    if (!m) return; // not in the index (untracked and gone): git reads nothing either
-    if (Number(m[1]) > MAX_ATTR_BYTES) throw refuse(`${missing[i]} in the index is larger than ${MAX_ATTR_BYTES} bytes; its filter drivers cannot be checked`);
-    found.push({ rel: missing[i], size: Number(m[1]) });
+  missing.forEach((rel, i) => {
+    const hit = [lines[2 * i], lines[2 * i + 1]].map((l, k) => ({ m: /^[0-9a-f]+ blob (\d+)$/.exec(l || ''), spec: specs[2 * i + k] })).find((x) => x.m);
+    if (!hit) return; // not in the index (untracked and gone): git reads nothing either
+    if (Number(hit.m[1]) > MAX_ATTR_BYTES) throw refuse(`${rel} in the index is larger than ${MAX_ATTR_BYTES} bytes; its filter drivers cannot be checked`);
+    found.push({ rel, spec: hit.spec, size: Number(hit.m[1]) });
   });
   if (!found.length) return out;
-  const batch = await exec(['cat-file', '--batch'], { input: found.map((f) => `:${f.rel}\n`).join('') });
+  // Exact bytes (binary: true): sizes are byte counts, so the stream is parsed without any decoding first.
+  const batch = await exec(['cat-file', '--batch'], { input: found.map((f) => `${f.spec}\n`).join(''), binary: true });
   if (batch.code !== 0) throw new KitExit(`cannot read the index copies of .gitattributes in ${top}: ${(batch.stderr || '').trim() || 'git cat-file failed'}`, 1);
-  const buf = Buffer.from(String(batch.stdout), 'utf-8');
-  // The runner decodes stdout as UTF-8; a blob that is not valid UTF-8 changes its byte length and would shift every
-  // header after it. git ends each blob with a newline, so check that byte sits exactly where the size says and fail
-  // closed (exit 1) rather than parse a shifted stream.
+  const buf = Buffer.isBuffer(batch.stdout) ? batch.stdout : Buffer.from(String(batch.stdout), 'utf-8');
   let at = 0;
   for (const f of found) {
     const nl = buf.indexOf(0x0a, at);
-    if (nl < 0) break;
-    const m = /^[0-9a-f]+ blob (\d+)$/.exec(buf.subarray(at, nl).toString('utf-8'));
-    if (!m) throw new KitExit(`unexpected git cat-file --batch output for ${f.rel}`, 1);
-    const size = Number(m[1]);
-    if (buf[nl + 1 + size] !== 0x0a) throw new KitExit(`${f.rel} in the index is not valid UTF-8 text; its attributes cannot be checked`, 1);
-    out.push({ rel: f.rel, text: buf.subarray(nl + 1, nl + 1 + size).toString('utf-8') });
-    at = nl + 1 + size + 1;
+    const m = nl < 0 ? null : /^[0-9a-f]+ blob (\d+)$/.exec(buf.subarray(at, nl).toString('latin1'));
+    if (!m || Number(m[1]) !== f.size || buf[nl + 1 + f.size] !== 0x0a) throw new KitExit(`unexpected git cat-file --batch output for ${f.rel}`, 1);
+    // git matches attribute patterns and names as bytes; latin1 keeps one char per byte, so nothing is dropped.
+    out.push({ rel: f.rel, text: buf.subarray(nl + 1, nl + 1 + f.size).toString('latin1') });
+    at = nl + 1 + f.size + 1;
   }
   return out;
 }
@@ -586,7 +595,7 @@ export function checkRepoRoot(loc) {
 async function inspect(dir, ctx) {
   const loc = await locateRepo(dir);
   checkRepoRoot(loc);
-  await checkNoAlternates(loc);
+  await checkNoAlternates(loc, ctx.limits);
   const mainCfg = path.join(loc.commonDir, 'config');
   const fmt = repoFormat(await readConfigFile(ctx, mainCfg));
   const files = [mainCfg];
@@ -603,7 +612,8 @@ async function inspect(dir, ctx) {
  * the user's credentials). A clone never carries this file; a copied or unpacked repo can. Refuse (KitExit 2) when it
  * names anything, before git runs; an alternates file that is not a regular file is refused too.
  */
-async function checkNoAlternates(loc) {
+async function checkNoAlternates(loc, limits) {
+  await checkObjectsNotLinked(loc, limits);
   const file = path.join(loc.commonDir, 'objects', 'info', 'alternates');
   const st = await lstatOrNull(file);
   if (!st) return;
@@ -612,6 +622,29 @@ async function checkNoAlternates(loc) {
   const text = await readSmall(file);
   const named = String(text).split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
   if (named.length) throw refuse(`${file} borrows objects from ${JSON.stringify(named[0]).slice(0, 120)}${named.length > 1 ? ` and ${named.length - 1} more` : ''}; safe-git does not follow object alternates (they can point anywhere, including network shares)`);
+}
+
+/**
+ * A symlinked objects/ (or objects/pack, objects/info, a loose-object folder, a pack or loose object file) would make
+ * git read another repository's objects, as alternates would: refused (KitExit 2), like a symlinked refs/. The walk is
+ * capped by limits.entries.
+ */
+async function checkObjectsNotLinked(loc, limits) {
+  const objects = path.join(loc.commonDir, 'objects');
+  const linked = (p) => refuse(`${p} is a symlink; git would read objects from wherever it points, so safe-git refuses to read this repository`);
+  if ((await lstatOrNull(objects))?.isSymbolicLink()) throw linked(objects);
+  let seen = 0;
+  const walk = async (dir, depth) => {
+    let entries;
+    try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      if (++seen > limits.entries) throw refuse(`more than ${limits.entries} entries under ${objects}; refusing to check them`);
+      const p = path.join(dir, e.name);
+      if (e.isSymbolicLink()) throw linked(p);
+      if (depth === 0 && e.isDirectory()) await walk(p, 1);
+    }
+  };
+  await walk(objects, 0);
 }
 
 /** A network path (//host/share or \\host\share): git would open it over SMB/NFS. */
