@@ -260,3 +260,12 @@ describe('/w-bbs — the surfaces and targets steps (marathon 2026-10-10-bbs-int
     assert.match(h, /integration plan path/);
   });
 });
+
+describe('/w-bbs — integration-gate review r6 regressions', () => {
+  it('only a power that lands only in a workflow waits for the owner to name their workflows; the targets helper is checked on sonnet', () => {
+    const c = commands['w-bbs'].content;
+    assert.match(c, /no `rebuild` or `use` of a power that lands only in a workflow is recorded until that answer is/);
+    assert.match(c, /A power with a code-surface target .* does not need it\./);
+    assert.match(c, /probes and the targets helper on `sonnet`/);
+  });
+});

@@ -131,7 +131,7 @@ If the fetch JSON says `known: true` (a repository or URL source is only recogni
 `node .claude/helpers/bbs/cli.js usage [--run <id>]` counts the workflows the owner actually ran in the last 90 days (`--days <n>`) from their local Claude Code session history (`~/.claude/projects/` by default; `usage.roots` in `.claude/bbs.json` or `--root <dir>` to change it). A typed `/mt` and the Skill hops it triggers are one use of `w-marathon`; aliases fold into their workflow. Only names and counts are kept: no message text, no arguments, no network.
 
 - `evidence: transcripts` → print the top workflows from `top`.
-- `evidence: none` (a fresh machine, a cloud session) → say so, with the note. Targets are then proposed against every installed workflow, unverified; the verdict question also asks the owner which workflows they use (`workflows=a,b`), and no `rebuild` or `use` is recorded until that answer is (`cli.js usage --force --workflows <a,b>`).
+- `evidence: none` (a fresh machine, a cloud session) → say so, with the note. Targets are then proposed against every installed workflow, unverified; the verdict question also asks the owner which workflows they use (`workflows=a,b`), and no `rebuild` or `use` of a power that lands only in a workflow is recorded until that answer is (`cli.js usage --force --workflows <a,b>`). A power with a code-surface target (a page, endpoint, job, model step, command, flag or library entry) does not need it.
 - The owner may always name their own list: `cli.js usage --force --workflows <a,b>`.
 
 **REQUIRED OUTPUT:** `evidence` and the `top` line.
@@ -231,7 +231,7 @@ On a machine without a sandbox `use` is removed from every row with the reason; 
 - [ ] Usage counted from session history or named by the owner; never assumed
 - [ ] Surfaces found in the code (or named by the owner); never assumed
 - [ ] Every power has targets (or `[]`); the verdict table showed Lands in; no rebuild or use without a place a user reaches it
-- [ ] Helpers returned JSON only; inventory and map on `haiku`, probes on `sonnet`
+- [ ] Helpers returned JSON only; inventory and map on `haiku`, probes and the targets helper on `sonnet`
 - [ ] Verdict table shown; exactly one AskUserQuestion
 - [ ] Marathon run created and resume line printed — or, with no approved power, the note and memos printed
 - [ ] `/bc` run; nothing pushed

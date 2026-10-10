@@ -6,7 +6,7 @@
  *             fenced block) inside the approved step: from that step's heading to the next heading of the same or a
  *             higher level; a target whose step was left for the integration stream (step null) may run it anywhere.
  *   any other surface (ui, api, job, model, cli, feature, lib) — two things, both required:
- *     linked  the surface file uses the power's entry: it imports the entry module and/or names the entry symbol
+ *     linked  the surface file uses the power's entry: it imports the entry module (when one is given) and calls, renders or passes the entry symbol outside the imports; a bare mention does not count
  *     reached a reach test recorded for that surface goes in through it (its text names the surface's anchor or
  *             imports the surface file) and passes when it is run now. A test that only calls the power is not a
  *             reach test: it proves the power works, not that a user can get to it.
@@ -219,7 +219,6 @@ function runReach(projectDir, command, cache, timeoutMs) {
   // `node --test` report to a parent and exit 0) must not turn a failing test into a pass
   const env = reachEnv(process.env);
   const res = new Promise((resolve) => {
-    // its own process group, so a timeout stops the runner and every process it started, not only the shell
     const win = process.platform === 'win32';
     const { argv } = parseCommand(command);
     // no shell: the argv is the program and its arguments, nothing in it is interpreted. POSIX: its own process group,
@@ -434,7 +433,10 @@ export async function writeDelivered(projectDir, { run, verbs = {}, cfg = DEFAUL
   const integration = await readIntegration(projectDir, { run, cfg });
   const rows = [];
   for (const p of handoff.powers || []) rows.push(await powerWiring(projectDir, { run, name: p.name, integration, verbs, cfg, runTests }));
-  const md = [`# What you got — bbs run ${run}`, '', `Written ${now().toISOString()}. Every power below was built from ${handoff.source?.ref ? 'the source this run audited' : 'this run'} and wired into the places you approved at the verdict.`, ''];
+  const wiredCount = rows.filter(r => r.wired).length;
+  const from = handoff.source?.ref ? 'from ideas found in the source this run audited (a rebuild is written from the idea, never from its code)' : 'in this run';
+  const state = wiredCount === rows.length ? `All ${rows.length} are wired into the places you approved at the verdict.` : `${wiredCount} of ${rows.length} are wired into the places you approved at the verdict; the rest say what is missing.`;
+  const md = [`# What you got — bbs run ${run}`, '', `Written ${now().toISOString()}. The powers below were built ${from}. ${state}`, ''];
   for (const r of rows) {
     md.push(`## ${r.name}${r.wired ? '' : ' — NOT fully wired'}`, '');
     if (what.get(r.name)) md.push(what.get(r.name), '');

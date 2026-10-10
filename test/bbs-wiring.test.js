@@ -968,3 +968,19 @@ describe('integration-gate review r4 regressions', () => {
     } finally { delete process.env.MY_SECRET; }
   });
 });
+
+describe('integration-gate review r6 regressions', () => {
+  let dir, rd;
+  before(async () => { dir = await codeProject('bbs-r6-'); rd = await codeRun(dir, 'r6'); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('delivered.md opens with how many powers are wired, and never says a rebuild was built from the source', async () => {
+    await writeDelivered(dir, { run: 'r6', now: () => new Date('2026-10-10T12:00:00Z') });
+    const md = await fs.readFile(path.join(rd, 'delivered.md'), 'utf-8');
+    assert.ok(md.includes('The powers below were built from ideas found in the source this run audited (a rebuild is written from the idea, never from its code). 0 of 1 are wired into the places you approved at the verdict; the rest say what is missing.'));
+    assert.ok(!md.includes('Every power below'));
+    await recordIntegration(dir, { run: 'r6', power: 'redact', entry: ENTRY, reach: ['api:server/routes.js@/api/upload=reach/ok.test.js::node reach/pass.js reach/ok.test.js'] });
+    await writeDelivered(dir, { run: 'r6', now: () => new Date('2026-10-10T12:00:00Z') });
+    assert.ok((await fs.readFile(path.join(rd, 'delivered.md'), 'utf-8')).includes('All 1 are wired into the places you approved at the verdict.'));
+  });
+});

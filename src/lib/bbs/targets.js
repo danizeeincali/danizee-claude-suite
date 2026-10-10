@@ -207,8 +207,10 @@ export async function recordTargets(projectDir, { run, input, force = false, now
 }
 
 /**
- * The owner's word from the verdict answer: `<power>@<workflow>[,<workflow>]` sets that power's workflows. A workflow
- * the power already targets keeps its step; a new one is stored with step null, for the integration stream to pick.
+ * The owner's word from the verdict answer: `<power>@<where>[,<where>]` sets where that power lands; each item is a
+ * workflow or a code surface `<kind>:<file>[#<anchor>]` (the file must exist). A workflow the power already targets
+ * keeps its step and a new one is stored with step null; a surface named without an anchor is stored with at null.
+ * Either way the integration stream picks the place.
  * The owner may name any installed workflow, used or not. An empty list (`<power>@`) means it lands nowhere.
  */
 export async function setOwnerTargets(projectDir, { run, set, force = false, now = () => new Date(), cfg = DEFAULT_CONFIG }) {
