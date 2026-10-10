@@ -109,10 +109,13 @@
     },
     {
       "name": "isolated-tool-free-wording-judge",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/isolated-tool-free-wording-judge.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract tests and module",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-isolated-tool-free-wording-judge",
+      "phase": "build",
+      "base": "d92dff8d935be6c53df9971d8d8c17456fb90358"
     }
   ],
   "handoff": {

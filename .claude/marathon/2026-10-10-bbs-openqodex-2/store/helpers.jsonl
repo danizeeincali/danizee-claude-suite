@@ -160,3 +160,4 @@
 {"helper_id":"743067de-72af-492c-8650-fbee6c8a90dd","tokens":91830,"outcome":"green","event":"done","id":"41cc6185-0d12-4779-8d91-df1311be6d95","ts":"2026-10-10T13:19:48.284Z"}
 {"role":"review","model":"opus","stream":"planted-bug-review-scoring","budget":150000,"event":"spawn","id":"c29cbc8e-a261-4b9a-b379-8eed1c5a9274","ts":"2026-10-10T13:22:21.189Z"}
 {"helper_id":"c29cbc8e-a261-4b9a-b379-8eed1c5a9274","tokens":85639,"outcome":"green","event":"done","id":"e9ea241f-d0df-45d2-a7f6-4559248c4f3e","ts":"2026-10-10T13:24:04.391Z"}
+{"role":"build","model":"sonnet","stream":"isolated-tool-free-wording-judge","budget":150000,"event":"spawn","id":"84c7114f-2520-45e0-9f18-ffa0f7a436dc","ts":"2026-10-10T13:28:15.712Z"}
