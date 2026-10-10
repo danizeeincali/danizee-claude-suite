@@ -17,3 +17,5 @@
 {"role":"build","model":"opus","stream":"diff-range","budget":150000,"event":"spawn","id":"dc26a497-6d74-4ce3-9caa-e9944c3bee9f","ts":"2026-10-10T17:05:48.222Z"}
 {"helper_id":"dc26a497-6d74-4ce3-9caa-e9944c3bee9f","tokens":40000,"outcome":"green","event":"done","id":"e2111aca-a8e2-468d-a7f9-362e7d3e900b","ts":"2026-10-10T17:14:26.595Z"}
 {"role":"review","model":"opus","stream":"diff-range","budget":150000,"event":"spawn","id":"b9814fda-2f42-4666-a216-4e4cfa45dfbc","ts":"2026-10-10T17:14:27.137Z"}
+{"helper_id":"b9814fda-2f42-4666-a216-4e4cfa45dfbc","tokens":75000,"outcome":"green","event":"done","id":"986d32b7-7b62-42f6-9441-ae525fda25f9","ts":"2026-10-10T17:22:08.191Z"}
+{"role":"build","model":"sonnet","stream":"diff-range","budget":150000,"event":"spawn","id":"44e2d245-2626-4207-82ec-79976f95b0dd","ts":"2026-10-10T17:22:09.517Z"}
