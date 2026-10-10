@@ -1,0 +1,61 @@
+{
+  "streams": [
+    {
+      "name": "_meta",
+      "state": "meta",
+      "isolation": "worktree",
+      "created": "2026-10-10T16:21:26.598Z",
+      "tasks": []
+    },
+    {
+      "name": "diff-range",
+      "state": "queued",
+      "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
+      "next": "worktree, write the verb contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "pt",
+      "state": "queued",
+      "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
+      "next": "worktree, wire CP6 Review and the closing step",
+      "tasks": []
+    },
+    {
+      "name": "bc",
+      "state": "queued",
+      "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
+      "next": "worktree, wire scrub before commits and push-gate check before Phase 3",
+      "tasks": []
+    },
+    {
+      "name": "marathon",
+      "state": "queued",
+      "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
+      "next": "worktree, wire 4.5, 4.8 and CP6",
+      "tasks": []
+    },
+    {
+      "name": "bbs",
+      "state": "queued",
+      "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
+      "next": "worktree, safe-git in helper briefs, redact at probe, scrub at compound",
+      "tasks": []
+    },
+    {
+      "name": "sweep-commits",
+      "state": "queued",
+      "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
+      "next": "worktree, wire the eight commit-and-push workflows",
+      "tasks": []
+    },
+    {
+      "name": "sweep-foreign-and-logs",
+      "state": "queued",
+      "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
+      "next": "worktree, wire the six foreign-repo and log workflows",
+      "tasks": []
+    }
+  ],
+  "handoff": null
+}
