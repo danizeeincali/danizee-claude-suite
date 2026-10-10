@@ -1,11 +1,11 @@
 # Marathon 2026-10-10-bbs-openqodex-2
 
 - State: RUNNING
-- Budget: 5,160,899 / 10,000,000 tokens
+- Budget: 5,310,899 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 2/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Next stream "identity-checked-file-writes": create its worktree (`git worktree add ../<repo>-identity-checked-file-writes -b marathon/2026-10-10-bbs-openqodex-2/identity-checked-file-writes`) and activate it with `cli.js stream identity-checked-file-writes state=active isolation=<path>`, then /w-marathon --resume 2026-10-10-bbs-openqodex-2.
+- Next for you: Continue stream "identity-checked-file-writes" (next: builder writes contract tests and module) — /w-marathon --resume 2026-10-10-bbs-openqodex-2.
 - Last handoff: 2026-10-10T09:05:18.050Z (auto) on claude/project-thread-p9gbyo@3434e5b, 5 uncommitted, tasks: none
 
 ## Streams
@@ -16,7 +16,7 @@
 | secret-redaction-by-value-and-fingerprin | ../danizee-claude-suite-secret-redaction-by-value-and-fingerprin | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/secret-redaction-by-value-and-fingerprin.md | done | met | review | — |  | 0 |
 | lens-catalog-file-triggered-checks | ../danizee-claude-suite-lens-catalog-file-triggered-checks | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/lens-catalog-file-triggered-checks.md | done | met | review | — |  | 0 |
 | hardened-git-read-on-untrusted-repo | ../danizee-claude-suite-hardened-git-read-on-untrusted-repo | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/hardened-git-read-on-untrusted-repo.md | done | met | review | — |  | 0 |
-| identity-checked-file-writes |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/identity-checked-file-writes.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
+| identity-checked-file-writes | ../danizee-claude-suite-identity-checked-file-writes | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/identity-checked-file-writes.md | active | clean 0/2 | build | builder writes contract tests and module |  | 0 |
 | change-blast-radius-walk |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/change-blast-radius-walk.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | caller-floor-disclosure |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/caller-floor-disclosure.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | fact-cached-graph-build-with-budget |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/fact-cached-graph-build-with-budget.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |

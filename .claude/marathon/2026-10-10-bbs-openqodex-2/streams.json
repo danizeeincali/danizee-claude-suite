@@ -49,10 +49,13 @@
     },
     {
       "name": "identity-checked-file-writes",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/identity-checked-file-writes.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract tests and module",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-identity-checked-file-writes",
+      "phase": "build",
+      "base": "663025ae57de3f52d6ec6e8dcd7bb1675e6a3ae1"
     },
     {
       "name": "change-blast-radius-walk",
