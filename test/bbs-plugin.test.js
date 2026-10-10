@@ -72,7 +72,7 @@ describe('bbs plugin — install', () => {
   it('the installed cli.js runs on its own (every sibling import resolves) — usage on an unknown verb, exit 1', () => {
     const r = spawnSync(process.execPath, [path.join(claudeDir, 'helpers', 'bbs', 'cli.js'), 'nope'], { cwd: dir, encoding: 'utf-8' });
     assert.equal(r.status, 1);
-    assert.match(r.stderr, /usage: cli\.js <intake\|fetch\|inventory\|map\|usage\|targets\|verdict\|handoff\|status\|report>/);
+    assert.match(r.stderr, /usage: cli\.js <intake\|fetch\|inventory\|map\|usage\|surfaces\|targets\|verdict\|handoff\|integrate\|wired\|delivered\|status\|report>/);
     assert.equal(r.stdout, '');
   });
 
@@ -162,6 +162,7 @@ describe('bbs plugin — review r1 regressions', () => {
     await fs.mkdir(path.join(claudeDir, 'commands', '.shortcuts'), { recursive: true });
     await fs.writeFile(path.join(claudeDir, 'commands', '.shortcuts', 'w-review.md'), '# /w-review\n\n### ⛔ CHECKPOINT 0: Search\n\n### ⛔ CHECKPOINT 1: Code Analysis\n');
     step(['usage', '--workflows', 'w-review']);
+    step(['surfaces']);
     step(['targets', '--from', path.join(FX, 'targets.json')]);
     step(['verdict']);
     step(['verdict', '--from', path.join(FX, 'decisions.json')]);

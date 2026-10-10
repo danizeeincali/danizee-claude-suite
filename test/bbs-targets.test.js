@@ -23,7 +23,7 @@ const RUN = '2026-10-10-tgt';
 const REVIEW = '# /w-review\n\n## Usage\n\n### ⛔ CHECKPOINT 1: Code Analysis\n\n```\n## not a heading (fenced)\n```\n\n### ✅ VERIFICATION CHECKPOINT — Cross-Method Validation\n';
 const BC = '# /w-background-compound\n\n## Phase 3: Push\n';
 
-async function makeRun(dir, { evidence = 'transcripts', workflows = ['w-review'] } = {}) {
+async function makeRun(dir, { evidence = 'transcripts', workflows = ['w-review'], surfaces = true } = {}) {
   const w = async (rel, text) => { const p = path.join(dir, rel); await fs.mkdir(path.dirname(p), { recursive: true }); await fs.writeFile(p, text); };
   await w('.claude/commands/.shortcuts/w-review.md', REVIEW);
   await w('.claude/commands/.shortcuts/w-background-compound.md', BC);
@@ -31,9 +31,12 @@ async function makeRun(dir, { evidence = 'transcripts', workflows = ['w-review']
   const rd = path.join(dir, '.claude', 'bbs', 'runs', RUN);
   await writeJson(path.join(rd, 'powers.json'), { powers: [{ name: 'redact', what: 'masks secrets' }, { name: 'gate', what: 'blocks a push' }] });
   await writeJson(path.join(rd, 'usage.json'), { evidence, workflows: evidence === 'none' ? [] : workflows.map(name => ({ name, count: 2, sessions: 1, last_used: null, file: `.claude/commands/.shortcuts/${name}.md`, via: {} })) });
+  if (surfaces) await writeJson(path.join(rd, 'surfaces.json'), { run: RUN, ts: '2026-10-10T00:00:00.000Z', scanned: 0, kinds: {}, surfaces: [], owner: [] });
   await fs.writeFile(path.join(dir, '.claude', 'bbs', 'ACTIVE'), RUN + '\n');
   return rd;
 }
+
+const noSurfaces = (run) => ({ run, ts: '2026-10-10T00:00:00.000Z', scanned: 0, kinds: {}, surfaces: [], owner: [] });
 
 const row = (o = {}) => ({ workflow: 'w-review', step: 'CHECKPOINT 1: Code Analysis', how: 'redacts the diff before it is shown', mode: 'advisory', ...o });
 
@@ -77,7 +80,7 @@ describe('targets — recording proposals', () => {
     assert.deepEqual(r.remaining, []);
     assert.deepEqual(r.no_target, ['gate']);
     const saved = await readJson(path.join(dir, '.claude', 'bbs', 'runs', RUN, 'targets.json'));
-    assert.deepEqual(saved.targets.redact, [{ workflow: 'w-review', step: '⛔ CHECKPOINT 1: Code Analysis', how: 'redacts the diff before it is shown', mode: 'advisory', by: 'proposed' }]);
+    assert.deepEqual(saved.targets.redact, [{ kind: 'workflow', surface: 'workflow:.claude/commands/.shortcuts/w-review.md', file: '.claude/commands/.shortcuts/w-review.md', at: '⛔ CHECKPOINT 1: Code Analysis', reach: '/w-review › ⛔ CHECKPOINT 1: Code Analysis', workflow: 'w-review', step: '⛔ CHECKPOINT 1: Code Analysis', how: 'redacts the diff before it is shown', mode: 'advisory', by: 'proposed' }]);
     assert.equal(saved.usage_evidence, 'transcripts');
   });
 
@@ -126,9 +129,9 @@ describe('targets — the owner\'s word and what a decision stands on', () => {
     assert.equal(saved[1].how, OWNER_HOW);
     assert.deepEqual(r.targets.redact, ['w-review · ⛔ CHECKPOINT 1: Code Analysis · advisory', 'w-background-compound · (step to pick) · advisory']);
     assert.deepEqual((await setOwnerTargets(dir, { run: RUN, set: 'gate@', now })).no_target, ['gate']);
-    await assert.rejects(setOwnerTargets(dir, { run: RUN, set: 'redact', now }), /<power>@<workflow>/);
+    await assert.rejects(setOwnerTargets(dir, { run: RUN, set: 'redact', now }), /--set needs <power>@<where>\[,<where>\] \(a workflow, or <kind>:<file>\[#<anchor>\]\), got "redact"/);
     await assert.rejects(setOwnerTargets(dir, { run: RUN, set: 'nope@w-review', now }), /unknown power/);
-    await assert.rejects(setOwnerTargets(dir, { run: RUN, set: 'redact@w-ghost', now }), /not an installed workflow/);
+    await assert.rejects(setOwnerTargets(dir, { run: RUN, set: 'redact@w-ghost', now }), /not an installed workflow, nor a <kind>:<file> surface \(kinds: ui\|api\|job\|model\|cli\|feature\|lib\)/);
   });
 
   it('standingTargets keeps owner rows, reasoned rows and rows in a used workflow; nothing stands on no evidence', () => {
@@ -145,7 +148,7 @@ describe('targets — the owner\'s word and what a decision stands on', () => {
     assert.equal(landsIn(undefined), 'not proposed');
     const t = verdictTable({ p: { legal: ['rebuild', 'skip'], default: 'rebuild' } }, { p: [] });
     assert.match(t, /\| Lands in \|/);
-    assert.match(t, /\| skip \| nowhere \| — \| default rebuild → skip: it lands in no workflow you run \|/);
+    assert.match(t, /\| skip \| nowhere \| — \| default rebuild → skip: its targets are empty: it lands nowhere \|/);
     assert.ok(!verdictTable({ p: { legal: [] } }).includes('Lands in'), 'no targets, no column');
   });
 });
@@ -165,6 +168,7 @@ describe('targets — the decision gate', () => {
     await buildMap(dir, { run, now });
     await recordJudgments(dir, { run, input: JSON.stringify({ redact: 'missing', gate: 'missing' }), now });
     await writeJson(path.join(dir, '.claude', 'bbs', 'runs', run, 'usage.json'), { evidence: 'none', workflows: [] });
+    await writeJson(path.join(dir, '.claude', 'bbs', 'runs', run, 'surfaces.json'), noSurfaces(run));
     await computeVerdicts(dir, { run, sandbox: noSandbox, now });
   });
   after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
@@ -177,7 +181,7 @@ describe('targets — the decision gate', () => {
     await recordTargets(dir, { run, input: JSON.stringify({ redact: [row()], gate: [] }), now });
     const saved = await readJson(path.join(dir, '.claude', 'bbs', 'runs', run, 'targets.json'));
     assert.equal(saved.targets.redact[0].unverified, true);
-    await assert.rejects(decide({ redact: 'rebuild' }), (e) => e instanceof PolicyRefused && /no evidence/.test(e.message));
+    await assert.rejects(decide({ redact: 'rebuild' }), (e) => e instanceof PolicyRefused && /^rebuild needs a place for redact to land: its workflow targets are unverified: the owner has not named the workflows they use \(workflows=a,b\) — record the owner's workflows with cli\.js usage --force --workflows <a,b>, or /.test(e.message));
   });
 
   it('once the owner names workflows, a target outside them does not stand; [] is refused; skip always passes', async () => {
@@ -258,6 +262,7 @@ describe('targets — review r1 regressions', () => {
     await recordJudgments(dir, { run, input: JSON.stringify({ redact: 'missing', gate: 'missing', meter: 'missing' }), now });
     rd = path.join(dir, '.claude', 'bbs', 'runs', run);
     await writeJson(path.join(rd, 'usage.json'), { evidence: 'transcripts', workflows: [{ name: 'w-review', count: 3 }] });
+    await writeJson(path.join(rd, 'surfaces.json'), noSurfaces(run));
     await recordTargets(dir, { run, input: JSON.stringify({ redact: [row()], gate: [], meter: [] }), now });
   });
   after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
@@ -304,7 +309,8 @@ describe('targets — review r1 regressions', () => {
     await fs.writeFile(path.join(rd, 'targets.json'), '{bad');
     try {
       assert.equal((await decide({ gate: 'skip' }, { force: true })).decided, 3);
-      await assert.rejects(decide({ redact: 'rebuild' }, { force: true }), /corrupt JSON.*cli\.js targets --force --from/);
+      assert.equal((await decide({ redact: 'rebuild' }, { force: true })).decided, 3, 'resubmitting the recorded rebuild is a repair, never blocked');
+      await assert.rejects(decide({ gate: 'rebuild' }, { force: true }), /corrupt JSON.*cli\.js targets --force --from/, 'a rebuild that is new needs the targets');
     } finally { await fs.writeFile(path.join(rd, 'targets.json'), good); }
   });
 });
@@ -328,6 +334,7 @@ describe('targets — review r2 regressions', () => {
     await recordJudgments(dir, { run, input: JSON.stringify({ redact: 'missing', gate: 'missing' }), now });
     rd = path.join(dir, '.claude', 'bbs', 'runs', run);
     await writeJson(path.join(rd, 'usage.json'), { evidence: 'owner', workflows: [{ name: 'w-review', count: null }] });
+    await writeJson(path.join(rd, 'surfaces.json'), noSurfaces(run));
     await recordTargets(dir, { run, input: JSON.stringify({ redact: [row()], gate: [] }), now });
   });
   after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
@@ -354,7 +361,7 @@ describe('targets — review r2 regressions', () => {
     try {
       const r = await recordDecisions(dir, { run, input: JSON.stringify({ redact: 'rebuild', gate: 'skip' }), now });
       assert.equal(r.decided, 2);
-      await assert.rejects(recordDecisions(dir, { run, input: JSON.stringify({ gate: 'rebuild' }), now, force: true }), (e) => e instanceof PolicyRefused && /no targets recorded/.test(e.message));
+      await assert.rejects(recordDecisions(dir, { run, input: JSON.stringify({ gate: 'rebuild' }), now, force: true }), (e) => e instanceof PolicyRefused && e.message.startsWith('rebuild needs a place for gate to land: no targets proposed — record targets with cli.js targets --from <file>'));
     } finally { await fs.writeFile(path.join(rd, 'targets.json'), good); }
   });
 
@@ -365,7 +372,7 @@ describe('targets — review r2 regressions', () => {
       assert.match(cli(['targets', '--from', '-'], JSON.stringify({ gate: [] })).err, /targets --force --from <file> to replace it/);
       assert.match(cli(['targets', '--set', 'gate@w-review']).err, /targets --force --from <file> to replace it/);
     } finally { await fs.writeFile(path.join(rd, 'targets.json'), good); }
-    assert.match(cli(['targets', '--set', '']).err, /--set needs <power>@<workflow>/);
+    assert.match(cli(['targets', '--set', '']).err, /--set needs <power>@<where>\[,<where>\] \(a workflow, or <kind>:<file>\[#<anchor>\]\), got ""/);
     assert.match(cli(['targets', '--from', '']).err, /--from needs a file, or - for stdin/);
   });
 });

@@ -167,11 +167,12 @@ describe('usage — the run step and the CLI', () => {
   };
 
   it('usage sits between map and verdict in the step order', () => {
-    assert.deepEqual(STEPS, ['intake', 'fetch', 'inventory', 'map', 'usage', 'targets', 'verdict', 'handoff']);
+    assert.deepEqual(STEPS, ['intake', 'fetch', 'inventory', 'map', 'usage', 'surfaces', 'targets', 'verdict', 'handoff']);
     const s = { source: { identity: 'sha256:a', fetched: true }, powers: { powers: [{ name: 'p' }] }, map: { judgments: { p: 'missing' } } };
     assert.equal(nextStep(s), 'usage');
-    assert.equal(nextStep({ ...s, usage: { evidence: 'none', workflows: [] } }), 'targets');
-    assert.equal(nextStep({ ...s, usage: { evidence: 'none', workflows: [] }, targets: { targets: { p: [] } } }), 'verdict');
+    assert.equal(nextStep({ ...s, usage: { evidence: 'none', workflows: [] } }), 'surfaces');
+    assert.equal(nextStep({ ...s, usage: { evidence: 'none', workflows: [] }, surfaces: { surfaces: [], owner: [] } }), 'targets');
+    assert.equal(nextStep({ ...s, usage: { evidence: 'none', workflows: [] }, surfaces: { surfaces: [], owner: [] }, targets: { targets: { p: [] } } }), 'verdict');
     assert.equal(nextStep({ ...s, verdicts: { decisions: { p: 'rebuild' } } }), 'handoff', 'a run decided before the usage step is not sent back');
   });
 

@@ -93,6 +93,12 @@ describe('bbs e2e — the packaged check', () => {
     const u = run(['usage', '--root', path.join(FIXTURES, 'no-transcripts-here')]);
     assert.equal(u.code, 0, u.err);
     assert.equal(u.json.evidence, 'none', 'no transcripts: the verdict question must ask for the workflows');
+    assert.equal(run(['status', '--next']).out.trim(), 'surfaces', 'where a user meets a feature is found in the code before targets');
+    const sf = run(['surfaces']);
+    assert.equal(sf.code, 0, sf.err);
+    assert.equal(sf.json.run, runId);
+    assert.ok(sf.json.kinds.workflow >= 1, 'the installed workflows are surfaces');
+    assert.equal(sf.json.next, 'targets');
     assert.equal(run(['status', '--next']).out.trim(), 'targets');
   });
 

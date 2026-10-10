@@ -98,9 +98,11 @@ describe('/w-marathon command content', () => {
 
   it('the integration stream from a bbs hand-off wires approved steps, records wired and delivered, and is reviewed on the command files', () => {
     assert.match(c(), /4\.3a Integration stream/);
-    assert.match(c(), /marathon-measure\.js --wired --bbs-run <id> --power <name> --verb <verb>/);
-    assert.match(c(), /--delivered --bbs-run <id> --verb <power>=<verb>/);
-    assert.match(c(), /reached in the workflow's normal flow/);
+    assert.match(c(), /reach test\*\* that goes in through that place/);
+    assert.match(c(), /bbs\/cli\.js integrate --run <bbs run> --power <name>/);
+    assert.match(c(), /cli\.js wired --run <bbs run> --power <name> --record/);
+    assert.match(c(), /cli\.js delivered --run <bbs run> --record/);
+    assert.match(c(), /reached in the normal flow \(a menu links the page, the router mounts the endpoint/);
   });
 });
 

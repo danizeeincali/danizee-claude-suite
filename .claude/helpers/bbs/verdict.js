@@ -428,7 +428,7 @@ export function verdictTable(rows, targets, usage) {
     if (r.probe?.result) whys.push(`probe: ${r.probe.result}`);
     const legal = (r.legal || []).map(v => (v === 'use' && r.needs_probe ? 'use (probe first)' : v)).join(', ');
     const shown = landingDefault(name, r, targets, usage);
-    if (shown !== r.default) whys.unshift(`default ${r.default} → ${shown}: ${noLandingWhy(targets[name], usage)}`);
+    if (targets && shown !== r.default) whys.unshift(`default ${r.default} → ${shown}: ${noLandingWhy(targets[name], usage)}`);
     const why = whys.join('; ');
     const cells = [name, harnessCell(r.judgment), `${r.licence ?? 'unknown'} (${r.licence_class ?? 'none'})`, legal, shown ?? ''];
     if (targets) cells.push(landsIn(targets[name]));

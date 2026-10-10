@@ -287,6 +287,7 @@ describe('handoff — cli verb', () => {
     run(dir, ['map']);
     run(dir, ['map', '--from', '-'], JSON.stringify({ 'drift-monitor': 'missing' }));
     run(dir, ['usage', '--workflows', 'w-review']);
+    run(dir, ['surfaces']);
     run(dir, ['targets', '--set', 'drift-monitor@w-review']);
   });
   after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
@@ -294,7 +295,7 @@ describe('handoff — cli verb', () => {
   it('usage lists handoff [--marathon] [--force]; handoff before the decisions exits 1 naming verdict', () => {
     const u = run(dir, ['nope']);
     assert.match(u.err, /cli\.js handoff \[--marathon\] \[--force\] \[--run <id>\] \[--project <dir>\]/);
-    assert.match(u.err, /usage: cli\.js <intake\|fetch\|inventory\|map\|usage\|targets\|verdict\|handoff\|status\|report> \.\.\./);
+    assert.match(u.err, /usage: cli\.js <intake\|fetch\|inventory\|map\|usage\|surfaces\|targets\|verdict\|handoff\|integrate\|wired\|delivered\|status\|report> \.\.\./);
     const early = run(dir, ['handoff']);
     assert.equal(early.code, 1);
     assert.match(early.err, /verdict/);

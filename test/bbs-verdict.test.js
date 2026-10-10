@@ -316,6 +316,7 @@ describe('verdict — cli verb', () => {
     run(dir, ['map']);
     run(dir, ['map', '--from', '-'], JSON.stringify({ 'drift-monitor': 'missing' }));
     run(dir, ['usage', '--workflows', 'w-review']);
+    run(dir, ['surfaces']);
     run(dir, ['targets', '--set', 'drift-monitor@w-review']);
   });
   after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
@@ -323,7 +324,7 @@ describe('verdict — cli verb', () => {
   it('usage lists verdict with [--table | --probe <power>=<result> [--evidence <t>] | --decide <power>=<verdict> | --from <file|->] [--force]; BBS_SANDBOX overrides detection', () => {
     const u = run(dir, ['nope']);
     assert.match(u.err, /cli\.js verdict \[--table \| --probe <power>=<clean\|found\|incomplete> \[--evidence <text>\] \| --decide <power>=<verdict> \| --from <file\|->\] \[--force\] \[--run <id>\] \[--project <dir>\]/);
-    assert.match(u.err, /usage: cli\.js <intake\|fetch\|inventory\|map\|usage\|targets\|verdict\|handoff\|status\|report> \.\.\./);
+    assert.match(u.err, /usage: cli\.js <intake\|fetch\|inventory\|map\|usage\|surfaces\|targets\|verdict\|handoff\|integrate\|wired\|delivered\|status\|report> \.\.\./);
     const v = run(dir, ['verdict'], undefined, { BBS_SANDBOX: 'absent' });
     assert.equal(v.code, 0, v.err);
     assert.equal(v.json.sandbox.present, false);
@@ -1295,7 +1296,7 @@ describe('verdict — the owner\'s workflows come first (marathon 2026-10-10-bbs
     await recordJudgments(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'missing', b: 'missing' }), now });
     await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now });
     await assert.rejects(() => recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'rebuild' }), now }),
-      (err) => err instanceof PolicyRefused && /needs the owner's workflows first: run cli\.js usage/.test(err.message));
+      (err) => err instanceof PolicyRefused && err.message.startsWith('rebuild needs the usage step first: run cli.js usage (or cli.js usage --workflows <a,b> with the owner\'s own list), then decide drift-monitor'));
     const ok = await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ b: 'skip' }), now });
     assert.equal(ok.decided, 1);
     await landed(dir, r.runId);
@@ -1314,8 +1315,9 @@ describe('verdict — no evidence of use is not an answer (usage review r2)', ()
     await buildMap(dir, { run: r.runId, now });
     await recordJudgments(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'missing' }), now });
     await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now });
+    await landed(dir, r.runId); // proposed workflow targets, as the targets step records them
     await fs.writeFile(path.join(dir, '.claude', 'bbs', 'runs', r.runId, 'usage.json'), JSON.stringify({ evidence: 'none', workflows: [] }));
     await assert.rejects(() => recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'rebuild' }), now }),
-      (err) => err instanceof PolicyRefused && /no evidence.*usage --force --workflows/.test(err.message));
+      (err) => err instanceof PolicyRefused && err.message.startsWith('rebuild needs a place for drift-monitor to land: its workflow targets are unverified: the owner has not named the workflows they use (workflows=a,b) — record the owner\'s workflows with cli.js usage --force --workflows <a,b>, or record targets with cli.js targets --from <file>'));
   });
 });

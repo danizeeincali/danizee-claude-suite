@@ -179,7 +179,12 @@ export async function ownerSurface(projectDir, spec) {
   if (!m || !KINDS.includes(m[1])) throw new Error(`a surface is <kind>:<file>[#<anchor>] with kind one of ${KINDS.join('|')}, got "${spec}"`);
   const file = posix(path.normalize(m[2])).replace(/^\.\//, '');
   if (file.startsWith('../') || path.isAbsolute(file)) throw new Error(`"${m[2]}" is outside the project`);
-  try { if (!(await fs.stat(path.join(projectDir, file))).isFile()) throw new Error('not a file'); } catch { throw new Error(`"${file}" is not a file in the project`); }
+  try {
+    if (!(await fs.stat(path.join(projectDir, file))).isFile()) throw new Error('not a file');
+    // a symlink out of the project is not a place in it
+    const [root, real] = await Promise.all([fs.realpath(projectDir), fs.realpath(path.join(projectDir, file))]);
+    if (path.relative(root, real).startsWith('..') || path.isAbsolute(path.relative(root, real))) throw new Error('outside');
+  } catch { throw new Error(`"${file}" is not a file in the project`); }
   return { id: `${m[1]}:${file}`, kind: m[1], file, anchors: m[3] ? [m[3].trim()] : [], label: m[3] ? `${m[1]} ${m[3].trim()}` : `${m[1]} ${file}`, evidence: ['named by the owner'], activity: null, by: 'owner' };
 }
 
@@ -238,7 +243,7 @@ export function surfaceLines(doc, { perKind = 25 } = {}) {
     lines.push('', `### ${kind} (${of.length})`);
     for (const s of of.slice(0, perKind)) {
       const a = s.anchors.length ? ` — at: ${s.anchors.slice(0, 8).map(x => JSON.stringify(x)).join(', ')}${s.anchors.length > 8 ? ', …' : ''}` : '';
-      lines.push(`- ${s.id}${s.by === 'owner' ? ' (named by the owner)' : s.activity ? ` (${s.activity} commits lately)` : ''}${a}`);
+      lines.push(`- ${s.id}${s.by === 'owner' ? ' (named by the owner)' : s.activity ? ` (${s.activity} commit${s.activity === 1 ? '' : 's'} lately)` : ''}${a}`);
     }
     if (of.length > perKind) lines.push(`- … ${of.length - perKind} more ${kind} surfaces (any of them may be named by id)`);
   }

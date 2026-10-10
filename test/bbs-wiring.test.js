@@ -11,8 +11,8 @@ import path from 'path';
 import os from 'os';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
-import { verbCall, stepSection, wiredTargets, approvedTargets, writeDelivered } from '../src/lib/bbs/wiring.js';
-import { writeJson } from '../src/lib/bbs/store.js';
+import { verbCall, stepSection, wiredTargets, approvedTargets, writeDelivered, parseEntry, usesEntry, entersThrough, recordIntegration, readIntegration, measureWired } from '../src/lib/bbs/wiring.js';
+import { writeJson, readJson } from '../src/lib/bbs/store.js';
 import { normalizeStep } from '../src/lib/bbs/targets.js';
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
@@ -110,7 +110,7 @@ describe('wiredTargets', () => {
 
   it('is wired when the step section runs the verb', async () => {
     const [r] = await wiredTargets(dir, { verb: 'redact', targets: [T('w-review', 'Step 2: Analyze')] });
-    assert.deepEqual(r, { workflow: 'w-review', step: 'Step 2: Analyze', mode: 'advisory', file: '.claude/commands/.shortcuts/w-review.md', wired: true, why: null });
+    assert.deepEqual(r, { kind: 'workflow', surface: null, workflow: 'w-review', step: 'Step 2: Analyze', at: 'Step 2: Analyze', reach: null, mode: 'advisory', file: '.claude/commands/.shortcuts/w-review.md', wired: true, why: null, test: null });
     const [f] = await wiredTargets(dir, { verb: 'redact', targets: [T('w-fix', 'Step 2: Patch', 'blocking')] });
     assert.equal(f.wired, true, 'a fenced block counts');
     assert.equal(f.mode, 'blocking');
@@ -139,7 +139,7 @@ describe('wiredTargets', () => {
 
   it('is not wired when the workflow is not installed', async () => {
     const [r] = await wiredTargets(dir, { verb: 'redact', targets: [T('w-ghost', 'Step 1')] });
-    assert.deepEqual(r, { workflow: 'w-ghost', step: 'Step 1', mode: 'advisory', file: null, wired: false, why: 'the workflow is not installed' });
+    assert.deepEqual(r, { kind: 'workflow', surface: null, workflow: 'w-ghost', step: 'Step 1', at: 'Step 1', reach: null, mode: 'advisory', file: null, wired: false, why: 'the workflow is not installed', test: null });
   });
 
   it('a target with step null counts when the verb is run anywhere in the file, and not otherwise', async () => {
@@ -411,5 +411,388 @@ describe('wiring — build review notes', () => {
     assert.equal(normalizeStep('## 🔍 Step 2'), 'step 2');
     assert.equal(normalizeStep('### 👩‍💻 Review'), 'review');
     assert.equal(matchStep('Step 2', ['🔍 Step 2', 'Step 20']), '🔍 Step 2');
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Code surfaces: a power is wired when the surface file uses its entry AND a reach test goes in through the surface.
+
+describe('parseEntry', () => {
+  it('<module>#<symbol> gives the module path, the symbol and the stem an import names', () => {
+    assert.deepEqual(parseEntry('src/mask.js#maskSecrets'), { module: 'src/mask.js', symbol: 'maskSecrets', stem: 'mask' });
+    assert.deepEqual(parseEntry('  lib/pii/redact.ts#redact_all '), { module: 'lib/pii/redact.ts', symbol: 'redact_all', stem: 'redact' });
+  });
+
+  it('a module alone has no symbol; a bare identifier is a symbol with no module', () => {
+    assert.deepEqual(parseEntry('src/mask.js'), { module: 'src/mask.js', symbol: null, stem: 'mask' });
+    assert.deepEqual(parseEntry('./src/mask.js'), { module: 'src/mask.js', symbol: null, stem: 'mask' }, 'the path is normalized');
+    assert.deepEqual(parseEntry('maskSecrets'), { module: null, symbol: 'maskSecrets', stem: null });
+  });
+
+  it('refuses what is not an entry', () => {
+    for (const bad of [undefined, null, 42, '', '   ']) assert.throws(() => parseEntry(bad), /entry must be <module>#<symbol>, <module> or <symbol>/, String(bad));
+    assert.throws(() => parseEntry('a.js#b#c'), /entry has more than one #: "a\.js#b#c"/);
+    assert.throws(() => parseEntry('#sym'), /entry module must be a path in the project, got ""/);
+    assert.throws(() => parseEntry('../x.js#f'), /entry module must be a path in the project, got "\.\.\/x\.js"/);
+    assert.throws(() => parseEntry('/abs/x.js#f'), /entry module must be a path in the project, got "\/abs\/x\.js"/);
+    assert.throws(() => parseEntry('a.js#'), /entry symbol must be an identifier, got ""/);
+    assert.throws(() => parseEntry('a.js#1x'), /entry symbol must be an identifier, got "1x"/);
+    assert.throws(() => parseEntry('two words'), /entry symbol must be an identifier, got "two words"/);
+  });
+});
+
+describe('usesEntry', () => {
+  const E = 'src/mask.js#maskSecrets';
+
+  it('an ESM import plus a call is a use', () => {
+    assert.deepEqual(usesEntry("import { maskSecrets } from '../src/mask.js';\nexport function h(t) { return maskSecrets(t); }", E), { ok: true });
+    assert.deepEqual(usesEntry("import { maskSecrets } from '../src/mask';\nmaskSecrets(x)", E), { ok: true }, 'the extension is optional');
+  });
+
+  it('require() and a dynamic import() count as imports', () => {
+    assert.deepEqual(usesEntry("const { maskSecrets } = require('../src/mask');\nmaskSecrets(x)", E), { ok: true });
+    assert.deepEqual(usesEntry("const m = await import('../src/mask.js');\nm.maskSecrets(x)", E), { ok: true });
+  });
+
+  it('a python from-import plus a call is a use', () => {
+    assert.deepEqual(usesEntry('from lib.mask import mask_secrets\n\ndef handler(t):\n    return mask_secrets(t)\n', 'lib/mask.py#mask_secrets'), { ok: true });
+    assert.deepEqual(usesEntry('import lib.mask\nlib.mask.mask_secrets(t)', 'lib/mask.py#mask_secrets'), { ok: true });
+  });
+
+  it('an import with no call says it never calls the symbol', () => {
+    assert.deepEqual(usesEntry("import { maskSecrets } from '../src/mask.js';\nexport const x = 1;", E), { ok: false, why: 'never calls maskSecrets' });
+    assert.deepEqual(usesEntry("import { maskSecretsAll } from '../src/mask.js';\nmaskSecretsAll(x)", E), { ok: false, why: 'never calls maskSecrets' }, 'a longer name is not the symbol');
+  });
+
+  it('a call with no import says it never imports the module', () => {
+    assert.deepEqual(usesEntry('export function h(t) { return maskSecrets(t); }', E), { ok: false, why: 'never imports mask' });
+    assert.deepEqual(usesEntry("import { other } from '../src/other.js';\nmaskSecrets(x)", E), { ok: false, why: 'never imports mask' });
+  });
+
+  it('a module-only entry needs just the import; a symbol-only entry needs just the call; a parsed entry is accepted', () => {
+    assert.deepEqual(usesEntry("import '../src/mask.js';", 'src/mask.js'), { ok: true });
+    assert.deepEqual(usesEntry('x = 1', 'src/mask.js'), { ok: false, why: 'never imports mask' });
+    assert.deepEqual(usesEntry('const y = maskSecrets(t);', 'maskSecrets'), { ok: true });
+    assert.deepEqual(usesEntry('const y = 1;', 'maskSecrets'), { ok: false, why: 'never calls maskSecrets' });
+    assert.deepEqual(usesEntry("import { maskSecrets } from 'elsewhere';", 'maskSecrets'), { ok: false, why: 'never calls maskSecrets' }, 'the import line itself is not a call');
+    assert.deepEqual(usesEntry("import { maskSecrets } from '../src/mask.js';\nmaskSecrets(x)", parseEntry(E)), { ok: true });
+  });
+});
+
+describe('entersThrough', () => {
+  const api = { file: 'server/routes.js', at: '/api/upload' };
+
+  it('a test that names the surface anchor goes in through it', () => {
+    assert.equal(entersThrough("await fetch(base + '/api/upload', { method: 'POST' })", api), true);
+    assert.equal(entersThrough("await fetch(base + '/api/health')", api), false);
+  });
+
+  it('a test that imports the surface file goes in through it, even with no anchor', () => {
+    assert.equal(entersThrough("import { router } from '../server/routes.js';", { ...api, at: null }), true);
+    assert.equal(entersThrough("const { router } = require('../server/routes')", { ...api, at: null }), true);
+    assert.equal(entersThrough("import { other } from '../server/other.js';", { ...api, at: null }), false);
+    assert.equal(entersThrough('mentions server/routes.js only in a comment', { ...api, at: null }), false, 'a bare mention is not an import');
+  });
+
+  it('a file-system page or route is named "page"/"route": the import must carry the folder too', () => {
+    const page = { file: 'app/settings/security/page.js' };
+    assert.equal(entersThrough("import Page from '../app/settings/security/page.js';", page), true);
+    assert.equal(entersThrough("import Page from '../app/settings/security/page';", page), true);
+    assert.equal(entersThrough("import Page from './page.js';", page), false, 'any page.js would otherwise match');
+    assert.equal(entersThrough("import Page from '../app/settings/billing/page.js';", page), false);
+    assert.equal(entersThrough("import { POST } from '../app/api/scan/route.js';", { file: 'app/api/scan/route.js' }), true);
+    assert.equal(entersThrough("import { POST } from './route.js';", { file: 'app/api/scan/route.js' }), false);
+  });
+});
+
+/** A small project: the power, a surface that uses it, and reach tests; plus a decided bbs run for it. */
+const MASK_JS = 'export function maskSecrets(text) { return text.replace(/sk-\\w+/g, "***"); }\n';
+const ROUTES_JS = "import { maskSecrets } from '../src/mask.js';\nexport const router = { post: (p) => maskSecrets(p) };\n// POST /api/upload\n";
+const ENTRY = 'src/mask.js#maskSecrets';
+const API_T = { kind: 'api', surface: 'api:server/routes.js', file: 'server/routes.js', at: '/api/upload', reach: 'POST /api/upload', mode: 'advisory' };
+
+async function codeProject(prefix) {
+  const dir = await mk(prefix);
+  await put(dir, 'src/mask.js', MASK_JS);
+  await put(dir, 'server/routes.js', ROUTES_JS);
+  await put(dir, 'server/unlinked.js', "export const router = {};\n// /api/upload\n");
+  await put(dir, 'reach/ok.test.js', "// goes in through the endpoint\nawait post('/api/upload', 'sk-abc');\n");
+  await put(dir, 'reach/other.test.js', "await post('/api/health');\nimport { maskSecrets } from '../src/mask.js';\n");
+  return dir;
+}
+const reachRow = (o = {}) => ({ surface: 'api:server/routes.js', at: '/api/upload', test: 'reach/ok.test.js', command: 'true', ...o });
+
+describe('wiredTargets — a code target', () => {
+  let dir;
+  before(async () => { dir = await codeProject('bbs-code-'); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('is not wired with no entry recorded for the power', async () => {
+    const [r] = await wiredTargets(dir, { reach: [reachRow()], targets: [API_T] });
+    assert.deepEqual(r, { kind: 'api', surface: 'api:server/routes.js', workflow: null, step: null, at: '/api/upload', reach: 'POST /api/upload', mode: 'advisory', file: 'server/routes.js', wired: false, why: 'no entry recorded for this power (cli.js integrate --entry <module>#<symbol>)', test: null });
+  });
+
+  it('is not wired when the surface file does not use the entry', async () => {
+    const [r] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow()], targets: [{ ...API_T, file: 'server/unlinked.js', surface: 'api:server/unlinked.js' }] });
+    assert.equal(r.wired, false);
+    assert.equal(r.why, 'server/unlinked.js never imports mask');
+  });
+
+  it('is not wired when linked but no reach test is recorded for that surface', async () => {
+    const [none] = await wiredTargets(dir, { entry: ENTRY, targets: [API_T] });
+    assert.equal(none.wired, false);
+    assert.equal(none.why, 'no reach test recorded for api:server/routes.js · /api/upload (cli.js integrate --reach)');
+    const [other] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ surface: 'api:server/other.js' })], targets: [API_T] });
+    assert.equal(other.why, 'no reach test recorded for api:server/routes.js · /api/upload (cli.js integrate --reach)', 'a reach test for another surface does not count');
+    const [elsewhere] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ at: '/api/health' })], targets: [API_T] });
+    assert.equal(elsewhere.wired, false, 'a reach test for another anchor of the surface does not count');
+  });
+
+  it('is not wired when the reach test does not go through the surface (it only calls the power)', async () => {
+    const [r] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ test: 'reach/other.test.js' })], targets: [API_T] });
+    assert.equal(r.wired, false);
+    assert.equal(r.why, 'reach test reach/other.test.js never goes through server/routes.js or "/api/upload"');
+  });
+
+  it('is not wired when the reach test file is missing', async () => {
+    const [r] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ test: 'reach/gone.test.js' })], targets: [API_T] });
+    assert.equal(r.why, 'reach test reach/gone.test.js is missing');
+  });
+
+  it('is not wired when the reach command fails, and the why carries the exit code and the command', async () => {
+    const [r] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ command: 'exit 3' })], targets: [API_T] });
+    assert.equal(r.wired, false);
+    assert.equal(r.why, 'reach test failed (exit 3): exit 3');
+    const [t] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ command: 'echo "not ok 1 - upload is masked"; exit 1' })], targets: [API_T] });
+    assert.equal(t.why, 'reach test failed (exit 1): echo "not ok 1 - upload is masked"; exit 1 — not ok 1 - upload is masked');
+  });
+
+  it('is wired, with the test that proved it, when the surface uses the entry and a reach test passes', async () => {
+    const [r] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow()], targets: [API_T] });
+    assert.equal(r.wired, true);
+    assert.equal(r.why, null);
+    assert.equal(r.test, 'reach/ok.test.js');
+    assert.equal(r.kind, 'api');
+    assert.equal(r.surface, 'api:server/routes.js');
+    assert.equal(r.at, '/api/upload');
+  });
+
+  it('the first reach test that passes proves it; a failing one before it is skipped', async () => {
+    const [r] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow({ command: 'exit 2' }), reachRow({ test: 'reach/ok.test.js', command: 'true' })], targets: [API_T] });
+    assert.equal(r.wired, true);
+    assert.equal(r.test, 'reach/ok.test.js');
+  });
+
+  it('run: false never counts a reach test as wired', async () => {
+    const [r] = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow()], targets: [API_T], run: false });
+    assert.equal(r.wired, false);
+    assert.equal(r.why, 'reach test reach/ok.test.js was not run');
+  });
+
+  it('a target that names no file or an unreadable one is not wired; workflow and code targets mix in one call', async () => {
+    const rows = await wiredTargets(dir, { entry: ENTRY, reach: [reachRow()], targets: [{ ...API_T, file: undefined }, { ...API_T, file: 'server/gone.js' }, API_T] });
+    assert.deepEqual(rows.map(r => [r.wired, r.why]), [[false, 'the target names no file'], [false, 'server/gone.js is unreadable'], [true, null]]);
+  });
+
+  it('an invalid entry is rejected before anything is read', async () => {
+    await assert.rejects(() => wiredTargets(dir, { entry: 'a.js#b#c', targets: [API_T] }), /entry has more than one #/);
+  });
+});
+
+/** A decided run for the integrate / delivered tests. */
+async function codeRun(dir, run, { marathon = false } = {}) {
+  const rd = path.join(dir, '.claude', 'bbs', 'runs', run);
+  await writeJson(path.join(rd, 'handoff.json'), { run, source: { ref: 'https://github.com/a/b' }, ...(marathon ? { marathonRun: 'm1' } : {}), powers: [{ name: 'redact' }] });
+  await writeJson(path.join(rd, 'powers.json'), { powers: [{ name: 'redact', what: 'masks  secrets' }] });
+  await writeJson(path.join(rd, 'usage.json'), { run, evidence: 'none', workflows: [] });
+  await writeJson(path.join(rd, 'targets.json'), { run, targets: { redact: [{ ...API_T, by: 'proposed', how: 'h' }] } });
+  return rd;
+}
+
+describe('recordIntegration', () => {
+  let dir, rd;
+  const rec = (o) => recordIntegration(dir, { run: 'int', power: 'redact', now: () => new Date('2026-10-10T12:00:00Z'), ...o });
+  before(async () => { dir = await codeProject('bbs-integ-'); rd = await codeRun(dir, 'int'); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('refuses a run without a hand-off and a power the hand-off did not approve', async () => {
+    await assert.rejects(recordIntegration(dir, { run: 'nohand', power: 'redact' }), /run nohand has no handoff\.json — run cli\.js handoff first/);
+    await assert.rejects(rec({ power: 'ghost', entry: ENTRY }), /"ghost" is not a power this hand-off approved/);
+  });
+
+  it('validates the verb and the entry', async () => {
+    await assert.rejects(rec({ verb: 'Bad Verb' }), /verb must be/);
+    await assert.rejects(rec({ entry: 'a.js#b#c' }), /entry has more than one #/);
+  });
+
+  it('refuses a reach spec that is not <surface id>[@<at>]=<test file>::<command>', async () => {
+    for (const bad of ['nonsense', 'api:server/routes.js=reach/ok.test.js', 'api:server/routes.js@/api/upload::true', 'reach/ok.test.js::true']) {
+      await assert.rejects(rec({ reach: [bad] }), new RegExp(`--reach needs <surface id>\\[@<at>\\]=<test file>::<command>, got "${bad.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`), bad);
+    }
+  });
+
+  it('refuses a reach test on a surface the power has no approved target on, naming its targets', async () => {
+    await assert.rejects(rec({ reach: ['api:server/other.js=reach/ok.test.js::true'] }), /redact has no approved target on api:server\/other\.js \(its targets: api:server\/routes\.js\)/);
+  });
+
+  it('refuses a reach test file that does not exist or is outside the project', async () => {
+    await assert.rejects(rec({ reach: ['api:server/routes.js=reach/none.test.js::true'] }), /reach test "reach\/none\.test\.js" does not exist/);
+    await assert.rejects(rec({ reach: ['api:server/routes.js=../x.test.js::true'] }), /reach test "\.\.\/x\.test\.js" is outside the project/);
+    assert.equal(await readJsonOrNull(path.join(rd, 'integration.json')), null, 'nothing is written by a refused call');
+  });
+
+  it('records the verb, the entry and the reach tests, and returns them with the target count', async () => {
+    const r = await rec({ verb: 'redact', entry: ENTRY, reach: ['api:server/routes.js@/api/upload=reach/ok.test.js::node --test reach/ok.test.js'] });
+    assert.deepEqual(r, { run: 'int', power: 'redact', verb: 'redact', entry: ENTRY, reach: [{ surface: 'api:server/routes.js', at: '/api/upload', test: 'reach/ok.test.js', command: 'node --test reach/ok.test.js' }], targets: 1 });
+    const doc = await readJson(path.join(rd, 'integration.json'));
+    assert.equal(doc.ts, '2026-10-10T12:00:00.000Z');
+    assert.deepEqual(doc.powers.redact, { verb: 'redact', entry: ENTRY, reach: r.reach });
+    assert.deepEqual(await readIntegration(dir, { run: 'int' }), doc);
+  });
+
+  it('merges: a later call keeps what it does not name and replaces a reach row for the same surface and anchor', async () => {
+    const r = await rec({ reach: ['api:server/routes.js@/api/upload=reach/other.test.js::true', 'api:server/routes.js=reach/ok.test.js::true'] });
+    assert.equal(r.verb, 'redact');
+    assert.equal(r.entry, ENTRY);
+    assert.deepEqual(r.reach.map(x => [x.test, x.at]), [['reach/other.test.js', '/api/upload'], ['reach/ok.test.js', null]]);
+    const again = await rec({ entry: 'src/mask.js#other' });
+    assert.equal(again.entry, 'src/mask.js#other');
+    assert.equal(again.verb, 'redact');
+    assert.equal(again.reach.length, 2);
+  });
+
+  it('--force starts that power from empty', async () => {
+    const r = await rec({ entry: ENTRY, force: true });
+    assert.deepEqual(r, { run: 'int', power: 'redact', verb: null, entry: ENTRY, reach: [], targets: 1 });
+  });
+
+  it('a corrupt integration.json names its repair; force replaces it', async () => {
+    await fs.writeFile(path.join(rd, 'integration.json'), '{bad');
+    await assert.rejects(readIntegration(dir, { run: 'int' }), /corrupt JSON.*— re-record it with cli\.js integrate --power <name> --force/);
+    await assert.rejects(rec({ entry: ENTRY }), /re-record it with cli\.js integrate --power <name> --force/);
+    assert.equal((await rec({ entry: ENTRY, force: true })).entry, ENTRY);
+  });
+
+  it('readIntegration of a run with none is empty', async () => {
+    assert.deepEqual(await readIntegration(dir, { run: 'never' }), { run: 'never', powers: {} });
+  });
+});
+
+async function readJsonOrNull(file) { try { return JSON.parse(await fs.readFile(file, 'utf-8')); } catch { return null; } }
+
+describe('measureWired and writeDelivered — code targets', () => {
+  let dir, rd;
+  before(async () => {
+    dir = await codeProject('bbs-code-deliv-');
+    rd = await codeRun(dir, 'cd');
+  });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+  const fixed = () => new Date('2026-10-10T12:00:00Z');
+
+  it('with nothing recorded, the power is not wired and the delivered note says why', async () => {
+    const m = await measureWired(dir, { run: 'cd', power: 'redact' });
+    assert.equal(m.value, 0);
+    assert.equal(m.of, 1);
+    const res = await writeDelivered(dir, { run: 'cd', now: fixed });
+    assert.equal(res.all_wired, false);
+    assert.deepEqual(res.powers, [{ name: 'redact', verb: null, wired: false, targets: ['NOT wired: api:server/routes.js · /api/upload'] }]);
+    const md = await fs.readFile(path.join(rd, 'delivered.md'), 'utf-8');
+    assert.ok(md.includes('## redact — NOT fully wired\n'));
+    assert.ok(md.includes('— no entry recorded for this power (cli.js integrate --entry <module>#<symbol>)'));
+    assert.ok(md.includes('Run it by hand: (no verb recorded)'));
+  });
+
+  it('once integration.json records the entry and a passing reach test, it is wired, proved by the test, with a use-in-code line', async () => {
+    await recordIntegration(dir, { run: 'cd', power: 'redact', entry: ENTRY, reach: ['api:server/routes.js@/api/upload=reach/ok.test.js::true'] });
+    const m = await measureWired(dir, { run: 'cd', power: 'redact' });
+    assert.equal(m.value, 1);
+    assert.equal(m.of, 1);
+    assert.equal(m.wired, true);
+    const res = await writeDelivered(dir, { run: 'cd', now: fixed });
+    assert.equal(res.all_wired, true);
+    assert.deepEqual(res.powers, [{ name: 'redact', verb: null, entry: ENTRY, wired: true, targets: ['wired: api:server/routes.js · /api/upload'] }]);
+    const md = await fs.readFile(path.join(rd, 'delivered.md'), 'utf-8');
+    assert.ok(md.includes('masks secrets'));
+    assert.ok(md.includes('- ✓ POST /api/upload (`api:server/routes.js` · /api/upload) · advisory — proved by `reach/ok.test.js`\n'));
+    assert.ok(md.includes("Use it in code: `import { maskSecrets } from './src/mask.js'`"));
+    assert.ok(!md.includes('NOT fully wired'));
+  });
+
+  it('runTests: false in writeDelivered never counts a reach test', async () => {
+    const res = await writeDelivered(dir, { run: 'cd', now: fixed, runTests: false });
+    assert.equal(res.all_wired, false);
+    assert.ok((await fs.readFile(path.join(rd, 'delivered.md'), 'utf-8')).includes('reach test reach/ok.test.js was not run'));
+  });
+
+  it('an owner-named target shows its surface id, not the placeholder text, in the note', async () => {
+    const d = await codeProject('bbs-code-owner-');
+    try {
+      const od = await codeRun(d, 'ow');
+      await writeJson(path.join(od, 'targets.json'), { run: 'ow', targets: { redact: [{ ...API_T, by: 'owner', how: 'named by the owner at the verdict: the integration stream picks the step', reach: 'named by the owner at the verdict: the integration stream writes how a user gets there' }] } });
+      await writeDelivered(d, { run: 'ow', now: fixed });
+      assert.ok((await fs.readFile(path.join(od, 'delivered.md'), 'utf-8')).includes('- ✗ api:server/routes.js (`api:server/routes.js` · /api/upload) · advisory — no entry recorded'));
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+});
+
+describe('cli — integrate, wired, delivered', () => {
+  let dir;
+  const CLI = path.join(ROOT, 'src', 'lib', 'bbs', 'cli.js');
+  const cli = (args) => {
+    const r = spawnSync(process.execPath, [CLI, ...args, '--project', dir], { cwd: dir, encoding: 'utf-8' });
+    let json = null; try { json = JSON.parse(r.stdout); } catch {}
+    return { code: r.status, out: r.stdout, err: r.stderr, json };
+  };
+  before(async () => { dir = await codeProject('bbs-code-cli-'); await codeRun(dir, 'c1'); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('integrate needs --power and at least one of --verb, --entry, --reach', () => {
+    const a = cli(['integrate', '--run', 'c1']);
+    assert.equal(a.code, 1);
+    assert.match(a.err, /usage: cli\.js integrate --power <name>.*\n.*--power is required/);
+    const b = cli(['integrate', '--power', 'redact', '--run', 'c1']);
+    assert.equal(b.code, 1);
+    assert.match(b.err, /name at least one of --verb, --entry or --reach/);
+  });
+
+  it('integrate records the entry and repeated --reach flags; a bad one exits 1 with the message', () => {
+    const bad = cli(['integrate', '--power', 'redact', '--run', 'c1', '--reach', 'nonsense']);
+    assert.equal(bad.code, 1);
+    assert.match(bad.err, /--reach needs <surface id>\[@<at>\]=<test file>::<command>, got "nonsense"/);
+    const ok = cli(['integrate', '--power', 'redact', '--run', 'c1', '--entry', ENTRY, '--reach', 'api:server/routes.js@/api/upload=reach/ok.test.js::true']);
+    assert.equal(ok.code, 0, ok.err);
+    assert.deepEqual(ok.json, { run: 'c1', power: 'redact', verb: null, entry: ENTRY, reach: [{ surface: 'api:server/routes.js', at: '/api/upload', test: 'reach/ok.test.js', command: 'true' }], targets: 1 });
+  });
+
+  it('wired prints each target with its test; --record without a marathon run fails with the message', () => {
+    const w = cli(['wired', '--power', 'redact', '--run', 'c1']);
+    assert.equal(w.code, 0, w.err);
+    assert.deepEqual(w.json, { power: 'redact', key: 'wired_redact', wired: 1, of: 1, recorded: false, targets: [{ where: 'api:server/routes.js', at: '/api/upload', wired: true, why: null, test: 'reach/ok.test.js' }] });
+    const rec = cli(['wired', '--power', 'redact', '--run', 'c1', '--record']);
+    assert.equal(rec.code, 1);
+    assert.match(rec.err, /--record needs a marathon run: this bbs run was handed off without one \(cli\.js handoff --marathon\)/);
+    const none = cli(['wired', '--run', 'c1']);
+    assert.equal(none.code, 1);
+    assert.match(none.err, /--power is required/);
+  });
+
+  it('delivered writes delivered.md and prints whether everything is wired; --record without a marathon run fails', async () => {
+    const d = cli(['delivered', '--run', 'c1']);
+    assert.equal(d.code, 0, d.err);
+    assert.equal(d.json.file, '.claude/bbs/runs/c1/delivered.md');
+    assert.equal(d.json.all_wired, true);
+    assert.equal(d.json.recorded, false);
+    assert.deepEqual(d.json.powers, [{ name: 'redact', verb: null, entry: ENTRY, wired: true, targets: ['wired: api:server/routes.js · /api/upload'] }]);
+    assert.ok((await fs.readFile(path.join(dir, d.json.file), 'utf-8')).startsWith('# What you got — bbs run c1\n'));
+    const rec = cli(['delivered', '--run', 'c1', '--record']);
+    assert.equal(rec.code, 1);
+    assert.match(rec.err, /--record needs a marathon run/);
+  });
+
+  it('a run with a marathon run but no marathon helpers says where it looked', async () => {
+    await codeRun(dir, 'c2', { marathon: true });
+    const rec = cli(['wired', '--power', 'redact', '--run', 'c2', '--record']);
+    assert.equal(rec.code, 1);
+    assert.match(rec.err, /--record needs the marathon helpers at \.claude\/helpers\/marathon\/cli\.js/);
   });
 });

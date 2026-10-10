@@ -91,7 +91,11 @@ export function stepSection(text, step) {
 /** Run a reach test command once per call; exit 0 within the timeout is a pass. */
 function runReach(projectDir, command, cache, timeoutMs) {
   if (cache.has(command)) return cache.get(command);
-  const r = spawnSync('sh', ['-c', command], { cwd: projectDir, encoding: 'utf-8', timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 });
+  // a reach test runs as its own top-level test run: inherited test-runner state (NODE_TEST_CONTEXT makes a nested
+  // `node --test` report to a parent and exit 0) must not turn a failing test into a pass
+  const { NODE_TEST_CONTEXT, ...env } = process.env;
+  void NODE_TEST_CONTEXT;
+  const r = spawnSync('sh', ['-c', command], { cwd: projectDir, env, encoding: 'utf-8', timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024 });
   const tail = `${r.stdout || ''}${r.stderr || ''}`.split('\n').filter(l => /not ok|Error|error|fail/i.test(l)).slice(0, 3).join(' | ');
   const res = r.error?.code === 'ETIMEDOUT' || r.signal ? { ok: false, why: `reach test timed out or was killed: ${command}` }
     : r.status === 0 ? { ok: true } : { ok: false, why: `reach test failed (exit ${r.status}): ${command}${tail ? ` — ${tail.slice(0, 200)}` : ''}` };

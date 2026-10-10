@@ -845,6 +845,7 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
     powers: outputPowers,
     memos,
     skipped,
+    integration: handoffDoc.integration,
     note,
     ...(force ? { stale_streams, removed_files, skipped_files } : {}),
     next: 'done'
