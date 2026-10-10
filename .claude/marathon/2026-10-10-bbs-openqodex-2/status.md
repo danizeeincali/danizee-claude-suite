@@ -1,17 +1,17 @@
 # Marathon 2026-10-10-bbs-openqodex-2
 
 - State: RUNNING
-- Budget: 0 / 10,000,000 tokens
+- Budget: 448,431 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
-- Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
+- Gate (run-wide, all streams): 2/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Next stream "pre-push-review-gate": create its worktree (`git worktree add ../<repo>-pre-push-review-gate -b marathon/2026-10-10-bbs-openqodex-2/pre-push-review-gate`) and activate it with `cli.js stream pre-push-review-gate state=active isolation=<path>`, then /w-marathon --resume 2026-10-10-bbs-openqodex-2.
+- Next for you: Next stream "secret-redaction-by-value-and-fingerprin": create its worktree (`git worktree add ../<repo>-secret-redaction-by-value-and-fingerprin -b marathon/2026-10-10-bbs-openqodex-2/secret-redaction-by-value-and-fingerprin`) and activate it with `cli.js stream secret-redaction-by-value-and-fingerprin state=active isolation=<path>`, then /w-marathon --resume 2026-10-10-bbs-openqodex-2.
 
 ## Streams
 
 | Stream | Isolation | Plan | State | Gate | Phase | Next | Tasks | Escapes |
 |---|---|---|---|---|---|---|---|---|
-| pre-push-review-gate |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/pre-push-review-gate.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
+| pre-push-review-gate | ../danizee-claude-suite-pre-push-review-gate | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/pre-push-review-gate.md | done | met | review | — |  | 0 |
 | secret-redaction-by-value-and-fingerprin |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/secret-redaction-by-value-and-fingerprin.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | lens-catalog-file-triggered-checks |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/lens-catalog-file-triggered-checks.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | hardened-git-read-on-untrusted-repo |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/hardened-git-read-on-untrusted-repo.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
@@ -27,11 +27,11 @@
 
 | Line | Owner | Status | Actual | Target |
 |---|---|---|---|---|
-| pre-push-review-gate: green unit runs in a row | build | failing | 0 | at_least 1 |
-| pre-push-review-gate: zero egress in the packaged check | build | failing | — | is true |
-| pre-push-review-gate: clean reviews in a row | build | failing | 0 | at_least 2 |
-| pre-push-review-gate: callers in the harness | build | failing | — | at_least 1 |
-| pre-push-review-gate: packaged check passes | build | failing | — | is true |
+| pre-push-review-gate: green unit runs in a row | build | met | 3 | at_least 1 |
+| pre-push-review-gate: zero egress in the packaged check | build | met | true | is true |
+| pre-push-review-gate: clean reviews in a row | build | met | 2 | at_least 2 |
+| pre-push-review-gate: callers in the harness | build | met | 1 | at_least 1 |
+| pre-push-review-gate: packaged check passes | build | met | true | is true |
 | secret-redaction-by-value-and-fingerprin: green unit runs in a row | build | failing | 0 | at_least 1 |
 | secret-redaction-by-value-and-fingerprin: zero egress in the packaged check | build | failing | — | is true |
 | secret-redaction-by-value-and-fingerprin: clean reviews in a row | build | failing | 0 | at_least 2 |
@@ -82,8 +82,8 @@
 | isolated-tool-free-wording-judge: clean reviews in a row | build | failing | 0 | at_least 2 |
 | isolated-tool-free-wording-judge: callers in the harness | build | failing | — | at_least 1 |
 | isolated-tool-free-wording-judge: packaged check passes | build | failing | — | is true |
-| Clean reviews in a row | build | failing | 0 | at_least 2 |
-| High findings in the latest review | build | failing | — | at_most 0 |
+| Clean reviews in a row | build | met | 2 | at_least 2 |
+| High findings in the latest review | build | met | 0 | at_most 0 |
 | Open high findings | build | met | 0 | at_most 0 |
 
 ## Waiting on human

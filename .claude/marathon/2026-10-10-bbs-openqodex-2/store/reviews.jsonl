@@ -1,0 +1,3 @@
+{"stream":"pre-push-review-gate","counts":{"high":0,"medium":3,"low":4},"angle":"one input method at a time","tokens":72528,"pass":false,"round":1,"commit":"9e0f016","id":"9bdad797-9efd-4282-890b-4e91e83b4886","ts":"2026-10-10T01:37:20.287Z"}
+{"stream":"pre-push-review-gate","counts":{"high":0,"medium":1,"low":3},"angle":"failure conditions and error paths","tokens":78437,"pass":true,"round":2,"commit":"4d4a3e7","id":"eba904f3-e900-4695-adca-ade3199ff946","ts":"2026-10-10T01:46:08.200Z"}
+{"stream":"pre-push-review-gate","counts":{"high":0,"medium":1,"low":1},"angle":"older environments and degraded networks","tokens":80065,"pass":true,"round":3,"commit":"c34bb07","id":"b7fdd520-d746-419d-8abf-77c0819d1909","ts":"2026-10-10T01:50:47.699Z"}

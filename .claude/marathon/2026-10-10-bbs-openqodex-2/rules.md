@@ -51,3 +51,9 @@ Add a rule the second time something goes wrong.
 - Streams run one at a time: each stream branch merges into the run branch `claude/project-thread-p9gbyo`
   before the next starts, so `dot-shortcuts.js` and `installer.js` never conflict.
 - Finish-line lines carry `stream`: `gate --stream <s>` judges only that stream's lines (others are other_stream).
+- (promoted: docs) A command step that runs a kit verb is copy-pasteable as written: no `a|b` placeholders, no
+  backslash-escaped backticks, and the flags it records match the flags the matching check uses. The repo copy of
+  any command a stream edits equals the generator output (a test checks it).
+- (promoted: correctness) Kit verbs resolve repository paths from `git rev-parse --show-toplevel` / the git common
+  dir, never from the cwd; a failure of git itself (missing, unspawnable) is reported as that, not as "not a repo";
+  store writes are atomic and clean up their temp file on failure. Unknown flags are refused.

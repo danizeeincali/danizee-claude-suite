@@ -9,10 +9,13 @@
     },
     {
       "name": "pre-push-review-gate",
-      "state": "queued",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/pre-push-review-gate.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "—",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-pre-push-review-gate",
+      "phase": "review",
+      "base": "386730fde7320f93b63670104f6299bbd14e9909"
     },
     {
       "name": "secret-redaction-by-value-and-fingerprin",

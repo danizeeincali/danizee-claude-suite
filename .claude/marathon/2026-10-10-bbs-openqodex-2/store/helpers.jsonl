@@ -1,0 +1,12 @@
+{"role":"build","model":"sonnet","stream":"pre-push-review-gate","budget":150000,"event":"spawn","id":"e212f133-49a4-4f0f-9946-a4aa9166e736","ts":"2026-10-10T01:31:35.881Z"}
+{"helper_id":"e212f133-49a4-4f0f-9946-a4aa9166e736","tokens":73517,"outcome":"green","event":"done","id":"8caf2152-2317-410c-9ed0-e52cc197433a","ts":"2026-10-10T01:35:32.998Z"}
+{"role":"review","model":"opus","stream":"pre-push-review-gate","budget":150000,"event":"spawn","id":"55568aea-3376-4495-b247-b3876c4e398d","ts":"2026-10-10T01:35:39.394Z"}
+{"helper_id":"55568aea-3376-4495-b247-b3876c4e398d","tokens":72528,"outcome":"green","event":"done","id":"0c4718b8-862f-4dc6-871b-f97b8addca8a","ts":"2026-10-10T01:37:20.053Z"}
+{"role":"fix","model":"sonnet","stream":"pre-push-review-gate","budget":120000,"event":"spawn","id":"c5c2b941-97c4-42dd-8e18-e5353b5948fe","ts":"2026-10-10T01:37:30.154Z"}
+{"helper_id":"c5c2b941-97c4-42dd-8e18-e5353b5948fe","tokens":83870,"outcome":"green","event":"done","id":"95dacc81-a8e9-4e93-9ceb-975c1bd94673","ts":"2026-10-10T01:44:37.523Z"}
+{"role":"review","model":"opus","stream":"pre-push-review-gate","budget":150000,"event":"spawn","id":"3f02365d-1ce1-4b78-8e3a-6f2face508df","ts":"2026-10-10T01:44:41.432Z"}
+{"helper_id":"3f02365d-1ce1-4b78-8e3a-6f2face508df","tokens":78437,"outcome":"green","event":"done","id":"2117cc4c-2b86-4567-bba5-c7753168a496","ts":"2026-10-10T01:46:07.997Z"}
+{"role":"fix","model":"sonnet","stream":"pre-push-review-gate","budget":80000,"event":"spawn","id":"c173a02b-14da-428e-954e-47870cefb096","ts":"2026-10-10T01:46:09.167Z"}
+{"helper_id":"c173a02b-14da-428e-954e-47870cefb096","tokens":60014,"outcome":"green","event":"done","id":"b88c6f7f-3e4c-4e2b-8b58-790e50a976de","ts":"2026-10-10T01:48:43.749Z"}
+{"role":"review","model":"opus","stream":"pre-push-review-gate","budget":150000,"event":"spawn","id":"c441f905-2563-4f90-be61-ea4dc60590f5","ts":"2026-10-10T01:49:37.834Z"}
+{"helper_id":"c441f905-2563-4f90-be61-ea4dc60590f5","tokens":80065,"outcome":"green","event":"done","id":"a35c6bf6-edd5-4d8c-a7c4-089d2f35c2c5","ts":"2026-10-10T01:50:47.475Z"}
