@@ -1,0 +1,748 @@
+{
+  "project": "/home/claude/danizee-claude-suite",
+  "ts": "2026-10-10T01:01:02.673Z",
+  "byKind": {
+    "command": 44,
+    "helper": 26,
+    "hook": 2,
+    "module": 48,
+    "script": 2
+  },
+  "errors": [],
+  "capped": {},
+  "capped_totals": {},
+  "rows": [
+    {
+      "id": "command:.claude/commands/.shortcuts/bbs.md",
+      "kind": "command",
+      "name": "bbs",
+      "path": ".claude/commands/.shortcuts/bbs.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/bc.md",
+      "kind": "command",
+      "name": "bc",
+      "path": ".claude/commands/.shortcuts/bc.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/bcp.md",
+      "kind": "command",
+      "name": "bcp",
+      "path": ".claude/commands/.shortcuts/bcp.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/mt.md",
+      "kind": "command",
+      "name": "mt",
+      "path": ".claude/commands/.shortcuts/mt.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/pt.md",
+      "kind": "command",
+      "name": "pt",
+      "path": ".claude/commands/.shortcuts/pt.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-architect.md",
+      "kind": "command",
+      "name": "w-architect",
+      "path": ".claude/commands/.shortcuts/w-architect.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-background-compound.md",
+      "kind": "command",
+      "name": "w-background-compound",
+      "path": ".claude/commands/.shortcuts/w-background-compound.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-bbs.md",
+      "kind": "command",
+      "name": "w-bbs",
+      "path": ".claude/commands/.shortcuts/w-bbs.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-bg-debug.md",
+      "kind": "command",
+      "name": "w-bg-debug",
+      "path": ".claude/commands/.shortcuts/w-bg-debug.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-bg-idea-tdd-swarm.md",
+      "kind": "command",
+      "name": "w-bg-idea-tdd-swarm",
+      "path": ".claude/commands/.shortcuts/w-bg-idea-tdd-swarm.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-bg-perf.md",
+      "kind": "command",
+      "name": "w-bg-perf",
+      "path": ".claude/commands/.shortcuts/w-bg-perf.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-bg-review.md",
+      "kind": "command",
+      "name": "w-bg-review",
+      "path": ".claude/commands/.shortcuts/w-bg-review.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-bg-security.md",
+      "kind": "command",
+      "name": "w-bg-security",
+      "path": ".claude/commands/.shortcuts/w-bg-security.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-bg-tdd-swarm.md",
+      "kind": "command",
+      "name": "w-bg-tdd-swarm",
+      "path": ".claude/commands/.shortcuts/w-bg-tdd-swarm.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-compound.md",
+      "kind": "command",
+      "name": "w-compound",
+      "path": ".claude/commands/.shortcuts/w-compound.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-debug.md",
+      "kind": "command",
+      "name": "w-debug",
+      "path": ".claude/commands/.shortcuts/w-debug.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-end.md",
+      "kind": "command",
+      "name": "w-end",
+      "path": ".claude/commands/.shortcuts/w-end.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-fix.md",
+      "kind": "command",
+      "name": "w-fix",
+      "path": ".claude/commands/.shortcuts/w-fix.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-hotfix.md",
+      "kind": "command",
+      "name": "w-hotfix",
+      "path": ".claude/commands/.shortcuts/w-hotfix.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-marathon.md",
+      "kind": "command",
+      "name": "w-marathon",
+      "path": ".claude/commands/.shortcuts/w-marathon.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-multi-repo.md",
+      "kind": "command",
+      "name": "w-multi-repo",
+      "path": ".claude/commands/.shortcuts/w-multi-repo.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-perf.md",
+      "kind": "command",
+      "name": "w-perf",
+      "path": ".claude/commands/.shortcuts/w-perf.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+      "kind": "command",
+      "name": "w-plan-tdd-swarm",
+      "path": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-ralph-batch.md",
+      "kind": "command",
+      "name": "w-ralph-batch",
+      "path": ".claude/commands/.shortcuts/w-ralph-batch.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-ralph-goals.md",
+      "kind": "command",
+      "name": "w-ralph-goals",
+      "path": ".claude/commands/.shortcuts/w-ralph-goals.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-ralph-pick.md",
+      "kind": "command",
+      "name": "w-ralph-pick",
+      "path": ".claude/commands/.shortcuts/w-ralph-pick.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-ralph-this.md",
+      "kind": "command",
+      "name": "w-ralph-this",
+      "path": ".claude/commands/.shortcuts/w-ralph-this.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-review.md",
+      "kind": "command",
+      "name": "w-review",
+      "path": ".claude/commands/.shortcuts/w-review.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-search.md",
+      "kind": "command",
+      "name": "w-search",
+      "path": ".claude/commands/.shortcuts/w-search.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-security.md",
+      "kind": "command",
+      "name": "w-security",
+      "path": ".claude/commands/.shortcuts/w-security.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-start.md",
+      "kind": "command",
+      "name": "w-start",
+      "path": ".claude/commands/.shortcuts/w-start.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-swarm.md",
+      "kind": "command",
+      "name": "w-swarm",
+      "path": ".claude/commands/.shortcuts/w-swarm.md"
+    },
+    {
+      "id": "command:.claude/commands/.shortcuts/w-tdd-swarm.md",
+      "kind": "command",
+      "name": "w-tdd-swarm",
+      "path": ".claude/commands/.shortcuts/w-tdd-swarm.md"
+    },
+    {
+      "id": "command:.claude/commands/analysis/component.md",
+      "kind": "command",
+      "name": "component",
+      "path": ".claude/commands/analysis/component.md"
+    },
+    {
+      "id": "command:.claude/commands/analysis/design.md",
+      "kind": "command",
+      "name": "design",
+      "path": ".claude/commands/analysis/design.md"
+    },
+    {
+      "id": "command:.claude/commands/analysis/layout.md",
+      "kind": "command",
+      "name": "layout",
+      "path": ".claude/commands/analysis/layout.md"
+    },
+    {
+      "id": "command:.claude/commands/analysis/theme.md",
+      "kind": "command",
+      "name": "theme",
+      "path": ".claude/commands/analysis/theme.md"
+    },
+    {
+      "id": "command:.claude/commands/coordination/agent-spawn.md",
+      "kind": "command",
+      "name": "agent-spawn",
+      "path": ".claude/commands/coordination/agent-spawn.md"
+    },
+    {
+      "id": "command:.claude/commands/coordination/memory-ops.md",
+      "kind": "command",
+      "name": "memory-ops",
+      "path": ".claude/commands/coordination/memory-ops.md"
+    },
+    {
+      "id": "command:.claude/commands/coordination/swarm-init.md",
+      "kind": "command",
+      "name": "swarm-init",
+      "path": ".claude/commands/coordination/swarm-init.md"
+    },
+    {
+      "id": "command:.claude/commands/workflows/compound.md",
+      "kind": "command",
+      "name": "compound",
+      "path": ".claude/commands/workflows/compound.md"
+    },
+    {
+      "id": "command:.claude/commands/workflows/plan.md",
+      "kind": "command",
+      "name": "plan",
+      "path": ".claude/commands/workflows/plan.md"
+    },
+    {
+      "id": "command:.claude/commands/workflows/review.md",
+      "kind": "command",
+      "name": "review",
+      "path": ".claude/commands/workflows/review.md"
+    },
+    {
+      "id": "command:.claude/commands/workflows/work.md",
+      "kind": "command",
+      "name": "work",
+      "path": ".claude/commands/workflows/work.md"
+    },
+    {
+      "id": "helper:.claude/helpers/bbs/cli.js",
+      "kind": "helper",
+      "name": "cli",
+      "path": ".claude/helpers/bbs/cli.js"
+    },
+    {
+      "id": "helper:.claude/helpers/bbs/config.js",
+      "kind": "helper",
+      "name": "config",
+      "path": ".claude/helpers/bbs/config.js"
+    },
+    {
+      "id": "helper:.claude/helpers/bbs/fetch.js",
+      "kind": "helper",
+      "name": "fetch",
+      "path": ".claude/helpers/bbs/fetch.js"
+    },
+    {
+      "id": "helper:.claude/helpers/bbs/handoff.js",
+      "kind": "helper",
+      "name": "handoff",
+      "path": ".claude/helpers/bbs/handoff.js"
+    },
+    {
+      "id": "helper:.claude/helpers/bbs/harness-map.js",
+      "kind": "helper",
+      "name": "harness-map",
+      "path": ".claude/helpers/bbs/harness-map.js"
+    },
+    {
+      "id": "helper:.claude/helpers/bbs/intake.js",
+      "kind": "helper",
+      "name": "intake",
+      "path": ".claude/helpers/bbs/intake.js"
+    },
+    {
+      "id": "helper:.claude/helpers/bbs/inventory.js",
+      "kind": "helper",
+      "name": "inventory",
+      "path": ".claude/helpers/bbs/inventory.js"
+    },
+    {
+      "id": "helper:.claude/helpers/bbs/status.js",
+      "kind": "helper",
+      "name": "status",
+      "path": ".claude/helpers/bbs/status.js"
+    },
+    {
+      "id": "helper:.claude/helpers/bbs/store.js",
+      "kind": "helper",
+      "name": "store",
+      "path": ".claude/helpers/bbs/store.js"
+    },
+    {
+      "id": "helper:.claude/helpers/bbs/verdict.js",
+      "kind": "helper",
+      "name": "verdict",
+      "path": ".claude/helpers/bbs/verdict.js"
+    },
+    {
+      "id": "helper:.claude/helpers/marathon/budget.js",
+      "kind": "helper",
+      "name": "budget",
+      "path": ".claude/helpers/marathon/budget.js"
+    },
+    {
+      "id": "helper:.claude/helpers/marathon/cli.js",
+      "kind": "helper",
+      "name": "cli",
+      "path": ".claude/helpers/marathon/cli.js"
+    },
+    {
+      "id": "helper:.claude/helpers/marathon/config.js",
+      "kind": "helper",
+      "name": "config",
+      "path": ".claude/helpers/marathon/config.js"
+    },
+    {
+      "id": "helper:.claude/helpers/marathon/context.js",
+      "kind": "helper",
+      "name": "context",
+      "path": ".claude/helpers/marathon/context.js"
+    },
+    {
+      "id": "helper:.claude/helpers/marathon/findings.js",
+      "kind": "helper",
+      "name": "findings",
+      "path": ".claude/helpers/marathon/findings.js"
+    },
+    {
+      "id": "helper:.claude/helpers/marathon/gate.js",
+      "kind": "helper",
+      "name": "gate",
+      "path": ".claude/helpers/marathon/gate.js"
+    },
+    {
+      "id": "helper:.claude/helpers/marathon/keeplist.js",
+      "kind": "helper",
+      "name": "keeplist",
+      "path": ".claude/helpers/marathon/keeplist.js"
+    },
+    {
+      "id": "helper:.claude/helpers/marathon/page.js",
+      "kind": "helper",
+      "name": "page",
+      "path": ".claude/helpers/marathon/page.js"
+    },
+    {
+      "id": "helper:.claude/helpers/marathon/resume.js",
+      "kind": "helper",
+      "name": "resume",
+      "path": ".claude/helpers/marathon/resume.js"
+    },
+    {
+      "id": "helper:.claude/helpers/marathon/reviewer.js",
+      "kind": "helper",
+      "name": "reviewer",
+      "path": ".claude/helpers/marathon/reviewer.js"
+    },
+    {
+      "id": "helper:.claude/helpers/marathon/routing.js",
+      "kind": "helper",
+      "name": "routing",
+      "path": ".claude/helpers/marathon/routing.js"
+    },
+    {
+      "id": "helper:.claude/helpers/marathon/shadow.js",
+      "kind": "helper",
+      "name": "shadow",
+      "path": ".claude/helpers/marathon/shadow.js"
+    },
+    {
+      "id": "helper:.claude/helpers/marathon/status.js",
+      "kind": "helper",
+      "name": "status",
+      "path": ".claude/helpers/marathon/status.js"
+    },
+    {
+      "id": "helper:.claude/helpers/marathon/store.js",
+      "kind": "helper",
+      "name": "store",
+      "path": ".claude/helpers/marathon/store.js"
+    },
+    {
+      "id": "helper:.claude/helpers/marathon/streak.js",
+      "kind": "helper",
+      "name": "streak",
+      "path": ".claude/helpers/marathon/streak.js"
+    },
+    {
+      "id": "helper:.claude/helpers/marathon/wake.js",
+      "kind": "helper",
+      "name": "wake",
+      "path": ".claude/helpers/marathon/wake.js"
+    },
+    {
+      "id": "hook:.claude/hooks/marathon-precompact.sh",
+      "kind": "hook",
+      "name": "marathon-precompact",
+      "path": ".claude/hooks/marathon-precompact.sh"
+    },
+    {
+      "id": "hook:.claude/hooks/marathon-session-start.sh",
+      "kind": "hook",
+      "name": "marathon-session-start",
+      "path": ".claude/hooks/marathon-session-start.sh"
+    },
+    {
+      "id": "module:src/lib/action-items.js",
+      "kind": "module",
+      "name": "action-items",
+      "path": "src/lib/action-items.js"
+    },
+    {
+      "id": "module:src/lib/bbs/cli.js",
+      "kind": "module",
+      "name": "cli",
+      "path": "src/lib/bbs/cli.js"
+    },
+    {
+      "id": "module:src/lib/bbs/config.js",
+      "kind": "module",
+      "name": "config",
+      "path": "src/lib/bbs/config.js"
+    },
+    {
+      "id": "module:src/lib/bbs/fetch.js",
+      "kind": "module",
+      "name": "fetch",
+      "path": "src/lib/bbs/fetch.js"
+    },
+    {
+      "id": "module:src/lib/bbs/handoff.js",
+      "kind": "module",
+      "name": "handoff",
+      "path": "src/lib/bbs/handoff.js"
+    },
+    {
+      "id": "module:src/lib/bbs/harness-map.js",
+      "kind": "module",
+      "name": "harness-map",
+      "path": "src/lib/bbs/harness-map.js"
+    },
+    {
+      "id": "module:src/lib/bbs/intake.js",
+      "kind": "module",
+      "name": "intake",
+      "path": "src/lib/bbs/intake.js"
+    },
+    {
+      "id": "module:src/lib/bbs/inventory.js",
+      "kind": "module",
+      "name": "inventory",
+      "path": "src/lib/bbs/inventory.js"
+    },
+    {
+      "id": "module:src/lib/bbs/status.js",
+      "kind": "module",
+      "name": "status",
+      "path": "src/lib/bbs/status.js"
+    },
+    {
+      "id": "module:src/lib/bbs/store.js",
+      "kind": "module",
+      "name": "store",
+      "path": "src/lib/bbs/store.js"
+    },
+    {
+      "id": "module:src/lib/bbs/verdict.js",
+      "kind": "module",
+      "name": "verdict",
+      "path": "src/lib/bbs/verdict.js"
+    },
+    {
+      "id": "module:src/lib/category-detector.js",
+      "kind": "module",
+      "name": "category-detector",
+      "path": "src/lib/category-detector.js"
+    },
+    {
+      "id": "module:src/lib/context-linker.js",
+      "kind": "module",
+      "name": "context-linker",
+      "path": "src/lib/context-linker.js"
+    },
+    {
+      "id": "module:src/lib/db.js",
+      "kind": "module",
+      "name": "db",
+      "path": "src/lib/db.js"
+    },
+    {
+      "id": "module:src/lib/deferred-items.js",
+      "kind": "module",
+      "name": "deferred-items",
+      "path": "src/lib/deferred-items.js"
+    },
+    {
+      "id": "module:src/lib/follow-up-detector.js",
+      "kind": "module",
+      "name": "follow-up-detector",
+      "path": "src/lib/follow-up-detector.js"
+    },
+    {
+      "id": "module:src/lib/follow-ups.js",
+      "kind": "module",
+      "name": "follow-ups",
+      "path": "src/lib/follow-ups.js"
+    },
+    {
+      "id": "module:src/lib/git-utils.js",
+      "kind": "module",
+      "name": "git-utils",
+      "path": "src/lib/git-utils.js"
+    },
+    {
+      "id": "module:src/lib/insights.js",
+      "kind": "module",
+      "name": "insights",
+      "path": "src/lib/insights.js"
+    },
+    {
+      "id": "module:src/lib/marathon/budget.js",
+      "kind": "module",
+      "name": "budget",
+      "path": "src/lib/marathon/budget.js"
+    },
+    {
+      "id": "module:src/lib/marathon/cli.js",
+      "kind": "module",
+      "name": "cli",
+      "path": "src/lib/marathon/cli.js"
+    },
+    {
+      "id": "module:src/lib/marathon/config.js",
+      "kind": "module",
+      "name": "config",
+      "path": "src/lib/marathon/config.js"
+    },
+    {
+      "id": "module:src/lib/marathon/context.js",
+      "kind": "module",
+      "name": "context",
+      "path": "src/lib/marathon/context.js"
+    },
+    {
+      "id": "module:src/lib/marathon/findings.js",
+      "kind": "module",
+      "name": "findings",
+      "path": "src/lib/marathon/findings.js"
+    },
+    {
+      "id": "module:src/lib/marathon/gate.js",
+      "kind": "module",
+      "name": "gate",
+      "path": "src/lib/marathon/gate.js"
+    },
+    {
+      "id": "module:src/lib/marathon/keeplist.js",
+      "kind": "module",
+      "name": "keeplist",
+      "path": "src/lib/marathon/keeplist.js"
+    },
+    {
+      "id": "module:src/lib/marathon/page.js",
+      "kind": "module",
+      "name": "page",
+      "path": "src/lib/marathon/page.js"
+    },
+    {
+      "id": "module:src/lib/marathon/resume.js",
+      "kind": "module",
+      "name": "resume",
+      "path": "src/lib/marathon/resume.js"
+    },
+    {
+      "id": "module:src/lib/marathon/reviewer.js",
+      "kind": "module",
+      "name": "reviewer",
+      "path": "src/lib/marathon/reviewer.js"
+    },
+    {
+      "id": "module:src/lib/marathon/routing.js",
+      "kind": "module",
+      "name": "routing",
+      "path": "src/lib/marathon/routing.js"
+    },
+    {
+      "id": "module:src/lib/marathon/shadow.js",
+      "kind": "module",
+      "name": "shadow",
+      "path": "src/lib/marathon/shadow.js"
+    },
+    {
+      "id": "module:src/lib/marathon/status.js",
+      "kind": "module",
+      "name": "status",
+      "path": "src/lib/marathon/status.js"
+    },
+    {
+      "id": "module:src/lib/marathon/store.js",
+      "kind": "module",
+      "name": "store",
+      "path": "src/lib/marathon/store.js"
+    },
+    {
+      "id": "module:src/lib/marathon/streak.js",
+      "kind": "module",
+      "name": "streak",
+      "path": "src/lib/marathon/streak.js"
+    },
+    {
+      "id": "module:src/lib/marathon/wake.js",
+      "kind": "module",
+      "name": "wake",
+      "path": "src/lib/marathon/wake.js"
+    },
+    {
+      "id": "module:src/lib/notes.js",
+      "kind": "module",
+      "name": "notes",
+      "path": "src/lib/notes.js"
+    },
+    {
+      "id": "module:src/lib/priority-utils.js",
+      "kind": "module",
+      "name": "priority-utils",
+      "path": "src/lib/priority-utils.js"
+    },
+    {
+      "id": "module:src/plugins/agent-cookbook.js",
+      "kind": "module",
+      "name": "agent-cookbook",
+      "path": "src/plugins/agent-cookbook.js"
+    },
+    {
+      "id": "module:src/plugins/autoresearch.js",
+      "kind": "module",
+      "name": "autoresearch",
+      "path": "src/plugins/autoresearch.js"
+    },
+    {
+      "id": "module:src/plugins/bbs.js",
+      "kind": "module",
+      "name": "bbs",
+      "path": "src/plugins/bbs.js"
+    },
+    {
+      "id": "module:src/plugins/claude-flow.js",
+      "kind": "module",
+      "name": "claude-flow",
+      "path": "src/plugins/claude-flow.js"
+    },
+    {
+      "id": "module:src/plugins/compound-engineering.js",
+      "kind": "module",
+      "name": "compound-engineering",
+      "path": "src/plugins/compound-engineering.js"
+    },
+    {
+      "id": "module:src/plugins/dot-shortcuts.js",
+      "kind": "module",
+      "name": "dot-shortcuts",
+      "path": "src/plugins/dot-shortcuts.js"
+    },
+    {
+      "id": "module:src/plugins/frontend-design.js",
+      "kind": "module",
+      "name": "frontend-design",
+      "path": "src/plugins/frontend-design.js"
+    },
+    {
+      "id": "module:src/plugins/marathon.js",
+      "kind": "module",
+      "name": "marathon",
+      "path": "src/plugins/marathon.js"
+    },
+    {
+      "id": "module:src/plugins/pm-shortcuts.js",
+      "kind": "module",
+      "name": "pm-shortcuts",
+      "path": "src/plugins/pm-shortcuts.js"
+    },
+    {
+      "id": "module:src/plugins/ruflo.js",
+      "kind": "module",
+      "name": "ruflo",
+      "path": "src/plugins/ruflo.js"
+    },
+    {
+      "id": "module:src/plugins/terminal-agents.js",
+      "kind": "module",
+      "name": "terminal-agents",
+      "path": "src/plugins/terminal-agents.js"
+    },
+    {
+      "id": "script:package.json#start",
+      "kind": "script",
+      "name": "start",
+      "path": "package.json"
+    },
+    {
+      "id": "script:package.json#test",
+      "kind": "script",
+      "name": "test",
+      "path": "package.json"
+    }
+  ]
+}

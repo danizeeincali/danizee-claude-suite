@@ -1,0 +1,482 @@
+{
+  "run": "2026-10-10-openqodex-2",
+  "source_identity": "git:74b60f1bec8de1de0b76e12d17c6f6805f6bfc08",
+  "ts": "2026-10-10T01:01:02.673Z",
+  "candidates": {
+    "pre-push-review-gate": [
+      {
+        "id": "command:.claude/commands/.shortcuts/w-bg-review.md",
+        "kind": "command",
+        "name": "w-bg-review",
+        "path": ".claude/commands/.shortcuts/w-bg-review.md",
+        "score": 0.127
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-review.md",
+        "kind": "command",
+        "name": "w-review",
+        "path": ".claude/commands/.shortcuts/w-review.md",
+        "score": 0.122
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-background-compound.md",
+        "kind": "command",
+        "name": "w-background-compound",
+        "path": ".claude/commands/.shortcuts/w-background-compound.md",
+        "score": 0.113
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/bcp.md",
+        "kind": "command",
+        "name": "bcp",
+        "path": ".claude/commands/.shortcuts/bcp.md",
+        "score": 0.108
+      },
+      {
+        "id": "command:.claude/commands/workflows/review.md",
+        "kind": "command",
+        "name": "review",
+        "path": ".claude/commands/workflows/review.md",
+        "score": 0.098
+      }
+    ],
+    "secret-redaction-by-value-and-fingerprint": [
+      {
+        "id": "helper:.claude/helpers/bbs/intake.js",
+        "kind": "helper",
+        "name": "intake",
+        "path": ".claude/helpers/bbs/intake.js",
+        "score": 0.088
+      },
+      {
+        "id": "module:src/lib/bbs/intake.js",
+        "kind": "module",
+        "name": "intake",
+        "path": "src/lib/bbs/intake.js",
+        "score": 0.088
+      },
+      {
+        "id": "helper:.claude/helpers/bbs/fetch.js",
+        "kind": "helper",
+        "name": "fetch",
+        "path": ".claude/helpers/bbs/fetch.js",
+        "score": 0.087
+      },
+      {
+        "id": "module:src/lib/bbs/fetch.js",
+        "kind": "module",
+        "name": "fetch",
+        "path": "src/lib/bbs/fetch.js",
+        "score": 0.087
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-bbs.md",
+        "kind": "command",
+        "name": "w-bbs",
+        "path": ".claude/commands/.shortcuts/w-bbs.md",
+        "score": 0.083
+      }
+    ],
+    "lens-catalog-file-triggered-checks": [
+      {
+        "id": "module:src/lib/follow-up-detector.js",
+        "kind": "module",
+        "name": "follow-up-detector",
+        "path": "src/lib/follow-up-detector.js",
+        "score": 0.097
+      },
+      {
+        "id": "helper:.claude/helpers/bbs/store.js",
+        "kind": "helper",
+        "name": "store",
+        "path": ".claude/helpers/bbs/store.js",
+        "score": 0.086
+      },
+      {
+        "id": "module:src/lib/bbs/store.js",
+        "kind": "module",
+        "name": "store",
+        "path": "src/lib/bbs/store.js",
+        "score": 0.086
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-bbs.md",
+        "kind": "command",
+        "name": "w-bbs",
+        "path": ".claude/commands/.shortcuts/w-bbs.md",
+        "score": 0.084
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-compound.md",
+        "kind": "command",
+        "name": "w-compound",
+        "path": ".claude/commands/.shortcuts/w-compound.md",
+        "score": 0.084
+      }
+    ],
+    "hardened-git-read-on-untrusted-repo": [
+      {
+        "id": "helper:.claude/helpers/bbs/intake.js",
+        "kind": "helper",
+        "name": "intake",
+        "path": ".claude/helpers/bbs/intake.js",
+        "score": 0.123
+      },
+      {
+        "id": "module:src/lib/bbs/intake.js",
+        "kind": "module",
+        "name": "intake",
+        "path": "src/lib/bbs/intake.js",
+        "score": 0.123
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-bbs.md",
+        "kind": "command",
+        "name": "w-bbs",
+        "path": ".claude/commands/.shortcuts/w-bbs.md",
+        "score": 0.103
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-start.md",
+        "kind": "command",
+        "name": "w-start",
+        "path": ".claude/commands/.shortcuts/w-start.md",
+        "score": 0.091
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-background-compound.md",
+        "kind": "command",
+        "name": "w-background-compound",
+        "path": ".claude/commands/.shortcuts/w-background-compound.md",
+        "score": 0.086
+      }
+    ],
+    "identity-checked-file-writes": [
+      {
+        "id": "command:.claude/commands/.shortcuts/w-bbs.md",
+        "kind": "command",
+        "name": "w-bbs",
+        "path": ".claude/commands/.shortcuts/w-bbs.md",
+        "score": 0.139
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-background-compound.md",
+        "kind": "command",
+        "name": "w-background-compound",
+        "path": ".claude/commands/.shortcuts/w-background-compound.md",
+        "score": 0.078
+      },
+      {
+        "id": "module:src/plugins/bbs.js",
+        "kind": "module",
+        "name": "bbs",
+        "path": "src/plugins/bbs.js",
+        "score": 0.068
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "kind": "command",
+        "name": "w-plan-tdd-swarm",
+        "path": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "score": 0.063
+      },
+      {
+        "id": "module:src/plugins/marathon.js",
+        "kind": "module",
+        "name": "marathon",
+        "path": "src/plugins/marathon.js",
+        "score": 0.059
+      }
+    ],
+    "change-blast-radius-walk": [
+      {
+        "id": "command:.claude/commands/.shortcuts/w-compound.md",
+        "kind": "command",
+        "name": "w-compound",
+        "path": ".claude/commands/.shortcuts/w-compound.md",
+        "score": 0.084
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-background-compound.md",
+        "kind": "command",
+        "name": "w-background-compound",
+        "path": ".claude/commands/.shortcuts/w-background-compound.md",
+        "score": 0.056
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "kind": "command",
+        "name": "w-plan-tdd-swarm",
+        "path": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "score": 0.048
+      },
+      {
+        "id": "helper:.claude/helpers/marathon/reviewer.js",
+        "kind": "helper",
+        "name": "reviewer",
+        "path": ".claude/helpers/marathon/reviewer.js",
+        "score": 0.046
+      },
+      {
+        "id": "module:src/lib/marathon/reviewer.js",
+        "kind": "module",
+        "name": "reviewer",
+        "path": "src/lib/marathon/reviewer.js",
+        "score": 0.046
+      }
+    ],
+    "caller-floor-disclosure": [
+      {
+        "id": "command:.claude/commands/.shortcuts/w-marathon.md",
+        "kind": "command",
+        "name": "w-marathon",
+        "path": ".claude/commands/.shortcuts/w-marathon.md",
+        "score": 0.085
+      },
+      {
+        "id": "helper:.claude/helpers/marathon/budget.js",
+        "kind": "helper",
+        "name": "budget",
+        "path": ".claude/helpers/marathon/budget.js",
+        "score": 0.083
+      },
+      {
+        "id": "module:src/lib/marathon/budget.js",
+        "kind": "module",
+        "name": "budget",
+        "path": "src/lib/marathon/budget.js",
+        "score": 0.083
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "kind": "command",
+        "name": "w-plan-tdd-swarm",
+        "path": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "score": 0.055
+      },
+      {
+        "id": "helper:.claude/helpers/marathon/resume.js",
+        "kind": "helper",
+        "name": "resume",
+        "path": ".claude/helpers/marathon/resume.js",
+        "score": 0.044
+      }
+    ],
+    "fact-cached-graph-build-with-budget": [
+      {
+        "id": "command:.claude/commands/.shortcuts/w-marathon.md",
+        "kind": "command",
+        "name": "w-marathon",
+        "path": ".claude/commands/.shortcuts/w-marathon.md",
+        "score": 0.162
+      },
+      {
+        "id": "helper:.claude/helpers/marathon/budget.js",
+        "kind": "helper",
+        "name": "budget",
+        "path": ".claude/helpers/marathon/budget.js",
+        "score": 0.143
+      },
+      {
+        "id": "module:src/lib/marathon/budget.js",
+        "kind": "module",
+        "name": "budget",
+        "path": "src/lib/marathon/budget.js",
+        "score": 0.143
+      },
+      {
+        "id": "helper:.claude/helpers/marathon/config.js",
+        "kind": "helper",
+        "name": "config",
+        "path": ".claude/helpers/marathon/config.js",
+        "score": 0.125
+      },
+      {
+        "id": "module:src/lib/marathon/config.js",
+        "kind": "module",
+        "name": "config",
+        "path": "src/lib/marathon/config.js",
+        "score": 0.125
+      }
+    ],
+    "tracked-file-scrub-gate": [
+      {
+        "id": "helper:.claude/helpers/bbs/store.js",
+        "kind": "helper",
+        "name": "store",
+        "path": ".claude/helpers/bbs/store.js",
+        "score": 0.115
+      },
+      {
+        "id": "module:src/lib/bbs/store.js",
+        "kind": "module",
+        "name": "store",
+        "path": "src/lib/bbs/store.js",
+        "score": 0.115
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-background-compound.md",
+        "kind": "command",
+        "name": "w-background-compound",
+        "path": ".claude/commands/.shortcuts/w-background-compound.md",
+        "score": 0.106
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-marathon.md",
+        "kind": "command",
+        "name": "w-marathon",
+        "path": ".claude/commands/.shortcuts/w-marathon.md",
+        "score": 0.105
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-bbs.md",
+        "kind": "command",
+        "name": "w-bbs",
+        "path": ".claude/commands/.shortcuts/w-bbs.md",
+        "score": 0.092
+      }
+    ],
+    "planted-bug-review-scoring": [
+      {
+        "id": "command:.claude/commands/.shortcuts/w-marathon.md",
+        "kind": "command",
+        "name": "w-marathon",
+        "path": ".claude/commands/.shortcuts/w-marathon.md",
+        "score": 0.092
+      },
+      {
+        "id": "helper:.claude/helpers/marathon/streak.js",
+        "kind": "helper",
+        "name": "streak",
+        "path": ".claude/helpers/marathon/streak.js",
+        "score": 0.09
+      },
+      {
+        "id": "module:src/lib/marathon/streak.js",
+        "kind": "module",
+        "name": "streak",
+        "path": "src/lib/marathon/streak.js",
+        "score": 0.09
+      },
+      {
+        "id": "helper:.claude/helpers/marathon/reviewer.js",
+        "kind": "helper",
+        "name": "reviewer",
+        "path": ".claude/helpers/marathon/reviewer.js",
+        "score": 0.089
+      },
+      {
+        "id": "module:src/lib/marathon/reviewer.js",
+        "kind": "module",
+        "name": "reviewer",
+        "path": "src/lib/marathon/reviewer.js",
+        "score": 0.089
+      }
+    ],
+    "isolated-tool-free-wording-judge": [
+      {
+        "id": "command:.claude/commands/.shortcuts/w-bbs.md",
+        "kind": "command",
+        "name": "w-bbs",
+        "path": ".claude/commands/.shortcuts/w-bbs.md",
+        "score": 0.155
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "kind": "command",
+        "name": "w-plan-tdd-swarm",
+        "path": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "score": 0.151
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-marathon.md",
+        "kind": "command",
+        "name": "w-marathon",
+        "path": ".claude/commands/.shortcuts/w-marathon.md",
+        "score": 0.134
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-background-compound.md",
+        "kind": "command",
+        "name": "w-background-compound",
+        "path": ".claude/commands/.shortcuts/w-background-compound.md",
+        "score": 0.129
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-ralph-batch.md",
+        "kind": "command",
+        "name": "w-ralph-batch",
+        "path": ".claude/commands/.shortcuts/w-ralph-batch.md",
+        "score": 0.097
+      }
+    ]
+  },
+  "judgments": {
+    "pre-push-review-gate": {
+      "status": "missing",
+      "tool": null,
+      "why": "None of the five candidates writes a change-id receipt or runs a push-time hook; they are review command docs only.",
+      "ts": "2026-10-10T01:02:01.265Z"
+    },
+    "secret-redaction-by-value-and-fingerprint": {
+      "status": "partial",
+      "tool": "module:src/lib/bbs/intake.js",
+      "why": "redactRef and redactUrlsInText mask URL userinfo and token-like query values by pattern; no secret list, length-gated value matching, multi-line key handling, or fingerprint store.",
+      "ts": "2026-10-10T01:02:01.265Z"
+    },
+    "lens-catalog-file-triggered-checks": {
+      "status": "missing",
+      "tool": null,
+      "why": "No candidate loads frontmatter rule files or matches globs and regexes against diff lines; follow-up-detector is an unrelated text classifier.",
+      "ts": "2026-10-10T01:02:01.265Z"
+    },
+    "hardened-git-read-on-untrusted-repo": {
+      "status": "missing",
+      "tool": null,
+      "why": "None of the five candidates wraps git calls. Outside the candidates, src/lib/bbs/fetch.js cloneEnv hardens only our own clone and rev-parse (hooks off, global config off, lfs off); there is no general read-only git wrapper for diff, log or filter drivers.",
+      "ts": "2026-10-10T01:02:01.265Z"
+    },
+    "identity-checked-file-writes": {
+      "status": "missing",
+      "tool": null,
+      "why": "The lstat walk and temp-file fsync write live in harness-map.js and inventory.js, which are not among the candidates; none of the candidates tracks device and inode identity.",
+      "ts": "2026-10-10T01:02:01.265Z"
+    },
+    "change-blast-radius-walk": {
+      "status": "missing",
+      "tool": null,
+      "why": "No candidate builds a symbol graph or walks call and inheritance edges from diff lines; the candidates are command docs and a marathon reviewer.",
+      "ts": "2026-10-10T01:02:01.265Z"
+    },
+    "caller-floor-disclosure": {
+      "status": "missing",
+      "tool": null,
+      "why": "No candidate builds a caller index or records unresolved-call reasons; marathon budget and resume helpers are unrelated.",
+      "ts": "2026-10-10T01:02:01.265Z"
+    },
+    "fact-cached-graph-build-with-budget": {
+      "status": "missing",
+      "tool": null,
+      "why": "No candidate parses source into cached facts or runs a wall-clock and parse-count budget; marathon budget.js is a token budget.",
+      "ts": "2026-10-10T01:02:01.265Z"
+    },
+    "tracked-file-scrub-gate": {
+      "status": "missing",
+      "tool": null,
+      "why": "No candidate walks git-tracked files against forbidden regex patterns; intake.js only scrubs URL and secret-like parameters in refs.",
+      "ts": "2026-10-10T01:02:01.265Z"
+    },
+    "planted-bug-review-scoring": {
+      "status": "missing",
+      "tool": null,
+      "why": "No candidate scores saved review output against planted-bug specs; marathon streak and reviewer helpers track streaks and review rounds, not hits or precision.",
+      "ts": "2026-10-10T01:02:01.265Z"
+    },
+    "isolated-tool-free-wording-judge": {
+      "status": "partial",
+      "tool": "command:.claude/commands/.shortcuts/w-bbs.md",
+      "why": "The command spawns JSON-only haiku judges for map verdicts, but has no tool-free sealed mode, call cap, usage-limit probe, or parse-and-drop logic for wording grades.",
+      "ts": "2026-10-10T01:02:01.265Z"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "run": "2026-10-10-openqodex",
+  "type": "repo",
+  "ref": "https://github.com/openqodex/openqodex",
+  "identity": "pending",
+  "fetched": false,
+  "reuse_from": null,
+  "cited": [],
+  "ts": "2026-10-10T00:51:46.556Z"
+}

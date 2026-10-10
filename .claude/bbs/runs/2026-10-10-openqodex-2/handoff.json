@@ -1,0 +1,1147 @@
+{
+  "run": "2026-10-10-openqodex-2",
+  "source": {
+    "run": "2026-10-10-openqodex-2",
+    "type": "repo",
+    "ref": "https://github.com/openqodex/openqodex",
+    "identity": "git:74b60f1bec8de1de0b76e12d17c6f6805f6bfc08",
+    "fetched": true,
+    "reuse_from": null,
+    "cited": [],
+    "ts": "2026-10-10T00:54:50.952Z",
+    "fetched_at": "2026-10-10T00:54:53.621Z"
+  },
+  "marathonRun": "2026-10-10-bbs-openqodex-2",
+  "powers": [
+    {
+      "name": "pre-push-review-gate",
+      "slug": "pre-push-review-gate",
+      "verdict": "rebuild",
+      "brief": "briefs/pre-push-review-gate.md",
+      "brief_path": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/pre-push-review-gate.md",
+      "lines": [
+        {
+          "id": "tests_green_pre-push-review-gate",
+          "label": "pre-push-review-gate: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit"
+        },
+        {
+          "id": "egress_zero_pre-push-review-gate",
+          "label": "pre-push-review-gate: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_pre-push-review-gate"
+        },
+        {
+          "id": "six_sigma_pre-push-review-gate",
+          "label": "pre-push-review-gate: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak"
+        },
+        {
+          "id": "callers_pre-push-review-gate",
+          "label": "pre-push-review-gate: callers in the harness",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "measure:callers_pre-push-review-gate"
+        },
+        {
+          "id": "packaged_pre-push-review-gate",
+          "label": "pre-push-review-gate: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_pre-push-review-gate"
+        }
+      ]
+    },
+    {
+      "name": "secret-redaction-by-value-and-fingerprint",
+      "slug": "secret-redaction-by-value-and-fingerprin",
+      "verdict": "rebuild",
+      "brief": "briefs/secret-redaction-by-value-and-fingerprin.md",
+      "brief_path": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/secret-redaction-by-value-and-fingerprin.md",
+      "lines": [
+        {
+          "id": "tests_green_secret-redaction-by-value-and-fingerprin",
+          "label": "secret-redaction-by-value-and-fingerprin: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit"
+        },
+        {
+          "id": "egress_zero_secret-redaction-by-value-and-fingerprin",
+          "label": "secret-redaction-by-value-and-fingerprin: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_secret-redaction-by-value-and-fingerprin"
+        },
+        {
+          "id": "six_sigma_secret-redaction-by-value-and-fingerprin",
+          "label": "secret-redaction-by-value-and-fingerprin: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak"
+        },
+        {
+          "id": "callers_secret-redaction-by-value-and-fingerprin",
+          "label": "secret-redaction-by-value-and-fingerprin: callers in the harness",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "measure:callers_secret-redaction-by-value-and-fingerprin"
+        },
+        {
+          "id": "packaged_secret-redaction-by-value-and-fingerprin",
+          "label": "secret-redaction-by-value-and-fingerprin: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_secret-redaction-by-value-and-fingerprin"
+        }
+      ]
+    },
+    {
+      "name": "lens-catalog-file-triggered-checks",
+      "slug": "lens-catalog-file-triggered-checks",
+      "verdict": "rebuild",
+      "brief": "briefs/lens-catalog-file-triggered-checks.md",
+      "brief_path": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/lens-catalog-file-triggered-checks.md",
+      "lines": [
+        {
+          "id": "tests_green_lens-catalog-file-triggered-checks",
+          "label": "lens-catalog-file-triggered-checks: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit"
+        },
+        {
+          "id": "egress_zero_lens-catalog-file-triggered-checks",
+          "label": "lens-catalog-file-triggered-checks: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_lens-catalog-file-triggered-checks"
+        },
+        {
+          "id": "six_sigma_lens-catalog-file-triggered-checks",
+          "label": "lens-catalog-file-triggered-checks: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak"
+        },
+        {
+          "id": "callers_lens-catalog-file-triggered-checks",
+          "label": "lens-catalog-file-triggered-checks: callers in the harness",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "measure:callers_lens-catalog-file-triggered-checks"
+        },
+        {
+          "id": "packaged_lens-catalog-file-triggered-checks",
+          "label": "lens-catalog-file-triggered-checks: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_lens-catalog-file-triggered-checks"
+        }
+      ]
+    },
+    {
+      "name": "hardened-git-read-on-untrusted-repo",
+      "slug": "hardened-git-read-on-untrusted-repo",
+      "verdict": "rebuild",
+      "brief": "briefs/hardened-git-read-on-untrusted-repo.md",
+      "brief_path": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/hardened-git-read-on-untrusted-repo.md",
+      "lines": [
+        {
+          "id": "tests_green_hardened-git-read-on-untrusted-repo",
+          "label": "hardened-git-read-on-untrusted-repo: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit"
+        },
+        {
+          "id": "egress_zero_hardened-git-read-on-untrusted-repo",
+          "label": "hardened-git-read-on-untrusted-repo: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_hardened-git-read-on-untrusted-repo"
+        },
+        {
+          "id": "six_sigma_hardened-git-read-on-untrusted-repo",
+          "label": "hardened-git-read-on-untrusted-repo: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak"
+        },
+        {
+          "id": "callers_hardened-git-read-on-untrusted-repo",
+          "label": "hardened-git-read-on-untrusted-repo: callers in the harness",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "measure:callers_hardened-git-read-on-untrusted-repo"
+        },
+        {
+          "id": "packaged_hardened-git-read-on-untrusted-repo",
+          "label": "hardened-git-read-on-untrusted-repo: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_hardened-git-read-on-untrusted-repo"
+        }
+      ]
+    },
+    {
+      "name": "identity-checked-file-writes",
+      "slug": "identity-checked-file-writes",
+      "verdict": "rebuild",
+      "brief": "briefs/identity-checked-file-writes.md",
+      "brief_path": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/identity-checked-file-writes.md",
+      "lines": [
+        {
+          "id": "tests_green_identity-checked-file-writes",
+          "label": "identity-checked-file-writes: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit"
+        },
+        {
+          "id": "egress_zero_identity-checked-file-writes",
+          "label": "identity-checked-file-writes: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_identity-checked-file-writes"
+        },
+        {
+          "id": "six_sigma_identity-checked-file-writes",
+          "label": "identity-checked-file-writes: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak"
+        },
+        {
+          "id": "callers_identity-checked-file-writes",
+          "label": "identity-checked-file-writes: callers in the harness",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "measure:callers_identity-checked-file-writes"
+        },
+        {
+          "id": "packaged_identity-checked-file-writes",
+          "label": "identity-checked-file-writes: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_identity-checked-file-writes"
+        }
+      ]
+    },
+    {
+      "name": "change-blast-radius-walk",
+      "slug": "change-blast-radius-walk",
+      "verdict": "rebuild",
+      "brief": "briefs/change-blast-radius-walk.md",
+      "brief_path": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/change-blast-radius-walk.md",
+      "lines": [
+        {
+          "id": "tests_green_change-blast-radius-walk",
+          "label": "change-blast-radius-walk: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit"
+        },
+        {
+          "id": "egress_zero_change-blast-radius-walk",
+          "label": "change-blast-radius-walk: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_change-blast-radius-walk"
+        },
+        {
+          "id": "six_sigma_change-blast-radius-walk",
+          "label": "change-blast-radius-walk: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak"
+        },
+        {
+          "id": "callers_change-blast-radius-walk",
+          "label": "change-blast-radius-walk: callers in the harness",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "measure:callers_change-blast-radius-walk"
+        },
+        {
+          "id": "packaged_change-blast-radius-walk",
+          "label": "change-blast-radius-walk: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_change-blast-radius-walk"
+        }
+      ]
+    },
+    {
+      "name": "caller-floor-disclosure",
+      "slug": "caller-floor-disclosure",
+      "verdict": "rebuild",
+      "brief": "briefs/caller-floor-disclosure.md",
+      "brief_path": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/caller-floor-disclosure.md",
+      "lines": [
+        {
+          "id": "tests_green_caller-floor-disclosure",
+          "label": "caller-floor-disclosure: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit"
+        },
+        {
+          "id": "egress_zero_caller-floor-disclosure",
+          "label": "caller-floor-disclosure: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_caller-floor-disclosure"
+        },
+        {
+          "id": "six_sigma_caller-floor-disclosure",
+          "label": "caller-floor-disclosure: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak"
+        },
+        {
+          "id": "callers_caller-floor-disclosure",
+          "label": "caller-floor-disclosure: callers in the harness",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "measure:callers_caller-floor-disclosure"
+        },
+        {
+          "id": "packaged_caller-floor-disclosure",
+          "label": "caller-floor-disclosure: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_caller-floor-disclosure"
+        }
+      ]
+    },
+    {
+      "name": "fact-cached-graph-build-with-budget",
+      "slug": "fact-cached-graph-build-with-budget",
+      "verdict": "rebuild",
+      "brief": "briefs/fact-cached-graph-build-with-budget.md",
+      "brief_path": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/fact-cached-graph-build-with-budget.md",
+      "lines": [
+        {
+          "id": "tests_green_fact-cached-graph-build-with-budget",
+          "label": "fact-cached-graph-build-with-budget: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit"
+        },
+        {
+          "id": "egress_zero_fact-cached-graph-build-with-budget",
+          "label": "fact-cached-graph-build-with-budget: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_fact-cached-graph-build-with-budget"
+        },
+        {
+          "id": "six_sigma_fact-cached-graph-build-with-budget",
+          "label": "fact-cached-graph-build-with-budget: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak"
+        },
+        {
+          "id": "callers_fact-cached-graph-build-with-budget",
+          "label": "fact-cached-graph-build-with-budget: callers in the harness",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "measure:callers_fact-cached-graph-build-with-budget"
+        },
+        {
+          "id": "packaged_fact-cached-graph-build-with-budget",
+          "label": "fact-cached-graph-build-with-budget: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_fact-cached-graph-build-with-budget"
+        }
+      ]
+    },
+    {
+      "name": "tracked-file-scrub-gate",
+      "slug": "tracked-file-scrub-gate",
+      "verdict": "rebuild",
+      "brief": "briefs/tracked-file-scrub-gate.md",
+      "brief_path": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/tracked-file-scrub-gate.md",
+      "lines": [
+        {
+          "id": "tests_green_tracked-file-scrub-gate",
+          "label": "tracked-file-scrub-gate: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit"
+        },
+        {
+          "id": "egress_zero_tracked-file-scrub-gate",
+          "label": "tracked-file-scrub-gate: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_tracked-file-scrub-gate"
+        },
+        {
+          "id": "six_sigma_tracked-file-scrub-gate",
+          "label": "tracked-file-scrub-gate: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak"
+        },
+        {
+          "id": "callers_tracked-file-scrub-gate",
+          "label": "tracked-file-scrub-gate: callers in the harness",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "measure:callers_tracked-file-scrub-gate"
+        },
+        {
+          "id": "packaged_tracked-file-scrub-gate",
+          "label": "tracked-file-scrub-gate: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_tracked-file-scrub-gate"
+        }
+      ]
+    },
+    {
+      "name": "planted-bug-review-scoring",
+      "slug": "planted-bug-review-scoring",
+      "verdict": "rebuild",
+      "brief": "briefs/planted-bug-review-scoring.md",
+      "brief_path": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/planted-bug-review-scoring.md",
+      "lines": [
+        {
+          "id": "tests_green_planted-bug-review-scoring",
+          "label": "planted-bug-review-scoring: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit"
+        },
+        {
+          "id": "egress_zero_planted-bug-review-scoring",
+          "label": "planted-bug-review-scoring: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_planted-bug-review-scoring"
+        },
+        {
+          "id": "six_sigma_planted-bug-review-scoring",
+          "label": "planted-bug-review-scoring: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak"
+        },
+        {
+          "id": "callers_planted-bug-review-scoring",
+          "label": "planted-bug-review-scoring: callers in the harness",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "measure:callers_planted-bug-review-scoring"
+        },
+        {
+          "id": "packaged_planted-bug-review-scoring",
+          "label": "planted-bug-review-scoring: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_planted-bug-review-scoring"
+        }
+      ]
+    },
+    {
+      "name": "isolated-tool-free-wording-judge",
+      "slug": "isolated-tool-free-wording-judge",
+      "verdict": "rebuild",
+      "brief": "briefs/isolated-tool-free-wording-judge.md",
+      "brief_path": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/isolated-tool-free-wording-judge.md",
+      "lines": [
+        {
+          "id": "tests_green_isolated-tool-free-wording-judge",
+          "label": "isolated-tool-free-wording-judge: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit"
+        },
+        {
+          "id": "egress_zero_isolated-tool-free-wording-judge",
+          "label": "isolated-tool-free-wording-judge: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_isolated-tool-free-wording-judge"
+        },
+        {
+          "id": "six_sigma_isolated-tool-free-wording-judge",
+          "label": "isolated-tool-free-wording-judge: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak"
+        },
+        {
+          "id": "callers_isolated-tool-free-wording-judge",
+          "label": "isolated-tool-free-wording-judge: callers in the harness",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "measure:callers_isolated-tool-free-wording-judge"
+        },
+        {
+          "id": "packaged_isolated-tool-free-wording-judge",
+          "label": "isolated-tool-free-wording-judge: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_isolated-tool-free-wording-judge"
+        }
+      ]
+    }
+  ],
+  "memos": [],
+  "skipped": [],
+  "finish_line": {
+    "tolerance": {
+      "high": 0,
+      "medium": 2,
+      "low": 5,
+      "passes_in_a_row": 2
+    },
+    "lines": [
+      {
+        "id": "tests_green_pre-push-review-gate",
+        "label": "pre-push-review-gate: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit"
+      },
+      {
+        "id": "egress_zero_pre-push-review-gate",
+        "label": "pre-push-review-gate: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_pre-push-review-gate"
+      },
+      {
+        "id": "six_sigma_pre-push-review-gate",
+        "label": "pre-push-review-gate: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak"
+      },
+      {
+        "id": "callers_pre-push-review-gate",
+        "label": "pre-push-review-gate: callers in the harness",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "measure:callers_pre-push-review-gate"
+      },
+      {
+        "id": "packaged_pre-push-review-gate",
+        "label": "pre-push-review-gate: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_pre-push-review-gate"
+      },
+      {
+        "id": "tests_green_secret-redaction-by-value-and-fingerprin",
+        "label": "secret-redaction-by-value-and-fingerprin: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit"
+      },
+      {
+        "id": "egress_zero_secret-redaction-by-value-and-fingerprin",
+        "label": "secret-redaction-by-value-and-fingerprin: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_secret-redaction-by-value-and-fingerprin"
+      },
+      {
+        "id": "six_sigma_secret-redaction-by-value-and-fingerprin",
+        "label": "secret-redaction-by-value-and-fingerprin: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak"
+      },
+      {
+        "id": "callers_secret-redaction-by-value-and-fingerprin",
+        "label": "secret-redaction-by-value-and-fingerprin: callers in the harness",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "measure:callers_secret-redaction-by-value-and-fingerprin"
+      },
+      {
+        "id": "packaged_secret-redaction-by-value-and-fingerprin",
+        "label": "secret-redaction-by-value-and-fingerprin: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_secret-redaction-by-value-and-fingerprin"
+      },
+      {
+        "id": "tests_green_lens-catalog-file-triggered-checks",
+        "label": "lens-catalog-file-triggered-checks: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit"
+      },
+      {
+        "id": "egress_zero_lens-catalog-file-triggered-checks",
+        "label": "lens-catalog-file-triggered-checks: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_lens-catalog-file-triggered-checks"
+      },
+      {
+        "id": "six_sigma_lens-catalog-file-triggered-checks",
+        "label": "lens-catalog-file-triggered-checks: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak"
+      },
+      {
+        "id": "callers_lens-catalog-file-triggered-checks",
+        "label": "lens-catalog-file-triggered-checks: callers in the harness",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "measure:callers_lens-catalog-file-triggered-checks"
+      },
+      {
+        "id": "packaged_lens-catalog-file-triggered-checks",
+        "label": "lens-catalog-file-triggered-checks: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_lens-catalog-file-triggered-checks"
+      },
+      {
+        "id": "tests_green_hardened-git-read-on-untrusted-repo",
+        "label": "hardened-git-read-on-untrusted-repo: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit"
+      },
+      {
+        "id": "egress_zero_hardened-git-read-on-untrusted-repo",
+        "label": "hardened-git-read-on-untrusted-repo: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_hardened-git-read-on-untrusted-repo"
+      },
+      {
+        "id": "six_sigma_hardened-git-read-on-untrusted-repo",
+        "label": "hardened-git-read-on-untrusted-repo: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak"
+      },
+      {
+        "id": "callers_hardened-git-read-on-untrusted-repo",
+        "label": "hardened-git-read-on-untrusted-repo: callers in the harness",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "measure:callers_hardened-git-read-on-untrusted-repo"
+      },
+      {
+        "id": "packaged_hardened-git-read-on-untrusted-repo",
+        "label": "hardened-git-read-on-untrusted-repo: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_hardened-git-read-on-untrusted-repo"
+      },
+      {
+        "id": "tests_green_identity-checked-file-writes",
+        "label": "identity-checked-file-writes: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit"
+      },
+      {
+        "id": "egress_zero_identity-checked-file-writes",
+        "label": "identity-checked-file-writes: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_identity-checked-file-writes"
+      },
+      {
+        "id": "six_sigma_identity-checked-file-writes",
+        "label": "identity-checked-file-writes: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak"
+      },
+      {
+        "id": "callers_identity-checked-file-writes",
+        "label": "identity-checked-file-writes: callers in the harness",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "measure:callers_identity-checked-file-writes"
+      },
+      {
+        "id": "packaged_identity-checked-file-writes",
+        "label": "identity-checked-file-writes: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_identity-checked-file-writes"
+      },
+      {
+        "id": "tests_green_change-blast-radius-walk",
+        "label": "change-blast-radius-walk: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit"
+      },
+      {
+        "id": "egress_zero_change-blast-radius-walk",
+        "label": "change-blast-radius-walk: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_change-blast-radius-walk"
+      },
+      {
+        "id": "six_sigma_change-blast-radius-walk",
+        "label": "change-blast-radius-walk: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak"
+      },
+      {
+        "id": "callers_change-blast-radius-walk",
+        "label": "change-blast-radius-walk: callers in the harness",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "measure:callers_change-blast-radius-walk"
+      },
+      {
+        "id": "packaged_change-blast-radius-walk",
+        "label": "change-blast-radius-walk: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_change-blast-radius-walk"
+      },
+      {
+        "id": "tests_green_caller-floor-disclosure",
+        "label": "caller-floor-disclosure: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit"
+      },
+      {
+        "id": "egress_zero_caller-floor-disclosure",
+        "label": "caller-floor-disclosure: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_caller-floor-disclosure"
+      },
+      {
+        "id": "six_sigma_caller-floor-disclosure",
+        "label": "caller-floor-disclosure: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak"
+      },
+      {
+        "id": "callers_caller-floor-disclosure",
+        "label": "caller-floor-disclosure: callers in the harness",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "measure:callers_caller-floor-disclosure"
+      },
+      {
+        "id": "packaged_caller-floor-disclosure",
+        "label": "caller-floor-disclosure: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_caller-floor-disclosure"
+      },
+      {
+        "id": "tests_green_fact-cached-graph-build-with-budget",
+        "label": "fact-cached-graph-build-with-budget: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit"
+      },
+      {
+        "id": "egress_zero_fact-cached-graph-build-with-budget",
+        "label": "fact-cached-graph-build-with-budget: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_fact-cached-graph-build-with-budget"
+      },
+      {
+        "id": "six_sigma_fact-cached-graph-build-with-budget",
+        "label": "fact-cached-graph-build-with-budget: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak"
+      },
+      {
+        "id": "callers_fact-cached-graph-build-with-budget",
+        "label": "fact-cached-graph-build-with-budget: callers in the harness",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "measure:callers_fact-cached-graph-build-with-budget"
+      },
+      {
+        "id": "packaged_fact-cached-graph-build-with-budget",
+        "label": "fact-cached-graph-build-with-budget: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_fact-cached-graph-build-with-budget"
+      },
+      {
+        "id": "tests_green_tracked-file-scrub-gate",
+        "label": "tracked-file-scrub-gate: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit"
+      },
+      {
+        "id": "egress_zero_tracked-file-scrub-gate",
+        "label": "tracked-file-scrub-gate: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_tracked-file-scrub-gate"
+      },
+      {
+        "id": "six_sigma_tracked-file-scrub-gate",
+        "label": "tracked-file-scrub-gate: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak"
+      },
+      {
+        "id": "callers_tracked-file-scrub-gate",
+        "label": "tracked-file-scrub-gate: callers in the harness",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "measure:callers_tracked-file-scrub-gate"
+      },
+      {
+        "id": "packaged_tracked-file-scrub-gate",
+        "label": "tracked-file-scrub-gate: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_tracked-file-scrub-gate"
+      },
+      {
+        "id": "tests_green_planted-bug-review-scoring",
+        "label": "planted-bug-review-scoring: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit"
+      },
+      {
+        "id": "egress_zero_planted-bug-review-scoring",
+        "label": "planted-bug-review-scoring: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_planted-bug-review-scoring"
+      },
+      {
+        "id": "six_sigma_planted-bug-review-scoring",
+        "label": "planted-bug-review-scoring: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak"
+      },
+      {
+        "id": "callers_planted-bug-review-scoring",
+        "label": "planted-bug-review-scoring: callers in the harness",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "measure:callers_planted-bug-review-scoring"
+      },
+      {
+        "id": "packaged_planted-bug-review-scoring",
+        "label": "planted-bug-review-scoring: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_planted-bug-review-scoring"
+      },
+      {
+        "id": "tests_green_isolated-tool-free-wording-judge",
+        "label": "isolated-tool-free-wording-judge: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit"
+      },
+      {
+        "id": "egress_zero_isolated-tool-free-wording-judge",
+        "label": "isolated-tool-free-wording-judge: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_isolated-tool-free-wording-judge"
+      },
+      {
+        "id": "six_sigma_isolated-tool-free-wording-judge",
+        "label": "isolated-tool-free-wording-judge: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak"
+      },
+      {
+        "id": "callers_isolated-tool-free-wording-judge",
+        "label": "isolated-tool-free-wording-judge: callers in the harness",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "measure:callers_isolated-tool-free-wording-judge"
+      },
+      {
+        "id": "packaged_isolated-tool-free-wording-judge",
+        "label": "isolated-tool-free-wording-judge: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_isolated-tool-free-wording-judge"
+      },
+      {
+        "id": "clean_reviews",
+        "label": "Clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak"
+      },
+      {
+        "id": "latest_high",
+        "label": "High findings in the latest review",
+        "type": "number",
+        "op": "at_most",
+        "value": 0,
+        "owner": "build",
+        "source": "reviews.latest.high"
+      },
+      {
+        "id": "open_high",
+        "label": "Open high findings",
+        "type": "number",
+        "op": "at_most",
+        "value": 0,
+        "owner": "build",
+        "source": "findings.open:high"
+      }
+    ]
+  },
+  "note": null,
+  "ts": "2026-10-10T01:20:33.127Z"
+}

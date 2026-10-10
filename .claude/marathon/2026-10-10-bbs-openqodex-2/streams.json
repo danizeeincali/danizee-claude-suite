@@ -1,0 +1,89 @@
+{
+  "streams": [
+    {
+      "name": "_meta",
+      "state": "meta",
+      "isolation": "worktree",
+      "created": "2026-10-10T01:20:31.521Z",
+      "tasks": []
+    },
+    {
+      "name": "pre-push-review-gate",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/pre-push-review-gate.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "secret-redaction-by-value-and-fingerprin",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/secret-redaction-by-value-and-fingerprin.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "lens-catalog-file-triggered-checks",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/lens-catalog-file-triggered-checks.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "hardened-git-read-on-untrusted-repo",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/hardened-git-read-on-untrusted-repo.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "identity-checked-file-writes",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/identity-checked-file-writes.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "change-blast-radius-walk",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/change-blast-radius-walk.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "caller-floor-disclosure",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/caller-floor-disclosure.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "fact-cached-graph-build-with-budget",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/fact-cached-graph-build-with-budget.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "tracked-file-scrub-gate",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/tracked-file-scrub-gate.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "planted-bug-review-scoring",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/planted-bug-review-scoring.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "isolated-tool-free-wording-judge",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/isolated-tool-free-wording-judge.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    }
+  ],
+  "handoff": null
+}

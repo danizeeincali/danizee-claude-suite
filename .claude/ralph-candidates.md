@@ -1362,3 +1362,75 @@ STATUS: PASS|FAIL
 2. Test: RC-D034 returns STATUS: PASS
 
 **Status**: ready (only runs if RC-D034 fails)
+
+---
+
+## Candidates from the first real /w-bbs run, OpenQodex (compounded 2026-10-10)
+
+### RC-D035: A clone's bytes_in is its .git, not the checkout
+
+**Auto-Generated From**: /w-background-compound on 2026-10-10
+**Type**: Diagnostic
+**Verifies**: `cloneRepo` logs `.git` bytes as egress and refuses an expanded checkout only past `limits.max_checkout_bytes` (first real run: a 3.4 MiB pack was refused as 22 MB)
+
+**Test Command**:
+```bash
+node --test test/bbs-fetch.test.js --test-name-pattern='wire|max_checkout_bytes|partial bytes'; # expect green
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: CLONE_WIRE_BYTES
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Priority**: P1
+**Status**: ready
+
+---
+
+### RC-D036: The inventory listing is spread across top-level directories
+
+**Auto-Generated From**: /w-background-compound on 2026-10-10
+**Type**: Diagnostic
+**Verifies**: past the 500-file cap, `listSourceFiles` takes root files and each top-level directory below a shared wrapper in turn, shallowest first, and the brief prints listed/total per directory (first real run: 454 of 500 listed paths were `benchmark/` output, `packages/` never listed)
+
+**Test Command**:
+```bash
+node --test test/bbs-inventory.test.js --test-name-pattern='bulky|wrapped|top-level dir'; # expect green
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: INVENTORY_SPREAD
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Priority**: P1
+**Status**: ready
+
+---
+
+### RC-D037: The map's five candidates miss the module that actually covers a power
+
+**Auto-Generated From**: /w-background-compound on 2026-10-10
+**Type**: Idea (needs owner)
+**Observed**: for `hardened-git-read-on-untrusted-repo` the lexical picker offered intake.js and three command docs; the haiku judge named `src/lib/bbs/fetch.js` (its `cloneEnv` is the closest thing we have) and `map --from` rightly refused a non-candidate. The judgment had to be recorded as `missing` with the real overlap in `why`.
+**Options**: a sixth "judge's pick" slot that `map --from` accepts with a reason, or index exported function names (`cloneEnv`, `runGit`) into the lexical scorer.
+**Priority**: P2
+**Status**: needs-owner
+
+---
+
+### RC-D038: A finish line that cannot hold for its power, and slugs cut mid-word
+
+**Auto-Generated From**: /w-background-compound on 2026-10-10
+**Type**: Idea (needs owner)
+**Observed**: `handoff` gives every rebuild stream `egress_zero_<slug>`, including `isolated-tool-free-wording-judge`, whose whole point is a headless model call (its probe was `found`). The stream can only meet the line with the model call stubbed in the packaged check. Separately, slugs are cut at 40 characters mid-word (`secret-redaction-by-value-and-fingerprin`).
+**Options**: write `egress_zero` only when the probe was `clean` (a `found` power gets a "network calls only through the named CLI" line instead); cut slugs at the last `-` before 40.
+**Priority**: P2
+**Status**: needs-owner

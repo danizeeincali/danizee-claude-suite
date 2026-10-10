@@ -1,0 +1,2 @@
+{"ts":"2026-10-10T00:51:52.740Z","kind":"git","method":"GET","url":"https://github.com/openqodex/openqodex","host":"github.com","status":0,"bytes_in":22382391,"bytes_out":0,"refused":"clone of 22382391 bytes exceeds the remaining allowance of 20971520 bytes"}
+{"kind":"git","method":"GET","url":"https://github.com/openqodex/openqodex","host":"github.com","status":null,"bytes_in":0,"bytes_out":0,"refused":"max_bytes reached: this run already read 22382391 of 20971520 bytes","ts":"2026-10-10T00:54:46.541Z"}
