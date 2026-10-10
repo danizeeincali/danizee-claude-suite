@@ -3,9 +3,9 @@
 - State: RUNNING
 - Budget: 8,173,771 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
-- Gate (run-wide, all streams): 3/2 clean reviews — build gate not met, full gate not met
+- Gate (run-wide, all streams): 4/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "caller-floor-disclosure" (next: review round 2) — /w-marathon --resume 2026-10-10-bbs-openqodex-2.
+- Next for you: Next stream "tracked-file-scrub-gate": create its worktree (`git worktree add ../<repo>-tracked-file-scrub-gate -b marathon/2026-10-10-bbs-openqodex-2/tracked-file-scrub-gate`) and activate it with `cli.js stream tracked-file-scrub-gate state=active isolation=<path>`, then /w-marathon --resume 2026-10-10-bbs-openqodex-2.
 - Last handoff: 2026-10-10T09:05:18.050Z (auto) on claude/project-thread-p9gbyo@3434e5b, 5 uncommitted, tasks: none
 
 ## Streams
@@ -18,7 +18,7 @@
 | hardened-git-read-on-untrusted-repo | ../danizee-claude-suite-hardened-git-read-on-untrusted-repo | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/hardened-git-read-on-untrusted-repo.md | done | met | review | — |  | 0 |
 | identity-checked-file-writes | ../danizee-claude-suite-identity-checked-file-writes | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/identity-checked-file-writes.md | done | met | review | — |  | 0 |
 | change-blast-radius-walk | ../danizee-claude-suite-change-blast-radius-walk | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/change-blast-radius-walk.md | done | met | review | — |  | 0 |
-| caller-floor-disclosure | ../danizee-claude-suite-caller-floor-disclosure | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/caller-floor-disclosure.md | active | clean 1/2 | review | review round 2 |  | 0 |
+| caller-floor-disclosure | ../danizee-claude-suite-caller-floor-disclosure | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/caller-floor-disclosure.md | done | met | review | — |  | 0 |
 | fact-cached-graph-build-with-budget | ../danizee-claude-suite-fact-cached-graph-build-with-budget | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/fact-cached-graph-build-with-budget.md | done | met | review | — |  | 0 |
 | tracked-file-scrub-gate |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/tracked-file-scrub-gate.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | planted-bug-review-scoring |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/planted-bug-review-scoring.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
@@ -58,9 +58,9 @@
 | change-blast-radius-walk: clean reviews in a row | build | met | 2 | at_least 2 |
 | change-blast-radius-walk: callers in the harness | build | met | 1 | at_least 1 |
 | change-blast-radius-walk: packaged check passes | build | met | true | is true |
-| caller-floor-disclosure: green unit runs in a row | build | met | 2 | at_least 1 |
+| caller-floor-disclosure: green unit runs in a row | build | met | 3 | at_least 1 |
 | caller-floor-disclosure: zero egress in the packaged check | build | met | true | is true |
-| caller-floor-disclosure: clean reviews in a row | build | failing | 1 | at_least 2 |
+| caller-floor-disclosure: clean reviews in a row | build | met | 2 | at_least 2 |
 | caller-floor-disclosure: callers in the harness | build | met | 2 | at_least 1 |
 | caller-floor-disclosure: packaged check passes | build | met | true | is true |
 | fact-cached-graph-build-with-budget: green unit runs in a row | build | met | 5 | at_least 1 |
@@ -83,7 +83,7 @@
 | isolated-tool-free-wording-judge: clean reviews in a row | build | failing | 0 | at_least 2 |
 | isolated-tool-free-wording-judge: callers in the harness | build | failing | — | at_least 1 |
 | isolated-tool-free-wording-judge: packaged check passes | build | failing | — | is true |
-| Clean reviews in a row | build | met | 3 | at_least 2 |
+| Clean reviews in a row | build | met | 4 | at_least 2 |
 | High findings in the latest review | build | met | 0 | at_most 0 |
 | Open high findings | build | met | 0 | at_most 0 |
 
