@@ -213,6 +213,29 @@ Exit 3 from `diff-range` means an empty range: report "no change to review", nev
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
+**AUTORESEARCH CANDIDATE CHECK (RC-A):**
+Scan the work just completed for measurable optimization targets:
+1. **Static scan:** Analyze git diff for measurable patterns (function runtimes, test duration, bundle size, query counts, memory usage, coverage gaps)
+2. **Agent reflection:** What about this work could be measured and autonomously optimized?
+3. **Impact scoring:** Rate each candidate on 4 dimensions (weighted composite):
+   - potential (0.35): estimated improvement magnitude (1-10)
+   - blast_radius (0.15): files/systems affected, inverted (1-10)
+   - risk (0.15): breaking change likelihood, inverted (1-10)
+   - value (0.35): user/business value of improvement (1-10)
+   - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
+4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
+```
+## RC-A[NNN]: [Title]
+**KPI:** [metric_name]
+**Baseline:** [current value]
+**Benchmark:** `[command to measure]`
+**Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
+**Files in scope:** [paths]
+**Constraints:** [what must not break]
+```
+- RC-A candidates found: yes/no
+- If yes, logged with impact scores to .claude/ralph-candidates.md
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---

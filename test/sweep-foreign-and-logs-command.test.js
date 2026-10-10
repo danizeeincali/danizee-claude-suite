@@ -84,15 +84,13 @@ const assertRedactBlock = (s) => {
 };
 
 describe('repo copies of the six swept shortcuts equal the generator output', () => {
-  // The repo's w-swarm.md is the RuFlo variant (test/ruflo-integration.test.js pins it), a deliberate divergence
-  // from the generator's plain swarm entry; it carries the same wired blocks, checked below.
-  for (const name of SIX.filter((n) => n !== 'w-swarm')) {
+  for (const name of SIX) {
     it(`${name}.md equals getCommands()`, async () => {
       const md = await fs.readFile(path.join(SHORTCUTS_DIR, `${name}.md`), 'utf-8');
       assert.equal(md, commands[name].content);
     });
   }
-  it('w-swarm.md (RuFlo variant) carries the generator\'s callers and lenses blocks verbatim', async () => {
+  it('w-swarm.md (RuFlo variant, generator-ported) carries the callers and lenses blocks verbatim', async () => {
     const md = await fs.readFile(path.join(SHORTCUTS_DIR, 'w-swarm.md'), 'utf-8');
     const g = commands['w-swarm'].content;
     const callers = g.slice(g.indexOf('**🔗 CALLERS'), g.indexOf('**REQUIRED OUTPUT:**\n- Callers of'));
@@ -125,9 +123,9 @@ describe('generator-wide: no quadruple-backslash line continuation, no triple-es
 });
 
 describe('w-swarm and w-fix: callers at the start, lenses at the verification checkpoint', () => {
-  for (const [name, from, to] of [
-    ['w-swarm', '### ⛔ CHECKPOINT 1: Agent Spawn', '### ⛔ CHECKPOINT 2'],
-    ['w-fix', '### ⛔ CHECKPOINT 1: Investigation', '### ⛔ CHECKPOINT 2'],
+  for (const [name, from, to, after] of [
+    ['w-swarm', '### ⛔ CHECKPOINT 1: Task Decomposition', '### ⛔ CHECKPOINT 2', '### ⛔ CHECKPOINT 4'],
+    ['w-fix', '### ⛔ CHECKPOINT 1: Investigation', '### ⛔ CHECKPOINT 2', '### ⛔ CHECKPOINT 3'],
   ]) {
     it(`${name}: callers step before the required output`, () => {
       const s = section(name, from, to);
@@ -136,7 +134,7 @@ describe('w-swarm and w-fix: callers at the start, lenses at the verification ch
       assert.ok(!s.includes('\\`'));
     });
     it(`${name}: lenses inside the verification checkpoint, before the retry logic`, () => {
-      const s = section(name, '### ✅ VERIFICATION CHECKPOINT', '### ⛔ CHECKPOINT 3');
+      const s = section(name, '### ✅ VERIFICATION CHECKPOINT', after);
       assertLenses(s);
       assert.ok(s.indexOf('Code Analysis') < s.indexOf('**RETRY LOGIC'));
       assert.ok(!s.includes('\\`'));

@@ -13,10 +13,16 @@ export function getCommands() {
   return {
     'w-swarm': {
       name: 'w-swarm',
-      description: 'Swarm Build - Parallel agents for rapid implementation',
+      description: 'RuFlo Swarm Build - Spawns parallel agents via ruflo for rapid implementation.',
       content: `# /w-swarm
 
-Swarm Build - Spawns parallel agents (coder, tester, reviewer) for rapid implementation.
+RuFlo Swarm Build - Spawns parallel agents via ruflo for rapid implementation.
+
+## Prerequisites
+RuFlo must be installed. If not available, run:
+\`\`\`bash
+npx ruflo@latest init
+\`\`\`
 
 ## Usage
 \`\`\`
@@ -29,10 +35,10 @@ Swarm Build - Spawns parallel agents (coder, tester, reviewer) for rapid impleme
 
 Use TodoWrite NOW to create todos for ALL phases:
 1. Search for related implementation patterns
-2. Spawn agents with assignments
-3. Execute parallel work
-4. Integrate and verify results
-5. Compound solution
+2. Decompose task and assign agents
+3. Initialize ruflo swarm and spawn agents
+4. Execute parallel work and collect results
+5. Integrate, verify, and compound solution
 
 ⚠️ VIOLATION: Any action before TodoWrite = restart workflow
 
@@ -42,6 +48,7 @@ Use TodoWrite NOW to create todos for ALL phases:
 
 - NEVER skip checkpoints - each requires user confirmation
 - NEVER skip compound phase at the end
+- NEVER skip ruflo swarm initialization — agents must actually spawn
 - VIOLATION: Starting implementation without search = restart workflow
 
 ---
@@ -64,34 +71,15 @@ Skip this block for non-UI tasks.
 - Relevance assessment for each
 
 **USER GATE:** Use AskUserQuestion
-- Question: "Found [N] related patterns. Proceed to Spawn agents or use existing?"
-- Options: ["Proceed to Spawn", "Use existing solution", "Show more detail"]
+- Question: "Found [N] related patterns. Proceed to task decomposition?"
+- Options: ["Proceed", "Use existing solution", "Show more detail"]
 
 STOP and wait for user response.
 
 ---
 
-### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
-**Search the Pi Brain network for existing knowledge matching this task:**
-
-\`\`\`bash
-# curl, query URL-encoded (preferred)
-curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[task description]" --data top_k=3
-
-# HTTP fallback
-curl -s "https://pi.ruv.io/v1/memories/search?q=[task description]&top_k=3"
-\`\`\`
-
-**If matching memories found:** Review steps for applicable patterns. Adapt proven approaches. Note memory IDs for voting later.
-**If no matches:** Proceed normally.
-
-**REQUIRED OUTPUT:**
-- Pi Brain memories found: _____ (0+ results)
-- Applicable patterns: _____
-
----
-
-### ⛔ CHECKPOINT 1: Agent Spawn
+### ⛔ CHECKPOINT 1: Task Decomposition & Agent Assignment
+**Analyze the task and break it into parallel work units.**
 
 **🔗 CALLERS (file:line targets for symbols that will be changed or removed):**
 For every file:line target this step names (from the Search results and the assignments below) for a symbol that will be changed or removed, ask the kit who calls it, as \`callers --symbol <file>:<name>\` with the path relative to the repository top:
@@ -102,25 +90,52 @@ Carry each symbol's callers, \`floor\`, \`reasons\` and \`sentences\` forward to
 
 **REQUIRED OUTPUT:**
 - Callers of the symbols to be changed or removed: _____ (or the one-line kit skip)
-- Agent assignments table:
-| Agent | Task | Role |
-|-------|------|------|
-| _____ | _____ | coder |
-| _____ | _____ | tester |
-| _____ | _____ | reviewer |
+- Task decomposition table:
+| Sub-task | Agent Role | Domain | Description |
+|----------|-----------|--------|-------------|
+| _____ | coder | core | _____ |
+| _____ | tester | support | _____ |
+| _____ | reviewer | support | _____ |
 
-- Swarm topology: _____
-- Coordination strategy: _____
+- Swarm topology: _____ (hierarchical recommended for most tasks)
+- Agent count: _____ (3-5 for simple, 6-15 for complex)
+- Coordination strategy: _____ (queen-led, peer-to-peer, pipeline)
 
 **USER GATE:** Use AskUserQuestion
-- Question: "Agent assignments ready. Proceed to Execute?"
-- Options: ["Continue", "Revise assignments", "Show more detail"]
+- Question: "Task decomposed into [N] sub-tasks across [M] agents. Proceed to spawn swarm?"
+- Options: ["Continue", "Revise assignments", "Add more agents"]
 
 STOP and wait for user response.
 
 ---
 
-### ⛔ CHECKPOINT 2: Execution Complete
+### ⛔ CHECKPOINT 2: RuFlo Swarm Initialization & Execution
+
+**Step 1: Initialize the swarm**
+\`\`\`bash
+npx ruflo@latest swarm init --topology [chosen-topology] --agents [count]
+\`\`\`
+
+**Step 2: Spawn agents for each sub-task**
+For each row in the decomposition table, spawn an agent:
+\`\`\`bash
+npx ruflo@latest agent spawn --domain [domain] --role [role] --task "[description]"
+\`\`\`
+
+Alternatively, use the Agent tool to spawn parallel Claude Code agents:
+\`\`\`
+Agent(role="coder", task="[sub-task description]", isolation="worktree")
+Agent(role="tester", task="[sub-task description]", isolation="worktree")
+Agent(role="reviewer", task="[sub-task description]", isolation="worktree")
+\`\`\`
+
+**Step 3: Monitor progress**
+\`\`\`bash
+npx ruflo@latest swarm status
+\`\`\`
+
+**Step 4: Collect results**
+Wait for all agents to complete. Aggregate their outputs.
 
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
@@ -132,9 +147,35 @@ If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
+- Swarm initialization: success/failure
+- Agents spawned: _____ / _____ total
+- Per-agent results summary:
+| Agent | Status | Files Changed | Key Output |
+|-------|--------|--------------|------------|
+| _____ | _____ | _____ | _____ |
+
+**AUTO-PROCEED:** Continue to Integration phase.
+
+---
+
+### ⛔ CHECKPOINT 3: Integration & Verification
+**Merge all agent outputs into a cohesive result.**
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Final visual verification with agent-browser
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\` → compare before/after
+3. Verify responsive layout, dark mode, accessibility
+
+If agent-browser is not available, prompt: \`npx playwright install\`
+Skip this block for non-UI tasks.
+
+**REQUIRED OUTPUT:**
 - Completed work summary per agent
 - Files created/modified: _____
-- Test results (if applicable): _____
+- Conflicts resolved: _____
+- Test results: _____
+- Integration verified: yes/no
 
 **AUTO-PROCEED:** Continue to Verification phase.
 
@@ -177,24 +218,12 @@ Exit 3 from \`diff-range\` means an empty range: report "no change to review", n
 
 ---
 
-
----
-
-### ⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)
-
-**🌐 BROWSER CHECK (conditional):**
-If this task involves UI, frontend, or visual changes:
-1. Final visual verification with agent-browser
-2. \`agent-browser open <url>\` → \`agent-browser screenshot\` → compare before/after
-3. Verify responsive layout, dark mode, accessibility
-
-If agent-browser is not available, prompt: \`npx playwright install\`
-Skip this block for non-UI tasks.
-
+### ⛔ CHECKPOINT 4: Compound (MANDATORY - NEVER SKIP)
 **REQUIRED OUTPUT:**
 - Memory key: project/implementations/_____
 - Doc path: docs/solutions/implementations/_____.md
 - Pattern stored: yes/no
+- Swarm metrics: agents used, topology, execution time
 
 **RALPH CANDIDATE CHECK (MANDATORY):**
 - Dev pattern identified for future Ralph loop: yes/no
@@ -223,7 +252,6 @@ Scan the work just completed for measurable optimization targets:
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
-
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -233,11 +261,11 @@ NEVER skip this phase. Workflow is INCOMPLETE without compound.
 Before marking workflow complete, verify ALL boxes:
 - [ ] TodoWrite used at start with all 5 phases
 - [ ] Checkpoints 0-1 completed with user confirmation
-- [ ] Checkpoints 2-3 completed (auto-proceed)
-- [ ] All required outputs generated
-- [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
-- [ ] Callers (Agent Spawn) and lenses (Verification) run, or one line said the kit is not installed
-- [ ] Compound phase executed
+- [ ] RuFlo swarm initialized (Checkpoint 2)
+- [ ] Agents actually spawned and completed work
+- [ ] Results collected and integrated (Checkpoint 3)
+- [ ] Callers (Checkpoint 1) and lenses (Verification) run, or one line said the kit is not installed
+- [ ] Compound phase executed (Checkpoint 4)
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
 - [ ] Ralph candidate check completed
