@@ -367,10 +367,31 @@ function firstLine(err) {
   return raw.split('\n').map(s => s.trim()).find(Boolean) || 'unknown error';
 }
 
+/** The kit's hardened git reader, or null when the kit is not installed next to this file (then behaviour is unchanged). */
+export async function loadSafeGit() {
+  try { return await import('../kit/safe-git.js'); } catch (err) {
+    if (err?.code === 'ERR_MODULE_NOT_FOUND' || err?.code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+/**
+ * HEAD of the freshly cloned (foreign) repo. With the kit installed the call goes through safe-git, so nothing in
+ * the clone's own config (hooks, filters, fsmonitor) can run, and an unsafe driver name fails the fetch instead of
+ * being skipped. Without the kit, or with an injected git runner and no explicit `hardened`, the plain runner is used.
+ */
+export async function headOf(dest, env, { git = defaultGit, timeout, hardened = git === defaultGit, load = loadSafeGit } = {}) {
+  const kit = hardened ? await load() : null;
+  if (!kit) return String(await git(['rev-parse', 'HEAD'], dest, env, { timeout })).trim();
+  const r = await kit.safeGit(dest, ['rev-parse', 'HEAD'], { env, timeout });
+  if (r.code !== 0) throw Object.assign(new Error(`git rev-parse exited ${r.code}`), { stderr: r.stderr });
+  return String(r.stdout).trim();
+}
+
 /** Shallow, tagless clone with hooks off and prompts off; returns { sha } of HEAD. */
 export async function cloneRepo(ref, dest, {
   git = defaultGit, lookup = defaultLookup, onEgress = () => {}, now = () => new Date(), timeoutMs = 30000, maxBytes = Infinity,
-  maxCheckoutBytes = Infinity
+  maxCheckoutBytes = Infinity, hardened, loadKit = loadSafeGit
 } = {}) {
   const text = String(ref ?? '').trim();
   const host = text.startsWith('-') ? null : hostOfRef(text);
@@ -425,7 +446,7 @@ export async function cloneRepo(ref, dest, {
     }
     let sha;
     try {
-      sha = String(await git(['rev-parse', 'HEAD'], dest, env, { timeout: timeoutMs })).trim();
+      sha = await headOf(dest, env, { git, timeout: timeoutMs, hardened, load: loadKit });
       if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(sha)) throw new Error(`unexpected HEAD "${sha.slice(0, 80)}"`);
     } catch (err) {
       await fs.rm(dest, { recursive: true, force: true });
