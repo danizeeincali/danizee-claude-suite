@@ -89,9 +89,9 @@
     },
     {
       "name": "tracked-file-scrub-gate",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/tracked-file-scrub-gate.md",
-      "next": "review round 3",
+      "next": "—",
       "tasks": [],
       "isolation": "../danizee-claude-suite-tracked-file-scrub-gate",
       "phase": "review",

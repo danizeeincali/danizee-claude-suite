@@ -148,3 +148,6 @@
 {"key":"packaged_tracked-file-scrub-gate","value":true,"id":"115ef2ef-6d71-41fb-bf92-7310266f59d2","ts":"2026-10-10T12:52:27.957Z"}
 {"key":"egress_zero_tracked-file-scrub-gate","value":true,"id":"8dba445d-9a0f-454b-a672-55cd9ee9dc79","ts":"2026-10-10T12:52:28.086Z"}
 {"key":"callers_tracked-file-scrub-gate","value":2,"id":"6ac2651a-9b4d-4258-a1f2-48091667c55c","ts":"2026-10-10T12:52:28.199Z"}
+{"key":"packaged_tracked-file-scrub-gate","value":true,"id":"4357645c-a71c-4557-a20f-b4c1ed25dd3d","ts":"2026-10-10T13:01:52.286Z"}
+{"key":"egress_zero_tracked-file-scrub-gate","value":true,"id":"60a9111e-a757-4850-bcea-050b5df3ff3c","ts":"2026-10-10T13:01:52.409Z"}
+{"key":"callers_tracked-file-scrub-gate","value":2,"id":"91612620-1a78-4141-a8c3-63728f54b437","ts":"2026-10-10T13:01:52.525Z"}
