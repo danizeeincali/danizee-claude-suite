@@ -824,9 +824,14 @@ export async function recordDecisions(projectDir, { run, input, now = () => new 
     // Validate everything before the decisions are written. A decision identical to the recorded one is a repair, not a change.
     const changed = [];
     const repeated = [];
+    const counted = await readJson(path.join(p.dir, 'usage.json'));
     try {
       for (const [name, v] of Object.entries(decisions)) {
         const row = vj.rows[name];
+        if ((v === 'rebuild' || v === 'use') && !counted) {
+          // where a power can land depends on the workflows the owner runs: never decided on a guess
+          throw new PolicyRefused(`${v} needs the owner's workflows first: run cli.js usage (or cli.js usage --workflows <a,b> with the owner's own list), then decide ${name}`);
+        }
         if (v === 'use' && row.needs_probe) {
           throw new PolicyRefused(`use needs a clean network probe for ${name} first (cli.js verdict --probe ${name}=clean|found|incomplete); legal verdicts are ${row.legal.join(', ')}`);
         }

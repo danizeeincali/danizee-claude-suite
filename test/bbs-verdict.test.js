@@ -5,6 +5,7 @@
  * Two rules cannot change: safety first; our rules always win.
  */
 
+import { landed } from './fixtures/bbs-landed.js';
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
@@ -181,13 +182,14 @@ describe('verdict — computeVerdicts, recordProbe, recordDecisions', () => {
     await writeInventory(dir, { run: r.runId, input: JSON.stringify(powers), now });
     await buildMap(dir, { run: r.runId, now });
     await recordJudgments(dir, { run: r.runId, input: JSON.stringify(judgments), now });
+    await landed(dir, r.runId);
     return r;
   }
 
   it('computeVerdicts needs every judgment, writes verdicts.json with rows, the sandbox result and empty decisions, and returns the table', async () => {
     const r = await prepared('v1', [power(), power({ name: 'exporter', licence: 'GPL-3.0', what: 'exports data', idea: 'csv dump' })], { 'drift-monitor': 'missing', exporter: 'missing' });
     const out = await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now });
-    assert.equal(out.next, 'usage');
+    assert.equal(out.next, 'verdict');
     assert.deepEqual(Object.keys(out.rows).sort(), ['drift-monitor', 'exporter']);
     assert.deepEqual(out.rows['drift-monitor'].legal, ['rebuild', 'skip']);
     assert.equal(out.rows['drift-monitor'].default, 'rebuild');
@@ -248,7 +250,7 @@ describe('verdict — computeVerdicts, recordProbe, recordDecisions', () => {
     const one = await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'rebuild' }), now });
     assert.equal(one.decided, 1);
     assert.deepEqual(one.remaining.sort(), ['dup', 'exporter']);
-    assert.equal(one.next, 'usage');
+    assert.equal(one.next, 'verdict');
     assert.equal(one.registry_written, false);
     const rest = await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ decisions: { exporter: 'buy', dup: 'skip' } }), now });
     assert.equal(rest.decided, 3);
@@ -313,6 +315,7 @@ describe('verdict — cli verb', () => {
     run(dir, ['inventory', '--from', '-'], JSON.stringify([power()]));
     run(dir, ['map']);
     run(dir, ['map', '--from', '-'], JSON.stringify({ 'drift-monitor': 'missing' }));
+    run(dir, ['usage', '--root', path.join(dir, 'no-history')]);
   });
   after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
 
@@ -324,7 +327,7 @@ describe('verdict — cli verb', () => {
     assert.equal(v.code, 0, v.err);
     assert.equal(v.json.sandbox.present, false);
     assert.deepEqual(v.json.rows['drift-monitor'].legal, ['rebuild', 'skip']);
-    assert.equal(v.json.next, 'usage');
+    assert.equal(v.json.next, 'verdict');
     const t = run(dir, ['verdict', '--table']);
     assert.equal(t.code, 0, t.err);
     assert.equal(t.json, null);
@@ -436,6 +439,7 @@ describe('verdict r1 — library: sandbox.required_for_use, probe evidence, prob
     await writeInventory(dir, { run: r.runId, input: JSON.stringify(powers), now });
     await buildMap(dir, { run: r.runId, now });
     await recordJudgments(dir, { run: r.runId, input: JSON.stringify(judgments), now });
+    await landed(dir, r.runId);
     return r;
   }
 
@@ -526,6 +530,7 @@ describe('verdict r1 — cli verb input shapes and switches', () => {
     await writeInventory(d, { run: r.runId, input: JSON.stringify(powers), now });
     await buildMap(d, { run: r.runId, now });
     await recordJudgments(d, { run: r.runId, input: JSON.stringify(judgments), now });
+    await landed(d, r.runId);
     if (compute) await computeVerdicts(d, { run: r.runId, sandbox: sb, now });
     const rd = path.join(d, '.claude', 'bbs', 'runs', r.runId);
     return { d, run: r.runId, verdicts: path.join(rd, 'verdicts.json'), labels: path.join(rd, 'labels.jsonl') };
@@ -666,6 +671,7 @@ describe('verdict r2 — registry, repair, powers_ts, corrupt verdicts.json, dup
     await writeInventory(dir, { run: r.runId, input: JSON.stringify(powers), now });
     await buildMap(dir, { run: r.runId, now });
     await recordJudgments(dir, { run: r.runId, input: JSON.stringify(judgments), now });
+    await landed(dir, r.runId);
     return r;
   }
 
@@ -1043,6 +1049,7 @@ describe('verdict r4 — the `use` gate re-derives the row and re-checks the san
     await writeInventory(dir, { run: r.runId, input: JSON.stringify(powers), now });
     await buildMap(dir, { run: r.runId, now });
     await recordJudgments(dir, { run: r.runId, input: JSON.stringify(judgments), now });
+    await landed(dir, r.runId);
     await computeVerdicts(dir, { run: r.runId, sandbox, now });
     for (const p of powers) await recordProbe(dir, { run: r.runId, power: p.name, result: 'clean', now, sandbox });
     return r;
@@ -1230,6 +1237,7 @@ describe('verdict r6 — buy cause, powers_ts without ts, repair hint per input'
     await writeInventory(dir, { run: r.runId, input: JSON.stringify(powers), now });
     await buildMap(dir, { run: r.runId, now });
     await recordJudgments(dir, { run: r.runId, input: JSON.stringify(judgments), now });
+    await landed(dir, r.runId);
     return r;
   }
 
@@ -1271,5 +1279,25 @@ describe('verdict r6 — buy cause, powers_ts without ts, repair hint per input'
     assert.ok(b.warning.includes('EIO labels — resubmit the same input on cli.js verdict --from - to append the missing rows'), b.warning);
     const c = await recordDecisions(dir, { run: r.runId, input, now, label: '--from d.json', appendLabel: failing });
     assert.ok(c.warning.includes('EIO labels — re-run cli.js verdict --from d.json to append the missing rows'), c.warning);
+  });
+});
+
+describe('verdict — the owner\'s workflows come first (marathon 2026-10-10-bbs-integration)', () => {
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-vusage-')); await makeHarness(dir); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('rebuild or use without usage.json is refused (exit 2 policy); skip and buy are not', async () => {
+    const r = await intake(dir, '-', { stdin: 'no usage yet', now, slug: 'nousage' });
+    await writeInventory(dir, { run: r.runId, input: JSON.stringify([power(), power({ name: 'b' })]), now });
+    await buildMap(dir, { run: r.runId, now });
+    await recordJudgments(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'missing', b: 'missing' }), now });
+    await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now });
+    await assert.rejects(() => recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'rebuild' }), now }),
+      (err) => err instanceof PolicyRefused && /needs the owner's workflows first: run cli\.js usage/.test(err.message));
+    const ok = await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ b: 'skip' }), now });
+    assert.equal(ok.decided, 1);
+    await landed(dir, r.runId);
+    assert.equal((await recordDecisions(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'rebuild' }), now })).decided, 2);
   });
 });

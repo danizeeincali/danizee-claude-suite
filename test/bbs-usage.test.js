@@ -206,3 +206,46 @@ describe('usage — the run step and the CLI', () => {
     assert.equal(r.evidence, 'transcripts');
   });
 });
+
+describe('usage — review r1 regressions', () => {
+  let dir, hist;
+  before(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-usage-r1-'));
+    await project(dir);
+    await fs.mkdir(path.join(dir, '.claude', 'commands', 'team', 'ops'), { recursive: true });
+    await fs.writeFile(path.join(dir, '.claude', 'commands', 'team', 'ops', 'deploy.md'), '# Deploy\n');
+    hist = path.join(dir, 'history', 'p');
+    await fs.mkdir(path.join(hist, 's1', 'subagents'), { recursive: true });
+  });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('a typed command whose turn opens with <command-message> still counts', async () => {
+    const row = { type: 'user', message: { content: '<command-message>w-review is running…</command-message>\n<command-name>/w-review</command-name>\n<command-args></command-args>' } };
+    assert.deepEqual(invocations(row), [{ name: 'w-review', kind: 'typed' }]);
+  });
+
+  it('subagent transcripts and sidechain rows are not owner sessions', async () => {
+    await fs.writeFile(path.join(hist, 's1.jsonl'), typed('w-review', '2026-10-09T10:00:00.000Z') + '\n');
+    await fs.writeFile(path.join(hist, 's1', 'subagents', 'agent-a.jsonl'), skill('.shortcuts:w-debug', '2026-10-09T10:05:00.000Z') + '\n');
+    const side = JSON.parse(skill('.shortcuts:w-marathon', '2026-10-09T10:06:00.000Z'));
+    side.isSidechain = true;
+    await fs.appendFile(path.join(hist, 's1.jsonl'), JSON.stringify(side) + '\n');
+    const u = await scanUsage(dir, { roots: [path.dirname(hist)], days: 90, now: () => NOW });
+    assert.deepEqual(u.workflows.map(w => w.name), ['w-review']);
+    assert.equal(u.files_read, 1);
+  });
+
+  it('an invocation without a timestamp is a hop only of the one before it; later timed uses still count', async () => {
+    const bare = JSON.parse(typed('w-review', 'x')); delete bare.timestamp;
+    await fs.writeFile(path.join(hist, 's1.jsonl'), [JSON.stringify(bare), typed('w-review', '2026-10-09T10:00:00.000Z'), typed('w-review', '2026-10-09T12:00:00.000Z')].join('\n') + '\n');
+    await fs.rm(path.join(hist, 's1'), { recursive: true, force: true });
+    const u = await scanUsage(dir, { roots: [path.dirname(hist)], days: 90, now: () => NOW });
+    assert.equal(u.workflows[0].count, 3);
+  });
+
+  it('a workflow two directories deep resolves', async () => {
+    const w = await installedWorkflows(dir);
+    assert.deepEqual(resolveName('team:ops:deploy', w), { workflow: 'team:ops:deploy', via: 'team:ops:deploy' });
+    assert.equal((await ownerUsage(dir, 'team:ops:deploy')).workflows[0].name, 'team:ops:deploy');
+  });
+});

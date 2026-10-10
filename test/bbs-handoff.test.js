@@ -4,6 +4,7 @@
  * one brief per power, idea-only, no source code; buy → memo; skip → listed. Nothing is pushed, nothing is built here.
  */
 
+import { landed } from './fixtures/bbs-landed.js';
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
@@ -60,6 +61,7 @@ async function decided(dir, slug, powers, judgments, decisions) {
   await writeInventory(dir, { run: r.runId, input: JSON.stringify(powers), now });
   await buildMap(dir, { run: r.runId, now });
   await recordJudgments(dir, { run: r.runId, input: JSON.stringify(judgments), now });
+  await landed(dir, r.runId);
   await computeVerdicts(dir, { run: r.runId, sandbox: noSandbox, now });
   await recordDecisions(dir, { run: r.runId, input: JSON.stringify(decisions), now });
   return r;
@@ -283,6 +285,7 @@ describe('handoff — cli verb', () => {
     run(dir, ['inventory', '--from', '-'], JSON.stringify([power()]));
     run(dir, ['map']);
     run(dir, ['map', '--from', '-'], JSON.stringify({ 'drift-monitor': 'missing' }));
+    run(dir, ['usage', '--root', path.join(dir, 'no-history')]);
   });
   after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
 

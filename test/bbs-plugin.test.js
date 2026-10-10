@@ -158,6 +158,7 @@ describe('bbs plugin — review r1 regressions', () => {
     step(['inventory', '--from', path.join(FX, 'inventory.json')]);
     step(['map']);
     step(['map', '--from', path.join(FX, 'judgments.json')]);
+    step(['usage', '--root', path.join(dir, 'no-history')]);
     step(['verdict']);
     step(['verdict', '--from', path.join(FX, 'decisions.json')]);
     const h = spawnSync(process.execPath, [cli, 'handoff', '--marathon'], { cwd: dir, encoding: 'utf-8', env });
