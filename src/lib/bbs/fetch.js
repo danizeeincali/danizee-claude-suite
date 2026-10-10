@@ -9,6 +9,7 @@
  */
 
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import os from 'os';
 import path from 'path';
 import net from 'net';
@@ -311,10 +312,50 @@ export function extractLinks(text, base) {
 
 // ---------------------------------------------------------------- git
 
-/** The default git runner: execFileSync with a timeout; a timeout becomes an Error that says so. */
+/** PATH entries that are absolute; empty, '.' and relative entries (which mean "the current folder") are dropped. */
+export function absolutePathEntries(value, { delimiter = path.delimiter, isAbsolute = path.isAbsolute } = {}) {
+  return String(value ?? '').split(delimiter).filter(e => e !== '' && isAbsolute(e));
+}
+
+const pathKeyOf = (env) => Object.keys(env || {}).find(k => (process.platform === 'win32' ? k.toUpperCase() === 'PATH' : k === 'PATH'));
+
+/**
+ * Absolute path of the git program, searched in the ABSOLUTE entries of PATH only (env's PATH, else this process's).
+ * A bare 'git' is looked up through an empty or relative PATH entry on POSIX and in the child's cwd on Windows, so a
+ * git committed to a cloned repository could run. Kept local (not imported from the kit) so bbs works without it.
+ */
+export function resolveGitPath(env, { platform = process.platform } = {}) {
+  const key = pathKeyOf(env);
+  const value = key !== undefined ? env[key] : process.env.PATH;
+  const win = platform === 'win32';
+  const exts = win ? String(process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean) : [''];
+  for (const dir of absolutePathEntries(value)) {
+    for (const ext of exts) {
+      const file = path.join(dir, `git${ext.toLowerCase()}`);
+      try {
+        if (!fsSync.statSync(file).isFile()) continue;
+        if (!win) fsSync.accessSync(file, fsSync.constants.X_OK);
+      } catch { continue; }
+      return file;
+    }
+  }
+  throw new Error('cannot run git: no git program in any absolute PATH entry (empty and relative entries are not searched)');
+}
+
+/** env with its PATH reduced to absolute entries (git's own children search PATH too). */
+function absolutePathEnv(env) {
+  const key = pathKeyOf(env);
+  if (key === undefined) return env;
+  return { ...env, [key]: absolutePathEntries(env[key]).join(path.delimiter) };
+}
+
+/**
+ * The default git runner: execFileSync of git by its absolute path (resolveGitPath) with a PATH of absolute entries
+ * only, and a timeout; a timeout becomes an Error that says so.
+ */
 export function runGit(args, cwd, env, { timeout, exec = execFileSync } = {}) {
   try {
-    return exec('git', args, { cwd, env, timeout, killSignal: 'SIGTERM', encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
+    return exec(resolveGitPath(env), args, { cwd, env: absolutePathEnv(env), timeout, killSignal: 'SIGTERM', encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (err) {
     if (err?.code === 'ETIMEDOUT' || err?.signal === 'SIGTERM') {
       const e = new Error(`git ${args[0]} timeout after ${timeout} ms`);
@@ -378,11 +419,16 @@ export async function loadSafeGit() {
 /**
  * HEAD of the freshly cloned (foreign) repo. With the kit installed the call goes through safe-git, so nothing in
  * the clone's own config (hooks, filters, fsmonitor) can run, and an unsafe driver name fails the fetch instead of
- * being skipped. Without the kit, or with an injected git runner and no explicit `hardened`, the plain runner is used.
+ * being skipped. Without the kit, or with an injected git runner and no explicit `hardened`, the plain runner is used,
+ * from the clone's parent folder with --git-dir (git is never started with its cwd inside the clone).
  */
 export async function headOf(dest, env, { git = defaultGit, timeout, hardened = git === defaultGit, load = loadSafeGit } = {}) {
   const kit = hardened ? await load() : null;
-  if (!kit) return String(await git(['rev-parse', 'HEAD'], dest, env, { timeout })).trim();
+  if (!kit) {
+    // Never run git inside the fresh (foreign) clone: cwd is the clone's parent, the repository is named by --git-dir.
+    const abs = path.resolve(dest);
+    return String(await git(['--git-dir', path.join(abs, '.git'), 'rev-parse', 'HEAD'], path.dirname(abs), env, { timeout })).trim();
+  }
   const r = await kit.safeGit(dest, ['rev-parse', 'HEAD'], { env, timeout });
   if (r.code !== 0) throw Object.assign(new Error(`git rev-parse exited ${r.code}`), { stderr: r.stderr });
   return String(r.stdout).trim();

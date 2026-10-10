@@ -11,7 +11,7 @@ import {
   safeGit, safeGitEnv, safeGitConfig, checkReadArgs, clearSafeGitCache, defaultGitRunner,
   driversFromConfig, driversFromAttributes, run, READ_SUBCOMMANDS,
   parseConfigList, allowedCore, repoFormat, describeDirtyPlan, buildShadow, DEFAULT_LIMITS,
-  resolveGit, absolutePathEntries, unsafeIndexPath
+  resolveGit, absolutePathEntries, unsafeIndexPath, escapingPath, usage
 } from '../src/lib/kit/safe-git.js';
 
 const CLEAN_ENV = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
@@ -313,14 +313,14 @@ describe('safe-git — caller: bbs fetch rev-parse of the fetched clone', () => 
     assert.deepEqual(await r.fired(), []);
   });
 
-  it('kit missing: headOf falls back to the injected/plain runner with the old arguments', async () => {
+  it('kit missing: headOf falls back to the injected/plain runner: rev-parse HEAD of the clone via --git-dir, run from its parent', async () => {
     const { headOf } = await import('../src/lib/bbs/fetch.js');
     const calls = [];
     const git = (args, cwd, env, opts) => { calls.push({ args, cwd }); return 'abc\n'; };
     const out = await headOf('/x/y', {}, { git, hardened: true, load: async () => null, timeout: 5 });
     assert.equal(out, 'abc');
-    assert.deepEqual(calls[0].args, ['rev-parse', 'HEAD']);
-    assert.equal(calls[0].cwd, '/x/y');
+    assert.deepEqual(calls[0].args, ['--git-dir', path.join('/x/y', '.git'), 'rev-parse', 'HEAD']);
+    assert.equal(calls[0].cwd, '/x');
   });
 
   it('loadSafeGit resolves the sibling kit module here, and a loader failure other than "not installed" is not swallowed', async () => {
@@ -349,10 +349,10 @@ describe('safe-git — caller: bbs fetch rev-parse of the fetched clone', () => 
   it('cloneRepo with an injected git and no hardened flag keeps the plain call (existing behaviour)', async () => {
     const { cloneRepo } = await import('../src/lib/bbs/fetch.js');
     const calls = [];
-    const git = (args) => { calls.push(args); return args[0] === 'rev-parse' ? 'abcdef1234567890abcdef1234567890abcdef12\n' : ''; };
+    const git = (args) => { calls.push(args); return args.includes('rev-parse') ? 'abcdef1234567890abcdef1234567890abcdef12\n' : ''; };
     const r = await cloneRepo('https://github.com/a/b.git', path.join(root, 'plain-dest'), { git, lookup, onEgress: () => {} });
     assert.equal(r.sha, 'abcdef1234567890abcdef1234567890abcdef12');
-    assert.deepEqual(calls[1], ['rev-parse', 'HEAD']);
+    assert.deepEqual(calls[1], ['--git-dir', path.join(root, 'plain-dest', '.git'), 'rev-parse', 'HEAD']);
   });
 });
 
@@ -838,11 +838,16 @@ describe('safe-git — shadow git dir: the repository config is never read (revi
     assert.match((await safeGit(wt, ['status', '--porcelain'])).stdout, /^ M f\.txt$/m);
     assert.equal((await safeGit(main.dir, ['status', '--porcelain'])).stdout, '');
     await fs.mkdir(path.join(wt, 'deep'));
-    // review round 4: git never runs inside the repository, so a --dir in a subfolder selects the repository and every
-    // command runs as from the top of the work tree (documented in the header)
-    assert.equal((await safeGit(path.join(wt, 'deep'), ['rev-parse', '--show-prefix'])).stdout, '\n');
-    assert.equal((await safeGit(path.join(wt, 'deep'), ['rev-parse', '--show-toplevel'])).stdout.trim(), await fs.realpath(wt));
-    assert.match((await safeGit(path.join(wt, 'deep'), ['status', '--porcelain'])).stdout, /^ M f\.txt$/m, 'paths are top-relative');
+    // review round 5: git never runs inside the repository, so every command runs as from the top of the work tree;
+    // a --dir in a subfolder is refused (exit 1) instead of silently re-rooting pathspecs to the top
+    for (const a of [['rev-parse', '--show-prefix'], ['rev-parse', '--show-toplevel'], ['status', '--porcelain']]) {
+      await assert.rejects(() => safeGit(path.join(wt, 'deep'), a),
+        e => e instanceof KitExit && e.code === 1 && /pass the repository top; paths are relative to it/.test(e.message), a.join(' '));
+    }
+    assert.equal((await safeGit(wt, ['rev-parse', '--show-prefix'])).stdout, '\n');
+    // the linked worktree's own git dir is a valid --dir too (a git dir, no work tree)
+    const wtGitDir = path.resolve(wt, sh(wt, ['rev-parse', '--git-dir']).stdout.trim());
+    assert.equal((await safeGit(wtGitDir, ['rev-parse', 'HEAD'])).stdout.trim(), wtHead);
   });
 
   it('a bare repository (and a path inside .git) reads without a work tree', async () => {
@@ -856,7 +861,9 @@ describe('safe-git — shadow git dir: the repository config is never read (revi
     assert.equal((await safeGit(bareDir, ['log', '--oneline'])).code, 0);
     assert.notEqual((await safeGit(bareDir, ['status'])).code, 0, 'status needs a work tree');
     assert.equal((await safeGit(path.join(src.dir, '.git'), ['rev-parse', 'HEAD'])).stdout.trim(), head);
-    assert.equal((await safeGit(path.join(src.dir, '.git', 'refs'), ['rev-parse', '--is-inside-work-tree'])).stdout.trim(), 'false');
+    assert.equal((await safeGit(path.join(src.dir, '.git'), ['rev-parse', '--is-inside-work-tree'])).stdout.trim(), 'false');
+    await assert.rejects(() => safeGit(path.join(src.dir, '.git', 'refs'), ['rev-parse', '--is-inside-work-tree']),
+      e => e instanceof KitExit && e.code === 1 && /pass the repository top/.test(e.message), 'a folder inside the git dir is not the git dir');
   });
 
   it('a shallow clone reads (the shallow file is copied)', async () => {
@@ -1198,8 +1205,7 @@ describe('safe-git — review round 4 regressions (git found by absolute path, u
     const r = await plainRepo('cwd');
     const seen = [];
     const git = (a, o) => { seen.push(o); return defaultGitRunner(a, o); };
-    await fs.mkdir(path.join(r.dir, 'deep'));
-    await safeGit(path.join(r.dir, 'deep'), ['status', '--porcelain'], { git, env: { ...CLEAN_ENV, PATH: `:.:rel:${CLEAN_ENV.PATH}` } });
+    await safeGit(r.dir, ['status', '--porcelain'], { git, env: { ...CLEAN_ENV, PATH: `:.:rel:${CLEAN_ENV.PATH}` } });
     assert.ok(seen.length >= 3);
     for (const o of seen) {
       assert.ok(!(o.cwd === r.dir || o.cwd.startsWith(r.dir + path.sep)), `cwd ${o.cwd} is outside the repository`);
@@ -1215,7 +1221,8 @@ describe('safe-git — review round 4 regressions (git found by absolute path, u
     const r = await plainRepo('position');
     await fs.mkdir(path.join(r.dir, 'deep'));
     assert.equal((await safeGit(r.dir, ['rev-parse', '--is-inside-work-tree', '--is-inside-git-dir', '--show-prefix', '--show-cdup'])).stdout, 'true\nfalse\n\n\n');
-    assert.equal((await safeGit(path.join(r.dir, 'deep'), ['rev-parse', '--is-inside-work-tree'])).stdout, 'true\n');
+    await assert.rejects(() => safeGit(path.join(r.dir, 'deep'), ['rev-parse', '--is-inside-work-tree']),
+      e => e instanceof KitExit && e.code === 1 && /pass the repository top/.test(e.message), 'a subfolder --dir is refused (review round 5)');
     assert.equal((await safeGit(path.join(r.dir, '.git'), ['rev-parse', '--is-inside-git-dir', '--is-inside-work-tree'])).stdout, 'true\nfalse\n');
     await assert.rejects(() => safeGit(r.dir, ['rev-parse', '--show-prefix', 'HEAD']), e => e instanceof KitExit && e.code === 2);
   });
@@ -1295,5 +1302,129 @@ describe('safe-git — review round 4 regressions (git found by absolute path, u
       writer.kill('SIGKILL');
       await new Promise(res => (writer.exitCode !== null || writer.signalCode ? res() : writer.once('exit', res)));
     }
+  });
+});
+
+describe('safe-git — review round 5 regressions (bbs fallback outside the clone, subfolder --dir, CLI messages and exit, implicit no-index)', () => {
+  let root;
+  before(async () => { root = await fs.mkdtemp(path.join(os.tmpdir(), 'safe-git-r5-')); });
+  after(async () => { await fs.rm(root, { recursive: true, force: true }); });
+  const CLI = path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'src', 'lib', 'kit', 'cli.js');
+  const cli = (args) => spawnSync(process.execPath, [CLI, 'safe-git', ...args], { cwd: root, encoding: 'utf-8', env: CLEAN_ENV });
+
+  async function repo(name) {
+    const dir = path.join(root, name);
+    await fs.mkdir(path.join(dir, 'sub'), { recursive: true });
+    sh(dir, ['init', '-q', '.']);
+    await fs.writeFile(path.join(dir, 'sub', 'f'), 'one\n');
+    await fs.writeFile(path.join(dir, 'a.txt'), 'a\n');
+    sh(dir, ['add', '.']);
+    sh(dir, ['commit', '-q', '-m', 'init']);
+    return { dir, head: sh(dir, ['rev-parse', 'HEAD']).stdout.trim() };
+  }
+
+  it('bbs headOf, with and without the kit: a committed executable ./git in the clone and an empty PATH entry never run it', async (t) => {
+    if (process.platform === 'win32') return t.skip('POSIX PATH semantics');
+    const dir = path.join(root, 'clone-with-git');
+    await fs.mkdir(dir);
+    sh(dir, ['init', '-q', '.']);
+    const marker = path.join(root, 'repo-git-ran');
+    await fs.writeFile(path.join(dir, 'git'), `#!/bin/sh\ntouch '${marker}'\nexec '${resolveGit(CLEAN_ENV)}' "$@"\n`, { mode: 0o755 });
+    sh(dir, ['add', 'git']);
+    sh(dir, ['commit', '-q', '-m', 'ship a git']);
+    assert.equal(sh(dir, ['ls-files', '-s', 'git']).stdout.slice(0, 6), '100755', 'the planted git is committed executable');
+    const head = sh(dir, ['rev-parse', 'HEAD']).stdout.trim();
+    const PATH = `:${CLEAN_ENV.PATH}`;
+    // control: a bare git spawned with cwd in the clone runs the planted one
+    spawnSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf-8', env: { ...CLEAN_ENV, PATH } });
+    assert.equal(await exists(marker), true, 'control: the planted git ran');
+    await fs.rm(marker);
+    const { headOf } = await import('../src/lib/bbs/fetch.js');
+    const env = { ...CLEAN_ENV, PATH, GIT_CONFIG_NOSYSTEM: '1' };
+    assert.equal(await headOf(dir, env, { load: async () => null }), head, 'kit missing');
+    assert.equal(await exists(marker), false, 'kit missing: the clone\'s git never ran');
+    assert.equal(await headOf(dir, env, {}), head, 'kit present');
+    assert.equal(await exists(marker), false, 'kit present: the clone\'s git never ran');
+  });
+
+  it('bbs resolveGitPath searches absolute PATH entries only and runGit spawns that absolute path with an absolute-only PATH', async () => {
+    const { resolveGitPath, runGit, absolutePathEntries: abs } = await import('../src/lib/bbs/fetch.js');
+    assert.ok(path.isAbsolute(resolveGitPath(CLEAN_ENV)));
+    assert.throws(() => resolveGitPath({ PATH: ':.:rel' }), /cannot run git/);
+    assert.deepEqual(abs(':.:rel:/usr/bin::/bin:', { delimiter: ':', isAbsolute: path.posix.isAbsolute }), ['/usr/bin', '/bin']);
+    const seen = [];
+    runGit(['--version'], root, { ...CLEAN_ENV, PATH: `:.:${CLEAN_ENV.PATH}` }, { exec: (cmd, a, o) => { seen.push({ cmd, o }); return ''; } });
+    assert.ok(path.isAbsolute(seen[0].cmd));
+    assert.equal(seen[0].o.env.PATH, CLEAN_ENV.PATH);
+  });
+
+  it('a subfolder --dir is refused (exit 1) with "pass the repository top"; from the top, top-relative pathspecs find the history', async () => {
+    const r = await repo('sub-dir');
+    await assert.rejects(() => run(['--dir', path.join(r.dir, 'sub'), '--', 'log', '--oneline', '--', 'f'], { cwd: root, env: CLEAN_ENV }),
+      e => e instanceof KitExit && e.code === 1 && /pass the repository top; paths are relative to it/.test(e.message));
+    const out = await run(['--dir', r.dir, '--', 'log', '--format=%H', '--', 'sub/f'], { cwd: root, env: CLEAN_ENV });
+    assert.equal(out.stdout.trim(), r.head);
+    assert.match(usage, /--dir must be the top of the work tree or the git dir/);
+    const c = cli(['--dir', path.join(r.dir, 'sub'), '--', 'ls-files']);
+    assert.equal(c.status, 1);
+    assert.match(c.stderr, /pass the repository top; paths are relative to it/);
+  });
+
+  it('CLI: a missing "--" says so, --help prints the usage with exit 0, refusals say "refused" once', async () => {
+    const r = await repo('cli-msg');
+    await assert.rejects(() => run(['--dir', r.dir, 'log'], { cwd: root, env: CLEAN_ENV }),
+      e => e instanceof KitExit && e.code === 1 && /expected `--` before the git arguments/.test(e.message) && !/unknown flag/.test(e.message));
+    assert.deepEqual(await run(['--help'], { cwd: root, env: CLEAN_ENV }), { usage });
+    assert.deepEqual(await run(['-h'], { cwd: root, env: CLEAN_ENV }), { usage });
+    const h = cli(['--help']);
+    assert.equal(h.status, 0);
+    assert.equal(JSON.parse(h.stdout).usage, usage);
+    for (const a of [['log', '--ext-diff'], ['rev-parse', '--git-dir'], ['rev-parse', '--show-prefix', 'HEAD']]) {
+      const c = cli(['--dir', r.dir, '--', ...a]);
+      assert.equal(c.status, 2, a.join(' '));
+      assert.match(c.stderr, /^kit: refused: /, a.join(' '));
+      assert.equal(c.stderr.match(/refused/g).length, 1, `${a.join(' ')}: ${c.stderr}`);
+    }
+  });
+
+  it('CLI exit status: 0 when git succeeds, 3 when git ran and failed (JSON still printed with git\'s code), 1 bad input, 2 refusal', async () => {
+    const r = await repo('cli-exit');
+    const ok = await run(['--dir', r.dir, '--', 'rev-parse', 'HEAD'], { cwd: root, env: CLEAN_ENV });
+    assert.equal(ok.exit, 0);
+    const bad = await run(['--dir', r.dir, '--', 'log', 'nosuchref'], { cwd: root, env: CLEAN_ENV });
+    assert.equal(bad.code, 128);
+    assert.equal(bad.exit, 3);
+    const c = cli(['--dir', r.dir, '--', 'log', 'nosuchref']);
+    assert.equal(c.status, 3);
+    assert.equal(JSON.parse(c.stdout).code, 128);
+    assert.match(JSON.parse(c.stdout).stderr, /nosuchref/);
+    assert.equal(cli(['--dir', r.dir, '--', 'rev-parse', 'HEAD']).status, 0);
+    assert.equal(cli(['--bogus', '--', 'status']).status, 1);
+    assert.equal(cli(['--dir', r.dir, '--', 'fetch']).status, 2);
+  });
+
+  it('diffing commands refuse absolute and ..-escaping paths (git diff would go --no-index on its own); inside paths and revision ranges still work', async () => {
+    const r = await repo('no-index');
+    const o1 = path.join(root, 'outside-1');
+    const o2 = path.join(root, 'outside-2');
+    await fs.writeFile(o1, 'secret one\n');
+    await fs.writeFile(o2, 'secret two\n');
+    // control: plain git really does diff two outside files from inside the repository
+    assert.match(sh(r.dir, ['diff', o1, o2]).stdout, /secret/);
+    const rel1 = path.relative(r.dir, o1);
+    for (const a of [['diff', o1, o2], ['diff', rel1, path.relative(r.dir, o2)], ['diff', '--', o1, o2], ['diff', 'HEAD', '--', '../x'],
+      ['diff', '--stat', 'sub/../../x'], ['log', '-p', '--', '/etc/passwd'], ['show', 'HEAD', '--', '..'], ['diff-files', '--', 'C:/x'], ['diff', '\\\\host\\share\\x']]) {
+      await assert.rejects(() => safeGit(r.dir, a), e => e instanceof KitExit && e.code === 2 && /absolute or leaves the work tree/.test(e.message), a.join(' '));
+      assert.throws(() => checkReadArgs(a), e => e instanceof KitExit && e.code === 2, a.join(' '));
+    }
+    await fs.writeFile(path.join(r.dir, 'a.txt'), 'changed\n');
+    assert.match((await safeGit(r.dir, ['diff', '--', 'sub/../a.txt'])).stdout, /\+changed/, 'a .. that stays inside is allowed');
+    assert.match((await safeGit(r.dir, ['diff', '--', 'a.txt'])).stdout, /\+changed/);
+    assert.equal((await safeGit(r.dir, ['diff', 'HEAD..HEAD'])).code, 0);
+    assert.equal((await safeGit(r.dir, ['log', '--oneline', 'HEAD~0', '--', 'sub/f'])).code, 0);
+    assert.equal(escapingPath('a/../b'), false);
+    assert.equal(escapingPath('a/../../b'), true);
+    assert.equal(escapingPath('HEAD...main'), false);
+    assert.match(fsSync.readFileSync(new URL('../src/lib/kit/safe-git.js', import.meta.url), 'utf-8'), /switches to no-index ON ITS OWN/);
   });
 });

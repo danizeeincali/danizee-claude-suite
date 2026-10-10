@@ -39,10 +39,12 @@
  *   NEVER INSIDE THE REPO: git is spawned by an absolute path found in the absolute PATH entries only (a bare 'git'
  *   is looked up in the child's cwd on Windows and through an empty/relative PATH entry on POSIX), git's children get
  *   a PATH without empty/relative entries, and every git child runs with cwd = the private scratch folder: the work
- *   tree reaches git only through GIT_WORK_TREE. So every command runs as from the TOP of the work tree, whatever
- *   subfolder --dir names: pathspecs and printed paths are top-relative, rev-parse --show-prefix/--show-cdup print an
- *   empty line, --is-inside-work-tree/--is-inside-git-dir are answered for --dir (asked on their own; mixed with
- *   other rev-parse arguments they are refused), and the relative `HEAD:./path` form is not available.
+ *   tree reaches git only through GIT_WORK_TREE. So every command runs as from the TOP of the work tree, and --dir
+ *   must name that top or the git dir itself (bare repo, .git, a linked worktree's git dir): a subfolder is refused
+ *   (KitExit 1, "pass the repository top; paths are relative to it") rather than silently re-rooting pathspecs.
+ *   Pathspecs and printed paths are top-relative, rev-parse --show-prefix/--show-cdup print an empty line,
+ *   --is-inside-work-tree/--is-inside-git-dir are answered for --dir (asked on their own; mixed with other rev-parse
+ *   arguments they are refused), and the relative `HEAD:./path` form is not available.
  *
  *   DEFENCE IN DEPTH: every inherited GIT_* variable is removed; no system config (GIT_CONFIG_NOSYSTEM) and no global
  *   config — GIT_CONFIG_GLOBAL is an empty file, and because git before 2.32 ignores that variable, HOME and
@@ -68,8 +70,14 @@
  * switches off (--ext-diff, --textconv, --filters, --output, -O/--open-files-in-pager, --no-index, --show-signature,
  * --recurse-submodules, --ignore-submodules, --submodule, %G and %(signature) format placeholders) are refused too —
  * and so is ANY long option that is a prefix of one of them (git accepts unambiguous abbreviations such as
- * `cat-file --textc`), with or without `=value`. rev-parse --git-dir / --git-common-dir / --absolute-git-dir /
+ * `cat-file --textc`), with or without `=value`. git diff also switches to no-index ON ITS OWN when both paths lie
+ * outside the work tree, so for the diffing commands (log show diff diff-tree diff-index diff-files) every non-option
+ * argument, and every argument after `--`, that is absolute (/x, C:x, \\host) or climbs out with '..' is refused.
+ * rev-parse --git-dir / --git-common-dir / --absolute-git-dir /
  * --git-path / --shared-index-path are refused: they would print the private shadow dir.
+ *
+ * CLI: prints { stdout, stderr, code, exit }; exit status 0 when git succeeded, 3 when git ran and failed (git's own
+ * code is `code`), 1 for bad input / broken state, 2 for a policy refusal. --help prints the usage.
  *
  * Nothing is cached: every call re-reads the config and copies refs and index, so a changed repo is always seen.
  * Not reproduced in the shadow: reflogs (`@{n}`), core.worktree, other worktrees' HEADs, in-progress
@@ -84,7 +92,11 @@ import { spawnSync } from 'child_process';
 import { KitExit } from './kit-exit.js';
 
 export const verb = 'safe-git';
-export const usage = 'cli.js safe-git [--dir <path>] -- <git args...>   (read-only git on an untrusted repo; prints { stdout, stderr, code })';
+/** CLI exit status when git itself ran and failed (its own code is in the printed JSON). */
+export const GIT_FAILED_EXIT = 3;
+export const usage = 'cli.js safe-git [--dir <repo top or git dir>] -- <git args...>   (read-only git on an untrusted repo; '
+  + 'prints { stdout, stderr, code, exit }; --dir must be the top of the work tree or the git dir, not a subfolder, '
+  + 'and paths are relative to the repository top; exit 0 git ok, 1 bad input, 2 refused, 3 git failed)';
 
 export const READ_SUBCOMMANDS = Object.freeze([
   'rev-parse', 'rev-list', 'log', 'show', 'diff', 'diff-tree', 'diff-index', 'diff-files', 'ls-files', 'ls-tree',
@@ -467,9 +479,20 @@ const STATIC_OVERRIDES = [
   `gpg.program=${NO_PROGRAM}`, `gpg.ssh.program=${NO_PROGRAM}`, `gpg.x509.program=${NO_PROGRAM}`
 ];
 
+/**
+ * --dir must name the top of the work tree or the git dir itself (a bare repo, .git, a linked worktree's git dir).
+ * git never runs inside the repository, so every command runs as from the top: a subfolder would silently re-root
+ * pathspecs (`log -- f` from sub/ would show nothing). KitExit 1 instead of a wrong answer.
+ */
+export function checkRepoRoot(loc) {
+  if ([loc.top, loc.gitDir, loc.commonDir].includes(loc.real)) return;
+  throw new KitExit(`${loc.real} is inside the repository ${loc.top ?? loc.gitDir}, not its top: pass the repository top; paths are relative to it`, 1);
+}
+
 /** Everything we learn about the repo, reading files only. `ctx` = { git, scratch, cfgEnv, timeout }. */
 async function inspect(dir, ctx) {
   const loc = await locateRepo(dir);
+  checkRepoRoot(loc);
   const mainCfg = path.join(loc.commonDir, 'config');
   const fmt = repoFormat(await readConfigFile(ctx, mainCfg));
   const files = [mainCfg];
@@ -704,6 +727,17 @@ export const DENIED_LONG = Object.freeze([
 const REV_PARSE_SHADOW = new Set(['git-dir', 'absolute-git-dir', 'git-common-dir', 'git-path', 'shared-index-path']);
 const SIGNATURE_FORMAT = /%G|%\(\s*signature/i;
 
+/** True for an argument that is an absolute path (POSIX, Windows drive or UNC) or whose '..' components climb above its start. */
+export function escapingPath(a) {
+  if (a.startsWith('/') || a.startsWith('\\') || /^[A-Za-z]:[\\/]/.test(a)) return true;
+  if (process.platform === 'win32' && /^[A-Za-z]:/.test(a)) return true; // C:x is relative to drive C's own cwd
+  let depth = 0;
+  for (const part of a.split(/[\\/]/)) {
+    if (part === '..') { if (--depth < 0) return true; } else if (part !== '' && part !== '.') depth++;
+  }
+  return false;
+}
+
 /** Validate a read-only git argv; returns it with the hardening flags inserted. Throws KitExit 2. */
 export function checkReadArgs(args) {
   if (!Array.isArray(args) || args.length === 0 || args.some(a => typeof a !== 'string' || a.includes('\0'))) {
@@ -720,13 +754,22 @@ export function checkReadArgs(args) {
     // git's option parser accepts any unambiguous prefix of a long option, so refuse every prefix of a denied one.
     if ((name !== null && (name === '' || DENIED_LONG.some(d => d.startsWith(name))))
       || /^-O/.test(a) || SIGNATURE_FORMAT.test(a)) {
-      throw refuse(`git option ${a} would re-enable code execution, write a file or read a submodule; refused`);
+      throw refuse(`git option ${a} would re-enable code execution, write a file or read a submodule`);
     }
     if (sub === 'rev-parse' && name !== null && REV_PARSE_SHADOW.has(name)) {
-      throw refuse(`git rev-parse ${a} would print safe-git's private shadow git dir, not the repository's; refused`);
+      throw refuse(`git rev-parse ${a} would print safe-git's private shadow git dir, not the repository's`);
     }
   }
-  if (DIFFING.has(sub)) return [sub, '--no-ext-diff', '--no-textconv', '--ignore-submodules=all', ...rest];
+  if (DIFFING.has(sub)) {
+    // git diff turns into `diff --no-index` on its own when both paths lie outside the work tree: no path argument
+    // of a diffing command may be absolute or climb out with '..'.
+    for (const [k, a] of rest.entries()) {
+      if ((dashdash === -1 || k < dashdash) && a.startsWith('-')) continue;
+      if (k === dashdash) continue;
+      if (escapingPath(a)) throw refuse(`git ${sub} path ${a} is absolute or leaves the work tree (git would read files outside the repository)`);
+    }
+    return [sub, '--no-ext-diff', '--no-textconv', '--ignore-submodules=all', ...rest];
+  }
   if (sub === 'status') return [sub, '--ignore-submodules=all', ...rest];
   return [sub, ...rest];
 }
@@ -785,7 +828,7 @@ const within = (p, dir) => p === dir || p.startsWith(dir.endsWith(path.sep) ? di
 export function revParsePosition(argv, info) {
   if (argv[0] !== 'rev-parse' || !argv.slice(1).some(a => REV_PARSE_POSITION.has(a))) return null;
   if (!argv.slice(1).every(a => REV_PARSE_POSITION.has(a))) {
-    throw refuse(`git rev-parse ${[...REV_PARSE_POSITION].join('/')} must be asked on their own through safe-git (it runs git outside the work tree); refused`);
+    throw refuse(`git rev-parse ${[...REV_PARSE_POSITION].join('/')} must be asked on their own through safe-git (it runs git outside the work tree)`);
   }
   const { loc, top } = info;
   const lines = argv.slice(1).map(a => {
@@ -838,12 +881,15 @@ export async function run(args, io = {}) {
   for (; i < args.length; i++) {
     const a = args[i];
     if (a === '--') { i++; break; }
+    if (a === '--help' || a === '-h') return { usage };
     if (a === '--dir') {
       if (i + 1 >= args.length || args[i + 1] === '--') throw new KitExit('--dir needs a path', 1);
       dir = path.resolve(io.cwd || process.cwd(), args[++i]);
-    } else throw new KitExit(`unknown flag ${a} (usage: ${usage})`, 1);
+    } else if (!a.startsWith('-')) throw new KitExit(`expected \`--\` before the git arguments (got ${a}; usage: ${usage})`, 1);
+    else throw new KitExit(`unknown flag ${a} (usage: ${usage})`, 1);
   }
   const gitArgs = args.slice(i);
   if (gitArgs.length === 0) throw new KitExit(`no git command given (usage: ${usage})`, 1);
-  return safeGit(dir, gitArgs, { env: io.env || process.env, git: io.git });
+  const result = await safeGit(dir, gitArgs, { env: io.env || process.env, git: io.git });
+  return { ...result, exit: result.code === 0 ? 0 : GIT_FAILED_EXIT };
 }
