@@ -300,7 +300,7 @@ describe('sweep-commits round 2 review fixes', () => {
       assert.match(s, /git diff --quiet -- <the staged paths>/);
       assert.match(s, /reads each file's content from disk but git commits the index, so the two must agree/);
       assert.match(s, /if the check fails, re-stage those paths \(`git add`\)/);
-      assert.ok(s.indexOf('git diff --quiet') < s.length);
+      assert.ok(s.indexOf('git diff --quiet') >= 0);
     });
   }
 
@@ -314,13 +314,18 @@ describe('sweep-commits round 2 review fixes', () => {
       assert.match(s, /Any other non-zero exit is a failure of the step: report it, do not commit\./);
       assert.match(s, /After a scrub refusal or failure record no receipt \(skip the receipt commands below\) and continue to Compound\./);
       assert.ok(!/list them as printed and stop/.test(s));
+      assert.match(s, /record the receipt again, only when a receipt was recorded before Compound,/);
       assert.match(s, /Any other non-zero exit is a failure of the step: name the exit code, never read it as recorded\./);
     });
   }
 
   it('w-autoresearch: a scrub refusal reverts new files too and pauses after 3 in a row', () => {
     const s = commands['w-autoresearch'].content;
-    assert.match(s, /revert with `git checkout -- \. && git clean -fd -- <the experiment's new paths>`/);
+    const u = s.indexOf('git reset -q -- <the experiment\'s paths>');
+    const k = s.indexOf('git checkout -- . && git clean -fd -- <the experiment\'s new paths>');
+    assert.ok(u >= 0 && k > u, 'unstage comes before the checkout and clean');
+    assert.match(s, /revert in this order: first unstage/);
+    assert.match(s, /if the unstage failed, do not count it as reverted: report it and pause the loop \(create `\.autoresearch-off`\)/);
     assert.match(s, /After 3 consecutive scrub refusals pause the loop: create `\.autoresearch-off` and log why/);
   });
 });

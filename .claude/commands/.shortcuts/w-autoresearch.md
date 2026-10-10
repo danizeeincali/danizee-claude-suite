@@ -67,7 +67,7 @@ Launch a background agent that runs the experiment loop autonomously:
 3. **Run:** Execute `./autoresearch.sh`, capture output
 4. **Parse:** Extract `METRIC name=number` lines
 5. **Evaluate:**
-   - **Keep:** metric improved → run the scrub below, then `git commit` with Result trailer; a scrub refusal means no commit: treat it as a Crash (log the hits, revert with `git checkout -- . && git clean -fd -- <the experiment's new paths>` so a refused new file does not stay on disk untracked and unscanned, try a different approach). After 3 consecutive scrub refusals pause the loop: create `.autoresearch-off` and log why ("paused: 3 consecutive scrub refusals"); a Keep or Discard resets the count
+   - **Keep:** metric improved → run the scrub below, then `git commit` with Result trailer; a scrub refusal means no commit: treat it as a Crash (log the hits, revert in this order: first unstage with `git reset -q -- <the experiment's paths>` (the scrub step already ran `git add`, and the checkout restores from the index), then `git checkout -- . && git clean -fd -- <the experiment's new paths>` so a refused new file does not stay on disk untracked and unscanned; if the unstage failed, do not count it as reverted: report it and pause the loop (create `.autoresearch-off`); then try a different approach). After 3 consecutive scrub refusals pause the loop: create `.autoresearch-off` and log why ("paused: 3 consecutive scrub refusals"); a Keep or Discard resets the count
    - **Discard:** metric worse/equal → `git checkout -- .` to revert
    - **Crash:** non-zero exit → log error, revert, try different approach
 6. **Log:** Append result to `autoresearch.jsonl`, update dashboard
