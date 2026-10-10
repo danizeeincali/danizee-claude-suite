@@ -206,7 +206,7 @@ describe('kit wiring', () => {
     const blocks = [...r.matchAll(/```bash\n([\s\S]*?)```/g)].map(m => m[1]).filter(b => /lenses --diff|impact --diff/.test(b));
     assert.equal(blocks.length, 2, 'the lenses and impact blocks');
     for (const b of blocks) {
-      const cd = b.indexOf('(cd "$W" || {');
+      const cd = b.indexOf('cd "$W" || {'); // r3: the empty-W guard now opens the subshell, so the cd follows it
       assert.ok(cd >= 0, `enters the worktree: ${b}`);
       assert.ok(cd < b.indexOf('if [ ! -f .claude/helpers/kit/cli.js ]'), 'the kit guard runs inside the worktree');
       assert.ok(!b.includes('--dir'), 'no --dir: the worktree is the cwd');
@@ -308,6 +308,21 @@ describe('kit wiring', () => {
       assert.ok(g >= 0 && g < b.indexOf('cd "$W"'), `the BASE check is at the top: ${b}`);
     }
     assert.match(compound(), /refuses an empty `BASE` \("BASE is empty"/);
+  });
+
+  it('r3 fix 1: every kit block, the 4.2 copy included, refuses an empty W first; folder mode is named (W=., skip the copy)', () => {
+    const bs = [...c().matchAll(/```bash\n([\s\S]*?)```/g)].map(m => m[1]).filter(b => /^W=/.test(b) && b.includes('.claude/helpers/kit/cli.js'));
+    const cp = [...c().matchAll(/```bash\n([\s\S]*?)```/g)].map(m => m[1]).find(b => b.includes('cp .claude/kit/scrub-patterns.local'));
+    assert.ok(cp && bs.length === 6, 'six kit blocks and the 4.2 copy block');
+    for (const b of [...bs, cp]) assert.match(b, /\[ -n "\$W" \] \|\| \{ echo "W is empty: set it to the stream's isolation path" >&2; exit 1; \}/);
+    assert.match(c(), /streams\.isolation: folder\`\) the stream row has no isolation path and the stream builds in the main checkout, so set \`W=\.\` and skip the 4.2 copy/);
+  });
+
+  it('r3 fix 2: a "took longer than" failure is cured with --timeout on scrub, diff-range and push-gate check; impact cannot be raised', () => {
+    for (const verb of ['diff-range', 'scrub', 'push-gate check']) {
+      assert.match(c(), new RegExp('took longer than … ms[^\\n]*--timeout <ms>\\`? added to (the )?\\`' + verb));
+    }
+    assert.match(c(), /\`impact\` has no such flag, so a timeout there \(exit 3\) is reported as a failed step/);
   });
 
   it('every extracted bash block passes bash -n', () => {
@@ -472,6 +487,36 @@ describe('kit blocks run against the real kit in a stream worktree', () => {
         assert.equal(r.status, 1, r.stdout + r.stderr);
         assert.match(r.stderr, /BASE is empty: read it from streams\.json first/);
       }
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+
+  it('r3: W empty: every block exits 1 with "W is empty" and the 4.2 copy creates nothing under /', () => {
+    const fx = worktreeRepo();
+    try {
+      mkdirSync(path.join(fx.main, '.claude', 'kit'), { recursive: true });
+      writeFileSync(path.join(fx.main, '.claude', 'kit', 'scrub-patterns.local'), 'ZQXJ-PRIVATE-[0-9]+\n');
+      const had = existsSync('/.claude/kit');
+      for (const b of [lensesBlock(), impactBlock(), copyBlock(), scrubBlock(), cp6Block(), ...receiptBlocks()]) {
+        const r = fx.run(b, '');
+        assert.equal(r.status, 1, r.stdout + r.stderr);
+        assert.match(r.stderr, /W is empty: set it to the stream's isolation path/);
+        assert.ok(!/cannot enter|kit not installed/.test(r.stdout + r.stderr));
+      }
+      assert.equal(existsSync('/.claude/kit'), had, 'nothing was written under /');
+      assert.ok(!existsSync('/.claude/kit/scrub-patterns.local') || had);
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+
+  it('r3: folder mode, W=. in a repo that has the kit: the lenses block runs and exits 0', () => {
+    const fx = worktreeRepo();
+    try {
+      const r = fx.run(lensesBlock(), '.');
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+      assert.match(r.stdout, /no change to review/);
     } finally {
       rmSync(fx.root, { recursive: true, force: true });
     }
