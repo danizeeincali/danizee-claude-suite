@@ -2260,7 +2260,7 @@ Record the review's counts so the advisory push gate can recognise this exact ch
 node .claude/helpers/kit/cli.js push-gate receipt --verdict pass --high 0 --medium 0 --low 0
 node .claude/helpers/kit/cli.js push-gate receipt --verdict fail --high 1 --medium 2 --low 0
 \`\`\`
-Then tell the user: run \`node .claude/helpers/kit/cli.js push-gate check\` before pushing, with the same \`--threshold\` level used for the receipt (or none for both). It only abstains, asks or denies; it never skips their permission prompt. Reviewing uncommitted edits and then committing them unchanged still matches.
+Then tell the user: run \`node .claude/helpers/kit/cli.js push-gate check\` before pushing, with the same \`--threshold\` level and the same \`--base\` (or none) used for the receipt. It only abstains, asks or denies; it never skips their permission prompt. Reviewing uncommitted edits and then committing them unchanged still matches.
 
 ## Compounds
 \`\`\`

@@ -5,7 +5,7 @@ import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import { spawnSync } from 'child_process';
-import { verb, usage, run, decide, defaultGit, changeId } from '../src/lib/kit/push-gate.js';
+import { verb, usage, run, decide, defaultGit, changeId, writeAtomic } from '../src/lib/kit/push-gate.js';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
 
 const sh = (cwd, ...a) => spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { cwd, encoding: 'utf-8' });
@@ -250,6 +250,71 @@ describe('push-gate — receipts and check', () => {
   });
   it('outside a git repository is KitExit 1', async () => {
     await assert.rejects(run(['check'], io({ cwd: root })), e => e instanceof KitExit && e.code === 1);
+  });
+});
+
+describe('push-gate — review r2 fixes', () => {
+  it('check from a subdirectory finds the store recorded at the repo root', async () => {
+    await fs.mkdir(path.join(repo, 'sub'), { recursive: true });
+    for (const name of await fs.readdir(store)) await fs.rm(path.join(store, name), { force: true });
+    await run(receiptArgs(), io());
+    const r = await run(['check'], io({ cwd: path.join(repo, 'sub') }));
+    assert.doesNotMatch(r.reason || '', /no review recorded/);
+    assert.equal(r.change_id, (await run(['check'], io())).change_id);
+    await run(receiptArgs(), io({ cwd: path.join(repo, 'sub') }));
+  });
+  it('an unspawnable git is reported as that, not as "not a repository"', async () => {
+    const spawn = () => ({ error: new Error('spawn git ENOENT'), status: null, stdout: null, stderr: null });
+    await assert.rejects(
+      run(['check'], io({ git: defaultGit(repo, { spawn }) })),
+      e => e instanceof KitExit && e.code === 1 && /cannot run git: spawn git ENOENT/.test(e.message)
+    );
+  });
+  it('a failed store write removes its temp file and is a KitExit 1', async () => {
+    const dir = path.join(root, 'wa');
+    const file = path.join(dir, 'x.json');
+    await fs.mkdir(path.join(file, 'nonempty'), { recursive: true });
+    await assert.rejects(writeAtomic(dir, file, { a: 1 }), e => e instanceof KitExit && e.code === 1);
+    assert.deepEqual((await fs.readdir(dir)).filter(n => n.endsWith('.tmp')), []);
+  });
+  it('concurrent receipts from worktrees sharing one store lose no entry, and leave no lock', async () => {
+    const wt = path.join(root, 'wt');
+    sh(repo, 'worktree', 'add', '-q', '-b', 'other', wt);
+    await fs.writeFile(path.join(wt, 'b.txt'), 'b\n');
+    sh(wt, 'add', '-A');
+    sh(wt, 'commit', '-q', '-m', 'wt');
+    for (const name of await fs.readdir(store)) await fs.rm(path.join(store, name), { force: true });
+    await run(receiptArgs(), io());
+    const ids = [];
+    for (let i = 0; i < 6; i++) {
+      const cwd = i % 2 ? wt : repo;
+      await fs.writeFile(path.join(cwd, 'c.txt'), `v${i}\n`);
+      sh(cwd, 'add', '-A');
+      sh(cwd, 'commit', '-q', '-m', `c${i}`);
+    }
+    const results = await Promise.all([repo, wt, repo, wt].map(cwd => run(receiptArgs(), io({ cwd }))));
+    for (const r of results) ids.push(r.change_id);
+    const files = await fs.readdir(store);
+    assert.deepEqual(files.filter(n => n.endsWith('.lock') || n.endsWith('.tmp')), []);
+    const st = JSON.parse(await fs.readFile(path.join(store, files.find(n => n.endsWith('.json'))), 'utf-8'));
+    const seen = new Set([st.latest.change_id, ...st.previous]);
+    for (const id of new Set(ids)) assert.ok(seen.has(id), 'every recorded change is kept');
+  });
+  it('a stale lock file is taken over; a fresh one blocks with a KitExit', async () => {
+    const files = await fs.readdir(store);
+    const lock = path.join(store, files.find(n => n.endsWith('.json')) + '.lock');
+    await fs.writeFile(lock, '');
+    const old = new Date(Date.now() - 120000);
+    await fs.utimes(lock, old, old);
+    await run(receiptArgs(), io());
+    await assert.rejects(fs.stat(lock), { code: 'ENOENT' });
+    await fs.writeFile(lock, '');
+    await assert.rejects(
+      run(receiptArgs(), io({ env: { ...process.env, KIT_RECEIPTS_DIR: store, KIT_LOCK_STALE_MS: '600000', KIT_LOCK_WAIT_MS: '100' } })),
+      e => e instanceof KitExit && e.code === 1 && /locked/.test(e.message),
+      'waits then refuses'
+    );
+    await fs.rm(lock, { force: true });
   });
 });
 

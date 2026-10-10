@@ -42,6 +42,7 @@ export function defaultGit(cwd, { runner, spawn = spawnSync, env = process.env }
     const e = extra ? { ...clean, ...extra } : clean;
     if (runner) return runner(full, { cwd, env: e, input });
     const r = spawn('git', full, { cwd, env: e, input, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024 });
+    if (r.error) throw new KitExit(`cannot run git: ${r.error.message}`, 1);
     return { code: r.status ?? 1, stdout: r.stdout || '', stderr: r.stderr || '' };
   };
 }
@@ -155,9 +156,8 @@ const thresholdOf = v => {
 };
 
 async function storeFile(git, env) {
-  const common = await must(git, ['rev-parse', '--git-common-dir'], 'cannot find the git dir');
-  const cwdTop = await must(git, ['rev-parse', '--show-toplevel'], 'cannot find the repository');
-  const real = await fs.realpath(path.resolve(cwdTop, common));
+  const common = await must(git, ['rev-parse', '--path-format=absolute', '--git-common-dir'], 'cannot find the git dir');
+  const real = await fs.realpath(common);
   const dir = env.KIT_RECEIPTS_DIR || path.join(env.HOME || os.homedir(), '.claude', 'kit', 'receipts');
   return { dir, file: path.join(dir, `${sha(real)}.json`), repo: real };
 }
@@ -172,11 +172,33 @@ async function readState(file) {
   } catch (e) { throw new KitExit(`receipt store ${file} is corrupt (${e.message}); delete it to start over`, 1); }
 }
 
-async function writeAtomic(dir, file, data) {
+export async function writeAtomic(dir, file, data) {
   await fs.mkdir(dir, { recursive: true });
   const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(data, null, 2) + '\n');
-  await fs.rename(tmp, file);
+  try {
+    await fs.writeFile(tmp, JSON.stringify(data, null, 2) + '\n');
+    await fs.rename(tmp, file);
+  } catch (e) {
+    await fs.rm(tmp, { force: true }).catch(() => {});
+    throw new KitExit(`cannot write receipts: ${e.message}`, 1);
+  }
+}
+
+/** Exclusive lock file (O_EXCL) around a read-modify-write; stale after staleMs, always removed. */
+export async function withLock(dir, file, fn, { staleMs = 30000, waitMs = 10000 } = {}) {
+  await fs.mkdir(dir, { recursive: true });
+  const lock = `${file}.lock`;
+  const started = Date.now();
+  for (;;) {
+    try { (await fs.open(lock, 'wx')).close(); break; } catch (e) {
+      if (e.code !== 'EEXIST') throw new KitExit(`cannot lock receipts: ${e.message}`, 1);
+      const st = await fs.stat(lock).catch(() => null);
+      if (st && Date.now() - st.mtimeMs > staleMs) { await fs.rm(lock, { force: true }); continue; }
+      if (Date.now() - started > waitMs) throw new KitExit(`receipt store is locked (${lock}); delete it if no other review is recording`, 1);
+      await new Promise(r => setTimeout(r, 20));
+    }
+  }
+  try { return await fn(); } finally { await fs.rm(lock, { force: true }); }
 }
 
 export async function run(args, io) {
@@ -190,9 +212,9 @@ export async function run(args, io) {
 
   const change = await changeId(git, { base: flags.base, working: cmd === 'receipt' });
   const { dir, file, repo } = await storeFile(git, env);
-  const state = await readState(file);
 
   if (cmd === 'check') {
+    const state = await readState(file);
     const d = decide(state, change.id, threshold);
     const result = { ...d, change_id: change.id, threshold };
     if (d.decision === 'deny') result.exit = 2;
@@ -208,9 +230,12 @@ export async function run(args, io) {
     incomplete: !!flags.incomplete,
     created_at: (io.now ? io.now() : new Date()).toISOString()
   };
-  const previous = [...(state?.previous || [])];
-  if (state?.latest?.change_id && state.latest.change_id !== change.id) previous.push(state.latest.change_id);
-  const next = { repo, latest: receipt, previous: [...new Set(previous)].filter(p => p !== change.id).slice(-MAX_PREVIOUS) };
-  await writeAtomic(dir, file, next);
+  await withLock(dir, file, async () => {
+    const state = await readState(file);
+    const previous = [...(state?.previous || [])];
+    if (state?.latest?.change_id && state.latest.change_id !== change.id) previous.push(state.latest.change_id);
+    const next = { repo, latest: receipt, previous: [...new Set(previous)].filter(p => p !== change.id).slice(-MAX_PREVIOUS) };
+    await writeAtomic(dir, file, next);
+  }, { staleMs: Number(env.KIT_LOCK_STALE_MS) || undefined, waitMs: env.KIT_LOCK_WAIT_MS === undefined ? undefined : Number(env.KIT_LOCK_WAIT_MS) });
   return { change_id: change.id, dirty: change.dirty, receipt };
 }
