@@ -24,6 +24,7 @@ describe('bbs config', () => {
   it('DEFAULT_CONFIG carries the limits, licence classes, sandbox rule and paths from the spec', () => {
     assert.equal(DEFAULT_CONFIG.limits.max_urls, 25);
     assert.equal(DEFAULT_CONFIG.limits.max_bytes, 20 * 1024 * 1024);
+    assert.equal(DEFAULT_CONFIG.limits.max_checkout_bytes, 200 * 1024 * 1024);
     assert.equal(DEFAULT_CONFIG.limits.max_powers, 12);
     assert.equal(DEFAULT_CONFIG.limits.max_redirects, 5);
     assert.equal(DEFAULT_CONFIG.limits.timeout_ms, 30000);

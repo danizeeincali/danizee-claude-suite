@@ -345,7 +345,7 @@ function cloneEnv(scratchDir) {
   };
 }
 
-/** Sum of file sizes under dir (recursive, .git included, symlinks not followed). Missing dir → 0. */
+/** Sum of file sizes under dir (recursive, symlinks not followed). Missing dir → 0. */
 async function treeBytes(dir) {
   let st;
   try { st = await fs.lstat(dir); } catch (err) { if (err.code === 'ENOENT') return 0; throw err; }
@@ -369,7 +369,8 @@ function firstLine(err) {
 
 /** Shallow, tagless clone with hooks off and prompts off; returns { sha } of HEAD. */
 export async function cloneRepo(ref, dest, {
-  git = defaultGit, lookup = defaultLookup, onEgress = () => {}, now = () => new Date(), timeoutMs = 30000, maxBytes = Infinity
+  git = defaultGit, lookup = defaultLookup, onEgress = () => {}, now = () => new Date(), timeoutMs = 30000, maxBytes = Infinity,
+  maxCheckoutBytes = Infinity
 } = {}) {
   const text = String(ref ?? '').trim();
   const host = text.startsWith('-') ? null : hostOfRef(text);
@@ -401,18 +402,26 @@ export async function cloneRepo(ref, dest, {
       await git(args, path.dirname(path.resolve(dest)), env, { timeout: timeoutMs * 10 });
     } catch (err) {
       let partial = 0;
-      try { partial = await treeBytes(dest); } catch { /* unreadable partial tree: count nothing */ }
+      try { partial = await treeBytes(path.join(dest, '.git')); } catch { /* unreadable partial tree: count nothing */ }
       await fs.rm(dest, { recursive: true, force: true });
       const line = firstLine(err);
       await row({ error: line, bytes_in: partial });
       throw new Error(`git clone failed: ${line}`);
     }
-    const bytes = await treeBytes(dest);
-    if (bytes > maxBytes) {
+    // bytes_in is what came over the wire: .git (the shallow pack). The checkout is the same blobs
+    // expanded, so it is not egress; it has its own cap so a small, highly compressible pack
+    // cannot fill the disk.
+    const bytes = await treeBytes(path.join(dest, '.git'));
+    const checkout = (await treeBytes(dest)) - bytes;
+    const over = bytes > maxBytes
+      ? `clone of ${bytes} bytes exceeds the remaining allowance of ${maxBytes} bytes`
+      : checkout > maxCheckoutBytes
+        ? `checkout of ${checkout} bytes exceeds max_checkout_bytes of ${maxCheckoutBytes} bytes`
+        : null;
+    if (over) {
       await fs.rm(dest, { recursive: true, force: true });
-      const msg = `clone of ${bytes} bytes exceeds the remaining allowance of ${maxBytes} bytes`;
-      await row({ status: 0, bytes_in: bytes, refused: msg });
-      throw new EgressRefused(msg);
+      await row({ status: 0, bytes_in: bytes, refused: over });
+      throw new EgressRefused(over);
     }
     let sha;
     try {
@@ -544,7 +553,10 @@ export async function fetchRun(projectDir, opts = {}) {
         const cited = ext === 'bin' ? [] : extractLinks(r.body.toString('utf-8'), r.finalUrl);
         extraSource = { final_url: r.finalUrl, cited };
       } else {
-        const { sha } = await cloneRepo(source.ref, path.join(fetchedDir, 'repo'), { git: git || defaultGit, lookup: lookup || defaultLookup, onEgress, now, timeoutMs, maxBytes: remaining });
+        const { sha } = await cloneRepo(source.ref, path.join(fetchedDir, 'repo'), {
+          git: git || defaultGit, lookup: lookup || defaultLookup, onEgress, now, timeoutMs, maxBytes: remaining,
+          maxCheckoutBytes: cfg.limits?.max_checkout_bytes ?? DEFAULT_CONFIG.limits.max_checkout_bytes
+        });
         identity = 'git:' + sha;
         files = ['fetched/repo'];
         extraSource = {};

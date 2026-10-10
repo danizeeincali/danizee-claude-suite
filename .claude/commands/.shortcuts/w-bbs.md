@@ -80,7 +80,7 @@ If the JSON says `known: true`, the same source at the same identity is never au
 
 ### ⛔ CHECKPOINT 1: Fetch
 
-`node .claude/helpers/bbs/cli.js fetch [--run <id>]`, run with the Bash tool `timeout` set to 600000 ms (a repository clone may take up to 300 s, plus DNS and rev-parse). GET only; repositories are shallow-cloned without tags and with hooks off; 25 URLs and 20 MB per run; every request is logged to `egress.jsonl`.
+`node .claude/helpers/bbs/cli.js fetch [--run <id>]`, run with the Bash tool `timeout` set to 600000 ms (a repository clone may take up to 300 s, plus DNS and rev-parse). GET only; repositories are shallow-cloned without tags and with hooks off; 25 URLs and 20 MB per run (a clone counts its `.git` pack, not the checkout; the checkout has its own 200 MB cap); every request is logged to `egress.jsonl`.
 
 **Print the egress line verbatim** from the JSON (`egress_line`), for example `requests=3 bytes_in=412880 bodies_sent=0 hosts=github.com`. A local path or pasted text prints `requests=0 …`.
 

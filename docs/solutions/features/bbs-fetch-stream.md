@@ -23,13 +23,14 @@ behind one host policy, both writing an `egress.jsonl` row per request. Injectio
 | Clone does not follow HTTP redirects, no credential helper | `-c http.followRedirects=false -c credential.helper=` | r1 (high) |
 | Clone runs no LFS/filter drivers | `GIT_LFS_SKIP_SMUDGE=1`, `filter.lfs.*` blanked, `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null` | r1 (high) |
 | Clone protocol allowlist | `protocol.allow=never`, only https/ssh allowed; `http://` and `git://` refs refused with a refused row | r1 (high + medium) |
-| Clone timeout and size | `timeout` on `execFileSync`; `fetched/repo` measured and logged as `bytes_in`; over allowance is refused and removed; `GIT_SSH_COMMAND='ssh -o BatchMode=yes'` | r1 |
+| Clone timeout and size | `timeout` on `execFileSync`; `fetched/repo/.git` measured and logged as `bytes_in` (was the whole tree until 2026-10-10); over allowance is refused and removed; `GIT_SSH_COMMAND='ssh -o BatchMode=yes'` | r1 |
 | Redacted ref refused | `fetchRun` refuses when `source.ref` contains `<redacted>` | r1 |
 | Refusals not counted as requests | a row is a request only if actually sent | r1 |
 | Corrupt egress log fails closed | read with `report:true`; corrupt rows refuse naming `egress.jsonl` | r2 |
 | Lookup bounded by the timeout | lookup raced against `timeoutMs` | r2 |
 | Failed fetch leaves no false `fetched` | committed flag; `fetched/` survives a post-commit throw | r2 |
-| Failed/timed-out clone accounts partial bytes | `treeBytes(dest)` logged before removal | r2 |
+| Failed/timed-out clone accounts partial bytes | `treeBytes(dest/.git)` logged before removal | r2 |
+| Clone bytes are wire bytes | `bytes_in` = `.git` only; the expanded checkout is refused past `limits.max_checkout_bytes` (200 MB). The first real run (openqodex, 3.4 MiB pack, 22 MB on disk) was refused under the old whole-tree count | first real run, 2026-10-10 |
 | Empty 2xx body is an error | zero-byte 200 and 204 leave `source.json` unfetched | r2 |
 | Clone ignores user git config on old git | scrubbed `HOME` and `XDG_CONFIG_HOME` pointing at an empty temp dir | r3 |
 | No persisted hooks path | `core.hooksPath=/dev/null` instead of a temp dir | r3 |

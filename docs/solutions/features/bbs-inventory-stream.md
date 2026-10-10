@@ -21,7 +21,10 @@ and `inventory --from <file|->` validates the helper's JSON and writes `powers.j
   the text. Any other prose is a refusal naming the input (`--from <path>` or stdin), with control bytes
   escaped in the preview. Empty input says `JSON only — <label> is empty`.
 - **12-power cap.** The first 12 are kept; the rest are listed in `not_inventoried: [names]`.
-- **Helper brief.** Lists source files (sorted, then capped at 500, the remainder counted), tells the
+- **Helper brief.** Lists source files (capped at 500, the remainder counted; past the cap the 500 are taken in turn
+  from the root files and each top-level directory below any shared wrapper such as `repo/`, shallowest
+  first, and the brief prints listed/total per directory — changed 2026-10-10 after the first real run,
+  where 454 of the first 500 sorted paths were `benchmark/` output and `packages/` was never listed), tells the
   helper to return JSON only, and states the schema. Secret-like names (`.env*`, `*.pem`, `*.key`, `id_*`,
   `.npmrc`, `.netrc`, `credentials*`) are omitted with a count, and the helper is told never to copy values
   from config or secret files. The licence is the shallowest `LICENSE*`/`COPYING*` candidate (alphabetical
