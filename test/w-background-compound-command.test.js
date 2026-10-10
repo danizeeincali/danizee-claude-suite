@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
-import { writeFileSync, mkdtempSync, mkdirSync, cpSync, readdirSync, rmSync } from 'fs';
+import { writeFileSync, mkdtempSync, mkdirSync, cpSync, readdirSync, rmSync, existsSync, readFileSync, statSync } from 'fs';
 import path from 'path';
 import os from 'os';
 import { spawnSync } from 'child_process';
@@ -54,6 +54,17 @@ function kitRepo() {
   const env = { ...process.env, HOME: root, TMPDIR: tmp, KIT_RECEIPTS_DIR: path.join(root, 'receipts'), GIT_CONFIG_NOSYSTEM: '1' };
   const run = (b, cwd = dir, extra = {}) => spawnSync('bash', ['-c', b], { cwd, encoding: 'utf-8', env: { ...env, ...extra } });
   return { root, dir, tmp, run };
+}
+// The redact block prints one summary line and leaves the redacted text in the file it names.
+function redactOut(fx, r) {
+  assert.equal(r.status, 0, r.stderr);
+  const m = r.stdout.match(/^replaced=(\d+) bytes=(\d+) file=(\S+)\n$/);
+  assert.ok(m, `summary line shape: ${r.stdout}`);
+  assert.ok(existsSync(m[3]), 'the named file does not exist');
+  const text = readFileSync(m[3], 'utf-8');
+  assert.equal(Buffer.byteLength(text), Number(m[2]));
+  assert.deepEqual(readdirSync(fx.tmp), [path.basename(m[3])], 'only the redacted file is left in TMPDIR (D and J are gone)');
+  return { replaced: Number(m[1]), text, file: m[3] };
 }
 const redactBlock = () => blocksOf(phase1())[0];
 const gateBlock = () => blocksOf(phase3())[0];
@@ -178,11 +189,12 @@ describe('review round 1 fixes (wording)', () => {
   });
   it('medium: the diff goes to a guarded temp file, git\'s exit is checked, then redact reads the file', () => {
     const b = redactBlock();
-    assert.match(b, /D=\$\(mktemp 2>\/dev\/null\) && \[ -n "\$D" \] \|\| \{/);
+    // retargeted: the guard now makes D, J and R together
+    assert.match(b, /D=\$\(mktemp 2>\/dev\/null\) && J=\$\(mktemp 2>\/dev\/null\) && R=\$\(mktemp 2>\/dev\/null\) && \[ -n "\$D" \] && \[ -n "\$J" \] && \[ -n "\$R" \] \|\| \{/);
     assert.match(b, /diff-range --base "\$BASE" --no-untracked > "\$D"; RC=\$\?/);
     assert.match(b, /redact --keep-lines < "\$D"/);
     assert.doesNotMatch(b, /\| node/);
-    assert.match(b, /\[ -z "\$D" \] \|\| rm -f "\$D"/);
+    assert.match(b, /\[ -z "\$D" \] \|\| rm -f "\$D" "\$J"/); // retargeted: D and J are removed together
     assert.match(phase1(), /the same pipeline applies to any excerpt/);
   });
   it('medium: the no-review reason in the text is the verb\'s own reason', async () => {
@@ -296,11 +308,10 @@ describe('blocks run against the real kit', () => {
       git(fx.dir, 'commit', '-q', '-am', 'leak');
       const r = fx.run(redactBlock(), fx.dir, { BASE });
       assert.equal(r.status, 0, r.stderr);
-      const j = JSON.parse(r.stdout);
+      const j = redactOut(fx, r);
       assert.ok(j.replaced >= 1);
       assert.ok(!j.text.includes(secret));
       assert.match(j.text, /token = /);
-      assert.deepEqual(readdirSync(fx.tmp), [], 'temp file left behind');
     } finally {
       rmSync(fx.root, { recursive: true, force: true });
     }
@@ -319,7 +330,7 @@ describe('blocks run against the real kit', () => {
       putKit(wt);
       const r = fx.run(redactBlock(), wt, { BASE });
       assert.equal(r.status, 0, r.stderr);
-      const j = JSON.parse(r.stdout);
+      const j = redactOut(fx, r);
       assert.ok(j.replaced >= 1);
       assert.ok(!j.text.includes(secret));
     } finally {
@@ -334,10 +345,9 @@ describe('blocks run against the real kit', () => {
       git(fx.dir, 'commit', '-q', '-am', 'two');
       const r = fx.run(redactBlock(), fx.dir, { BASE });
       assert.equal(r.status, 0, r.stderr);
-      const j = JSON.parse(r.stdout);
+      const j = redactOut(fx, r);
       assert.equal(j.replaced, 0);
       assert.match(j.text, /\+two/);
-      assert.deepEqual(readdirSync(fx.tmp), [], 'temp file left behind');
     } finally {
       rmSync(fx.root, { recursive: true, force: true });
     }
@@ -371,7 +381,7 @@ describe('blocks run against the real kit', () => {
       assert.equal(BASE, start);
       const r = fx.run(redactBlock(), fx.dir, { BASE });
       assert.equal(r.status, 0, r.stderr);
-      const j = JSON.parse(r.stdout);
+      const j = redactOut(fx, r);
       assert.match(j.text, /\+first-commit-line/);
       assert.match(j.text, /\+second-commit-line/);
     } finally {
@@ -444,7 +454,7 @@ describe('review round 3 fixes', () => {
   it('low: the redact block traps the temp file in a subshell; the claim names what the trap cannot catch', () => {
     const b = redactBlock();
     assert.match(b, /else \( D=\$\(mktemp/);
-    const trap = b.indexOf(`[ -z "$D" ] || trap 'rm -f "$D"' EXIT INT TERM`);
+    const trap = b.indexOf(`[ -z "$D" ] || trap 'rm -f "$D" "$J"; [ -n "$KEEP" ] || rm -f "$R"' EXIT INT TERM`); // retargeted: D and J always, R only when not kept
     assert.ok(trap > b.indexOf('mktemp failed') && trap < b.indexOf('diff-range --base'), 'trap not set right after the mktemp guard');
     assert.match(b, /exit \$RC \); RC=\$\?; \(exit \$RC\); fi\s*$/);
     const p = phase1();
@@ -596,7 +606,7 @@ describe('review round 5 fixes', () => {
     const storage = p.indexOf('- Storage:');
     assert.ok(red >= 0 && red < storage && red < analyze && red < append, 'redact block not first');
     assert.ok(p.indexOf('```bash') > red && p.indexOf('```bash') < analyze);
-    assert.match(p, /- Analyze: parse the redacted `text` the redact block printed \(the range since `\$BASE`\)/);
+    assert.match(p, /- Analyze: read the redacted file `\$R` named in the redact block's summary line \(the range since `\$BASE`\)/);
     assert.match(p, /- Append all to \.claude\/ralph-candidates\.md \(redacted entries only/);
     assert.doesNotMatch(p, /git diff/);
     assert.doesNotMatch(p.replace(/```bash\n[\s\S]*?```/g, ''), /parse git diff/);
@@ -705,10 +715,75 @@ describe('review round 5 fixes', () => {
     assert.match(pg, /maxBuffer: 64 \* 1024 \* 1024/);
     assert.ok(step1Text().includes('a range whose git output passes 64 MiB is exit 1 instead'));
     assert.ok(phase1().includes('a range whose git output passes 64 MiB is exit 1 instead'));
-    assert.ok(step1Block().includes("grep -v '^+++ '"));
+    assert.ok(step1Block().includes('/^[+][+][+] /{next}')); // retargeted: the headers are skipped inside the one awk pass
     assert.match(step1Text(), /file headers are skipped/);
     const c = checkpoint4();
     assert.match(c, /on a branch stop the agent never pushed, so the lead records `MB` itself with Phase 3's record line/);
     assert.match(c, /on a main stop the agent's summary line carries it, "not pushed \(main\) — gate asks: <reason>; MB=<sha>"/);
+  });
+});
+
+describe('review round 7 fixes', () => {
+  const step1Text = () => section('- **Step 1:**', '- **Step 2:**');
+  const step1Block = () => blocksOf(step1Text())[0];
+  it('medium: the redact block writes the redacted text to a file and prints one summary line; the prose reads it in chunks and removes it', () => {
+    const b = redactBlock();
+    assert.match(b, /redact --keep-lines < "\$D" > "\$J"/);
+    assert.ok(b.includes('writeFileSync(process.argv[2],j.text)'));
+    assert.ok(b.includes('console.log("replaced="+j.replaced+" bytes="+Buffer.byteLength(j.text)+" file="+process.argv[2])'));
+    const p = phase1();
+    assert.match(p, /exactly one summary line, `replaced=<n> bytes=<n> file=<path>`/);
+    assert.ok(p.includes("`grep -n '^diff --git' \"$R\"` then `sed -n 'a,bp' \"$R\"`"));
+    assert.ok(p.includes('At the end of Phase 1 run `rm -f "$R"`'));
+    assert.match(p, /a killed shell leaves it in `\$TMPDIR` \(mode 0600\), and the lead's Phase 4 summary names it if it was not removed/);
+  });
+  it('medium: a large range never reaches stdout; failure and empty-range paths leave no file', () => {
+    const fx = kitRepo();
+    try {
+      const BASE = git(fx.dir, 'rev-parse', 'HEAD').trim();
+      writeFileSync(path.join(fx.dir, 'a.txt'), 'one\n' + 'line of added text\n'.repeat(5000));
+      git(fx.dir, 'commit', '-q', '-am', 'big');
+      const r = fx.run(redactBlock(), fx.dir, { BASE });
+      const j = redactOut(fx, r);
+      assert.ok(r.stdout.length < 200, 'stdout carries more than the summary line');
+      assert.ok(j.text.length > 50000);
+      assert.equal(existsSync(j.file) && (statSync(j.file).mode & 0o777), 0o600);
+      const none = fx.run(redactBlock(), fx.dir, { BASE: git(fx.dir, 'rev-parse', 'HEAD').trim() });
+      assert.equal(none.status, 0, none.stderr);
+      assert.doesNotMatch(none.stdout, /file=/);
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+  it('low: Step 1 counts the five categories in one awk pass, same patterns and weights, POSIX only', () => {
+    const b = step1Block();
+    assert.equal((b.match(/grep -ciE/g) || []).length, 0);
+    assert.equal((b.match(/awk /g) || []).length, 1);
+    assert.ok(b.includes('tolower($0)'));
+    assert.doesNotMatch(b, /IGNORECASE/);
+    for (const pat of ['secret|token|password|auth|csrf|xss|inject', 'fix|bug|error|crash|regress', 'perf|cache|latency|optimi|throughput', 'refactor|architect|interface|module|abstract', 'add|new|feature|support']) {
+      assert.ok(b.includes(`^[+].*(${pat})`), pat);
+    }
+    assert.ok(b.includes('[ $((SEC * 3)) -gt $BEST ]') && b.includes('[ $((BUG * 2)) -gt $BEST ]'));
+    assert.match(step1Text(), /counted for all five categories in one pass/);
+  });
+  it('low: Step 1 one-pass scoring still gives security, bug and feature (upper case counts)', () => {
+    const fx = kitRepo();
+    try {
+      const BASE = git(fx.dir, 'rev-parse', 'HEAD').trim();
+      const cat = body => {
+        writeFileSync(path.join(fx.dir, 'a.txt'), `one\n${body}`);
+        git(fx.dir, 'commit', '-q', '-am', 'c');
+        const r = fx.run(step1Block(), fx.dir, { BASE, ARG: '' });
+        assert.equal(r.status, 0, r.stderr);
+        return r.stdout.match(/CATEGORY=(\S+)/)[1];
+      };
+      assert.equal(cat('The PASSWORD check\nCSRF guard\n'), 'security');
+      assert.equal(cat('one\nFix a Crash\nBug in loop\n'), 'bug');
+      assert.equal(cat('one\nplain text\n'), 'feature');
+      assert.deepEqual(readdirSync(fx.tmp), [], 'temp file left behind');
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
   });
 });
