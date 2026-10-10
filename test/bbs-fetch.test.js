@@ -284,7 +284,7 @@ describe('fetch — cloneRepo', () => {
     const git = (args, cwd, env) => {
       calls.push({ args, cwd, env });
       if (args[0] === 'clone') return '';
-      if (args[0] === 'rev-parse') return 'abcdef1234567890abcdef1234567890abcdef12\n';
+      if (args.includes('rev-parse')) return 'abcdef1234567890abcdef1234567890abcdef12\n';
       throw new Error('unexpected ' + args.join(' '));
     };
     const log = [];
@@ -302,8 +302,9 @@ describe('fetch — cloneRepo', () => {
     assert.equal(clone[clone.length - 1], dest);
     assert.equal(calls[0].env?.GIT_TERMINAL_PROMPT, '0');
     assert.equal(calls[0].env?.GIT_DIR, undefined);
-    assert.deepEqual(calls[1].args, ['rev-parse', 'HEAD']);
-    assert.equal(calls[1].cwd, dest);
+    // the plain runner names the clone with --git-dir and runs from its parent folder, never inside the clone
+    assert.deepEqual(calls[1].args, ['--git-dir', path.join(dest, '.git'), 'rev-parse', 'HEAD']);
+    assert.equal(calls[1].cwd, path.dirname(dest));
     assert.equal(log.length, 1);
     assert.equal(log[0].kind, 'git');
     assert.equal(log[0].host, 'github.com');
@@ -330,7 +331,7 @@ describe('fetch — cloneRepo', () => {
       const st = await fs.stat(env.HOME);
       seen.push({ args, home: env.HOME, xdg: env.XDG_CONFIG_HOME, isDir: st.isDirectory(), entries: await fs.readdir(env.HOME) });
       if (args[0] === 'clone') return '';
-      if (args[0] === 'rev-parse') return 'abcdef1234567890abcdef1234567890abcdef12\n';
+      if (args.includes('rev-parse')) return 'abcdef1234567890abcdef1234567890abcdef12\n';
       throw new Error('unexpected ' + args.join(' '));
     };
     const dest = path.join(os.tmpdir(), `bbs-clone-home-${Date.now()}`);
@@ -385,7 +386,7 @@ describe('fetch — cloneRepo', () => {
     }
     for (const ref of ['ssh://git@github.com/a/b.git', 'git@github.com:a/b.git']) {
       const calls = [];
-      const git = (args) => { calls.push(args); return args[0] === 'rev-parse' ? 'abcdef1234567890abcdef1234567890abcdef12\n' : ''; };
+      const git = (args) => { calls.push(args); return args.includes('rev-parse') ? 'abcdef1234567890abcdef1234567890abcdef12\n' : ''; };
       const dest = path.join(os.tmpdir(), `bbs-clone-ok-${Date.now()}-${Math.random().toString(16).slice(2)}`);
       await cloneRepo(ref, dest, { git, lookup: publicLookup, onEgress: () => {} });
       assert.equal(calls[0][0], 'clone', `${ref} is accepted`);
@@ -394,7 +395,7 @@ describe('fetch — cloneRepo', () => {
 
   it('passes a timeout (10x timeoutMs) to the git runner for the clone; the default runner turns a timeout into an error naming it', async () => {
     const seen = [];
-    const git = (args, cwd, env, opts) => { seen.push({ args, opts }); return args[0] === 'rev-parse' ? 'abcdef1234567890abcdef1234567890abcdef12\n' : ''; };
+    const git = (args, cwd, env, opts) => { seen.push({ args, opts }); return args.includes('rev-parse') ? 'abcdef1234567890abcdef1234567890abcdef12\n' : ''; };
     const dest = path.join(os.tmpdir(), `bbs-clone-to-${Date.now()}`);
     await cloneRepo('https://github.com/a/b.git', dest, { git, lookup: publicLookup, onEgress: () => {}, timeoutMs: 1234 });
     assert.equal(seen[0].opts?.timeout, 12340);
@@ -408,7 +409,7 @@ describe('fetch — cloneRepo', () => {
     assert.throws(() => runGit(['clone', 'x'], '/tmp', {}, { timeout: 50, exec: execSig }), /timeout/i);
   });
 
-  it('measures the cloned tree (including .git) as bytes_in, and refuses and removes a clone over the remaining byte allowance', async () => {
+  it('measures .git (the bytes that came over the wire) as bytes_in, and refuses and removes a clone over the remaining byte allowance', async () => {
     const git = (args) => {
       if (args[0] === 'clone') {
         const dest = args[args.length - 1];
@@ -422,18 +423,47 @@ describe('fetch — cloneRepo', () => {
     const base = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-clone-bytes-'));
     try {
       const log = [];
-      await cloneRepo('https://github.com/a/b.git', path.join(base, 'ok'), { git, lookup: publicLookup, onEgress: (r) => log.push(r), maxBytes: 150 });
+      await cloneRepo('https://github.com/a/b.git', path.join(base, 'ok'), { git, lookup: publicLookup, onEgress: (r) => log.push(r), maxBytes: 50 });
       assert.equal(log.length, 1);
-      assert.equal(log[0].bytes_in, 150, 'README + .git/pack');
+      assert.equal(log[0].bytes_in, 50, '.git/pack only; the checked-out README is not egress');
       assert.ok(!log[0].refused);
       const log2 = [];
       const big = path.join(base, 'big');
-      await assert.rejects(() => cloneRepo('https://github.com/a/b.git', big, { git, lookup: publicLookup, onEgress: (r) => log2.push(r), maxBytes: 149 }),
+      await assert.rejects(() => cloneRepo('https://github.com/a/b.git', big, { git, lookup: publicLookup, onEgress: (r) => log2.push(r), maxBytes: 49 }),
         (e) => e instanceof EgressRefused && /bytes/i.test(e.message));
       await assert.rejects(() => fs.stat(big), 'the over-size clone is removed');
       assert.equal(log2.length, 1);
-      assert.equal(log2[0].bytes_in, 150);
+      assert.equal(log2[0].bytes_in, 50);
       assert.ok(log2[0].refused && /bytes/i.test(log2[0].refused));
+    } finally {
+      await fs.rm(base, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses and removes a clone whose checkout passes maxCheckoutBytes, logging only the wire bytes', async () => {
+    const git = (args) => {
+      if (args[0] === 'clone') {
+        const dest = args[args.length - 1];
+        fsSync.mkdirSync(path.join(dest, '.git'), { recursive: true });
+        fsSync.writeFileSync(path.join(dest, 'big.txt'), 'x'.repeat(101));
+        fsSync.writeFileSync(path.join(dest, '.git', 'pack'), 'y'.repeat(10));
+        return '';
+      }
+      return 'abcdef1234567890abcdef1234567890abcdef12\n';
+    };
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-clone-checkout-'));
+    try {
+      const ok = [];
+      await cloneRepo('https://github.com/a/b.git', path.join(base, 'ok'), { git, lookup: publicLookup, onEgress: (r) => ok.push(r), maxBytes: 1000, maxCheckoutBytes: 101 });
+      assert.ok(!ok[0].refused, 'exactly at the cap is allowed');
+      const log = [];
+      const dest = path.join(base, 'bomb');
+      await assert.rejects(() => cloneRepo('https://github.com/a/b.git', dest, { git, lookup: publicLookup, onEgress: (r) => log.push(r), maxBytes: 1000, maxCheckoutBytes: 100 }),
+        (e) => e instanceof EgressRefused && /max_checkout_bytes/.test(e.message));
+      await assert.rejects(() => fs.stat(dest), 'the over-size checkout is removed');
+      assert.equal(log.length, 1);
+      assert.equal(log[0].bytes_in, 10);
+      assert.ok(/max_checkout_bytes/.test(log[0].refused));
     } finally {
       await fs.rm(base, { recursive: true, force: true });
     }
@@ -457,7 +487,7 @@ describe('fetch — cloneRepo', () => {
 
   it('r2: a failed clone that wrote data logs the partial bytes as bytes_in on the error row', async () => {
     const dest = path.join(os.tmpdir(), `bbs-clone-partial-${Date.now()}`);
-    const git = (args) => { fsSync.mkdirSync(dest, { recursive: true }); fsSync.writeFileSync(path.join(dest, 'part'), 'z'.repeat(37)); const e = new Error('Command failed'); e.stderr = 'fatal: early EOF\n'; throw e; };
+    const git = (args) => { fsSync.mkdirSync(path.join(dest, '.git'), { recursive: true }); fsSync.writeFileSync(path.join(dest, '.git', 'part'), 'z'.repeat(37)); fsSync.writeFileSync(path.join(dest, 'checked-out'), 'c'.repeat(5)); const e = new Error('Command failed'); e.stderr = 'fatal: early EOF\n'; throw e; };
     const log = [];
     await assert.rejects(() => cloneRepo('https://github.com/a/partial.git', dest, { git, lookup: publicLookup, onEgress: (r) => log.push(r) }), /early EOF/);
     await assert.rejects(() => fs.stat(dest));
@@ -640,7 +670,7 @@ describe('fetch — fetchRun', () => {
     const seen = [];
     const git = (args, cwd, env, opts) => {
       seen.push({ args, opts });
-      if (args[0] === 'clone') { const d = args[args.length - 1]; fsSync.mkdirSync(d, { recursive: true }); fsSync.writeFileSync(path.join(d, 'f'), 'q'.repeat(20)); return ''; }
+      if (args[0] === 'clone') { const d = args[args.length - 1]; fsSync.mkdirSync(path.join(d, '.git'), { recursive: true }); fsSync.writeFileSync(path.join(d, '.git', 'f'), 'q'.repeat(20)); return ''; }
       return 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef\n';
     };
     await assert.rejects(() => fetchRun(dir, { run: i.runId, git, lookup: publicLookup, now, maxBytes: 10 }), (e) => e instanceof EgressRefused && /bytes/i.test(e.message));

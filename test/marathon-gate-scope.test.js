@@ -86,3 +86,40 @@ describe('gate — scope on finish-line lines', () => {
     assert.equal(g.buildGateMet, false);
   });
 });
+
+describe('gate — lines owned by a stream', () => {
+  const fl = {
+    tolerance: { high: 0, medium: 2, low: 5, passes_in_a_row: 2 },
+    lines: [
+      { id: 'tests_a', type: 'number', op: 'at_least', value: 1, owner: 'build', source: 'runs.streak:unit', stream: 'a' },
+      { id: 'pkg_a', type: 'bool', op: 'is', value: true, owner: 'build', source: 'measure:pkg_a', stream: 'a' },
+      { id: 'tests_b', type: 'number', op: 'at_least', value: 1, owner: 'build', source: 'runs.streak:unit', stream: 'b' },
+      { id: 'pkg_b', type: 'bool', op: 'is', value: true, owner: 'build', source: 'measure:pkg_b', stream: 'b' }
+    ]
+  };
+  const runs = [{ kind: 'unit', status: 'green', stream: 'a' }, { kind: 'unit', status: 'red', stream: 'b' }];
+  const measurements = [{ key: 'pkg_a', value: true }];
+
+  it('a per-stream gate counts its own lines and reports the others as other_stream', () => {
+    const g = evaluateGate({ finishLine: fl, runs, reviews: [], findings: [], helpers: [], measurements, checklist: {}, stream: 'a' });
+    assert.equal(g.buildGateMet, true);
+    assert.deepEqual(g.otherStream, ['tests_b', 'pkg_b']);
+    assert.deepEqual(g.failing, []);
+  });
+
+  it('the run-wide gate judges each owned line on its own stream\'s data', () => {
+    const g = evaluateGate({ finishLine: fl, runs, reviews: [], findings: [], helpers: [], measurements, checklist: {} });
+    assert.deepEqual(g.lines.filter(l => l.status === 'met').map(l => l.id), ['tests_a', 'pkg_a']);
+    assert.deepEqual(g.failing, ['tests_b', 'pkg_b'], 'b\'s red run is not hidden by a\'s green one');
+  });
+
+  it('validation refuses a bad stream name and a line that is both run-scoped and stream-owned', () => {
+    const bad = { tolerance: fl.tolerance, lines: [
+      { id: 'x', op: 'is', value: true, owner: 'build', source: 'measure:x', stream: 'no spaces' },
+      { id: 'y', op: 'is', value: true, owner: 'build', source: 'measure:y', stream: 'a', scope: 'run' }
+    ] };
+    const errors = validateFinishLine(bad);
+    assert.ok(errors.some(e => /line "x": stream must be/.test(e)));
+    assert.ok(errors.some(e => /line "y": a line cannot be both/.test(e)));
+  });
+});

@@ -70,12 +70,44 @@ STOP and wait for user response.
 
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
-1. Final visual verification with agent-browser
-2. `agent-browser open <url>` → `agent-browser screenshot` → compare before/after
-3. Verify responsive layout, dark mode, accessibility
+1. Use agent-browser to verify the implementation visually
+2. `agent-browser open <url>` → `agent-browser snapshot -i` → verify elements
+3. Compare against pre-change screenshots from Search phase
 
 If agent-browser is not available, prompt: `npx playwright install`
 Skip this block for non-UI tasks.
+
+**🔎 LENS CHECKS (file-triggered review rules):**
+Review rules live as markdown files (built in, plus any in `.claude/kit/lenses/`). Write the change under review to a temp file and ask which rules apply:
+The range is the same one the push check uses: everything since the merge base with the upstream branch (the whole history when there is no upstream), plus uncommitted edits and untracked files. `--no-prefix` keeps paths bare whatever `diff.mnemonicPrefix` says.
+```bash
+BASE=$(git merge-base HEAD '@{upstream}' 2>/dev/null || git hash-object -t tree /dev/null)
+D=$(mktemp)
+{ git diff --no-color --no-ext-diff --no-prefix "$BASE"; git ls-files -z --others --exclude-standard | while IFS= read -r -d '' f; do git diff --no-color --no-ext-diff --no-index --no-prefix /dev/null "$f"; done; true; } > "$D"
+node .claude/helpers/kit/cli.js lenses --diff "$D"; RC=$?; rm -f "$D"; (exit $RC)
+```
+If the review was started with a base (`push-gate receipt --base <ref>`), use that ref in place of the first line's merge-base so both cover the same change. An empty or non-diff file makes the verb exit 1 ("no diff was given"): that is wrong input, so fix the range; never record it as "no lens applies".
+Each entry in `fired` has a `name`, the `files` it matched and a `body`: apply the body as an extra check on those files and add its findings to the table below. A non-empty `capped` list means more lenses applied than the cap (4); mention them in the table. If a deterministic check already ran for the same rule, say so with `--covered` (for example `--covered no-floating-promises`) and that lens stands down. The last line keeps the verb's exit status after removing the temp file. A non-zero exit means wrong input or a broken lens file: report it, do not skip the step.
+
+**🕸️ SYMBOL GRAPH AND BLAST RADIUS (calls around the changed files, and what depends on them):**
+Build the call graph for the files this change touches. It reads JS/TS source only, scans each file once and caches the facts by content hash (so a second run is quick), scans the changed files first, and stops at a time budget instead of stalling. It never runs the code it reads. Same range as above, written to its own temp file:
+```bash
+BASE=$(git merge-base HEAD '@{upstream}' 2>/dev/null || git hash-object -t tree /dev/null)
+D=$(mktemp)
+{ git diff --no-color --no-ext-diff --no-prefix "$BASE"; git ls-files -z --others --exclude-standard | while IFS= read -r -d '' f; do git diff --no-color --no-ext-diff --no-index --no-prefix /dev/null "$f"; done; true; } > "$D"
+node .claude/helpers/kit/cli.js graph --diff "$D" --budget-ms 20000 --max-parses 300; RC=$?; rm -f "$D"; (exit $RC)
+```
+The summary has `partial`, `not_read` (each file with a reason: budget, parse_cap, too_large, unsupported or parse_error) and `changed` (how many of the changed files were read). Add the graph's findings (callers and callees of changed definitions, `--json` gives the full edge list) to the table below, and state `partial` and every `not_read` entry in the review as it is: when `partial` is true the graph is a floor, not the whole picture, so never write that "nothing else calls this" from it. A `possible` edge is a name match, not a proof. A non-zero exit means wrong input or a broken state: report it, do not skip the step.
+
+Then the blast radius: the same range, with its base, maps each changed line to the innermost definition around it and follows who calls, extends or implements it for two hops (certain edges first, production before tests, nearer folders first). With a base it also finds definitions the change removes and flags each one the tree still calls:
+```bash
+BASE=$(git merge-base HEAD '@{upstream}' 2>/dev/null || git hash-object -t tree /dev/null)
+D=$(mktemp)
+DF=0; { git diff --no-color --no-ext-diff --no-prefix "$BASE" || DF=1; git ls-files -z --others --exclude-standard | while IFS= read -r -d '' f; do git diff --no-color --no-ext-diff --no-index --no-prefix -- /dev/null "$f" || [ $? -eq 1 ] || : > "$D.fail"; done; } > "$D"
+[ -e "$D.fail" ] && DF=1; rm -f "$D.fail"
+if [ "$DF" -ne 0 ]; then echo "git diff failed: the change range was not read" >&2; rm -f "$D"; (exit 1); else node .claude/helpers/kit/cli.js impact --diff "$D" --base "$BASE"; RC=$?; rm -f "$D"; (exit $RC); fi
+```
+List what to check from the result: each symbol in `touched`, then the `impacted` symbols in the order given (each with its hop, `confidence` and `path`), every entry of `removed_with_live_callers` (a removal with a caller left behind is a defect until shown otherwise), and the `risk` level with its `reasons`. State the limits as they are: every row of `cuts` (`at`, `kind`, how many were `omitted`) and any `hubs` (symbols with too many callers to list), `partial` with `not_read`, `unmapped` and `old_not_read`, and the `notes`. Every touched, impacted and removed symbol also has `floor`, `reasons` and `sentences` (the caller floor: same-name calls not tied to one definition, calls through a value or computed member, interface dispatch, unread files, budget cuts): print each symbol's `sentences` as they are and check those call sites by hand. A symbol with `floor: true` and no callers found is not unused and a removed one is not safe to remove; never read zero callers as proof of no use. For one symbol, `node .claude/helpers/kit/cli.js callers --symbol src/file.js:name` prints the same entry (paths are relative to the repository top). When `risk.lower_bound` is true, or `cuts` is not empty, the level is a floor and the list is not everything that depends on the change: never write "nothing else is affected" from it. An empty diff exits 0 with nothing touched and a note saying so (same as the graph step): report "no change to map", not a failure. If `git diff` itself fails (a partial clone that cannot fetch, a bad base, an untracked file it cannot diff) the step prints "git diff failed" and exits 1 without running the verb: report that the change was not mapped, never "no change to map". Any non-zero exit means wrong input or a broken state: report it, do not skip the step.
 
 **REQUIRED OUTPUT:**
 | Category | Finding | Severity |
@@ -171,6 +203,30 @@ Skip this block for non-UI tasks.
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
+**AUTORESEARCH CANDIDATE CHECK (RC-A):**
+Scan the work just completed for measurable optimization targets:
+1. **Static scan:** Analyze git diff for measurable patterns (function runtimes, test duration, bundle size, query counts, memory usage, coverage gaps)
+2. **Agent reflection:** What about this work could be measured and autonomously optimized?
+3. **Impact scoring:** Rate each candidate on 4 dimensions (weighted composite):
+   - potential (0.35): estimated improvement magnitude (1-10)
+   - blast_radius (0.15): files/systems affected, inverted (1-10)
+   - risk (0.15): breaking change likelihood, inverted (1-10)
+   - value (0.35): user/business value of improvement (1-10)
+   - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
+4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
+```
+## RC-A[NNN]: [Title]
+**KPI:** [metric_name]
+**Baseline:** [current value]
+**Benchmark:** `[command to measure]`
+**Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
+**Files in scope:** [paths]
+**Constraints:** [what must not break]
+```
+- RC-A candidates found: yes/no
+- If yes, logged with impact scores to .claude/ralph-candidates.md
+
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 ---
@@ -191,6 +247,14 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
+
+## Closing step: record the push receipt
+Record the review's counts so the advisory push gate can recognise this exact change. Use the form that matches the verdict, with the real finding counts in place of the numbers (add `--incomplete` if any category was skipped, and `--threshold high`, `--threshold medium` or `--threshold low` if the user wants the push check to deny at that level):
+```
+node .claude/helpers/kit/cli.js push-gate receipt --verdict pass --high 0 --medium 0 --low 0
+node .claude/helpers/kit/cli.js push-gate receipt --verdict fail --high 1 --medium 2 --low 0
+```
+Then tell the user: run `node .claude/helpers/kit/cli.js push-gate check` before pushing, with the same `--threshold` level and the same `--base` (or none) used for the receipt. It only abstains, asks or denies; it never skips their permission prompt. Reviewing uncommitted edits and then committing them unchanged still matches. If the repository has `.claude/kit/scrub-patterns` or `.claude/kit/scrub-patterns.local`, the check also scrubs against them the files of HEAD and every blob in the commits being pushed (`<base>..HEAD`, the same base; the commits no remote-tracking ref has when there is none, or all of HEAD's history when the repository has no remote-tracking refs; a git call that times out is a deny too: raise it with `--timeout <ms>`), so a secret that was committed and removed again is found (`node .claude/helpers/kit/cli.js scrub` lists the HEAD hits, `scrub --history <base>` the pushed range), and denies on any hit, on an incomplete scan, or when the scrub cannot run, whatever the receipt says.
 
 ## Compounds
 ```

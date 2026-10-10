@@ -1,0 +1,132 @@
+{
+  "streams": [
+    {
+      "name": "_meta",
+      "state": "meta",
+      "isolation": "worktree",
+      "created": "2026-10-10T01:20:31.521Z",
+      "tasks": [],
+      "finished": "2026-10-10T13:47:57.569Z"
+    },
+    {
+      "name": "pre-push-review-gate",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/pre-push-review-gate.md",
+      "next": "—",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-pre-push-review-gate",
+      "phase": "review",
+      "base": "386730fde7320f93b63670104f6299bbd14e9909"
+    },
+    {
+      "name": "secret-redaction-by-value-and-fingerprin",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/secret-redaction-by-value-and-fingerprin.md",
+      "next": "—",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-secret-redaction-by-value-and-fingerprin",
+      "phase": "review",
+      "base": "d7940cf36c715c60a375135b0cf23f588074fd9a"
+    },
+    {
+      "name": "lens-catalog-file-triggered-checks",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/lens-catalog-file-triggered-checks.md",
+      "next": "—",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-lens-catalog-file-triggered-checks",
+      "phase": "review",
+      "base": "ddd4b25dc59076380d88a2ff7287b9f28121e831"
+    },
+    {
+      "name": "hardened-git-read-on-untrusted-repo",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/hardened-git-read-on-untrusted-repo.md",
+      "next": "—",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-hardened-git-read-on-untrusted-repo",
+      "phase": "review",
+      "base": "19179298fe22acd6f358e46bf904792578d4f87c"
+    },
+    {
+      "name": "identity-checked-file-writes",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/identity-checked-file-writes.md",
+      "next": "—",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-identity-checked-file-writes",
+      "phase": "review",
+      "base": "663025ae57de3f52d6ec6e8dcd7bb1675e6a3ae1"
+    },
+    {
+      "name": "change-blast-radius-walk",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/change-blast-radius-walk.md",
+      "next": "—",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-change-blast-radius-walk",
+      "phase": "review",
+      "base": "fd7c7fbb0e8f65dc2afe0f4ebecb15e4807b3617"
+    },
+    {
+      "name": "caller-floor-disclosure",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/caller-floor-disclosure.md",
+      "next": "—",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-caller-floor-disclosure",
+      "phase": "review",
+      "base": "50f6721ee6727bf8f8f79a0b1627db55c100d978"
+    },
+    {
+      "name": "fact-cached-graph-build-with-budget",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/fact-cached-graph-build-with-budget.md",
+      "next": "—",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-fact-cached-graph-build-with-budget",
+      "phase": "review",
+      "base": "b54f0f563fe7b486dbfd4975220a1ba0a075395b"
+    },
+    {
+      "name": "tracked-file-scrub-gate",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/tracked-file-scrub-gate.md",
+      "next": "—",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-tracked-file-scrub-gate",
+      "phase": "review",
+      "base": "e1e218bb4987ea18c2d19d60b42fe42dcd9e3185"
+    },
+    {
+      "name": "planted-bug-review-scoring",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/planted-bug-review-scoring.md",
+      "next": "—",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-planted-bug-review-scoring",
+      "phase": "review",
+      "base": "8dd56055efd0e55ee2e53f4d585a70e9fc8e5053"
+    },
+    {
+      "name": "isolated-tool-free-wording-judge",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/isolated-tool-free-wording-judge.md",
+      "next": "—",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-isolated-tool-free-wording-judge",
+      "phase": "review",
+      "base": "d92dff8d935be6c53df9971d8d8c17456fb90358"
+    }
+  ],
+  "handoff": {
+    "ts": "2026-10-10T13:12:01.330Z",
+    "trigger": "auto",
+    "branch": "claude/project-thread-p9gbyo",
+    "commit": "8fb286e",
+    "uncommitted": 4,
+    "tasks": [],
+    "context_tokens": 383626,
+    "context_pct": 38.4
+  }
+}

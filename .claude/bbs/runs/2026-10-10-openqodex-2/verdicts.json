@@ -1,0 +1,328 @@
+{
+  "run": "2026-10-10-openqodex-2",
+  "source_identity": "git:74b60f1bec8de1de0b76e12d17c6f6805f6bfc08",
+  "powers_ts": "2026-10-10T01:00:57.905Z",
+  "sandbox": {
+    "present": true,
+    "kind": "unshare",
+    "reason": "unshare is available"
+  },
+  "rows": {
+    "pre-push-review-gate": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "None of the five candidates writes a change-id receipt or runs a push-time hook; they are review command docs only.",
+        "ts": "2026-10-10T01:02:01.265Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "push-gate.ts (113 lines) imports only render/common.ts, severity.ts, types.ts; all pure logic, no fetch/http/net/spawn/process hits.",
+        "ts": "2026-10-10T01:03:06.023Z"
+      },
+      "decision": "rebuild"
+    },
+    "secret-redaction-by-value-and-fingerprint": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "partial",
+        "tool": "module:src/lib/bbs/intake.js",
+        "why": "redactRef and redactUrlsInText mask URL userinfo and token-like query values by pattern; no secret list, length-gated value matching, multi-line key handling, or fingerprint store.",
+        "ts": "2026-10-10T01:02:01.265Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "redact.ts imports only node:crypto createHash and type-only ./types.js; no network, spawn or env access found.",
+        "ts": "2026-10-10T01:03:06.161Z"
+      },
+      "decision": "rebuild"
+    },
+    "lens-catalog-file-triggered-checks": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "No candidate loads frontmatter rule files or matches globs and regexes against diff lines; follow-up-detector is an unrelated text classifier.",
+        "ts": "2026-10-10T01:02:01.265Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "lenses.ts imports node:fs/path/url, yaml, glob.ts (regex only); lenses/*.md URLs are prose examples, never requested; no network or spawn.",
+        "ts": "2026-10-10T01:03:06.291Z"
+      },
+      "decision": "rebuild"
+    },
+    "hardened-git-read-on-untrusted-repo": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "None of the five candidates wraps git calls. Outside the candidates, src/lib/bbs/fetch.js cloneEnv hardens only our own clone and rev-parse (hooks off, global config off, lfs off); there is no general read-only git wrapper for diff, log or filter drivers.",
+        "ts": "2026-10-10T01:02:01.265Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "safe-git.ts:10,23 only spawns local git; imports only types.ts (no imports); GIT_NO_LAZY_FETCH set (l.17); all 20 safeGit callers use local subcommands (ls-files, cat-file, worktree add, read-tree), none fetch/clone.",
+        "ts": "2026-10-10T01:03:06.422Z"
+      },
+      "decision": "rebuild"
+    },
+    "identity-checked-file-writes": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "The lstat walk and temp-file fsync write live in harness-map.js and inventory.js, which are not among the candidates; none of the candidates tracks device and inode identity.",
+        "ts": "2026-10-10T01:02:01.265Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "guarded-fs.ts imports only node:fs, node:crypto, node:path (l.37-40); grep for http/fetch/socket/spawn/exec/dns found nothing.",
+        "ts": "2026-10-10T01:03:06.545Z"
+      },
+      "decision": "rebuild"
+    },
+    "change-blast-radius-walk": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "No candidate builds a symbol graph or walks call and inheritance edges from diff lines; the candidates are command docs and a marathon reviewer.",
+        "ts": "2026-10-10T01:02:01.265Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "impact.ts imports only node:path, core types, frameworks/impact.js, types; no fetch/http/spawn anywhere in graph/src non-test code besides local git (core/src/safe-git.ts:25, GIT_NO_LAZY_FETCH=1) and ps (store/lock.ts:44).",
+        "ts": "2026-10-10T01:03:06.810Z"
+      },
+      "decision": "rebuild"
+    },
+    "caller-floor-disclosure": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "No candidate builds a caller index or records unresolved-call reasons; marathon budget and resume helpers are unrelated.",
+        "ts": "2026-10-10T01:02:01.265Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "impact.ts and render.ts import only node:path, @openqodex/core display/escapeMarkdown, frameworks/render.js, model/records.js; no network APIs; qodex.ai URLs in core/src/render/*.ts:5-50 are static output text only.",
+        "ts": "2026-10-10T01:03:07.010Z"
+      },
+      "decision": "rebuild"
+    },
+    "fact-cached-graph-build-with-budget": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "No candidate parses source into cached facts or runs a wall-clock and parse-count budget; marathon budget.js is a token budget.",
+        "ts": "2026-10-10T01:02:01.265Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "parser.ts:23-33,53 reads tree-sitter wasm via readFileSync from bundled wasm/ or installed @vscode/tree-sitter-wasm (no download); build.ts local git via safeGit (safe-git.ts:25, no fetch) and fs cache only.",
+        "ts": "2026-10-10T01:03:07.207Z"
+      },
+      "decision": "rebuild"
+    },
+    "tracked-file-scrub-gate": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "No candidate walks git-tracked files against forbidden regex patterns; intake.js only scrubs URL and secret-like parameters in refs.",
+        "ts": "2026-10-10T01:02:01.265Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "scrub.mjs:4-7,28 only execFileSync('git',['ls-files','-z']) plus local fs reads; scrub-patterns.txt is plain regex data (bugsnag, posthog, em dash), no URLs requested.",
+        "ts": "2026-10-10T01:03:06.679Z"
+      },
+      "decision": "rebuild"
+    },
+    "planted-bug-review-scoring": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "No candidate scores saved review output against planted-bug specs; marathon streak and reviewer helpers track streaks and review rounds, not hits or precision.",
+        "ts": "2026-10-10T01:02:01.265Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "score.mjs, lib/score.mjs, lib/cases.mjs read: only node:fs/path imports; lib/cases.mjs:147,236 run local git (read-tree/add/diff/init) with GIT_TERMINAL_PROMPT=0; no fetch/http/net; case.json http mentions are fixture text.",
+        "ts": "2026-10-10T01:03:07.340Z"
+      },
+      "decision": "rebuild"
+    },
+    "isolated-tool-free-wording-judge": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "partial",
+        "tool": "command:.claude/commands/.shortcuts/w-bbs.md",
+        "why": "The command spawns JSON-only haiku judges for map verdicts, but has no tool-free sealed mode, call cap, usage-limit probe, or parse-and-drop logic for wording grades.",
+        "ts": "2026-10-10T01:02:01.265Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "network probe found: the source makes a network call the inventory does not account for"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "network probe found: the source makes a network call the inventory does not account for"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "found",
+        "evidence": "judge.mjs:83 spawn('claude', -p --tools '' ...) headless model CLI call (network to model API, env keeps ANTHROPIC_*/proxy via lib/reviewers.mjs:44-49); invoked at judge.mjs:~170 ask(); reviewers.mjs:99 probeClaude also spawns claude.",
+        "ts": "2026-10-10T01:03:07.464Z"
+      },
+      "decision": "rebuild"
+    }
+  },
+  "decisions": {
+    "pre-push-review-gate": "rebuild",
+    "secret-redaction-by-value-and-fingerprint": "rebuild",
+    "lens-catalog-file-triggered-checks": "rebuild",
+    "hardened-git-read-on-untrusted-repo": "rebuild",
+    "identity-checked-file-writes": "rebuild",
+    "change-blast-radius-walk": "rebuild",
+    "caller-floor-disclosure": "rebuild",
+    "fact-cached-graph-build-with-budget": "rebuild",
+    "tracked-file-scrub-gate": "rebuild",
+    "planted-bug-review-scoring": "rebuild",
+    "isolated-tool-free-wording-judge": "rebuild"
+  },
+  "ts": "2026-10-10T01:20:27.489Z"
+}

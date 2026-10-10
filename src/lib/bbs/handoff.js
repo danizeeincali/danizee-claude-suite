@@ -101,6 +101,7 @@ export function buildFinishLine(powers, { tolerance }) {
       } else if (idBase === 'packaged') {
         line = { id, label: `${slug}: packaged check passes`, type: 'bool', op: 'is', value: true, owner: 'build', source: `measure:packaged_${slug}` };
       }
+      line.stream = slug; // judged on this stream's data; other streams' gates leave it alone
       lines.push(line);
       own.push(line);
     }

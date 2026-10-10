@@ -2086,10 +2086,10 @@ Use TodoWrite NOW to create todos for ALL phases:
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser screenshot\\\`
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\`
 3. Note current UI state for comparison after build
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -2109,11 +2109,43 @@ STOP and wait for user response.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to verify the implementation visually
-2. \\\`agent-browser open <url>\\\` → \\\`agent-browser snapshot -i\\\` → verify elements
+2. \`agent-browser open <url>\` → \`agent-browser snapshot -i\` → verify elements
 3. Compare against pre-change screenshots from Search phase
 
-If agent-browser is not available, prompt: \\\`npx playwright install\\\`
+If agent-browser is not available, prompt: \`npx playwright install\`
 Skip this block for non-UI tasks.
+
+**🔎 LENS CHECKS (file-triggered review rules):**
+Review rules live as markdown files (built in, plus any in \`.claude/kit/lenses/\`). Write the change under review to a temp file and ask which rules apply:
+The range is the same one the push check uses: everything since the merge base with the upstream branch (the whole history when there is no upstream), plus uncommitted edits and untracked files. \`--no-prefix\` keeps paths bare whatever \`diff.mnemonicPrefix\` says.
+\`\`\`bash
+BASE=$(git merge-base HEAD '@{upstream}' 2>/dev/null || git hash-object -t tree /dev/null)
+D=$(mktemp)
+{ git diff --no-color --no-ext-diff --no-prefix "$BASE"; git ls-files -z --others --exclude-standard | while IFS= read -r -d '' f; do git diff --no-color --no-ext-diff --no-index --no-prefix /dev/null "$f"; done; true; } > "$D"
+node .claude/helpers/kit/cli.js lenses --diff "$D"; RC=$?; rm -f "$D"; (exit $RC)
+\`\`\`
+If the review was started with a base (\`push-gate receipt --base <ref>\`), use that ref in place of the first line's merge-base so both cover the same change. An empty or non-diff file makes the verb exit 1 ("no diff was given"): that is wrong input, so fix the range; never record it as "no lens applies".
+Each entry in \`fired\` has a \`name\`, the \`files\` it matched and a \`body\`: apply the body as an extra check on those files and add its findings to the table below. A non-empty \`capped\` list means more lenses applied than the cap (4); mention them in the table. If a deterministic check already ran for the same rule, say so with \`--covered\` (for example \`--covered no-floating-promises\`) and that lens stands down. The last line keeps the verb's exit status after removing the temp file. A non-zero exit means wrong input or a broken lens file: report it, do not skip the step.
+
+**🕸️ SYMBOL GRAPH AND BLAST RADIUS (calls around the changed files, and what depends on them):**
+Build the call graph for the files this change touches. It reads JS/TS source only, scans each file once and caches the facts by content hash (so a second run is quick), scans the changed files first, and stops at a time budget instead of stalling. It never runs the code it reads. Same range as above, written to its own temp file:
+\`\`\`bash
+BASE=$(git merge-base HEAD '@{upstream}' 2>/dev/null || git hash-object -t tree /dev/null)
+D=$(mktemp)
+{ git diff --no-color --no-ext-diff --no-prefix "$BASE"; git ls-files -z --others --exclude-standard | while IFS= read -r -d '' f; do git diff --no-color --no-ext-diff --no-index --no-prefix /dev/null "$f"; done; true; } > "$D"
+node .claude/helpers/kit/cli.js graph --diff "$D" --budget-ms 20000 --max-parses 300; RC=$?; rm -f "$D"; (exit $RC)
+\`\`\`
+The summary has \`partial\`, \`not_read\` (each file with a reason: budget, parse_cap, too_large, unsupported or parse_error) and \`changed\` (how many of the changed files were read). Add the graph's findings (callers and callees of changed definitions, \`--json\` gives the full edge list) to the table below, and state \`partial\` and every \`not_read\` entry in the review as it is: when \`partial\` is true the graph is a floor, not the whole picture, so never write that "nothing else calls this" from it. A \`possible\` edge is a name match, not a proof. A non-zero exit means wrong input or a broken state: report it, do not skip the step.
+
+Then the blast radius: the same range, with its base, maps each changed line to the innermost definition around it and follows who calls, extends or implements it for two hops (certain edges first, production before tests, nearer folders first). With a base it also finds definitions the change removes and flags each one the tree still calls:
+\`\`\`bash
+BASE=$(git merge-base HEAD '@{upstream}' 2>/dev/null || git hash-object -t tree /dev/null)
+D=$(mktemp)
+DF=0; { git diff --no-color --no-ext-diff --no-prefix "$BASE" || DF=1; git ls-files -z --others --exclude-standard | while IFS= read -r -d '' f; do git diff --no-color --no-ext-diff --no-index --no-prefix -- /dev/null "$f" || [ $? -eq 1 ] || : > "$D.fail"; done; } > "$D"
+[ -e "$D.fail" ] && DF=1; rm -f "$D.fail"
+if [ "$DF" -ne 0 ]; then echo "git diff failed: the change range was not read" >&2; rm -f "$D"; (exit 1); else node .claude/helpers/kit/cli.js impact --diff "$D" --base "$BASE"; RC=$?; rm -f "$D"; (exit $RC); fi
+\`\`\`
+List what to check from the result: each symbol in \`touched\`, then the \`impacted\` symbols in the order given (each with its hop, \`confidence\` and \`path\`), every entry of \`removed_with_live_callers\` (a removal with a caller left behind is a defect until shown otherwise), and the \`risk\` level with its \`reasons\`. State the limits as they are: every row of \`cuts\` (\`at\`, \`kind\`, how many were \`omitted\`) and any \`hubs\` (symbols with too many callers to list), \`partial\` with \`not_read\`, \`unmapped\` and \`old_not_read\`, and the \`notes\`. Every touched, impacted and removed symbol also has \`floor\`, \`reasons\` and \`sentences\` (the caller floor: same-name calls not tied to one definition, calls through a value or computed member, interface dispatch, unread files, budget cuts): print each symbol's \`sentences\` as they are and check those call sites by hand. A symbol with \`floor: true\` and no callers found is not unused and a removed one is not safe to remove; never read zero callers as proof of no use. For one symbol, \`node .claude/helpers/kit/cli.js callers --symbol src/file.js:name\` prints the same entry (paths are relative to the repository top). When \`risk.lower_bound\` is true, or \`cuts\` is not empty, the level is a floor and the list is not everything that depends on the change: never write "nothing else is affected" from it. An empty diff exits 0 with nothing touched and a note saying so (same as the graph step): report "no change to map", not a failure. If \`git diff\` itself fails (a partial clone that cannot fetch, a bad base, an untracked file it cannot diff) the step prints "git diff failed" and exits 1 without running the verb: report that the change was not mapped, never "no change to map". Any non-zero exit means wrong input or a broken state: report it, do not skip the step.
 
 **REQUIRED OUTPUT:**
 | Category | Finding | Severity |
@@ -2181,7 +2213,7 @@ Skip this block for non-UI tasks.
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \\\`git diff --stat\\\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -2220,15 +2252,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\\\`\\\`\\\`
+\`\`\`
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \\\`[command to measure]\\\`
+**Benchmark:** \`[command to measure]\`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\\\`\\\`\\\`
+\`\`\`
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -2253,6 +2285,14 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Ralph candidate check completed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
+
+## Closing step: record the push receipt
+Record the review's counts so the advisory push gate can recognise this exact change. Use the form that matches the verdict, with the real finding counts in place of the numbers (add \`--incomplete\` if any category was skipped, and \`--threshold high\`, \`--threshold medium\` or \`--threshold low\` if the user wants the push check to deny at that level):
+\`\`\`
+node .claude/helpers/kit/cli.js push-gate receipt --verdict pass --high 0 --medium 0 --low 0
+node .claude/helpers/kit/cli.js push-gate receipt --verdict fail --high 1 --medium 2 --low 0
+\`\`\`
+Then tell the user: run \`node .claude/helpers/kit/cli.js push-gate check\` before pushing, with the same \`--threshold\` level and the same \`--base\` (or none) used for the receipt. It only abstains, asks or denies; it never skips their permission prompt. Reviewing uncommitted edits and then committing them unchanged still matches. If the repository has \`.claude/kit/scrub-patterns\` or \`.claude/kit/scrub-patterns.local\`, the check also scrubs against them the files of HEAD and every blob in the commits being pushed (\`<base>..HEAD\`, the same base; the commits no remote-tracking ref has when there is none, or all of HEAD's history when the repository has no remote-tracking refs; a git call that times out is a deny too: raise it with \`--timeout <ms>\`), so a secret that was committed and removed again is found (\`node .claude/helpers/kit/cli.js scrub\` lists the HEAD hits, \`scrub --history <base>\` the pushed range), and denies on any hit, on an incomplete scan, or when the scrub cannot run, whatever the receipt says.
 
 ## Compounds
 \`\`\`
@@ -3908,6 +3948,16 @@ In the desktop app, read the allowance with \`get_usage\` and pass the **weekly*
 \`cli.js review-brief --stream <s>\` → the brief: severity definitions, this round's angle, the tolerance, the category list, and the diff from the **last certified point** — the HEAD that the last *completed* clean streak certified, else the stream's base commit — to HEAD in the stream's checkout. An over round certifies nothing and never narrows the next review; every round of a clean streak sees the **same code from a different angle**, and only a completed streak moves the base. An empty diff or a git failure is an error, not a clean brief; lock files and generated assets are excluded and an oversize diff is summarised with \`--stat\`. Spawn one reviewer with \`model: opus\`, the brief, and a budget (recorded as in 4.3). It returns **JSON rows only**.
 Then: \`cli.js record review stream=<s> counts='{"high":H,"medium":M,"low":L}' angle="<angle>" tokens=<n>\` (counts must be the row totals; pass/over is computed from the tolerance and can never be supplied) → one \`cli.js record finding review_id=<id> stream=<s> severity=... category=... file=... line=... title="..." detail="..." fix_hint="..."\` per row → \`cli.js review-writeup --review <id>\`. If the write-up refuses because the counts and the rows disagree, record the missing finding rows, or **replace** the review with the right counts (\`cli.js record review … replaces=<id>\`) — one review per round, never a second row for the same round.
 
+**4.5a Calibrate the reviewer (optional, once per run before the first review).** Grade the reviewer prompt on the planted-bug fixtures the kit ships. Skip it when the run already has a calibration or the owner does not want the spend. Make a scratch folder \`<cal>\`. For each folder under \`.claude/helpers/kit/review-fixtures/repos/\` spawn one reviewer with the same brief shape as 4.5 (budgeted and recorded as in 4.3) but with that fixture folder as the only code to review; it returns JSON rows only. Save each answer as \`<cal>/reviews/<case>.json\` in the form \`{"case":"<folder name>","completed":true,"findings":[rows]}\` (\`completed\` is false when the reviewer stopped early). Then run:
+
+\`\`\`bash
+node .claude/helpers/kit/cli.js review-score --specs .claude/helpers/kit/review-fixtures/specs --reviews <cal>/reviews --out <cal>/scores
+\`\`\`
+
+It prints \`totals\` (precision and recall as summed ratios; null means nothing to divide), a verdict per case (hit, near miss, duplicate, accepted, false positive, missed) and saves \`<cal>/scores/scores.json\`. A copy of the specs is taken on the first run and reused, so editing a spec later never changes an old score. Exit 1 means invalid input: fix it and rerun. Low recall or a failed clean case means the reviewer prompt needs work before it is trusted; write that as a finding row for the stream, never as a pass. The reviewer spawns need the model API; without \`--wording\`, the \`review-score\` command itself reads saved files only and makes no network call.
+
+Optional second opinion on wording: add \`--wording\` to that command (or run \`cli.js wording-judge --out <cal>/scores --dry\` first). It sends only the findings that matched a planted bug, with the planted truth, to a sealed model run (no tools, settings, MCP servers or saved session), writes the plan (calls) to stderr before the first call (use \`--dry\` on \`wording-judge\` to see it without spending), and writes \`<cal>/scores/wording.json\`. \`--wording-cap <n>\` limits calls and \`--wording-resume\` skips cases whose findings were all judged and have not changed since. A usage limit or login wall stops it at once. It is reported beside the scores and never changes them or the exit code.
+
 **4.6 Promote — the flywheel.** \`cli.js seen-twice\` lists categories seen in two reviews and not yet promoted. For each: write a test, a scripted scan, a fixture or a standing rule, then \`cli.js promote <category> --kind test|scan|fixture|rule --ref <path>\`. The reviewer stops spending tokens on it.
 
 **4.7 Fix round.** Open findings → one fixer on \`model: sonnet\` with the write-up (\`opus\` for \`security\`, or on the second attempt). Never weaken an assertion. Fix the shared test helper first when a rule changes. When a fix is verified by a green run, close the finding: \`cli.js record finding-fixed id=<finding id>\` — an open finding that is never closed fails the \`findings.open\` lines forever. **Commit the fixes in the stream's worktree.** Back to 4.4.
@@ -4072,7 +4122,7 @@ If the JSON says \`known: true\`, the same source at the same identity is never 
 
 ### ⛔ CHECKPOINT 1: Fetch
 
-\`node .claude/helpers/bbs/cli.js fetch [--run <id>]\`, run with the Bash tool \`timeout\` set to 600000 ms (a repository clone may take up to 300 s, plus DNS and rev-parse). GET only; repositories are shallow-cloned without tags and with hooks off; 25 URLs and 20 MB per run; every request is logged to \`egress.jsonl\`.
+\`node .claude/helpers/bbs/cli.js fetch [--run <id>]\`, run with the Bash tool \`timeout\` set to 600000 ms (a repository clone may take up to 300 s, plus DNS and rev-parse). GET only; repositories are shallow-cloned without tags and with hooks off; 25 URLs and 20 MB per run (a clone counts its \`.git\` pack, not the checkout; the checkout has its own 200 MB cap); every request is logged to \`egress.jsonl\`.
 
 **Print the egress line verbatim** from the JSON (\`egress_line\`), for example \`requests=3 bytes_in=412880 bodies_sent=0 hosts=github.com\`. A local path or pasted text prints \`requests=0 …\`.
 

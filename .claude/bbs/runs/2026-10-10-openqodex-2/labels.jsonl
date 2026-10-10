@@ -1,0 +1,11 @@
+{"run":"2026-10-10-openqodex-2","power":"pre-push-review-gate","verdict":"rebuild","label":1,"ts":"2026-10-10T01:20:27.489Z"}
+{"run":"2026-10-10-openqodex-2","power":"secret-redaction-by-value-and-fingerprint","verdict":"rebuild","label":1,"ts":"2026-10-10T01:20:27.489Z"}
+{"run":"2026-10-10-openqodex-2","power":"lens-catalog-file-triggered-checks","verdict":"rebuild","label":1,"ts":"2026-10-10T01:20:27.489Z"}
+{"run":"2026-10-10-openqodex-2","power":"hardened-git-read-on-untrusted-repo","verdict":"rebuild","label":1,"ts":"2026-10-10T01:20:27.489Z"}
+{"run":"2026-10-10-openqodex-2","power":"identity-checked-file-writes","verdict":"rebuild","label":1,"ts":"2026-10-10T01:20:27.489Z"}
+{"run":"2026-10-10-openqodex-2","power":"change-blast-radius-walk","verdict":"rebuild","label":1,"ts":"2026-10-10T01:20:27.489Z"}
+{"run":"2026-10-10-openqodex-2","power":"caller-floor-disclosure","verdict":"rebuild","label":1,"ts":"2026-10-10T01:20:27.489Z"}
+{"run":"2026-10-10-openqodex-2","power":"fact-cached-graph-build-with-budget","verdict":"rebuild","label":1,"ts":"2026-10-10T01:20:27.489Z"}
+{"run":"2026-10-10-openqodex-2","power":"tracked-file-scrub-gate","verdict":"rebuild","label":1,"ts":"2026-10-10T01:20:27.489Z"}
+{"run":"2026-10-10-openqodex-2","power":"planted-bug-review-scoring","verdict":"rebuild","label":1,"ts":"2026-10-10T01:20:27.489Z"}
+{"run":"2026-10-10-openqodex-2","power":"isolated-tool-free-wording-judge","verdict":"rebuild","label":1,"ts":"2026-10-10T01:20:27.489Z"}

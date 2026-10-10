@@ -1,0 +1,166 @@
+{
+  "run": "2026-10-10-openqodex-2",
+  "source_identity": "git:74b60f1bec8de1de0b76e12d17c6f6805f6bfc08",
+  "powers": [
+    {
+      "name": "pre-push-review-gate",
+      "what": "Decides before a git push whether a fresh review of exactly that change exists, and warns or blocks based on a receipt the review wrote",
+      "evidence": "repo/packages/core/src/push-gate.ts:45-113 (gateReceipt and checkPush); repo/packages/core/src/push-gate.ts:1-9 (never allows, reads receipt from the developer's home, not the repo)",
+      "dependencies": [
+        "node:crypto"
+      ],
+      "data_needed": "A receipt written at the end of each review (change id, verdict, base ref and sha, severity counts, threshold) kept in the developer's own home folder, plus the current change id and an optional block threshold from config",
+      "network": "none",
+      "size": "small",
+      "licence": "Apache-2.0",
+      "idea": "Keep the push gate advisory by default: it only ever abstains or denies, never allows, so it cannot skip the developer's own permission prompt. The review writes a small receipt keyed by a hash of exactly what is being pushed (the change id), recording verdict, base commit, counts and the severity threshold it was judged under. At push time a hook looks up that receipt for the current change id. Same change and verdict passes silently. No receipt for this change asks for a review, and denies only when a threshold is set. A receipt from an incomplete review never blocks. A receipt judged under a different threshold does not count. A receipt for an older version of the change is reported as earlier. Store the receipt outside the repository so a branch cannot carry a forged one. Reusable for any personal suite that wants a review-before-push guard without giving a hook power to approve anything."
+    },
+    {
+      "name": "secret-redaction-by-value-and-fingerprint",
+      "what": "Removes known secret strings from text in three ways: exact match, whole-line match for multi-line keys, and fingerprint match when the secret itself is not available",
+      "evidence": "repo/packages/core/src/redact.ts:1-101 (redactSecrets, redactSecretsKeepingLines, fingerprintSecrets, redactByFingerprint)",
+      "dependencies": [
+        "node:crypto"
+      ],
+      "data_needed": "A list of secret strings to hide, or, for the fingerprint path, only stored lengths and SHA-256 digests of those secrets",
+      "network": "none",
+      "size": "small",
+      "licence": "Apache-2.0",
+      "idea": "Before any output (a report, a log, a prompt sent to a model) leaves the machine, replace each known secret with a fixed marker. Details that make it work: strings shorter than six characters are skipped to avoid hitting ordinary text; every multi-line secret such as a private key also contributes each of its trimmed lines, so a partial copy is still caught; all matches are located on the original text before any replacement, and overlapping matches merge, so a short secret inside a longer one cannot leave a tail behind. A variant keeps line breaks so line numbers in the output still match the source. The fingerprint path stores only lengths and SHA-256 hashes of the secrets, then slides a window of each length over short text and hashes it, so a finding's title or description can be scrubbed without keeping the secret values around. Useful for a personal suite that sends diffs or notes to a model: keep a secret list locally, redact before sending, and keep only fingerprints in any saved state."
+    },
+    {
+      "name": "lens-catalog-file-triggered-checks",
+      "what": "Keeps a folder of small markdown files, each a named bug pattern with glob and regex triggers, and hands only the matching ones to a reviewer",
+      "evidence": "repo/packages/core/src/lenses.ts:1-120; repo/packages/core/lenses/async-floating-promise.md:1-27",
+      "dependencies": [
+        "yaml",
+        "node:fs",
+        "node:path",
+        "node:url"
+      ],
+      "data_needed": "A folder of .md lens files with YAML frontmatter (name, description, triggers.files globs, triggers.hunk_regex, optional confidence_floor and covered_by) and a body describing the pattern",
+      "network": "none",
+      "size": "small",
+      "licence": "Apache-2.0",
+      "idea": "Store each review rule as a plain markdown file so adding a rule means adding a file, not editing a prompt. Each file has frontmatter that says when it applies: a set of file globs and a case-insensitive regex run over only the added and removed lines of the diff. A loader parses every file, fails loudly on a missing field or a bad regex, and sorts them by name. At review time, a lens fires only when a changed file matches its globs and its regex hits the changed text. The number of lenses handed over is capped (four in the source) so a broad change does not flood the reviewer, and a lens can stand down when a deterministic scanner already covers the same rule on the same files. Useful for a personal suite: keep a folder of your own recurring checks (for example, forgotten awaits in TypeScript, or secrets in logs) and attach only the relevant ones to each diff."
+    },
+    {
+      "name": "hardened-git-read-on-untrusted-repo",
+      "what": "Runs git on a folder you did not write, with hooks, filters, fsmonitor, submodule recursion and lazy fetch switched off and inherited GIT_ variables stripped",
+      "evidence": "repo/packages/core/src/safe-git.ts:1-74 (safeGitEnv, BASE settings, safeGitConfig, safeGit)",
+      "dependencies": [
+        "node:child_process",
+        "git (system binary)"
+      ],
+      "data_needed": "A local git checkout path and the git arguments to run; no credentials",
+      "network": "none",
+      "size": "small",
+      "licence": "Apache-2.0",
+      "idea": "When you read or diff a repository you did not write (a fetched branch, a pull request checkout, a cloned sample), git itself can run code from that repo's config: hooks, clean and smudge filters, the file system monitor, and submodule updates. This power wraps every git call so those are disabled first. It reads the folder's own filter driver names and neutralises each one with empty commands, sets flags that stop lazy object fetches and optional locks, removes every inherited GIT_ environment variable so an outer shell cannot point git at another repository, and runs the process with a closed stdin when no input is given. Diffs add flags that disable external diff and text conversion. It refuses a driver name it cannot switch off safely rather than skipping it. Useful for a personal suite that inspects other people's code: route all read-only git calls through one wrapper that builds these overrides once per folder and caches them."
+    },
+    {
+      "name": "identity-checked-file-writes",
+      "what": "Writes and deletes files by checking filesystem identity (device and inode) of each folder on the path, refusing links that point into the repository",
+      "evidence": "repo/packages/core/src/guarded-fs.ts:1-35 (design notes: walk by identity, O_NOFOLLOW temp file, rename, post-rename identity check, delete never follows links); repo/packages/core/src/guarded-fs.ts:37-139 (walk, lstat-based path resolution)",
+      "dependencies": [
+        "node:fs",
+        "node:crypto",
+        "node:path"
+      ],
+      "data_needed": "The set of folders the tool may write under, and the repository's work-tree and git folder locations; no network or config beyond that",
+      "network": "none",
+      "size": "medium",
+      "licence": "Apache-2.0",
+      "idea": "When a tool may write into a user's own folders, comparing path strings is not enough, because symlinks, case and Unicode spelling can move a write outside the allowed area. This power walks a path one name at a time from the root, using lstat so links are not silently followed, and records each folder by its device and inode rather than its spelling. A link found inside the project tree is refused, while a link elsewhere in the home folder (for example dotfiles) is followed as the owner intends. The write opens the verified folder without following links, creates a temp file exclusively, writes, fsyncs and renames it into place. Because Node has no renameat, the final path is checked afterwards to hold the same device and inode as the open handle, and the write is removed and reported as failed on any mismatch. Deletes never follow a final link and recheck folder identity before each removal. A reader variant repeats the walk after opening to catch a link swapped in during the read. Reusable for any personal automation that edits config files in the home folder or the current repository."
+    },
+    {
+      "name": "change-blast-radius-walk",
+      "what": "Given a diff, lists the symbols it touches or removes and walks their callers two hops out, with each call site tagged certain, likely or possible.",
+      "evidence": "repo/packages/graph/src/impact.ts:20-30 (walk limits), repo/packages/graph/src/impact.ts:220-260 (detectImpact touched and removed symbols), repo/packages/graph/src/impact.ts:278-355 (two-hop caller walk), repo/packages/graph/src/impact.ts:98-105 (riskFor)",
+      "dependencies": [
+        "node:path",
+        "@openqodex/core"
+      ],
+      "data_needed": "A built code graph of the repository (symbol definitions, call edges, imports) and the change as a list of files with changed line numbers.",
+      "network": "none",
+      "size": "large",
+      "licence": "Apache-2.0",
+      "idea": "Map each changed line to the innermost definition around it, then follow incoming call, inheritance and implementation edges backwards for two hops. Keep certain edges ahead of likely and possible ones, and rank production code ahead of tests and nearer folders ahead of distant ones. Score risk from the number of touched symbols, direct callers and broken public names, so a widely implemented interface cannot push every change to high. Symbols removed by the change are checked against call sites that still point at their old location, so a removal that leaves a live caller is flagged rather than silently dropped. The walk has hard limits on hubs, per-hop callers and total symbols, and every cut it makes is recorded with how many items were left out, so the reader knows what the summary does not show. A reusable version needs only a symbol graph of the project and a diff parser; it works offline."
+    },
+    {
+      "name": "caller-floor-disclosure",
+      "what": "States, for each symbol under review, why its caller list may be incomplete instead of implying that zero callers means unused.",
+      "evidence": "repo/packages/graph/src/impact.ts:199-218 (floorReasons), repo/packages/graph/src/impact.ts:435-439 (per-seed floor flags), repo/packages/graph/src/render.ts:77-87 (reading instructions in the rendered brief)",
+      "dependencies": [
+        "node:path"
+      ],
+      "data_needed": "The graph's record of unresolved call sites, dynamic dispatch, value calls, unread files and budget-cut files, per project.",
+      "network": "none",
+      "size": "small",
+      "licence": "Apache-2.0",
+      "idea": "When a static analysis builds a caller list, it should also record what it could not see for that symbol: calls with the same name that could not be bound to one definition, calls through a value or a computed member, possible calls through an interface, files of the same project that were not read, and importers whose calls were left unresolved because a budget ran out. Each reason becomes a plain sentence attached to the symbol, and the symbol is marked as a floor when any reason applies. The rendered report then tells a reviewer to check the call sites by hand and never reads zero callers as proof of no use. This is cheap to rebuild on top of any caller index: keep the counters at the time the index is built and expose them with the result."
+    },
+    {
+      "name": "fact-cached-graph-build-with-budget",
+      "what": "Builds a whole-repository symbol graph from per-file facts cached by content hash, under a time budget, and keeps the unfinished parts marked as partial.",
+      "evidence": "repo/packages/graph/src/build.ts:1-15 (budget and mode rules), repo/packages/graph/src/build.ts:93-98 (factsKey), repo/packages/graph/src/build.ts:96-127 (captureDigest), repo/packages/graph/src/build.ts:161-202 (parser pool with per-parse time limit), repo/packages/graph/src/parser.ts:1-68 (lazy tree-sitter grammar loading), repo/packages/graph/src/extract.ts:1-10 (local facts per file, cross-file resolution later)",
+      "dependencies": [
+        "node:crypto",
+        "node:fs",
+        "node:path",
+        "web-tree-sitter",
+        "@vscode/tree-sitter-wasm"
+      ],
+      "data_needed": "The repository working tree and its git inventory; optional prior build artefacts for reuse; tree-sitter grammar files for the languages of interest.",
+      "network": "none",
+      "size": "large",
+      "licence": "Apache-2.0",
+      "idea": "Parse each source file once into local facts (definitions, spans, call sites, imports) and cache them under a key made of the file's content hash, the extractor version and the grammar hash, so an unchanged file is never parsed again. Keep cross-file resolution as a separate later pass that is cheap to rerun. Put a wall-clock budget and a parse-count cap on the build, and a per-file parse timeout so one pathological file cannot stall the run. Changed files are parsed first, so a cut never loses the files under review. When the budget runs out, the result is labelled partial and lists what was not read, instead of pretending to be complete. Grammars are loaded lazily per language and the cache key includes a digest of the grammar bytes. A reusable version needs a tree-sitter binding, a file lister and a small on-disk cache."
+    },
+    {
+      "name": "tracked-file-scrub-gate",
+      "what": "Fails a check when any git-tracked file matches private-material patterns read from a public list and an optional private list",
+      "evidence": "repo/scripts/scrub.mjs:1-56 (pattern loading, git ls-files scan, UTF-16 decoding, exit code); repo/scripts/scrub-patterns.txt:1-6 (one case-insensitive regex per line, # comments)",
+      "dependencies": [
+        "node:child_process",
+        "node:fs",
+        "node:path",
+        "node:url",
+        "git"
+      ],
+      "data_needed": "A list of case-insensitive regular expressions for names or strings that must never be published, plus an optional untracked private list kept outside the repository",
+      "network": "none",
+      "size": "small",
+      "licence": "Apache-2.0",
+      "idea": "Before publishing or pushing, walk every file git tracks and test each line against a list of forbidden regular expressions. Keep the public list in the repo and the sensitive names in a file that is git-ignored, so the check itself does not leak them. Decode UTF-16 text properly, and read every other file as UTF-8 so ASCII patterns still match inside binary files. Report each hit as file, line and the pattern that matched, then exit non-zero so the gate fails. Exclude the pattern file and the script itself so they do not match their own patterns. Run it as one step of the suite's pre-push or CI gate, next to build, typecheck and tests. Useful for a personal suite that holds client names, account ids or internal hostnames."
+    },
+    {
+      "name": "planted-bug-review-scoring",
+      "what": "Scores saved AI code reviews against planted bugs, matching each finding by file and line place, bug kind and named words, with separate buckets for near misses, duplicates, test requests and accepted side issues.",
+      "evidence": "repo/benchmark/lib/score.mjs:1-60 (failure list and match order), repo/benchmark/lib/score.mjs:97 (names), repo/benchmark/lib/score.mjs:108 (classify), repo/benchmark/lib/score.mjs:200 (scoreSample), repo/benchmark/cases/django-model-view/case.json",
+      "dependencies": [],
+      "data_needed": "A case spec per test repository listing each planted bug with file, line range, allowed kinds, mention words and a truth sentence, plus optional accepted extras; the saved reviewer reports for each attempt.",
+      "network": "none",
+      "size": "medium",
+      "licence": "Apache-2.0",
+      "idea": "Grade a reviewer by scoring its saved output offline. Plant known bugs in a small repository, then count a finding as a hit only when three things agree: it points at the planted line range within a tolerance, it uses one of the allowed issue categories, and its text names one of the expected keywords at the start of a word. Anything close but wrong on one of those tests is reported as a near miss and counts against precision, not recall. A second hit on an already-found bug is a duplicate and is kept out of precision. Real side issues that were never planted go on an accepted list so they are not punished. Clean repositories, which have nothing planted, turn every finding into a false positive and pass only when the review completes with no findings. Ratios are summed hits over summed checks rather than averages of averages, and paths are normalised before comparing. The scorer reads only saved files and copies of the specs taken at run time, so editing a spec later does not change an old score. A personal suite could rebuild this as a small local script that scores its own review skill against a folder of seeded-bug fixtures."
+    },
+    {
+      "name": "isolated-tool-free-wording-judge",
+      "what": "Runs a headless model call per review to grade finding wording (plain and correct) with no tools, no user settings, no MCP and no hooks, parsing a JSON-only answer and recording unparseable answers instead of guessing.",
+      "evidence": "repo/benchmark/judge.mjs:1-30 (failure list), repo/benchmark/judge.mjs:56 (prompt), repo/benchmark/judge.mjs:103 (parseVerdicts), repo/benchmark/judge.mjs:123 (main), repo/benchmark/lib/reviewers.mjs:50 (claudeEnv allowlist), repo/benchmark/lib/reviewers.mjs:60 (BLOCKED pattern), repo/benchmark/lib/reviewers.mjs:62 (probeClaude)",
+      "dependencies": [
+        "claude CLI in headless print mode"
+      ],
+      "data_needed": "A results folder with per-review reports and the specs they were matched against; a logged-in claude CLI and a model id; an optional call limit.",
+      "network": "outbound",
+      "size": "small",
+      "licence": "Apache-2.0",
+      "idea": "Add an optional second opinion on review wording without letting the judge change the score. The script first decides which findings matched a planted bug, then sends only those findings and their planted truth to a model in a sealed mode: no tools, no reading of the user's settings, no connectors, no session saved. The model answers as JSON with yes or no on plainness and correctness for each sentence of a finding. The script parses the answer itself, drops any verdict for an id it did not ask about, and records a failed parse as unparsed rather than inventing a result. The judge's verdict is reported beside the scores and never read by the scorer, and the exit code stays zero. Before any spend the plan prints the number of calls, a cap limits them, and a resume flag skips reviews already judged. A probe run before the batch uses the same isolation flags and a regex for usage limits and login walls, stopping the batch at once rather than logging a run of false failures. A personal suite could reuse the pattern for grading its own generated text with a cheap model."
+    }
+  ],
+  "not_inventoried": [],
+  "total": 11,
+  "none_found": null,
+  "ts": "2026-10-10T01:00:57.905Z"
+}

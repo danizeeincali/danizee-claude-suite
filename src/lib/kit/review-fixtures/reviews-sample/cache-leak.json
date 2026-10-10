@@ -1,0 +1,1 @@
+{"case":"cache-leak","completed":true,"findings":[{"file":"./src/cache.js","line":5,"category":"performance","title":"Cache entries are never evicted","detail":"The map can grow without limit, a slow leak."}]}

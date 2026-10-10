@@ -1,0 +1,16 @@
+# Review 63be5c0a-560c-4d75-97f6-b0635367259e — fact-cached-graph-build-with-budget, round 1
+
+- Commit: 6ebdebf
+- Angle: one input method at a time
+- Result: over tolerance
+- 4 findings
+
+## Medium (3)
+
+- **--diff: an added line starting with '++ ' is read as a file header and can abort the build** — `src/lib/kit/graph.js:1241` (correctness): diffPaths takes every line that starts with '+++ ' as a target path without tracking file/hunk state. An added line whose content begins with '++ ' (diff line '+++ ...') becomes a changed path. Reproduced: a markdown file gains the line '++ ../outside'; \`git diff --no-prefix \> d; cli.js graph --diff d\` exits 1 with 'changed file "../outside" is not a path inside the repository', so the documented /w-review step fails on a valid diff. With other content the bogus path is silently added to \`changed\` and inflates \`changed.requested\`. Same code in .claude/helpers/kit/graph.js. — fix: Only accept '+++ ' as a header when it directly follows a '--- ' line outside a hunk (or reset on 'diff --git'/'@@' as lenses.js parseDiff does); reuse lenses' parser.
+- **--diff: quoted (non-ASCII or special-character) paths are dropped with no trace** — `src/lib/kit/graph.js:1244` (correctness): With git's default core.quotePath, a changed file such as src/café.js appears as '+++ "src/caf\303\251.js"'. diffPaths skips it, so the file is neither prioritised nor counted: reproduced output is changed {requested: 0, read: 0}, partial false, nothing in not\_read. The review step is told to report what was not read, but this changed file vanishes silently, and under a budget/parse cut it may not be read at all. — fix: Unquote C-style quoted paths (octal and \" \\ \t \n escapes, decode bytes as UTF-8), or at least record the dropped header so \`changed\` and \`not\_read\` show it.
+- **--diff: prefix stripping guesses from the filesystem and misses mnemonic prefixes** — `src/lib/kit/graph.js:1309` (correctness): The b/ prefix is removed only when '\<top\>/b/\<path\>' does not exist, and no other prefix is known. Reproduced: (1) repo with a top-level b/ folder holding a.js plus a root a.js; plain \`git diff\` of a.js gives '+++ b/a.js', and the graph marks b/a.js as the changed file instead of a.js. (2) with diff.mnemonicPrefix=true the header is '+++ w/src/a.js'; it is kept as-is, counted only in stats.missing, and the summary shows changed read 0 with no not\_read entry. lenses.js in the same kit already parses the 'diff --git' header and handles a/ b/ i/ w/ c/ o/. — fix: Derive the prefix from the 'diff --git'/'--- ' headers (reuse lenses.js parseGitHeader) instead of probing the filesystem.
+
+## Low (1)
+
+- **--changed paths resolve against the repo top, not the cwd, unlike --dir and --diff** — `src/lib/kit/graph.js:1305` (correctness): --dir and a --diff file are resolved against the current directory, but --changed values are taken as repo-root-relative. Running \`cli.js graph --changed a.js\` from src/ (meaning src/a.js) reports changed {requested: 1, read: 0} and the real file is not prioritised. The usage text does not say which base is used. — fix: Resolve --changed values against cwd and make them relative to the repo top, or state in usage that they are repo-root-relative.

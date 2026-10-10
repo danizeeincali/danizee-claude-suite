@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marathon 2026-10-10-bbs-openqodex-2</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --fg: #1b1f24;
+  --muted: #5f6b76;
+  --line: #d8dee4;
+  --ok: #1a7f37;
+  --warn: #9a6700;
+  --bad: #cf222e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --fg: #e6edf3;
+    --muted: #8b98a5;
+    --line: #30363d;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --bad: #f85149;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 64rem; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 1.5rem; margin: 0 0 4px; }
+h2 { font-size: 1.1rem; margin: 32px 0 8px; }
+p { margin: 4px 0; }
+.muted { color: var(--muted); }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+.ok { color: var(--ok); font-weight: 600; }
+.warn { color: var(--warn); font-weight: 600; }
+.bad { color: var(--bad); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+<h1>Marathon 2026-10-10-bbs-openqodex-2</h1>
+<p class="muted">Snapshot of the run: finish line, streams, review ledger and helper spend.</p>
+
+<h2>Gate</h2>
+<p>Build gate: <span class="ok">met</span> · Full gate: <span class="ok">met</span></p>
+<p class="muted">Failing: none · Waiting on human: none</p>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Line</th><th scope="col">Owner</th><th scope="col">Target</th><th scope="col">Actual</th><th scope="col">Status</th></tr></thead>
+<tbody>
+<tr><td>pre-push-review-gate: green unit runs in a row</td><td>build</td><td>at least 1</td><td>3</td><td class="ok">met</td></tr>
+<tr><td>pre-push-review-gate: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>pre-push-review-gate: clean reviews in a row</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>pre-push-review-gate: callers in the harness</td><td>build</td><td>at least 1</td><td>1</td><td class="ok">met</td></tr>
+<tr><td>pre-push-review-gate: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>secret-redaction-by-value-and-fingerprin: green unit runs in a row</td><td>build</td><td>at least 1</td><td>4</td><td class="ok">met</td></tr>
+<tr><td>secret-redaction-by-value-and-fingerprin: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>secret-redaction-by-value-and-fingerprin: clean reviews in a row</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>secret-redaction-by-value-and-fingerprin: callers in the harness</td><td>build</td><td>at least 1</td><td>1</td><td class="ok">met</td></tr>
+<tr><td>secret-redaction-by-value-and-fingerprin: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>lens-catalog-file-triggered-checks: green unit runs in a row</td><td>build</td><td>at least 1</td><td>4</td><td class="ok">met</td></tr>
+<tr><td>lens-catalog-file-triggered-checks: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>lens-catalog-file-triggered-checks: clean reviews in a row</td><td>build</td><td>at least 2</td><td>5</td><td class="ok">met</td></tr>
+<tr><td>lens-catalog-file-triggered-checks: callers in the harness</td><td>build</td><td>at least 1</td><td>1</td><td class="ok">met</td></tr>
+<tr><td>lens-catalog-file-triggered-checks: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>hardened-git-read-on-untrusted-repo: green unit runs in a row</td><td>build</td><td>at least 1</td><td>20</td><td class="ok">met</td></tr>
+<tr><td>hardened-git-read-on-untrusted-repo: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>hardened-git-read-on-untrusted-repo: clean reviews in a row</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>hardened-git-read-on-untrusted-repo: callers in the harness</td><td>build</td><td>at least 1</td><td>1</td><td class="ok">met</td></tr>
+<tr><td>hardened-git-read-on-untrusted-repo: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>identity-checked-file-writes: green unit runs in a row</td><td>build</td><td>at least 1</td><td>4</td><td class="ok">met</td></tr>
+<tr><td>identity-checked-file-writes: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>identity-checked-file-writes: clean reviews in a row</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>identity-checked-file-writes: callers in the harness</td><td>build</td><td>at least 1</td><td>1</td><td class="ok">met</td></tr>
+<tr><td>identity-checked-file-writes: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>change-blast-radius-walk: green unit runs in a row</td><td>build</td><td>at least 1</td><td>5</td><td class="ok">met</td></tr>
+<tr><td>change-blast-radius-walk: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>change-blast-radius-walk: clean reviews in a row</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>change-blast-radius-walk: callers in the harness</td><td>build</td><td>at least 1</td><td>1</td><td class="ok">met</td></tr>
+<tr><td>change-blast-radius-walk: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>caller-floor-disclosure: green unit runs in a row</td><td>build</td><td>at least 1</td><td>3</td><td class="ok">met</td></tr>
+<tr><td>caller-floor-disclosure: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>caller-floor-disclosure: clean reviews in a row</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>caller-floor-disclosure: callers in the harness</td><td>build</td><td>at least 1</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>caller-floor-disclosure: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>fact-cached-graph-build-with-budget: green unit runs in a row</td><td>build</td><td>at least 1</td><td>5</td><td class="ok">met</td></tr>
+<tr><td>fact-cached-graph-build-with-budget: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>fact-cached-graph-build-with-budget: clean reviews in a row</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>fact-cached-graph-build-with-budget: callers in the harness</td><td>build</td><td>at least 1</td><td>1</td><td class="ok">met</td></tr>
+<tr><td>fact-cached-graph-build-with-budget: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>tracked-file-scrub-gate: green unit runs in a row</td><td>build</td><td>at least 1</td><td>4</td><td class="ok">met</td></tr>
+<tr><td>tracked-file-scrub-gate: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>tracked-file-scrub-gate: clean reviews in a row</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>tracked-file-scrub-gate: callers in the harness</td><td>build</td><td>at least 1</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>tracked-file-scrub-gate: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>planted-bug-review-scoring: green unit runs in a row</td><td>build</td><td>at least 1</td><td>4</td><td class="ok">met</td></tr>
+<tr><td>planted-bug-review-scoring: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>planted-bug-review-scoring: clean reviews in a row</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>planted-bug-review-scoring: callers in the harness</td><td>build</td><td>at least 1</td><td>1</td><td class="ok">met</td></tr>
+<tr><td>planted-bug-review-scoring: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>isolated-tool-free-wording-judge: green unit runs in a row</td><td>build</td><td>at least 1</td><td>3</td><td class="ok">met</td></tr>
+<tr><td>isolated-tool-free-wording-judge: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>isolated-tool-free-wording-judge: clean reviews in a row</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>isolated-tool-free-wording-judge: callers in the harness</td><td>build</td><td>at least 1</td><td>1</td><td class="ok">met</td></tr>
+<tr><td>isolated-tool-free-wording-judge: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>Clean reviews in a row</td><td>build</td><td>at least 2</td><td>4</td><td class="ok">met</td></tr>
+<tr><td>High findings in the latest review</td><td>build</td><td>at most 0</td><td>0</td><td class="ok">met</td></tr>
+<tr><td>Open high findings</td><td>build</td><td>at most 0</td><td>0</td><td class="ok">met</td></tr>
+</tbody>
+</table></div>
+
+<h2>Streams</h2>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Stream</th><th scope="col">State</th><th scope="col">Phase</th><th scope="col">Next</th><th scope="col">Tasks</th></tr></thead>
+<tbody>
+<tr><td>pre-push-review-gate</td><td>done</td><td>review</td><td>—</td><td></td></tr>
+<tr><td>secret-redaction-by-value-and-fingerprin</td><td>done</td><td>review</td><td>—</td><td></td></tr>
+<tr><td>lens-catalog-file-triggered-checks</td><td>done</td><td>review</td><td>—</td><td></td></tr>
+<tr><td>hardened-git-read-on-untrusted-repo</td><td>done</td><td>review</td><td>—</td><td></td></tr>
+<tr><td>identity-checked-file-writes</td><td>done</td><td>review</td><td>—</td><td></td></tr>
+<tr><td>change-blast-radius-walk</td><td>done</td><td>review</td><td>—</td><td></td></tr>
+<tr><td>caller-floor-disclosure</td><td>done</td><td>review</td><td>—</td><td></td></tr>
+<tr><td>fact-cached-graph-build-with-budget</td><td>done</td><td>review</td><td>—</td><td></td></tr>
+<tr><td>tracked-file-scrub-gate</td><td>done</td><td>review</td><td>—</td><td></td></tr>
+<tr><td>planted-bug-review-scoring</td><td>done</td><td>review</td><td>—</td><td></td></tr>
+<tr><td>isolated-tool-free-wording-judge</td><td>done</td><td>review</td><td>—</td><td></td></tr>
+</tbody>
+</table></div>
+
+<h2>Review ledger</h2>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Review</th><th scope="col">Stream</th><th scope="col">Round</th><th scope="col">Result</th><th scope="col">High / medium / low</th><th scope="col">Time</th></tr></thead>
+<tbody>
+<tr><td>9bdad797-9efd-4282-890b-4e91e83b4886</td><td>pre-push-review-gate</td><td>1</td><td class="bad">over</td><td>0 / 3 / 4</td><td>2026-10-10T01:37:20.287Z</td></tr>
+<tr><td>eba904f3-e900-4695-adca-ade3199ff946</td><td>pre-push-review-gate</td><td>2</td><td class="ok">pass</td><td>0 / 1 / 3</td><td>2026-10-10T01:46:08.200Z</td></tr>
+<tr><td>b7fdd520-d746-419d-8abf-77c0819d1909</td><td>pre-push-review-gate</td><td>3</td><td class="ok">pass</td><td>0 / 1 / 1</td><td>2026-10-10T01:50:47.699Z</td></tr>
+<tr><td>63ba1c16-bece-45a8-8ebe-338927acba58</td><td>secret-redaction-by-value-and-fingerprin</td><td>1</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-10-10T04:48:55.516Z</td></tr>
+<tr><td>4af10bed-d1f1-455d-9419-b82bf5fe59d3</td><td>secret-redaction-by-value-and-fingerprin</td><td>2</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-10-10T04:53:24.168Z</td></tr>
+<tr><td>6aeafeee-e00a-42ef-a93d-abdccb15e16c</td><td>secret-redaction-by-value-and-fingerprin</td><td>3</td><td class="bad">over</td><td>1 / 0 / 1</td><td>2026-10-10T04:57:10.791Z</td></tr>
+<tr><td>88e8e1ad-36a7-4bcf-b116-79143c7c48a6</td><td>secret-redaction-by-value-and-fingerprin</td><td>4</td><td class="ok">pass</td><td>0 / 0 / 2</td><td>2026-10-10T05:02:48.120Z</td></tr>
+<tr><td>bf8a7d07-16b7-4794-8c60-ae129db33159</td><td>secret-redaction-by-value-and-fingerprin</td><td>5</td><td class="ok">pass</td><td>0 / 0 / 3</td><td>2026-10-10T05:03:43.254Z</td></tr>
+<tr><td>a73266e6-5bb7-4b45-9a8d-fddff034dd70</td><td>lens-catalog-file-triggered-checks</td><td>1</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-10-10T05:12:06.981Z</td></tr>
+<tr><td>55ef8550-b3a7-4175-8260-ef00599d69f0</td><td>lens-catalog-file-triggered-checks</td><td>2</td><td class="ok">pass</td><td>0 / 2 / 0</td><td>2026-10-10T05:19:05.823Z</td></tr>
+<tr><td>22243dee-1ea1-4dbb-8896-f9fba0938d27</td><td>lens-catalog-file-triggered-checks</td><td>3</td><td class="ok">pass</td><td>0 / 1 / 0</td><td>2026-10-10T05:23:41.630Z</td></tr>
+<tr><td>1ba139e2-76eb-487c-bc7e-0ff30780ced2</td><td>lens-catalog-file-triggered-checks</td><td>4</td><td class="ok">pass</td><td>0 / 0 / 0</td><td>2026-10-10T05:26:10.339Z</td></tr>
+<tr><td>196df4bb-a456-40b9-93fc-95487913aa8b</td><td>lens-catalog-file-triggered-checks</td><td>5</td><td class="ok">pass</td><td>0 / 0 / 2</td><td>2026-10-10T05:28:23.817Z</td></tr>
+<tr><td>72b99d55-d9b3-486b-9ab4-8cbe5a7b829b</td><td>hardened-git-read-on-untrusted-repo</td><td>1</td><td class="bad">over</td><td>2 / 0 / 0</td><td>2026-10-10T05:39:16.385Z</td></tr>
+<tr><td>819800ec-6d3c-4362-b5e3-94498b6d870c</td><td>hardened-git-read-on-untrusted-repo</td><td>2</td><td class="bad">over</td><td>2 / 1 / 1</td><td>2026-10-10T05:49:01.743Z</td></tr>
+<tr><td>c44b18aa-f63c-4098-852d-473fe69beaa7</td><td>hardened-git-read-on-untrusted-repo</td><td>3</td><td class="bad">over</td><td>1 / 2 / 2</td><td>2026-10-10T06:16:27.619Z</td></tr>
+<tr><td>c29880d5-b07d-44c1-a8bc-0d10323e1c47</td><td>hardened-git-read-on-untrusted-repo</td><td>4</td><td class="bad">over</td><td>2 / 1 / 0</td><td>2026-10-10T06:34:29.835Z</td></tr>
+<tr><td>a474c869-1be0-43ad-9ff3-2ffc9cc23c81</td><td>hardened-git-read-on-untrusted-repo</td><td>5</td><td class="ok">pass</td><td>0 / 2 / 3</td><td>2026-10-10T06:50:19.108Z</td></tr>
+<tr><td>bd2403ad-a223-4f43-875e-5a7a0b235830</td><td>hardened-git-read-on-untrusted-repo</td><td>6</td><td class="ok">pass</td><td>0 / 1 / 4</td><td>2026-10-10T07:08:51.122Z</td></tr>
+<tr><td>5212b3af-80c8-4423-96b6-b9f906e319c1</td><td>hardened-git-read-on-untrusted-repo</td><td>7</td><td class="ok">pass</td><td>0 / 0 / 1</td><td>2026-10-10T07:19:58.184Z</td></tr>
+<tr><td>d88ff3c3-ca3b-44e0-8508-819fdaded770</td><td>hardened-git-read-on-untrusted-repo</td><td>8</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-10-10T07:28:14.312Z</td></tr>
+<tr><td>e488fd2d-442e-4ef4-92e7-798c8d663785</td><td>hardened-git-read-on-untrusted-repo</td><td>9</td><td class="ok">pass</td><td>0 / 1 / 4</td><td>2026-10-10T07:34:25.998Z</td></tr>
+<tr><td>94ff1e31-1a52-44d8-98e0-c97cf015348f</td><td>hardened-git-read-on-untrusted-repo</td><td>10</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-10-10T07:43:21.403Z</td></tr>
+<tr><td>35ab443c-0c9e-4831-bff0-76a30ff303db</td><td>hardened-git-read-on-untrusted-repo</td><td>11</td><td class="ok">pass</td><td>0 / 1 / 3</td><td>2026-10-10T07:51:29.718Z</td></tr>
+<tr><td>2956cdf0-7392-4bed-b6df-b9820e96ad5d</td><td>hardened-git-read-on-untrusted-repo</td><td>12</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-10-10T07:59:36.654Z</td></tr>
+<tr><td>a34a6765-c5fe-4758-b9a3-e14dbf895ce8</td><td>hardened-git-read-on-untrusted-repo</td><td>13</td><td class="ok">pass</td><td>0 / 1 / 3</td><td>2026-10-10T08:07:10.773Z</td></tr>
+<tr><td>fe19ffb7-e9cd-428f-b1ba-a9f2939178ea</td><td>hardened-git-read-on-untrusted-repo</td><td>14</td><td class="bad">over</td><td>1 / 0 / 1</td><td>2026-10-10T08:14:35.431Z</td></tr>
+<tr><td>63c53d8e-03cd-4d4e-91fe-5be86115d008</td><td>hardened-git-read-on-untrusted-repo</td><td>15</td><td class="ok">pass</td><td>0 / 1 / 5</td><td>2026-10-10T08:39:19.640Z</td></tr>
+<tr><td>f8006d42-604b-4c53-82ec-98ace1f313da</td><td>hardened-git-read-on-untrusted-repo</td><td>16</td><td class="bad">over</td><td>1 / 1 / 1</td><td>2026-10-10T08:51:03.119Z</td></tr>
+<tr><td>9e28b491-e11a-4481-99e9-87b21a83e01d</td><td>hardened-git-read-on-untrusted-repo</td><td>17</td><td class="bad">over</td><td>0 / 3 / 2</td><td>2026-10-10T09:03:13.662Z</td></tr>
+<tr><td>edea3211-dcf4-4ca9-972c-b84bcf38e87e</td><td>hardened-git-read-on-untrusted-repo</td><td>18</td><td class="bad">over</td><td>1 / 0 / 0</td><td>2026-10-10T09:12:21.460Z</td></tr>
+<tr><td>5a1a9ba1-736b-4301-84ba-703077c54416</td><td>hardened-git-read-on-untrusted-repo</td><td>19</td><td class="ok">pass</td><td>0 / 0 / 2</td><td>2026-10-10T09:24:45.393Z</td></tr>
+<tr><td>ea59f81d-f1f2-4d70-bb12-95262990df79</td><td>hardened-git-read-on-untrusted-repo</td><td>20</td><td class="ok">pass</td><td>0 / 1 / 4</td><td>2026-10-10T09:32:39.876Z</td></tr>
+<tr><td>a48e01fb-ba79-49b2-ae8a-8cbef7224fa0</td><td>identity-checked-file-writes</td><td>1</td><td class="bad">over</td><td>1 / 3 / 2</td><td>2026-10-10T09:53:54.152Z</td></tr>
+<tr><td>5dd73dab-c665-42a3-8705-b7b4806cae64</td><td>identity-checked-file-writes</td><td>2</td><td class="ok">pass</td><td>0 / 1 / 0</td><td>2026-10-10T10:03:03.935Z</td></tr>
+<tr><td>726f28eb-9460-4591-a041-070db4aeb11d</td><td>identity-checked-file-writes</td><td>3</td><td class="ok">pass</td><td>0 / 1 / 0</td><td>2026-10-10T10:10:24.075Z</td></tr>
+<tr><td>63be5c0a-560c-4d75-97f6-b0635367259e</td><td>fact-cached-graph-build-with-budget</td><td>1</td><td class="bad">over</td><td>0 / 3 / 1</td><td>2026-10-10T10:36:04.349Z</td></tr>
+<tr><td>db5efd93-2056-47e7-af96-b61529d21813</td><td>fact-cached-graph-build-with-budget</td><td>2</td><td class="bad">over</td><td>0 / 3 / 2</td><td>2026-10-10T10:44:21.234Z</td></tr>
+<tr><td>503d3bfd-fda1-40d2-bb9a-203084c01d6c</td><td>fact-cached-graph-build-with-budget</td><td>3</td><td class="ok">pass</td><td>0 / 1 / 3</td><td>2026-10-10T10:52:27.401Z</td></tr>
+<tr><td>b810a7a1-9076-4ac9-bfbf-a774f3a847d0</td><td>fact-cached-graph-build-with-budget</td><td>4</td><td class="ok">pass</td><td>0 / 1 / 0</td><td>2026-10-10T11:00:27.206Z</td></tr>
+<tr><td>b4e1a11e-65bb-46a7-af8c-f8724222e62e</td><td>change-blast-radius-walk</td><td>1</td><td class="bad">over</td><td>1 / 1 / 2</td><td>2026-10-10T11:18:27.030Z</td></tr>
+<tr><td>d78fa665-f4e5-4d88-819f-8d21ff3545eb</td><td>change-blast-radius-walk</td><td>2</td><td class="bad">over</td><td>1 / 0 / 1</td><td>2026-10-10T11:24:49.437Z</td></tr>
+<tr><td>3db7c3d6-4b8a-4350-80a1-99aaf491bf55</td><td>change-blast-radius-walk</td><td>3</td><td class="ok">pass</td><td>0 / 2 / 0</td><td>2026-10-10T11:32:46.010Z</td></tr>
+<tr><td>581482d9-2a0f-4961-8c19-0acd2866bc6d</td><td>change-blast-radius-walk</td><td>4</td><td class="ok">pass</td><td>0 / 1 / 0</td><td>2026-10-10T11:39:17.766Z</td></tr>
+<tr><td>f275c970-464d-46cf-9307-7218ad46682e</td><td>caller-floor-disclosure</td><td>1</td><td class="ok">pass</td><td>0 / 1 / 2</td><td>2026-10-10T12:10:19.657Z</td></tr>
+<tr><td>3a292030-f7a8-4898-a5cb-3212985a8609</td><td>caller-floor-disclosure</td><td>2</td><td class="ok">pass</td><td>0 / 1 / 1</td><td>2026-10-10T12:18:21.376Z</td></tr>
+<tr><td>22f87ace-f59b-454e-a02a-b3bc09a2dbdd</td><td>tracked-file-scrub-gate</td><td>1</td><td class="bad">over</td><td>0 / 3 / 2</td><td>2026-10-10T12:33:20.025Z</td></tr>
+<tr><td>9bc9a99e-67d4-4130-a5db-86d7cb2d32c4</td><td>tracked-file-scrub-gate</td><td>2</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-10-10T12:43:28.609Z</td></tr>
+<tr><td>ca5de9c1-42ab-47b1-ae8b-2c9f02912ea8</td><td>tracked-file-scrub-gate</td><td>3</td><td class="ok">pass</td><td>0 / 2 / 2</td><td>2026-10-10T12:56:21.715Z</td></tr>
+<tr><td>545d3def-61ce-4e8d-91e2-e121b80d6290</td><td>planted-bug-review-scoring</td><td>1</td><td class="bad">over</td><td>1 / 0 / 3</td><td>2026-10-10T13:11:54.897Z</td></tr>
+<tr><td>7034dbee-c5df-4c95-b39a-c16c685df417</td><td>planted-bug-review-scoring</td><td>2</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-10-10T13:19:48.500Z</td></tr>
+<tr><td>104f1aed-e5ed-427b-a782-dde2aaa9dc5a</td><td>planted-bug-review-scoring</td><td>3</td><td class="ok">pass</td><td>0 / 0 / 2</td><td>2026-10-10T13:24:04.563Z</td></tr>
+<tr><td>023de681-188c-4180-b98b-c53c1920b115</td><td>isolated-tool-free-wording-judge</td><td>1</td><td class="ok">pass</td><td>0 / 2 / 2</td><td>2026-10-10T13:39:30.940Z</td></tr>
+<tr><td>9c835f58-172d-46fa-bdce-f2446d74e785</td><td>isolated-tool-free-wording-judge</td><td>2</td><td class="ok">pass</td><td>0 / 1 / 1</td><td>2026-10-10T13:44:05.246Z</td></tr>
+</tbody>
+</table></div>
+
+<h2>Helper spend by model</h2>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Model</th><th scope="col">Helpers</th><th scope="col">Done</th><th scope="col">Tokens used</th><th scope="col">Tokens budgeted in flight</th></tr></thead>
+<tbody>
+<tr><td>sonnet</td><td>21</td><td>21</td><td>2,420,764</td><td>0</td></tr>
+<tr><td>opus</td><td>65</td><td>44</td><td>4,232,809</td><td>3,150,000</td></tr>
+</tbody>
+</table></div>
+</main>
+</body>
+</html>

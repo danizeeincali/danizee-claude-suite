@@ -1,0 +1,30 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  node-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - name: npm test
+        shell: bash
+        run: npm test 2>&1 | tee "$RUNNER_TEMP/test-output.txt"; exit ${PIPESTATUS[0]}
+      - name: Show failing tests
+        if: failure()
+        run: grep -n -A60 "not ok" "$RUNNER_TEMP/test-output.txt" | head -400

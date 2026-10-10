@@ -22,6 +22,7 @@ import * as terminalAgents from './plugins/terminal-agents.js';
 import * as autoresearch from './plugins/autoresearch.js';
 import * as marathon from './plugins/marathon.js';
 import * as bbs from './plugins/bbs.js';
+import * as kit from './plugins/kit.js';
 import * as bc from './plugins/bc.js';
 import { checkShadowing } from './lib/marathon/shadow.js';
 import os from 'os';
@@ -251,6 +252,12 @@ export class DaniZeeSuiteInstaller {
       targetDir: this.targetDir
     }));
 
+    // Install the kit helpers (review and safety tools rebuilt from /w-bbs audits)
+    results.push(await kit.install(this.claudeDir, {
+      dryRun: this.dryRun,
+      targetDir: this.targetDir
+    }));
+
     // Install PM Module (if opted in)
     if (this.withPm) {
       results.push(await pmShortcuts.install(this.claudeDir, {
@@ -401,7 +408,8 @@ echo "MCP server started. You can now use memory and swarm operations."
         terminalAgents: false,
         marathon: false,
         bc: false,
-        bbs: false
+        bbs: false,
+        kit: false
       },
       shadowing: []
     };
@@ -441,6 +449,7 @@ echo "MCP server started. You can now use memory and swarm operations."
     status.plugins.marathon = await marathon.isInstalled(this.claudeDir);
     status.plugins.bc = await bc.isInstalled(this.claudeDir);
     status.plugins.bbs = await bbs.isInstalled(this.claudeDir);
+    status.plugins.kit = await kit.isInstalled(this.claudeDir);
     status.shadowing = await this.checkShadowing();
 
     // Overall status (core plugins only — PM and cookbook are optional)
@@ -471,6 +480,7 @@ echo "MCP server started. You can now use memory and swarm operations."
     await marathon.uninstall(this.claudeDir);
     await bc.uninstall(this.claudeDir);
     await bbs.uninstall(this.claudeDir);
+    await kit.uninstall(this.claudeDir);
 
     // Remove settings
     await removeSettings(this.claudeDir, this.keepSettings);
@@ -556,6 +566,7 @@ echo "MCP server started. You can now use memory and swarm operations."
         'marathon',
         'bc',
         'bbs',
+        'kit',
         ...(this.withoutCookbook ? [] : ['agent-cookbook']),
         ...(this.withPm ? ['pm-shortcuts'] : [])
       ]

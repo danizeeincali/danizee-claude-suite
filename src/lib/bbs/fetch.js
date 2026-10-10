@@ -9,6 +9,7 @@
  */
 
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import os from 'os';
 import path from 'path';
 import net from 'net';
@@ -311,10 +312,50 @@ export function extractLinks(text, base) {
 
 // ---------------------------------------------------------------- git
 
-/** The default git runner: execFileSync with a timeout; a timeout becomes an Error that says so. */
+/** PATH entries that are absolute; empty, '.' and relative entries (which mean "the current folder") are dropped. */
+export function absolutePathEntries(value, { delimiter = path.delimiter, isAbsolute = path.isAbsolute } = {}) {
+  return String(value ?? '').split(delimiter).filter(e => e !== '' && isAbsolute(e));
+}
+
+const pathKeyOf = (env) => Object.keys(env || {}).find(k => (process.platform === 'win32' ? k.toUpperCase() === 'PATH' : k === 'PATH'));
+
+/**
+ * Absolute path of the git program, searched in the ABSOLUTE entries of PATH only (env's PATH, else this process's).
+ * A bare 'git' is looked up through an empty or relative PATH entry on POSIX and in the child's cwd on Windows, so a
+ * git committed to a cloned repository could run. Kept local (not imported from the kit) so bbs works without it.
+ */
+export function resolveGitPath(env, { platform = process.platform } = {}) {
+  const key = pathKeyOf(env);
+  const value = key !== undefined ? env[key] : process.env.PATH;
+  const win = platform === 'win32';
+  const exts = win ? String(process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean) : [''];
+  for (const dir of absolutePathEntries(value)) {
+    for (const ext of exts) {
+      const file = path.join(dir, `git${ext.toLowerCase()}`);
+      try {
+        if (!fsSync.statSync(file).isFile()) continue;
+        if (!win) fsSync.accessSync(file, fsSync.constants.X_OK);
+      } catch { continue; }
+      return file;
+    }
+  }
+  throw new Error('cannot run git: no git program in any absolute PATH entry (empty and relative entries are not searched)');
+}
+
+/** env with its PATH reduced to absolute entries (git's own children search PATH too). */
+function absolutePathEnv(env) {
+  const key = pathKeyOf(env);
+  if (key === undefined) return env;
+  return { ...env, [key]: absolutePathEntries(env[key]).join(path.delimiter) };
+}
+
+/**
+ * The default git runner: execFileSync of git by its absolute path (resolveGitPath) with a PATH of absolute entries
+ * only, and a timeout; a timeout becomes an Error that says so.
+ */
 export function runGit(args, cwd, env, { timeout, exec = execFileSync } = {}) {
   try {
-    return exec('git', args, { cwd, env, timeout, killSignal: 'SIGTERM', encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
+    return exec(resolveGitPath(env), args, { cwd, env: absolutePathEnv(env), timeout, killSignal: 'SIGTERM', encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (err) {
     if (err?.code === 'ETIMEDOUT' || err?.signal === 'SIGTERM') {
       const e = new Error(`git ${args[0]} timeout after ${timeout} ms`);
@@ -345,7 +386,7 @@ function cloneEnv(scratchDir) {
   };
 }
 
-/** Sum of file sizes under dir (recursive, .git included, symlinks not followed). Missing dir → 0. */
+/** Sum of file sizes under dir (recursive, symlinks not followed). Missing dir → 0. */
 async function treeBytes(dir) {
   let st;
   try { st = await fs.lstat(dir); } catch (err) { if (err.code === 'ENOENT') return 0; throw err; }
@@ -367,9 +408,39 @@ function firstLine(err) {
   return raw.split('\n').map(s => s.trim()).find(Boolean) || 'unknown error';
 }
 
+/**
+ * The kit's hardened git reader, or null when the kit is not installed next to this file (then headOf falls back to
+ * the plain runner: git by its absolute path, the repository named by --git-dir, cwd outside the clone).
+ */
+export async function loadSafeGit() {
+  try { return await import('../kit/safe-git.js'); } catch (err) {
+    if (err?.code === 'ERR_MODULE_NOT_FOUND' || err?.code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+/**
+ * HEAD of the freshly cloned (foreign) repo. With the kit installed the call goes through safe-git, so nothing in
+ * the clone's own config (hooks, filters, fsmonitor) can run, and an unsafe driver name fails the fetch instead of
+ * being skipped. Without the kit, or with an injected git runner and no explicit `hardened`, the plain runner is used,
+ * from the clone's parent folder with --git-dir (git is never started with its cwd inside the clone).
+ */
+export async function headOf(dest, env, { git = defaultGit, timeout, hardened = git === defaultGit, load = loadSafeGit } = {}) {
+  const kit = hardened ? await load() : null;
+  if (!kit) {
+    // Never run git inside the fresh (foreign) clone: cwd is the clone's parent, the repository is named by --git-dir.
+    const abs = path.resolve(dest);
+    return String(await git(['--git-dir', path.join(abs, '.git'), 'rev-parse', 'HEAD'], path.dirname(abs), env, { timeout })).trim();
+  }
+  const r = await kit.safeGit(dest, ['rev-parse', 'HEAD'], { env, timeout });
+  if (r.code !== 0) throw Object.assign(new Error(`git rev-parse exited ${r.code}`), { stderr: r.stderr });
+  return String(r.stdout).trim();
+}
+
 /** Shallow, tagless clone with hooks off and prompts off; returns { sha } of HEAD. */
 export async function cloneRepo(ref, dest, {
-  git = defaultGit, lookup = defaultLookup, onEgress = () => {}, now = () => new Date(), timeoutMs = 30000, maxBytes = Infinity
+  git = defaultGit, lookup = defaultLookup, onEgress = () => {}, now = () => new Date(), timeoutMs = 30000, maxBytes = Infinity,
+  maxCheckoutBytes = Infinity, hardened, loadKit = loadSafeGit
 } = {}) {
   const text = String(ref ?? '').trim();
   const host = text.startsWith('-') ? null : hostOfRef(text);
@@ -401,22 +472,30 @@ export async function cloneRepo(ref, dest, {
       await git(args, path.dirname(path.resolve(dest)), env, { timeout: timeoutMs * 10 });
     } catch (err) {
       let partial = 0;
-      try { partial = await treeBytes(dest); } catch { /* unreadable partial tree: count nothing */ }
+      try { partial = await treeBytes(path.join(dest, '.git')); } catch { /* unreadable partial tree: count nothing */ }
       await fs.rm(dest, { recursive: true, force: true });
       const line = firstLine(err);
       await row({ error: line, bytes_in: partial });
       throw new Error(`git clone failed: ${line}`);
     }
-    const bytes = await treeBytes(dest);
-    if (bytes > maxBytes) {
+    // bytes_in is what came over the wire: .git (the shallow pack). The checkout is the same blobs
+    // expanded, so it is not egress; it has its own cap so a small, highly compressible pack
+    // cannot fill the disk.
+    const bytes = await treeBytes(path.join(dest, '.git'));
+    const checkout = (await treeBytes(dest)) - bytes;
+    const over = bytes > maxBytes
+      ? `clone of ${bytes} bytes exceeds the remaining allowance of ${maxBytes} bytes`
+      : checkout > maxCheckoutBytes
+        ? `checkout of ${checkout} bytes exceeds max_checkout_bytes of ${maxCheckoutBytes} bytes`
+        : null;
+    if (over) {
       await fs.rm(dest, { recursive: true, force: true });
-      const msg = `clone of ${bytes} bytes exceeds the remaining allowance of ${maxBytes} bytes`;
-      await row({ status: 0, bytes_in: bytes, refused: msg });
-      throw new EgressRefused(msg);
+      await row({ status: 0, bytes_in: bytes, refused: over });
+      throw new EgressRefused(over);
     }
     let sha;
     try {
-      sha = String(await git(['rev-parse', 'HEAD'], dest, env, { timeout: timeoutMs })).trim();
+      sha = await headOf(dest, env, { git, timeout: timeoutMs, hardened, load: loadKit });
       if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(sha)) throw new Error(`unexpected HEAD "${sha.slice(0, 80)}"`);
     } catch (err) {
       await fs.rm(dest, { recursive: true, force: true });
@@ -544,7 +623,10 @@ export async function fetchRun(projectDir, opts = {}) {
         const cited = ext === 'bin' ? [] : extractLinks(r.body.toString('utf-8'), r.finalUrl);
         extraSource = { final_url: r.finalUrl, cited };
       } else {
-        const { sha } = await cloneRepo(source.ref, path.join(fetchedDir, 'repo'), { git: git || defaultGit, lookup: lookup || defaultLookup, onEgress, now, timeoutMs, maxBytes: remaining });
+        const { sha } = await cloneRepo(source.ref, path.join(fetchedDir, 'repo'), {
+          git: git || defaultGit, lookup: lookup || defaultLookup, onEgress, now, timeoutMs, maxBytes: remaining,
+          maxCheckoutBytes: cfg.limits?.max_checkout_bytes ?? DEFAULT_CONFIG.limits.max_checkout_bytes
+        });
         identity = 'git:' + sha;
         files = ['fetched/repo'];
         extraSource = {};

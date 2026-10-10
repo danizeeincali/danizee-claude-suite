@@ -279,8 +279,58 @@ export function isSecretName(name) {
 }
 
 /**
+ * The top-level directory of a relative path below a shared prefix (e.g. "repo/" for a clone), or
+ * null for a file directly under that prefix.
+ */
+function topDir(relPath, prefix = '') {
+  const rest = relPath.slice(prefix.length);
+  const i = rest.indexOf('/');
+  return i === -1 ? null : prefix + rest.slice(0, i);
+}
+
+/** The longest run of leading directories every path shares ("" when they share none). */
+function sharedDirPrefix(paths) {
+  if (paths.length === 0) return '';
+  let prefix = '';
+  for (;;) {
+    const i = paths[0].indexOf('/', prefix.length);
+    if (i === -1) return prefix;
+    const next = paths[0].slice(0, i + 1);
+    if (!paths.every(p => p.startsWith(next))) return prefix;
+    prefix = next;
+  }
+}
+
+/**
+ * Up to max items, taken round-robin across groups (root files first, then top-level directories in
+ * name order); within a group, shallower paths first, then by path.
+ */
+function pickSpread(items, max, prefix) {
+  if (items.length <= max) return items;
+  const groups = new Map();
+  for (const it of items) {
+    const key = topDir(it.relPath, prefix) ?? '';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(it);
+  }
+  const depth = (p) => p.split('/').length;
+  const byPath = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+  const queues = [...groups.keys()].sort(byPath)
+    .map(k => groups.get(k).sort((a, b) => depth(a.relPath) - depth(b.relPath) || byPath(a.relPath, b.relPath)));
+  const out = [];
+  for (let i = 0; out.length < max; i++) {
+    let took = false;
+    for (const q of queues) {
+      if (i < q.length && out.length < max) { out.push(q[i]); took = true; }
+    }
+    if (!took) break;
+  }
+  return out;
+}
+
+/**
  * List files in the source. Source must be fetched and identity not pending.
- * Returns { root, files: [{ path, size }], total, truncated, licence_file, omitted_secret, unlisted, errors: [{ path, code, note? }] }.
+ * Returns { root, files: [{ path, size }], total, truncated, dirs: [{ dir, files, listed }], licence_file, omitted_secret, unlisted, errors: [{ path, code, note? }] }.
  * File names that are not valid UTF-8 are not listed or counted in `total`: they appear under `errors` as EILSEQ and in `unlisted`.
  * The root must exist and be a directory; unreadable subdirectories are collected in `errors`.
  * Symlinks and SKIP_DIRS directories (.git, node_modules, build/vendor/cache dirs) are skipped; an empty root is an error; secret-like files are counted, never listed.
@@ -305,9 +355,10 @@ export async function listSourceFiles(runDir, source, { maxFiles = 500, readdir 
     throw new Error(`source root ${root} is missing or not a directory — re-run intake`);
   }
 
-  // `all` holds the first maxFiles files found (then sorted); after that the walk only counts, so a huge tree
-  // costs one readdir per directory and no further lstat. Hence the brief says "first <n> files found, sorted".
-  const all = [];
+  // The walk only collects names (no lstat). When the tree has more than maxFiles files the listing is
+  // spread across the top-level directories, shallowest paths first, so one bulky directory (fixtures,
+  // benchmark output) cannot crowd out the rest; only the chosen files are sized.
+  const candidates = [];
   const licences = [];
   const errors = [];
   let omitted_secret = 0;
@@ -362,33 +413,13 @@ export async function listSourceFiles(runDir, source, { maxFiles = 500, readdir 
         errors.push({ path: item.relPath, code: err.code || 'UNKNOWN' });
       }
     }));
-    // Visit in name order, files and directories interleaved, so the first maxFiles found are the
-    // lexicographically first paths; consecutive files are sized in parallel.
+    // Visit in name order, files and directories interleaved.
     const ordered = [...dirs.map(i => ({ ...i, dir: true })), ...files].sort(byName);
 
-    async function flush(batch) {
-      const listed = batch.filter(f => {
-        if (isSecretName(f.name)) { omitted_secret++; return false; }
-        return true;
-      });
-      // Only files still within the cap need a size (one lstat each, in parallel); the rest are just counted.
-      const room = Math.max(0, maxFiles - all.length);
-      const sized = await Promise.all(listed.slice(0, room).map(async (f) => {
-        try {
-          return { f, size: (await lstat(f.fullPath)).size };
-        } catch (err) {
-          errors.push({ path: f.relPath, code: err.code || 'UNKNOWN' });
-          return null;
-        }
-      }));
-      for (const r of sized) {
-        if (!r) continue;
-        total++;
-        all.push({ path: r.f.relPath, size: r.size });
-        if (LICENCE_RE.test(r.f.name)) licences.push(r.f.relPath);
-      }
-      for (const f of listed.slice(room)) {
-        total++;
+    function flush(batch) {
+      for (const f of batch) {
+        if (isSecretName(f.name)) { omitted_secret++; continue; }
+        candidates.push(f);
         if (LICENCE_RE.test(f.name)) licences.push(f.relPath);
       }
     }
@@ -396,17 +427,40 @@ export async function listSourceFiles(runDir, source, { maxFiles = 500, readdir 
     let batch = [];
     for (const item of ordered) {
       if (item.dir) {
-        await flush(batch);
+        flush(batch);
         batch = [];
         await walk(item.fullPath, item.relPath);
       } else {
         batch.push(item);
       }
     }
-    await flush(batch);
+    flush(batch);
   }
 
   await walk(Buffer.from(root), '');
+
+  const prefix = sharedDirPrefix(candidates.map(f => f.relPath));
+  const chosen = pickSpread(candidates, maxFiles, prefix);
+  const sized = await Promise.all(chosen.map(async (f) => {
+    try {
+      return { path: f.relPath, size: (await lstat(f.fullPath)).size };
+    } catch (err) {
+      errors.push({ path: f.relPath, code: err.code || 'UNKNOWN' });
+      return null;
+    }
+  }));
+  const all = sized.filter(Boolean);
+  total = candidates.length - (chosen.length - all.length);
+  const listedPaths = new Set(all.map(f => f.path));
+  const dirCounts = new Map();
+  for (const f of candidates) {
+    const top = topDir(f.relPath, prefix);
+    if (top === null) continue;
+    const d = dirCounts.get(top) || { dir: top, files: 0, listed: 0 };
+    d.files++;
+    if (listedPaths.has(f.relPath)) d.listed++;
+    dirCounts.set(top, d);
+  }
 
   if (total === 0) {
     throw new Error(omitted_secret > 0
@@ -422,8 +476,9 @@ export async function listSourceFiles(runDir, source, { maxFiles = 500, readdir 
 
   return {
     root,
-    files: all.slice(0, maxFiles),
+    files: all,
     total,
+    dirs: [...dirCounts.values()].sort((a, b) => (a.dir < b.dir ? -1 : a.dir > b.dir ? 1 : 0)),
     truncated: total > maxFiles,
     licence_file: licences[0] || null,
     omitted_secret,
@@ -448,7 +503,12 @@ export function inventoryBrief({ source, files, maxPowers }) {
 
   lines.push('## Files in this source\n');
   if (files.truncated) {
-    lines.push(`**${files.total} files in total** — only the first ${files.files.length} are listed (the listing is the first ${files.files.length} files found, sorted). Inventory only the files listed here; name any unlisted top-level directory in evidence instead of reading it.\n`);
+    lines.push(`**${files.total} files in total** — only ${files.files.length} are listed, spread across the top-level directories with the shallowest paths first. Inventory only the files listed here; name any unlisted top-level directory in evidence instead of reading it.\n`);
+    if (Array.isArray(files.dirs) && files.dirs.length > 0) {
+      lines.push('Top-level directories (files listed / files in total):\n');
+      for (const d of files.dirs) lines.push(`- ${d.dir}/ — ${d.listed} / ${d.files}`);
+      lines.push('');
+    }
   }
   for (const f of files.files) {
     lines.push(`- ${f.path} (${f.size} bytes)`);

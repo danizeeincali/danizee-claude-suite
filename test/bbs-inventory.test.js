@@ -528,7 +528,7 @@ describe('inventory — review r1 regressions', () => {
     assert.doesNotMatch(inventoryBrief({ source: clean.source, files: cf, maxPowers: 12 }), /secret-like/);
   });
 
-  it('the cap keeps the first N paths in sorted order, not walk order; total is the full count', async () => {
+  it('the cap takes root files and each top-level directory in turn, listed in sorted order; total is the full count', async () => {
     const s = await localRun('sorted', async (src) => {
       await fs.writeFile(path.join(src, 'z.js'), '1');
       await fs.mkdir(path.join(src, 'b'));
@@ -545,6 +545,39 @@ describe('inventory — review r1 regressions', () => {
     assert.equal(exact.truncated, false);
   });
 
+  it('a bulky directory cannot crowd out the rest: the cap is spread across top-level dirs, shallowest first, and the brief counts each dir', async () => {
+    const s = await localRun('spread', async (src) => {
+      await fs.writeFile(path.join(src, 'README.md'), '1');
+      await fs.mkdir(path.join(src, 'bench'));
+      for (let i = 0; i < 10; i++) await fs.writeFile(path.join(src, 'bench', `r${i}.json`), '1');
+      await fs.mkdir(path.join(src, 'pkg', 'deep'), { recursive: true });
+      await fs.writeFile(path.join(src, 'pkg', 'deep', 'a.js'), '1');
+      await fs.writeFile(path.join(src, 'pkg', 'z.js'), '1');
+    });
+    const files = await listSourceFiles(s.runDir, s.source, { maxFiles: 5 });
+    assert.deepEqual(files.files.map(f => f.path), ['bench/r0.json', 'bench/r1.json', 'pkg/deep/a.js', 'pkg/z.js', 'README.md']);
+    assert.equal(files.total, 13);
+    assert.deepEqual(files.dirs, [{ dir: 'bench', files: 10, listed: 2 }, { dir: 'pkg', files: 2, listed: 2 }]);
+    const brief = inventoryBrief({ source: s.source, files, maxPowers: 12 });
+    assert.match(brief, /- bench\/ — 2 \/ 10/);
+    assert.match(brief, /- pkg\/ — 2 \/ 2/);
+    const shallow = await listSourceFiles(s.runDir, s.source, { maxFiles: 4 });
+    assert.ok(shallow.files.some(f => f.path === 'pkg/z.js') && !shallow.files.some(f => f.path === 'pkg/deep/a.js'), 'shallower path first within a dir');
+  });
+
+  it('a clone wrapped in one directory (fetched/repo/...) is spread across the directories below the wrapper', async () => {
+    const s = await localRun('wrapped', async (src) => {
+      await fs.mkdir(path.join(src, 'repo', 'bench'), { recursive: true });
+      await fs.mkdir(path.join(src, 'repo', 'pkg'), { recursive: true });
+      for (let i = 0; i < 5; i++) await fs.writeFile(path.join(src, 'repo', 'bench', `r${i}.json`), '1');
+      await fs.writeFile(path.join(src, 'repo', 'pkg', 'a.js'), '1');
+      await fs.writeFile(path.join(src, 'repo', 'README.md'), '1');
+    });
+    const files = await listSourceFiles(s.runDir, s.source, { maxFiles: 3 });
+    assert.deepEqual(files.files.map(f => f.path), ['repo/bench/r0.json', 'repo/pkg/a.js', 'repo/README.md']);
+    assert.deepEqual(files.dirs, [{ dir: 'repo/bench', files: 5, listed: 1 }, { dir: 'repo/pkg', files: 1, listed: 1 }]);
+  });
+
   // brief
   it('a truncated brief gives an actionable instruction instead of "ask for a narrower slice"', async () => {
     const s = await localRun('trunc', async (src) => {
@@ -552,7 +585,7 @@ describe('inventory — review r1 regressions', () => {
     });
     const files = await listSourceFiles(s.runDir, s.source, { maxFiles: 2 });
     const brief = inventoryBrief({ source: s.source, files, maxPowers: 12 });
-    assert.match(brief, /3 files in total\*\* — only the first 2 are listed/);
+    assert.match(brief, /3 files in total\*\* — only 2 are listed, spread across the top-level directories/);
     assert.match(brief, /Inventory only the files listed here; name any unlisted top-level directory in evidence instead of reading it\./);
     assert.doesNotMatch(brief, /narrower slice/);
     const full = inventoryBrief({ source: s.source, files: await listSourceFiles(s.runDir, s.source), maxPowers: 12 });
