@@ -11,7 +11,7 @@ import {
   safeGit, safeGitEnv, safeGitConfig, checkReadArgs, clearSafeGitCache, defaultGitRunner,
   driversFromConfig, driversFromAttributes, run, READ_SUBCOMMANDS,
   parseConfigList, allowedCore, repoFormat, describeDirtyPlan, buildShadow, DEFAULT_LIMITS,
-  resolveGit, absolutePathEntries, unsafeIndexPath, escapingPath, usage
+  resolveGit, absolutePathEntries, unsafeIndexPath, escapingPath, usage, readsStdin
 } from '../src/lib/kit/safe-git.js';
 
 const CLEAN_ENV = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
@@ -1633,6 +1633,79 @@ describe('safe-git — review round 8 regressions (timeout, stdin, limits)', () 
     assert.equal(ok.code, 0);
     for (const limits of [{ index: NaN }, { total: -1 }, { entries: 1.5 }, { nope: 1 }]) {
       await assert.rejects(safeGit(repo, ['rev-parse', 'HEAD'], { limits }), (e) => e instanceof KitExit && e.code === 1);
+    }
+  });
+});
+
+describe('safe-git — review round 9 regressions (stdin readers, timeout)', () => {
+  let root, repo, head;
+  before(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), 'safe-git-r9-'));
+    repo = path.join(root, 'r');
+    await fs.mkdir(repo);
+    sh(repo, ['init', '-q', '-b', 'main', '.']);
+    await fs.writeFile(path.join(repo, 'a.txt'), 'one\n');
+    sh(repo, ['add', 'a.txt']);
+    sh(repo, ['commit', '-q', '-m', 'init']);
+    head = sh(repo, ['rev-parse', 'HEAD']).stdout.trim();
+  });
+  after(() => fs.rm(root, { recursive: true, force: true }));
+  const io = (stdin, tty = false) => ({ cwd: repo, env: CLEAN_ENV, stdin: async () => stdin, stdinIsTTY: tty });
+
+  it('every stdin-reading option of the allowed commands (and abbreviations) needs --input -; --batch-all-objects does not', async () => {
+    const readers = [
+      ['name-rev', '--annotate-stdin'], ['name-rev', '--annotate'], ['name-rev', '--stdin'],
+      ['show-ref', '--exclude-existing'], ['show-ref', '--exclude-existing=refs/'], ['show-ref', '--exclude'],
+      ['rev-list', '--std'], ['cat-file', '--batch'], ['cat-file', '--batch-check=%(objectname)'], ['diff-tree', '--stdin']
+    ];
+    for (const g of readers) {
+      assert.ok(readsStdin(g), `${g.join(' ')} reads stdin`);
+      await assert.rejects(run(['--', ...g], io('')), (e) => e instanceof KitExit && e.code === 1 && /--input -/.test(e.message), g.join(' '));
+    }
+    for (const g of [['cat-file', '--batch-all-objects'], ['diff', '--stat'], ['log', '--exit-code'], ['rev-list', '--all']]) {
+      assert.ok(!readsStdin(g), `${g.join(' ')} does not read stdin`);
+    }
+    // From a terminal, with no --input: --batch-all-objects --batch-check reads no stdin and works.
+    const all = await run(['--', 'cat-file', '--batch-all-objects', '--batch-check'], io('', true));
+    assert.equal(all.exit, 0);
+    assert.match(all.stdout, new RegExp(`^${head} commit `, 'm'));
+    const only = await run(['--', 'cat-file', '-p', 'HEAD'], io('', true));
+    assert.equal(only.exit, 0);
+  });
+
+  it('with --input -, name-rev --annotate-stdin and show-ref --exclude-existing answer like plain git', async () => {
+    const n = await run(['--input', '-', '--', 'name-rev', '--annotate-stdin'], io(`${head}\n`));
+    assert.equal(n.exit, 0);
+    assert.equal(n.stdout.trim(), sh(repo, ['name-rev', '--annotate-stdin'], CLEAN_ENV).stdout.trim() || `${head} (main)`);
+    const plain = spawnSync('git', ['show-ref', '--exclude-existing'], { cwd: repo, input: 'refs/heads/nope\nrefs/heads/main\n', encoding: 'utf-8', env: CLEAN_ENV });
+    const x = await run(['--input', '-', '--', 'show-ref', '--exclude-existing'], io('refs/heads/nope\nrefs/heads/main\n'));
+    assert.equal(x.stdout, plain.stdout);
+    assert.match(x.stdout, /refs\/heads\/nope/);
+  });
+
+  it('timeout: bad values are exit 1; --timeout reaches git; a timed-out git is exit 3 with a clear message', async () => {
+    for (const timeout of [0, -1, '5000', Infinity, NaN, 1.5]) {
+      await assert.rejects(safeGit(repo, ['rev-parse', 'HEAD'], { timeout }), (e) => e instanceof KitExit && e.code === 1, String(timeout));
+    }
+    await assert.rejects(run(['--timeout', 'x', '--', 'rev-parse', 'HEAD'], io('')), (e) => e.code === 1);
+    const seen = [];
+    const git = (a, o) => { seen.push(o?.timeout); return defaultGitRunner(a, o); };
+    const r = await run(['--timeout', '7000', '--', 'rev-parse', 'HEAD'], { ...io(''), git });
+    assert.equal(r.exit, 0);
+    assert.ok(seen.length && seen.every(t => t === 7000));
+    if (process.platform !== 'win32') {
+      const fifo = path.join(root, 'fifo-repo');
+      await fs.mkdir(fifo);
+      sh(fifo, ['init', '-q', '.']);
+      await fs.writeFile(path.join(fifo, 'a.txt'), 'x\n');
+      sh(fifo, ['add', 'a.txt']);
+      sh(fifo, ['commit', '-q', '-m', 'i']);
+      await fs.writeFile(path.join(fifo, 'a.txt'), 'y\n');
+      spawnSync('mkfifo', [path.join(fifo, '.gitattributes')]);
+      const t0 = Date.now();
+      await assert.rejects(run(['--timeout', '1500', '--', 'diff', 'HEAD', '--'], { ...io(''), cwd: fifo }),
+        (e) => e instanceof KitExit && e.code === 3 && /took longer than 1500 ms/.test(e.message));
+      assert.ok(Date.now() - t0 < 20000);
     }
   });
 });

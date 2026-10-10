@@ -81,6 +81,10 @@
  *
  * CLI: prints { stdout, stderr, code, exit }; exit status 0 when git succeeded, 3 when git ran and failed (git's own
  * code is `code`), 1 for bad input / broken state, 2 for a policy refusal. --help prints the usage.
+ * Every git child runs with a timeout (the `timeout` option / --timeout <ms>, default 60000 ms): a hostile repo (a FIFO
+ * .gitattributes) cannot hang a read. A timeout, or output over 256 MiB, is exit 3 with a message saying which.
+ * git's stdin is closed unless input is given (--input - in the CLI); the CLI refuses options that read stdin
+ * (STDIN_LONG, any abbreviation) without it, so an empty answer is never mistaken for a real one.
  *
  * Repository state is never cached: every call re-reads the config and copies refs and index, so a changed repo is
  * always seen. The only cache is the resolved absolute git path (per PATH/PATHEXT); clearSafeGitCache() empties it.
@@ -99,8 +103,26 @@ export const verb = 'safe-git';
 /** CLI exit status when git itself ran and failed (its own code is in the printed JSON). */
 export const GIT_FAILED_EXIT = 3;
 export const usage = 'cli.js safe-git [--dir <repo top or git dir>] -- <git args...>   (read-only git on an untrusted repo; '
-  + 'prints { stdout, stderr, code, exit }; git gets no stdin unless --input - is given (needed for --stdin and --batch modes); --dir must be the top of the work tree or the git dir, not a subfolder, '
+  + 'prints { stdout, stderr, code, exit }; git gets no stdin unless --input - is given (options that read stdin, such as --stdin, --batch, --annotate-stdin, --exclude-existing, require it); each git run stops after --timeout <ms> (default 60000, exit 3); --dir must be the top of the work tree or the git dir, not a subfolder, '
   + 'and paths are relative to the repository top; exit 0 git ok, 1 bad input, 2 refused, 3 git failed)';
+
+/**
+ * Long options of the allowed subcommands that make git read stdin. Without --input - the CLI closes git's stdin,
+ * so these would answer from empty input; any spelling git accepts (an abbreviation, a =value form) counts.
+ */
+export const STDIN_LONG = Object.freeze(['stdin', 'annotate-stdin', 'batch', 'batch-check', 'batch-command', 'exclude-existing']);
+
+/** True when `args` (after the subcommand checks) would make git read stdin. */
+export function readsStdin(args) {
+  // cat-file --batch-all-objects lists every object itself: its --batch/--batch-check format reads no stdin.
+  const allObjects = args.includes('--batch-all-objects');
+  return args.some((a) => {
+    if (!a.startsWith('--') || a === '--') return false;
+    const name = a.slice(2).split('=')[0];
+    if (!name || name === 'batch-all-objects') return false;
+    return STDIN_LONG.some((o) => o.startsWith(name) && !(allObjects && (o === 'batch' || o === 'batch-check')));
+  });
+}
 
 export const READ_SUBCOMMANDS = Object.freeze([
   'rev-parse', 'rev-list', 'log', 'show', 'diff', 'diff-tree', 'diff-index', 'diff-files', 'ls-files', 'ls-tree',
@@ -206,6 +228,8 @@ export function defaultGitRunner(args, { cwd, env, input, timeout } = {}) {
     input: hasInput ? input : undefined,
     stdio: [hasInput ? 'pipe' : 'ignore', 'pipe', 'pipe']
   });
+  if (r.error?.code === 'ETIMEDOUT') throw new KitExit(`git ${args[0] ?? ''} took longer than ${timeout} ms and was stopped (raise it with --timeout <ms>)`, GIT_FAILED_EXIT);
+  if (r.error?.code === 'ENOBUFS') throw new KitExit(`git ${args[0] ?? ''} wrote more than 256 MiB of output; narrow the command`, GIT_FAILED_EXIT);
   if (r.error) throw new KitExit(`cannot run git: ${r.error.message}`, 1);
   return { code: r.status ?? 1, stdout: r.stdout || '', stderr: r.stderr || '' };
 }
@@ -581,12 +605,18 @@ async function withScratch(fn) {
   }
 }
 
+function checkTimeout(timeout) {
+  if (timeout === undefined) return INTERNAL_TIMEOUT;
+  if (!Number.isSafeInteger(timeout) || timeout <= 0) throw new KitExit(`safe-git timeout must be a positive integer of milliseconds (got ${timeout})`, 1);
+  return timeout;
+}
+
 function makeCtx(git, env, scratch, timeout, limits) {
   // git config --file still looks for a repository around its cwd: give it an empty folder and a ceiling above it.
   // HOME / XDG_CONFIG_HOME = the empty private scratch/home for every git child (git < 2.32 ignores GIT_CONFIG_GLOBAL).
   const home = path.join(scratch, 'home');
   const cfgEnv = { ...safeGitEnv(env, { home }), GIT_CEILING_DIRECTORIES: path.dirname(scratch) };
-  return { git, env, home, scratch, cfgEnv, timeout: timeout ?? INTERNAL_TIMEOUT, limits: mergeLimits(limits) };
+  return { git, env, home, scratch, cfgEnv, timeout: checkTimeout(timeout), limits: mergeLimits(limits) };
 }
 
 /** inspect + shadow + overrides for one call. Returns { info, shadow, overrides, exec } where exec runs git in the shadow. */
@@ -702,7 +732,6 @@ async function copyIndex(src, dst, budget) {
   await fs.utimes(dst, us(st.atimeNs), us(st.mtimeNs)).catch((err) => { if (err.code !== 'ENOENT') throw err; });
 }
 
-/** Build the shadow git dir inside `scratch` (see the header) and return its path. `limits` as DEFAULT_LIMITS. */
 /** DEFAULT_LIMITS with the caller's overrides; an override must be a positive integer (undefined keeps the default). */
 function mergeLimits(limits) {
   const out = { ...DEFAULT_LIMITS };
@@ -715,6 +744,7 @@ function mergeLimits(limits) {
   return out;
 }
 
+/** Build the shadow git dir inside `scratch` (see the header) and return its path. `limits` as DEFAULT_LIMITS. */
 export async function buildShadow(scratch, info, limits = DEFAULT_LIMITS) {
   const { loc, fmt, core, top } = info;
   const budget = { limits: mergeLimits(limits), used: 0, entries: 0 };
@@ -928,6 +958,7 @@ export async function safeGit(dir, args, { input, git = defaultGitRunner, env = 
 export async function run(args, io = {}) {
   let dir = io.cwd || process.cwd();
   let wantInput = false;
+  let timeoutMs;
   let i = 0;
   for (; i < args.length; i++) {
     const a = args[i];
@@ -938,6 +969,11 @@ export async function run(args, io = {}) {
       if (io.stdinIsTTY) throw new KitExit('--input - needs piped stdin, not a terminal', 1);
       i++; wantInput = true; continue;
     }
+    if (a === '--timeout') {
+      const ms = Number(args[i + 1]);
+      if (!/^[1-9][0-9]*$/.test(String(args[i + 1] ?? ''))) throw new KitExit('--timeout needs a positive whole number of milliseconds', 1);
+      timeoutMs = ms; i++; continue;
+    }
     if (a === '--dir') {
       if (i + 1 >= args.length || args[i + 1] === '--') throw new KitExit('--dir needs a path', 1);
       dir = path.resolve(io.cwd || process.cwd(), args[++i]);
@@ -946,10 +982,10 @@ export async function run(args, io = {}) {
   }
   const gitArgs = args.slice(i);
   if (gitArgs.length === 0) throw new KitExit(`no git command given (usage: ${usage})`, 1);
-  if (!wantInput && gitArgs.some(a => a === '--stdin' || /^--batch/.test(a))) {
-    throw new KitExit(`${gitArgs[0]} with --stdin or --batch reads stdin: pass --input - before \`--\` (usage: ${usage})`, 1);
+  if (!wantInput && readsStdin(gitArgs)) {
+    throw new KitExit(`${gitArgs[0]} with these options reads stdin: pass --input - before \`--\` (usage: ${usage})`, 1);
   }
   const input = wantInput ? await io.stdin() : undefined;
-  const result = await safeGit(dir, gitArgs, { env: io.env || process.env, git: io.git, input });
+  const result = await safeGit(dir, gitArgs, { env: io.env || process.env, git: io.git, input, timeout: timeoutMs });
   return { ...result, exit: result.code === 0 ? 0 : GIT_FAILED_EXIT };
 }
