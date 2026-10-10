@@ -43,3 +43,4 @@ Add a rule the second time something goes wrong.
 - A wired step names the verb, what exit 1 and exit 2 mean, and never reads a non-zero exit as "nothing found".
 - After any change to a command's text, regenerate `.claude/commands/.shortcuts/` from the generator and keep the repo copy equal to it (the command tests check this).
 - Every stream edits only its own workflow blocks in src/plugins/dot-shortcuts.js; a verb change belongs to the `diff-range` stream only.
+- Command text that explains a verb's exit codes names every code the verb can return, in every paragraph that runs it; a sentence that says "any non-zero exit" next to a documented non-failure exit is a docs finding (seen in diff-range rounds 1 and 2).
