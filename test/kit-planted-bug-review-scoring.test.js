@@ -198,11 +198,15 @@ describe('review-score — review round 2 regressions', () => {
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
   it('the fixture sources do not name their planted bugs', async () => {
-    for (const d of ['src/lib/kit/review-fixtures/repos', '.claude/helpers/kit/review-fixtures/repos']) {
-      for (const file of await fs.readdir(d, { recursive: true })) {
-        const full = path.join(d, file);
-        if ((await fs.stat(full)).isFile()) assert.doesNotMatch(await fs.readFile(full, 'utf-8'), /planted|accepted/i, full);
+    let checked = 0;
+    const walk = async (d) => {
+      for (const e of await fs.readdir(d, { withFileTypes: true })) {
+        const full = path.join(d, e.name);
+        if (e.isDirectory()) await walk(full);
+        else if (e.isFile()) { checked++; assert.doesNotMatch(await fs.readFile(full, 'utf-8'), /planted|accepted/i, full); }
       }
-    }
+    };
+    for (const d of ['src/lib/kit/review-fixtures/repos', '.claude/helpers/kit/review-fixtures/repos']) await walk(d);
+    assert.ok(checked >= 6, `only ${checked} fixture files were checked`);
   });
 });
