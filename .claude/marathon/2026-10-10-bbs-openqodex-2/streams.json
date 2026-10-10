@@ -71,7 +71,7 @@
       "name": "caller-floor-disclosure",
       "state": "active",
       "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/caller-floor-disclosure.md",
-      "next": "review round 1",
+      "next": "review round 2",
       "tasks": [],
       "isolation": "../danizee-claude-suite-caller-floor-disclosure",
       "phase": "review",
