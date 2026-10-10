@@ -9,9 +9,9 @@
     },
     {
       "name": "diff-range",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "checking review of fix round 10; then /bc and close",
+      "next": "done; compounded via /bc",
       "tasks": [],
       "isolation": "../danizee-claude-suite-diff-range",
       "phase": "review",
@@ -20,10 +20,14 @@
     },
     {
       "name": "pt",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "worktree, wire CP6 Review and the closing step",
-      "tasks": []
+      "next": "4.1 budget, then build: wire lenses/graph/impact at CP6, callers at Search, closing scrub + push-gate receipt",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-pt",
+      "phase": "build",
+      "skill": "w-plan-tdd-swarm",
+      "base": "690cc365a33b62426942692a00ee8d1c7ac37d3a"
     },
     {
       "name": "bc",
@@ -61,5 +65,14 @@
       "tasks": []
     }
   ],
-  "handoff": null
+  "handoff": {
+    "ts": "2026-10-10T18:17:14.221Z",
+    "trigger": "auto",
+    "branch": "claude/project-thread-vootem",
+    "commit": "690cc36",
+    "uncommitted": 5,
+    "tasks": [],
+    "context_tokens": 383205,
+    "context_pct": 38.3
+  }
 }
