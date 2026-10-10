@@ -66,11 +66,11 @@
       "name": "sweep-commits",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "4.7 fix round 6 (diff check gates the scrub, autoresearch clean-tree precondition), then unit run, round 7",
+      "next": "4.5 round 7 opus checking review, then close",
       "tasks": [],
       "isolation": "../danizee-claude-suite-sweep-commits",
       "base": "6142e8347401b14ce7302dc386c162669ea8d9fe",
-      "phase": "fix"
+      "phase": "review"
     },
     {
       "name": "sweep-foreign-and-logs",
