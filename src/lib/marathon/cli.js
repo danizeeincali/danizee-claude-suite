@@ -684,24 +684,32 @@ function reviewBase(reviews, stream, streamRow, flagBase, needed) {
 
 /**
  * Scrub the project's known secrets (.claude/kit/secrets) from text that is about to go to a model.
- * The kit is optional: its redact module is imported dynamically, so marathon works without it.
- * Returns { text, count, active, note }: active is false when there is no secrets file or no kit.
+ * The kit is optional: its redact module is imported dynamically, so marathon works without it when there is
+ * no secrets file. Once a secrets file is present (in any form, even a dangling symlink) redaction fails CLOSED:
+ * an unreachable or malformed file, or a missing kit, stops the command naming what is missing (never a value).
+ * Returns { text, count, active }: active is false only when there is no secrets file.
  */
 async function redactForModel(projectDir, text) {
-  const secretsFile = path.join(projectDir, '.claude', 'kit', 'secrets');
-  if (!(await fileExists(secretsFile))) return { text, count: 0, note: null, active: false };
+  const rel = path.join('.claude', 'kit', 'secrets');
+  const secretsFile = path.join(projectDir, rel);
+  try { await fs.lstat(secretsFile); } catch (e) {
+    if (e?.code === 'ENOENT') return { text, count: 0, active: false };
+    fail(`review-brief: ${rel} cannot be checked (${e?.code || 'stat failed'}) — refusing to emit an unredacted diff`);
+  }
   let mod;
   try { mod = await import('../kit/redact.js'); } catch (e) {
-    if (e?.code !== 'ERR_MODULE_NOT_FOUND' || !String(e.message).includes('redact.js')) throw e;
-    return { text, count: 0, active: false, note: 'Secret redaction skipped: .claude/kit/secrets exists but the kit plugin is not installed.' };
+    fail(`review-brief: ${rel} exists but the kit redact module (.claude/helpers/kit/redact.js) cannot be loaded (${e?.code || 'import failed'}) — install the kit plugin or remove the secrets file; refusing to emit an unredacted diff`);
   }
-  const secrets = mod.parseSecretsFile(await fs.readFile(secretsFile, 'utf-8'));
+  let content;
+  try { content = await fs.readFile(secretsFile, 'utf-8'); } catch (e) {
+    fail(`review-brief: cannot read ${rel} (${e?.code || 'read failed'}) — refusing to emit an unredacted diff`);
+  }
+  let secrets;
+  try { secrets = mod.parseSecretsFile(content); } catch (e) {
+    fail(`review-brief: ${rel} is malformed (${e?.message || 'parse failed'})`);
+  }
   const r = mod.redactSecrets(text, secrets, { keepLines: true });
-  return { text: r.text, count: r.replaced, note: null, active: true };
-}
-
-async function fileExists(p) {
-  try { await fs.access(p); return true; } catch { return false; }
+  return { text: r.text, count: r.replaced, active: true };
 }
 
 async function verbReviewBrief(projectDir, flags) {
@@ -743,7 +751,7 @@ async function verbReviewBrief(projectDir, flags) {
   const second = await redactForModel(projectDir, diff);
   diff = second.text;
   const redacted = first.count + second.count;
-  const redactNote = first.note || (first.active ? `Redacted ${redacted} secret value${redacted === 1 ? '' : 's'} from the diff (.claude/kit/secrets).` : null);
+  const redactNote = (first.active ? `Redacted ${redacted} secret value${redacted === 1 ? '' : 's'} from the diff (.claude/kit/secrets).` : null);
   const brief = renderBrief({
     stream, round, angle, severityMd, diff,
     tolerance: g.finishLine.tolerance || {}, categories: g.config.review.categories

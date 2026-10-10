@@ -6,7 +6,7 @@ import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
-import { redactSecrets, fingerprintSecrets, redactByFingerprint, parseSecretsFile, loadProjectSecrets, run, verb, MARKER } from '../src/lib/kit/redact.js';
+import { redactSecrets, fingerprintSecrets, redactByFingerprint, parseSecretsFile, loadProjectSecrets, secretsRoots, run, verb, MARKER } from '../src/lib/kit/redact.js';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
 import { DaniZeeSuiteInstaller } from '../src/installer.js';
 
@@ -162,6 +162,20 @@ describe('run (CLI contract)', () => {
     await fs.writeFile(path.join(dir, '.claude', 'kit', 'secrets'), 'passw0rd-xyz\n');
     assert.deepEqual(await loadProjectSecrets(dir), ['passw0rd-xyz']);
   }));
+  it('a dangling default secrets symlink is an error, not "nothing to redact" (fail closed, review r2)', () => tmp(async dir => {
+    await repo(dir);
+    await fs.mkdir(path.join(dir, '.claude', 'kit'), { recursive: true });
+    await fs.symlink(path.join(dir, 'not-mounted', 'secrets'), path.join(dir, '.claude', 'kit', 'secrets'));
+    await assert.rejects(run([], io(path.join(dir, 'sub'), 'keep passw0rd-xyz')), e => e instanceof KitExit && e.code === 1 && /cannot read secrets file .*\.claude\/kit\/secrets: ENOENT/.test(e.message));
+    await assert.rejects(loadProjectSecrets(dir), e => e instanceof KitExit && /ENOENT/.test(e.message));
+  }));
+  it('a git rev-parse failure is diagnosed by git\'s own reason, "not a repository" only when git says so (review r2)', () => {
+    const fake = (stderr) => () => ({ status: 128, stdout: '', stderr });
+    assert.throws(() => secretsRoots('/x', fake('fatal: not a git repository (or any of the parent directories): .git\n')), /not inside a git repository/);
+    assert.throws(() => secretsRoots('/x', fake('error: unknown option `path-format=absolute\'\nusage: git rev-parse\n')),
+      e => e instanceof KitExit && /git rev-parse failed \(error: unknown option `path-format=absolute'\)/.test(e.message) && !/not inside/.test(e.message));
+    assert.throws(() => secretsRoots('/x', fake('')), /git rev-parse failed \(exit 128\)/);
+  });
   it('refuses unknown flags, a missing explicit file, conflicting modes and a non-repo default; never echoes values', () => tmp(async dir => {
     await repo(dir);
     await assert.rejects(run(['--bogus'], io(dir)), /unknown flag --bogus/);

@@ -126,16 +126,26 @@ export function parseSecretsFile(content) {
 export function secretsRoots(cwd, spawn = spawnSync) {
   const r = spawn('git', ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir'], { cwd, encoding: 'utf-8' });
   if (r.error) throw new KitExit(`cannot run git: ${r.error.message}`, 1);
-  if (r.status !== 0) throw new KitExit('not inside a git repository, so the default secrets file cannot be located; pass --secrets-file', 1);
+  if (r.status !== 0) {
+    const err = String(r.stderr || '');
+    if (/not a git repository/i.test(err)) throw new KitExit('not inside a git repository, so the default secrets file cannot be located; pass --secrets-file', 1);
+    const why = (err.split('\n').find(l => l.trim()) || `exit ${r.status}`).trim().slice(0, 200);
+    throw new KitExit(`git rev-parse failed (${why}), so the default secrets file cannot be located; pass --secrets-file`, 1);
+  }
   const [top, common] = r.stdout.split('\n').map(s => s.trim());
   const roots = [top];
   if (common && path.basename(common) === '.git') { const main = path.dirname(common); if (main !== top) roots.push(main); }
   return roots;
 }
 
+async function pathPresent(file) {
+  try { await fs.lstat(file); return true; } catch (e) { return e.code !== 'ENOENT'; }
+}
+
 async function readFileOr(file, what, optional) {
   try { return await fs.readFile(file, 'utf-8'); } catch (e) {
-    if (optional && e.code === 'ENOENT') return null;
+    // Optional only when nothing is at the path: a dangling symlink (or any other entry) is a broken file, not "no file".
+    if (optional && e.code === 'ENOENT' && !(await pathPresent(file))) return null;
     throw new KitExit(`cannot read ${what} ${file}: ${e.code || 'read failed'}`, 1);
   }
 }

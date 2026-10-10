@@ -70,13 +70,48 @@ describe('review-brief redacts the diff', () => {
     assert.doesNotMatch(r.stdout, /Redacted \d+ secret/);
   });
 
-  it('without the kit but with a secrets file: the brief says the redaction was skipped', async () => {
+  it('without the kit but with a secrets file: the brief is refused (fail closed, review r2)', async () => {
     const p = await project({ withKit: false }); dirs.push(p.dir);
     await fs.mkdir(path.join(p.dir, '.claude', 'kit'), { recursive: true });
     await fs.writeFile(path.join(p.dir, '.claude', 'kit', 'secrets'), `${SECRET}\n`);
     const r = brief(p);
-    assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /redaction skipped/i);
+    assert.equal(r.status, 1);
+    assert.equal(r.stdout, '');
+    assert.match(r.stderr, /kit redact module/);
+    assert.ok(!(r.stdout + r.stderr).includes(SECRET));
+  });
+
+  it('a dangling secrets symlink stops the brief naming the file (fail closed, review r2)', async () => {
+    const p = await project({ withKit: true }); dirs.push(p.dir);
+    await fs.mkdir(path.join(p.dir, '.claude', 'kit'), { recursive: true });
+    await fs.symlink(path.join(p.dir, 'not-mounted', 'secrets'), path.join(p.dir, '.claude', 'kit', 'secrets'));
+    const r = brief(p);
+    assert.equal(r.status, 1);
+    assert.equal(r.stdout, '');
+    assert.match(r.stderr, /cannot read \.claude\/kit\/secrets \(ENOENT\)/);
+  });
+
+  it('an unreadable secrets file stops the brief without printing values (fail closed, review r2)', { skip: process.getuid?.() === 0 ? 'root can read any file' : false }, async () => {
+    const p = await project({ withKit: true }); dirs.push(p.dir);
+    await fs.mkdir(path.join(p.dir, '.claude', 'kit'), { recursive: true });
+    const f = path.join(p.dir, '.claude', 'kit', 'secrets');
+    await fs.writeFile(f, `${SECRET}\n`);
+    await fs.chmod(f, 0o000);
+    const r = brief(p);
+    await fs.chmod(f, 0o600);
+    assert.equal(r.status, 1);
+    assert.equal(r.stdout, '');
+    assert.match(r.stderr, /cannot read \.claude\/kit\/secrets \(EACCES\)/);
+    assert.ok(!r.stderr.includes(SECRET));
+  });
+
+  it('a secrets path that is not a readable file (a directory) stops the brief (fail closed, review r2)', async () => {
+    const p = await project({ withKit: true }); dirs.push(p.dir);
+    await fs.mkdir(path.join(p.dir, '.claude', 'kit', 'secrets'), { recursive: true });
+    const r = brief(p);
+    assert.equal(r.status, 1);
+    assert.equal(r.stdout, '');
+    assert.match(r.stderr, /cannot read \.claude\/kit\/secrets \(EISDIR\)/);
   });
 
   it('a broken secrets file stops the brief (fail closed) without printing values', async () => {
