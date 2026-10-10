@@ -42,3 +42,4 @@
 {"stream":"sweep-commits","counts":{"high":0,"medium":1,"low":2},"angle":"accessibility","tokens":22000,"pass":true,"round":5,"commit":"db7f626","id":"17c27d99-a416-4fcf-a840-519ff66f6584","ts":"2026-10-10T22:57:35.387Z"}
 {"stream":"sweep-commits","counts":{"high":0,"medium":2,"low":0},"angle":"facts and content","tokens":30000,"pass":true,"round":6,"commit":"d6fa12d","id":"4ad15ef8-610f-4d91-9ec5-ffcd60e278c2","ts":"2026-10-10T23:03:05.867Z"}
 {"stream":"sweep-commits","counts":{"high":0,"medium":0,"low":1},"angle":"performance and memory","tokens":30000,"pass":true,"round":7,"commit":"38552ec","id":"406e5e8e-c927-4d1a-9276-1ae99c094702","ts":"2026-10-10T23:10:43.658Z"}
+{"stream":"sweep-foreign-and-logs","counts":{"high":1,"medium":1,"low":3},"angle":"one input method at a time","tokens":80000,"pass":false,"round":1,"commit":"d67fe41","id":"39ad9130-8ef5-41bf-bbdf-d68a30c03746","ts":"2026-10-10T23:38:05.500Z"}

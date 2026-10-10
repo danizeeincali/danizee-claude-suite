@@ -76,11 +76,11 @@
       "name": "sweep-foreign-and-logs",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "4.5 round 1 opus review",
+      "next": "4.7 fix round 1 (high: redact before JSON encoding; port shipped w-ralph-batch), then unit run, round 2",
       "tasks": [],
       "isolation": "../danizee-claude-suite-sweep-foreign-and-logs",
       "base": "38552ec51f19e978f3b95bc47716950676a33fa9",
-      "phase": "review"
+      "phase": "fix"
     }
   ],
   "handoff": {
