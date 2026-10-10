@@ -262,23 +262,61 @@ describe('/w-bbs command — kit wiring (safe-git, redact, scrub)', () => {
     assert.match(s, /1 bad input \(stdout is empty, the reason is a `kit:` line on stderr/);
     assert.match(s, /2 refused \(stdout is empty, the reason is a `kit: refused:` line on stderr/);
     assert.match(s, /only exit 0 and a git-ran exit 3 print that JSON, a timeout, overflow or kill prints only a `kit:` stderr line/);
-    assert.match(s, /3 git failed or timed out \(when git ran and failed it prints `\{ stdout, stderr, code, exit \}`; when git timed out, printed over 256 MiB or was killed by a signal it prints nothing on stdout, only a `kit:` line on stderr, and `--timeout <ms>` raises the 60000 ms default/);
+    assert.match(s, /3 git failed or timed out \(when git ran and failed it prints `\{ stdout, stderr, code, exit \}` with a non-zero `code`; when git timed out, printed over 256 MiB or was killed by a signal it prints nothing on stdout, only a `kit:` line on stderr, and `--timeout <ms>` raises the 60000 ms default/);
     assert.doesNotMatch(s, /only exits 0 and 3 print that JSON/);
     const g = SAFE_GIT_LINES.join('\n');
     assert.doesNotMatch(g, /^It prints `\{ stdout, stderr, code, exit \}`/m);
     assert.match(g, /Read the process exit code, not a field of the output: exit 0 and an exit 3 where git ran and failed print `\{ stdout, stderr, code, exit \}`; exits 1 and 2, and an exit 3 from a timeout, output over 256 MiB or a signal kill, print nothing on stdout, only a `kit:` \(exits 1 and 3\) or `kit: refused:` \(exit 2\) line on stderr/);
-    assert.match(g, /`--timeout <ms>` raises the 60000 ms default/);
+    assert.match(g, /3 git itself failed or timed out; `--timeout <ms>` raises the 60000 ms default/);
     assert.match(g, /1 bad input[^;]*: the reason is the `kit:` line on stderr; fix the call and retry once/);
     assert.match(g, /2 refused[^;]*: the reason is the `kit: refused:` line on stderr; do not retry, name it in evidence/);
   });
 
-  it('r3: the clone is depth 1, so an exit 3 from history beyond HEAD is a wrong call, not incomplete (CP4 and SAFE_GIT_LINES)', () => {
+  it('r5: exit 3 is handled in one place, with the same wording in CP4 and SAFE_GIT_LINES', () => {
     const s = section('### ⛔ CHECKPOINT 4', '3. **Show the verdict table');
     const g = SAFE_GIT_LINES.join('\n');
     for (const t of [s, g]) {
-      assert.match(t, /The clone is depth 1 \(a single commit\), so only HEAD and its tree are readable/);
-      assert.match(t, /beyond HEAD \(`HEAD~1`, `log` ranges, `rev-list` ranges, `diff` against an older commit\) means the call was wrong, so fix it and retry once; it does not make the source `?incomplete`?\./);
+      assert.match(t, /Exit 3 is handled one way: a timeout, overflow or kill \(no JSON, a `kit:` line on stderr\) returns `incomplete`; git ran and failed \(JSON with a non-zero `code`\) on a wrong call \(a missing path, history beyond HEAD on the depth-1 clone\) means fix the call and retry once, and only a second failure on a correct call returns `incomplete`\./);
+      assert.match(t, /The clone is depth 1 \(a single commit\), so only HEAD and its tree are readable: asking for history beyond HEAD \(`HEAD~1`, `log` ranges, `rev-list` ranges, `diff` against an older commit\) is a wrong call\./);
+      assert.doesNotMatch(t, /it does not make the source `?incomplete`?/);
     }
+    assert.doesNotMatch(s, /raises the 60000 ms default: return `incomplete`/);
+    assert.equal((s.match(/return(s)? `incomplete`/g) || []).length >= 2, true);
+  });
+
+  it('r5: the clone top is defined: the brief prints it for a repo source only, and CP2, CP4 and SAFE_GIT_LINES say what it is', () => {
+    const files = { root: '.claude/bbs/runs/r1/fetched', files: [{ path: 'repo/a.js', size: 1 }], total: 1 };
+    const r = inventoryBrief({ source: { type: 'repo', ref: 'x', identity: 'y' }, files, maxPowers: 12 });
+    const line = r.split('\n').find(l => l.startsWith('Clone top (for safe-git --dir): '));
+    assert.ok(line, 'clone top line');
+    assert.ok(line.endsWith('fetched/repo'));
+    assert.equal(line, 'Clone top (for safe-git --dir): .claude/bbs/runs/r1/fetched/repo');
+    assert.ok(r.indexOf('Root: .claude/bbs/runs/r1/fetched') < r.indexOf(line));
+    for (const type of ['url', 'local', 'paste']) {
+      const b = inventoryBrief({ source: { type, ref: 'x', identity: 'y' }, files, maxPowers: 12 });
+      assert.doesNotMatch(b, /Clone top/, type);
+    }
+    assert.match(SAFE_GIT_LINES.join('\n'), /`--dir` takes the clone top: the `Clone top` path the inventory brief prints \(`\.claude\/bbs\/runs\/<run-id>\/fetched\/repo`, the clone itself, not `fetched`\), and paths in git args are relative to it/);
+    const def = /`<clone top>` is `\.claude\/bbs\/runs\/<run-id>\/fetched\/repo`|`<clone top>` is `\.claude\/bbs\/runs\/<run-id>\/fetched\/repo`/;
+    for (const [a, z] of [['### ⛔ CHECKPOINT 2', '### ⛔ CHECKPOINT 3'], ['### ⛔ CHECKPOINT 4', '3. **Show the verdict table']]) {
+      const t = section(a, z);
+      assert.match(t, def, a);
+      assert.match(t, /paths in git args are relative to it/, a);
+      assert.ok(t.search(def) < t.indexOf('safe-git --dir <clone top>') + 400 && t.indexOf('<clone top>') <= t.search(def) + 1000, a);
+    }
+  });
+
+  it('r5: CP2 limits the safe-git sentence to repository sources', () => {
+    const t = section('### ⛔ CHECKPOINT 2', '### ⛔ CHECKPOINT 3');
+    assert.match(t, /For a repository source, tell each helper that every git read of the clone under `fetched\/` goes through `node \.claude\/helpers\/kit\/cli\.js safe-git --dir <clone top> -- <git args>` \(the brief says so\)/);
+    assert.doesNotMatch(t, /Spawn inventory helpers[^\n]*\. Tell each helper that every git read/);
+  });
+
+  it('r5: CP6 tells the reader to replace <id> in the run-as-is block', () => {
+    const t = section('### ⛔ CHECKPOINT 6', '## `--resume');
+    const i = t.indexOf("Replace every `<id>` in the block with this run's id (the `<run-id>` from intake) before running it.");
+    assert.ok(i > 0);
+    assert.ok(i < t.indexOf('```bash'));
   });
 
   it('r3: safe-git --timeout 1 exits 3 with empty stdout and a kit: line (no JSON)', async () => {
