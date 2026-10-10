@@ -53,21 +53,24 @@
     },
     {
       "name": "bbs",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "4.5 round 7 opus checking review, then close",
+      "next": "/bc write-up",
       "tasks": [],
       "isolation": "../danizee-claude-suite-bbs",
-      "phase": "review",
+      "phase": "done",
       "skill": "w-plan-tdd-swarm",
       "base": "c8ddc24a976fc488ae86521d82073d04724c5214"
     },
     {
       "name": "sweep-commits",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "worktree, wire the eight commit-and-push workflows",
-      "tasks": []
+      "next": "4.1 budget, then build: lenses/impact, scrub before commits, receipt at close, check before pushes in 8 workflows",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-sweep-commits",
+      "base": "6142e8347401b14ce7302dc386c162669ea8d9fe",
+      "phase": "build"
     },
     {
       "name": "sweep-foreign-and-logs",
