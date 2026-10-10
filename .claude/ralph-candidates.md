@@ -1315,3 +1315,50 @@ STATUS: PASS|FAIL
 2. Test: RC-D033 returns STATUS: PASS
 
 **Status**: ready (only runs if RC-D033 fails)
+
+---
+
+### RC-D034: The per-stream gate stops reading run-wide lines as failures
+
+**Auto-Generated From**: /w-background-compound on 2026-10-09
+**Type**: Diagnostic
+**Verifies**: `gate --stream` reports `scope: run` finish-line lines as `run_scoped` and does not count them (marathon 2026-10-07-bbs, RC-D010 follow-through)
+
+**Test Command**:
+```bash
+node --test test/marathon-gate-scope.test.js; # expect green
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: PER_STREAM_GATE_RUN_SCOPE
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F034 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+---
+
+### RC-F034: Re-apply the finish-line scope change
+
+**Auto-Generated From**: /w-background-compound on 2026-10-09
+**Type**: Conditional Fix
+**Triggered By**: RC-D034 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// gate.js: SCOPES = ['run','stream']; with a stream, a counted scope:'run' line -> status 'run_scoped', filtered out of the counted set; result.runScoped lists ids
+```
+
+**File**: src/lib/marathon/gate.js (then sync .claude/helpers/marathon/gate.js)
+
+**Completion Tests**:
+1. Pattern: `run_scoped` and `runScoped` present in gate.js and the helper copy
+2. Test: RC-D034 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D034 fails)
