@@ -35,11 +35,15 @@
  *   its cap, so a sparse file (`truncate -s 1T`, no disk in the repo) cannot fill the temp disk. Defaults, overridable
  *   with the `limits` option: index and each sharedindex 256 MiB, packed-refs 64 MiB, any other file 64 MiB, 512 MiB
  *   in all per call, 100000 entries walked under refs/ (and, separately, under objects/ by the symlink check, which
- *   counts every loose object). Over a limit the call is refused (KitExit 2) naming the file or folder.
+ *   counts every loose object), 1000000 work-tree entries walked by the nested .git check (below). Over a limit the call is refused (KitExit 2) naming the file or folder.
  *   INDEX PATHS. git does not re-check index entries it reads from disk, so before anything reads the work tree the
  *   shadow's index copy is listed (`ls-files -z --stage`) and an entry that is absolute or has an empty, '.', '..' or
  *   git-dir component ('.git' in any case, with trailing dots/spaces, NTFS/HFS aliases such as git~1) is refused
  *   (KitExit 2): an entry named ../outside/sec would make diff and status print a file outside the repository.
+ *   NESTED .git. Before a command that opens work-tree folders (all but rev-parse, rev-list, log, show, diff-tree,
+ *   ls-tree, cat-file, show-ref, for-each-ref, merge-base, name-rev and describe without --dirty), the work tree is
+ *   walked and a sub/.git gitdir: file, symlink or commondir naming a network path is refused (KitExit 2): status,
+ *   ls-files -o, diff and diff-files open it for untracked folders and submodules (checkNestedGitLinks).
  *   No hooks dir, no config.worktree, no includes, no remotes. Repository discovery is done here on the file system
  *   (.git dir, gitdir: file, commondir file, bare layout), so git never opens the repo with its own config.
  *
@@ -149,6 +153,8 @@ export const READ_SUBCOMMANDS = Object.freeze([
   'rev-parse', 'rev-list', 'log', 'show', 'diff', 'diff-tree', 'diff-index', 'diff-files', 'ls-files', 'ls-tree',
   'cat-file', 'status', 'show-ref', 'for-each-ref', 'merge-base', 'name-rev', 'describe'
 ]);
+/** Subcommands that never open work-tree folders (describe only without --dirty); every other one is checked by checkNestedGitLinks. */
+const NO_WORK_TREE = new Set(['rev-parse', 'rev-list', 'log', 'show', 'diff-tree', 'ls-tree', 'cat-file', 'show-ref', 'for-each-ref', 'merge-base', 'name-rev', 'describe']);
 const DIFFING = new Set(['log', 'show', 'diff', 'diff-tree', 'diff-index', 'diff-files']);
 const DRIVER_NAME = /^[A-Za-z0-9._-]+$/;
 const MAX_ATTR_BYTES = 4 * 1024 * 1024;
@@ -156,7 +162,7 @@ const MAX_SMALL_FILE = 64 * 1024;
 const INTERNAL_TIMEOUT = 60000;
 const MiB = 1024 * 1024;
 /** Copy limits for the shadow (see COPY LIMITS in the header); each can be overridden through the `limits` option. */
-export const DEFAULT_LIMITS = Object.freeze({ index: 256 * MiB, packedRefs: 64 * MiB, file: 64 * MiB, total: 512 * MiB, entries: 100000 });
+export const DEFAULT_LIMITS = Object.freeze({ index: 256 * MiB, packedRefs: 64 * MiB, file: 64 * MiB, total: 512 * MiB, entries: 100000, workTreeEntries: 1000000 });
 
 const refuse = (msg) => new KitExit(msg, 2);
 
@@ -636,6 +642,58 @@ async function refuseNetworkLink(target, from) {
 }
 
 /**
+ * Refuse (KitExit 2) when a folder under the work tree carries a `.git` that would send git to a network path: a
+ * gitdir: file or a symlink naming //host or \\host, or a nested git dir (or gitdir: target) whose commondir does.
+ * status, ls-files -o, diff and diff-files open `<sub>/.git` for untracked folders and populated submodules (even with
+ * diff.ignoreSubmodules=all), and on Windows such a path is a UNC share git would connect to, sending the user's
+ * credentials. A clone cannot carry these files; an unpacked or copied repository can. The walk does not follow
+ * symlinks, skips the repository's own git dir, does not descend into nested git dirs, fails closed on an unlistable
+ * folder, and is capped by limits.workTreeEntries.
+ */
+async function checkNestedGitLinks(top, limits) {
+  const net = (p, what) => refuse(`${p} ${what} a network path; refusing to read this repository (git would open it for a folder in the work tree)`);
+  const checkCommonDir = async (dir) => {
+    const file = path.join(dir, 'commondir');
+    const st = await lstatOrNull(file);
+    if (st?.isSymbolicLink()) { if (isNetworkPath(await fs.readlink(file).catch(() => ''))) throw net(file, 'links to'); return; }
+    if (!st?.isFile()) return;
+    const cd = await readSmall(file);
+    if (cd && (isNetworkPath(cd) || isNetworkPath(path.resolve(dir, cd.trim())))) throw net(file, 'names');
+    if (cd) await refuseNetworkLink(path.resolve(dir, cd.trim()), file);
+  };
+  const checkDotGit = async (dotgit, parent) => {
+    let file = dotgit;
+    let st = await lstatOrNull(dotgit);
+    if (!st) return;
+    if (st.isSymbolicLink()) {
+      if (isNetworkPath(await fs.readlink(dotgit).catch(() => ''))) throw net(dotgit, 'links to');
+      // git follows the link: check what it leads to (a git dir's commondir, a gitdir: file) like a plain .git
+      file = await fs.realpath(dotgit).catch(() => null);
+      st = file && await lstatOrNull(file);
+      if (!st) return;
+    }
+    if (st.isDirectory()) return checkCommonDir(file);
+    if (!st.isFile()) return;
+    const m = /^gitdir: (.+?)\s*$/m.exec((await readSmall(file)) || '');
+    if (!m) return;
+    const target = path.resolve(parent, m[1]);
+    if (isNetworkPath(m[1]) || isNetworkPath(target)) throw net(dotgit, 'names');
+    await refuseNetworkLink(target, dotgit);
+    if ((await lstatOrNull(target))?.isDirectory()) await checkCommonDir(target);
+  };
+  let seen = 0;
+  const count = () => { if (++seen > limits.workTreeEntries) throw refuse(`more than ${limits.workTreeEntries} entries in the work tree ${top}; refusing to check them for nested .git links — raise safeGit's limits.workTreeEntries for a repository trusted to be that large`); };
+  const walk = (dir) => eachEntry(dir, count, async (e) => {
+    const p = path.join(dir, e.name);
+    // '.GIT' too: on a case-insensitive file system git's open of sub/.git finds it
+    if (e.name.toLowerCase() === '.git' && dir !== top) await checkDotGit(p, dir);
+    if (e.name === '.git') return; // never descend into a git dir (the repository's own, or a nested one)
+    if (e.isDirectory()) await walk(p);
+  });
+  await walk(top);
+}
+
+/**
  * Entries of `dir`, one at a time (fs.opendir), so a folder with millions of entries is refused at the cap without
  * loading it whole. `count()` is called per entry and may throw. ENOENT/ENOTDIR → no entries; any other error →
  * refuse (fail closed: git may open a file by name in a folder it cannot list).
@@ -710,8 +768,9 @@ function makeCtx(git, env, scratch, timeout, limits) {
 }
 
 /** inspect + shadow + overrides for one call. Returns { info, shadow, overrides, exec } where exec runs git in the shadow. */
-async function prepare(dir, ctx) {
+async function prepare(dir, ctx, { walksWorkTree = true } = {}) {
   const info = await inspect(dir, ctx);
+  if (info.top && walksWorkTree) await checkNestedGitLinks(info.top, ctx.limits);
   const shadow = await buildShadow(ctx.scratch, info, ctx.limits);
   const genv = { ...safeGitEnv(ctx.env, { home: ctx.home }), GIT_DIR: shadow, GIT_OBJECT_DIRECTORY: path.join(info.loc.commonDir, 'objects') };
   if (info.top) genv.GIT_WORK_TREE = info.top;
@@ -734,7 +793,7 @@ async function prepare(dir, ctx) {
  * unsupported repository format, KitExit 1 when git cannot answer. Computed afresh on every call.
  */
 export async function safeGitConfig(dir, { git = defaultGitRunner, env = process.env, timeout, limits } = {}) {
-  return withScratch(async (scratch) => (await prepare(dir, makeCtx(git, env, scratch, timeout, limits))).overrides);
+  return withScratch(async (scratch) => (await prepare(dir, makeCtx(git, env, scratch, timeout, limits), { walksWorkTree: false })).overrides);
 }
 
 // ---------------------------------------------------------------- the shadow git dir
@@ -1033,7 +1092,8 @@ export async function safeGit(dir, args, { input, git = defaultGitRunner, env = 
   const argv = checkReadArgs(args);
   const dirtyPlan = describeDirtyPlan(argv);
   return withScratch(async (scratch) => {
-    const { exec, info } = await prepare(dir, makeCtx(git, env, scratch, timeout, limits));
+    const walksWorkTree = !NO_WORK_TREE.has(argv[0]) || Boolean(dirtyPlan);
+    const { exec, info } = await prepare(dir, makeCtx(git, env, scratch, timeout, limits), { walksWorkTree });
     const position = revParsePosition(argv, info);
     if (position) return position;
     // exec applies ctx.timeout (the caller's, or INTERNAL_TIMEOUT): never pass `timeout` here, since an undefined

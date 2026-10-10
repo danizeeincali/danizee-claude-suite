@@ -1082,7 +1082,7 @@ describe('safe-git — review round 3 regressions (copy limits, symlinked refs, 
     sh(r.dir, ['pack-refs', '--all']);
     const packed = path.join(r.real, '.git', 'packed-refs');
     await fs.appendFile(packed, `# ${'x'.repeat(2 * 1024 * 1024)}\n`);
-    assert.deepEqual(DEFAULT_LIMITS, { index: 256 * 1024 * 1024, packedRefs: 64 * 1024 * 1024, file: 64 * 1024 * 1024, total: 512 * 1024 * 1024, entries: 100000 });
+    assert.deepEqual(DEFAULT_LIMITS, { index: 256 * 1024 * 1024, packedRefs: 64 * 1024 * 1024, file: 64 * 1024 * 1024, total: 512 * 1024 * 1024, entries: 100000, workTreeEntries: 1000000 });
     await assert.rejects(() => safeGit(r.dir, ['rev-parse', 'HEAD'], { limits: { packedRefs: 1024 * 1024 } }),
       e => e instanceof KitExit && e.code === 2 && e.message.includes(packed) && /limit/.test(e.message));
     await assert.rejects(() => safeGit(r.dir, ['rev-parse', 'HEAD'], { limits: { total: 1024 * 1024 } }),
@@ -2242,5 +2242,87 @@ describe('safe-git — review round 17 regressions', () => {
     const safe = await safeGit(r, ['log', '--format=%s']);
     assert.equal(safe.stdout, plain);
     assert.doesNotMatch(safe.stdout, /c2/);
+  });
+});
+
+describe('safe-git — review round 18 regressions', () => {
+  let root;
+  before(async () => { root = await fs.mkdtemp(path.join(os.tmpdir(), 'safe-git-r18-')); });
+  after(async () => { await fs.rm(root, { recursive: true, force: true }); });
+  const mkRepo = async (name) => {
+    const d = path.join(root, name);
+    await fs.mkdir(d);
+    sh(d, ['init', '-q', '-b', 'main', '.']);
+    await fs.writeFile(path.join(d, 'a.txt'), `${name}\n`);
+    sh(d, ['add', 'a.txt']);
+    sh(d, ['commit', '-q', '-m', name]);
+    return d;
+  };
+  const refused = (e) => e instanceof KitExit && e.code === 2 && /network path/.test(e.message);
+  const WALKING = [['status', '--porcelain'], ['ls-files', '-o'], ['diff-files'], ['diff'], ['diff-index', 'HEAD'], ['describe', '--always', '--dirty']];
+
+  it('an untracked sub/.git file naming a network path is refused by every work-tree command', async () => {
+    const r = await mkRepo('untracked');
+    await fs.mkdir(path.join(r, 'sub'));
+    await fs.writeFile(path.join(r, 'sub', '.git'), 'gitdir: //evilhost/share/x\n');
+    for (const a of WALKING) await assert.rejects(safeGit(r, a), refused, a.join(' '));
+  });
+
+  it('a submodule folder whose .git names a backslash network path is refused, even under ignoreSubmodules', async () => {
+    const r = await mkRepo('submod');
+    const head = sh(r, ['rev-parse', 'HEAD']).stdout.trim();
+    sh(r, ['update-index', '--add', '--cacheinfo', `160000,${head},mod`]);
+    await fs.mkdir(path.join(r, 'mod', 'deep'), { recursive: true });
+    await fs.writeFile(path.join(r, 'mod', '.git'), 'gitdir: \\\\evilhost\\share\\x\n');
+    await assert.rejects(safeGit(r, ['diff-files']), refused); // diff.ignoreSubmodules=all is always set
+    await assert.rejects(safeGit(r, ['status', '--porcelain']), refused);
+  });
+
+  it('a nested .git symlink to a network path, or a nested commondir naming one, is refused', { skip: process.platform === 'win32' }, async () => {
+    const r1 = await mkRepo('nestlink');
+    await fs.mkdir(path.join(r1, 'a', 'b'), { recursive: true });
+    await fs.symlink('//evilhost/share/x', path.join(r1, 'a', 'b', '.git'));
+    await assert.rejects(safeGit(r1, ['status', '--porcelain']), refused);
+    const r2 = await mkRepo('nestcommon');
+    await fs.mkdir(path.join(r2, 'n', '.git'), { recursive: true });
+    await fs.writeFile(path.join(r2, 'n', '.git', 'commondir'), '//evilhost/share/x\n');
+    await assert.rejects(safeGit(r2, ['ls-files', '-o']), refused);
+    const r3 = await mkRepo('nesttarget');
+    const gd = path.join(root, 'nesttarget-gd');
+    await fs.mkdir(gd);
+    await fs.writeFile(path.join(gd, 'commondir'), '\\\\evilhost\\share\n');
+    await fs.mkdir(path.join(r3, 'w'));
+    await fs.writeFile(path.join(r3, 'w', '.git'), `gitdir: ${gd}\n`);
+    await assert.rejects(safeGit(r3, ['status', '--porcelain']), refused);
+    const r4 = await mkRepo('nestviasymlink'); // a local symlink to a git dir whose commondir names a share
+    await fs.mkdir(path.join(r4, 'v'));
+    await fs.symlink(gd, path.join(r4, 'v', '.git'));
+    await assert.rejects(safeGit(r4, ['status', '--porcelain']), refused);
+    const r5 = await mkRepo('upper'); // .GIT: what sub/.git opens on a case-insensitive file system
+    await fs.mkdir(path.join(r5, 'u'));
+    await fs.writeFile(path.join(r5, 'u', '.GIT'), 'gitdir: //evilhost/share/x\n');
+    await assert.rejects(safeGit(r5, ['status', '--porcelain']), refused);
+  });
+
+  it('commands that never open work-tree folders still run, and a local nested repo is fine', async () => {
+    const r = await mkRepo('history');
+    await fs.mkdir(path.join(r, 'sub'));
+    await fs.writeFile(path.join(r, 'sub', '.git'), 'gitdir: //evilhost/share/x\n');
+    for (const a of [['rev-parse', 'HEAD'], ['log', '--oneline'], ['show', '--stat', 'HEAD'], ['describe', '--always'], ['ls-tree', 'HEAD']]) {
+      assert.equal((await safeGit(r, a)).code, 0, a.join(' '));
+    }
+    const ok = await mkRepo('localnest');
+    await mkRepo(path.join('localnest', 'inner'));
+    const st = await safeGit(ok, ['status', '--porcelain']);
+    assert.equal(st.code, 0);
+    assert.match(st.stdout, /inner\//);
+  });
+
+  it('the work-tree walk is capped by limits.workTreeEntries and skips the repository git dir', async () => {
+    const r = await mkRepo('wide');
+    for (let i = 0; i < 20; i++) await fs.writeFile(path.join(r, `f${i}`), '');
+    await assert.rejects(safeGit(r, ['status', '--porcelain'], { limits: { workTreeEntries: 10 } }), (e) => e instanceof KitExit && e.code === 2 && /workTreeEntries/.test(e.message));
+    assert.equal((await safeGit(r, ['status', '--porcelain'], { limits: { workTreeEntries: 30 } })).code, 0); // .git contents not counted
+    assert.equal((await safeGit(r, ['rev-parse', 'HEAD'], { limits: { workTreeEntries: 1 } })).code, 0);
   });
 });
