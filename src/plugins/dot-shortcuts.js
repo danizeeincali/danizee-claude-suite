@@ -92,7 +92,16 @@ curl -s "https://pi.ruv.io/v1/memories/search?q=[task description]&top_k=3"
 ---
 
 ### ⛔ CHECKPOINT 1: Agent Spawn
+
+**🔗 CALLERS (file:line targets for symbols that will be changed or removed):**
+For every file:line target this step names (from the Search results and the assignments below) for a symbol that will be changed or removed, ask the kit who calls it, as \`callers --symbol <file>:<name>\` with the path relative to the repository top:
+\`\`\`bash
+node .claude/helpers/kit/cli.js callers --symbol src/file.js:name
+\`\`\`
+Carry each symbol's callers, \`floor\`, \`reasons\` and \`sentences\` forward to the later phases, printing the \`sentences\` as they are. Zero callers with \`floor: true\` is never "unused": the floor means same-name calls, calls through a value, interface dispatch or unread files may hide callers, so check those by hand. Exit 0 printed the entry but can still leave a symbol out: read \`missing\` (each with its reason), \`partial\` and \`not_read\`; a symbol in \`missing\` was not answered (typo, renamed or unread file), never "no callers", and \`partial: true\` makes every answer a floor; exit 1 is wrong input or a broken state: report it, never read it as "no callers"; exit 2 is a refusal: stop that step and report it as printed. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
 **REQUIRED OUTPUT:**
+- Callers of the symbols to be changed or removed: _____ (or the one-line kit skip)
 - Agent assignments table:
 | Agent | Task | Role |
 |-------|------|------|
@@ -147,6 +156,19 @@ Skip this block for non-UI tasks.
 - Git diff matches plan: yes/no
 - Build status: pass/fail/n-a
 - Regressions: none / [list]
+- Lens findings: _____ (or the one-line kit skip)
+
+**🔎 Code Analysis (lenses over the change under review):** Run this over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files; the whole history when there is no upstream; no removal check runs in this workflow (lenses only)). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
+
+1. Lenses: which review rules apply to the changed files.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else D=$(mktemp 2>/dev/null) && [ -n "$D" ] || { echo "mktemp failed: no temp file for the range" >&2; D=; RC=1; }
+if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range > "$D"; RC=$?
+case $RC in 0) node .claude/helpers/kit/cli.js lenses --diff "$D"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; (exit $RC); fi
+\`\`\`
+
+How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review findings above, and mention a non-empty \`capped\` list.
+Exit 3 from \`diff-range\` means an empty range: report "no change to review", never a failure and never "no lens applies"; the block sets its own status to 0 in that case. Exit 1 is wrong input or a broken state: report it, never skip the step. Exit 2 is a refusal (the repository, a range over 32 MiB, or the verb itself): report it as printed and stop that step, never retry it. Exit 0 from \`diff-range\` can still leave files out: it writes a note to stderr for an untracked file over the size cap (\`too_large\`, named) and for untracked files over the count cap (\`max_untracked\`, a count only); name each skipped file in the findings, say it was not analysed, and treat every result as a floor. If \`diff-range\` itself fails the step prints "diff-range failed" and the verb does not run; if the temp file cannot be made it prints "mktemp failed": report that the change was not analysed, never "nothing found". Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found.
 
 **RETRY LOGIC (max 3 retries):**
 - PASS → proceed to next phase
@@ -214,6 +236,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Checkpoints 2-3 completed (auto-proceed)
 - [ ] All required outputs generated
 - [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
+- [ ] Callers (Agent Spawn) and lenses (Verification) run, or one line said the kit is not installed
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
@@ -1520,7 +1543,16 @@ curl -s "https://pi.ruv.io/v1/memories/search?q=[bug description]&top_k=3"
 ---
 
 ### ⛔ CHECKPOINT 1: Investigation
+
+**🔗 CALLERS (file:line targets for symbols that will be changed or removed):**
+For every file:line target the investigation names for a symbol that will be changed or removed, ask the kit who calls it, as \`callers --symbol <file>:<name>\` with the path relative to the repository top:
+\`\`\`bash
+node .claude/helpers/kit/cli.js callers --symbol src/file.js:name
+\`\`\`
+Carry each symbol's callers, \`floor\`, \`reasons\` and \`sentences\` forward to the later phases, printing the \`sentences\` as they are. Zero callers with \`floor: true\` is never "unused": the floor means same-name calls, calls through a value, interface dispatch or unread files may hide callers, so check those by hand. Exit 0 printed the entry but can still leave a symbol out: read \`missing\` (each with its reason), \`partial\` and \`not_read\`; a symbol in \`missing\` was not answered (typo, renamed or unread file), never "no callers", and \`partial: true\` makes every answer a floor; exit 1 is wrong input or a broken state: report it, never read it as "no callers"; exit 2 is a refusal: stop that step and report it as printed. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
 **REQUIRED OUTPUT:**
+- Callers of the symbols to be changed: _____ (or the one-line kit skip)
 - Root cause identified: _____
 - Files/lines involved: _____
 - Evidence: _____
@@ -1569,6 +1601,19 @@ Skip this block for non-UI tasks.
 - Git diff matches plan: yes/no
 - Build status: pass/fail/n-a
 - Regressions: none / [list]
+- Lens findings: _____ (or the one-line kit skip)
+
+**🔎 Code Analysis (lenses over the change under review):** Run this over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files; the whole history when there is no upstream; no removal check runs in this workflow (lenses only)). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
+
+1. Lenses: which review rules apply to the changed files.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else D=$(mktemp 2>/dev/null) && [ -n "$D" ] || { echo "mktemp failed: no temp file for the range" >&2; D=; RC=1; }
+if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range > "$D"; RC=$?
+case $RC in 0) node .claude/helpers/kit/cli.js lenses --diff "$D"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; (exit $RC); fi
+\`\`\`
+
+How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review findings above, and mention a non-empty \`capped\` list.
+Exit 3 from \`diff-range\` means an empty range: report "no change to review", never a failure and never "no lens applies"; the block sets its own status to 0 in that case. Exit 1 is wrong input or a broken state: report it, never skip the step. Exit 2 is a refusal (the repository, a range over 32 MiB, or the verb itself): report it as printed and stop that step, never retry it. Exit 0 from \`diff-range\` can still leave files out: it writes a note to stderr for an untracked file over the size cap (\`too_large\`, named) and for untracked files over the count cap (\`max_untracked\`, a count only); name each skipped file in the findings, say it was not analysed, and treat every result as a floor. If \`diff-range\` itself fails the step prints "diff-range failed" and the verb does not run; if the temp file cannot be made it prints "mktemp failed": report that the change was not analysed, never "nothing found". Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found.
 
 **RETRY LOGIC (max 3 retries):**
 - PASS → proceed to next phase
@@ -1627,6 +1672,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Root cause identified
 - [ ] Fix applied and tests pass
 - [ ] Pi Brain discovery completed (CHECKPOINT 0.5)
+- [ ] Callers (Investigation) and lenses (Verification) run, or one line said the kit is not installed
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
@@ -3264,6 +3310,9 @@ STOP and wait for user response.
 ---
 
 ### ⛔ CHECKPOINT 1: Repos Analyzed
+
+**🔒 Git reads of a repository you did not write (safe-git):** A dependency, vendored or upstream checkout, or a repo cloned only to read is not yours to trust; this applies to any repository in this task that you did not write. Every git read of it goes through \`node .claude/helpers/kit/cli.js safe-git --dir <clone top> -- <git args>\`, never plain \`git -C <path> ...\` and never \`cd\` into it to run git (its config and hooks were not written by you). \`<clone top>\` is the top directory of that checkout (the directory that holds its \`.git\`); \`--dir\` must be the clone top itself, not a subfolder of it, and paths in the git args are relative to it. Only read-only verbs are accepted (rev-parse, rev-list, log, show, diff, ls-files, ls-tree, cat-file). Read the process exit code, not a field of the output: 0 git ok (it prints \`{ stdout, stderr, code, exit }\` and \`stdout\` is the answer), 1 bad input (stdout is empty, the reason is a \`kit:\` line on stderr: fix the call, retry once), 2 refused (stdout is empty, the reason is a \`kit: refused:\` line on stderr: do not retry, report it as printed and treat that read as not done), 3 git failed or timed out (when git ran and failed it prints \`{ stdout, stderr, code, exit }\` with a non-zero \`code\`: fix a wrong call and retry once; when git timed out, printed over 256 MiB or was killed by a signal it prints nothing on stdout, only a \`kit:\` line on stderr, and \`--timeout <ms>\` raises the 60000 ms default). Only exit 0 and a git-ran exit 3 print that JSON; a timeout, overflow or kill prints only a \`kit:\` stderr line. Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found. If \`.claude/helpers/kit/cli.js\` is missing, say "kit not installed (.claude/helpers/kit/cli.js missing): safe-git skipped, advisory" in one line and continue without running git on that checkout (read its files directly); the kit is advisory and never blocks a workflow that worked before.
+
 **REQUIRED OUTPUT:**
 - Dependency map:
 | Repo | Depends On | Depended By |
@@ -3303,6 +3352,19 @@ STOP and wait for user response.
 - Repos updated: _____
 - Verification status per repo: _____
 - Any failures: _____
+- Lens findings per repo: _____ (or the one-line kit skip)
+
+**🔎 Code Analysis (lenses over the change under review):** Run this in each repository you changed, from its top (cd there first; a repository without the kit prints the one-line skip), over the range printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files; the whole history when there is no upstream; no removal check runs in this workflow (lenses only)). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
+
+1. Lenses: which review rules apply to the changed files.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else D=$(mktemp 2>/dev/null) && [ -n "$D" ] || { echo "mktemp failed: no temp file for the range" >&2; D=; RC=1; }
+if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range > "$D"; RC=$?
+case $RC in 0) node .claude/helpers/kit/cli.js lenses --diff "$D"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; (exit $RC); fi
+\`\`\`
+
+How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review findings above, and mention a non-empty \`capped\` list.
+Exit 3 from \`diff-range\` means an empty range: report "no change to review", never a failure and never "no lens applies"; the block sets its own status to 0 in that case. Exit 1 is wrong input or a broken state: report it, never skip the step. Exit 2 is a refusal (the repository, a range over 32 MiB, or the verb itself): report it as printed and stop that step, never retry it. Exit 0 from \`diff-range\` can still leave files out: it writes a note to stderr for an untracked file over the size cap (\`too_large\`, named) and for untracked files over the count cap (\`max_untracked\`, a count only); name each skipped file in the findings, say it was not analysed, and treat every result as a floor. If \`diff-range\` itself fails the step prints "diff-range failed" and the verb does not run; if the temp file cannot be made it prints "mktemp failed": report that the change was not analysed, never "nothing found". Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found.
 
 **AUTO-PROCEED:** Continue to Compound phase.
 
@@ -3355,6 +3417,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Dependency map created
 - [ ] Changes applied in correct order
 - [ ] All repos verified
+- [ ] Git reads of repositories you did not write went through safe-git, and lenses ran on each changed repo (or one line said the kit is not installed)
 - [ ] Compound phase executed
 - [ ] Memory key stored: _____
 - [ ] Coordination doc created: _____
@@ -3441,6 +3504,13 @@ Highest score wins. Default to 'feature' on empty diff.
 - Memory key: project/[category]/_____
 - Doc path: docs/solutions/[category]/_____.md
 - Pattern stored: yes/no
+
+**🔒 Redact before the solution doc is written:** the solution doc quotes the session's code and diff, which can carry a secret. When \`.claude/kit/secrets\` exists, no text goes into the doc before it has passed through \`redact --keep-lines\` (stdin to JSON \`{ text, replaced }\`; the verb looks for the secrets file at the top of the worktree, then in the main checkout, because the file is git-ignored and a linked worktree usually has no copy of its own). Write the draft of the doc body to a temp file \`$E\` outside the repository (in the session scratchpad or at a \`mktemp\` path) with the Write tool, never \`echo "<text>"\` or a heredoc in the shell, then run the block with \`E\` bound in the same command (\`E=<the path you wrote>; <block>\`: shell variables do not persist between Bash calls). One line when the kit is not installed, and one line when there is no secrets file:
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): redact skipped, advisory: use the text from file=$E"; elif S=.claude/kit/secrets; M="$(git rev-parse --git-common-dir 2>/dev/null)/../.claude/kit/secrets"; [ ! -e "$S" ] && [ ! -L "$S" ] && [ ! -e "$M" ] && [ ! -L "$M" ]; then echo "no .claude/kit/secrets: text used as is, nothing to redact: use the text from file=$E"; else ( J=; R=; J=$(mktemp 2>/dev/null) && R=$(mktemp 2>/dev/null) && [ -n "$J" ] && [ -n "$R" ] || { echo "mktemp failed: text not redacted" >&2; rm -f "$J" "$R"; exit 1; }; KEEP=; trap 'rm -f "$J"; [ -n "$KEEP" ] || rm -f "$R"' EXIT INT TERM; node .claude/helpers/kit/cli.js redact --keep-lines < "$E" > "$J"; RC=$?; if [ $RC -eq 0 ]; then node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));fs.writeFileSync(process.argv[2],j.text);console.error("replaced="+j.replaced);console.log("file="+process.argv[2])' "$J" "$R"; RC=$?; [ $RC -eq 0 ] && KEEP=1; else echo "redact failed (exit $RC)" >&2; fi; exit $RC ); fi
+\`\`\`
+The pre-check sends anything present at either secrets path to \`redact\` (\`-e\` or \`-L\`: a dangling symlink or a directory there is a broken state, not "absent"), so only a path with nothing at it prints "no .claude/kit/secrets"; say that in one line and continue with the text as is. Exit 0: redacted; the redacted \`text\` is in the file the block prints as \`file=<path>\` (call it \`$R\`), which the block leaves behind, and stderr shows \`replaced=<n>\`. Exit 1 is bad input or a broken state (an unreadable secrets file, a dangling symlink or a directory at the secrets path, bad flag, mktemp failed, git missing or not a git repository): no file is named; report it, never read it as "nothing to redact", and do **not** write the unredacted text into the solution doc (write the doc without the quoted code or diff text, or stop that step and say so). Any other non-zero exit (for example 127, or a signal) is a failure of that step: the same. If \`.claude/helpers/kit/cli.js\` is missing the block says so in one line and continues; the kit is advisory and never blocks a workflow that worked before.
+Write the solution doc from the file named by \`file=\` (\`cat -- <path>\`), never from the unredacted draft, then run \`rm -f -- <that path> "$E"\` with the literal paths so no unredacted draft stays on disk.
 
 **AUTO-PROCEED:** Continue to Analyze Changes phase.
 
@@ -3610,17 +3680,27 @@ curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[recipe ti
 4. **If no match:** Submit as a new recipe
 5. If auto_share.confirm = true: ask user before submitting
 
+**🔒 Redact before the POST:** the recipe body can quote the session's code, which can carry a secret. When \`.claude/kit/secrets\` exists, no recipe text is sent before it has passed through \`redact --keep-lines\`. Write the JSON body (\`title\`, \`description\`, \`tags\`, \`version\`, \`steps\`, and \`forked_from\` for a fork) to a temp file \`$E\` outside the repository with the Write tool, never into a double-quoted shell argument and never \`echo "<body>"\` or a heredoc (backticks and \`$( )\` in recipe text would run as commands), then run the block with \`E\` bound in the same command (\`E=<the path you wrote>; <block>\`). One line when the kit is not installed, and one line when there is no secrets file:
 \`\`\`bash
-# Vote on existing memory (when similar memory found)
-curl -X POST https://pi.ruv.io/v1/memories \\\\
-  -H "Content-Type: application/json" \\\\
-  -d '{"title":"...","description":"...","tags":[...],"version":"1.0.0","steps":[...],"forked_from":"[matched_recipe_id]"}'
-
-# Submit as new (when no match)
-curl -X POST https://pi.ruv.io/v1/memories \\\\
-  -H "Content-Type: application/json" \\\\
-  -d '{"title":"...","description":"...","tags":[...],"version":"1.0.0","steps":[...]}'
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): redact skipped, advisory: use the text from file=$E"; elif S=.claude/kit/secrets; M="$(git rev-parse --git-common-dir 2>/dev/null)/../.claude/kit/secrets"; [ ! -e "$S" ] && [ ! -L "$S" ] && [ ! -e "$M" ] && [ ! -L "$M" ]; then echo "no .claude/kit/secrets: text used as is, nothing to redact: use the text from file=$E"; else ( J=; R=; J=$(mktemp 2>/dev/null) && R=$(mktemp 2>/dev/null) && [ -n "$J" ] && [ -n "$R" ] || { echo "mktemp failed: text not redacted" >&2; rm -f "$J" "$R"; exit 1; }; KEEP=; trap 'rm -f "$J"; [ -n "$KEEP" ] || rm -f "$R"' EXIT INT TERM; node .claude/helpers/kit/cli.js redact --keep-lines < "$E" > "$J"; RC=$?; if [ $RC -eq 0 ]; then node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));fs.writeFileSync(process.argv[2],j.text);console.error("replaced="+j.replaced);console.log("file="+process.argv[2])' "$J" "$R"; RC=$?; [ $RC -eq 0 ] && KEEP=1; else echo "redact failed (exit $RC)" >&2; fi; exit $RC ); fi
 \`\`\`
+The pre-check sends anything present at either secrets path to \`redact\` (\`-e\` or \`-L\`: a dangling symlink or a directory there is a broken state, not "absent"), so only a path with nothing at it prints "no .claude/kit/secrets"; say that in one line and continue with the text as is. Exit 0: redacted; the redacted \`text\` is in the file the block prints as \`file=<path>\` (call it \`$R\`), which the block leaves behind, and stderr shows \`replaced=<n>\`. Exit 1 is bad input or a broken state (an unreadable secrets file, a dangling symlink or a directory at the secrets path, bad flag, mktemp failed, git missing or not a git repository): no file is named; report it, never read it as "nothing to redact", and do **not** POST the unredacted body (submitted as: skipped, reason: redact failed, exit N). Any other non-zero exit (for example 127, or a signal) is a failure of that step: the same. If \`.claude/helpers/kit/cli.js\` is missing the block says so in one line and continues; the kit is advisory and never blocks a workflow that worked before.
+With no kit or no secrets file the block names \`file=$E\` and the body is sent as it is: read it once first. Send the body from the file, never by pasting it into the command. Shell variables do not persist between Bash calls, so bind the printed path in the same command, or an unset \`$R\` posts an empty body:
+
+\`\`\`bash
+R=<printed path>; [ -s "$R" ] || { echo "body file missing or empty" >&2; exit 1; }
+# Submit as a fork (when similar memory found; the body file carries "forked_from":"[matched_recipe_id]")
+curl -X POST https://pi.ruv.io/v1/memories \\
+  -H "Content-Type: application/json" \\
+  --data-binary @"$R" && rm -f -- "$R" "$E"
+
+# Submit as new (when no match; the body file has no forked_from)
+curl -X POST https://pi.ruv.io/v1/memories \\
+  -H "Content-Type: application/json" \\
+  --data-binary @"$R" && rm -f -- "$R" "$E"
+\`\`\`
+
+Write the literal printed path for \`R=\` and the path you wrote for \`E=\`. \`$E\` holds the unredacted body, so it is removed on every path, sent or abandoned: after a redact exit 1, a failed POST, or a body you decide not to send, run \`rm -f -- "$E" "$R"\` with the literal paths (\`$R\` only when a \`file=\` path was printed). The \`&&\` leaves the files in place when the POST fails, so a retry needs no rebuild.
 
 **REQUIRED OUTPUT:**
 - Recipe-worthy: yes/no
@@ -3636,6 +3716,7 @@ curl -X POST https://pi.ruv.io/v1/memories \\\\
 - [ ] Category confirmed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
+- [ ] Doc text and Pi Brain body redacted when .claude/kit/secrets exists (or one line said why not)
 - [ ] Changes analyzed
 - [ ] Diagnostics generated: RC-D___ to RC-D___
 - [ ] Fixes generated: RC-F___ to RC-F___
@@ -5824,9 +5905,26 @@ STOP and wait for user response.
 
 set -e
 LOG_FILE="ralph-batch-$(date +%Y%m%d-%H%M%S).log"
+KIT=.claude/helpers/kit/cli.js
+SECRETS=.claude/kit/secrets
+GC=$(git rev-parse --git-common-dir 2>/dev/null || true)
+MAIN_SECRETS=""
+[ -z "$GC" ] || MAIN_SECRETS="$GC/../.claude/kit/secrets"
 
+# Every log line goes through the kit's redact (line numbers kept) when the kit and a
+# secrets file exist, else it is a plain tee. A failed redact never drops the line.
 log() {
-  echo "[$(date '+%H:%M:%S')] $1" | tee -a "$LOG_FILE"
+  local line="[$(date '+%H:%M:%S')] $1" json text rc
+  if [ -f "$KIT" ] && { [ -e "$SECRETS" ] || [ -L "$SECRETS" ] || [ -e "$MAIN_SECRETS" ] || [ -L "$MAIN_SECRETS" ]; }; then
+    if json=$(printf '%s\\n' "$line" | node "$KIT" redact --keep-lines) && text=$(printf '%s' "$json" | node -e 'let s="";process.stdin.on("data",d=>{s+=d}).on("end",()=>{process.stdout.write(JSON.parse(s).text)})'); then
+      printf '%s\\n' "$text" | tee -a "$LOG_FILE"
+    else
+      rc=$?
+      printf '%s [redact failed exit %s]\\n' "$line" "$rc" | tee -a "$LOG_FILE"
+    fi
+  else
+    printf '%s\\n' "$line" | tee -a "$LOG_FILE"
+  fi
 }
 
 log "╔════════════════════════════════════════════════╗"
@@ -5878,6 +5976,8 @@ log "║  End time: $(date)                              ║"
 log "║  Log: $LOG_FILE                                 ║"
 log "╚════════════════════════════════════════════════╝"
 \`\`\`
+
+**Log redaction (inside the generated script):** the \`log()\` function above pipes each line through \`node .claude/helpers/kit/cli.js redact --keep-lines\` (stdin to JSON \`{ text, replaced }\`; the \`text\` is what is logged) only when, at run time, \`.claude/helpers/kit/cli.js\` exists and so does a secrets file (\`.claude/kit/secrets\` in the worktree top, or in the main checkout: \`-e\` or \`-L\`, so a dangling symlink or a directory there still goes to \`redact\` and fails loudly). Otherwise it is the plain \`printf | tee -a "$LOG_FILE"\`: with no kit the script behaves as it did before, and the test is the script's own \`[ -f ... ]\`, not a decision made when it was generated. \`redact\` exit 0 is the redacted line. Exit 1 is bad input or an unreadable secrets file, never "nothing to redact": the line is still written to the log, with the marker \`[redact failed exit 1]\` after it, and the script continues (a failed redact never drops a line and never stops an overnight run). Any other non-zero exit (for example 127, or a signal) is a failure of that step and gets the same marker with its exit status. A log line that carries the marker was not redacted: review the log before sharing it.
 
 **For Multi-Project Script:**
 \`\`\`bash
@@ -6066,6 +6166,9 @@ ls /tmp/suite-upstream/src/templates/   # Templates
 ls /tmp/suite-upstream/docs/            # Documentation
 \`\`\`
 
+**🔒 Git reads of the upstream clone (safe-git):** \`/tmp/suite-upstream\` is a repository you did not write. Every git read of it goes through \`node .claude/helpers/kit/cli.js safe-git --dir <clone top> -- <git args>\`, never plain \`git -C <path> ...\` and never \`cd\` into it to run git (its config and hooks were not written by you). \`<clone top>\` is \`/tmp/suite-upstream\` itself (the directory the \`git clone\` above created, not \`/tmp/suite-upstream/src\`); \`--dir\` must be the clone top itself, not a subfolder of it, and paths in the git args are relative to it. Only read-only verbs are accepted (rev-parse, rev-list, log, show, diff, ls-files, ls-tree, cat-file). Read the process exit code, not a field of the output: 0 git ok (it prints \`{ stdout, stderr, code, exit }\` and \`stdout\` is the answer), 1 bad input (stdout is empty, the reason is a \`kit:\` line on stderr: fix the call, retry once), 2 refused (stdout is empty, the reason is a \`kit: refused:\` line on stderr: do not retry, report it as printed and treat that read as not done), 3 git failed or timed out (when git ran and failed it prints \`{ stdout, stderr, code, exit }\` with a non-zero \`code\`: fix a wrong call and retry once; when git timed out, printed over 256 MiB or was killed by a signal it prints nothing on stdout, only a \`kit:\` line on stderr, and \`--timeout <ms>\` raises the 60000 ms default). Only exit 0 and a git-ran exit 3 print that JSON; a timeout, overflow or kill prints only a \`kit:\` stderr line. Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found. If \`.claude/helpers/kit/cli.js\` is missing, say "kit not installed (.claude/helpers/kit/cli.js missing): safe-git skipped, advisory" in one line and continue without running git on that checkout (read its files directly); the kit is advisory and never blocks a workflow that worked before.
+The clone is depth 1 (a single commit), so only HEAD and its tree are readable: asking for history beyond HEAD (\`HEAD~1\`, \`log\` ranges, \`rev-list\` ranges, \`diff\` against an older commit) is a wrong call. The upstream version is \`node .claude/helpers/kit/cli.js safe-git --dir /tmp/suite-upstream -- rev-parse HEAD\`; a file list is \`... safe-git --dir /tmp/suite-upstream -- ls-tree -r --name-only HEAD\`.
+
 **REQUIRED OUTPUT:**
 - Upstream version: _____
 - Categories fetched:
@@ -6156,6 +6259,19 @@ npm test
 - Tests pass: yes/no
 - Name conflicts found: _____
 - Pattern validation: pass/fail
+- Lens findings: _____ (or the one-line kit skip)
+
+**🔎 Code Analysis (lenses over the change under review):** Run this over the files created in CHECKPOINT 3 (untracked files are part of the range) and printed by \`diff-range\` (everything since the merge base with the upstream branch, plus uncommitted edits and untracked files; the whole history when there is no upstream; no removal check runs in this workflow (lenses only)). If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before. Each block starts with a guard for that: with no kit it prints "kit not installed" and ends with status 0, without closing your shell.
+
+1. Lenses: which review rules apply to the changed files.
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else D=$(mktemp 2>/dev/null) && [ -n "$D" ] || { echo "mktemp failed: no temp file for the range" >&2; D=; RC=1; }
+if [ -n "$D" ]; then node .claude/helpers/kit/cli.js diff-range > "$D"; RC=$?
+case $RC in 0) node .claude/helpers/kit/cli.js lenses --diff "$D"; RC=$?;; 3) echo "no change to review"; RC=0;; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; fi; [ -z "$D" ] || rm -f "$D"; (exit $RC); fi
+\`\`\`
+
+How to read the results: each entry in \`fired\` (lenses) has a \`name\`, the \`files\` it matched and a \`body\` to apply as an extra check on those files: add its findings to the review findings above, and mention a non-empty \`capped\` list.
+Exit 3 from \`diff-range\` means an empty range: report "no change to review", never a failure and never "no lens applies"; the block sets its own status to 0 in that case. Exit 1 is wrong input or a broken state: report it, never skip the step. Exit 2 is a refusal (the repository, a range over 32 MiB, or the verb itself): report it as printed and stop that step, never retry it. Exit 0 from \`diff-range\` can still leave files out: it writes a note to stderr for an untracked file over the size cap (\`too_large\`, named) and for untracked files over the count cap (\`max_untracked\`, a count only); name each skipped file in the findings, say it was not analysed, and treat every result as a floor. If \`diff-range\` itself fails the step prints "diff-range failed" and the verb does not run; if the temp file cannot be made it prints "mktemp failed": report that the change was not analysed, never "nothing found". Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found.
 
 **USER GATE:** Use AskUserQuestion
 - Question: "Verification complete. [All pass / N issues]. Proceed?"
@@ -6189,6 +6305,7 @@ Before marking workflow complete, verify ALL boxes:
 - [ ] Only new files created (zero modifications)
 - [ ] All tests pass
 - [ ] No naming conflicts
+- [ ] Git reads of the upstream clone went through safe-git, and lenses ran at Verify (or one line said the kit is not installed)
 - [ ] Compound phase executed
 
 ⚠️ Workflow INCOMPLETE until all boxes checked

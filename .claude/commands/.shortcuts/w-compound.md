@@ -34,16 +34,25 @@ This command MUST complete ALL phases including auto-QA generation.
 
 ## Execution Protocol
 
-### ⛔ CHECKPOINT 0: Category Selection
+### ⛔ CHECKPOINT 0: Category Detection
 **REQUIRED OUTPUT:**
 - Category selected: _____
 - Context to capture: _____
 
-**USER GATE:** Use AskUserQuestion
-- Question: "Storing as [category]. Confirm?"
-- Options: ["Continue", "Change category"]
+**AUTO-DETECT:** If argument provided, use it. Otherwise, auto-detect from git diff:
+```bash
+git diff HEAD~1
+```
+Use weighted pattern matching:
+- security (weight 3): injection, vulnerability, sanitize, xss, csrf, auth
+- bug (weight 2): fix, bug, patch, hotfix, error handling, fallback
+- performance (weight 2): cache, optimize, batch, lazy, memoize, throttle
+- architecture (weight 2): refactor, redesign, restructure, migration, rename
+- feature (weight 1): export function, new file mode, CREATE TABLE, add/create/implement
 
-STOP and wait for user response.
+Highest score wins. Default to 'feature' on empty diff.
+
+**AUTO-PROCEED:** Continue to Storage phase.
 
 ---
 
@@ -52,6 +61,13 @@ STOP and wait for user response.
 - Memory key: project/[category]/_____
 - Doc path: docs/solutions/[category]/_____.md
 - Pattern stored: yes/no
+
+**🔒 Redact before the solution doc is written:** the solution doc quotes the session's code and diff, which can carry a secret. When `.claude/kit/secrets` exists, no text goes into the doc before it has passed through `redact --keep-lines` (stdin to JSON `{ text, replaced }`; the verb looks for the secrets file at the top of the worktree, then in the main checkout, because the file is git-ignored and a linked worktree usually has no copy of its own). Write the draft of the doc body to a temp file `$E` outside the repository (in the session scratchpad or at a `mktemp` path) with the Write tool, never `echo "<text>"` or a heredoc in the shell, then run the block with `E` bound in the same command (`E=<the path you wrote>; <block>`: shell variables do not persist between Bash calls). One line when the kit is not installed, and one line when there is no secrets file:
+```bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): redact skipped, advisory: use the text from file=$E"; elif S=.claude/kit/secrets; M="$(git rev-parse --git-common-dir 2>/dev/null)/../.claude/kit/secrets"; [ ! -e "$S" ] && [ ! -L "$S" ] && [ ! -e "$M" ] && [ ! -L "$M" ]; then echo "no .claude/kit/secrets: text used as is, nothing to redact: use the text from file=$E"; else ( J=; R=; J=$(mktemp 2>/dev/null) && R=$(mktemp 2>/dev/null) && [ -n "$J" ] && [ -n "$R" ] || { echo "mktemp failed: text not redacted" >&2; rm -f "$J" "$R"; exit 1; }; KEEP=; trap 'rm -f "$J"; [ -n "$KEEP" ] || rm -f "$R"' EXIT INT TERM; node .claude/helpers/kit/cli.js redact --keep-lines < "$E" > "$J"; RC=$?; if [ $RC -eq 0 ]; then node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));fs.writeFileSync(process.argv[2],j.text);console.error("replaced="+j.replaced);console.log("file="+process.argv[2])' "$J" "$R"; RC=$?; [ $RC -eq 0 ] && KEEP=1; else echo "redact failed (exit $RC)" >&2; fi; exit $RC ); fi
+```
+The pre-check sends anything present at either secrets path to `redact` (`-e` or `-L`: a dangling symlink or a directory there is a broken state, not "absent"), so only a path with nothing at it prints "no .claude/kit/secrets"; say that in one line and continue with the text as is. Exit 0: redacted; the redacted `text` is in the file the block prints as `file=<path>` (call it `$R`), which the block leaves behind, and stderr shows `replaced=<n>`. Exit 1 is bad input or a broken state (an unreadable secrets file, a dangling symlink or a directory at the secrets path, bad flag, mktemp failed, git missing or not a git repository): no file is named; report it, never read it as "nothing to redact", and do **not** write the unredacted text into the solution doc (write the doc without the quoted code or diff text, or stop that step and say so). Any other non-zero exit (for example 127, or a signal) is a failure of that step: the same. If `.claude/helpers/kit/cli.js` is missing the block says so in one line and continues; the kit is advisory and never blocks a workflow that worked before.
+Write the solution doc from the file named by `file=` (`cat -- <path>`), never from the unredacted draft, then run `rm -f -- <that path> "$E"` with the literal paths so no unredacted draft stays on disk.
 
 **AUTO-PROCEED:** Continue to Analyze Changes phase.
 
@@ -103,9 +119,9 @@ Run: `git diff --name-only HEAD~1` and `git diff HEAD~1`
 **Verifies**: [description]
 
 **Test Command**:
-\`\`\`bash
+```bash
 grep -n "[pattern]" [file]
-\`\`\`
+```
 
 **AI-Verifiable Output**:
 DIAGNOSTIC: [NAME]
@@ -138,9 +154,9 @@ STATUS: PASS|FAIL
 **Priority**: P1 (critical - restores functionality)
 
 **Pattern to Restore**:
-\`\`\`[language]
+```[language]
 [actual code that was just written]
-\`\`\`
+```
 
 **File**: [path/to/file]
 
@@ -197,11 +213,67 @@ NEVER skip this phase. Command is INCOMPLETE without all checks.
 
 ---
 
+### 🧠 CHECKPOINT 7: Agent Pi Brain — Auto-Recipe Extraction (fork-aware)
+**Detect if this work is knowledge-worthy and submit to the registry.**
+
+Check config: read ~/.ruvector/config.json → auto_share section.
+Skip if auto_share.enabled is false.
+
+**Recipe-worthy criteria:**
+- Workflow had >= auto_recipes.min_steps steps (default: 3)
+- Has tests that pass (if auto_recipes.require_tests = true)
+- Is a repeatable pattern (not a one-off fix)
+
+**If knowledge-worthy:**
+1. Extract recipe: title, description, tags, ordered steps with inputs/outputs
+2. **Fork check — discover similar recipes before submitting:**
+
+```bash
+# Check for similar existing recipes
+curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[recipe title]" --data top_k=3
+```
+
+3. **If similar memory found (score > 0.7):** Submit as a fork to inherit grade
+4. **If no match:** Submit as a new recipe
+5. If auto_share.confirm = true: ask user before submitting
+
+**🔒 Redact before the POST:** the recipe body can quote the session's code, which can carry a secret. When `.claude/kit/secrets` exists, no recipe text is sent before it has passed through `redact --keep-lines`. Write the JSON body (`title`, `description`, `tags`, `version`, `steps`, and `forked_from` for a fork) to a temp file `$E` outside the repository with the Write tool, never into a double-quoted shell argument and never `echo "<body>"` or a heredoc (backticks and `$( )` in recipe text would run as commands), then run the block with `E` bound in the same command (`E=<the path you wrote>; <block>`). One line when the kit is not installed, and one line when there is no secrets file:
+```bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): redact skipped, advisory: use the text from file=$E"; elif S=.claude/kit/secrets; M="$(git rev-parse --git-common-dir 2>/dev/null)/../.claude/kit/secrets"; [ ! -e "$S" ] && [ ! -L "$S" ] && [ ! -e "$M" ] && [ ! -L "$M" ]; then echo "no .claude/kit/secrets: text used as is, nothing to redact: use the text from file=$E"; else ( J=; R=; J=$(mktemp 2>/dev/null) && R=$(mktemp 2>/dev/null) && [ -n "$J" ] && [ -n "$R" ] || { echo "mktemp failed: text not redacted" >&2; rm -f "$J" "$R"; exit 1; }; KEEP=; trap 'rm -f "$J"; [ -n "$KEEP" ] || rm -f "$R"' EXIT INT TERM; node .claude/helpers/kit/cli.js redact --keep-lines < "$E" > "$J"; RC=$?; if [ $RC -eq 0 ]; then node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));fs.writeFileSync(process.argv[2],j.text);console.error("replaced="+j.replaced);console.log("file="+process.argv[2])' "$J" "$R"; RC=$?; [ $RC -eq 0 ] && KEEP=1; else echo "redact failed (exit $RC)" >&2; fi; exit $RC ); fi
+```
+The pre-check sends anything present at either secrets path to `redact` (`-e` or `-L`: a dangling symlink or a directory there is a broken state, not "absent"), so only a path with nothing at it prints "no .claude/kit/secrets"; say that in one line and continue with the text as is. Exit 0: redacted; the redacted `text` is in the file the block prints as `file=<path>` (call it `$R`), which the block leaves behind, and stderr shows `replaced=<n>`. Exit 1 is bad input or a broken state (an unreadable secrets file, a dangling symlink or a directory at the secrets path, bad flag, mktemp failed, git missing or not a git repository): no file is named; report it, never read it as "nothing to redact", and do **not** POST the unredacted body (submitted as: skipped, reason: redact failed, exit N). Any other non-zero exit (for example 127, or a signal) is a failure of that step: the same. If `.claude/helpers/kit/cli.js` is missing the block says so in one line and continues; the kit is advisory and never blocks a workflow that worked before.
+With no kit or no secrets file the block names `file=$E` and the body is sent as it is: read it once first. Send the body from the file, never by pasting it into the command. Shell variables do not persist between Bash calls, so bind the printed path in the same command, or an unset `$R` posts an empty body:
+
+```bash
+R=<printed path>; [ -s "$R" ] || { echo "body file missing or empty" >&2; exit 1; }
+# Submit as a fork (when similar memory found; the body file carries "forked_from":"[matched_recipe_id]")
+curl -X POST https://pi.ruv.io/v1/memories \
+  -H "Content-Type: application/json" \
+  --data-binary @"$R" && rm -f -- "$R" "$E"
+
+# Submit as new (when no match; the body file has no forked_from)
+curl -X POST https://pi.ruv.io/v1/memories \
+  -H "Content-Type: application/json" \
+  --data-binary @"$R" && rm -f -- "$R" "$E"
+```
+
+Write the literal printed path for `R=` and the path you wrote for `E=`. `$E` holds the unredacted body, so it is removed on every path, sent or abandoned: after a redact exit 1, a failed POST, or a body you decide not to send, run `rm -f -- "$E" "$R"` with the literal paths (`$R` only when a `file=` path was printed). The `&&` leaves the files in place when the POST fails, so a retry needs no rebuild.
+
+**REQUIRED OUTPUT:**
+- Recipe-worthy: yes/no
+- Similar recipe found: yes/no (if yes: recipe ID and score)
+- Submitted as: fork/new/skipped
+- Recipe ID: _____ (if submitted)
+- Reason if skipped: _____
+
+---
+
 ## Completion Checklist
 
 - [ ] Category confirmed
 - [ ] Memory key stored: _____
 - [ ] Solution doc created: _____
+- [ ] Doc text and Pi Brain body redacted when .claude/kit/secrets exists (or one line said why not)
 - [ ] Changes analyzed
 - [ ] Diagnostics generated: RC-D___ to RC-D___
 - [ ] Fixes generated: RC-F___ to RC-F___
