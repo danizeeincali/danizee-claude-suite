@@ -5,3 +5,4 @@
 {"stream":"diff-range","counts":{"high":0,"medium":2,"low":3},"angle":"accessibility (checking the security fix)","tokens":75000,"pass":true,"round":5,"commit":"7563d5a","id":"47ea8a77-4348-4a8f-a396-f3f4258f7c43","ts":"2026-10-10T17:22:08.333Z"}
 {"stream":"diff-range","counts":{"high":1,"medium":0,"low":5},"angle":"facts and content","tokens":45000,"pass":false,"round":6,"commit":"d1dbdb4","id":"4b11c2e5-0ba3-41e5-85b0-7d5945eb6b0f","ts":"2026-10-10T17:35:49.293Z"}
 {"stream":"diff-range","counts":{"high":0,"medium":2,"low":1},"angle":"performance and memory","tokens":45000,"pass":true,"round":7,"commit":"d507c70","id":"75022879-8e6e-41d0-ab0a-aa4766edcb05","ts":"2026-10-10T17:44:46.344Z"}
+{"stream":"diff-range","counts":{"high":0,"medium":3,"low":1},"angle":"one input method at a time","tokens":45000,"pass":false,"round":8,"commit":"5b3a800","id":"a755ee5d-ac89-4adc-b679-affeb1fb8876","ts":"2026-10-10T17:54:38.423Z"}
