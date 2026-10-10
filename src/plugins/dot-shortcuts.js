@@ -2254,6 +2254,13 @@ Before marking workflow complete, verify ALL boxes:
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
+## Closing step: record the push receipt
+Record the review's counts so the advisory push gate can recognise this exact change:
+\`\`\`
+node .claude/helpers/kit/cli.js push-gate receipt --verdict pass|fail --high <H> --medium <M> --low <L> [--incomplete if any category was skipped]
+\`\`\`
+Then tell the user: run \`node .claude/helpers/kit/cli.js push-gate check\` before pushing. It only abstains, asks or denies; it never skips their permission prompt.
+
 ## Compounds
 \`\`\`
 Memory: project/reviews/[pr-topic]
