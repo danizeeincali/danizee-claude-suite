@@ -101,7 +101,7 @@
       "name": "planted-bug-review-scoring",
       "state": "active",
       "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/planted-bug-review-scoring.md",
-      "next": "review round 1",
+      "next": "review round 2",
       "tasks": [],
       "isolation": "../danizee-claude-suite-planted-bug-review-scoring",
       "phase": "review",
@@ -116,13 +116,13 @@
     }
   ],
   "handoff": {
-    "ts": "2026-10-10T09:05:18.050Z",
+    "ts": "2026-10-10T13:12:01.330Z",
     "trigger": "auto",
     "branch": "claude/project-thread-p9gbyo",
-    "commit": "3434e5b",
-    "uncommitted": 5,
+    "commit": "8fb286e",
+    "uncommitted": 4,
     "tasks": [],
-    "context_tokens": 382952,
-    "context_pct": 38.3
+    "context_tokens": 383626,
+    "context_pct": 38.4
   }
 }
