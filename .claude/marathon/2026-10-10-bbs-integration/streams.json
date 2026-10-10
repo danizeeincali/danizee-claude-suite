@@ -35,5 +35,14 @@
       "tasks": []
     }
   ],
-  "handoff": null
+  "handoff": {
+    "ts": "2026-10-10T17:12:56.218Z",
+    "trigger": "auto",
+    "branch": "claude/project-thread-9ow0sy",
+    "commit": "ac0778c",
+    "uncommitted": 4,
+    "tasks": [],
+    "context_tokens": 380711,
+    "context_pct": 38.1
+  }
 }

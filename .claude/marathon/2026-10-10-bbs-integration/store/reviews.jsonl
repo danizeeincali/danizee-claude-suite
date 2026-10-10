@@ -2,3 +2,4 @@
 {"stream":"usage","counts":{"high":0,"medium":3,"low":0},"angle":"failure conditions and error paths","tokens":78311,"commit":"85d4551","pass":false,"round":2,"id":"78d09f0a-9b27-41b5-b6d1-be7eb6c369c0","ts":"2026-10-10T16:48:59.867Z"}
 {"stream":"usage","counts":{"high":0,"medium":2,"low":2},"angle":"older environments and degraded networks","tokens":72362,"commit":"9482747","pass":true,"round":3,"id":"94ed5ae6-4af4-4dc9-97c3-3b18f7290912","ts":"2026-10-10T16:56:06.793Z"}
 {"stream":"usage","counts":{"high":0,"medium":2,"low":0},"angle":"the three safety probes: egress, secrets, sandbox escape","tokens":75206,"commit":"072e408","pass":true,"round":4,"id":"8616aec2-0b75-4db7-a1c8-ef52a2937b03","ts":"2026-10-10T17:03:09.674Z"}
+{"stream":"targets","commit":"ec92870","counts":{"high":1,"medium":1,"low":2},"angle":"correctness r1","tokens":85747,"pass":false,"round":1,"id":"20ba6e2a-af28-41ed-96aa-4e19d5564546","ts":"2026-10-10T17:14:13.019Z"}
