@@ -254,7 +254,7 @@ Record the review's counts so the advisory push gate can recognise this exact ch
 node .claude/helpers/kit/cli.js push-gate receipt --verdict pass --high 0 --medium 0 --low 0
 node .claude/helpers/kit/cli.js push-gate receipt --verdict fail --high 1 --medium 2 --low 0
 ```
-Then tell the user: run `node .claude/helpers/kit/cli.js push-gate check` before pushing, with the same `--threshold` level and the same `--base` (or none) used for the receipt. It only abstains, asks or denies; it never skips their permission prompt. Reviewing uncommitted edits and then committing them unchanged still matches.
+Then tell the user: run `node .claude/helpers/kit/cli.js push-gate check` before pushing, with the same `--threshold` level and the same `--base` (or none) used for the receipt. It only abstains, asks or denies; it never skips their permission prompt. Reviewing uncommitted edits and then committing them unchanged still matches. If the repository has `.claude/kit/scrub-patterns` or `.claude/kit/scrub-patterns.local`, the check also scrubs against them the files of HEAD and every blob in the commits being pushed (`<base>..HEAD`, the same base; the commits no remote-tracking ref has when there is none, or all of HEAD's history when the repository has no remote-tracking refs; a git call that times out is a deny too: raise it with `--timeout <ms>`), so a secret that was committed and removed again is found (`node .claude/helpers/kit/cli.js scrub` lists the HEAD hits, `scrub --history <base>` the pushed range), and denies on any hit, on an incomplete scan, or when the scrub cannot run, whatever the receipt says.
 
 ## Compounds
 ```
