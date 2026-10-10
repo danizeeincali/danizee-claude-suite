@@ -13,7 +13,7 @@ if (prompt.startsWith('Reply with')) {
   if (mode === 'crash') process.exit(3);
   say('OK');
 } else {
-  const ids = [...prompt.matchAll(/"id":"([^"]+)"/g)].map(m => m[1]);
+  const ids = [...prompt.trim().split("\n").pop().matchAll(/"id":"([^"]+)"/g)].map(m => m[1]);
   if (mode === 'garbage') say('I think these are fine!');
   else if (mode === 'extra') say(JSON.stringify({ verdicts: [...ids.map(id => ({ id, plain: 'yes', correct: false })), { id: 'ghost#1', plain: true, correct: true }] }));
   else say('```json\n' + JSON.stringify({ verdicts: ids.map(id => ({ id, plain: true, correct: true })) }) + '\n```');
