@@ -1,0 +1,9 @@
+{
+  "drift-monitor": [
+    { "workflow": "w-review", "step": "CHECKPOINT 1: Code Analysis", "how": "Flags configuration drift since the last review in the analysis findings.", "mode": "advisory" }
+  ],
+  "changed-files-list": [
+    { "workflow": "w-review", "step": "checkpoint 0: search", "how": "Lists the files changed since the merge base so the search covers them.", "mode": "advisory" }
+  ],
+  "usage-exporter": []
+}

@@ -21,10 +21,14 @@ import { loadConfig as loadMarathonConfig, activeRunId as marathonActiveRun, set
 import { renderStatusSafe } from './status.js';
 import { loadConfig } from './config.js';
 import { VERDICTS, POWERS_CHANGED } from './verdict.js';
+import { standingTargets, isWorkflow } from './targets.js';
 import { redactRef, redactUrlsInText } from './intake.js';
 
 // The five checks per power, written in the finish line before the build
-export const CHECKS = ['tests_green', 'egress_zero', 'six_sigma_claim', 'callers_ge_1', 'packaged_check'];
+export const CHECKS = ['tests_green', 'egress_zero', 'six_sigma_claim', 'wired_all', 'packaged_check'];
+
+/** The stream that wires every built power into the workflows it was approved to land in. Queued after the builds. */
+export const INTEGRATION_STREAM = 'integration';
 
 /**
  * Marathon-safe id: lower-case [a-z0-9_-], no runs of multiple - or other chars,
@@ -50,7 +54,7 @@ export function slugPower(name) {
  * Extract the base name from a check name (strip _claim, _ge_1, _check suffixes).
  */
 function checkIdBase(checkName) {
-  return checkName.replace(/_(?:claim|ge_1|check)$/, '');
+  return checkName.replace(/_(?:claim|ge_1|check|all)$/, '');
 }
 
 /**
@@ -96,12 +100,14 @@ export function buildFinishLine(powers, { tolerance }) {
         line = { id, label: `${slug}: zero egress in the packaged check`, type: 'bool', op: 'is', value: true, owner: 'build', source: `measure:egress_zero_${slug}` };
       } else if (idBase === 'six_sigma') {
         line = { id, label: `${slug}: clean reviews in a row`, type: 'number', op: 'at_least', value: tolerance.passes_in_a_row, owner: 'build', source: 'reviews.streak' };
-      } else if (idBase === 'callers') {
-        line = { id, label: `${slug}: callers in the harness`, type: 'number', op: 'at_least', value: 1, owner: 'build', source: `measure:callers_${slug}` };
+      } else if (idBase === 'wired') {
+        // integration is its own deliverable: judged on the integration stream, one per approved target
+        const n = Math.max(1, Array.isArray(power.targets) ? power.targets.length : 0);
+        line = { id, label: `${slug}: wired into ${n === 1 ? 'its target' : `all ${n} targets`}, reached by a user`, type: 'number', op: 'at_least', value: n, owner: 'build', source: `measure:wired_${slug}` };
       } else if (idBase === 'packaged') {
         line = { id, label: `${slug}: packaged check passes`, type: 'bool', op: 'is', value: true, owner: 'build', source: `measure:packaged_${slug}` };
       }
-      line.stream = slug; // judged on this stream's data; other streams' gates leave it alone
+      line.stream = idBase === 'wired' ? INTEGRATION_STREAM : slug; // judged on that stream's data; other streams' gates leave it alone
       lines.push(line);
       own.push(line);
     }
@@ -109,6 +115,9 @@ export function buildFinishLine(powers, { tolerance }) {
   }
 
   // Add standard lines
+  if (approved.length) {
+    lines.push({ id: 'delivered', label: 'The owner was told what they got: delivered.md lists every power, wired, with its command', type: 'bool', op: 'is', value: true, owner: 'build', source: 'measure:delivered', stream: INTEGRATION_STREAM });
+  }
   lines.push(
     { id: 'clean_reviews', label: 'Clean reviews in a row', type: 'number', op: 'at_least', value: tolerance.passes_in_a_row, owner: 'build', source: 'reviews.streak' },
     { id: 'latest_high', label: 'High findings in the latest review', type: 'number', op: 'at_most', value: 0, owner: 'build', source: 'reviews.latest.high' },
@@ -215,6 +224,15 @@ export function renderBrief(power, ctx) {
   }
   md.push('');
 
+  // Lands in: integration is a separate deliverable, approved at the verdict
+  md.push('## Lands in (a separate deliverable)');
+  const targets = Array.isArray(ctx.targets) ? ctx.targets : [];
+  if (targets.length) {
+    for (const t of targets) md.push(`- ${landingLine(t)}`);
+  } else md.push('- (no targets recorded: this run was decided before the targets step)');
+  md.push(`- Build the power so these places can call it: one entry (a kit verb for a workflow, a module and function for code). The \`${INTEGRATION_STREAM}\` stream wires it in; \`wired_${slug}\` counts only a target that uses the entry and, for code, a reach test that goes in through the surface and passes.`);
+  md.push('');
+
   // Finish line section
   md.push('## Finish line (5 checks, written before the build)');
   for (const line of lines) {
@@ -311,6 +329,48 @@ export function renderMemo(power, ctx) {
   md.push('');
 
   return md.join('\n');
+}
+
+/**
+ * The integration stream's plan: one row per (power, target), the measure that checks it, and the hand-over note.
+ * Wiring is a deliverable of its own, reviewed on the command files it changes, not on the built modules.
+ */
+export function renderIntegration(run, outputPowers) {
+  const md = [`# Integration — bbs run ${run}`, '',
+    'Building a power is not the deliverable; a user using it is. This stream starts after every build stream is done.', '',
+    '## Rows'];
+  const kinds = new Set();
+  for (const p of outputPowers) {
+    const ts = Array.isArray(p.targets) ? p.targets : [];
+    if (!ts.length) md.push(`- ${p.name}: (no targets recorded — ask the owner where it lands, then cli.js targets --set ${p.name}@<where> --force)`);
+    for (const t of ts) { md.push(`- ${p.name} → ${landingLine(t)}`); kinds.add(isWorkflow(t) ? 'workflow' : t.kind); }
+  }
+  md.push('', '## How', '1. Wire each row where it says, the way that surface works:');
+  for (const k of Object.keys(WIRE_HOW)) if (kinds.has(k)) md.push(`   - ${k}: ${WIRE_HOW[k]}`);
+  md.push(
+    `2. Record each power: \`node .claude/helpers/bbs/cli.js integrate --run ${run} --power <name> [--verb <kit verb>] [--entry <module>#<symbol>] [--reach <surface id>[@<at>]=<test file>::<command>]...\`. A reach test goes in through the surface (it imports the surface file or names its route, endpoint, command or flag) and checks the power's effect there; a test that only calls the power does not count.`,
+    `3. Measure each power: \`node .claude/helpers/bbs/cli.js wired --run ${run} --power <name> --record\` records \`wired_<slug>\` (targets that use the entry and whose reach test passes now).`,
+    `4. Tell the owner: \`node .claude/helpers/bbs/cli.js delivered --run ${run} --record\` writes delivered.md (where to find each power, the test that proves it, how to run it) and records \`delivered\`; print delivered.md to the owner.`,
+    '5. Review this stream on the files it changed: the reviewer checks each wiring is reached in the normal flow (a menu links the page, the router mounts the endpoint, the scheduler runs the job, the flag is read), not only that the file names the power.');
+  return md.join('\n');
+}
+
+/** How each surface kind is wired, for the integration plan. */
+const WIRE_HOW = {
+  ui: 'render or call the power from the page or component at the route; make it reachable from the navigation a user already uses; the reach test renders the page (or drives it in a browser) and sees the power\'s effect',
+  api: 'call the power inside the handler at the endpoint; the reach test sends a request to the endpoint and checks the response',
+  job: 'call the power in the scheduled or queued job; the reach test runs the job\'s handler once',
+  model: 'put the power in the model or prompt step (before or after the call, as its how says); the reach test runs the step with a stub client and checks what is sent or returned',
+  cli: 'add the power to the command (a subcommand or flag) and to its help; the reach test runs the command',
+  feature: 'gate the power behind the flag and read the flag where the feature runs; the reach test turns the flag on and checks the effect',
+  lib: 'export the power from the package entry; the reach test imports it from the package entry, not from its own file',
+  workflow: 'add a step under the named heading of the workflow\'s command source (src/plugins/*.js for the suite\'s own commands) that runs `node .claude/helpers/kit/cli.js <verb>`: what to do when the kit is not installed, what each exit code means, and, for `advisory`, that the workflow goes on; regenerate the installed command files'
+};
+
+/** One target as a line: where (workflow step, or how a user reaches the surface), mode and what it does there. */
+function landingLine(t) {
+  if (isWorkflow(t)) return `\`/${t.workflow}\` · ${t.step ?? 'step to pick in the integration stream'} · ${t.mode} — ${t.how}`;
+  return `${t.kind} \`${t.surface}\` · ${t.at ?? 'place to pick in the integration stream'} · ${t.mode} — reached by: ${t.reach}; ${t.how}`;
 }
 
 /** The marathon run id shape this bridge accepts from `cli.js init` (letters, digits and dashes, starting alnum). */
@@ -452,6 +512,16 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
 
   const allPowers = await decidedPowers(runDir, verdicts);
   const source = await readJson(path.join(runDir, 'source.json'));
+  // where each power lands, as approved at the verdict (absent for a run decided before the targets step)
+  const targetsDoc = await readJson(path.join(runDir, 'targets.json'));
+  const usageDoc = await readJson(path.join(runDir, 'usage.json'));
+  const landsOf = (name) => (targetsDoc ? standingTargets(targetsDoc.targets?.[name], usageDoc) : null);
+
+  // a power approved to be built must have somewhere to land, or its wired_<slug> line can never be met
+  const rid = path.basename(runDir);
+  if (!targetsDoc && allPowers.some(p => ['rebuild', 'use'].includes(verdicts.rows[p.name].decision))) {
+    throw new Error(`run ${rid} has no targets.json — it was decided before the targets step, so no power has a place to land. Record where each lands, then hand off: cli.js usage --run ${rid} --force, cli.js surfaces --run ${rid}, cli.js targets --run ${rid} --set <power>@<where> --force`);
+  }
 
   // Separate powers by decision
   const approved = []; // rebuild and use go into the finish line
@@ -461,7 +531,7 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
     const decision = verdicts.rows[power.name].decision;
     if (decision === 'skip') skipped.push(power.name);
     else {
-      const p = { ...power, verdict: decision };
+      const p = { ...power, verdict: decision, targets: landsOf(power.name) };
       allApproved.push(p);
       if (decision !== 'buy') approved.push(p);
     }
@@ -536,10 +606,14 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
       continue;
     }
     const powerLines = finishLine.byPower[power.name];
-    const brief = renderBrief(power, { source, row: verdictRow, lines: powerLines, decided_at: now().toISOString() });
+    const brief = renderBrief(power, { source, row: verdictRow, lines: powerLines, targets: power.targets, decided_at: now().toISOString() });
     await writeTextAtomic(path.join(briefsDir, `${slug}.md`), brief + '\n');
-    outputPowers.push({ name: power.name, slug, verdict: power.verdict, brief: `briefs/${slug}.md`, brief_path: briefRel(slug), lines: powerLines });
+    outputPowers.push({ name: power.name, slug, verdict: power.verdict, brief: `briefs/${slug}.md`, brief_path: briefRel(slug), lines: powerLines, targets: power.targets ?? null });
   }
+
+  // The integration plan: every (power, workflow, step) row, wired after the builds, in its own reviewed stream
+  const integrationRel = posix(path.relative(projectDir, path.join(runDir, 'integration.md')));
+  if (outputPowers.length) await writeTextAtomic(path.join(runDir, 'integration.md'), renderIntegration(run, outputPowers) + '\n');
 
   // Marathon integration
   let marathonRun = null;
@@ -666,9 +740,13 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
       catch (err) { throw new Error(`${mRel}/kickoff.md is unreadable (${err.code || err.message}) — marathon init seeds it`); }
       const sourceLines = [`- Source: ${source ? sourceLabel(source) : 'unknown (source.json is missing)'}`, `- bbs run: ${run}`, `- bbs run dir: ${posix(path.relative(projectDir, runDir))}`];
       for (const p of outputPowers) sourceLines.push(`- Brief (${p.name}): ${p.brief_path}`);
+      sourceLines.push(`- Integration plan: ${integrationRel}`);
       for (const m of memos) sourceLines.push(`- Buy memo (${m.name}): ${posix(path.relative(projectDir, path.join(runDir, m.memo)))}`);
       const kickoff = fillKickoff(seeded, {
-        'Done means': approved.flatMap(p => [`- ${p.name}: 5 checks below`, ...finishLine.byPower[p.name].map(l => doneBullet(l, slugPower(p.name), '  '))]),
+        'Done means': [
+          ...approved.flatMap(p => [`- ${p.name}: 5 checks below`, ...finishLine.byPower[p.name].map(l => doneBullet(l, slugPower(p.name), '  '))]),
+          `- ${INTEGRATION_STREAM}: every power wired into the places approved at the verdict (a workflow step, or a page, endpoint, job, model step, command, flag or library entry a reach test proves), and delivered.md tells the owner what they got (plan: ${integrationRel})`
+        ],
         'You may decide on your own': MAY_DECIDE,
         'Ask me before': ASK_BEFORE,
         'Never': NEVER,
@@ -679,8 +757,9 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
       for (const p of outputPowers) {
         await mcall('stream', p.slug, '--run', mRun, 'state=queued', `plan=${p.brief_path}`, 'next=read the brief, write the contract and failing tests');
       }
+      await mcall('stream', INTEGRATION_STREAM, '--run', mRun, 'state=queued', `plan=${integrationRel}`, 'next=after every build stream is done: wire each power into its approved steps');
       if (force) {
-        stale_streams = await blockStale(mRun, oldRows, new Set(outputPowers.map(p => p.slug)));
+        stale_streams = await blockStale(mRun, oldRows, new Set([...outputPowers.map(p => p.slug), INTEGRATION_STREAM]));
         if (stale_streams.length) staleGroups.push({ run: mRun, names: [...stale_streams] });
         // A later-day refill creates a new run: the run the previous hand-off filled keeps its queued streams unless blocked here
         const pr = prev?.marathonRun;
@@ -754,6 +833,7 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
     powers: outputPowers,
     memos,
     skipped,
+    integration: outputPowers.length ? { stream: INTEGRATION_STREAM, plan: integrationRel } : null,
     finish_line: flFile,
     note,
     ...(force ? { stale_streams, removed_files, skipped_files } : {}),
@@ -771,6 +851,7 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
     powers: outputPowers,
     memos,
     skipped,
+    integration: handoffDoc.integration,
     note,
     ...(force ? { stale_streams, removed_files, skipped_files } : {}),
     next: 'done'

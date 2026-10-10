@@ -6,7 +6,7 @@ import path from 'path';
 import { readJson, readJsonl, writeTextAtomic } from './store.js';
 import { egressLine } from './fetch.js';
 
-export const STEPS = ['intake', 'fetch', 'inventory', 'map', 'verdict', 'handoff'];
+export const STEPS = ['intake', 'fetch', 'inventory', 'map', 'usage', 'surfaces', 'targets', 'verdict', 'handoff'];
 
 export const DECISIONS = ['rebuild', 'use', 'buy', 'skip'];
 
@@ -24,7 +24,14 @@ export function nextStep(state) {
   const judgments = state.map?.judgments;
   if (!state.map || list.some(n => !judgments || judgments[n] === undefined)) return 'map';
   const decisions = state.verdicts?.decisions;
-  if (!state.verdicts || list.some(n => !decisions || !isDecision(decisions[n]))) return 'verdict';
+  const decided = !!state.verdicts && list.every(n => decisions && isDecision(decisions[n]));
+  // usage comes before the verdict; a run decided before the usage step existed is not sent back to it
+  if (!state.usage && !decided) return 'usage';
+  // where a user meets a feature in this project is found in the code before anything is proposed to land there
+  if (!state.surfaces && !decided) return 'surfaces';
+  // where each power lands is proposed before the verdict, which approves it
+  if (!decided && !list.every(n => Array.isArray(state.targets?.targets?.[n]))) return 'targets';
+  if (!decided) return 'verdict';
   if (!state.handoff) return 'handoff';
   return 'done';
 }
@@ -47,6 +54,8 @@ export function summary(state) {
     marathon: state.handoff?.marathonRun ?? null
   };
 }
+
+const allCount = (doc) => (doc.surfaces || []).length + (doc.owner || []).filter(o => !(doc.surfaces || []).some(s => s.id === o.id)).length;
 
 const esc = (v) => String(v).replace(/\|/g, '\\|');
 
@@ -75,6 +84,9 @@ export function renderStatus(state) {
     fetch: s ? (s.fetched ? 'fetched' : 'not fetched') : '',
     inventory: state.powers ? `${sum.found} powers (${sum.not_inventoried} not inventoried)` : '',
     map: state.map ? `${Object.keys(state.map.judgments || {}).length} judged` : '',
+    usage: state.usage ? `${state.usage.evidence}: ${(state.usage.workflows || []).length} workflows` : 'skipped (decided before the usage step)',
+    surfaces: state.surfaces ? `${allCount(state.surfaces)} surfaces (${Object.entries(state.surfaces.kinds || {}).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join(', ') || 'none found'})` : 'skipped (decided before the surfaces step)',
+    targets: state.targets ? `${Object.values(state.targets.targets || {}).filter(t => Array.isArray(t) && t.length).length} powers land somewhere` : 'skipped (decided before the targets step)',
     verdict: state.verdicts ? `${sum.approved} approved, ${sum.skip} skipped, ${sum.undecided} undecided` : '',
     handoff: [sum.marathon, state.handoff?.note].filter(Boolean).map(esc).join(' — ')
   };
@@ -98,6 +110,9 @@ export async function loadState(runDir) {
     egress_corrupt: egress.corrupt,
     powers: await j('powers.json'),
     map: await j('map.json'),
+    usage: await j('usage.json'),
+    surfaces: await j('surfaces.json'),
+    targets: await j('targets.json'),
     verdicts: await j('verdicts.json'),
     handoff: await j('handoff.json')
   };

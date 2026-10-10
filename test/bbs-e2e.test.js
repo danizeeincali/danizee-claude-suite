@@ -89,7 +89,30 @@ describe('bbs e2e — the packaged check', () => {
     assert.equal(j.code, 0, j.err);
     assert.equal(j.json.judged, 3);
     assert.deepEqual(j.json.remaining, []);
-    assert.equal(j.json.next, 'verdict');
+    assert.equal(j.json.next, 'usage');
+    const u = run(['usage', '--root', path.join(FIXTURES, 'no-transcripts-here')]);
+    assert.equal(u.code, 0, u.err);
+    assert.equal(u.json.evidence, 'none', 'no transcripts: the verdict question must ask for the workflows');
+    assert.equal(run(['status', '--next']).out.trim(), 'surfaces', 'where a user meets a feature is found in the code before targets');
+    const sf = run(['surfaces']);
+    assert.equal(sf.code, 0, sf.err);
+    assert.equal(sf.json.run, runId);
+    assert.ok(sf.json.kinds.workflow >= 1, 'the installed workflows are surfaces');
+    assert.equal(sf.json.next, 'targets');
+    assert.equal(run(['status', '--next']).out.trim(), 'targets');
+  });
+
+  it('4b targets: the brief lists the owner\'s workflows with their steps; the fixture targets are checked against them and recorded', () => {
+    const b = run(['targets', '--brief']);
+    assert.equal(b.code, 0, b.err);
+    assert.match(b.out, /every installed workflow is listed/);
+    assert.match(b.out, /### w-review — steps/);
+    assert.match(b.out, /CHECKPOINT 1: Code Analysis/);
+    const t = run(['targets', '--from', path.join(FIXTURES, 'targets.json')]);
+    assert.equal(t.code, 0, t.err);
+    assert.deepEqual(t.json.no_target, ['usage-exporter']);
+    assert.deepEqual(t.json.remaining, []);
+    assert.equal(t.json.next, 'verdict');
   });
 
   it('5 verdict: no sandbox → use removed with a reason; the table shows every power; the fixture decisions are legal and the registry row lands', async () => {
@@ -102,10 +125,19 @@ describe('bbs e2e — the packaged check', () => {
     }
     const t = run(['verdict', '--table']);
     assert.equal(t.code, 0, t.err);
-    assert.match(t.out, /\| Power \| Harness \| Licence \| Legal \| Default \| Decision \| Why \|/);
+    assert.match(t.out, /\| Power \| Harness \| Licence \| Legal \| Default \| Lands in \| Decision \| Why \|/);
+    assert.match(t.out, /w-review · ⛔ CHECKPOINT 1: Code Analysis · advisory/);
+    assert.match(t.out, /\| nowhere \|/);
     const bad = run(['verdict', '--decide', 'drift-monitor=use']);
     assert.equal(bad.code, 2);
     assert.match(bad.err, /^bbs: refused: /);
+    const unconfirmed = run(['verdict', '--from', path.join(FIXTURES, 'decisions.json')]);
+    assert.equal(unconfirmed.code, 2, 'no evidence of use: a rebuild waits for the owner to name their workflows');
+    assert.match(unconfirmed.err, /usage --force --workflows/);
+    // the owner's answer to the one question names their workflows alongside the verdicts
+    const owner = run(['usage', '--force', '--workflows', 'w-review,mt']);
+    assert.equal(owner.code, 0, owner.err);
+    assert.equal(owner.json.evidence, 'owner');
     const d = run(['verdict', '--from', path.join(FIXTURES, 'decisions.json')]);
     assert.equal(d.code, 0, d.err);
     assert.equal(d.json.decided, 3);
@@ -132,7 +164,7 @@ describe('bbs e2e — the packaged check', () => {
     assert.equal(fl.lines.filter(l => l.id.startsWith('tests_green_')).length, 2);
     const streams = JSON.parse(await fs.readFile(path.join(mDir, 'streams.json'), 'utf-8'));
     const rows = (streams.streams || streams).filter(s => s.name !== '_meta');
-    assert.equal(rows.length, 2);
+    assert.equal(rows.length, 3, 'two powers plus the integration stream');
     for (const row of rows) {
       assert.equal(row.state, 'queued');
       await fs.stat(path.join(dir, row.plan));

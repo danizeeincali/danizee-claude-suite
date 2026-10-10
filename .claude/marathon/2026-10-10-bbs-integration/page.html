@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marathon 2026-10-10-bbs-integration</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --fg: #1b1f24;
+  --muted: #5f6b76;
+  --line: #d8dee4;
+  --ok: #1a7f37;
+  --warn: #9a6700;
+  --bad: #cf222e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --fg: #e6edf3;
+    --muted: #8b98a5;
+    --line: #30363d;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --bad: #f85149;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 64rem; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 1.5rem; margin: 0 0 4px; }
+h2 { font-size: 1.1rem; margin: 32px 0 8px; }
+p { margin: 4px 0; }
+.muted { color: var(--muted); }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+.ok { color: var(--ok); font-weight: 600; }
+.warn { color: var(--warn); font-weight: 600; }
+.bad { color: var(--bad); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+<h1>Marathon 2026-10-10-bbs-integration</h1>
+<p class="muted">Snapshot of the run: finish line, streams, review ledger and helper spend.</p>
+
+<h2>Gate</h2>
+<p>Build gate: <span class="ok">met</span> · Full gate: <span class="ok">met</span></p>
+<p class="muted">Failing: none · Waiting on human: none</p>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Line</th><th scope="col">Owner</th><th scope="col">Target</th><th scope="col">Actual</th><th scope="col">Status</th></tr></thead>
+<tbody>
+<tr><td>Green /w-bbs end-to-end runs in a row (usage -&gt; targets -&gt; verdict -&gt; handoff with an integration stream)</td><td>build</td><td>at least 2</td><td>3</td><td class="ok">met</td></tr>
+<tr><td>Green unit runs in a row</td><td>build</td><td>at least 1</td><td>14</td><td class="ok">met</td></tr>
+<tr><td>Clean reviews in a row</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>High findings in the latest review</td><td>build</td><td>at most 0</td><td>0</td><td class="ok">met</td></tr>
+<tr><td>Open high findings</td><td>build</td><td>at most 0</td><td>0</td><td class="ok">met</td></tr>
+<tr><td>Helpers that blew their budget</td><td>build</td><td>at most 2</td><td>1</td><td class="ok">met</td></tr>
+<tr><td>Full npm test green after the last stream</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>The new wired measure reports redact as not wired on current main for the OpenQodex powers</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>Installed copies (.claude/commands/.shortcuts, .claude/helpers/bbs) equal their sources</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+</tbody>
+</table></div>
+
+<h2>Streams</h2>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Stream</th><th scope="col">State</th><th scope="col">Phase</th><th scope="col">Next</th><th scope="col">Tasks</th></tr></thead>
+<tbody>
+<tr><td>usage</td><td>done</td><td>build</td><td>write usage verb tests</td><td></td></tr>
+<tr><td>targets</td><td>done</td><td>build</td><td>fix usage r4 findings, then review</td><td></td></tr>
+<tr><td>integration-gate</td><td>done</td><td></td><td>merged into claude/project-thread-9ow0sy</td><td></td></tr>
+<tr><td>surfaces</td><td>blocked</td><td></td><td>merged into integration-gate</td><td></td></tr>
+</tbody>
+</table></div>
+
+<h2>Review ledger</h2>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Review</th><th scope="col">Stream</th><th scope="col">Round</th><th scope="col">Result</th><th scope="col">High / medium / low</th><th scope="col">Time</th></tr></thead>
+<tbody>
+<tr><td>56036e2a-bd6b-47b1-a1b4-277a7abc338a</td><td>usage</td><td>1</td><td class="bad">over</td><td>0 / 3 / 3</td><td>2026-10-10T16:41:03.823Z</td></tr>
+<tr><td>78d09f0a-9b27-41b5-b6d1-be7eb6c369c0</td><td>usage</td><td>2</td><td class="bad">over</td><td>0 / 3 / 0</td><td>2026-10-10T16:48:59.867Z</td></tr>
+<tr><td>94ed5ae6-4af4-4dc9-97c3-3b18f7290912</td><td>usage</td><td>3</td><td class="ok">pass</td><td>0 / 2 / 2</td><td>2026-10-10T16:56:06.793Z</td></tr>
+<tr><td>8616aec2-0b75-4db7-a1c8-ef52a2937b03</td><td>usage</td><td>4</td><td class="ok">pass</td><td>0 / 2 / 0</td><td>2026-10-10T17:03:09.674Z</td></tr>
+<tr><td>20ba6e2a-af28-41ed-96aa-4e19d5564546</td><td>targets</td><td>1</td><td class="bad">over</td><td>1 / 1 / 2</td><td>2026-10-10T17:14:13.019Z</td></tr>
+<tr><td>14185e28-5511-4a5b-845f-bd38738541bd</td><td>targets</td><td>2</td><td class="ok">pass</td><td>0 / 2 / 3</td><td>2026-10-10T17:22:51.962Z</td></tr>
+<tr><td>b23fe058-a6a5-4074-b273-7901403471c3</td><td>targets</td><td>3</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-10-10T17:31:54.667Z</td></tr>
+<tr><td>d7ddfafa-9f52-4896-9ceb-1d8c6fa25451</td><td>integration-gate</td><td>1</td><td class="bad">over</td><td>1 / 4 / 3</td><td>2026-10-10T18:01:14.028Z</td></tr>
+<tr><td>46dd57db-ef18-46e2-9193-6556721fd005</td><td>integration-gate</td><td>2</td><td class="bad">over</td><td>0 / 3 / 2</td><td>2026-10-10T18:12:43.563Z</td></tr>
+<tr><td>46147729-16fc-46d0-bd96-f949cf0eb5a0</td><td>integration-gate</td><td>3</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-10-10T18:21:50.064Z</td></tr>
+<tr><td>aa4f1d66-a930-4cd9-b9cc-f739542a5eaa</td><td>integration-gate</td><td>4</td><td class="bad">over</td><td>1 / 2 / 1</td><td>2026-10-10T18:29:28.529Z</td></tr>
+<tr><td>7fe09c37-b372-4261-8613-4c70bf518583</td><td>integration-gate</td><td>5</td><td class="ok">pass</td><td>0 / 1 / 1</td><td>2026-10-10T18:36:10.271Z</td></tr>
+<tr><td>1d09a44b-4db6-4c6a-acab-5a313fd95044</td><td>integration-gate</td><td>6</td><td class="ok">pass</td><td>0 / 2 / 4</td><td>2026-10-10T18:41:25.513Z</td></tr>
+</tbody>
+</table></div>
+
+<h2>Helper spend by model</h2>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Model</th><th scope="col">Helpers</th><th scope="col">Done</th><th scope="col">Tokens used</th><th scope="col">Tokens budgeted in flight</th></tr></thead>
+<tbody>
+<tr><td>session</td><td>2</td><td>2</td><td>300,000</td><td>0</td></tr>
+<tr><td>opus</td><td>13</td><td>13</td><td>1,481,474</td><td>0</td></tr>
+<tr><td>sonnet</td><td>2</td><td>2</td><td>350,000</td><td>0</td></tr>
+</tbody>
+</table></div>
+</main>
+</body>
+</html>

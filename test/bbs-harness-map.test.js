@@ -261,14 +261,14 @@ describe('harness-map — buildMap, mapBrief, recordJudgments', () => {
     const done = await recordJudgments(dir, { run: r.runId, input: JSON.stringify({ judgments: { other: 'missing' } }), now });
     assert.equal(done.judged, 2);
     assert.deepEqual(done.remaining, []);
-    assert.equal(done.next, 'verdict');
+    assert.equal(done.next, 'usage');
     const map = await readJson(path.join(runDir, 'map.json'));
     assert.equal(map.judgments['drift-monitor'].status, 'partial');
     assert.equal(map.judgments['drift-monitor'].tool, tool);
     assert.equal(map.judgments.other.status, 'missing');
     assert.equal(map.judgments.other.tool, null);
     const status = await fs.readFile(path.join(runDir, 'status.md'), 'utf-8');
-    assert.match(status, /- Next: `cli\.js verdict`/);
+    assert.match(status, /- Next: `cli\.js usage`/);
   });
 
   it('recordJudgments refuses before buildMap and refuses to overwrite a judgment without force', async () => {
@@ -300,14 +300,14 @@ describe('harness-map — cli verb', () => {
   it('usage lists map with [--brief | --from <file|->] [--force]; map before inventory fails naming inventory', () => {
     const u = run(dir, ['nope']);
     assert.match(u.err, /cli\.js map \[--brief \| --from <file\|->\] \[--force\] \[--run <id>\] \[--project <dir>\]/);
-    assert.match(u.err, /usage: cli\.js <intake\|fetch\|inventory\|map\|verdict\|handoff\|status\|report> \.\.\./);
+    assert.match(u.err, /usage: cli\.js <intake\|fetch\|inventory\|map\|usage\|surfaces\|targets\|verdict\|handoff\|integrate\|wired\|delivered\|status\|report> \.\.\./);
     run(dir, ['intake', '-', '--slug', 'c1'], 'a tool');
     const early = run(dir, ['map']);
     assert.equal(early.code, 1);
     assert.match(early.err, /inventory/);
   });
 
-  it('map builds the index and candidates; --brief prints text; --from records judgments; status --next moves to verdict', async () => {
+  it('map builds the index and candidates; --brief prints text; --from records judgments; status --next moves to usage', async () => {
     const inv = run(dir, ['inventory', '--from', '-'], JSON.stringify([power()]));
     assert.equal(inv.code, 0, inv.err);
     const m = run(dir, ['map']);
@@ -325,8 +325,8 @@ describe('harness-map — cli verb', () => {
     const j = run(dir, ['map', '--from', '-'], JSON.stringify({ 'drift-monitor': 'missing' }));
     assert.equal(j.code, 0, j.err);
     assert.equal(j.json.judged, 1);
-    assert.equal(j.json.next, 'verdict');
-    assert.equal(run(dir, ['status', '--next']).out.trim(), 'verdict');
+    assert.equal(j.json.next, 'usage');
+    assert.equal(run(dir, ['status', '--next']).out.trim(), 'usage');
     const again = run(dir, ['map']);
     assert.equal(again.code, 1);
     assert.match(again.err, /--force/);
@@ -414,14 +414,14 @@ describe('harness-map r1 — judgments, stale files, brief', () => {
     assert.ok(!files.includes('verdicts.json') && !files.includes('handoff.json'));
     const j = await recordJudgments(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'missing' }), now });
     assert.deepEqual(j.stale_moved, []);
-    assert.equal(j.next, 'verdict');
+    assert.equal(j.next, 'usage');
     // record --force also moves them
     await fs.writeFile(path.join(runDir, 'verdicts.json'), JSON.stringify({ decisions: { 'drift-monitor': 'skip' } }));
     const f = await recordJudgments(dir, { run: r.runId, input: JSON.stringify({ 'drift-monitor': 'missing' }), now, force: true });
     assert.deepEqual(f.stale_moved, ['verdicts.json']);
     files = await fs.readdir(runDir);
     assert.ok(!files.includes('verdicts.json'));
-    assert.equal(f.next, 'verdict');
+    assert.equal(f.next, 'usage');
   });
 
   it('moveAsideStale claims distinct stale names, returns the moved names and restores on a partial failure', async () => {
@@ -520,7 +520,7 @@ describe('harness-map r1 — cli: --from <file>, fenced file, map --force', () =
   });
   after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
 
-  it('--from <file> reads a fenced file with a trailing newline; a bad file names the path; a bare have is refused; map --force after verdicts returns to verdict', async () => {
+  it('--from <file> reads a fenced file with a trailing newline; a bad file names the path; a bare have is refused; map --force after verdicts returns to usage', async () => {
     run(dir, ['intake', '-', '--slug', 'c2'], 'a tool');
     assert.equal(run(dir, ['inventory', '--from', '-'], JSON.stringify([power()])).code, 0);
     assert.equal(run(dir, ['map']).code, 0);
@@ -538,7 +538,7 @@ describe('harness-map r1 — cli: --from <file>, fenced file, map --force', () =
     await fs.writeFile(good, '```json\n{"drift-monitor":"missing"}\n```\n');
     const j = run(dir, ['map', '--from', good]);
     assert.equal(j.code, 0, j.err);
-    assert.equal(j.json.next, 'verdict');
+    assert.equal(j.json.next, 'usage');
     const runId = (await fs.readdir(path.join(dir, '.claude', 'bbs', 'runs')))[0];
     const runDir = path.join(dir, '.claude', 'bbs', 'runs', runId);
     await fs.writeFile(path.join(runDir, 'verdicts.json'), JSON.stringify({ decisions: { 'drift-monitor': 'skip' } }));
@@ -547,7 +547,7 @@ describe('harness-map r1 — cli: --from <file>, fenced file, map --force', () =
     assert.equal(f.code, 0, f.err);
     assert.deepEqual(f.json.stale_moved, ['verdicts.json']);
     assert.equal(run(dir, ['map', '--from', good]).code, 0);
-    assert.equal(run(dir, ['status', '--next']).out.trim(), 'verdict');
+    assert.equal(run(dir, ['status', '--next']).out.trim(), 'usage');
     assert.ok((await fs.readdir(runDir)).some(n => n.startsWith('verdicts.json.stale-')));
   });
 
