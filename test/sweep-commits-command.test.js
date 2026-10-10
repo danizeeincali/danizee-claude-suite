@@ -299,15 +299,37 @@ describe('sweep-commits round 2 review fixes', () => {
       const s = c.slice(i, c.indexOf('scrub --worktree; RC=$?', i));
       assert.match(s, /run a plain `git diff --quiet` with no path \(exit 0 means none\)/);
       assert.ok(!s.includes('<the staged paths>'), 'the check covers the whole index, not only the paths just staged');
-      assert.ok(!/git diff --quiet -- /.test(s), 'no path-limited diff check');
+      if (name === 'w-agent-tdd-swarm') assert.ok(!/git diff --quiet -- /.test(s), 'no path-limited diff check');
       assert.match(s, /Check the whole index, not only the paths just staged: `git commit` commits everything staged, by anyone, earlier included/);
       assert.match(s, /reads each file's content from disk but git commits the index, so the two must agree/);
-      assert.match(s, /Exit 1 means unstaged changes: re-stage the paths `git diff --name-only` lists \(`git add`\) and check once more before the scrub/);
-      assert.match(s, /any other exit \(128 and above\) is a git error: report it and do not commit\./);
+      if (name === 'w-agent-tdd-swarm') {
+        assert.match(s, /Exit 1 means unstaged changes: re-stage the paths `git diff --name-only` lists \(`git add`\) and check once more before the scrub/);
+        assert.match(s, /any other exit \(128 and above\) is a git error: report it and do not commit\./);
+        assert.ok(!c.includes('AskUserQuestion'), 'the swarm has no user gate');
+      } else {
+        assert.match(s, /Exit 1 means unstaged changes: re-stage \(`git add`\) only the paths that appear in both `git diff --name-only` and `git diff --cached --name-only`/);
+        assert.match(s, /For any other path `git diff --name-only` lists, do not run `git add` on it: /);
+        assert.match(s, /`git diff --quiet -- \$\(git diff --cached --name-only\)` over the staged paths only|as `git diff --quiet -- \$\(git diff --cached --name-only\)`/);
+        assert.match(s, /Any other exit \(128 and above\) is a git error: report it and do not commit\./);
+      }
+      if (name === 'w-end') {
+        assert.match(s, /AskUserQuestion: "Unstaged edits in <paths> are not part of this session's files\. Include them, leave them out, or stop\?" with options \["Leave them out and commit", "Include them", "Stop"\]/);
+        assert.match(s, /"Leave them out and commit" means the check is run as `git diff --quiet -- \$\(git diff --cached --name-only\)` over the staged paths only/);
+      }
+      if (name === 'w-autoresearch') {
+        assert.match(s, /leave it unstaged and log the paths in the experiment's log entry/);
+        assert.ok(!s.includes('AskUserQuestion'));
+      }
       assert.match(s, /If the re-check still exits non-zero, report it and do not commit\./);
       const q = s.indexOf('git diff --quiet');
       const r = s.indexOf('If the re-check still exits non-zero');
       assert.ok(q >= 0 && r > q, 'the diff check and its exit rules come before the scrub run (s ends at it)');
+      const blk = c.indexOf('```bash', i);
+      const dq = c.indexOf('git diff --quiet; D=$?; if [ $D -eq 1 ]; then echo "unstaged changes: ', blk);
+      const sc = c.indexOf('scrub --worktree; RC=$?', blk);
+      const endBlk = c.indexOf('```', blk + 7);
+      assert.ok(blk >= 0 && dq > blk && dq < sc && sc < endBlk, 'the whole-index check is inside the fenced block before the scrub');
+      assert.match(c.slice(dq, sc), /elif \[ \$D -ne 0 \]; then echo "git error \(exit \$D\): do not commit"; fi/);
     });
   }
 
@@ -335,6 +357,9 @@ describe('sweep-commits round 2 review fixes', () => {
     assert.ok(!s.includes("git clean -fd -- <the experiment's new paths>"), 'no unconditional clean over a possibly empty list');
     assert.ok(!/git clean -fd -- \.|git clean -fd`|git clean -fd;/.test(s), 'no pathless git clean');
     assert.match(s, /revert in this order: first unstage/);
+    assert.match(s, /right after that `git add`, and before any `git reset`, list the experiment's paths with `git diff --cached --name-only` and its new paths with `git diff --cached --name-only --diff-filter=A`, and save both lists in the experiment's log entry/);
+    assert.match(s, /<the experiment's paths> is the recorded list from `git diff --cached --name-only` and <those paths> the recorded list of new paths from `git diff --cached --name-only --diff-filter=A`/);
+    assert.match(s, /log the hits, take the path lists recorded in the scrub step, revert in this order/);
     assert.match(s, /if the unstage failed, do not count it as reverted: report it and pause the loop \(create `\.autoresearch-off`\)/);
     assert.match(s, /After 3 consecutive scrub refusals pause the loop: create `\.autoresearch-off` and log why/);
   });
