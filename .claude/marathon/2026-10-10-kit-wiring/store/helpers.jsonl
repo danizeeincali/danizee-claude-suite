@@ -44,3 +44,4 @@
 {"helper_id":"7d8c70e8-65ee-4b20-8e3e-53fb5bc3b67e","tokens":25000,"outcome":"green","event":"done","id":"255990af-6889-4ec8-a0bd-0ed466305129","ts":"2026-10-10T18:17:13.277Z"}
 {"role":"routine","model":"sonnet","stream":"diff-range","budget":150000,"event":"spawn","id":"ede610de-3eba-4129-8a8d-37c08df591de","ts":"2026-10-10T18:19:25.789Z"}
 {"role":"build","model":"sonnet","stream":"pt","budget":150000,"event":"spawn","id":"2bf97130-6563-4cd1-8ab0-95ad7d967ebf","ts":"2026-10-10T18:20:29.819Z"}
+{"helper_id":"ede610de-3eba-4129-8a8d-37c08df591de","tokens":45000,"outcome":"green","event":"done","id":"3b9212a2-cf5d-4a3f-b3a4-3485e3c5d7f0","ts":"2026-10-10T18:23:00.023Z"}
