@@ -20,6 +20,7 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
@@ -56,7 +57,7 @@ describe('diff-range — the review range as one unified diff', () => {
 
   it('is a discoverable verb with a usage line that names every flag and the exit codes', () => {
     assert.equal(verb, 'diff-range');
-    for (const flag of ['--dir', '--base', '--no-untracked', '--base-only', '--json']) assert.ok(usage.includes(flag), flag);
+    for (const flag of ['--dir', '--base', '--no-untracked', '--base-only', '--json', '--timeout']) assert.ok(usage.includes(flag), flag);
     assert.match(usage, /exit 0[^;]*3[^;]*empty|3 = empty|3 empty/i);
   });
 
@@ -383,13 +384,147 @@ describe('diff-range — the review range as one unified diff', () => {
       if (c.status !== 0 || missing().length === 0) return t.skip(`this git cannot build a blob:none partial clone: ${c.stderr}`);
       const before = missing();
       await assert.rejects(run(['--dir', clone, '--base', 'HEAD~1'], { cwd: root, env: process.env }),
-        (e) => e instanceof KitExit && e.code === 1 && /cannot diff against the base/.test(e.message) && /lazy fetch/i.test(e.message) && /promisor|not in the local store/.test(e.message));
+        (e) => e instanceof KitExit && e.code === 1 && /cannot diff against the base/.test(e.message) && e.message.includes(`this is a partial clone and some file contents are not downloaded; diff-range never downloads. Run \`git -C ${fsSync.realpathSync(clone)} diff <base> >/dev/null\` once to fetch them, or use a full clone.`));
       const r = cli(root, ['--dir', clone, '--base', 'HEAD~1']);
       assert.equal(r.code, 1);
       assert.equal(r.out, '', 'no partial diff is printed');
-      assert.match(r.err, /lazy fetch/i);
+      assert.match(r.err, /this is a partial clone and some file contents are not downloaded; diff-range never downloads\./);
       assert.deepEqual(missing(), before, 'no blob was fetched from the promisor remote');
     } finally { await fs.rm(root, { recursive: true, force: true }); }
+  });
+
+  it('a committed submodule pointer bump is in the range, and the submodule\'s own planted clean filter does not run', { skip: process.platform === 'win32' }, async () => {
+    const tools = await fs.mkdtemp(path.join(os.tmpdir(), 'diff-range-sm-'));
+    try {
+      const subSrc = path.join(tools, 'subsrc');
+      await fs.mkdir(subSrc);
+      sh(subSrc, 'init', '-q', '.');
+      await fs.writeFile(path.join(subSrc, 's.txt'), 'one\n');
+      sh(subSrc, 'add', '-A'); sh(subSrc, 'commit', '-q', '-m', 's1');
+      await put('a.txt', 'a\n'); commit();
+      sh(dir, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', subSrc, 'sm');
+      commit('add sm');
+      const sm = path.join(dir, 'sm');
+      await fs.writeFile(path.join(sm, 's.txt'), 'two\n');
+      sh(sm, 'commit', '-q', '-am', 's2');
+      const marker = path.join(tools, 'marker-clean');
+      const script = path.join(tools, 'clean.sh');
+      await fs.writeFile(script, `#!/bin/sh\ntouch '${marker}'\ncat\n`, { mode: 0o755 });
+      await fs.writeFile(path.join(sm, '.gitattributes'), '*.txt filter=evil\n');
+      sh(sm, 'config', 'filter.evil.clean', script);
+      commit('bump sm');
+      const r = await run(['--base', 'HEAD~1', '--no-untracked'], io());
+      assert.equal(r.exit, 0);
+      assert.match(r.raw, /^-Subproject commit [0-9a-f]+$/m);
+      assert.match(r.raw, /^\+Subproject commit [0-9a-f]+$/m);
+      const c = cli(dir, ['--base', 'HEAD~1', '--no-untracked']);
+      assert.equal(c.code, 0, c.err);
+      assert.match(c.out, /^\+Subproject commit /m);
+      await assert.rejects(fs.access(marker), 'the submodule\'s clean filter must not have run');
+    } finally { await fs.rm(tools, { recursive: true, force: true }); }
+  });
+
+  it('a FIFO include in the user\'s global config is theirs: with --timeout 2000 the verb ends within seconds and names the git command that timed out', { skip: process.platform === 'win32' }, async (t) => {
+    await put('a.txt', 'a\n'); commit();
+    const gdir = await fs.mkdtemp(path.join(os.tmpdir(), 'diff-range-gcfg-'));
+    try {
+      const fifo = path.join(gdir, 'inc');
+      const mk = spawnSync('mkfifo', [fifo]);
+      if (mk.error || mk.status !== 0) return t.skip('mkfifo is not available');
+      const gc = path.join(gdir, '.gitconfig'); // HOME is kept by the verb's env scrub (GIT_CONFIG_GLOBAL is not)
+      await fs.writeFile(gc, `[include]\n\tpath = ${fifo}\n`);
+      await put('a.txt', 'b\n');
+      const started = Date.now();
+      const r = spawnSync(process.execPath, [CLI, 'diff-range', '--timeout', '2000'], { cwd: dir, encoding: 'utf-8', env: { ...process.env, GIT_DIR: '', GIT_WORK_TREE: '', HOME: gdir, XDG_CONFIG_HOME: path.join(gdir, 'xdg') }, timeout: 30000 });
+      assert.ok(Date.now() - started < 20000, 'did not hang');
+      assert.equal(r.status, 1, r.stderr);
+      assert.match(r.stderr, /git \S+ took longer than 2000 ms and was stopped/);
+    } finally { await fs.rm(gdir, { recursive: true, force: true }); }
+  });
+
+  it('an include.path or includeIf in the repository\'s own .git/config is exit 2 before any diff; a global includeIf is still allowed', async () => {
+    await put('a.txt', 'a\n'); commit();
+    await put('a.txt', 'b\n');
+    const msg = "the repository's .git/config has include.path/includeIf entries; diff-range does not follow includes (a driver defined there could not be switched off): remove them or run the read through safe-git";
+    const gdir = await fs.mkdtemp(path.join(os.tmpdir(), 'diff-range-gcfg-'));
+    try {
+      const gc = path.join(gdir, '.gitconfig');
+      await fs.writeFile(path.join(gdir, 'other'), '[user]\n\tname = x\n');
+      await fs.writeFile(gc, `[includeIf "gitdir:/nowhere/"]\n\tpath = ${path.join(gdir, 'other')}\n`);
+      const genv = { ...process.env, HOME: gdir, XDG_CONFIG_HOME: path.join(gdir, 'xdg') };
+      const ok = await run(['--base', 'HEAD'], io({ env: genv }));
+      assert.equal(ok.exit, 0, 'a global includeIf is the user\'s own');
+      for (const [k, v] of [['include.path', 'inc'], ['includeIf.gitdir:/x/.path', 'inc']]) {
+        sh(dir, 'config', k, v);
+        await assert.rejects(run(['--base', 'HEAD'], io({ env: genv })), (e) => e instanceof KitExit && e.code === 2 && e.message === msg, k);
+        const cr = spawnSync(process.execPath, [CLI, 'diff-range', '--base', 'HEAD'], { cwd: dir, encoding: 'utf-8', env: { ...genv, GIT_DIR: '', GIT_WORK_TREE: '' } });
+        const c = { code: cr.status, out: cr.stdout, err: cr.stderr };
+        assert.equal(c.code, 2, c.err);
+        assert.ok(c.err.includes(msg));
+        assert.equal(c.out, '');
+        sh(dir, 'config', '--unset-all', k);
+      }
+      assert.equal((await run(['--base', 'HEAD'], io({ env: genv }))).exit, 0, 'removed again: fine');
+    } finally { await fs.rm(gdir, { recursive: true, force: true }); }
+  });
+
+  it('a git child that outlives --timeout is exit 1 naming the git command (injected spawn)', async () => {
+    await put('a.txt', 'a\n'); commit();
+    const slow = defaultGit(dir, { timeout: 1234, spawn: () => ({ error: Object.assign(new Error('spawnSync git ETIMEDOUT'), { code: 'ETIMEDOUT' }), status: null, signal: 'SIGTERM', stdout: '', stderr: '' }) });
+    await assert.rejects(run([], io({ git: slow })), (e) => e instanceof KitExit && e.code === 1 && /git config took longer than 1234 ms and was stopped/.test(e.message));
+    await assert.rejects(run(['--timeout', '0'], io()), (e) => e instanceof KitExit && e.code === 1 && /--timeout/.test(e.message));
+    await assert.rejects(run(['--timeout', 'abc'], io()), (e) => e instanceof KitExit && e.code === 1);
+  });
+
+  it('700 filter sections do not overflow the environment: the per-driver pairs go on argv', async () => {
+    await put('a.txt', 'a\n'); commit();
+    await put('a.txt', 'b\n');
+    let cfg = '';
+    for (let i = 0; i < 700; i++) cfg += `[filter "d-${i}"]\n\tclean = true\n`;
+    await fs.appendFile(path.join(dir, '.git', 'config'), cfg);
+    const r = await run(['--base', 'HEAD'], io());
+    assert.equal(r.exit, 0);
+    assert.deepEqual(parseDiff(r.raw).map(f => f.path), ['a.txt']);
+    const c = cli(dir, ['--base', 'HEAD']);
+    assert.ok(c.code === 0 || c.code === 3, c.err);
+  });
+
+  it('EVERY git call carries the hardened env (fsmonitor off, no lazy fetch, no lfs smudge) and drops a caller GIT_CONFIG_PARAMETERS', async () => {
+    await put('a.txt', 'a\n'); commit();
+    await put('a.txt', 'b\n'); await put('u.txt', 'u\n');
+    sh(dir, 'config', 'filter.zz.clean', 'true');
+    const real = defaultGit(dir, {});
+    const calls = [];
+    const rec = Object.assign(async (args, o = {}) => { calls.push({ args, env: o.env || {}, pre: o.pre || [] }); return real(args, o); }, { cwd: dir });
+    const r = await run(['--base', 'HEAD~0'], io({ git: rec, env: { ...process.env, GIT_CONFIG_PARAMETERS: "'core.fsmonitor=/x'" } }));
+    assert.equal(r.exit, 0);
+    const subs = new Set(calls.map(c => c.args.find(a => !a.startsWith('-') && !a.includes('=')) ));
+    for (const need of ['config', 'rev-parse', 'diff']) assert.ok(subs.has(need), `saw ${need}: ${[...subs]}`);
+    assert.ok(calls.some(c => c.args.includes('ls-files')) && calls.some(c => c.args.includes('--no-index')));
+    assert.ok(calls.some(c => c.args.includes('rev-parse') && c.args.includes('--verify')));
+    for (const c of calls) {
+      assert.match(c.env.GIT_CONFIG_PARAMETERS, /'core\.fsmonitor='/, c.args.join(' '));
+      assert.ok(!c.env.GIT_CONFIG_PARAMETERS.includes('/x'), 'the caller value is dropped, not appended');
+      assert.equal(c.env.GIT_NO_LAZY_FETCH, '1');
+      assert.equal(c.env.GIT_LFS_SKIP_SMUDGE, '1');
+    }
+    assert.ok(calls.filter(c => !c.args.includes('config')).every(c => c.pre.includes('filter.zz.clean=')), 'driver pairs ride on argv for the later calls');
+    // the empty-tree path: hash-object and merge-base are hardened too
+    calls.length = 0;
+    await run(['--base-only'], io({ git: rec })); // no upstream: the empty tree via hash-object
+    assert.ok(calls.some(c => c.args.includes('hash-object')), 'hash-object ran');
+    for (const c of calls) assert.match(c.env.GIT_CONFIG_PARAMETERS, /'core\.fsmonitor='/);
+    const origin = await fs.mkdtemp(path.join(os.tmpdir(), 'diff-range-hash-'));
+    try {
+      sh(origin, 'init', '-q', '--bare', '.');
+      sh(dir, 'remote', 'add', 'origin', origin);
+      sh(dir, 'push', '-q', '-u', 'origin', 'HEAD');
+      calls.length = 0;
+      await run(['--no-untracked'], io({ git: rec }));
+      await run(['--base-only'], io({ git: rec }));
+    } finally { await fs.rm(origin, { recursive: true, force: true }); }
+    assert.ok(calls.some(c => c.args.includes('merge-base')), 'merge-base ran');
+    for (const c of calls) assert.match(c.env.GIT_CONFIG_PARAMETERS, /'core\.fsmonitor='/);
   });
 
   it('configParameters single-quotes each -c pair the way git does', () => {
