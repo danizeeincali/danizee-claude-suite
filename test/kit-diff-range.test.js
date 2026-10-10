@@ -258,6 +258,48 @@ describe('diff-range — the review range as one unified diff', () => {
     assert.ok(shown.endsWith('+realdir\n\\ No newline at end of file'));
   });
 
+  it('core.autocrlf=true: the benign LF-to-CRLF warning on an untracked text file does not abort the range', async () => {
+    await put('a.txt', 'a\n'); commit();
+    sh(dir, 'config', 'core.autocrlf', 'true');
+    await put('lf.txt', 'one\ntwo\n');
+    const r = await run(['--base', 'HEAD'], io());
+    assert.equal(r.exit, 0);
+    assert.deepEqual(parseDiff(r.raw).map(f => f.path), ['lf.txt']);
+    // and a warning-only stderr from the diff itself is benign when stdout holds the diff
+    const real = defaultGit(dir, {});
+    const fake = Object.assign(async (args, o) => {
+      if (args.includes('--no-index')) { const d = await real(args, o); return { ...d, code: 1, stderr: "warning: in the working copy of 'lf.txt', LF will be replaced by CRLF the next time Git touches it\n" }; }
+      return real(args, o);
+    }, { cwd: dir });
+    const w = await run(['--base', 'HEAD', '--json'], io({ git: fake }));
+    assert.deepEqual(w.untracked, ['lf.txt']);
+  });
+
+  const TRICKY = [['space', 'a b'], ['double quote', 'q"x'], ['backslash', 'b\\s'], ['newline', 'n\nl'], ['tab', 't\tb'], ['non-ASCII', 'café']];
+  for (const [label, name] of TRICKY) {
+    it(`an untracked symlink named with ${label} is written exactly as git writes it, and parses to the same path as a regular file`, { skip: process.platform === 'win32' }, async (t) => {
+      await put('a.txt', 'a\n'); commit();
+      try { await fs.symlink('target.txt', path.join(dir, name)); } catch (e) { t.skip(`filesystem refuses this name: ${e.code}`); return; }
+      await put(`reg-${name}`, 'x\n');
+      const r = await run(['--base', 'HEAD'], io());
+      const raw = r.raw.toString();
+      const entries = raw.split(/^(?=diff --git )/m);
+      const link = entries.find(e => e.includes('new file mode 120000'));
+      const reg = entries.find(e => !e.includes('120000') && e.startsWith('diff --git ') && e.includes('reg-'));
+      assert.ok(link && reg);
+      // git's own rendering of the same link, committed in a scratch repo
+      sh(dir, 'add', '--', name); // stage only the link
+      sh(dir, 'commit', '-q', '-m', 'l', '--', name);
+      const gitOut = spawnSync('git', ['-c', 'core.quotePath=true', 'show', '--no-prefix', '--format=', 'HEAD'], { cwd: dir, encoding: 'utf-8' }).stdout;
+      const strip = (x) => x.replace(/^index .*\n/m, '');
+      assert.equal(strip(link), strip(gitOut));
+      // both kinds of entry spell the path the same way
+      assert.deepEqual(parseDiff(link).map(f => f.path), [name]);
+      assert.deepEqual(parseDiff(reg).map(f => f.path), [`reg-${name}`]);
+      assert.equal(parseDiff(raw).length, 2, 'no phantom path');
+    });
+  }
+
   it('an upstream whose merge base cannot be found is exit 1 naming the upstream, not the whole history', async () => {
     await put('a.txt', 'a\n'); commit();
     const real = defaultGit(dir, {});

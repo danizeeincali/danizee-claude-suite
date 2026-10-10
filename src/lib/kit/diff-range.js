@@ -15,7 +15,11 @@
  * (ls-files shows it as `sub/`) is not this repository's file: it is SKIPPED, never diffed, and reported in `skipped` (--json).
  * An untracked SYMLINK is never followed (git would fail on a link to a directory): its added-file diff is written here in git's
  * own shape for a mode-120000 blob (`new file mode 120000`, one added line holding the link target, `\ No newline at end of file`).
- * Any other `git diff --no-index` failure (exit above 1, or exit 1 with empty stdout or text on stderr) is a failure, exit 1 naming
+ * The link name is C-quoted exactly as git quotes it (`"`, `\`, control characters incl. newline, and bytes >= 0x80, which these runs pin
+ * with core.quotePath=true) and a name with a space gets git's trailing TAB after `+++`, so a hand-written entry and a `--no-index` entry
+ * spell a path identically and a newline in a name cannot split the header.
+ * The `--no-index` diff runs with core.safecrlf=false; a remaining stderr line that is git's "warning: in the working copy of ..." CRLF
+ * notice (core.autocrlf, eol=crlf) is benign. Any other `git diff --no-index` failure (exit above 1, or exit 1 with empty stdout or other text on stderr) is a failure, exit 1 naming
  * the path and git's stderr, so a range with an unread untracked path is never exit 3.
  * Bytes: the diffs are read as bytes. When they are valid UTF-8 `raw` is a string; otherwise `raw` is a Buffer the cli writes undecoded.
  *
@@ -57,7 +61,20 @@ function parseArgs(args) {
 
 const fail = (what, r) => new KitExit(`${what}: ${(r.stderr || r.stdout || '').trim() || 'git failed'}`, 1);
 const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
-const DIFF = ['diff', '--no-color', '--no-ext-diff', '--no-prefix'];
+const DIFF = ['-c', 'core.quotePath=true', 'diff', '--no-color', '--no-ext-diff', '--no-prefix'];
+const ESC = { 7: 'a', 8: 'b', 9: 't', 10: 'n', 11: 'v', 12: 'f', 13: 'r', 34: '"', 92: '\\' };
+
+/** A path as git spells it in a diff header: C-quoted when it has a control char, `"`, `\` or a byte >= 0x80 (core.quotePath on). */
+export function gitQuote(name) {
+  const b = Buffer.from(name);
+  if (![...b].some(c => c < 0x20 || c === 34 || c === 92 || c >= 0x7f)) return name;
+  let o = '"';
+  for (const c of b) o += ESC[c] ? `\\${ESC[c]}` : (c < 0x20 || c >= 0x7f) ? `\\${c.toString(8).padStart(3, '0')}` : String.fromCharCode(c);
+  return `${o}"`;
+}
+
+// With core.autocrlf / eol=crlf git warns on stderr that LF will become CRLF; the diff on stdout is still right.
+const BENIGN = /^warning: in the working copy of /;
 
 export async function run(args, io = {}) {
   const f = parseArgs(args);
@@ -110,12 +127,13 @@ export async function run(args, io = {}) {
       if (st && st.isSymbolicLink()) {
         const target = await fs.readlink(path.join(top, file), { encoding: 'buffer' });
         untracked.push(file);
-        parts.push(Buffer.concat([Buffer.from(`diff --git ${file} ${file}\nnew file mode 120000\n--- /dev/null\n+++ ${file}\n@@ -0,0 +1 @@\n+`), target, Buffer.from('\n\\ No newline at end of file\n')]));
+        const q = gitQuote(file);
+        parts.push(Buffer.concat([Buffer.from(`diff --git ${q} ${q}\nnew file mode 120000\n--- /dev/null\n+++ ${q}${file.includes(' ') ? '\t' : ''}\n@@ -0,0 +1 @@\n+`), target, Buffer.from('\n\\ No newline at end of file\n')]));
         continue;
       }
-      const d = await git([...DIFF, '--no-index', '--', '/dev/null', file], { binary: true });
+      const d = await git(['-c', 'core.safecrlf=false', ...DIFF, '--no-index', '--', '/dev/null', file], { binary: true });
       const out = buf(d.stdout);
-      if (d.code > 1 || (d.code === 1 && (!out.length || (d.stderr || '').trim()))) throw fail(`cannot diff untracked file ${file}`, d);
+      if (d.code > 1 || (d.code === 1 && (!out.length || (d.stderr || '').split('\n').some(l => l.trim() && !BENIGN.test(l))))) throw fail(`cannot diff untracked file ${file}`, d);
       if (!out.length) continue;
       untracked.push(file);
       parts.push(out);
