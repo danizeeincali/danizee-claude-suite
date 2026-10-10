@@ -20,3 +20,4 @@
 {"stream":"bc","counts":{"high":0,"medium":2,"low":3},"angle":"accessibility","tokens":62000,"pass":true,"round":5,"commit":"57b8a1b","id":"ad2c8454-6d44-4635-a484-57c03dba9f84","ts":"2026-10-10T19:38:20.516Z"}
 {"stream":"bc","counts":{"high":0,"medium":0,"low":5},"angle":"facts and content","tokens":75000,"pass":true,"round":6,"commit":"622f44a","id":"f5484cfd-2ce7-48d6-95f8-e6f75cc03ba2","ts":"2026-10-10T19:47:31.092Z"}
 {"stream":"bc","counts":{"high":0,"medium":1,"low":1},"angle":"performance and memory","tokens":45000,"pass":true,"round":7,"commit":"e19452d","id":"32fec91d-ce8a-4507-93b6-724ca945ad4e","ts":"2026-10-10T19:54:14.936Z"}
+{"stream":"bc","counts":{"high":0,"medium":2,"low":1},"angle":"one input method at a time","tokens":45000,"pass":true,"round":8,"commit":"08c8757","id":"bb2e841b-720b-4705-bf1a-334944308109","ts":"2026-10-10T20:02:12.898Z"}

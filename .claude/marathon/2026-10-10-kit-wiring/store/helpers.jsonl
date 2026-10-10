@@ -93,3 +93,5 @@
 {"role":"build","model":"sonnet","stream":"bc","budget":100000,"event":"spawn","id":"28dfb4e4-fd2d-4023-a5ac-8ab1c0549bc7","ts":"2026-10-10T19:54:15.835Z"}
 {"helper_id":"28dfb4e4-fd2d-4023-a5ac-8ab1c0549bc7","tokens":90000,"outcome":"green","event":"done","id":"f2fb4382-1f3e-4b64-b9e6-99496f1be703","ts":"2026-10-10T20:00:13.154Z"}
 {"role":"review","model":"opus","stream":"bc","budget":100000,"event":"spawn","id":"a13451b3-3709-43dd-a44e-7bd0d57e9fbc","ts":"2026-10-10T20:00:14.232Z"}
+{"helper_id":"a13451b3-3709-43dd-a44e-7bd0d57e9fbc","tokens":45000,"outcome":"green","event":"done","id":"d62cbc7d-e893-4877-99a4-13568e0ca32e","ts":"2026-10-10T20:02:12.738Z"}
+{"role":"build","model":"sonnet","stream":"bc","budget":80000,"event":"spawn","id":"bb64f74b-48ab-4dd3-9958-52feeb1faa56","ts":"2026-10-10T20:02:13.942Z"}
