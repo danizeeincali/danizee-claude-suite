@@ -13,7 +13,11 @@
  * never touched). So reviewing uncommitted work, committing it unchanged and pushing matches; any other commit
  * does not, and unpushed uncommitted edits are never mistaken for a reviewed push.
  * Receipts live outside the repository ($KIT_RECEIPTS_DIR, else ~/.claude/kit/receipts/), one JSON file per
- * repository keyed by a hash of its real git common dir; a branch cannot carry one. Built from ideas
+ * repository keyed by a hash of its real git common dir; a branch cannot carry one. Every store read and write goes
+ * through guarded-fs. The owner's own links above the receipts folder (~/.claude -> a dotfiles checkout, wherever it
+ * lives) are resolved first; the identity-checked walk then starts at the receipts folder's real parent, and a symlink
+ * at or inside the receipts folder is refused (KitExit 2). The same holds with $KIT_RECEIPTS_DIR.
+ * Built from ideas
  * audited by /w-bbs (run 2026-10-10-openqodex-2); no foreign code.
  */
 import crypto from 'crypto';
@@ -23,6 +27,7 @@ import path from 'path';
 import { spawnSync } from 'child_process';
 import { KitExit } from './kit-exit.js';
 import { gitPaths } from './git-paths.js';
+import { guardedWrite, guardedRead, resolveGuarded } from './guarded-fs.js';
 
 export const verb = 'push-gate';
 export const usage = 'cli.js push-gate receipt --verdict pass|fail [--high H --medium M --low L] [--threshold none|high|medium|low] [--incomplete] [--base <ref>] | cli.js push-gate check [--threshold ...] [--base <ref>]';
@@ -158,16 +163,34 @@ const thresholdOf = v => {
   return v;
 };
 
-async function storeFile(git, env, cwd) {
+async function storeFile(git, env, cwd, { create = true } = {}) {
   const [common] = await gitPaths(git, cwd, ['commonDir'], 'cannot find the git dir');
   const real = await fs.realpath(common);
-  const dir = env.KIT_RECEIPTS_DIR || path.join(env.HOME || os.homedir(), '.claude', 'kit', 'receipts');
-  return { dir, file: path.join(dir, `${sha(real)}.json`), repo: real };
+  const override = env.KIT_RECEIPTS_DIR;
+  const dir = override || path.join(env.HOME || os.homedir(), '.claude', 'kit', 'receipts');
+  // The owner's own links above the store (~/.claude -> a dotfiles checkout) are resolved first, as they intend; the
+  // guarded walk then starts at the store's real parent and refuses any link inside the receipts folder itself.
+  const parent = path.dirname(path.resolve(dir));
+  let root;
+  try {
+    if (create) await fs.mkdir(parent, { recursive: true }); // check only reads: it never creates folders
+    root = await fs.realpath(parent);
+  } catch (e) {
+    // a store folder that does not exist yet holds no receipt (check on a fresh or read-only home): not an error
+    if (!create && e.code === 'ENOENT') return { dir: path.resolve(dir), file: null, repo: real, guard: null };
+    throw new KitExit(`cannot open the receipt store folder ${parent}: ${e.message}`, 1);
+  }
+  const protect = path.join(root, path.basename(path.resolve(dir)));
+  return { dir: protect, file: path.join(protect, `${sha(real)}.json`), repo: real, guard: { root, protect } };
 }
 
-async function readState(file) {
+async function readState(file, guard) {
   let text;
-  try { text = await fs.readFile(file, 'utf-8'); } catch (e) { if (e.code === 'ENOENT') return null; throw new KitExit(`cannot read receipts: ${e.message}`, 1); }
+  try { text = await guardedRead(file, guard); } catch (e) {
+    if (e.missing) return null;
+    if (e instanceof KitExit && e.code === 2) throw e;
+    throw new KitExit(`cannot read receipts: ${e.message}`, 1);
+  }
   try {
     const s = JSON.parse(text);
     if (!s || typeof s !== 'object') throw new Error('not an object');
@@ -175,21 +198,20 @@ async function readState(file) {
   } catch (e) { throw new KitExit(`receipt store ${file} is corrupt (${e.message}); delete it to start over`, 1); }
 }
 
-export async function writeAtomic(dir, file, data) {
-  await fs.mkdir(dir, { recursive: true });
-  const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+/** Atomic, identity-checked store write (guarded-fs). `guard` = { root, protect }; default: dir's parent, protecting dir. */
+export async function writeAtomic(dir, file, data, guard = { root: path.dirname(path.resolve(dir)), protect: path.resolve(dir) }) {
   try {
-    await fs.writeFile(tmp, JSON.stringify(data, null, 2) + '\n');
-    await fs.rename(tmp, file);
+    await guardedWrite(path.resolve(file), JSON.stringify(data, null, 2) + '\n', guard);
   } catch (e) {
-    await fs.rm(tmp, { force: true }).catch(() => {});
+    if (e instanceof KitExit && e.code === 2) throw e;
     throw new KitExit(`cannot write receipts: ${e.message}`, 1);
   }
 }
 
 /** Exclusive lock file (O_EXCL) around a read-modify-write; stale after staleMs, always removed. */
-export async function withLock(dir, file, fn, { staleMs = 30000, waitMs = 10000 } = {}) {
-  await fs.mkdir(dir, { recursive: true });
+export async function withLock(dir, file, fn, { staleMs = 30000, waitMs = 10000, guard } = {}) {
+  if (guard) await resolveGuarded(path.resolve(file), { ...guard, create: true }); // folders made and checked before the lock opens
+  else await fs.mkdir(dir, { recursive: true });
   const lock = `${file}.lock`;
   const started = Date.now();
   for (;;) {
@@ -214,10 +236,10 @@ export async function run(args, io) {
   const counts = cmd === 'receipt' ? { high: count(flags.high, 'high'), medium: count(flags.medium, 'medium'), low: count(flags.low, 'low') } : null;
 
   const change = await changeId(git, { base: flags.base, working: cmd === 'receipt', cwd: git.cwd || io.cwd });
-  const { dir, file, repo } = await storeFile(git, env, git.cwd || io.cwd);
+  const { dir, file, repo, guard } = await storeFile(git, env, git.cwd || io.cwd, { create: cmd === 'receipt' });
 
   if (cmd === 'check') {
-    const state = await readState(file);
+    const state = file ? await readState(file, guard) : null;
     const d = decide(state, change.id, threshold);
     const result = { ...d, change_id: change.id, threshold };
     if (d.decision === 'deny') result.exit = 2;
@@ -234,11 +256,11 @@ export async function run(args, io) {
     created_at: (io.now ? io.now() : new Date()).toISOString()
   };
   await withLock(dir, file, async () => {
-    const state = await readState(file);
+    const state = await readState(file, guard);
     const previous = [...(state?.previous || [])];
     if (state?.latest?.change_id && state.latest.change_id !== change.id) previous.push(state.latest.change_id);
     const next = { repo, latest: receipt, previous: [...new Set(previous)].filter(p => p !== change.id).slice(-MAX_PREVIOUS) };
-    await writeAtomic(dir, file, next);
-  }, { staleMs: Number(env.KIT_LOCK_STALE_MS) || undefined, waitMs: env.KIT_LOCK_WAIT_MS === undefined ? undefined : Number(env.KIT_LOCK_WAIT_MS) });
+    await writeAtomic(dir, file, next, guard);
+  }, { guard, staleMs: Number(env.KIT_LOCK_STALE_MS) || undefined, waitMs: env.KIT_LOCK_WAIT_MS === undefined ? undefined : Number(env.KIT_LOCK_WAIT_MS) });
   return { change_id: change.id, dirty: change.dirty, receipt };
 }

@@ -29,12 +29,14 @@ export async function loadVerbs(dir = HERE) {
   return verbs;
 }
 
-async function readStdin() {
-  if (process.stdin.isTTY) return '';
+async function readStdinBytes() {
+  if (process.stdin.isTTY) return Buffer.alloc(0);
   const chunks = [];
   for await (const c of process.stdin) chunks.push(c);
-  return Buffer.concat(chunks).toString('utf-8');
+  return Buffer.concat(chunks);
 }
+
+async function readStdin() { return (await readStdinBytes()).toString('utf-8'); }
 
 export async function main(argv = process.argv.slice(2)) {
   const verbs = await loadVerbs();
@@ -49,7 +51,7 @@ export async function main(argv = process.argv.slice(2)) {
     return 1;
   }
   try {
-    const result = await entry.run(args, { cwd: process.cwd(), stdin: readStdin, stdinIsTTY: !!process.stdin.isTTY, env: process.env });
+    const result = await entry.run(args, { cwd: process.cwd(), stdin: readStdin, stdinBytes: readStdinBytes, stdinIsTTY: !!process.stdin.isTTY, env: process.env });
     process.stdout.write(JSON.stringify(result, null, 2) + '\n');
     return result && typeof result.exit === 'number' ? result.exit : 0;
   } catch (err) {
