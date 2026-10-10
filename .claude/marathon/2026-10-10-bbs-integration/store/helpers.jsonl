@@ -14,3 +14,5 @@
 {"helper_id":"ccfd023a-9fcb-4b4f-b534-3f0a0661d980","tokens":85747,"outcome":"green","event":"done","id":"0f1a09a5-dda4-42eb-93f6-7a4a97c18008","ts":"2026-10-10T17:14:12.880Z"}
 {"role":"review","model":"opus","stream":"targets","budget":150000,"event":"spawn","id":"98f17693-156b-4e6b-9931-1196c458e331","ts":"2026-10-10T17:19:34.385Z"}
 {"role":"build","model":"sonnet","stream":"integration-gate","budget":150000,"event":"spawn","id":"612ac964-8185-498f-a098-2ca2f158c62f","ts":"2026-10-10T17:20:11.594Z"}
+{"helper_id":"98f17693-156b-4e6b-9931-1196c458e331","tokens":107368,"outcome":"green","event":"done","id":"50f10b90-dec0-447b-bcdb-81c122e3a0f6","ts":"2026-10-10T17:22:51.803Z"}
+{"role":"review","model":"opus","stream":"targets","budget":150000,"event":"spawn","id":"c29af8d2-c6d6-44b9-90fd-47c0aeec6e8b","ts":"2026-10-10T17:27:35.445Z"}
