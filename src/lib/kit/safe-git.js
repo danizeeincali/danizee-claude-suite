@@ -112,10 +112,18 @@ export const usage = 'cli.js safe-git [--dir <repo top or git dir>] -- <git args
   + 'and paths are relative to the repository top; exit 0 git ok, 1 bad input, 2 refused, 3 git failed)';
 
 /**
- * Long options of the allowed subcommands that make git read stdin. Without --input - the CLI closes git's stdin,
- * so these would answer from empty input; any spelling git accepts (an abbreviation, a =value form) counts.
+ * Long options that make git read stdin, per allowed subcommand ('*' = any). Without --input - the CLI closes git's
+ * stdin, so these would answer from empty input. Each entry is [option, shortest abbreviation counted]: an argument
+ * counts when its name is a prefix of the option no shorter than that, so another real option of that subcommand
+ * that shares a start (log --exclude, diff --stat, ls-files --stage) is never taken for one of these.
  */
-export const STDIN_LONG = Object.freeze(['stdin', 'annotate-stdin', 'batch', 'batch-check', 'batch-command', 'exclude-existing']);
+export const STDIN_OPTIONS = Object.freeze({
+  '*': [['stdin', 'std']],
+  'cat-file': [['batch', 'batch'], ['batch-check', 'batch-ch'], ['batch-command', 'batch-co']],
+  'name-rev': [['annotate-stdin', 'an']],
+  'show-ref': [['exclude-existing', 'ex']]
+});
+export const STDIN_LONG = Object.freeze([...new Set(Object.values(STDIN_OPTIONS).flat().map(([o]) => o))]);
 
 /** True when `args` (after the subcommand checks) would make git read stdin. */
 export function readsStdin(args) {
@@ -125,8 +133,10 @@ export function readsStdin(args) {
     if (!a.startsWith('--') || a === '--') return false;
     const name = a.slice(2).split('=')[0];
     if (!name || name === 'batch-all-objects') return false;
+    const table = [...STDIN_OPTIONS['*'], ...(STDIN_OPTIONS[args[0]] || [])];
     // An exact option name means that option only (--batch is not an abbreviation of --batch-command).
-    const candidates = STDIN_LONG.includes(name) ? [name] : STDIN_LONG.filter((o) => o.startsWith(name));
+    const candidates = table.some(([o]) => o === name) ? [name]
+      : table.filter(([o, min]) => o.startsWith(name) && name.startsWith(min)).map(([o]) => o);
     return candidates.some((o) => !(allObjects && (o === 'batch' || o === 'batch-check')));
   });
 }
@@ -625,9 +635,9 @@ async function checkNoAlternates(loc, limits) {
 }
 
 /**
- * A symlinked objects/ (or objects/pack, objects/info, a loose-object folder, a pack or loose object file) would make
- * git read another repository's objects, as alternates would: refused (KitExit 2), like a symlinked refs/. The walk is
- * capped by limits.entries.
+ * A symlinked objects/ or any symlink at any depth under it (pack, info, info/commit-graphs, loose folders and files)
+ * would make git open something outside the repository (another repository's objects, a FIFO): refused (KitExit 2),
+ * like a symlinked refs/. The walk is capped by limits.entries.
  */
 async function checkObjectsNotLinked(loc, limits) {
   const objects = path.join(loc.commonDir, 'objects');
@@ -641,7 +651,7 @@ async function checkObjectsNotLinked(loc, limits) {
       if (++seen > limits.entries) throw refuse(`more than ${limits.entries} entries under ${objects}; refusing to check them`);
       const p = path.join(dir, e.name);
       if (e.isSymbolicLink()) throw linked(p);
-      if (depth === 0 && e.isDirectory()) await walk(p, 1);
+      if (e.isDirectory()) await walk(p, depth + 1); // every level: info/commit-graphs, pack, loose folders
     }
   };
   await walk(objects, 0);
@@ -665,7 +675,9 @@ function overrideArgs(names) {
 
 /**
  * The -c overrides: static switches + every driver named in the config entries, info/attributes and (with a work
- * tree) the .gitattributes files the shadow lists. core.attributesFile is never opened: the shadow config does not
+ * tree) the .gitattributes files the shadow lists. A .gitattributes under a path that is not valid UTF-8 is not
+ * listed (its name does not survive decoding), so its drivers are not named here; nothing runs for them either, as
+ * the shadow config defines no driver. core.attributesFile is never opened: the shadow config does not
  * carry it, so git never reads it either (and its value may name a file outside the repository or a UNC share).
  * `shadowExec(args, extra)` runs git in the shadow.
  */

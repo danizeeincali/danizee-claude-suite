@@ -1866,9 +1866,53 @@ describe('safe-git — review round 11 regressions (symlinked objects, exact byt
     const head = sh(r, ['rev-parse', 'HEAD']).stdout.trim();
     assert.ok(!readsStdin(['cat-file', '--batch-all-objects', '--batch']));
     assert.ok(readsStdin(['cat-file', '--batch']));
-    assert.ok(readsStdin(['cat-file', '--batch-c']), 'an abbreviation still counts');
+    assert.ok(readsStdin(['cat-file', '--batch-ch']), 'an abbreviation still counts');
     const out = await run(['--', 'cat-file', '--batch-all-objects', '--batch'], { cwd: r, env: CLEAN_ENV, stdin: async () => '', stdinIsTTY: true });
     assert.equal(out.exit, 0);
     assert.match(out.stdout, new RegExp(`${head} commit`));
+  });
+});
+
+describe('safe-git — review round 12 regressions (--exclude, deep symlinks under objects/)', () => {
+  let root;
+  before(async () => { root = await fs.mkdtemp(path.join(os.tmpdir(), 'safe-git-r12-')); });
+  after(() => fs.rm(root, { recursive: true, force: true }));
+
+  it('real options that share a start with a stdin option are not asked for --input -', async () => {
+    for (const g of [['describe', '--exclude=v*'], ['ls-files', '--exclude=*.o'], ['log', '--all', '--exclude=refs/x'],
+      ['rev-list', '--all', '--exclude=refs/x'], ['name-rev', '--exclude=x', 'HEAD'], ['diff', '--stat'], ['ls-files', '--stage']]) {
+      assert.ok(!readsStdin(g), g.join(' '));
+    }
+    for (const g of [['show-ref', '--exclude-existing'], ['show-ref', '--exclude-ex'], ['rev-list', '--std'], ['name-rev', '--annotate']]) {
+      assert.ok(readsStdin(g), g.join(' '));
+    }
+    const d = path.join(root, 'ex');
+    await fs.mkdir(d);
+    sh(d, ['init', '-q', '.']);
+    await fs.writeFile(path.join(d, 'a.txt'), 'a\n');
+    sh(d, ['add', 'a.txt']);
+    sh(d, ['commit', '-q', '-m', 'a']);
+    const r = await run(['--', 'rev-list', '--all', '--exclude=refs/nothing'], { cwd: d, env: CLEAN_ENV, stdin: async () => '', stdinIsTTY: true });
+    assert.equal(r.exit, 0);
+    assert.equal(r.stdout.trim(), sh(d, ['rev-parse', 'HEAD']).stdout.trim());
+  });
+
+  it('a symlink two levels under objects/ (a split commit-graph pointing outside) is refused before git runs', async () => {
+    const d = path.join(root, 'cg');
+    await fs.mkdir(d);
+    sh(d, ['init', '-q', '.']);
+    await fs.writeFile(path.join(d, 'a.txt'), 'a\n');
+    sh(d, ['add', 'a.txt']);
+    sh(d, ['commit', '-q', '-m', 'a']);
+    sh(d, ['commit-graph', 'write', '--split', '--reachable']);
+    const dir = path.join(d, '.git', 'objects', 'info', 'commit-graphs');
+    const graph = (await fs.readdir(dir)).find((f) => f.endsWith('.graph'));
+    assert.ok(graph, 'a split commit-graph was written');
+    await fs.rm(path.join(dir, graph));
+    await fs.symlink(path.join(root, 'outside.graph'), path.join(dir, graph));
+    let ran = false;
+    const git = (a, o) => { ran = true; return defaultGitRunner(a, o); };
+    await assert.rejects(safeGit(d, ['log', '--oneline'], { git }), (e) => e instanceof KitExit && e.code === 2 && /is a symlink/.test(e.message));
+    assert.equal(ran, false);
   });
 });
