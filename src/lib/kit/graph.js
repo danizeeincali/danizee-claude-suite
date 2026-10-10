@@ -1182,12 +1182,14 @@ function resolveGraph(parsed, sourceSet, o) {
   // At the cap, a row that names a missing export or a deleted target (what impact's removed-symbol check reads) takes
   // the place of the latest row that does not, so a large installed harness cannot crowd a live caller out of the list.
   const KEEP = new Set(['unknown export', 'unread target']);
-  let evict = -1; // scan position for the next replaceable row, from the end
+  // Scan position for the next replaceable row, from the end. Past the cap only KEEP rows are written, so once the scan
+  // reaches -1 the list is all KEEP rows for good and later rows return at once.
+  let evict = null;
   const addUnresolved = (from, call, reason) => {
     unresolvedTotal++;
     if (unresolved.length < o.maxUnresolved) { unresolved.push({ from, call, reason }); return; }
     if (!KEEP.has(reason)) return;
-    if (evict < 0 || evict >= unresolved.length) evict = unresolved.length - 1;
+    if (evict === null) evict = unresolved.length - 1;
     while (evict >= 0 && KEEP.has(unresolved[evict].reason)) evict--;
     if (evict >= 0) unresolved[evict--] = { from, call, reason };
   };

@@ -308,3 +308,64 @@ describe('targets — review r1 regressions', () => {
     } finally { await fs.writeFile(path.join(rd, 'targets.json'), good); }
   });
 });
+
+describe('targets — review r2 regressions', () => {
+  let dir, run, rd;
+  const cli = (args, input) => {
+    const r = spawnSync(process.execPath, [CLI, ...args, '--run', run, '--project', dir], { cwd: dir, encoding: 'utf-8', input });
+    return { code: r.status, out: r.stdout, err: r.stderr };
+  };
+  before(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-tgt-r2-'));
+    await makeRun(dir);
+    const { intake } = await import('../src/lib/bbs/intake.js');
+    const { writeInventory } = await import('../src/lib/bbs/inventory.js');
+    const { buildMap, recordJudgments } = await import('../src/lib/bbs/harness-map.js');
+    run = (await intake(dir, '-', { stdin: 'r2', now, slug: 'r2' })).runId;
+    const p = (name) => ({ name, what: name, idea: name, evidence: 'src/x.ts:1', dependencies: [], data_needed: 'none', network: 'none', size: 'small', licence: 'MIT' });
+    await writeInventory(dir, { run, input: JSON.stringify([p('redact'), p('gate')]), now });
+    await buildMap(dir, { run, now });
+    await recordJudgments(dir, { run, input: JSON.stringify({ redact: 'missing', gate: 'missing' }), now });
+    rd = path.join(dir, '.claude', 'bbs', 'runs', run);
+    await writeJson(path.join(rd, 'usage.json'), { evidence: 'owner', workflows: [{ name: 'w-review', count: null }] });
+    await recordTargets(dir, { run, input: JSON.stringify({ redact: [row()], gate: [] }), now });
+  });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('a corrupt targets.json never fails the verdict after it is committed, nor the table view: a warning names the repair', async () => {
+    const good = await fs.readFile(path.join(rd, 'targets.json'), 'utf-8');
+    await fs.writeFile(path.join(rd, 'targets.json'), '{bad');
+    try {
+      const r = await computeVerdicts(dir, { run, sandbox: noSandbox, now });
+      assert.match(r.warning, /targets\.json.*cli\.js targets --force --from <file> to replace it/);
+      assert.ok(!r.table.includes('Lands in'));
+      assert.ok(await readJson(path.join(rd, 'verdicts.json')));
+      const t = cli(['verdict', '--table']);
+      assert.equal(t.code, 0, t.err);
+      assert.match(t.err, /warning: .*targets --force --from/);
+      assert.match(t.out, /\| Power \|/);
+    } finally { await fs.writeFile(path.join(rd, 'targets.json'), good); }
+  });
+
+  it('resubmitting a recorded rebuild repairs, even when the run has no targets.json (decided before the targets step)', async () => {
+    assert.equal((await recordDecisions(dir, { run, input: JSON.stringify({ redact: 'rebuild', gate: 'skip' }), now })).decided, 2);
+    const good = await fs.readFile(path.join(rd, 'targets.json'), 'utf-8');
+    await fs.rm(path.join(rd, 'targets.json'));
+    try {
+      const r = await recordDecisions(dir, { run, input: JSON.stringify({ redact: 'rebuild', gate: 'skip' }), now });
+      assert.equal(r.decided, 2);
+      await assert.rejects(recordDecisions(dir, { run, input: JSON.stringify({ gate: 'rebuild' }), now, force: true }), (e) => e instanceof PolicyRefused && /no targets recorded/.test(e.message));
+    } finally { await fs.writeFile(path.join(rd, 'targets.json'), good); }
+  });
+
+  it('a corrupt targets.json makes targets --from and --set print the --force repair; empty --set or --from is a usage error', async () => {
+    const good = await fs.readFile(path.join(rd, 'targets.json'), 'utf-8');
+    await fs.writeFile(path.join(rd, 'targets.json'), '{bad');
+    try {
+      assert.match(cli(['targets', '--from', '-'], JSON.stringify({ gate: [] })).err, /targets --force --from <file> to replace it/);
+      assert.match(cli(['targets', '--set', 'gate@w-review']).err, /targets --force --from <file> to replace it/);
+    } finally { await fs.writeFile(path.join(rd, 'targets.json'), good); }
+    assert.match(cli(['targets', '--set', '']).err, /--set needs <power>@<workflow>/);
+    assert.match(cli(['targets', '--from', '']).err, /--from needs a file, or - for stdin/);
+  });
+});
