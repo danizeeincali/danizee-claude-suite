@@ -177,3 +177,5 @@
 {"role":"review","model":"opus","stream":"sweep-commits","budget":80000,"event":"spawn","id":"efdca18d-9aee-4d86-be6f-94b6c94d0bd7","ts":"2026-10-10T22:56:00.589Z"}
 {"helper_id":"efdca18d-9aee-4d86-be6f-94b6c94d0bd7","tokens":22000,"outcome":"green","event":"done","id":"aae6a6dd-b5c8-47a5-ae40-66d0ee950681","ts":"2026-10-10T22:57:35.247Z"}
 {"role":"fix","model":"sonnet","stream":"sweep-commits","budget":80000,"event":"spawn","id":"34e0897a-f5eb-468c-9212-76983965a5e9","ts":"2026-10-10T22:57:36.090Z"}
+{"helper_id":"34e0897a-f5eb-468c-9212-76983965a5e9","tokens":45000,"outcome":"green","event":"done","id":"644e7e8b-a46f-4bd3-9e79-d42f4e2c141b","ts":"2026-10-10T23:01:02.890Z"}
+{"role":"review","model":"opus","stream":"sweep-commits","budget":80000,"event":"spawn","id":"0fe892ee-199f-4083-8f21-ee53c54b1fa0","ts":"2026-10-10T23:01:03.589Z"}
