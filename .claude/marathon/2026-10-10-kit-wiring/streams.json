@@ -76,7 +76,7 @@
       "name": "sweep-foreign-and-logs",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "4.1 budget, then build: safe-git+lenses in multi-repo/suite-sync, redact in compound and ralph-batch, lenses/callers in swarm and fix",
+      "next": "port the shipped RuFlo w-swarm into the generator so copy equals generator, then 4.5 round 1",
       "tasks": [],
       "isolation": "../danizee-claude-suite-sweep-foreign-and-logs",
       "base": "38552ec51f19e978f3b95bc47716950676a33fa9",
