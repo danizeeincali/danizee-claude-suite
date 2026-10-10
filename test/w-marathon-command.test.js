@@ -8,11 +8,14 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
+import os from 'os';
+import { writeFileSync, mkdtempSync, mkdirSync, cpSync, rmSync, existsSync, readFileSync } from 'fs';
 import { getCommands } from '../src/plugins/dot-shortcuts.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.dirname(__dirname);
 const SHORTCUTS_DIR = path.join(PROJECT_ROOT, '.claude', 'commands', '.shortcuts');
+const KIT_SRC = path.join(PROJECT_ROOT, 'src', 'lib', 'kit');
 
 const commands = getCommands();
 
@@ -115,9 +118,9 @@ describe('kit wiring', () => {
 
   it('4.5 appends lenses and impact over the stream range with --base and handles every diff-range exit', () => {
     const r = review();
-    assert.match(r, /cli\.js stream <name>/, 'says how to read the stream base');
+    assert.match(r, /streams\.json/, 'says how to read the stream base (read-only, from streams.json)');
     assert.match(r, /`base` field/);
-    assert.match(r, /diff-range --dir "\$W" --base "\$BASE" > "\$D"; RC=\$\?/);
+    assert.match(r, /diff-range --base "\$BASE" > "\$D"; RC=\$\?/);
     assert.match(r, /lenses --diff "\$D"/);
     assert.match(r, /impact --diff "\$D" --base "\$BASE"/);
     assert.match(r, /if \[ ! -f \.claude\/helpers\/kit\/cli\.js \]; then echo "kit not installed/);
@@ -195,12 +198,150 @@ describe('kit wiring', () => {
     assert.ok(k.includes(OTHER));
   });
 
+  it('r1 fix 1: every 4.5 kit block enters the worktree first, with no --dir, and impact resolves from the worktree', () => {
+    const r = review();
+    const blocks = [...r.matchAll(/```bash\n([\s\S]*?)```/g)].map(m => m[1]).filter(b => /lenses --diff|impact --diff/.test(b));
+    assert.equal(blocks.length, 2, 'the lenses and impact blocks');
+    for (const b of blocks) {
+      const cd = b.indexOf('(cd "$W" || {');
+      assert.ok(cd >= 0, `enters the worktree: ${b}`);
+      assert.ok(cd < b.indexOf('if [ ! -f .claude/helpers/kit/cli.js ]'), 'the kit guard runs inside the worktree');
+      assert.ok(!b.includes('--dir'), 'no --dir: the worktree is the cwd');
+    }
+    assert.match(r, /Every kit block runs from inside the worktree/);
+    assert.match(r, /builds its symbol graph from the files of the folder it runs in, the worktree/);
+    assert.ok(!/`impact` takes `--diff` and the same `--base`\./.test(r), 'the old prose (impact needs only --diff and --base) is gone');
+  });
+
+  it('r1 fix 2: 4.2 copies the private scrub patterns; 4.8 and CHECKPOINT 6 fail when they are missing from the worktree', () => {
+    const iso = section('**4.2 Isolate', '**4.3 Build');
+    assert.match(iso, /mkdir -p "\$W\/\.claude\/kit" && cp \.claude\/kit\/scrub-patterns\.local "\$W\/\.claude\/kit\/scrub-patterns\.local"/);
+    assert.match(iso, /git-ignores `\.claude\/kit\/scrub-patterns\.local`/);
+    const g = gate();
+    assert.match(g, /"configured": \*false/);
+    assert.match(g, /scrub patterns missing from the worktree[^\n]*RC=2/);
+    assert.match(g, /treat it exactly like a scrub exit 2/);
+    assert.match(g, /copied in as in 4\.2/, 'the next stream gets the copy too');
+    const k = compound();
+    assert.match(k, /for P in \.claude\/kit\/scrub-patterns \.claude\/kit\/scrub-patterns\.local; do if \[ -f "\$M\/\$P" \] && \[ ! -f "\$P" \]/);
+    assert.match(k, /scrub patterns missing from the worktree[^\n]*not pushed[^\n]*exit 2/);
+    assert.ok(k.indexOf('scrub patterns missing') < k.indexOf('push-gate receipt'), 'checked before the receipt and the check');
+  });
+
+  it('r1 fix 3: CHECKPOINT 6 runs /bc, re-records the receipt, then checks, then /bcp, and explains the shared store', () => {
+    const k = compound();
+    assert.match(k, /\*\*`\/bc` first\*\*[\s\S]*\*\*then re-record the stream's receipt\*\*[\s\S]*\*\*then `push-gate check`\*\*[\s\S]*\*\*then `\/bcp`\*\*/);
+    const b = [...k.matchAll(/```bash\n([\s\S]*?)```/g)].map(m => m[1])[0];
+    assert.ok(b.indexOf('push-gate receipt --verdict pass') >= 0 && b.indexOf('push-gate receipt --verdict pass') < b.indexOf('push-gate check --base "$BASE"'), 'receipt before check in the block');
+    assert.match(b, /push-gate receipt --verdict pass --high \d+ --medium \d+ --low \d+ --base "\$BASE"/);
+    assert.match(k, /shared by every worktree/);
+    assert.match(k, /one latest receipt per repository/);
+    assert.match(k, /"only an earlier review exists" usually means another stream recorded its receipt after this one/);
+    assert.match(k, /run the block again \(it re-records, then checks\) before putting it to the owner/);
+  });
+
+  it('r1 fix 4: the base is read from streams.json, never with cli.js stream <name>', () => {
+    const r = review();
+    assert.match(r, /BASE=\$\(node -e '[^\n]*streams[^\n]*' \.claude\/marathon\/[^ ]+\/streams\.json [a-z-]+\)/);
+    assert.match(r, /with no key=value it still rewrites the stream row/);
+    assert.match(r, /misspelled name silently creates a new stream/);
+    assert.ok(!/the `base` field of `cli\.js stream <name>`/.test(c()), 'no step reads the base through cli.js stream');
+  });
+
   it('every extracted bash block passes bash -n', () => {
     const blocks = [...c().matchAll(/```bash\n([\s\S]*?)```/g)].map(m => m[1]);
     assert.ok(blocks.length >= 5, 'the wired steps carry bash blocks');
     for (const b of blocks) {
       const r = spawnSync('bash', ['-n'], { input: b, encoding: 'utf-8' });
       assert.equal(r.status, 0, `bash -n failed: ${r.stderr}\n${b}`);
+    }
+  });
+});
+
+// A throwaway main checkout with the real kit committed at .claude/helpers/kit, plus one stream worktree.
+const gitIn = (cwd, ...args) => {
+  const r = spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-c', 'commit.gpgsign=false', ...args], { cwd, encoding: 'utf-8' });
+  assert.equal(r.status, 0, `git ${args.join(' ')}: ${r.stderr}`);
+  return r.stdout;
+};
+function worktreeRepo() {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'mt-kit-'));
+  const main = path.join(root, 'repo');
+  mkdirSync(main);
+  gitIn(main, 'init', '-q', '-b', 'main', '.');
+  writeFileSync(path.join(main, '.gitignore'), '.claude/kit/secrets\n.claude/kit/cache/\n.claude/kit/scrub-patterns.local\n');
+  writeFileSync(path.join(main, 'a.js'), 'export function base(x) {\n  return x + 1;\n}\n');
+  cpSync(KIT_SRC, path.join(main, '.claude', 'helpers', 'kit'), { recursive: true });
+  gitIn(main, 'add', '.');
+  gitIn(main, 'commit', '-q', '-m', 'init');
+  const BASE = gitIn(main, 'rev-parse', 'HEAD').trim();
+  gitIn(main, 'worktree', 'add', '-q', '../repo-s', '-b', 'marathon/run/s');
+  const W = path.join(root, 'repo-s');
+  const tmp = path.join(root, 'tmp');
+  mkdirSync(tmp);
+  const env = { ...process.env, HOME: root, TMPDIR: tmp, KIT_RECEIPTS_DIR: path.join(root, 'receipts'), GIT_CONFIG_NOSYSTEM: '1' };
+  // Each block's first line sets the placeholder W (and BASE); replace it with the fixture's.
+  const run = (block) => spawnSync('bash', ['-c', `W=../repo-s; BASE=${BASE}\n${block.replace(/^W=[^\n]*\n/, '')}`], { cwd: main, encoding: 'utf-8', env });
+  return { root, main, W, BASE, run };
+}
+
+describe('kit blocks run against the real kit in a stream worktree', () => {
+  const c = () => commands['w-marathon'].content;
+  const blocks = () => [...c().matchAll(/```bash\n([\s\S]*?)```/g)].map(m => m[1]);
+  const lensesBlock = () => blocks().find(b => b.includes('lenses --diff'));
+  const impactBlock = () => blocks().find(b => b.includes('impact --diff'));
+  const copyBlock = () => blocks().find(b => b.includes('cp .claude/kit/scrub-patterns.local'));
+  const scrubBlock = () => blocks().find(b => b.includes('scrub --history'));
+
+  it('an empty stream range: lenses and impact exit 0 with "no change to review"', () => {
+    const fx = worktreeRepo();
+    try {
+      for (const b of [lensesBlock(), impactBlock()]) {
+        const r = fx.run(b);
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stdout, /no change to review/);
+      }
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+
+  it('a stream commit: impact reads the worktree files, not the main checkout', () => {
+    const fx = worktreeRepo();
+    try {
+      writeFileSync(path.join(fx.W, 'a.js'), 'export function base(x) {\n  return x + 2;\n}\nexport function added(y) {\n  return base(y) * 2;\n}\n');
+      gitIn(fx.W, 'commit', '-q', '-am', 'stream change');
+      const r = fx.run(impactBlock());
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /a\.js/);
+      assert.match(r.stdout, /\badded\b/, `the symbol that exists only in the worktree is touched: ${r.stdout}`);
+      const l = fx.run(lensesBlock());
+      assert.equal(l.status, 0, l.stderr);
+      assert.ok(!/no change to review/.test(l.stdout));
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+
+  it('private scrub patterns: missing from the worktree fails the 4.8 scrub; after the 4.2 copy it reports configured: true', () => {
+    const fx = worktreeRepo();
+    try {
+      mkdirSync(path.join(fx.main, '.claude', 'kit'), { recursive: true });
+      writeFileSync(path.join(fx.main, '.claude', 'kit', 'scrub-patterns.local'), 'ZQXJ-PRIVATE-[0-9]+\n');
+      const before = fx.run(scrubBlock());
+      assert.equal(before.status, 2, before.stdout + before.stderr);
+      assert.match(before.stderr, /scrub patterns missing from the worktree/);
+      const cp = fx.run(copyBlock());
+      assert.equal(cp.status, 0, cp.stderr);
+      assert.ok(existsSync(path.join(fx.W, '.claude', 'kit', 'scrub-patterns.local')), 'the pattern file is in the worktree');
+      assert.equal(readFileSync(path.join(fx.W, '.claude', 'kit', 'scrub-patterns.local'), 'utf-8'), 'ZQXJ-PRIVATE-[0-9]+\n');
+      assert.equal(gitIn(fx.W, 'status', '--porcelain'), '', 'the copy is git-ignored, never committed');
+      const after = fx.run(scrubBlock());
+      assert.equal(after.status, 0, after.stdout + after.stderr);
+      assert.match(after.stdout, /"configured": true/);
+      assert.ok(!/scrub patterns missing/.test(after.stderr));
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
     }
   });
 });
