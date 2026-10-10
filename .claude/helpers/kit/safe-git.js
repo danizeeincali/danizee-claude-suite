@@ -99,7 +99,7 @@ export const verb = 'safe-git';
 /** CLI exit status when git itself ran and failed (its own code is in the printed JSON). */
 export const GIT_FAILED_EXIT = 3;
 export const usage = 'cli.js safe-git [--dir <repo top or git dir>] -- <git args...>   (read-only git on an untrusted repo; '
-  + 'prints { stdout, stderr, code, exit }; --dir must be the top of the work tree or the git dir, not a subfolder, '
+  + 'prints { stdout, stderr, code, exit }; git gets no stdin unless --input - is given (needed for --stdin and --batch modes); --dir must be the top of the work tree or the git dir, not a subfolder, '
   + 'and paths are relative to the repository top; exit 0 git ok, 1 bad input, 2 refused, 3 git failed)';
 
 export const READ_SUBCOMMANDS = Object.freeze([
@@ -586,7 +586,7 @@ function makeCtx(git, env, scratch, timeout, limits) {
   // HOME / XDG_CONFIG_HOME = the empty private scratch/home for every git child (git < 2.32 ignores GIT_CONFIG_GLOBAL).
   const home = path.join(scratch, 'home');
   const cfgEnv = { ...safeGitEnv(env, { home }), GIT_CEILING_DIRECTORIES: path.dirname(scratch) };
-  return { git, env, home, scratch, cfgEnv, timeout: timeout ?? INTERNAL_TIMEOUT, limits: { ...DEFAULT_LIMITS, ...(limits || {}) } };
+  return { git, env, home, scratch, cfgEnv, timeout: timeout ?? INTERNAL_TIMEOUT, limits: mergeLimits(limits) };
 }
 
 /** inspect + shadow + overrides for one call. Returns { info, shadow, overrides, exec } where exec runs git in the shadow. */
@@ -703,9 +703,21 @@ async function copyIndex(src, dst, budget) {
 }
 
 /** Build the shadow git dir inside `scratch` (see the header) and return its path. `limits` as DEFAULT_LIMITS. */
+/** DEFAULT_LIMITS with the caller's overrides; an override must be a positive integer (undefined keeps the default). */
+function mergeLimits(limits) {
+  const out = { ...DEFAULT_LIMITS };
+  for (const [k, v] of Object.entries(limits || {})) {
+    if (v === undefined) continue;
+    if (!(k in DEFAULT_LIMITS)) throw new KitExit(`unknown safe-git limit ${k}`, 1);
+    if (!Number.isSafeInteger(v) || v <= 0) throw new KitExit(`safe-git limit ${k} must be a positive integer (got ${v})`, 1);
+    out[k] = v;
+  }
+  return out;
+}
+
 export async function buildShadow(scratch, info, limits = DEFAULT_LIMITS) {
   const { loc, fmt, core, top } = info;
-  const budget = { limits: { ...DEFAULT_LIMITS, ...limits }, used: 0, entries: 0 };
+  const budget = { limits: mergeLimits(limits), used: 0, entries: 0 };
   const sg = path.join(scratch, 'git');
   await fs.mkdir(sg, { mode: 0o700 });
   await fs.writeFile(path.join(sg, 'config'), shadowConfigText(fmt, core, top === null), { mode: 0o600 });
@@ -875,12 +887,12 @@ export function revParsePosition(argv, info) {
   return { stdout: lines.map(l => `${l}\n`).join(''), stderr: '', code: 0 };
 }
 
-async function describeDirty(exec, plan, timeout) {
-  const d = await exec(plan.argv, { timeout });
+async function describeDirty(exec, plan) {
+  const d = await exec(plan.argv);
   if (d.code !== 0) return d;
   // Refresh the SHADOW index copy, then compare it with HEAD — both with submodules ignored.
-  await exec(['update-index', '-q', '--ignore-submodules', '--refresh'], { timeout });
-  const q = await exec(['diff-index', '--quiet', '--ignore-submodules=all', 'HEAD', '--'], { timeout });
+  await exec(['update-index', '-q', '--ignore-submodules', '--refresh']);
+  const q = await exec(['diff-index', '--quiet', '--ignore-submodules=all', 'HEAD', '--']);
   let suffix = '';
   if (q.code === 1) suffix = plan.dirty;
   else if (q.code !== 0) {
@@ -904,8 +916,10 @@ export async function safeGit(dir, args, { input, git = defaultGitRunner, env = 
     const { exec, info } = await prepare(dir, makeCtx(git, env, scratch, timeout, limits));
     const position = revParsePosition(argv, info);
     if (position) return position;
-    if (dirtyPlan) return describeDirty(exec, dirtyPlan, timeout);
-    return exec(argv, { input, timeout });
+    // exec applies ctx.timeout (the caller's, or INTERNAL_TIMEOUT): never pass `timeout` here, since an undefined
+    // value would override that default and let a hostile repo (a FIFO .gitattributes) hang the read forever.
+    if (dirtyPlan) return describeDirty(exec, dirtyPlan);
+    return exec(argv, { input });
   });
 }
 
@@ -913,11 +927,17 @@ export async function safeGit(dir, args, { input, git = defaultGitRunner, env = 
 
 export async function run(args, io = {}) {
   let dir = io.cwd || process.cwd();
+  let wantInput = false;
   let i = 0;
   for (; i < args.length; i++) {
     const a = args[i];
     if (a === '--') { i++; break; }
     if (a === '--help' || a === '-h') return { usage };
+    if (a === '--input') {
+      if (args[i + 1] !== '-') throw new KitExit('--input takes only - (read git\'s stdin from this process\'s stdin)', 1);
+      if (io.stdinIsTTY) throw new KitExit('--input - needs piped stdin, not a terminal', 1);
+      i++; wantInput = true; continue;
+    }
     if (a === '--dir') {
       if (i + 1 >= args.length || args[i + 1] === '--') throw new KitExit('--dir needs a path', 1);
       dir = path.resolve(io.cwd || process.cwd(), args[++i]);
@@ -926,6 +946,10 @@ export async function run(args, io = {}) {
   }
   const gitArgs = args.slice(i);
   if (gitArgs.length === 0) throw new KitExit(`no git command given (usage: ${usage})`, 1);
-  const result = await safeGit(dir, gitArgs, { env: io.env || process.env, git: io.git });
+  if (!wantInput && gitArgs.some(a => a === '--stdin' || /^--batch/.test(a))) {
+    throw new KitExit(`${gitArgs[0]} with --stdin or --batch reads stdin: pass --input - before \`--\` (usage: ${usage})`, 1);
+  }
+  const input = wantInput ? await io.stdin() : undefined;
+  const result = await safeGit(dir, gitArgs, { env: io.env || process.env, git: io.git, input });
   return { ...result, exit: result.code === 0 ? 0 : GIT_FAILED_EXIT };
 }

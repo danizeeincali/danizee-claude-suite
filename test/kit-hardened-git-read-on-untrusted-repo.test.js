@@ -1579,3 +1579,60 @@ describe('safe-git — review round 6 regressions (core.attributesFile never ope
     }
   });
 });
+
+describe('safe-git — review round 8 regressions (timeout, stdin, limits)', () => {
+  let root, repo;
+  before(async () => {
+    root = await fs.mkdtemp(path.join(os.tmpdir(), 'safe-git-r8-'));
+    repo = path.join(root, 'r');
+    await fs.mkdir(repo);
+    sh(repo, ['init', '-q', '.']);
+    await fs.writeFile(path.join(repo, 'a.txt'), 'one\n');
+    sh(repo, ['add', 'a.txt']);
+    sh(repo, ['commit', '-q', '-m', 'init']);
+  });
+  after(() => fs.rm(root, { recursive: true, force: true }));
+
+  it('with no timeout given, every git child, the user command and describe --dirty included, gets the default timeout', async () => {
+    const seen = [];
+    const git = (a, o) => { seen.push({ a, timeout: o?.timeout }); return defaultGitRunner(a, o); };
+    const r = await safeGit(repo, ['diff', 'HEAD', '--'], { git });
+    assert.equal(r.code, 0);
+    await safeGit(repo, ['describe', '--always', '--dirty'], { git });
+    assert.ok(seen.length > 2);
+    for (const s of seen) assert.ok(Number.isFinite(s.timeout) && s.timeout > 0, `no timeout on git ${s.a.join(' ')}`);
+    const user = seen.find(s => s.a.includes('diff') && s.a.includes('HEAD'));
+    assert.ok(user, 'the user diff command ran');
+  });
+
+  it('a caller timeout reaches the user command', async () => {
+    const seen = [];
+    const git = (a, o) => { seen.push({ a, timeout: o?.timeout }); return defaultGitRunner(a, o); };
+    await safeGit(repo, ['rev-parse', 'HEAD'], { git, timeout: 12345 });
+    const user = seen.find(s => s.a.includes('rev-parse') && s.a.includes('HEAD'));
+    assert.equal(user.timeout, 12345);
+  });
+
+  it('CLI: --stdin or --batch without --input - is refused (exit 1); with it, stdin reaches git', async () => {
+    const head = sh(repo, ['rev-parse', 'HEAD']).stdout.trim();
+    const io = (stdin) => ({ cwd: repo, env: CLEAN_ENV, stdin: async () => stdin, stdinIsTTY: false });
+    for (const args of [['--', 'cat-file', '--batch-check'], ['--', 'rev-list', '--stdin']]) {
+      await assert.rejects(run(args, io('HEAD\n')), (e) => e instanceof KitExit && e.code === 1 && /--input -/.test(e.message));
+    }
+    const r = await run(['--input', '-', '--', 'cat-file', '--batch-check'], io('HEAD\n'));
+    assert.equal(r.exit, 0);
+    assert.match(r.stdout, new RegExp(`^${head} commit `));
+    const l = await run(['--input', '-', '--', 'rev-list', '--stdin'], io(`${head}\n`));
+    assert.equal(l.stdout.trim(), head);
+    await assert.rejects(run(['--input', '-', '--', 'rev-parse', 'HEAD'], { ...io(''), stdinIsTTY: true }), (e) => e.code === 1);
+    await assert.rejects(run(['--input', 'x', '--', 'rev-parse', 'HEAD'], io('')), (e) => e.code === 1);
+  });
+
+  it('a limits key set to undefined keeps its default; a bad or unknown limit is exit 1, never a raw error', async () => {
+    const ok = await safeGit(repo, ['rev-parse', 'HEAD'], { limits: { index: undefined, total: undefined, entries: undefined } });
+    assert.equal(ok.code, 0);
+    for (const limits of [{ index: NaN }, { total: -1 }, { entries: 1.5 }, { nope: 1 }]) {
+      await assert.rejects(safeGit(repo, ['rev-parse', 'HEAD'], { limits }), (e) => e instanceof KitExit && e.code === 1);
+    }
+  });
+});
