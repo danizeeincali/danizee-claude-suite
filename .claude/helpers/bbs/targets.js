@@ -40,11 +40,19 @@ export async function stepHeadings(projectDir, file) {
   return out;
 }
 
-/** A step names a heading when its normalized text equals the heading's, or is the heading's leading part. */
+/**
+ * A step names a heading when its normalized text equals the heading's, or is the heading's leading words (the prefix
+ * ends where a word ends, so "step 1" is not "step 10"). A prefix that leads more than one heading names none: it
+ * throws with the candidates rather than pick the first.
+ */
 export function matchStep(step, headings) {
   const s = normalizeStep(step);
   if (!s) return null;
-  return headings.find(h => normalizeStep(h) === s) ?? headings.find(h => normalizeStep(h).startsWith(s)) ?? null;
+  const exact = headings.find(h => normalizeStep(h) === s);
+  if (exact) return exact;
+  const lead = headings.filter(h => { const n = normalizeStep(h); return n.startsWith(s) && !/[\p{L}\p{N}]/u.test(n[s.length]); });
+  if (lead.length > 1) throw new Error(`"${s}" leads ${lead.length} headings (${lead.map(h => JSON.stringify(h)).join(', ')}) — name the one you mean`);
+  return lead[0] ?? null;
 }
 
 async function loadRun(projectDir, run, cfg) {
@@ -54,6 +62,18 @@ async function loadRun(projectDir, run, cfg) {
   const usage = await readJson(path.join(dir, 'usage.json'));
   if (!usage) throw new Error('no usage.json yet — run cli.js usage first: where a power lands depends on the workflows the owner runs');
   return { dir, names: (powers.powers || []).map(p => p.name), powers: powers.powers || [], usage };
+}
+
+/**
+ * A power the owner approved to build (rebuild/use) was approved with its landings: changing them afterwards needs
+ * --force, so the recorded approval never silently stops matching where the power lands.
+ */
+async function refuseApproved(dir, powers, force) {
+  if (force) return;
+  let vj;
+  try { vj = await readJson(path.join(dir, 'verdicts.json')); } catch { return; } // a corrupt verdicts.json is the verdict verb's to repair
+  const approved = powers.filter(n => vj?.decisions?.[n] === 'rebuild' || vj?.decisions?.[n] === 'use');
+  if (approved.length) throw new Error(`${approved.join(', ')} ${approved.length > 1 ? 'were' : 'was'} approved to build with ${approved.length > 1 ? 'their' : 'its'} current targets — pass --force to change where ${approved.length > 1 ? 'they land' : 'it lands'} after approval`);
 }
 
 /** The helper brief: the powers, the owner's workflows with their step headings, and the JSON shape. */
@@ -108,7 +128,8 @@ async function checkTarget(projectDir, power, row, { installed, used, unverified
   }
   if (typeof row.step !== 'string' || !clean(row.step)) throw new Error(`${power}: ${w} needs a "step" (a heading of ${installed.get(w).file})`);
   const heads = await headingsOf(w);
-  const step = heads.length ? matchStep(row.step, heads) : clean(row.step);
+  let step;
+  try { step = heads.length ? matchStep(row.step, heads) : clean(row.step); } catch (err) { throw new Error(`${power}: ${w} step ${err.message}`); }
   if (!step) throw new Error(`${power}: "${clean(row.step)}" is not a step of ${w} (headings of ${installed.get(w).file})`);
   if (typeof row.how !== 'string' || !clean(row.how)) throw new Error(`${power}: ${w} needs "how" — one line on what the step does with the power`);
   if (clean(row.how).length > HOW_MAX_CHARS) throw new Error(`${power}: "how" must be one line (at most ${HOW_MAX_CHARS} characters)`);
@@ -144,6 +165,7 @@ export async function recordTargets(projectDir, { run, input, force = false, now
   const installed = await installedWorkflows(projectDir);
   const ctx = context(projectDir, installed, usage);
   const file = path.join(dir, 'targets.json');
+  await refuseApproved(dir, Object.keys(parsed), force);
   const prior = force ? null : await readPrior(file);
   const targets = { ...(prior?.targets || {}) };
   for (const [power, rows] of Object.entries(parsed)) {
@@ -165,12 +187,13 @@ export async function recordTargets(projectDir, { run, input, force = false, now
  * the power already targets keeps its step; a new one is stored with step null, for the integration stream to pick.
  * The owner may name any installed workflow, used or not. An empty list (`<power>@`) means it lands nowhere.
  */
-export async function setOwnerTargets(projectDir, { run, set, now = () => new Date(), cfg = DEFAULT_CONFIG }) {
+export async function setOwnerTargets(projectDir, { run, set, force = false, now = () => new Date(), cfg = DEFAULT_CONFIG }) {
   const { dir, names, usage } = await loadRun(projectDir, run, cfg);
   const at = String(set).indexOf('@');
   if (at <= 0) throw new Error(`--set needs <power>@<workflow>[,<workflow>], got "${set}"`);
   const power = set.slice(0, at);
   if (!names.includes(power)) throw new Error(`unknown power "${power}"`);
+  await refuseApproved(dir, [power], force);
   const installed = await installedWorkflows(projectDir);
   const file = path.join(dir, 'targets.json');
   const prior = await readPrior(file);

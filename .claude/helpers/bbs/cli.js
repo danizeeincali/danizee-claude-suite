@@ -299,11 +299,11 @@ const VERBS = {
     const usage = FLAGS.targets.usage;
     const modes = ['brief', 'from', 'set'].filter(m => flags[m] !== undefined);
     if (modes.length !== 1) fail(`${usage}\n  targets needs exactly one of --brief, --from <file|-> or --set <power>@<workflows>`);
-    if (flags.force && !flags.from) fail(`${usage}\n  --force goes with --from (it drops every earlier target)`);
+    if (flags.force && flags.brief) fail(`${usage}\n  --force goes with --from (it drops every earlier target) or --set (it changes where an approved power lands)`);
     const { id, dir } = await resolveRun(projectDir, flags, cfg);
     try {
       if (flags.brief) { process.stdout.write(await targetsBrief(projectDir, { run: id, cfg }) + '\n'); return; }
-      if (flags.set) { out({ ...await setOwnerTargets(projectDir, { run: id, set: flags.set, cfg }), next: nextStep(await loadState(dir)) }); return; }
+      if (flags.set) { out({ ...await setOwnerTargets(projectDir, { run: id, set: flags.set, force: !!flags.force, cfg }), next: nextStep(await loadState(dir)) }); return; }
       let input;
       if (flags.from === '-') input = (await readStdin()).toString('utf-8');
       else {
@@ -366,7 +366,7 @@ const VERBS = {
       } else if (flags.table) {
         // A view: print the recorded table when there is one, so viewing never re-runs the sandbox check
         const existing = force ? null : await readJson(path.join(dir, 'verdicts.json'));
-        if (existing && existing.rows) { out(verdictTable(existing.rows, (await readJson(path.join(dir, 'targets.json')))?.targets)); return; }
+        if (existing && existing.rows) { out(verdictTable(existing.rows, (await readJson(path.join(dir, 'targets.json')))?.targets, await readJson(path.join(dir, 'usage.json')))); return; }
         const computed = await computeVerdicts(projectDir, { run: id, sandbox: useSandboxOverride(sandboxOverride), now, force, cfg });
         out(computed.table);
         warnSandboxOverride(sandboxOverride);

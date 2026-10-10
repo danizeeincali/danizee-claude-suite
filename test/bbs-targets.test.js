@@ -11,7 +11,7 @@ import os from 'os';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { normalizeStep, stepHeadings, matchStep, targetsBrief, recordTargets, setOwnerTargets, standingTargets, landsIn, OWNER_HOW } from '../src/lib/bbs/targets.js';
-import { computeVerdicts, recordDecisions, PolicyRefused, verdictTable } from '../src/lib/bbs/verdict.js';
+import { computeVerdicts, recordDecisions, PolicyRefused, verdictTable, landingDefault } from '../src/lib/bbs/verdict.js';
 import { writeJson, readJson } from '../src/lib/bbs/store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -145,7 +145,7 @@ describe('targets — the owner\'s word and what a decision stands on', () => {
     assert.equal(landsIn(undefined), 'not proposed');
     const t = verdictTable({ p: { legal: ['rebuild', 'skip'], default: 'rebuild' } }, { p: [] });
     assert.match(t, /\| Lands in \|/);
-    assert.match(t, /\| rebuild \| nowhere \| — \|/);
+    assert.match(t, /\| skip \| nowhere \| — \| default rebuild → skip: it lands in no workflow you run \|/);
     assert.ok(!verdictTable({ p: { legal: [] } }).includes('Lands in'), 'no targets, no column');
   });
 });
@@ -200,7 +200,7 @@ describe('targets — cli', () => {
     return { code: r.status, out: r.stdout, err: r.stderr, json };
   };
 
-  it('takes exactly one of --brief, --from or --set; --force only with --from', () => {
+  it('takes exactly one of --brief, --from or --set; --force only with --from or --set', () => {
     assert.match(cli(['targets']).err, /exactly one of --brief, --from/);
     assert.match(cli(['targets', '--brief', '--set', 'a@b']).err, /exactly one/);
     assert.match(cli(['targets', '--brief', '--force']).err, /--force goes with --from/);
@@ -239,5 +239,72 @@ describe('targets — usage review r4 regressions', () => {
       await fs.writeFile(path.join(rd, 'targets.json'), '{bad');
       await assert.rejects(recordDecisions(dir, { run, input: JSON.stringify({ redact: 'rebuild' }), now }), /corrupt JSON.*cli\.js targets --force --from/);
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe('targets — review r1 regressions', () => {
+  let dir, run, rd;
+  const decide = (obj, o = {}) => recordDecisions(dir, { run, input: JSON.stringify(obj), now, ...o });
+  before(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-tgt-r1-'));
+    await makeRun(dir);
+    const { intake } = await import('../src/lib/bbs/intake.js');
+    const { writeInventory } = await import('../src/lib/bbs/inventory.js');
+    const { buildMap, recordJudgments } = await import('../src/lib/bbs/harness-map.js');
+    run = (await intake(dir, '-', { stdin: 'r1', now, slug: 'r1' })).runId;
+    const p = (name, what, licence = 'MIT') => ({ name, what, idea: what, evidence: 'src/x.ts:1', dependencies: [], data_needed: 'none', network: 'none', size: 'small', licence });
+    await writeInventory(dir, { run, input: JSON.stringify([p('redact', 'masks secrets'), p('gate', 'blocks a push'), p('meter', 'counts calls', 'Commercial')]), now });
+    await buildMap(dir, { run, now });
+    await recordJudgments(dir, { run, input: JSON.stringify({ redact: 'missing', gate: 'missing', meter: 'missing' }), now });
+    rd = path.join(dir, '.claude', 'bbs', 'runs', run);
+    await writeJson(path.join(rd, 'usage.json'), { evidence: 'transcripts', workflows: [{ name: 'w-review', count: 3 }] });
+    await recordTargets(dir, { run, input: JSON.stringify({ redact: [row()], gate: [], meter: [] }), now });
+  });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('a power that lands nowhere defaults to buy or skip, so approving the table as shown is accepted', async () => {
+    const { table, rows } = await computeVerdicts(dir, { run, sandbox: noSandbox, now });
+    const targets = (await readJson(path.join(rd, 'targets.json'))).targets;
+    const usage = await readJson(path.join(rd, 'usage.json'));
+    assert.equal(landingDefault('redact', rows.redact, targets, usage), 'rebuild', 'a power with a standing target keeps its default');
+    assert.equal(landingDefault('gate', rows.gate, targets, usage), 'skip');
+    assert.equal(landingDefault('gate', rows.gate, undefined, usage), rows.gate.default, 'no targets step, no change');
+    // the owner's "Approve as shown": the Default column, as printed
+    const shown = Object.fromEntries(table.split('\n').slice(2).map(l => l.split(' | ')).map(c => [c[0].replace(/^\| /, ''), c[4]]));
+    assert.equal(shown.gate, 'skip');
+    assert.ok(['buy', 'skip'].includes(shown.meter) && shown.meter === (rows.meter.legal.includes('buy') ? 'buy' : 'skip'));
+    assert.equal((await decide(shown)).decided, 3);
+  });
+
+  it('where an approved power lands changes only with --force', async () => {
+    await assert.rejects(setOwnerTargets(dir, { run, set: 'redact@bc', now }), /redact was approved to build.*--force/);
+    await assert.rejects(recordTargets(dir, { run, input: JSON.stringify({ redact: [] }), now }), /redact was approved to build/);
+    await setOwnerTargets(dir, { run, set: 'gate@w-review', now }); // gate was skipped: nothing approved to move
+    const r = await setOwnerTargets(dir, { run, set: 'redact@w-review,bc', force: true, now });
+    assert.equal(r.targets.redact.length, 2);
+  });
+
+  it('a step prefix names a heading only at a word end, and only when it leads one heading', () => {
+    const heads = ['CHECKPOINT 3: Usage', 'CHECKPOINT 3b: Targets', 'Step 10'];
+    assert.throws(() => matchStep('checkpoint', heads), /leads 2 headings.*CHECKPOINT 3: Usage.*CHECKPOINT 3b: Targets/);
+    assert.equal(matchStep('checkpoint 3', heads), 'CHECKPOINT 3: Usage');
+    assert.equal(matchStep('step 1', heads), null);
+    assert.equal(matchStep('checkpoint 3b', heads), 'CHECKPOINT 3b: Targets');
+  });
+
+  it('an ambiguous step is refused when targets are recorded, naming the candidates', async () => {
+    await fs.writeFile(path.join(dir, '.claude/commands/.shortcuts/w-review.md'), REVIEW + '\n### ⛔ CHECKPOINT 1b: Fixes\n');
+    try {
+      await assert.rejects(recordTargets(dir, { run, input: JSON.stringify({ gate: [row({ step: 'checkpoint' })] }), now }), /gate: w-review step "checkpoint" leads 2 headings/);
+    } finally { await fs.writeFile(path.join(dir, '.claude/commands/.shortcuts/w-review.md'), REVIEW); }
+  });
+
+  it('a corrupt targets.json does not block a skip or buy', async () => {
+    const good = await fs.readFile(path.join(rd, 'targets.json'), 'utf-8');
+    await fs.writeFile(path.join(rd, 'targets.json'), '{bad');
+    try {
+      assert.equal((await decide({ gate: 'skip' }, { force: true })).decided, 3);
+      await assert.rejects(decide({ redact: 'rebuild' }, { force: true }), /corrupt JSON.*cli\.js targets --force --from/);
+    } finally { await fs.writeFile(path.join(rd, 'targets.json'), good); }
   });
 });

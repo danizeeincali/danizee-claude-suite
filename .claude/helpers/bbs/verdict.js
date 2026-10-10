@@ -403,8 +403,22 @@ function harnessCell(judgment) {
   return status;
 }
 
-/** The verdict table. With `targets` (targets.json's map) it gains a Lands in column: workflow · step · mode per target. */
-export function verdictTable(rows, targets) {
+/**
+ * The default the owner approves: the row's default, unless it builds (rebuild/use) a power with no standing target.
+ * Building is not the deliverable, so a power that lands nowhere defaults to buy when that is legal, else skip.
+ * Without targets (a run decided before the targets step) the row's default stands.
+ */
+export function landingDefault(name, row, targets, usage) {
+  const d = row?.default ?? null;
+  if (!targets || (d !== 'rebuild' && d !== 'use') || standingTargets(targets[name], usage).length) return d;
+  return (row.legal || []).includes('buy') ? 'buy' : 'skip';
+}
+
+/**
+ * The verdict table. With `targets` (targets.json's map) it gains a Lands in column: workflow · step · mode per target,
+ * and the Default column is landingDefault (judged against `usage`).
+ */
+export function verdictTable(rows, targets, usage) {
   const lines = targets
     ? ['| Power | Harness | Licence | Legal | Default | Lands in | Decision | Why |', '| --- | --- | --- | --- | --- | --- | --- | --- |']
     : ['| Power | Harness | Licence | Legal | Default | Decision | Why |', '| --- | --- | --- | --- | --- | --- | --- |'];
@@ -412,9 +426,11 @@ export function verdictTable(rows, targets) {
     const whys = (r.removed || []).map(x => `${x.verdict} removed: ${x.reason}`);
     if (r.needs_probe) whys.push(`use needs a clean network probe (cli.js verdict --probe ${name}=clean|found|incomplete)`);
     if (r.probe?.result) whys.push(`probe: ${r.probe.result}`);
-    const why = whys.join('; ');
     const legal = (r.legal || []).map(v => (v === 'use' && r.needs_probe ? 'use (probe first)' : v)).join(', ');
-    const cells = [name, harnessCell(r.judgment), `${r.licence ?? 'unknown'} (${r.licence_class ?? 'none'})`, legal, r.default ?? ''];
+    const shown = landingDefault(name, r, targets, usage);
+    if (shown !== r.default) whys.unshift(`default ${r.default} → ${shown}: it lands in no workflow you run`);
+    const why = whys.join('; ');
+    const cells = [name, harnessCell(r.judgment), `${r.licence ?? 'unknown'} (${r.licence_class ?? 'none'})`, legal, shown ?? ''];
     if (targets) cells.push(landsIn(targets[name]));
     lines.push(`| ${[...cells, r.decision || '—', why].map(cell).join(' | ')} |`);
   }
@@ -718,7 +734,7 @@ export async function computeVerdicts(projectDir, { run, sandbox, now = () => ne
       runId: run,
       sandbox: sb,
       rows,
-      table: verdictTable(rows, (await readJson(path.join(p.dir, 'targets.json')))?.targets),
+      table: verdictTable(rows, (await readJson(path.join(p.dir, 'targets.json')))?.targets, await readJson(path.join(p.dir, 'usage.json'))),
       needs_probe: Object.keys(rows).filter(n => rows[n].needs_probe),
       dropped,
       next: await nextOf(p.dir, unread),
@@ -832,8 +848,10 @@ export async function recordDecisions(projectDir, { run, input, now = () => new 
     const repairable = async (file, verb) => {
       try { return await readJson(path.join(p.dir, file)); } catch (err) { throw new Error(`${err.message} — ${verb} to replace it`); }
     };
-    const counted = await repairable('usage.json', 'run cli.js usage --force (or --force --workflows <a,b>)');
-    const landing = (await repairable('targets.json', 'run cli.js targets --force --from <file>'))?.targets;
+    // usage.json and targets.json matter only to a decision that builds: a skip or buy is never blocked by them
+    const builds = Object.values(decisions).some(v => v === 'rebuild' || v === 'use');
+    const counted = builds ? await repairable('usage.json', 'run cli.js usage --force (or --force --workflows <a,b>)') : null;
+    const landing = builds ? (await repairable('targets.json', 'run cli.js targets --force --from <file>'))?.targets : null;
     try {
       for (const [name, v] of Object.entries(decisions)) {
         const row = vj.rows[name];
