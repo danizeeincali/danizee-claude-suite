@@ -284,3 +284,42 @@ describe('usage — review r2 regressions', () => {
     await fs.rm(cfgFile);
   });
 });
+
+describe('usage — review r3 regressions', () => {
+  let dir, hist;
+  before(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-usage-r3-'));
+    await project(dir);
+    hist = path.join(dir, 'history', 'p');
+    await fs.mkdir(hist, { recursive: true });
+    await fs.writeFile(path.join(hist, 'a.jsonl'), typed('w-review', '2026-10-09T10:00:00.000Z') + '\n');
+    await fs.writeFile(path.join(hist, 'b.jsonl'), typed('w-debug', '2026-10-09T10:00:00.000Z') + '\n');
+  });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+
+  it('one unreadable transcript is counted and skipped; the scan goes on and never prints its path', async () => {
+    const { createReadStream } = await import('fs');
+    const openStream = (file, o) => file.endsWith('b.jsonl') ? createReadStream(path.join(hist, 'gone.jsonl'), o) : createReadStream(file, o);
+    const u = await scanUsage(dir, { roots: [path.dirname(hist)], days: 90, now: () => NOW, openStream });
+    assert.deepEqual(u.workflows.map(w => w.name), ['w-review']);
+    assert.equal(u.files_read, 1);
+    assert.equal(u.files_unreadable, 1);
+    assert.ok(!JSON.stringify(u).includes(hist));
+  });
+
+  it('an older transcript\'s SlashCommand tool call counts as a use', () => {
+    const row = { type: 'assistant', message: { content: [{ type: 'tool_use', name: 'SlashCommand', input: { command: '/mt run the thing' } }] } };
+    assert.deepEqual(invocations(row), [{ name: '/mt', kind: 'skill' }]);
+  });
+
+  it('no transcripts where it looked: the note names the roots searched', async () => {
+    const r = await recordUsage(dir, { run: 'r3run', roots: [path.join(dir, 'nowhere')], force: true, cfg: { paths: { runs: '.claude/bbs/runs', registry: '.claude/bbs/registry.jsonl' }, usage: { roots: ['x'], days: 90 } } });
+    assert.match(r.note, /no session transcripts found in .*nowhere/);
+  });
+
+  it('CLAUDE_CONFIG_DIR moves the default root', async () => {
+    const { defaultRoots } = await import('../src/lib/bbs/usage.js');
+    assert.deepEqual(defaultRoots({ CLAUDE_CONFIG_DIR: '/cfg' }), [path.join('/cfg', 'projects')]);
+    assert.deepEqual(defaultRoots({}), ['~/.claude/projects']);
+  });
+});

@@ -23,7 +23,15 @@ import { runDir as runDirOf, writeJson, readJson } from './store.js';
 export const EVIDENCE = ['transcripts', 'owner', 'none'];
 export const DEFAULT_DAYS = 90;
 export const DEFAULT_ROOTS = ['~/.claude/projects'];
-/** A transcript line longer than this (in characters) is skipped unparsed: a command marker never needs a multi-megabyte line. */
+
+/** Where Claude Code keeps transcripts: $CLAUDE_CONFIG_DIR/projects when the owner moved the config, else ~/.claude/projects. */
+export function defaultRoots(env = process.env) {
+  return env.CLAUDE_CONFIG_DIR ? [path.join(env.CLAUDE_CONFIG_DIR, 'projects')] : DEFAULT_ROOTS;
+}
+/**
+ * A transcript line longer than this (in characters) is skipped unparsed: a command marker never needs a multi-megabyte
+ * line. It saves the parse only; readline has already held the line in memory.
+ */
 export const MAX_LINE_CHARS = 4 * 1024 * 1024;
 const NAME = /^[a-z0-9][a-z0-9._-]*(?::[a-z0-9][a-z0-9._-]*)*$/i;
 const ALIAS = /^#\s*\/([a-z0-9][a-z0-9._-]*)\s+[—-]+\s+alias for\s+\/([a-z0-9][a-z0-9._:-]*)/i;
@@ -106,7 +114,13 @@ export function invocations(row) {
     }
   } else if (row.type === 'assistant') {
     for (const p of parts) {
-      if (p?.type === 'tool_use' && p.name === 'Skill' && typeof p.input?.skill === 'string') names.push({ name: p.input.skill, kind: 'skill' });
+      if (p?.type !== 'tool_use') continue;
+      if (p.name === 'Skill' && typeof p.input?.skill === 'string') names.push({ name: p.input.skill, kind: 'skill' });
+      // older Claude Code: the model started a command with the SlashCommand tool, `input.command: "/x args"`
+      else if (p.name === 'SlashCommand' && typeof p.input?.command === 'string') {
+        const first = p.input.command.trim().split(/\s+/, 1)[0];
+        if (first) names.push({ name: first, kind: 'skill' });
+      }
     }
   }
   return names;
@@ -120,45 +134,52 @@ export const HOP_MS = 120000;
  * `w-marathon` are one use: within a session an invocation less than HOP_MS after the previous invocation of the
  * same workflow is a hop, not a new use. An invocation without a timestamp after one of the same workflow is a hop.
  */
-export async function scanUsage(projectDir, { roots = DEFAULT_ROOTS, days = DEFAULT_DAYS, now = () => new Date() } = {}) {
+export async function scanUsage(projectDir, { roots = DEFAULT_ROOTS, days = DEFAULT_DAYS, now = () => new Date(), openStream = createReadStream } = {}) {
   const installed = await installedWorkflows(projectDir);
   const sinceMs = now().getTime() - days * 86400000;
   const per = new Map(); // workflow -> { typed, skill, sessions:Set, last, via:Map }
   const other = new Map();
   let filesRead = 0;
+  let filesUnreadable = 0;
   let linesSkipped = 0;
   for (const r of roots) {
     for (const file of await listTranscripts(path.resolve(expandHome(r)), sinceMs)) {
-      filesRead++;
-      const session = new Map(); // workflow -> { typed, skill, last, via }
-      const rl = readline.createInterface({ input: createReadStream(file, { encoding: 'utf-8' }), crlfDelay: Infinity });
-      for await (const line of rl) {
-        if (line.length > MAX_LINE_CHARS) { linesSkipped++; continue; }
-        if (!line.includes('<command-name>') && !line.includes('"Skill"')) continue;
-        let row;
-        try { row = JSON.parse(line); } catch { linesSkipped++; continue; }
-        const ts = typeof row.timestamp === 'string' && !Number.isNaN(Date.parse(row.timestamp)) ? row.timestamp : null;
-        if (ts && Date.parse(ts) < sinceMs) continue;
-        for (const inv of invocations(row)) {
-          const { workflow, via } = resolveName(inv.name, installed);
-          if (!workflow) { if (via) other.set(via, (other.get(via) || 0) + 1); continue; }
-          const s = session.get(workflow) || { uses: 0, prev: undefined, last: null, via: new Map(), useVia: null, hopVia: false };
-          const t = ts ? Date.parse(ts) : null;
-          const hop = s.prev !== undefined && (t === null || (s.prev !== null && t - s.prev < HOP_MS));
-          if (!hop) { s.uses++; s.via.set(via, (s.via.get(via) || 0) + 1); s.useVia = via; s.hopVia = inv.kind === 'skill'; }
-          else if (inv.kind === 'typed' && s.hopVia) {
-            // the typed name is the one the owner used: it replaces the Skill name this use was first seen by
-            const n = s.via.get(s.useVia);
-            if (n <= 1) s.via.delete(s.useVia); else s.via.set(s.useVia, n - 1);
-            s.via.set(via, (s.via.get(via) || 0) + 1);
-            s.useVia = via;
-            s.hopVia = false;
+      const session = new Map(); // workflow -> { uses, prev, last, via, useVia, hopVia }
+      try {
+        const rl = readline.createInterface({ input: openStream(file, { encoding: 'utf-8' }), crlfDelay: Infinity });
+        for await (const line of rl) {
+          if (line.length > MAX_LINE_CHARS) { linesSkipped++; continue; }
+          if (!line.includes('<command-name>') && !line.includes('"Skill"') && !line.includes('"SlashCommand"')) continue;
+          let row;
+          try { row = JSON.parse(line); } catch { linesSkipped++; continue; }
+          const ts = typeof row.timestamp === 'string' && !Number.isNaN(Date.parse(row.timestamp)) ? row.timestamp : null;
+          if (ts && Date.parse(ts) < sinceMs) continue;
+          for (const inv of invocations(row)) {
+            const { workflow, via } = resolveName(inv.name, installed);
+            if (!workflow) { if (via) other.set(via, (other.get(via) || 0) + 1); continue; }
+            const s = session.get(workflow) || { uses: 0, prev: undefined, last: null, via: new Map(), useVia: null, hopVia: false };
+            const t = ts ? Date.parse(ts) : null;
+            const hop = s.prev !== undefined && (t === null || (s.prev !== null && t - s.prev < HOP_MS));
+            if (!hop) { s.uses++; s.via.set(via, (s.via.get(via) || 0) + 1); s.useVia = via; s.hopVia = inv.kind === 'skill'; }
+            else if (inv.kind === 'typed' && s.hopVia) {
+              // the typed name is the one the owner used: it replaces the Skill name this use was first seen by
+              const n = s.via.get(s.useVia);
+              if (n <= 1) s.via.delete(s.useVia); else s.via.set(s.useVia, n - 1);
+              s.via.set(via, (s.via.get(via) || 0) + 1);
+              s.useVia = via;
+              s.hopVia = false;
+            }
+            if (t !== null || s.prev === undefined) s.prev = t;
+            if (ts && (!s.last || ts > s.last)) s.last = ts;
+            session.set(workflow, s);
           }
-          if (t !== null || s.prev === undefined) s.prev = t;
-          if (ts && (!s.last || ts > s.last)) s.last = ts;
-          session.set(workflow, s);
         }
+      } catch {
+        // deleted mid-scan, or an unreadable mount: this session is dropped, the scan goes on; the path is never printed
+        filesUnreadable++;
+        continue;
       }
+      filesRead++;
       for (const [w, s] of session) {
         const agg = per.get(w) || { count: 0, sessions: 0, last: null, via: new Map() };
         agg.count += s.uses;
@@ -177,6 +198,7 @@ export async function scanUsage(projectDir, { roots = DEFAULT_ROOTS, days = DEFA
     evidence: workflows.length ? 'transcripts' : 'none',
     window_days: days,
     files_read: filesRead,
+    files_unreadable: filesUnreadable,
     lines_skipped: linesSkipped,
     workflows,
     other: Object.fromEntries([...other.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 20)),
@@ -211,9 +233,10 @@ export async function recordUsage(projectDir, { run, roots, days, workflows, now
     try { prior = await readJson(file); } catch (err) { throw new Error(`${err.message} — pass --force to recount and replace it`); }
     if (prior) throw new Error(`usage.json already exists for run ${run}; pass --force to recount`);
   }
+  const searched = roots?.length ? roots : (cfg.usage?.roots || defaultRoots());
   const result = workflows !== undefined
     ? await ownerUsage(projectDir, workflows)
-    : await scanUsage(projectDir, { roots: roots?.length ? roots : (cfg.usage?.roots || DEFAULT_ROOTS), days: days ?? cfg.usage?.days ?? DEFAULT_DAYS, now });
+    : await scanUsage(projectDir, { roots: searched, days: days ?? cfg.usage?.days ?? DEFAULT_DAYS, now });
   const data = { run, ts: now().toISOString(), ...result };
   await writeJson(file, data);
   return {
@@ -222,9 +245,10 @@ export async function recordUsage(projectDir, { run, roots, days, workflows, now
     files_read: data.files_read,
     used: data.workflows.length,
     top: data.workflows.slice(0, 10).map(w => w.count === null ? w.name : `${w.name}=${w.count}`),
-    note: data.evidence === 'none'
-      ? 'no workflow use found: the verdict question must ask the owner which workflows they use (workflows=a,b)'
-      : undefined
+    note: data.evidence !== 'none' ? undefined
+      : data.files_read === 0
+        ? `no session transcripts found in ${searched.join(', ')}: the verdict question must ask the owner which workflows they use (workflows=a,b)`
+        : 'no workflow use found: the verdict question must ask the owner which workflows they use (workflows=a,b)'
   };
 }
 
