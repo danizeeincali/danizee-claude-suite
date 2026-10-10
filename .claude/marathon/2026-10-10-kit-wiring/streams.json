@@ -31,9 +31,9 @@
     },
     {
       "name": "bc",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "checking review (round 9) of the round-8 fixes running; then close and /bc",
+      "next": "done; compounded via /bc",
       "tasks": [],
       "isolation": "../danizee-claude-suite-bc",
       "phase": "review",
@@ -42,10 +42,14 @@
     },
     {
       "name": "marathon",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "worktree, wire 4.5, 4.8 and CP6",
-      "tasks": []
+      "next": "4.1 budget, then build: 4.5 lenses+impact in the brief and receipt, 4.8 scrub --history, CP6 push-gate check",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-marathon",
+      "phase": "build",
+      "skill": "w-plan-tdd-swarm",
+      "base": "9ab93ad7f1b526bbebb0d7ea974d2034a812a814"
     },
     {
       "name": "bbs",
