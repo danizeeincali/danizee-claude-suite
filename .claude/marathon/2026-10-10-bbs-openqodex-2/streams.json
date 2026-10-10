@@ -75,7 +75,7 @@
       "name": "fact-cached-graph-build-with-budget",
       "state": "active",
       "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/fact-cached-graph-build-with-budget.md",
-      "next": "review round 2",
+      "next": "review round 3",
       "tasks": [],
       "isolation": "../danizee-claude-suite-fact-cached-graph-build-with-budget",
       "phase": "review",
