@@ -57,3 +57,11 @@ Add a rule the second time something goes wrong.
 - (promoted: correctness) Kit verbs resolve repository paths from `git rev-parse --show-toplevel` / the git common
   dir, never from the cwd; a failure of git itself (missing, unspawnable) is reported as that, not as "not a repo";
   store writes are atomic and clean up their temp file on failure. Unknown flags are refused.
+- (promoted: security) Redaction and other safety steps fail CLOSED: when the user configured one (a secrets file
+  exists) and it cannot run — unreadable file, kit missing, malformed entry — the output is not produced and the
+  command exits 1 naming what is missing. A safety step never degrades silently to "nothing to do".
+- (promoted: old git) Never pass `--path-format` to `git rev-parse` (git < 2.31 echoes unknown flags and exits 0).
+  Resolve `--git-common-dir` / `--git-dir` output against the command's cwd with `path.resolve`, through the one shared
+  kit helper, and test it with a fake git that echoes unknown flags the way old git does.
+- (promoted: test-quality) A fake used in a test behaves like the real thing it stands for (exit code, stdout vs stderr,
+  echoed flags); a test named for a behaviour asserts that behaviour's observable result, not just "no throw".

@@ -1,18 +1,18 @@
 # Marathon 2026-10-10-bbs-openqodex-2
 
 - State: RUNNING
-- Budget: 448,431 / 10,000,000 tokens
+- Budget: 1,127,430 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 2/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Next stream "secret-redaction-by-value-and-fingerprin": create its worktree (`git worktree add ../<repo>-secret-redaction-by-value-and-fingerprin -b marathon/2026-10-10-bbs-openqodex-2/secret-redaction-by-value-and-fingerprin`) and activate it with `cli.js stream secret-redaction-by-value-and-fingerprin state=active isolation=<path>`, then /w-marathon --resume 2026-10-10-bbs-openqodex-2.
+- Next for you: Next stream "lens-catalog-file-triggered-checks": create its worktree (`git worktree add ../<repo>-lens-catalog-file-triggered-checks -b marathon/2026-10-10-bbs-openqodex-2/lens-catalog-file-triggered-checks`) and activate it with `cli.js stream lens-catalog-file-triggered-checks state=active isolation=<path>`, then /w-marathon --resume 2026-10-10-bbs-openqodex-2.
 
 ## Streams
 
 | Stream | Isolation | Plan | State | Gate | Phase | Next | Tasks | Escapes |
 |---|---|---|---|---|---|---|---|---|
 | pre-push-review-gate | ../danizee-claude-suite-pre-push-review-gate | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/pre-push-review-gate.md | done | met | review | — |  | 0 |
-| secret-redaction-by-value-and-fingerprin |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/secret-redaction-by-value-and-fingerprin.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
+| secret-redaction-by-value-and-fingerprin | ../danizee-claude-suite-secret-redaction-by-value-and-fingerprin | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/secret-redaction-by-value-and-fingerprin.md | done | met | review | — |  | 0 |
 | lens-catalog-file-triggered-checks |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/lens-catalog-file-triggered-checks.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | hardened-git-read-on-untrusted-repo |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/hardened-git-read-on-untrusted-repo.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | identity-checked-file-writes |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/identity-checked-file-writes.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
@@ -32,11 +32,11 @@
 | pre-push-review-gate: clean reviews in a row | build | met | 2 | at_least 2 |
 | pre-push-review-gate: callers in the harness | build | met | 1 | at_least 1 |
 | pre-push-review-gate: packaged check passes | build | met | true | is true |
-| secret-redaction-by-value-and-fingerprin: green unit runs in a row | build | failing | 0 | at_least 1 |
-| secret-redaction-by-value-and-fingerprin: zero egress in the packaged check | build | failing | — | is true |
-| secret-redaction-by-value-and-fingerprin: clean reviews in a row | build | failing | 0 | at_least 2 |
-| secret-redaction-by-value-and-fingerprin: callers in the harness | build | failing | — | at_least 1 |
-| secret-redaction-by-value-and-fingerprin: packaged check passes | build | failing | — | is true |
+| secret-redaction-by-value-and-fingerprin: green unit runs in a row | build | met | 4 | at_least 1 |
+| secret-redaction-by-value-and-fingerprin: zero egress in the packaged check | build | met | true | is true |
+| secret-redaction-by-value-and-fingerprin: clean reviews in a row | build | met | 2 | at_least 2 |
+| secret-redaction-by-value-and-fingerprin: callers in the harness | build | met | 1 | at_least 1 |
+| secret-redaction-by-value-and-fingerprin: packaged check passes | build | met | true | is true |
 | lens-catalog-file-triggered-checks: green unit runs in a row | build | failing | 0 | at_least 1 |
 | lens-catalog-file-triggered-checks: zero egress in the packaged check | build | failing | — | is true |
 | lens-catalog-file-triggered-checks: clean reviews in a row | build | failing | 0 | at_least 2 |

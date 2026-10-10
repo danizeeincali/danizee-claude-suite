@@ -1,2 +1,5 @@
 {"category":"docs","kind":"rule","ref":".claude/marathon/2026-10-10-bbs-openqodex-2/rules.md","area":null,"id":"412f8281-72e5-4642-8a8e-033bc01d434e","ts":"2026-10-10T01:46:17.737Z"}
 {"category":"correctness","kind":"rule","ref":".claude/marathon/2026-10-10-bbs-openqodex-2/rules.md","area":null,"id":"16b08b33-e647-4432-9360-ac1db0b69981","ts":"2026-10-10T01:46:17.848Z"}
+{"category":"security","kind":"rule","ref":".claude/marathon/2026-10-10-bbs-openqodex-2/rules.md","area":null,"id":"3f6a1dc4-1f6a-4dc8-a3a5-7e08c181572d","ts":"2026-10-10T04:53:32.110Z"}
+{"category":"security","kind":"rule","ref":".claude/marathon/2026-10-10-bbs-openqodex-2/rules.md","area":null,"id":"a7469b1b-f7d9-45c3-957c-99c9eb579eae","ts":"2026-10-10T04:57:19.399Z"}
+{"category":"test-quality","kind":"rule","ref":".claude/marathon/2026-10-10-bbs-openqodex-2/rules.md","area":null,"id":"c7fb2682-2c3d-4a26-8459-30a65253699b","ts":"2026-10-10T05:02:54.099Z"}

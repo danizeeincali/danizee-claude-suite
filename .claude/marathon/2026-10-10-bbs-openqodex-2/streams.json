@@ -19,10 +19,13 @@
     },
     {
       "name": "secret-redaction-by-value-and-fingerprin",
-      "state": "queued",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/secret-redaction-by-value-and-fingerprin.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "—",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-secret-redaction-by-value-and-fingerprin",
+      "phase": "review",
+      "base": "d7940cf36c715c60a375135b0cf23f588074fd9a"
     },
     {
       "name": "lens-catalog-file-triggered-checks",
