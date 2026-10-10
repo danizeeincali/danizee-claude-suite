@@ -48,10 +48,10 @@ Use TodoWrite NOW to create todos for ALL phases:
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
-2. \`agent-browser open <url>\` → \`agent-browser screenshot\`
+2. `agent-browser open <url>` → `agent-browser screenshot`
 3. Note current UI state for comparison after build
 
-If agent-browser is not available, prompt: \`npx playwright install\`
+If agent-browser is not available, prompt: `npx playwright install`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -71,10 +71,10 @@ STOP and wait for user response.
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to verify the implementation visually
-2. \`agent-browser open <url>\` → \`agent-browser snapshot -i\` → verify elements
+2. `agent-browser open <url>` → `agent-browser snapshot -i` → verify elements
 3. Compare against pre-change screenshots from Search phase
 
-If agent-browser is not available, prompt: \`npx playwright install\`
+If agent-browser is not available, prompt: `npx playwright install`
 Skip this block for non-UI tasks.
 
 **REQUIRED OUTPUT:**
@@ -143,7 +143,7 @@ Skip this block for non-UI tasks.
 **Verification Checks:**
 1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
 2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
-3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
+3. **Git Diff Matches Plan** — Compare `git diff --stat` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
@@ -182,15 +182,15 @@ Scan the work just completed for measurable optimization targets:
    - value (0.35): user/business value of improvement (1-10)
    - Composite = (potential * 0.35) + ((10 - blast_radius) * 0.15) + ((10 - risk) * 0.15) + (value * 0.35)
 4. If candidates found, append RC-A entries to .claude/ralph-candidates.md:
-\`\`\`
+```
 ## RC-A[NNN]: [Title]
 **KPI:** [metric_name]
 **Baseline:** [current value]
-**Benchmark:** \`[command to measure]\`
+**Benchmark:** `[command to measure]`
 **Impact Score:** [composite] (potential: N, blast_radius: N, risk: N, value: N)
 **Files in scope:** [paths]
 **Constraints:** [what must not break]
-\`\`\`
+```
 - RC-A candidates found: yes/no
 - If yes, logged with impact scores to .claude/ralph-candidates.md
 
@@ -217,11 +217,12 @@ Before marking workflow complete, verify ALL boxes:
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
 ## Closing step: record the push receipt
-Record the review's counts so the advisory push gate can recognise this exact change:
+Record the review's counts so the advisory push gate can recognise this exact change. Use the form that matches the verdict, with the real finding counts in place of the numbers (add `--incomplete` if any category was skipped, and `--threshold high`, `--threshold medium` or `--threshold low` if the user wants the push check to deny at that level):
 ```
-node .claude/helpers/kit/cli.js push-gate receipt --verdict pass|fail --high <H> --medium <M> --low <L> [--incomplete if any category was skipped]
+node .claude/helpers/kit/cli.js push-gate receipt --verdict pass --high 0 --medium 0 --low 0
+node .claude/helpers/kit/cli.js push-gate receipt --verdict fail --high 1 --medium 2 --low 0
 ```
-Then tell the user: run `node .claude/helpers/kit/cli.js push-gate check` before pushing. It only abstains, asks or denies; it never skips their permission prompt.
+Then tell the user: run `node .claude/helpers/kit/cli.js push-gate check` before pushing, with the same `--threshold` level used for the receipt (or none for both). It only abstains, asks or denies; it never skips their permission prompt. Reviewing uncommitted edits and then committing them unchanged still matches.
 
 ## Compounds
 ```

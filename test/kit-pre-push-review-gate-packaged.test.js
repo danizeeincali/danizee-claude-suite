@@ -27,9 +27,20 @@ describe('push-gate — packaged end to end', () => {
     assert.equal(ok.json.decision, 'abstain');
 
     await fs.writeFile(path.join(pkg.dir, 'new.txt'), 'x');
+    const git = (...a) => spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...a], { cwd: pkg.dir, encoding: 'utf-8' });
+    git('add', 'new.txt');
+    git('commit', '-qm', 'after the review');
     const after1 = kit(['push-gate', 'check']);
     assert.equal(after1.json.decision, 'ask');
     assert.match(after1.json.reason, /earlier/i);
+    // review uncommitted work, commit it unchanged, then push-check
+    await fs.writeFile(path.join(pkg.dir, 'new.txt'), 'x\ny');
+    const rec2 = kit(['push-gate', 'receipt', '--verdict', 'pass', '--threshold', 'high']);
+    assert.equal(rec2.code, 0);
+    assert.equal(kit(['push-gate', 'check', '--threshold', 'high']).json.decision, 'deny');
+    git('commit', '-qam', 'reviewed fix');
+    assert.equal(kit(['push-gate', 'check', '--threshold', 'high']).json.decision, 'abstain');
+    assert.equal(kit(['push-gate', 'check', '--treshold', 'high']).code, 1);
     assert.ok(!(await fs.readdir(pkg.dir)).includes('.claude-receipts'));
     spawnSync('git', ['status'], { cwd: pkg.dir });
     assert.deepEqual(pkg.egress(), []);

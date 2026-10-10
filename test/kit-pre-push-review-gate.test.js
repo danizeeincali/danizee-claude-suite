@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
+import crypto from 'crypto';
 import { spawnSync } from 'child_process';
 import { verb, usage, run, decide, defaultGit, changeId } from '../src/lib/kit/push-gate.js';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
@@ -40,21 +41,46 @@ describe('push-gate — module shape', () => {
 });
 
 describe('push-gate — change id', () => {
-  it('is stable, changes with a new commit, and differs when the tree is dirty', async () => {
+  it('is stable, changes with a new commit, and the reviewed working state differs when the tree is dirty', async () => {
     const git = defaultGit(repo);
     const a = await changeId(git, {});
     assert.equal(a.id, (await changeId(git, {})).id);
     assert.equal(a.dirty, false);
     await fs.writeFile(path.join(repo, 'a.txt'), 'one\ntwo\n');
-    const dirty = await changeId(git, {});
+    const dirty = await changeId(git, { working: true });
     assert.equal(dirty.dirty, true);
     assert.notEqual(dirty.id, a.id);
     await fs.writeFile(path.join(repo, 'a.txt'), 'one\nthree\n');
-    assert.notEqual((await changeId(git, {})).id, dirty.id);
+    assert.notEqual((await changeId(git, { working: true })).id, dirty.id);
     sh(repo, 'commit', '-qam', 'two');
     const b = await changeId(git, {});
     assert.equal(b.dirty, false);
     assert.notEqual(b.id, a.id);
+  });
+  it('the push-time id ignores uncommitted edits and untracked files', async () => {
+    const git = defaultGit(repo);
+    const clean = await changeId(git, {});
+    await fs.writeFile(path.join(repo, 'a.txt'), 'edited\n');
+    await fs.writeFile(path.join(repo, 'untracked.txt'), 'u\n');
+    assert.equal((await changeId(git, {})).id, clean.id);
+    assert.equal((await changeId(git, { working: true })).tree, (await changeId(git, { working: true })).tree);
+    await fs.rm(path.join(repo, 'untracked.txt'));
+    sh(repo, 'checkout', '--', 'a.txt');
+  });
+  it('the working-state id leaves the real index and working files alone', async () => {
+    const git = defaultGit(repo);
+    await fs.writeFile(path.join(repo, 'a.txt'), 'staged\n');
+    sh(repo, 'add', 'a.txt');
+    await fs.writeFile(path.join(repo, 'a.txt'), 'staged\nunstaged\n');
+    const before = sh(repo, 'status', '--porcelain').stdout;
+    const w = await changeId(git, { working: true });
+    assert.equal(sh(repo, 'status', '--porcelain').stdout, before);
+    assert.equal(sh(repo, 'diff', '--cached', '--name-only').stdout.trim(), 'a.txt');
+    assert.equal(sh(repo, 'show', ':a.txt').stdout, 'staged\n');
+    assert.equal(w.dirty, true);
+    sh(repo, 'commit', '-qam', 'tmp');
+    assert.equal(w.tree, sh(repo, 'rev-parse', 'HEAD^{tree}').stdout.trim());
+    sh(repo, 'reset', '-q', '--hard', 'HEAD~1');
   });
   it('uses --base when given and falls back to no base (root) without an upstream', async () => {
     const git = defaultGit(repo);
@@ -107,12 +133,14 @@ describe('push-gate — receipts and check', () => {
   });
   it('a change after the review is reported as earlier and treated as missing', async () => {
     await fs.writeFile(path.join(repo, 'b.txt'), 'new\n');
+    sh(repo, 'add', 'b.txt');
+    sh(repo, 'commit', '-qm', 'b');
     const c = await run(['check'], io());
     assert.equal(c.decision, 'ask');
     assert.match(c.reason, /earlier/i);
     const d = await run(['check', '--threshold', 'none'], io());
     assert.equal(d.decision, 'ask');
-    await fs.rm(path.join(repo, 'b.txt'));
+    sh(repo, 'reset', '-q', '--hard', 'HEAD~1');
     assert.equal((await run(['check'], io())).decision, 'abstain');
   });
   it('a receipt judged under another threshold does not count', async () => {
@@ -136,11 +164,75 @@ describe('push-gate — receipts and check', () => {
     assert.equal(c.decision, 'abstain');
     assert.match(c.reason, /incomplete/i);
   });
-  it('keeps the previous change ids', async () => {
-    const [f] = await fs.readdir(store);
-    const state = JSON.parse(await fs.readFile(path.join(store, f), 'utf-8'));
-    assert.ok(state.latest.change_id);
-    assert.ok(Array.isArray(state.previous));
+  it('an incomplete review still blocks on a fail verdict or findings at the threshold', async () => {
+    await run(['receipt', '--verdict', 'fail', '--high', '3', '--threshold', 'high', '--incomplete'], io());
+    const c = await run(['check', '--threshold', 'high'], io());
+    assert.equal(c.decision, 'deny');
+    assert.equal(c.exit, 2);
+    await run(['receipt', '--verdict', 'pass', '--high', '2', '--threshold', 'high', '--incomplete'], io());
+    assert.equal((await run(['check', '--threshold', 'high'], io())).decision, 'deny');
+    await run(['receipt', '--verdict', 'fail', '--incomplete'], io());
+    assert.equal((await run(['check'], io())).decision, 'ask');
+    assert.match((await run(['check'], io())).reason, /did not pass/);
+    await run(receiptArgs(['--incomplete', '--threshold', 'high']), io());
+    assert.equal((await run(['check', '--threshold', 'high'], io())).decision, 'abstain');
+  });
+  it('a receipt and a check on the same threshold, as the /w-review closing step records, pass cleanly', async () => {
+    for (const th of ['high', 'medium', 'low']) {
+      await run(['receipt', '--verdict', 'pass', '--high', '0', '--medium', '0', '--low', '0', '--threshold', th], io());
+      assert.equal((await run(['check', '--threshold', th], io())).decision, 'abstain');
+    }
+  });
+  it('unknown flags are KitExit 1 for each subcommand', async () => {
+    for (const args of [['check', '--treshold', 'high'], ['check', '--verdict', 'pass'], ['receipt', '--verdict', 'pass', '--hgh', '1'], ['receipt', '--verdict', 'pass', '--bogus']]) {
+      await assert.rejects(run(args, io()), e => e instanceof KitExit && e.code === 1 && /unknown flag/.test(e.message), args.join(' '));
+    }
+    assert.equal((await run(['check', '--base', 'HEAD'], io())).change_id.length, 64);
+  });
+  it('keeps the previous change ids: deduplicated, excluding the latest, capped at 50', async () => {
+    const hist = path.join(root, 'hist');
+    await fs.mkdir(hist);
+    sh(hist, 'init', '-q', '.');
+    await fs.writeFile(path.join(hist, 'f'), '0');
+    sh(hist, 'add', '-A');
+    sh(hist, 'commit', '-q', '-m', 'c0');
+    const ids = [];
+    const stateOf = async () => {
+      const files = await fs.readdir(store);
+      for (const name of files) {
+        const st = JSON.parse(await fs.readFile(path.join(store, name), 'utf-8'));
+        if (await fs.realpath(st.repo) === await fs.realpath(path.join(hist, '.git'))) return st;
+      }
+      throw new Error('no state');
+    };
+    const h = io({ cwd: hist });
+    ids.push((await run(receiptArgs(), h)).change_id);
+    await run(receiptArgs(), h);
+    let st = await stateOf();
+    assert.deepEqual(st.previous, []);
+    await fs.writeFile(path.join(hist, 'f'), '1');
+    sh(hist, 'commit', '-qam', 'c1');
+    ids.push((await run(receiptArgs(), h)).change_id);
+    st = await stateOf();
+    assert.deepEqual(st.previous, [ids[0]]);
+    assert.equal(st.latest.change_id, ids[1]);
+    assert.ok(!st.previous.includes(st.latest.change_id));
+    for (let i = 2; i < 60; i++) {
+      await fs.writeFile(path.join(hist, 'f'), String(i));
+      sh(hist, 'commit', '-qam', `c${i}`);
+      ids.push((await run(receiptArgs(), h)).change_id);
+    }
+    st = await stateOf();
+    assert.equal(st.previous.length, 50);
+    assert.equal(st.previous.at(-1), ids[58]);
+    assert.ok(!st.previous.includes(ids[0]));
+    assert.ok(!st.previous.includes(ids[59]));
+    assert.equal(new Set(st.previous).size, 50);
+    const old = await run(['check'], io({ cwd: hist }));
+    assert.equal(old.change_id, ids[59]);
+    assert.equal(old.decision, 'abstain');
+    await fs.rm(path.join(store, `${crypto.createHash('sha256').update(await fs.realpath(path.join(hist, '.git'))).digest('hex')}.json`));
+    await fs.rm(hist, { recursive: true, force: true });
   });
   it('different repositories get different store files', async () => {
     const other = path.join(root, 'other');
@@ -151,29 +243,63 @@ describe('push-gate — receipts and check', () => {
     assert.equal((await fs.readdir(store)).length, 2);
   });
   it('a corrupt store file is a KitExit 1, not a silent allow', async () => {
-    const [f] = await fs.readdir(store);
     const other = path.join(root, 'other');
     for (const name of await fs.readdir(store)) await fs.writeFile(path.join(store, name), '{nope');
     await assert.rejects(run(['check'], io()), e => e instanceof KitExit && e.code === 1);
     await assert.rejects(run(['check'], io({ cwd: other })), e => e instanceof KitExit && e.code === 1);
-    assert.ok(f);
   });
   it('outside a git repository is KitExit 1', async () => {
     await assert.rejects(run(['check'], io({ cwd: root })), e => e instanceof KitExit && e.code === 1);
   });
 });
 
+describe('push-gate — reviewing uncommitted work, then pushing', () => {
+  it('review of uncommitted edits matches the same edits committed unchanged; a different commit does not', async () => {
+    const r = path.join(root, 'rt');
+    const st = path.join(root, 'rt-store');
+    await fs.mkdir(r);
+    sh(r, 'init', '-q', '.');
+    await fs.writeFile(path.join(r, 'a.txt'), 'one\n');
+    sh(r, 'add', '-A');
+    sh(r, 'commit', '-qm', 'one');
+    const e = io({ cwd: r, env: { ...process.env, KIT_RECEIPTS_DIR: st } });
+    await fs.writeFile(path.join(r, 'a.txt'), 'one\nfix\n');
+    await fs.writeFile(path.join(r, 'scratch.txt'), 'never tracked\n');
+    // pushing the uncommitted state would send HEAD only: not reviewed
+    const rec = await run(receiptArgs(), e);
+    assert.equal(rec.dirty, true);
+    assert.equal((await run(['check'], e)).decision, 'ask');
+    // commit exactly the reviewed edits: the push matches
+    sh(r, 'commit', '-qam', 'fix');
+    const ok = await run(['check'], e);
+    assert.equal(ok.decision, 'abstain');
+    assert.equal(ok.change_id, rec.change_id);
+    // a commit made after the review has a different tree and no longer matches
+    await fs.writeFile(path.join(r, 'a.txt'), 'one\nfix\nextra\n');
+    sh(r, 'commit', '-qam', 'extra');
+    const later = await run(['check'], e);
+    assert.equal(later.decision, 'ask');
+    assert.match(later.reason, /earlier/i);
+    // committing something different from what was reviewed does not match either
+    await fs.writeFile(path.join(r, 'a.txt'), 'x\n');
+    await run(receiptArgs(), e);
+    await fs.writeFile(path.join(r, 'a.txt'), 'y\n');
+    sh(r, 'commit', '-qam', 'other');
+    assert.equal((await run(['check'], e)).decision, 'ask');
+    await fs.rm(r, { recursive: true, force: true });
+    await fs.rm(st, { recursive: true, force: true });
+  });
+});
+
 describe('push-gate — decide() can never allow', () => {
   it('only abstain, ask or deny come out of every combination', () => {
     const results = new Set();
-    const receipts = [null, { change_id: 'x', verdict: 'pass', counts: { high: 0, medium: 0, low: 0 }, threshold: 'none' }];
     for (const th of ['none', 'high', 'medium', 'low']) {
       for (const verdict of ['pass', 'fail']) for (const incomplete of [true, false]) for (const rth of ['none', 'high', 'medium', 'low']) for (const high of [0, 1]) for (const same of [true, false]) {
         const rec = { change_id: same ? 'x' : 'y', verdict, incomplete, threshold: rth, counts: { high, medium: 0, low: 0 } };
         for (const st of [{ latest: rec, previous: ['x'] }, { latest: null, previous: [] }, null]) results.add(decide(st, 'x', th).decision);
       }
     }
-    void receipts;
     assert.deepEqual([...results].sort(), ['abstain', 'ask', 'deny']);
     assert.ok(!results.has('allow'));
   });

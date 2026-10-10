@@ -6,9 +6,12 @@
  *                     [--threshold none|high|medium|low] [--incomplete] [--base <ref>]
  *   push-gate check   [--threshold none|high|medium|low] [--base <ref>]
  *
- * A review writes a receipt keyed by the change id: sha256 of (base commit, HEAD tree, dirty marker).
+ * A review writes a receipt keyed by the change id: sha256 of (base commit, tree).
  * Base: --base, else the merge-base with @{upstream}, else none (the whole history is the change).
- * A dirty working tree (tracked edits or untracked files, hashed by content) makes a different change.
+ * At check time the tree is HEAD's (what a push sends). At receipt time it is the tree of the working state as
+ * reviewed: HEAD plus uncommitted tracked changes, computed through a temporary index copy (the user's index is
+ * never touched). So reviewing uncommitted work, committing it unchanged and pushing matches; any other commit
+ * does not, and unpushed uncommitted edits are never mistaken for a reviewed push.
  * Receipts live outside the repository ($KIT_RECEIPTS_DIR, else ~/.claude/kit/receipts/), one JSON file per
  * repository keyed by a hash of its real git common dir; a branch cannot carry one. Built from ideas
  * audited by /w-bbs (run 2026-10-10-openqodex-2); no foreign code.
@@ -34,10 +37,11 @@ export function defaultGit(cwd, { runner, spawn = spawnSync, env = process.env }
   for (const [k, v] of Object.entries(env)) if (!k.startsWith('GIT_')) clean[k] = v;
   clean.GIT_TERMINAL_PROMPT = '0';
   clean.GIT_OPTIONAL_LOCKS = '0';
-  return async (args, { input } = {}) => {
+  return async (args, { input, env: extra } = {}) => {
     const full = ['-c', 'core.hooksPath=/dev/null', ...args];
-    if (runner) return runner(full, { cwd, env: clean, input });
-    const r = spawn('git', full, { cwd, env: clean, input, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024 });
+    const e = extra ? { ...clean, ...extra } : clean;
+    if (runner) return runner(full, { cwd, env: e, input });
+    const r = spawn('git', full, { cwd, env: e, input, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024 });
     return { code: r.status ?? 1, stdout: r.stdout || '', stderr: r.stderr || '' };
   };
 }
@@ -48,11 +52,34 @@ async function must(git, args, what) {
   return r.stdout.trim();
 }
 
-/** The change id, plus what went into it. */
-export async function changeId(git, { base } = {}) {
+/** The tree of HEAD plus uncommitted tracked changes, via a temporary copy of the index. */
+async function workingTree(git, headTree) {
+  const status = await must(git, ['status', '--porcelain', '--untracked-files=no'], 'cannot read status');
+  if (!status) return headTree;
+  const real = await must(git, ['rev-parse', '--path-format=absolute', '--git-path', 'index'], 'cannot find the index');
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pg-index-'));
+  const tmp = path.join(dir, 'index');
+  try {
+    try { await fs.copyFile(real, tmp); } catch (e) { if (e.code !== 'ENOENT') throw new KitExit(`cannot copy the index: ${e.message}`, 1); }
+    const env = { GIT_INDEX_FILE: tmp };
+    const add = await git(['add', '-u'], { env });
+    if (add.code !== 0) throw new KitExit(`cannot stage tracked changes: ${(add.stderr || add.stdout).trim()}`, 1);
+    const wt = await git(['write-tree'], { env });
+    if (wt.code !== 0) throw new KitExit(`cannot write the working tree: ${(wt.stderr || wt.stdout).trim()}`, 1);
+    return wt.stdout.trim();
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * The change id, plus what went into it. `working: true` (receipt) hashes the reviewed working state;
+ * the default (check) hashes HEAD's tree, which is what a push sends.
+ */
+export async function changeId(git, { base, working = false } = {}) {
   const inside = await git(['rev-parse', '--is-inside-work-tree']);
   if (inside.code !== 0) throw new KitExit('not inside a git repository', 1);
-  const tree = await must(git, ['rev-parse', 'HEAD^{tree}'], 'cannot read HEAD (no commits yet?)');
+  const headTree = await must(git, ['rev-parse', 'HEAD^{tree}'], 'cannot read HEAD (no commits yet?)');
   let baseSha = null;
   if (base) {
     baseSha = await must(git, ['rev-parse', '--verify', '-q', `${base}^{commit}`], `unknown base "${base}"`);
@@ -63,19 +90,9 @@ export async function changeId(git, { base } = {}) {
       if (mb.code === 0) baseSha = mb.stdout.trim();
     }
   }
-  const status = await must(git, ['status', '--porcelain', '--untracked-files=all'], 'cannot read status');
-  let dirty = false;
-  let marker = '';
-  if (status) {
-    dirty = true;
-    const diff = (await git(['diff', 'HEAD'])).stdout;
-    const untracked = (await must(git, ['ls-files', '--others', '--exclude-standard'], 'cannot list files')).split('\n').filter(Boolean);
-    const hashes = [];
-    for (const f of untracked) hashes.push(`${f}:${(await git(['hash-object', '--', f])).stdout.trim()}`);
-    marker = sha(`${status}\0${diff}\0${hashes.join('\n')}`);
-  }
-  const id = sha(`${baseSha || 'root'}\0${tree}\0${dirty ? `dirty:${marker}` : 'clean'}`);
-  return { id, base: baseSha, tree, dirty };
+  const tree = working ? await workingTree(git, headTree) : headTree;
+  const id = sha(`${baseSha || 'root'}\0${tree}`);
+  return { id, base: baseSha, tree, dirty: tree !== headTree };
 }
 
 /** Does this receipt fail the threshold? Verdict fail always does; otherwise any finding at or above it. */
@@ -91,12 +108,14 @@ export function decide(state, id, threshold = 'none') {
   const block = (reason, extra = {}) => ({ decision: threshold === 'none' ? 'ask' : 'deny', reason, ...extra });
   const latest = state?.latest || null;
   if (latest && latest.change_id === id) {
-    if (latest.incomplete) return { decision: 'abstain', reason: 'the review of this change was incomplete; not blocking (run /w-review to finish it)', receipt: latest };
-    if ((latest.threshold || 'none') !== threshold) {
-      return block(`the review of this change was judged under threshold "${latest.threshold || 'none'}", not "${threshold}"; run /w-review again`, { receipt: latest });
+    const failed = failsThreshold(latest, threshold) || failsThreshold(latest, latest.threshold || 'none');
+    if (failed) {
+      const c = latest.counts || {};
+      return block(`the review of this change did not pass (verdict ${latest.verdict}, high ${c.high || 0}, medium ${c.medium || 0}, low ${c.low || 0})${latest.incomplete ? ' and was incomplete' : ''}`, { receipt: latest });
     }
-    if (failsThreshold(latest, threshold)) {
-      return block(`the review of this change did not pass (verdict ${latest.verdict}, high ${latest.counts.high}, medium ${latest.counts.medium}, low ${latest.counts.low})`, { receipt: latest });
+    if (latest.incomplete) return { decision: 'abstain', reason: 'the review of this change was incomplete and found nothing that blocks; not blocking (run /w-review to finish it)', receipt: latest };
+    if ((latest.threshold || 'none') !== threshold) {
+      return block(`the review of this change was judged under threshold "${latest.threshold || 'none'}", not "${threshold}"; run /w-review again with --threshold ${threshold}`, { receipt: latest });
     }
     return { decision: 'abstain', reason: 'this exact change has a passing review', receipt: latest };
   }
@@ -106,6 +125,8 @@ export function decide(state, id, threshold = 'none') {
   return block('no review recorded for this change; run /w-review before pushing');
 }
 
+const KNOWN = { receipt: ['verdict', 'high', 'medium', 'low', 'threshold', 'incomplete', 'base'], check: ['threshold', 'base'] };
+
 function parse(args) {
   const out = { flags: {} };
   const rest = [...args];
@@ -114,6 +135,7 @@ function parse(args) {
     const a = rest.shift();
     if (!a.startsWith('--')) throw new KitExit(`unexpected argument "${a}"\n${usage}`, 1);
     const k = a.slice(2);
+    if (KNOWN[out.cmd] && !KNOWN[out.cmd].includes(k)) throw new KitExit(`unknown flag --${k} for ${out.cmd} (allowed: ${KNOWN[out.cmd].map(f => `--${f}`).join(', ')})`, 1);
     if (k === 'incomplete') { out.flags.incomplete = true; continue; }
     if (rest.length === 0 || rest[0].startsWith('--')) throw new KitExit(`--${k} needs a value`, 1);
     out.flags[k] = rest.shift();
@@ -166,7 +188,7 @@ export async function run(args, io) {
   if (cmd === 'receipt' && !['pass', 'fail'].includes(flags.verdict)) throw new KitExit('--verdict must be pass or fail', 1);
   const counts = cmd === 'receipt' ? { high: count(flags.high, 'high'), medium: count(flags.medium, 'medium'), low: count(flags.low, 'low') } : null;
 
-  const change = await changeId(git, { base: flags.base });
+  const change = await changeId(git, { base: flags.base, working: cmd === 'receipt' });
   const { dir, file, repo } = await storeFile(git, env);
   const state = await readState(file);
 
