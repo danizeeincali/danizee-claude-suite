@@ -44,7 +44,7 @@
       "name": "marathon",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "review round 3 running (second clean pass needed); then fix round or gate",
+      "next": "gate met; fix round 3 (empty W, folder mode, timeouts) running; then a checking review, close, /bc",
       "tasks": [],
       "isolation": "../danizee-claude-suite-marathon",
       "phase": "review",
