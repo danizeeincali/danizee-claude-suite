@@ -25,6 +25,10 @@
  * source file the graph could not read is listed in `unmapped`, and the old-side files it could not read in
  * `old_not_read`. When any of that is non-empty, or the walk was cut, `risk.lower_bound` is true: the level is a floor,
  * never "nothing else is affected". Without --base, removed symbols are not checked, and the output says so.
+ * FLOOR. Every touched, impacted and removed symbol carries `floor`, `reasons` and `sentences` (caller-floor.js): what its
+ * caller list could not see (same-name calls not tied to one definition, calls through a value or computed member,
+ * interface dispatch, unread files, budget cuts). A removed symbol with zero callers but a floor is NOT safe to remove:
+ * its sentences say to check call sites by hand. Zero callers is never proof of no use.
  * It reads JS/TS only; it never runs the code it reads, makes no network call, and reads git only through safe-git.
  *
  * Exit codes: 0 done, 1 invalid input or broken state, 2 policy refusal (an oversized diff).
@@ -36,6 +40,7 @@ import { gitPaths } from './git-paths.js';
 import { safeGit, locateRepo } from './safe-git.js';
 import { parseDiff } from './lenses.js';
 import { buildGraph, extractFacts, readDiffArg, SUPPORTED_EXT } from './graph.js';
+import { callerIndex, annotate } from './caller-floor.js';
 
 export const verb = 'impact';
 export const usage = 'cli.js impact [--dir <path>] --diff <file|-> [--base <ref>] [--hops N] [--json]   '
@@ -335,7 +340,13 @@ export function analyze(graph, changes, { oldGraph, walkOpts = {} } = {}) {
   const oldNotRead = (oldGraph && oldGraph.not_read) || [];
   const partial = !!(graph.partial || t.unmapped.length || oldNotRead.length || t.removed_unchecked.length);
   const rk = risk({ touched: t.touched, impacted: w.impacted, removed: t.removed, live, hubs: w.hubs, cuts: w.cuts, partial });
-  return { ...t, live, ...w, old_not_read: oldNotRead, partial, risk: rk };
+  // what the caller lists could not see (caller-floor.js): every impacted and removed symbol says whether it is a floor
+  const index = callerIndex(graph);
+  const liveCallers = (r) => (live.find((l) => l.symbol.file === r.file && l.symbol.qualified === r.qualified)?.callers || []).map((c) => ({ from: c.from, confidence: c.confidence }));
+  const impacted = annotate(index, w.impacted);
+  const removed = annotate(index, t.removed, liveCallers);
+  const touched = annotate(index, t.touched);
+  return { ...t, touched, removed, live, ...w, impacted, old_not_read: oldNotRead, partial, risk: rk };
 }
 
 // ================================================================ CLI
@@ -362,7 +373,7 @@ export function parseArgs(args) {
   return f;
 }
 
-const slim = (n) => ({ id: n.id, file: n.file, qualified: n.qualified, kind: n.kind, lines: [n.start, n.end] });
+const slim = (n) => ({ id: n.id, file: n.file, qualified: n.qualified, kind: n.kind, lines: [n.start, n.end], floor: n.floor, reasons: n.reasons, sentences: n.sentences });
 
 export async function run(args, io = {}) {
   const f = parseArgs(args);
