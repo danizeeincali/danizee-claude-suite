@@ -82,3 +82,5 @@
 {"helper_id":"8c6ae2d3-25b9-4099-abde-8c84c37fc8cb","tokens":94333,"outcome":"green","event":"done","id":"518486f4-cd05-4dcc-af94-9e7d162c14af","ts":"2026-10-10T07:20:03.125Z"}
 {"helper_id":"5f2ecdff-e8e5-4c41-86cc-1b538ae7cb15","tokens":111597,"outcome":"green","event":"done","id":"8c4e4d7b-945e-4756-8d66-20bf5882643e","ts":"2026-10-10T07:28:14.158Z"}
 {"role":"review","model":"opus","stream":"hardened-git-read-on-untrusted-repo","budget":150000,"event":"spawn","id":"683cf740-6ffd-4577-95bb-d3037f07af46","ts":"2026-10-10T07:29:14.788Z"}
+{"helper_id":"683cf740-6ffd-4577-95bb-d3037f07af46","tokens":107391,"outcome":"green","event":"done","id":"61634378-8f1f-4c73-a52f-99ec51c67ff8","ts":"2026-10-10T07:34:25.840Z"}
+{"role":"review","model":"opus","stream":"hardened-git-read-on-untrusted-repo","budget":150000,"event":"spawn","id":"3c767272-edcf-499c-9bd8-b826e8e60f2c","ts":"2026-10-10T07:36:36.164Z"}
