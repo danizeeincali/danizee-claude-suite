@@ -1,7 +1,7 @@
 /**
  * scrub — check every file git tracks, line by line, against a list of forbidden regular expressions.
  *
- *   scrub [--dir <repo>] [--worktree] [--json] [--max-file-bytes <n>]
+ *   scrub [--dir <repo>] [--worktree | --history <base>] [--json] [--max-file-bytes <n>]
  *
  * Patterns come from two files in the repository top (read from the working tree, as data, never executed):
  *   .claude/kit/scrub-patterns         public, committed; a hit may show the pattern
@@ -12,17 +12,23 @@
  * makes it case-insensitive. A pattern that is not a valid regex, or that matches the empty string, is exit 1 naming
  * the file and line (never the pattern). No pattern file at all: exit 0 with { configured: false }.
  *
- * What is scanned: the HEAD tree (what a push publishes), listed with `git ls-tree -r -z -l` and read with
+ * What is scanned: by default the HEAD tree only (the files as of the last commit, NOT the commits before it), listed with `git ls-tree -r -z -l` and read with
  * `git cat-file --batch`, both through safe-git (the repository's own config never runs). With --worktree it scans the
- * tracked files as they are on disk instead (`git ls-files -z -s`, then a bounded read of each file). Text is decoded
+ * tracked files as they are on disk instead (`git ls-files -z -s`, then a bounded read of each file). With
+ * --history <base> it scans every blob a push of <base>..HEAD would publish (`git rev-list <base>..HEAD`, `git diff-tree` of each
+ * commit against its parents, then `git cat-file --batch-check` and `--batch` on the blob ids), so a secret committed and removed again inside the range
+ * is found; a hit names the commit-reachable path and line. `--history -` means no base (all of HEAD's history). A
+ * history that cannot be read completely (a missing object) is exit 1, never a pass. push-gate check runs the HEAD scan
+ * AND this history scan (base = its own base). Text is decoded
  * as UTF-16 when the file starts with a UTF-16 byte order mark (LE or BE; the BOM is dropped), else as UTF-8 (a UTF-8
  * BOM is dropped), so an ASCII pattern still matches inside a binary file. UTF-16 without a BOM is NOT detected.
  * Lines are split on "\n" (one trailing "\r" ignored); every pattern is tried on every line, one hit per line and pattern.
  * The pattern files and this module (src/lib/kit/scrub.js and its installed copy) are not scanned, so they do not
  * match their own patterns.
  *
- * Never a partial scan presented as complete. Each file is read up to --max-file-bytes (default 32 MiB; the HEAD read
- * goes through batches of at most 32 MiB); a larger file, a tracked file that is missing or not a regular file in
+ * Never a partial scan presented as complete. Each file is read up to --max-file-bytes (default 32 MiB; the HEAD and
+ * history reads go through batches of at most 32 MiB, and the value is capped at what safe-git can return, 255 MiB, so
+ * a bigger blob is listed in not_scanned instead of aborting the run); a larger file, a tracked file that is missing or not a regular file in
  * --worktree mode, and everything after a 2 GiB total are listed in not_scanned with the reason, and the result says
  * complete: false and exits 2. Submodule entries (gitlinks) are not files of this repository: they are listed under
  * submodules and not scanned. More than 200000 tracked files is a refusal (exit 2); at most 1000 hits are collected
@@ -39,8 +45,9 @@ import { safeGit, locateRepo, defaultGitRunner } from './safe-git.js';
 import { gitPaths } from './git-paths.js';
 
 export const verb = 'scrub';
-export const usage = 'cli.js scrub [--dir <repo>] [--worktree] [--json] [--max-file-bytes <n>]   (checks every tracked file, line by line, against '
-  + '.claude/kit/scrub-patterns and .claude/kit/scrub-patterns.local; HEAD tree by default, tracked files on disk with --worktree; '
+export const usage = 'cli.js scrub [--dir <repo>] [--worktree | --history <base|->] [--json] [--max-file-bytes <n>]   (checks every tracked file, line by line, against '
+  + '.claude/kit/scrub-patterns and .claude/kit/scrub-patterns.local; HEAD tree by default, tracked files on disk with --worktree, '
+  + 'every blob in <base>..HEAD with --history (- = all history); '
   + 'exit 0 clean or not configured, 2 hits or an incomplete scan, 1 bad input)';
 
 export const PUBLIC_FILE = '.claude/kit/scrub-patterns';
@@ -49,7 +56,7 @@ export const EXCLUDED = Object.freeze([PUBLIC_FILE, PRIVATE_FILE, 'src/lib/kit/s
 
 const MiB = 1024 * 1024;
 export const LIMITS = Object.freeze({
-  file: 32 * MiB, batch: 32 * MiB, batchEntries: 20000, total: 2048 * MiB, files: 200000, hits: 1000, patternFile: MiB, shown: 50
+  file: 32 * MiB, readMax: 255 * MiB, batch: 32 * MiB, batchEntries: 20000, total: 2048 * MiB, files: 200000, hits: 1000, patternFile: MiB, shown: 50
 });
 
 const invalid = (m) => new KitExit(m, 1);
@@ -190,6 +197,46 @@ export function parseLsFiles(stdout) {
   return { files, submodules };
 }
 
+/**
+ * Blobs a push of `base..HEAD` publishes (all of HEAD's history when base is null), each with every path it was added
+ * or changed at: { files, submodules: [] }. The commits come from `rev-list`, the (blob, path) pairs from `diff-tree`
+ * against every parent (-m, --root), so a blob that is committed under two names is checked under both.
+ */
+export async function listHistory(exec, base, limits = LIMITS) {
+  const rl = await exec(['rev-list', base ? `${base}..HEAD` : 'HEAD']);
+  const commits = rl.stdout.split('\n').filter(Boolean);
+  if (commits.some(c => !/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(c))) throw invalid('unexpected git rev-list output');
+  if (!commits.length) return { files: [], submodules: [] };
+  const dt = await exec(['diff-tree', '--stdin', '-r', '-z', '--root', '-m', '--no-renames', '--no-commit-id', '--no-abbrev', '--diff-filter=AMT'], commits.join('\n') + '\n');
+  const toks = dt.stdout.split('\0');
+  if (toks[toks.length - 1] === '') toks.pop();
+  const pairs = new Map();
+  for (let i = 0; i < toks.length; i += 2) {
+    const m = /^:(\d+) (\d+) ([0-9a-f]+) ([0-9a-f]+) ([A-Z])$/.exec(toks[i]);
+    if (!m || i + 1 >= toks.length) throw invalid('unexpected git diff-tree output');
+    if (m[2] === '160000') continue; // a submodule entry is not a file of this repository
+    pairs.set(`${m[4]} ${toks[i + 1]}`, { sha: m[4], raw: toks[i + 1] });
+    if (pairs.size > limits.files) throw refuse(`more than ${limits.files} changed files in the pushed history; scrub will not claim a scan of that many`);
+  }
+  const shas = [...new Set([...pairs.values()].map(p => p.sha))];
+  const sizes = new Map();
+  if (shas.length) {
+    const chk = (await exec(['cat-file', '--batch-check'], shas.join('\n') + '\n')).stdout.split('\n');
+    if (chk[chk.length - 1] === '') chk.pop();
+    if (chk.length !== shas.length) throw invalid('git cat-file answered with a different number of objects than asked for');
+    shas.forEach((sha, i) => {
+      const m = /^([0-9a-f]+) (\w+) (\d+)$/.exec(chk[i]);
+      if (!m || m[1] !== sha) throw invalid(`the pushed history is incomplete (git cannot read object ${sha.slice(0, 12)})`);
+      sizes.set(sha, m[2] === 'blob' ? Number(m[3]) : null);
+    });
+  }
+  const files = [];
+  for (const p of pairs.values()) {
+    if (sizes.get(p.sha) !== null) files.push({ path: displayName(p.raw), raw: p.raw, sha: p.sha, size: sizes.get(p.sha), mode: '100644' });
+  }
+  return { files, submodules: [] };
+}
+
 /** Parse `cat-file --batch` output (a Buffer) for the expected entries, in order. KitExit 1 on anything unexpected. */
 export function parseBatch(buf, expected) {
   const out = [];
@@ -237,16 +284,18 @@ async function readBounded(file, cap, size = 0) {
 export function binaryRunner(base = defaultGitRunner) {
   return (args, o = {}) => {
     const cmd = args.find((a, i) => !String(a).startsWith('-') && args[i - 1] !== '-c');
-    return ['cat-file', 'ls-files', 'ls-tree'].includes(cmd) ? base(args, { ...o, encoding: 'latin1' }) : base(args, o);
+    return ['cat-file', 'ls-files', 'ls-tree', 'diff-tree'].includes(cmd) ? base(args, { ...o, encoding: 'latin1' }) : base(args, o);
   };
 }
 
 /**
  * Scan the tracked files of the repository whose top is `top`.
- * options: { patterns (from loadPatterns), worktree, git (runner), env, maxFileBytes, limits }
+ * options: { patterns (from loadPatterns), worktree, history ({ base }), git (runner), env, maxFileBytes, limits }
  */
-export async function scanRepo(top, { patterns, worktree = false, git, env = process.env, maxFileBytes, limits = LIMITS } = {}) {
-  const cap = Math.min(maxFileBytes ?? limits.file, limits.total);
+export async function scanRepo(top, { patterns, worktree = false, history, git, env = process.env, maxFileBytes, limits = LIMITS } = {}) {
+  // history = { base } (base null: all of HEAD's history). Blobs come through safe-git, whose output is capped at 256 MiB.
+  let cap = Math.min(maxFileBytes ?? limits.file, limits.total);
+  if (!worktree) cap = Math.min(cap, limits.readMax ?? LIMITS.readMax);
   const runner = git || binaryRunner();
   const exec = async (args, input) => {
     const r = await safeGit(top, args, { git: runner, env, input });
@@ -255,6 +304,7 @@ export async function scanRepo(top, { patterns, worktree = false, git, env = pro
   };
   const listed = worktree
     ? parseLsFiles((await exec(['ls-files', '-z', '-s'])).stdout)
+    : history ? await listHistory(exec, history.base, limits)
     : parseLsTree((await exec(['ls-tree', '-r', '-z', '-l', 'HEAD'])).stdout);
   if (listed.files.length + listed.submodules.length > limits.files) {
     throw refuse(`more than ${limits.files} tracked files; scrub will not claim a scan of that many`);
@@ -334,7 +384,7 @@ function describeHit(h) {
 }
 
 /** The result object for a scan (never carries private pattern text or matched text). */
-export function report(scan, { patterns, worktree, json = false }) {
+export function report(scan, { patterns, worktree, history, json = false }) {
   const complete = scan.notScanned.length === 0;
   const hits = scan.hits.map(describeHit);
   const exit = hits.length || !complete ? 2 : 0;
@@ -344,7 +394,7 @@ export function report(scan, { patterns, worktree, json = false }) {
   else if (!complete) reason = `${scan.notScanned.length} file(s) were not scanned, so the scan is incomplete`;
   return {
     configured: true,
-    mode: worktree ? 'worktree' : 'head',
+    mode: worktree ? 'worktree' : history ? 'history' : 'head',
     patterns: { public: patterns.public.length, private: patterns.private.length },
     scanned_files: scan.scannedFiles,
     scanned_bytes: scan.scannedBytes,
@@ -371,20 +421,26 @@ async function repoTop(dir, { git, env }) {
 }
 
 /**
- * Scan `dir` when a pattern file exists. Returns null when none does (not configured) or when the repository has no
- * work tree; the full report otherwise; throws KitExit when configured and the scrub cannot run (callers refuse).
+ * Scan `dir` when a pattern file exists. Finds the pattern files on the file system only (locateRepo, no git run), so a
+ * repository that safe-git refuses is not touched unless the scrub is configured. Returns null when none exists (not
+ * configured) or when the repository has no work tree; the full report otherwise; throws KitExit when configured and
+ * the scrub cannot run (callers refuse). `history` = { base } scans the blobs of base..HEAD instead of the HEAD tree.
  */
-export async function scrubIfConfigured(dir, { worktree = false, git, env = process.env, maxFileBytes, limits } = {}) {
+export async function scrubIfConfigured(dir, { worktree = false, history, git, env = process.env, maxFileBytes, limits } = {}) {
+  const loc = await locateRepo(dir);
+  if (!loc.top) return null;
+  const found = await loadPatterns(loc.top);
+  if (!found.configured) return null;
   const top = await repoTop(dir, { git, env });
-  const patterns = await loadPatterns(top);
+  const patterns = top === loc.top ? found : await loadPatterns(top);
   if (!patterns.configured) return null;
-  const scan = await scanRepo(top, { patterns, worktree, git, env, maxFileBytes, limits });
-  return report(scan, { patterns, worktree });
+  const scan = await scanRepo(top, { patterns, worktree, history, git, env, maxFileBytes, limits });
+  return report(scan, { patterns, worktree, history });
 }
 
 // ---------------------------------------------------------------- CLI
 
-const VALUE_FLAGS = ['dir', 'max-file-bytes'];
+const VALUE_FLAGS = ['dir', 'max-file-bytes', 'history'];
 const BOOL_FLAGS = ['worktree', 'json', 'help'];
 
 function parseArgs(args) {
@@ -400,6 +456,8 @@ function parseArgs(args) {
     else if (i + 1 < args.length) f[k] = args[++i];
     else throw invalid(`--${k} needs a value`);
   }
+  if (f.history !== undefined && f.worktree) throw invalid('--history and --worktree cannot be combined');
+  if (f.history !== undefined && f.history !== '-' && (f.history === '' || f.history.startsWith('-'))) throw invalid('--history needs a base ref (or - for all history)');
   if (f['max-file-bytes'] !== undefined && !/^[1-9]\d{0,15}$/.test(f['max-file-bytes'])) throw invalid('--max-file-bytes must be a positive integer');
   if (f['max-file-bytes'] !== undefined && Number(f['max-file-bytes']) > LIMITS.total) throw invalid(`--max-file-bytes must be at most ${LIMITS.total} (see cli.js scrub --help)`);
   return f;
@@ -417,6 +475,16 @@ export async function run(args, io = {}) {
     return { configured: false, reason: `no pattern file: add ${PUBLIC_FILE} and/or ${PRIVATE_FILE} to turn the scrub check on; nothing was scanned`, exit: 0 };
   }
   const worktree = !!f.worktree;
-  const scan = await scanRepo(top, { patterns, worktree, git, env, maxFileBytes: f['max-file-bytes'] ? Number(f['max-file-bytes']) : undefined });
-  return report(scan, { patterns, worktree, json: !!f.json });
+  let history;
+  if (f.history !== undefined) {
+    let base = null;
+    if (f.history !== '-') {
+      const r = await safeGit(top, ['rev-parse', '--verify', '-q', `${f.history}^{commit}`], { git, env });
+      if (r.code !== 0 || !r.stdout.trim()) throw invalid(`unknown base "${f.history}"`);
+      base = r.stdout.trim();
+    }
+    history = { base };
+  }
+  const scan = await scanRepo(top, { patterns, worktree, history, git, env, maxFileBytes: f['max-file-bytes'] ? Number(f['max-file-bytes']) : undefined });
+  return report(scan, { patterns, worktree, history, json: !!f.json });
 }

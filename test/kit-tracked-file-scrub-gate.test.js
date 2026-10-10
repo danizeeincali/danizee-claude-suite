@@ -360,3 +360,116 @@ describe('scrub — review round 1 regressions', () => {
     }
   });
 });
+
+describe('scrub — review round 2 regressions', () => {
+  let dir; let store; let extra = [];
+  const io = (o = {}) => ({ cwd: dir, stdin: async () => '', env: { ...process.env, KIT_RECEIPTS_DIR: store }, ...o });
+  const put = async (rel, content) => { await fs.mkdir(path.dirname(path.join(dir, rel)), { recursive: true }); await fs.writeFile(path.join(dir, rel), content); };
+  const commit = (msg = 'c') => { sh(dir, 'add', '-A'); sh(dir, 'commit', '-q', '-m', msg); };
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'scrub2-'));
+    store = await fs.mkdtemp(path.join(os.tmpdir(), 'scrub2-store-'));
+    extra = [];
+    sh(dir, 'init', '-q', '.');
+    await fs.appendFile(path.join(dir, '.git', 'info', 'exclude'), '.claude/kit/scrub-patterns.local\n');
+  });
+  afterEach(async () => {
+    await fs.rm(dir, { recursive: true, force: true });
+    await fs.rm(store, { recursive: true, force: true });
+    for (const d of extra) await fs.rm(d, { recursive: true, force: true });
+  });
+
+  it('push-gate check in a git clone --shared repo without a pattern file decides exactly as the original repo does', async () => {
+    await put('a.txt', 'hello\n'); commit();
+    const clone = await fs.mkdtemp(path.join(os.tmpdir(), 'scrub2-clone-'));
+    extra.push(clone);
+    sh(clone, 'clone', '-q', '--shared', dir, 'c');
+    const copy = path.join(clone, 'c');
+    const a = await pushGate(['check'], io());
+    const b = await pushGate(['check'], io({ cwd: copy }));
+    assert.equal(a.decision, 'ask');
+    assert.equal(b.decision, a.decision, JSON.stringify(b));
+    assert.equal(b.scrub, undefined);
+    assert.equal(await scrubIfConfigured(copy), null);
+  });
+
+  it('scrubIfConfigured returns null for a bare repository (no work tree)', async () => {
+    const bare = await fs.mkdtemp(path.join(os.tmpdir(), 'scrub2-bare-'));
+    extra.push(bare);
+    sh(bare, 'init', '-q', '--bare', '.');
+    assert.equal(await scrubIfConfigured(bare), null);
+  });
+
+  it('push-gate check denies a secret that was committed and then removed in the pushed range', async () => {
+    await put('.claude/kit/scrub-patterns.local', 'zebra-secret\n');
+    await put('a.txt', 'hello\n'); commit('base');
+    await put('leak/k.txt', 'one\nthe zebra-secret is here\n'); commit('leak');
+    sh(dir, 'rm', '-q', '-r', 'leak'); sh(dir, 'commit', '-q', '-m', 'remove');
+    const head = await run([], io());
+    assert.equal(head.exit, 0, 'the HEAD tree alone is clean');
+    const d = await pushGate(['check'], io());
+    assert.equal(d.decision, 'deny', JSON.stringify(d));
+    assert.equal(d.exit, 2);
+    assert.deepEqual(d.scrub.hits.map(h => [h.file, h.line, h.private]), [['leak/k.txt', 2, true]]);
+    assert.ok(!JSON.stringify(d).includes('zebra'), 'neither the pattern nor the match is printed');
+    // with --base the range starts after the leak: the leak is already published, so it passes
+    const base = sh(dir, 'rev-parse', 'HEAD').trim();
+    await put('b.txt', 'fine\n'); commit('later');
+    const ok = await pushGate(['check', '--base', base], io());
+    assert.notEqual(ok.decision, 'deny', JSON.stringify(ok));
+    const bad = await pushGate(['check', '--base', sh(dir, 'rev-parse', 'HEAD~3').trim()], io());
+    assert.equal(bad.decision, 'deny');
+  });
+
+  it('scrub --history <base> scans the range; - scans all of history; the plain verb still scans HEAD only', async () => {
+    await put('.claude/kit/scrub-patterns.local', 'zebra-secret\n');
+    await put('a.txt', 'hello\n'); commit('base');
+    const base = sh(dir, 'rev-parse', 'HEAD').trim();
+    await put('k.txt', 'zebra-secret\n'); commit('leak');
+    sh(dir, 'rm', '-q', 'k.txt'); sh(dir, 'commit', '-q', '-m', 'remove');
+    const h = await run(['--history', base], io());
+    assert.equal(h.mode, 'history');
+    assert.equal(h.exit, 2);
+    assert.deepEqual(h.hits, [{ file: 'k.txt', line: 1, private: true, pattern: 'private pattern #1' }]);
+    assert.equal((await run(['--history', '-'], io())).exit, 2);
+    assert.equal((await run(['--history', 'HEAD'], io())).exit, 0);
+    assert.equal((await run([], io())).exit, 0);
+    await assert.rejects(run(['--history', 'nope-ref'], io()), (e) => e instanceof KitExit && e.code === 1);
+    await assert.rejects(run(['--history', base, '--worktree'], io()), (e) => e instanceof KitExit && e.code === 1);
+  });
+
+  it('a history scan that cannot read an object is an error (fail closed)', async () => {
+    await put('.claude/kit/scrub-patterns', 'needle\n');
+    await put('a.txt', 'x\n'); commit();
+    const sha = sh(dir, 'rev-parse', 'HEAD:a.txt').trim();
+    const objFile = path.join(dir, '.git', 'objects', sha.slice(0, 2), sha.slice(2));
+    await fs.chmod(path.dirname(objFile), 0o700).catch(() => {});
+    await fs.rm(objFile);
+    await assert.rejects(run(['--history', '-'], io()), (e) => e instanceof KitExit && e.code === 1);
+    const d = await pushGate(['check'], io());
+    assert.equal(d.decision, 'deny');
+  });
+
+  it('a private pattern file committed in the pushed history is refused even after it was removed', async () => {
+    await put('.claude/kit/scrub-patterns', 'needle\n');
+    await put('a.txt', 'x\n'); commit('base');
+    await put('.claude/kit/scrub-patterns.local', 'zebra-secret\n');
+    sh(dir, 'add', '-f', '.claude/kit/scrub-patterns.local'); sh(dir, 'commit', '-q', '-m', 'oops');
+    sh(dir, 'rm', '-q', '--cached', '.claude/kit/scrub-patterns.local'); sh(dir, 'commit', '-q', '-m', 'untrack');
+    assert.equal((await run([], io())).exit, 0, 'HEAD no longer tracks it');
+    await assert.rejects(run(['--history', '-'], io()), (e) => e instanceof KitExit && e.code === 2 && /private pattern file/.test(e.message));
+    assert.equal((await pushGate(['check'], io())).decision, 'deny');
+  });
+
+  it('a blob larger than what safe-git can return is listed under not_scanned (exit 2), not an aborted run', async () => {
+    await put('.claude/kit/scrub-patterns', 'needle\n');
+    await put('big.bin', Buffer.alloc(257 * 1024 * 1024)); await put('a.txt', 'needle\n'); commit();
+    for (const args of [['--max-file-bytes', '400000000'], ['--history', '-', '--max-file-bytes', '400000000']]) {
+      const r = await run(args, io());
+      assert.equal(r.exit, 2, JSON.stringify(r));
+      assert.equal(r.complete, false);
+      assert.deepEqual(r.not_scanned.map(n => n.file), ['big.bin']);
+      assert.deepEqual(r.hits.map(h => h.file), ['a.txt']);
+    }
+  });
+});

@@ -18,8 +18,11 @@
  * lives) are resolved first; the identity-checked walk then starts at the receipts folder's real parent, and a symlink
  * at or inside the receipts folder is refused (KitExit 2). The same holds with $KIT_RECEIPTS_DIR.
  * Before it looks at receipts, `check` runs the scrub verb (scrub.js) when .claude/kit/scrub-patterns or
- * .claude/kit/scrub-patterns.local exists: any hit, an incomplete scan, or a scrub that cannot run while configured is a
- * deny (exit 2) whatever the receipt says; with no pattern file nothing changes. Built from ideas
+ * .claude/kit/scrub-patterns.local exists (found on the file system, before any git is run): it scans the HEAD tree AND
+ * every blob in <base>..HEAD (the same base as the change id; no base: all of HEAD's history), so a secret committed
+ * and removed again inside the pushed range is found. Any hit, an incomplete scan (also an incomplete history), or a
+ * scrub that cannot run while configured is a deny (exit 2) whatever the receipt says; with no pattern file nothing
+ * changes, and no git is run for it. Built from ideas
  * audited by /w-bbs (run 2026-10-10-openqodex-2); no foreign code.
  */
 import crypto from 'crypto';
@@ -234,9 +237,12 @@ export async function withLock(dir, file, fn, { staleMs = 30000, waitMs = 10000,
  * scan, and when the scrub cannot run while configured (fail closed). null when not configured or when it passes.
  * The result never carries private pattern text or matched text.
  */
-async function scrubBlock(cwd, env) {
+async function scrubBlock(cwd, env, base) {
   let r;
-  try { r = await scrubIfConfigured(cwd, { env }); } catch (e) {
+  try {
+    r = await scrubIfConfigured(cwd, { env });
+    if (r && r.clean) r = await scrubIfConfigured(cwd, { env, history: { base: base || null } });
+  } catch (e) {
     const msg = e instanceof KitExit ? e.message : `unexpected error: ${e.message}`;
     return { decision: 'deny', reason: `the scrub check is configured but could not run: ${msg}`, scrub: { ran: false } };
   }
@@ -258,7 +264,7 @@ export async function run(args, io) {
 
   if (cmd === 'check') {
     const state = file ? await readState(file, guard) : null;
-    const blocked = await scrubBlock(git.cwd || io.cwd, env);
+    const blocked = await scrubBlock(git.cwd || io.cwd, env, change.base);
     if (blocked) return { ...blocked, change_id: change.id, threshold, exit: 2 };
     const d = decide(state, change.id, threshold);
     const result = { ...d, change_id: change.id, threshold };

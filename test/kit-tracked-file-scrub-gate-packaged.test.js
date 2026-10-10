@@ -27,6 +27,7 @@ describe('scrub — packaged end to end', () => {
     git('add', '-A');
     assert.ok(!git('ls-files').stdout.includes('scrub-patterns.local'), 'the private file is ignored');
     git('commit', '-qm', 'leaky');
+    const leaky = git('rev-parse', 'HEAD').stdout.trim();
 
     const bad = pkg.kit(['scrub']);
     assert.equal(bad.code, 2);
@@ -45,8 +46,13 @@ describe('scrub — packaged end to end', () => {
     await fs.rm(path.join(pkg.dir, 'utf16.txt'));
     git('add', '-A'); git('commit', '-qm', 'fixed');
     assert.equal(pkg.kit(['scrub']).code, 0);
+    // the leak is still in the pushed history unless the base is past it
     pkg.kit(['push-gate', 'receipt', '--verdict', 'pass'], '', { extraEnv: { KIT_RECEIPTS_DIR: store } });
-    const ok = pkg.kit(['push-gate', 'check'], '', { extraEnv: { KIT_RECEIPTS_DIR: store } });
+    const stillInHistory = pkg.kit(['push-gate', 'check'], '', { extraEnv: { KIT_RECEIPTS_DIR: store } });
+    assert.equal(stillInHistory.code, 2);
+    assert.equal(stillInHistory.json.decision, 'deny');
+    pkg.kit(['push-gate', 'receipt', '--verdict', 'pass', '--base', leaky], '', { extraEnv: { KIT_RECEIPTS_DIR: store } });
+    const ok = pkg.kit(['push-gate', 'check', '--base', leaky], '', { extraEnv: { KIT_RECEIPTS_DIR: store } });
     assert.equal(ok.code, 0);
     assert.equal(ok.json.decision, 'abstain');
 
