@@ -134,7 +134,7 @@ For every file:line target this search produces for a symbol that will be change
 ```bash
 node .claude/helpers/kit/cli.js callers --symbol src/file.js:name
 ```
-Carry each symbol's callers, `floor`, `reasons` and `sentences` forward to the later phases, printing the `sentences` as they are. Zero callers with `floor: true` is never "unused": the floor means same-name calls, calls through a value, interface dispatch or unread files may hide callers, so check those by hand. Exit 0 printed the entry; exit 1 is wrong input or a broken state: report it, never read it as "no callers"; exit 2 is a refusal: stop that step and report it as printed. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+Carry each symbol's callers, `floor`, `reasons` and `sentences` forward to the later phases, printing the `sentences` as they are. Zero callers with `floor: true` is never "unused": the floor means same-name calls, calls through a value, interface dispatch or unread files may hide callers, so check those by hand. Exit 0 printed the entry but can still leave a symbol out: read `missing` (each with its reason), `partial` and `not_read`; a symbol in `missing` was not answered (typo, renamed or unread file), never "no callers", and `partial: true` makes every answer a floor; exit 1 is wrong input or a broken state: report it, never read it as "no callers"; exit 2 is a refusal: stop that step and report it as printed. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
 
 **REQUIRED OUTPUT:**
 - List of past solutions (0+ items with memory keys)
@@ -330,12 +330,12 @@ case $RC in 0) node .claude/helpers/kit/cli.js graph --diff "$D" --budget-ms 200
 ```
 3. Impact: what depends on the change. The base is resolved once into `B` and given to both `diff-range` and `impact` so they cannot disagree.
 ```bash
-B=$(node .claude/helpers/kit/cli.js diff-range --base-only) || { echo "diff-range --base-only failed: the base was not resolved" >&2; B=; }
-if [ -z "$B" ]; then RC=1; else D=$(mktemp); node .claude/helpers/kit/cli.js diff-range --base "$B" > "$D"; RC=$?
+B=$(node .claude/helpers/kit/cli.js diff-range --base-only); RC=$?
+if [ $RC -ne 0 ] || [ -z "$B" ]; then [ $RC -eq 0 ] && RC=1; echo "diff-range --base-only failed (exit $RC): the base was not resolved" >&2; else D=$(mktemp); node .claude/helpers/kit/cli.js diff-range --base "$B" > "$D"; RC=$?
 case $RC in 0) node .claude/helpers/kit/cli.js impact --diff "$D" --base "$B"; RC=$?;; 3) echo "no change to review";; *) echo "diff-range failed (exit $RC): the change range was not read" >&2;; esac; rm -f "$D"; fi; (exit $RC)
 ```
 How to read the results: each entry in `fired` (lenses) has a `name`, the `files` it matched and a `body` to apply as an extra check on those files: add its findings to the table below, and mention a non-empty `capped` list. For the graph, state `partial` and every `not_read` entry as they are; when `partial` is true the graph is a floor, so never write "nothing else calls this" from it. For impact, check every entry of `removed_with_live_callers` (a removal with a caller left behind is a defect until shown otherwise), the `risk` level with its `reasons`, and every row of `cuts`; when `risk.lower_bound` is true or `cuts` is not empty the level is a floor, never write "nothing else is affected". Print each symbol's `sentences` as they are; a symbol with `floor: true` and no callers found is not unused and a removed one is not safe to remove.
-Exit 3 from `diff-range` means an empty range: report "no change to review", never a failure and never "no lens applies". Any other non-zero exit is wrong input or a broken state: report it, never skip the step. Exit 2 means `diff-range` refused the repository (for example an include in its own config): report the refusal as printed. If `diff-range` itself fails the step prints "diff-range failed" and the verb does not run: report that the change was not analysed, never "nothing found".
+Exit 3 from `diff-range` means an empty range: report "no change to review", never a failure and never "no lens applies". Any other non-zero exit is wrong input or a broken state: report it, never skip the step. Exit 2 means `diff-range` refused the repository (for example an include in its own config) or a range over 32 MiB: report the refusal as printed. Exit 2 from any of these verbs (`diff-range`, including `--base-only`, `lenses`, `graph`, `impact`) is a refusal: report it as printed and stop that step, never retry it. The `--base-only` block keeps the verb's own exit code. If `diff-range` itself fails the step prints "diff-range failed" and the verb does not run: report that the change was not analysed, never "nothing found".
 
 **REQUIRED OUTPUT:**
 | Category | Finding | Severity |
@@ -373,18 +373,18 @@ Exit 3 from `diff-range` means an empty range: report "no change to review", nev
 ---
 
 ### 🔒 CLOSING STEP: Scrub and receipt
-After Verification passes and before Compound, scan the tracked files as they are on disk for secrets, then record the review verdict. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+After Verification passes and before Compound, first run `git add` on the new files the build created: `scrub --worktree` scans tracked files only and the receipt is keyed on the base and the tracked tree, so untracked files are in neither the scrub nor the receipt until they are added. Then scan the tracked files as they are on disk for secrets, and record the review verdict. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
 ```bash
 node .claude/helpers/kit/cli.js scrub --worktree
 ```
-Exit 0 clean (or no pattern file is configured: then nothing was scanned, say so). Exit 2 means hits or an incomplete scan: list them as printed and stop, do not commit. Exit 1 is wrong input or a broken state: report it, never read it as clean.
+Exit 0 clean for the tracked files (or no pattern file is configured: then nothing was scanned, say so); a file still untracked was not scanned. Exit 2 means hits or an incomplete scan: list them as printed and stop, do not commit. Exit 1 is wrong input or a broken state: report it, never read it as clean.
 
 Then record the counts from the findings table, with the real finding counts in place of the numbers (add `--incomplete` if any category was skipped). Use the form that matches the verdict:
 ```
 node .claude/helpers/kit/cli.js push-gate receipt --verdict pass --high 0 --medium 0 --low 0
 node .claude/helpers/kit/cli.js push-gate receipt --verdict fail --high 1 --medium 2 --low 0
 ```
-Exit 0 means the receipt was written; exit 1 is wrong input or a broken state and exit 2 a refused receipt store: report either as printed. Then tell the user: run `node .claude/helpers/kit/cli.js push-gate check` before pushing (same `--base`, or none, used for the receipt). It only abstains, asks or denies; it never skips their permission prompt.
+Exit 0 means the receipt was written; exit 1 is wrong input or a broken state and exit 2 a refused receipt store: report either as printed. Compound writes a new file under `docs/solutions/ideas/` and may change tracked files: after Compound, `git add` its new files and, if the tracked tree changed, record the receipt again so it matches what is committed. Then tell the user: run `node .claude/helpers/kit/cli.js push-gate check` before pushing (same `--base`, or none, used for the receipt). Its exit 0 means abstain or ask (read `decision`), exit 2 deny and exit 1 an error; none is an allow. It only abstains, asks or denies; it never skips their permission prompt.
 
 ---
 

@@ -121,3 +121,44 @@ describe('bash blocks of the wired steps parse', () => {
 
 import { writeFileSync } from 'fs';
 function fsSync(f, b) { writeFileSync(f, b); }
+
+describe('review round 1 fixes', () => {
+  it('Search reads missing, partial and not_read on exit 0', () => {
+    const s = search();
+    assert.match(s, /Exit 0 printed the entry but can still leave a symbol out/);
+    for (const w of ['`missing`', '`partial`', '`not_read`']) assert.ok(s.includes(w), w);
+    assert.match(s, /was not answered[^.]*never "no callers"/);
+  });
+  it('exit 2 is named per verb and --base-only keeps its own exit code', () => {
+    const r = review();
+    assert.match(r, /Exit 2 from any of these verbs \(`diff-range`, including `--base-only`, `lenses`, `graph`, `impact`\) is a refusal/);
+    assert.match(r, /32 MiB/);
+    assert.match(r, /B=\$\(node \.claude\/helpers\/kit\/cli\.js diff-range --base-only\); RC=\$\?/);
+    assert.ok(!r.includes('then RC=1; else'));
+    assert.ok(!r.includes('B=; }'));
+  });
+  it('closing step stages new files before scrub and receipt and says untracked files are not covered', () => {
+    const c = closing();
+    const add = c.indexOf('`git add`');
+    assert.ok(add >= 0);
+    assert.ok(add < c.indexOf('scrub --worktree'));
+    assert.ok(add < c.indexOf('push-gate receipt'));
+    assert.match(c, /untracked files are in neither the scrub nor the receipt until they are added/);
+    assert.match(c, /a file still untracked was not scanned/);
+    assert.match(c, /after Compound, `git add` its new files and, if the tracked tree changed, record the receipt again/);
+  });
+  it('push-gate check exits are named and none is an allow', () => {
+    const c = closing();
+    assert.match(c, /exit 0 means abstain or ask \(read `decision`\), exit 2 deny and exit 1 an error; none is an allow/);
+  });
+  it('description copies agree with the template phase count', async () => {
+    const m = content.match(/with all (\d+) phases/)[1];
+    const root = path.join(__dirname, '..');
+    for (const f of ['src/utils/shortcuts.js', 'WORKFLOW-SHORTCUTS.md']) {
+      const t = await fs.readFile(path.join(root, f), 'utf-8');
+      const i = t.indexOf('Ideas need refinement before implementation');
+      assert.ok(i >= 0, f);
+      assert.ok(t.slice(i, i + 600).includes(`Use TodoWrite first with all ${m} phases`), f);
+    }
+  });
+});
