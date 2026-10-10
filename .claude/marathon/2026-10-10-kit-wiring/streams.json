@@ -66,11 +66,11 @@
       "name": "sweep-commits",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "4.5 round 3 opus checking review, then close",
+      "next": "4.7 fix round 3 (3 findings), then unit run, round 4",
       "tasks": [],
       "isolation": "../danizee-claude-suite-sweep-commits",
       "base": "6142e8347401b14ce7302dc386c162669ea8d9fe",
-      "phase": "review"
+      "phase": "fix"
     },
     {
       "name": "sweep-foreign-and-logs",
