@@ -1,11 +1,11 @@
 # Marathon 2026-10-10-kit-wiring
 
 - State: RUNNING
-- Budget: 3,450,440 / 10,000,000 tokens
+- Budget: 3,475,440 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
-- Gate (run-wide, all streams): 2/2 clean reviews — build gate not met, full gate not met
+- Gate (run-wide, all streams): 3/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "marathon" (next: checking review (round 4) of the round-3 fixes running; then close and /bc) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
+- Next for you: Continue stream "marathon" (next: fix round 4 (worktree check before the 4.2 copy, timeout bullet) running; then a checking review, close, /bc) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
 - Last handoff: 2026-10-10T18:17:14.221Z (auto) on claude/project-thread-vootem@690cc36, 5 uncommitted, tasks: none
 
 ## Streams
@@ -15,7 +15,7 @@
 | diff-range | ../danizee-claude-suite-diff-range | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | /w-plan-tdd-swarm · review | done; compounded via /bc |  | 0 |
 | pt | ../danizee-claude-suite-pt | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | /w-plan-tdd-swarm · review | done; compounded via /bc |  | 0 |
 | bc | ../danizee-claude-suite-bc | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | /w-plan-tdd-swarm · review | done; compounded via /bc |  | 0 |
-| marathon | ../danizee-claude-suite-marathon | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | met | /w-plan-tdd-swarm · review | checking review (round 4) of the round-3 fixes running; then close and /bc |  | 0 |
+| marathon | ../danizee-claude-suite-marathon | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | met | /w-plan-tdd-swarm · review | fix round 4 (worktree check before the 4.2 copy, timeout bullet) running; then a checking review, close, /bc |  | 0 |
 | bbs |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, safe-git in helper briefs, redact at probe, scrub at compound |  | 0 |
 | sweep-commits |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire the eight commit-and-push workflows |  | 0 |
 | sweep-foreign-and-logs |  | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | queued | clean 0/2 |  | worktree, wire the six foreign-repo and log workflows |  | 0 |
@@ -34,7 +34,7 @@
 | bc: clean reviews in a row | build | met | 6 | at_least 2 |
 | bc: open high findings | build | met | 0 | at_most 0 |
 | marathon: green unit runs in a row | build | met | 4 | at_least 1 |
-| marathon: clean reviews in a row | build | met | 2 | at_least 2 |
+| marathon: clean reviews in a row | build | met | 3 | at_least 2 |
 | marathon: open high findings | build | met | 0 | at_most 0 |
 | bbs: green unit runs in a row | build | failing | 0 | at_least 1 |
 | bbs: clean reviews in a row | build | failing | 0 | at_least 2 |

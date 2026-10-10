@@ -44,7 +44,7 @@
       "name": "marathon",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "checking review (round 4) of the round-3 fixes running; then close and /bc",
+      "next": "fix round 4 (worktree check before the 4.2 copy, timeout bullet) running; then a checking review, close, /bc",
       "tasks": [],
       "isolation": "../danizee-claude-suite-marathon",
       "phase": "review",
