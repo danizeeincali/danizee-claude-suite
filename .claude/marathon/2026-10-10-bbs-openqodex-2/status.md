@@ -1,11 +1,11 @@
 # Marathon 2026-10-10-bbs-openqodex-2
 
 - State: RUNNING
-- Budget: 7,673,771 / 10,000,000 tokens
+- Budget: 7,823,771 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 2/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Next stream "caller-floor-disclosure": create its worktree (`git worktree add ../<repo>-caller-floor-disclosure -b marathon/2026-10-10-bbs-openqodex-2/caller-floor-disclosure`) and activate it with `cli.js stream caller-floor-disclosure state=active isolation=<path>`, then /w-marathon --resume 2026-10-10-bbs-openqodex-2.
+- Next for you: Continue stream "caller-floor-disclosure" (next: builder writes contract tests and module) — /w-marathon --resume 2026-10-10-bbs-openqodex-2.
 - Last handoff: 2026-10-10T09:05:18.050Z (auto) on claude/project-thread-p9gbyo@3434e5b, 5 uncommitted, tasks: none
 
 ## Streams
@@ -18,7 +18,7 @@
 | hardened-git-read-on-untrusted-repo | ../danizee-claude-suite-hardened-git-read-on-untrusted-repo | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/hardened-git-read-on-untrusted-repo.md | done | met | review | — |  | 0 |
 | identity-checked-file-writes | ../danizee-claude-suite-identity-checked-file-writes | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/identity-checked-file-writes.md | done | met | review | — |  | 0 |
 | change-blast-radius-walk | ../danizee-claude-suite-change-blast-radius-walk | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/change-blast-radius-walk.md | done | met | review | — |  | 0 |
-| caller-floor-disclosure |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/caller-floor-disclosure.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
+| caller-floor-disclosure | ../danizee-claude-suite-caller-floor-disclosure | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/caller-floor-disclosure.md | active | clean 0/2 | build | builder writes contract tests and module |  | 0 |
 | fact-cached-graph-build-with-budget | ../danizee-claude-suite-fact-cached-graph-build-with-budget | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/fact-cached-graph-build-with-budget.md | done | met | review | — |  | 0 |
 | tracked-file-scrub-gate |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/tracked-file-scrub-gate.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | planted-bug-review-scoring |  | .claude/bbs/runs/2026-10-10-openqodex-2/briefs/planted-bug-review-scoring.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |

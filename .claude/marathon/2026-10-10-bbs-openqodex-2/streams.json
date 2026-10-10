@@ -69,10 +69,13 @@
     },
     {
       "name": "caller-floor-disclosure",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-10-openqodex-2/briefs/caller-floor-disclosure.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract tests and module",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-caller-floor-disclosure",
+      "phase": "build",
+      "base": "50f6721ee6727bf8f8f79a0b1627db55c100d978"
     },
     {
       "name": "fact-cached-graph-build-with-budget",
