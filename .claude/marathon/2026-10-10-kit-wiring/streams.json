@@ -55,10 +55,10 @@
       "name": "bbs",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "4.5 round 2 opus review",
+      "next": "4.7 fix round 2 (3 medium incl. 2 security, 2 low) on opus, then unit run, round 3",
       "tasks": [],
       "isolation": "../danizee-claude-suite-bbs",
-      "phase": "review",
+      "phase": "fix",
       "skill": "w-plan-tdd-swarm",
       "base": "c8ddc24a976fc488ae86521d82073d04724c5214"
     },
