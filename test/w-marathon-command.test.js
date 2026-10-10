@@ -319,9 +319,11 @@ describe('kit wiring', () => {
   });
 
   it('r3 fix 2: a "took longer than" failure is cured with --timeout on scrub, diff-range and push-gate check; impact cannot be raised', () => {
-    for (const verb of ['diff-range', 'scrub', 'push-gate check']) {
+    for (const verb of ['diff-range', 'scrub']) {
       assert.match(c(), new RegExp('took longer than … ms[^\\n]*--timeout <ms>\\`? added to (the )?\\`' + verb));
     }
+    // r4 fix 2 retarget: the push-gate check remedy is worded under the deny (exit 2) bullet
+    assert.match(c(), /took longer than … ms is cured by running the block again with `--timeout <ms>` on push-gate check/);
     assert.match(c(), /\`impact\` has no such flag, so a timeout there \(exit 3\) is reported as a failed step/);
   });
 
@@ -509,6 +511,34 @@ describe('kit blocks run against the real kit in a stream worktree', () => {
     } finally {
       rmSync(fx.root, { recursive: true, force: true });
     }
+  });
+
+  it('r4 fix 1: the 4.2 copy refuses a W that is not an existing git work tree and creates nothing', () => {
+    const fx = worktreeRepo();
+    try {
+      mkdirSync(path.join(fx.main, '.claude', 'kit'), { recursive: true });
+      writeFileSync(path.join(fx.main, '.claude', 'kit', 'scrub-patterns.local'), 'ZQXJ-PRIVATE-[0-9]+\n');
+      const missing = path.join(fx.root, 'no-such-worktree');
+      const r = fx.run(copyBlock(), missing);
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stderr, /is not the stream worktree: create it first/);
+      assert.ok(!existsSync(missing), 'nothing created at the missing path');
+      const plain = path.join(fx.root, 'plain-folder');
+      mkdirSync(plain);
+      const r2 = fx.run(copyBlock(), plain);
+      assert.equal(r2.status, 1, r2.stdout + r2.stderr);
+      assert.match(r2.stderr, /is not the stream worktree: create it first/);
+      assert.ok(!existsSync(path.join(plain, '.claude')), 'nothing created in the plain folder');
+      assert.match(c(), /refuses a `W` that is not an existing git work tree \("is not the stream worktree: create it first", exit 1\)/);
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+
+  it('r4 fix 2: the scrub-timeout remedy sits under the CHECKPOINT 6 exit-2 bullet, not exit 1', () => {
+    const t = c();
+    assert.match(t, /- Exit 2 is a deny or a refused receipt store[^\n]*A deny whose reason says the scrub took longer than … ms is cured by running the block again with `--timeout <ms>` on push-gate check\./);
+    assert.match(t, /- Exit 1 is an error: \*\*not pushed\*\*; report it\.\n/);
   });
 
   it('r3: folder mode, W=. in a repo that has the kit: the lenses block runs and exits 0', () => {

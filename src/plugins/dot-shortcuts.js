@@ -4062,9 +4062,10 @@ In the desktop app, read the allowance with \`get_usage\` and pass the **weekly*
 \`\`\`bash
 W=../myrepo-api
 ([ -n "$W" ] || { echo "W is empty: set it to the stream's isolation path" >&2; exit 1; }
+[ -d "$W" ] && git -C "$W" rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "$W is not the stream worktree: create it first" >&2; exit 1; }
 if [ -f .claude/kit/scrub-patterns.local ]; then mkdir -p "$W/.claude/kit" && cp .claude/kit/scrub-patterns.local "$W/.claude/kit/scrub-patterns.local" || { echo "could not copy the private scrub patterns into $W: fix that before any scrub" >&2; (exit 1); }; fi)
 \`\`\`
-Copy it again whenever the owner edits it in the main checkout. Then \`cli.js stream <name> state=active isolation=<path>\` — the stream's base commit is recorded then, so the first review covers everything the stream adds. Add task ids later as they exist: \`cli.js stream <name> tasks=<id>,<id>\`.
+The copy refuses a \`W\` that is not an existing git work tree ("is not the stream worktree: create it first", exit 1) before it creates anything, so a mistyped path never gets a stray \`.claude/kit\` folder. Copy it again whenever the owner edits it in the main checkout. Then \`cli.js stream <name> state=active isolation=<path>\` — the stream's base commit is recorded then, so the first review covers everything the stream adds. Add task ids later as they exist: \`cli.js stream <name> tasks=<id>,<id>\`.
 
 **4.3 Build.** Inside the worktree, build through \`/pt\` (interview already done — pass the stream's plan and skip straight to its Plan gate) or \`/w-tdd-swarm\`: contracts first, failing tests, then builders. Route each builder with \`cli.js route hasContract=<bool> hasFailingTests=<bool> files=<n> category=<c>\`: **scoped → \`build_scoped\` (haiku)**, default → \`build\` (sonnet), **hard → \`build_hard\` (opus)**. For every helper: \`cli.js record helper stream=<s> role=build model=<m> budget=<n>\` before the spawn (put the budget in the brief); \`cli.js record helper-done helper_id=<id> tokens=<n> outcome=green|red|escalated\` from the task notification. **Red tests → retry one tier up (\`next\` from \`cli.js route\`) before any review is spent**, with \`escalated_from=<id>\` on the new spawn row; the second row's outcome is what the review sees. A builder's output never feeds the next step until its tests are green.
 
@@ -4189,8 +4190,8 @@ The block first refuses an empty \`BASE\` ("BASE is empty": push-gate would read
 - Exit 0 with decision \`abstain\`: go on to \`/bcp\`.
 - Exit 0 with decision \`ask\` and a \`reason\` starting "no review recorded for this change": go on, and say so ("no review recorded for this change").
 - Exit 0 with any other \`ask\` (a failed review, a review of an earlier version, another threshold): **not pushed**; put the \`reason\` to the owner and wait. An \`ask\` saying "only an earlier review exists" usually means another stream recorded its receipt after this one (the store keeps one latest receipt per repository) or something was committed after the receipt: run the block again (it re-records, then checks) before putting it to the owner, and put it to the owner only if it asks again.
-- Exit 2 is a deny or a refused receipt store (\`kit: refused:\` on stderr): **not pushed**; say so with the reason as printed.
-- Exit 1 is an error: **not pushed**; report it. A "took longer than … ms" error (and a scrub timeout, which the check turns into a deny) is cured by running the same block again with \`--timeout <ms>\` added to \`push-gate check\`.
+- Exit 2 is a deny or a refused receipt store (\`kit: refused:\` on stderr): **not pushed**; say so with the reason as printed. A deny whose reason says the scrub took longer than … ms is cured by running the block again with \`--timeout <ms>\` on push-gate check.
+- Exit 1 is an error: **not pushed**; report it.
 Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found. The gate only abstains, asks or denies; it never skips or answers the owner's own permission prompt for the push.
 
 ---
