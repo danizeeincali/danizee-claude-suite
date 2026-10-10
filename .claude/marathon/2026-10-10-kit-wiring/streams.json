@@ -33,7 +33,7 @@
       "name": "bc",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "fix round 2 (1 high, 3 medium, 1 low) on opus running; then review round 3",
+      "next": "review round 3 running; then fix round or round 4",
       "tasks": [],
       "isolation": "../danizee-claude-suite-bc",
       "phase": "review",
