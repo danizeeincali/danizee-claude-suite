@@ -272,16 +272,32 @@ describe('/w-bbs command — kit wiring (safe-git, redact, scrub)', () => {
     assert.match(g, /2 refused[^;]*: the reason is the `kit: refused:` line on stderr; do not retry, name it in evidence/);
   });
 
-  it('r5: exit 3 is handled in one place, with the same wording in CP4 and SAFE_GIT_LINES', () => {
+  it('r5: exit 3 is handled in one place; CP4 returns `incomplete`, SAFE_GIT_LINES carries an inventory-shaped instruction', () => {
     const s = section('### ⛔ CHECKPOINT 4', '3. **Show the verdict table');
     const g = SAFE_GIT_LINES.join('\n');
+    assert.match(s, /Exit 3 is handled one way: a timeout, overflow or kill \(no JSON, a `kit:` line on stderr\) returns `incomplete`; git ran and failed \(JSON with a non-zero `code`\) on a wrong call \(a missing path, history beyond HEAD on the depth-1 clone\) means fix the call and retry once, and only a second failure on a correct call returns `incomplete`\./);
+    assert.match(g, /Exit 3 is handled one way: a timeout, overflow or kill \(no JSON, a `kit:` line on stderr\) means stop reading that file and name the failed read \(the `kit:` line\) in the `evidence` of the affected power, or in `none_found` when nothing could be read; git ran and failed \(JSON with a non-zero `code`\) on a wrong call \(a missing path, history beyond HEAD on the depth-1 clone\) means fix the call and retry once, and only a second failure on a correct call means the same: stop reading that file and name the failed read \(the JSON `stderr`\) in the `evidence` of the affected power, or in `none_found` when nothing could be read\./);
+    assert.doesNotMatch(g, /returns `incomplete`/);
+    assert.doesNotMatch(g, /incomplete/);
     for (const t of [s, g]) {
-      assert.match(t, /Exit 3 is handled one way: a timeout, overflow or kill \(no JSON, a `kit:` line on stderr\) returns `incomplete`; git ran and failed \(JSON with a non-zero `code`\) on a wrong call \(a missing path, history beyond HEAD on the depth-1 clone\) means fix the call and retry once, and only a second failure on a correct call returns `incomplete`\./);
       assert.match(t, /The clone is depth 1 \(a single commit\), so only HEAD and its tree are readable: asking for history beyond HEAD \(`HEAD~1`, `log` ranges, `rev-list` ranges, `diff` against an older commit\) is a wrong call\./);
       assert.doesNotMatch(t, /it does not make the source `?incomplete`?/);
     }
     assert.doesNotMatch(s, /raises the 60000 ms default: return `incomplete`/);
     assert.equal((s.match(/return(s)? `incomplete`/g) || []).length >= 2, true);
+  });
+
+  it('r6: the real brief prints an absolute Clone top ending in fetched/repo, and says listed files start with repo/', () => {
+    const root = '/abs/proj/.claude/bbs/runs/r1/fetched';
+    const files = { root, files: [{ path: 'repo/a.js', size: 1 }], total: 1 };
+    const r = inventoryBrief({ source: { type: 'repo', ref: 'x', identity: 'y' }, files, maxPowers: 12 });
+    const line = r.split('\n').find(l => l.startsWith('Clone top (for safe-git --dir): '));
+    assert.ok(line, 'clone top line');
+    assert.equal(line, `Clone top (for safe-git --dir): ${root}/repo`);
+    assert.ok(line.slice('Clone top (for safe-git --dir): '.length).startsWith('/'));
+    assert.ok(line.endsWith('fetched/repo'));
+    assert.match(r, /listed files start with `repo\/`; drop that prefix in git args/);
+    assert.match(r, /the absolute path of `\.claude\/bbs\/runs\/<run-id>\/fetched\/repo`/);
   });
 
   it('r5: the clone top is defined: the brief prints it for a repo source only, and CP2, CP4 and SAFE_GIT_LINES say what it is', () => {
@@ -296,8 +312,8 @@ describe('/w-bbs command — kit wiring (safe-git, redact, scrub)', () => {
       const b = inventoryBrief({ source: { type, ref: 'x', identity: 'y' }, files, maxPowers: 12 });
       assert.doesNotMatch(b, /Clone top/, type);
     }
-    assert.match(SAFE_GIT_LINES.join('\n'), /`--dir` takes the clone top: the `Clone top` path the inventory brief prints \(`\.claude\/bbs\/runs\/<run-id>\/fetched\/repo`, the clone itself, not `fetched`\), and paths in git args are relative to it/);
-    const def = /`<clone top>` is `\.claude\/bbs\/runs\/<run-id>\/fetched\/repo`|`<clone top>` is `\.claude\/bbs\/runs\/<run-id>\/fetched\/repo`/;
+    assert.match(SAFE_GIT_LINES.join('\n'), /`--dir` takes the clone top: the `Clone top` line the inventory brief prints \(the absolute path of `\.claude\/bbs\/runs\/<run-id>\/fetched\/repo`, the clone itself, not `fetched`\), and paths in git args are relative to it; listed files start with `repo\/`; drop that prefix in git args\./);
+    const def = /`<clone top>` is the `Clone top` line the brief prints[^`]*the absolute path of `\.claude\/bbs\/runs\/<run-id>\/fetched\/repo`/;
     for (const [a, z] of [['### ⛔ CHECKPOINT 2', '### ⛔ CHECKPOINT 3'], ['### ⛔ CHECKPOINT 4', '3. **Show the verdict table']]) {
       const t = section(a, z);
       assert.match(t, def, a);
