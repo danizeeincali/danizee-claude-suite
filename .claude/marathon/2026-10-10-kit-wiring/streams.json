@@ -27,7 +27,7 @@
       "isolation": "../danizee-claude-suite-pt",
       "phase": "build",
       "skill": "w-plan-tdd-swarm",
-      "base": "690cc365a33b62426942692a00ee8d1c7ac37d3a"
+      "base": "9fc73ac51e42ca781e490ecc9e4173645b4ce88f"
     },
     {
       "name": "bc",
