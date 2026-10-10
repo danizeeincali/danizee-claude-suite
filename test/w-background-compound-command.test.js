@@ -453,7 +453,7 @@ describe('review round 3 fixes', () => {
   });
   it('low: the redact block traps the temp file in a subshell; the claim names what the trap cannot catch', () => {
     const b = redactBlock();
-    assert.match(b, /else \( D=\$\(mktemp/);
+    assert.match(b, /else \( D=; J=; R=; D=\$\(mktemp/); // retargeted: the guard now clears D, J and R first
     const trap = b.indexOf(`[ -z "$D" ] || trap 'rm -f "$D" "$J"; [ -n "$KEEP" ] || rm -f "$R"' EXIT INT TERM`); // retargeted: D and J always, R only when not kept
     assert.ok(trap > b.indexOf('mktemp failed') && trap < b.indexOf('diff-range --base'), 'trap not set right after the mktemp guard');
     assert.match(b, /exit \$RC \); RC=\$\?; \(exit \$RC\); fi\s*$/);
@@ -606,7 +606,7 @@ describe('review round 5 fixes', () => {
     const storage = p.indexOf('- Storage:');
     assert.ok(red >= 0 && red < storage && red < analyze && red < append, 'redact block not first');
     assert.ok(p.indexOf('```bash') > red && p.indexOf('```bash') < analyze);
-    assert.match(p, /- Analyze: read the redacted file `\$R` named in the redact block's summary line \(the range since `\$BASE`\)/);
+    assert.match(p, /- Analyze: read the redacted file named by the `file=` field of the redact block's summary line \(the range since `\$BASE`\)/); // retargeted: R is not a shell variable in later calls
     assert.match(p, /- Append all to \.claude\/ralph-candidates\.md \(redacted entries only/);
     assert.doesNotMatch(p, /git diff/);
     assert.doesNotMatch(p.replace(/```bash\n[\s\S]*?```/g, ''), /parse git diff/);
@@ -733,9 +733,9 @@ describe('review round 7 fixes', () => {
     assert.ok(b.includes('console.log("replaced="+j.replaced+" bytes="+Buffer.byteLength(j.text)+" file="+process.argv[2])'));
     const p = phase1();
     assert.match(p, /exactly one summary line, `replaced=<n> bytes=<n> file=<path>`/);
-    assert.ok(p.includes("`grep -n '^diff --git' \"$R\"` then `sed -n 'a,bp' \"$R\"`"));
-    assert.ok(p.includes('At the end of Phase 1 run `rm -f "$R"`'));
-    assert.match(p, /a killed shell leaves it in `\$TMPDIR` \(mode 0600\), and the lead's Phase 4 summary names it if it was not removed/);
+    assert.ok(p.includes("`grep -n '^diff --git' <path from file=>` then `sed -n 'a,bp' <path from file=>`")); // retargeted: the path printed in file=
+    assert.ok(p.includes('At the end of Phase 1 run `rm -f <path from file=>`'));
+    assert.match(p, /a killed shell leaves it in `\$TMPDIR` \(mode 0600\), and the Phase 4 summary, written by the agent, says "redacted range left at <path>"/); // retargeted: the lead does not name it
   });
   it('medium: a large range never reaches stdout; failure and empty-range paths leave no file', () => {
     const fx = kitRepo();
@@ -785,5 +785,30 @@ describe('review round 7 fixes', () => {
     } finally {
       rmSync(fx.root, { recursive: true, force: true });
     }
+  });
+  it('medium: a failed mktemp guard never removes a file named by an inherited R, J or D', () => {
+    const fx = kitRepo();
+    try {
+      const keep = path.join(fx.root, 'inherited');
+      writeFileSync(keep, 'x');
+      const BASE = git(fx.dir, 'rev-parse', 'HEAD').trim();
+      const r = fx.run(redactBlock(), fx.dir, { BASE, R: keep, J: keep, D: keep, TMPDIR: path.join(fx.root, 'missing') });
+      assert.equal(r.status, 1);
+      assert.match(r.stderr, /mktemp failed/);
+      assert.ok(existsSync(keep), 'the inherited file was deleted');
+    } finally {
+      rmSync(fx.root, { recursive: true, force: true });
+    }
+  });
+  it('medium: Phase 1 uses the path printed in file= and Phase 4 reports a file left behind', () => {
+    const p = phase1();
+    assert.match(p, /`R` is not a shell variable in later tool calls/);
+    assert.doesNotMatch(p, /the lead's Phase 4 summary names it/);
+    assert.ok(section('**Phase 4', '**ERROR HANDLING').includes('add the line "redacted range left at <path>"'));
+  });
+  it('low: the prose after the redact block quotes the current trap line', () => {
+    const p = phase1();
+    assert.ok(p.includes(`sets \`trap 'rm -f "$D" "$J"; [ -n "$KEEP" ] || rm -f "$R"' EXIT INT TERM\``));
+    assert.ok(!p.includes(`trap 'rm -f "$D"' EXIT INT TERM`));
   });
 });
