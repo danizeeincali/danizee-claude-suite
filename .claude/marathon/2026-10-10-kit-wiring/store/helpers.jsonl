@@ -126,3 +126,4 @@
 {"helper_id":"b1845019-cd2a-4b15-a2fb-2119077d0d0c","tokens":30000,"outcome":"green","event":"done","id":"f129a361-e210-4666-9bc8-589b4e402722","ts":"2026-10-10T21:02:51.961Z"}
 {"role":"routine","model":"sonnet","stream":"marathon","budget":100000,"event":"spawn","id":"95504b8a-c8c2-4c44-be74-8705e149771d","ts":"2026-10-10T21:02:53.163Z"}
 {"role":"build","model":"sonnet","stream":"bbs","budget":150000,"event":"spawn","id":"091ac9f9-f5da-4a37-8432-299cb91c5f25","ts":"2026-10-10T21:02:53.295Z"}
+{"helper_id":"95504b8a-c8c2-4c44-be74-8705e149771d","tokens":90000,"outcome":"green","event":"done","id":"40785d81-172e-427d-a6fc-7f0506917ba6","ts":"2026-10-10T21:06:30.542Z"}
