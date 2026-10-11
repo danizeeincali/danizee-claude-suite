@@ -5,7 +5,8 @@
       "state": "meta",
       "isolation": "worktree",
       "created": "2026-10-10T16:21:26.598Z",
-      "tasks": []
+      "tasks": [],
+      "finished": "2026-10-11T00:41:21.222Z"
     },
     {
       "name": "diff-range",

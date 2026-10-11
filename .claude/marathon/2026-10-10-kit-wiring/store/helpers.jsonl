@@ -211,3 +211,4 @@
 {"role":"routine","model":"sonnet","stream":"sweep-foreign-and-logs","budget":100000,"event":"spawn","id":"fab386e9-f485-4fcc-8b9e-8c58b8174901","ts":"2026-10-11T00:33:06.813Z"}
 {"helper_id":"fab386e9-f485-4fcc-8b9e-8c58b8174901","tokens":69949,"outcome":"green","event":"done","id":"e1a46a00-11bd-4c8c-8db7-7657f59d69a3","ts":"2026-10-11T00:34:53.403Z"}
 {"role":"build","model":"opus","stream":"sweep-foreign-and-logs","budget":200000,"event":"spawn","id":"c5933809-cc43-4700-89cb-bf91ff35a05d","ts":"2026-10-11T00:34:53.614Z"}
+{"helper_id":"c5933809-cc43-4700-89cb-bf91ff35a05d","tokens":70566,"outcome":"green","event":"done","id":"bfc12337-632c-468f-85ec-54f96d06afca","ts":"2026-10-11T00:41:07.888Z"}

@@ -61,3 +61,4 @@
 {"kind":"unit","status":"green","stream":"sweep-foreign-and-logs","commit":"8d8689f","id":"392e00a3-5fbb-43e1-bac6-9c207acf8b35","ts":"2026-10-11T00:00:11.262Z"}
 {"kind":"unit","status":"green","stream":"sweep-foreign-and-logs","commit":"f85fa13","id":"39ca10ec-5c5d-449b-b129-ef584ba62c72","ts":"2026-10-11T00:16:42.885Z"}
 {"kind":"unit","status":"green","stream":"sweep-foreign-and-logs","commit":"53331bf","id":"69f4fa77-104c-4ee6-a515-3c10abb77768","ts":"2026-10-11T00:30:01.636Z"}
+{"kind":"e2e","status":"green","commit":"7e5c50a","id":"d633b04d-cb54-4bbd-b068-58f48682d26f","ts":"2026-10-11T00:41:08.163Z"}

@@ -1,11 +1,11 @@
 # Marathon 2026-10-10-kit-wiring
 
-- State: RUNNING
-- Budget: 6,434,707 / 10,000,000 tokens
+- State: FINISHED
+- Budget: 6,305,273 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
-- Gate (run-wide, all streams): 3/2 clean reviews — build gate not met, full gate not met
+- Gate (run-wide, all streams): 3/2 clean reviews — build gate met, full gate not met
 - Escapes: 0
-- Next for you: All streams done but the run-wide gate fails on regenerated — run `cli.js gate`, reopen the owning stream (`cli.js stream <name> state=active`) and continue at 4.1. Waiting on you: merged (tick them in checklist.md).
+- Next for you: Run is finished. Start a new one with /w-marathon <finish line>.
 - Last handoff: 2026-10-11T00:14:52.663Z (auto) on claude/project-thread-vootem@35f3036, 0 uncommitted, tasks: none
 
 ## Streams
@@ -45,8 +45,8 @@
 | sweep-foreign-and-logs: green unit runs in a row | build | met | 6 | at_least 1 |
 | sweep-foreign-and-logs: clean reviews in a row | build | met | 3 | at_least 2 |
 | sweep-foreign-and-logs: open high findings | build | met | 0 | at_most 0 |
-| Repo copies under .claude/commands/.shortcuts equal the generator output | build | failing | — | is true |
-| Full npm test green after the last stream | build | met | 11 | at_least 1 |
+| Repo copies under .claude/commands/.shortcuts equal the generator output | build | met | true | is true |
+| Full npm test green after the last stream | build | met | 12 | at_least 1 |
 | Owner merged the PR | human | waiting on human | false | is true |
 
 ## Waiting on human

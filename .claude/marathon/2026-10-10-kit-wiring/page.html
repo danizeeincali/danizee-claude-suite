@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marathon 2026-10-10-kit-wiring</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --fg: #1b1f24;
+  --muted: #5f6b76;
+  --line: #d8dee4;
+  --ok: #1a7f37;
+  --warn: #9a6700;
+  --bad: #cf222e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --fg: #e6edf3;
+    --muted: #8b98a5;
+    --line: #30363d;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --bad: #f85149;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 64rem; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 1.5rem; margin: 0 0 4px; }
+h2 { font-size: 1.1rem; margin: 32px 0 8px; }
+p { margin: 4px 0; }
+.muted { color: var(--muted); }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+.ok { color: var(--ok); font-weight: 600; }
+.warn { color: var(--warn); font-weight: 600; }
+.bad { color: var(--bad); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+<h1>Marathon 2026-10-10-kit-wiring</h1>
+<p class="muted">Snapshot of the run: finish line, streams, review ledger and helper spend.</p>
+
+<h2>Gate</h2>
+<p>Build gate: <span class="ok">met</span> · Full gate: <span class="bad">not met</span></p>
+<p class="muted">Failing: none · Waiting on human: merged</p>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Line</th><th scope="col">Owner</th><th scope="col">Target</th><th scope="col">Actual</th><th scope="col">Status</th></tr></thead>
+<tbody>
+<tr><td>diff-range: green unit runs in a row</td><td>build</td><td>at least 1</td><td>12</td><td class="ok">met</td></tr>
+<tr><td>diff-range: clean reviews in a row</td><td>build</td><td>at least 2</td><td>3</td><td class="ok">met</td></tr>
+<tr><td>diff-range: open high findings</td><td>build</td><td>at most 0</td><td>0</td><td class="ok">met</td></tr>
+<tr><td>pt: green unit runs in a row</td><td>build</td><td>at least 1</td><td>4</td><td class="ok">met</td></tr>
+<tr><td>pt: clean reviews in a row</td><td>build</td><td>at least 2</td><td>4</td><td class="ok">met</td></tr>
+<tr><td>pt: open high findings</td><td>build</td><td>at most 0</td><td>0</td><td class="ok">met</td></tr>
+<tr><td>bc: green unit runs in a row</td><td>build</td><td>at least 1</td><td>9</td><td class="ok">met</td></tr>
+<tr><td>bc: clean reviews in a row</td><td>build</td><td>at least 2</td><td>6</td><td class="ok">met</td></tr>
+<tr><td>bc: open high findings</td><td>build</td><td>at most 0</td><td>0</td><td class="ok">met</td></tr>
+<tr><td>marathon: green unit runs in a row</td><td>build</td><td>at least 1</td><td>6</td><td class="ok">met</td></tr>
+<tr><td>marathon: clean reviews in a row</td><td>build</td><td>at least 2</td><td>5</td><td class="ok">met</td></tr>
+<tr><td>marathon: open high findings</td><td>build</td><td>at most 0</td><td>0</td><td class="ok">met</td></tr>
+<tr><td>bbs: green unit runs in a row</td><td>build</td><td>at least 1</td><td>7</td><td class="ok">met</td></tr>
+<tr><td>bbs: clean reviews in a row</td><td>build</td><td>at least 2</td><td>4</td><td class="ok">met</td></tr>
+<tr><td>bbs: open high findings</td><td>build</td><td>at most 0</td><td>0</td><td class="ok">met</td></tr>
+<tr><td>sweep-commits: green unit runs in a row</td><td>build</td><td>at least 1</td><td>7</td><td class="ok">met</td></tr>
+<tr><td>sweep-commits: clean reviews in a row</td><td>build</td><td>at least 2</td><td>7</td><td class="ok">met</td></tr>
+<tr><td>sweep-commits: open high findings</td><td>build</td><td>at most 0</td><td>0</td><td class="ok">met</td></tr>
+<tr><td>sweep-foreign-and-logs: green unit runs in a row</td><td>build</td><td>at least 1</td><td>6</td><td class="ok">met</td></tr>
+<tr><td>sweep-foreign-and-logs: clean reviews in a row</td><td>build</td><td>at least 2</td><td>3</td><td class="ok">met</td></tr>
+<tr><td>sweep-foreign-and-logs: open high findings</td><td>build</td><td>at most 0</td><td>0</td><td class="ok">met</td></tr>
+<tr><td>Repo copies under .claude/commands/.shortcuts equal the generator output</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>Full npm test green after the last stream</td><td>build</td><td>at least 1</td><td>12</td><td class="ok">met</td></tr>
+<tr><td>Owner merged the PR</td><td>human</td><td>is true</td><td>false</td><td class="warn">waiting on human</td></tr>
+</tbody>
+</table></div>
+
+<h2>Streams</h2>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Stream</th><th scope="col">State</th><th scope="col">Phase</th><th scope="col">Next</th><th scope="col">Tasks</th></tr></thead>
+<tbody>
+<tr><td>diff-range</td><td>done</td><td>/w-plan-tdd-swarm · review</td><td>done; compounded via /bc</td><td></td></tr>
+<tr><td>pt</td><td>done</td><td>/w-plan-tdd-swarm · review</td><td>done; compounded via /bc</td><td></td></tr>
+<tr><td>bc</td><td>done</td><td>/w-plan-tdd-swarm · review</td><td>done; compounded via /bc</td><td></td></tr>
+<tr><td>marathon</td><td>done</td><td>/w-plan-tdd-swarm · review</td><td>done; compounded via /bc</td><td></td></tr>
+<tr><td>bbs</td><td>done</td><td>/w-plan-tdd-swarm · done</td><td>/bc write-up</td><td></td></tr>
+<tr><td>sweep-commits</td><td>done</td><td>done</td><td>/bc write-up</td><td></td></tr>
+<tr><td>sweep-foreign-and-logs</td><td>done</td><td>integrate</td><td>run-wide: merge origin/main into the final branch (5 conflicts), regenerate all shortcuts, full npm test, gate, page, finish, PR</td><td></td></tr>
+</tbody>
+</table></div>
+
+<h2>Review ledger</h2>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Review</th><th scope="col">Stream</th><th scope="col">Round</th><th scope="col">Result</th><th scope="col">High / medium / low</th><th scope="col">Time</th></tr></thead>
+<tbody>
+<tr><td>90804c82-57b2-4f9b-9441-07d294801821</td><td>diff-range</td><td>1</td><td class="bad">over</td><td>1 / 2 / 2</td><td>2026-10-10T16:43:20.401Z</td></tr>
+<tr><td>2dfd10ea-679b-4620-badd-01f0a1c8fd9e</td><td>diff-range</td><td>2</td><td class="bad">over</td><td>0 / 3 / 1</td><td>2026-10-10T16:51:42.707Z</td></tr>
+<tr><td>f3591445-3333-485a-95c1-fa9f4206e34f</td><td>diff-range</td><td>3</td><td class="ok">pass</td><td>0 / 2 / 0</td><td>2026-10-10T16:59:15.151Z</td></tr>
+<tr><td>e98d3fca-9589-4bbf-b259-65957ad4afd4</td><td>diff-range</td><td>4</td><td class="ok">pass</td><td>0 / 1 / 0</td><td>2026-10-10T17:05:38.344Z</td></tr>
+<tr><td>47ea8a77-4348-4a8f-a396-f3f4258f7c43</td><td>diff-range</td><td>5</td><td class="ok">pass</td><td>0 / 2 / 3</td><td>2026-10-10T17:22:08.333Z</td></tr>
+<tr><td>4b11c2e5-0ba3-41e5-85b0-7d5945eb6b0f</td><td>diff-range</td><td>6</td><td class="bad">over</td><td>1 / 0 / 5</td><td>2026-10-10T17:35:49.293Z</td></tr>
+<tr><td>75022879-8e6e-41d0-ab0a-aa4766edcb05</td><td>diff-range</td><td>7</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-10-10T17:44:46.344Z</td></tr>
+<tr><td>a755ee5d-ac89-4adc-b679-affeb1fb8876</td><td>diff-range</td><td>8</td><td class="bad">over</td><td>0 / 3 / 1</td><td>2026-10-10T17:54:38.423Z</td></tr>
+<tr><td>dab4ff30-db47-4274-8a7f-a8df4197740d</td><td>diff-range</td><td>9</td><td class="ok">pass</td><td>0 / 1 / 3</td><td>2026-10-10T18:02:48.211Z</td></tr>
+<tr><td>55283da8-fe83-4f2c-9bf9-982a797eeeaf</td><td>diff-range</td><td>10</td><td class="ok">pass</td><td>0 / 1 / 2</td><td>2026-10-10T18:10:00.755Z</td></tr>
+<tr><td>ed97d217-641c-4cb5-bc7b-22ef56cf19ed</td><td>diff-range</td><td>11</td><td class="ok">pass</td><td>0 / 0 / 2</td><td>2026-10-10T18:17:13.394Z</td></tr>
+<tr><td>20c11934-734e-44ad-a59d-2613e5a66d3f</td><td>pt</td><td>1</td><td class="ok">pass</td><td>0 / 2 / 4</td><td>2026-10-10T18:28:03.247Z</td></tr>
+<tr><td>11af07d3-01d5-4819-9adf-5b7902494012</td><td>pt</td><td>2</td><td class="ok">pass</td><td>0 / 1 / 4</td><td>2026-10-10T18:38:56.530Z</td></tr>
+<tr><td>d3f27384-742f-4bfd-895e-b0b81c07dc69</td><td>pt</td><td>3</td><td class="ok">pass</td><td>0 / 0 / 3</td><td>2026-10-10T18:46:08.727Z</td></tr>
+<tr><td>1b6e61e5-9bd6-4b10-8570-5c692eead599</td><td>pt</td><td>4</td><td class="ok">pass</td><td>0 / 0 / 1</td><td>2026-10-10T18:54:58.604Z</td></tr>
+<tr><td>def5bec1-247b-44b2-ae78-9455c19858c9</td><td>bc</td><td>1</td><td class="bad">over</td><td>1 / 3 / 3</td><td>2026-10-10T19:03:08.392Z</td></tr>
+<tr><td>6e6aecbc-b592-4dd3-a7e2-1ca72e3f24b0</td><td>bc</td><td>2</td><td class="bad">over</td><td>1 / 3 / 1</td><td>2026-10-10T19:12:02.494Z</td></tr>
+<tr><td>eb913b75-9686-4003-b10e-7d3c8e52467c</td><td>bc</td><td>3</td><td class="bad">over</td><td>0 / 3 / 1</td><td>2026-10-10T19:20:42.951Z</td></tr>
+<tr><td>3fd389df-4c6e-4898-ac8a-17a4994b0180</td><td>bc</td><td>4</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-10-10T19:29:16.531Z</td></tr>
+<tr><td>ad2c8454-6d44-4635-a484-57c03dba9f84</td><td>bc</td><td>5</td><td class="ok">pass</td><td>0 / 2 / 3</td><td>2026-10-10T19:38:20.516Z</td></tr>
+<tr><td>f5484cfd-2ce7-48d6-95f8-e6f75cc03ba2</td><td>bc</td><td>6</td><td class="ok">pass</td><td>0 / 0 / 5</td><td>2026-10-10T19:47:31.092Z</td></tr>
+<tr><td>32fec91d-ce8a-4507-93b6-724ca945ad4e</td><td>bc</td><td>7</td><td class="ok">pass</td><td>0 / 1 / 1</td><td>2026-10-10T19:54:14.936Z</td></tr>
+<tr><td>bb2e841b-720b-4705-bf1a-334944308109</td><td>bc</td><td>8</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-10-10T20:02:12.898Z</td></tr>
+<tr><td>34daa137-af37-4a21-bc9a-42a68beb713f</td><td>bc</td><td>9</td><td class="ok">pass</td><td>0 / 0 / 2</td><td>2026-10-10T20:08:41.406Z</td></tr>
+<tr><td>6d957791-b9cf-4fe2-b987-9b03815e4763</td><td>marathon</td><td>1</td><td class="bad">over</td><td>2 / 1 / 3</td><td>2026-10-10T20:19:02.849Z</td></tr>
+<tr><td>77b23ca4-249f-458d-986f-1ecd935bd4cf</td><td>marathon</td><td>2</td><td class="ok">pass</td><td>0 / 2 / 4</td><td>2026-10-10T20:32:35.008Z</td></tr>
+<tr><td>ffa73977-f66c-476c-bb64-d5eac3b0034d</td><td>marathon</td><td>3</td><td class="ok">pass</td><td>0 / 1 / 1</td><td>2026-10-10T20:42:07.791Z</td></tr>
+<tr><td>4f04c228-c12a-4f47-b2eb-7f55bf06da26</td><td>marathon</td><td>4</td><td class="ok">pass</td><td>0 / 1 / 1</td><td>2026-10-10T20:48:56.773Z</td></tr>
+<tr><td>ae8569cb-d2f4-42c4-a125-53429e337326</td><td>marathon</td><td>5</td><td class="ok">pass</td><td>0 / 1 / 2</td><td>2026-10-10T20:55:20.970Z</td></tr>
+<tr><td>f1013d46-50fa-4702-9f94-dc80f7c2552e</td><td>marathon</td><td>6</td><td class="ok">pass</td><td>0 / 0 / 1</td><td>2026-10-10T21:02:52.110Z</td></tr>
+<tr><td>805b4bb4-a961-4bf1-8c69-c27b729ebca6</td><td>bbs</td><td>1</td><td class="ok">pass</td><td>0 / 2 / 4</td><td>2026-10-10T21:12:36.183Z</td></tr>
+<tr><td>b8e3ddfc-3530-457e-8e7c-358ac9dfddc9</td><td>bbs</td><td>2</td><td class="bad">over</td><td>0 / 3 / 2</td><td>2026-10-10T21:25:37.625Z</td></tr>
+<tr><td>9f154d4d-2f86-4710-a9f4-a116dc939dd3</td><td>bbs</td><td>3</td><td class="bad">over</td><td>0 / 3 / 3</td><td>2026-10-10T21:38:50.699Z</td></tr>
+<tr><td>cdbc896b-2979-442f-8d74-d4aa00cde788</td><td>bbs</td><td>4</td><td class="ok">pass</td><td>0 / 1 / 2</td><td>2026-10-10T21:47:08.752Z</td></tr>
+<tr><td>2f09d3b8-8826-4861-a9e3-4f181bc51626</td><td>bbs</td><td>5</td><td class="ok">pass</td><td>0 / 1 / 3</td><td>2026-10-10T21:55:06.438Z</td></tr>
+<tr><td>7e5170cf-ea5c-46cb-8b33-4150f83a631a</td><td>bbs</td><td>6</td><td class="ok">pass</td><td>0 / 1 / 1</td><td>2026-10-10T22:01:37.417Z</td></tr>
+<tr><td>389b6b36-0253-4fae-8d32-5c803439159d</td><td>bbs</td><td>7</td><td class="ok">pass</td><td>0 / 0 / 0</td><td>2026-10-10T22:10:56.061Z</td></tr>
+<tr><td>a1204b1b-00b9-4790-aa55-7b4153b76159</td><td>sweep-commits</td><td>1</td><td class="ok">pass</td><td>0 / 2 / 4</td><td>2026-10-10T22:29:47.348Z</td></tr>
+<tr><td>4ec787b3-a7f9-4cce-a8b7-09f80be2b42b</td><td>sweep-commits</td><td>2</td><td class="ok">pass</td><td>0 / 2 / 4</td><td>2026-10-10T22:39:14.443Z</td></tr>
+<tr><td>9b08cc7c-f2ee-4769-a37b-d3ac24867389</td><td>sweep-commits</td><td>3</td><td class="ok">pass</td><td>0 / 1 / 2</td><td>2026-10-10T22:47:02.925Z</td></tr>
+<tr><td>84d80b23-2be2-49df-a230-ddc7a8e2a2fd</td><td>sweep-commits</td><td>4</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-10-10T22:52:29.361Z</td></tr>
+<tr><td>17c27d99-a416-4fcf-a840-519ff66f6584</td><td>sweep-commits</td><td>5</td><td class="ok">pass</td><td>0 / 1 / 2</td><td>2026-10-10T22:57:35.387Z</td></tr>
+<tr><td>4ad15ef8-610f-4d91-9ec5-ffcd60e278c2</td><td>sweep-commits</td><td>6</td><td class="ok">pass</td><td>0 / 2 / 0</td><td>2026-10-10T23:03:05.867Z</td></tr>
+<tr><td>406e5e8e-c927-4d1a-9276-1ae99c094702</td><td>sweep-commits</td><td>7</td><td class="ok">pass</td><td>0 / 0 / 1</td><td>2026-10-10T23:10:43.658Z</td></tr>
+<tr><td>39ad9130-8ef5-41bf-bbdf-d68a30c03746</td><td>sweep-foreign-and-logs</td><td>1</td><td class="bad">over</td><td>1 / 1 / 3</td><td>2026-10-10T23:38:05.500Z</td></tr>
+<tr><td>7c1ff031-7a0e-4ea4-942a-32bb7020798b</td><td>sweep-foreign-and-logs</td><td>2</td><td class="bad">over</td><td>1 / 2 / 3</td><td>2026-10-10T23:54:20.660Z</td></tr>
+<tr><td>7b221b12-0341-4f22-b134-ab455c699024</td><td>sweep-foreign-and-logs</td><td>3</td><td class="ok">pass</td><td>0 / 2 / 4</td><td>2026-10-11T00:04:38.649Z</td></tr>
+<tr><td>927d27e2-bc63-4daf-af98-ba772b385d5e</td><td>sweep-foreign-and-logs</td><td>4</td><td class="ok">pass</td><td>0 / 2 / 2</td><td>2026-10-11T00:19:34.054Z</td></tr>
+<tr><td>0ccc3c40-9d89-44a0-9230-9c8e50258ecc</td><td>sweep-foreign-and-logs</td><td>5</td><td class="ok">pass</td><td>0 / 0 / 2</td><td>2026-10-11T00:32:58.830Z</td></tr>
+</tbody>
+</table></div>
+
+<h2>Helper spend by model</h2>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Model</th><th scope="col">Helpers</th><th scope="col">Done</th><th scope="col">Tokens used</th><th scope="col">Tokens budgeted in flight</th></tr></thead>
+<tbody>
+<tr><td>sonnet</td><td>42</td><td>42</td><td>2,703,222</td><td>0</td></tr>
+<tr><td>opus</td><td>65</td><td>65</td><td>3,602,051</td><td>0</td></tr>
+</tbody>
+</table></div>
+</main>
+</body>
+</html>
