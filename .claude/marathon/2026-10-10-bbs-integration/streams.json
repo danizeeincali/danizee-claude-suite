@@ -1,0 +1,58 @@
+{
+  "streams": [
+    {
+      "name": "_meta",
+      "state": "meta",
+      "isolation": "worktree",
+      "created": "2026-10-10T16:25:10.352Z",
+      "tasks": [],
+      "finished": "2026-10-10T18:47:49.076Z"
+    },
+    {
+      "name": "usage",
+      "state": "done",
+      "plan": ".claude/plans/2026-10-10-bbs-integration.md",
+      "next": "write usage verb tests",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-usage",
+      "phase": "build",
+      "base": "ac3ed404d6114d6b9eff9c731865bad54904d87d"
+    },
+    {
+      "name": "targets",
+      "state": "done",
+      "plan": ".claude/plans/2026-10-10-bbs-integration.md",
+      "next": "fix usage r4 findings, then review",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-targets",
+      "base": "072e408a2ecb1bedc0dd1c1822a65489fbb5501c",
+      "phase": "build"
+    },
+    {
+      "name": "integration-gate",
+      "state": "done",
+      "plan": ".claude/plans/2026-10-10-bbs-integration.md",
+      "next": "merged into claude/project-thread-9ow0sy",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-gate",
+      "base": "a59228cf78b32de6790b86c1fa8fd058936072c9"
+    },
+    {
+      "name": "surfaces",
+      "state": "blocked",
+      "plan": ".claude/plans/2026-10-10-bbs-integration.md",
+      "next": "merged into integration-gate",
+      "tasks": []
+    }
+  ],
+  "handoff": {
+    "ts": "2026-10-10T18:04:39.935Z",
+    "trigger": "auto",
+    "branch": "claude/project-thread-9ow0sy",
+    "commit": "9a7285c",
+    "uncommitted": 5,
+    "tasks": [],
+    "context_tokens": 383204,
+    "context_pct": 38.3
+  }
+}

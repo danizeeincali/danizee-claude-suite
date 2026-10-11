@@ -439,7 +439,7 @@ mcp__claude-flow__neural_patterns { action: "learn" }
 **Philosophy:** Ideas need refinement before implementation. This workflow uses structured interviewing to transform vague concepts into clear specs, then executes them with TDD Swarm rigor.
 
 **⚠️ Enforcement:**
-- MANDATORY: Use TodoWrite first with all 9 phases
+- MANDATORY: Use TodoWrite first with all 12 phases
 - NEVER skip interview phase - ideas MUST be refined
 - BLOCKING: Build is BLOCKED until tests exist and FAIL
 - NEVER skip compound phase at the end

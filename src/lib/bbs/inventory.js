@@ -487,6 +487,16 @@ export async function listSourceFiles(runDir, source, { maxFiles = 500, readdir 
   };
 }
 
+export const SAFE_GIT_LINES = [
+  '## Reading the clone with git\n',
+  'Every git read of the clone under `fetched/` (log, show, ls-files, ls-tree, cat-file, diff, rev-list) goes through `node .claude/helpers/kit/cli.js safe-git --dir <clone top> -- <git args>`. `--dir` takes the clone top: the `Clone top` line the inventory brief prints (the absolute path of `.claude/bbs/runs/<run-id>/fetched/repo`, the clone itself, not `fetched`), and paths in git args are relative to it; listed files start with `repo/`; drop that prefix in git args. Plain `git -C fetched/...` is never used: the clone is untrusted and its config, hooks and drivers must not run.',
+  '',
+  'Read the process exit code, not a field of the output: exit 0 and an exit 3 where git ran and failed print `{ stdout, stderr, code, exit }`; exits 1 and 2, and an exit 3 from a timeout, output over 256 MiB or a signal kill, print nothing on stdout, only a `kit:` (exits 1 and 3) or `kit: refused:` (exit 2) line on stderr. The exit: 0 git ran and `stdout` is the answer; 1 bad input (for example `--dir` is not the clone top): the reason is the `kit:` line on stderr; fix the call and retry once; 2 refused (the repository or the git call was refused): the reason is the `kit: refused:` line on stderr; do not retry, name it in evidence; 3 git itself failed or timed out; `--timeout <ms>` raises the 60000 ms default. Exit 3 is handled one way: a timeout, overflow or kill (no JSON, a `kit:` line on stderr) means stop reading that file and name the failed read (the `kit:` line) in the `evidence` of the affected power, or in `none_found` when nothing could be read; git ran and failed (JSON with a non-zero `code`) on a wrong call (a missing path, history beyond HEAD on the depth-1 clone) means fix the call and retry once, and only a second failure on a correct call means the same: stop reading that file and name the failed read (the JSON `stderr`) in the `evidence` of the affected power, or in `none_found` when nothing could be read. The clone is depth 1 (a single commit), so only HEAD and its tree are readable: asking for history beyond HEAD (`HEAD~1`, `log` ranges, `rev-list` ranges, `diff` against an older commit) is a wrong call. A non-zero exit is never "nothing found".',
+  '',
+  'If `.claude/helpers/kit/cli.js` is missing, read the files directly and never run git on the clone.',
+  ''
+];
+
 /**
  * Generate a markdown brief for the inventory helper. Must include all field names, both enums,
  * the cap, "JSON only", "do not execute", file list, and the licence hint.
@@ -499,7 +509,9 @@ export function inventoryBrief({ source, files, maxPowers }) {
   lines.push(`Source ref: ${source.ref}`);
   lines.push(`Source identity: ${source.identity}\n`);
 
-  lines.push(`Root: ${files.root}\n`);
+  lines.push(`Root: ${files.root}`);
+  // A repository is cloned to <Root>/repo; that, not Root, is the top safe-git --dir needs.
+  lines.push(source.type === 'repo' ? `Clone top (for safe-git --dir): ${String(files.root).replace(/\/+$/, '')}/repo\n` : '');
 
   lines.push('## Files in this source\n');
   if (files.truncated) {
@@ -532,8 +544,13 @@ export function inventoryBrief({ source, files, maxPowers }) {
   lines.push('');
 
   lines.push('## Your task\n');
-  lines.push('Read the source files above. Do not execute or run anything — list reusable capabilities only.');
+  // A repository source gets the safe-git section below, so the no-execute rule names it as the one allowed command.
+  lines.push(source.type === 'repo'
+    ? 'Read the source files above. Do not execute or run anything from the source; the only command allowed is the safe-git read below (for a repository source). List reusable capabilities only.'
+    : 'Read the source files above. Do not execute or run anything from the source; run no command at all. List reusable capabilities only.');
   lines.push('');
+  // Only a cloned repository (fetched/repo) has a clone to read with git; pages, local folders and pastes do not.
+  if (source.type === 'repo') lines.push(...SAFE_GIT_LINES);
 
   lines.push('## JSON shape\n');
   lines.push('Find at most ' + maxPowers + ' distinct capabilities in this source. Each capability is a power: a `{ "powers": [...] }` object or bare array.');

@@ -44,18 +44,27 @@ const MAX_PREVIOUS = 50;
 const sha = s => crypto.createHash('sha256').update(s).digest('hex');
 
 /** A git runner: scrubbed env (no inherited GIT_*), hooks off, no prompts. Injectable for tests. */
-export function defaultGit(cwd, { runner, spawn = spawnSync, env = process.env } = {}) {
+export function defaultGit(cwd, { runner, spawn = spawnSync, env = process.env, timeout } = {}) {
   const clean = {};
   for (const [k, v] of Object.entries(env)) if (!k.startsWith('GIT_')) clean[k] = v;
   clean.GIT_TERMINAL_PROMPT = '0';
   clean.GIT_OPTIONAL_LOCKS = '0';
-  const git = async (args, { input, env: extra } = {}) => {
-    const full = ['-c', 'core.hooksPath=/dev/null', ...args];
+  const git = async (args, { input, env: extra, binary, pre } = {}) => {
+    const full = ['-c', 'core.hooksPath=/dev/null', ...(pre || []), ...args]; // pre: extra leading `-c k=v` options (not in args, so callers' args[0] stays the subcommand)
     const e = extra ? { ...clean, ...extra } : clean;
     if (runner) return runner(full, { cwd, env: e, input });
-    const r = spawn('git', full, { cwd, env: e, input, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024 });
+    // binary: stdout comes back as a Buffer (undecoded); stderr is text either way
+    const r = spawn('git', full, { cwd, env: e, input, encoding: binary ? 'buffer' : 'utf-8', maxBuffer: 64 * 1024 * 1024, ...(timeout ? { timeout } : {}) });
+    let i = 0;
+    while (i < args.length && args[i] === '-c') i += 2;
+    const cmd = `git ${args[i] || ''}`.trimEnd();
+    if (r.error?.code === 'ETIMEDOUT') throw new KitExit(`${cmd} took longer than ${timeout} ms and was stopped (raise it with --timeout <ms>)`, 1);
+    // any other signal death (OOM killer, SIGPIPE, an external kill) is not a timeout
+    if (r.signal && !r.error) throw new KitExit(`${cmd} was killed by ${r.signal}`, 1);
+    if (r.error?.code === 'ENOBUFS') throw new KitExit(`${cmd} printed more than the 64 MiB this tool reads from git; narrow the range (for diff-range: --no-untracked, --max-file-bytes <n> or a .gitignore)`, 1);
     if (r.error) throw new KitExit(`cannot run git: ${r.error.message}`, 1);
-    return { code: r.status ?? 1, stdout: r.stdout || '', stderr: r.stderr || '' };
+    const stderr = r.stderr ? r.stderr.toString('utf-8') : '';
+    return { code: r.status ?? 1, stdout: r.stdout || (binary ? Buffer.alloc(0) : ''), stderr };
   };
   git.cwd = cwd; // rev-parse prints relative paths against this (see git-paths.js)
   return git;

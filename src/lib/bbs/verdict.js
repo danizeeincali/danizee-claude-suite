@@ -13,7 +13,8 @@ import { DEFAULT_CONFIG, LICENCE_CLASSES } from './config.js';
 import { runDir as runDirOf, readJson, readJsonl, writeJson, appendJsonl, appendRegistry, lookupSource, moveAsideStale, withMapLockDetailed } from './store.js';
 import { RUN_ID, invalidRunId, redactUrlsInText } from './intake.js';
 import { parseJsonOnly } from './inventory.js';
-import { renderStatusSafe } from './status.js';
+import { renderStatusSafe, loadState, nextStep } from './status.js';
+import { landsIn, standingTargets, noLandingWhy } from './targets.js';
 
 export const VERDICTS = ['rebuild', 'use', 'buy', 'skip'];
 export const PROBES = ['clean', 'found', 'incomplete'];
@@ -402,18 +403,52 @@ function harnessCell(judgment) {
   return status;
 }
 
-export function verdictTable(rows) {
-  const lines = ['| Power | Harness | Licence | Legal | Default | Decision | Why |', '| --- | --- | --- | --- | --- | --- | --- |'];
+/**
+ * The default the owner approves: the row's default, unless it builds (rebuild/use) a power with no standing target.
+ * Building is not the deliverable, so a power that lands nowhere defaults to buy when that is legal, else skip.
+ * Without targets (a run decided before the targets step) the row's default stands.
+ */
+export function landingDefault(name, row, targets, usage) {
+  const d = row?.default ?? null;
+  if (!targets || (d !== 'rebuild' && d !== 'use') || standingTargets(targets[name], usage).length) return d;
+  return (row.legal || []).includes('buy') ? 'buy' : 'skip';
+}
+
+/**
+ * The verdict table. With `targets` (targets.json's map) it gains a Lands in column: where · at · mode per target,
+ * and the Default column is landingDefault (judged against `usage`).
+ */
+export function verdictTable(rows, targets, usage) {
+  const lines = targets
+    ? ['| Power | Harness | Licence | Legal | Default | Lands in | Decision | Why |', '| --- | --- | --- | --- | --- | --- | --- | --- |']
+    : ['| Power | Harness | Licence | Legal | Default | Decision | Why |', '| --- | --- | --- | --- | --- | --- | --- |'];
   for (const [name, r] of Object.entries(rows || {})) {
     const whys = (r.removed || []).map(x => `${x.verdict} removed: ${x.reason}`);
     if (r.needs_probe) whys.push(`use needs a clean network probe (cli.js verdict --probe ${name}=clean|found|incomplete)`);
     if (r.probe?.result) whys.push(`probe: ${r.probe.result}`);
-    const why = whys.join('; ');
     const legal = (r.legal || []).map(v => (v === 'use' && r.needs_probe ? 'use (probe first)' : v)).join(', ');
-    lines.push(`| ${[name, harnessCell(r.judgment), `${r.licence ?? 'unknown'} (${r.licence_class ?? 'none'})`,
-      legal, r.default ?? '', r.decision || '—', why].map(cell).join(' | ')} |`);
+    const shown = landingDefault(name, r, targets, usage);
+    if (targets && shown !== r.default) whys.unshift(`default ${r.default} → ${shown}: ${noLandingWhy(targets[name], usage)}`);
+    const why = whys.join('; ');
+    const cells = [name, harnessCell(r.judgment), `${r.licence ?? 'unknown'} (${r.licence_class ?? 'none'})`, legal, shown ?? ''];
+    if (targets) cells.push(landsIn(targets[name], usage ?? null));
+    lines.push(`| ${[...cells, r.decision || '—', why].map(cell).join(' | ')} |`);
   }
   return lines.join('\n');
+}
+
+/**
+ * targets.json and usage.json for the table. A corrupt file never fails the view: the table drops the Lands in column
+ * and the warning names the repair.
+ */
+export async function tableInputs(dir) {
+  const read = async (file, fix) => {
+    try { return { v: await readJson(path.join(dir, file)) }; } catch (err) { return { w: `${err.message} — ${fix} to replace it; the table is shown without Lands in` }; }
+  };
+  const t = await read('targets.json', 'run cli.js targets --force --from <file>');
+  const u = await read('usage.json', 'run cli.js usage --force');
+  const warning = [t.w, u.w].filter(Boolean).join('; ') || null;
+  return { targets: warning ? undefined : t.v?.targets, usage: u.v ?? null, warning };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -528,7 +563,8 @@ export function sanitizeEvidence(text) {
   return capCodePoints(red, EVIDENCE_MAX_CHARS, EVIDENCE_TRUNCATED);
 }
 
-const nextOf = (rows, unread) => unread ? null : Object.values(rows).every(r => r.decision) ? 'handoff' : 'verdict';
+/** The next step from the step order: usage comes before deciding, so an undecided run without usage.json says usage. */
+const nextOf = async (dir, unread) => unread ? null : nextStep(await loadState(dir));
 
 export const POWERS_CHANGED = 'powers.json changed since the verdicts were computed — run cli.js verdict first';
 /** The repair hint names the input that was used: --decide and --from <path> are re-run as given, stdin is resubmitted. */
@@ -707,15 +743,17 @@ export async function computeVerdicts(projectDir, { run, sandbox, now = () => ne
     if (regWarning) warnings.push(regWarning);
     const { warning, unread } = await renderAfterCommit(p.dir);
     if (warning) warnings.push(warning);
+    const tin = await tableInputs(p.dir); // verdicts.json is committed: an unreadable input is a warning, never a failure
+    if (tin.warning) warnings.push(tin.warning);
     const w = joinWarnings(...warnings);
     return {
       runId: run,
       sandbox: sb,
       rows,
-      table: verdictTable(rows),
+      table: verdictTable(rows, tin.targets, tin.usage),
       needs_probe: Object.keys(rows).filter(n => rows[n].needs_probe),
       dropped,
-      next: nextOf(rows, unread),
+      next: await nextOf(p.dir, unread),
       ...(w ? { warning: w, warnings } : {})
     };
   }, lockOpts);
@@ -752,7 +790,7 @@ export async function recordProbe(projectDir, { run, power, result, evidence, no
     const regWarning = await supersedeRegistry(projectDir, p, run, vj, cfg, appendRegistryImpl);
     const { warning, unread } = await renderAfterCommit(p.dir);
     const w = joinWarnings(...sandboxConfigWarnings(cfg), cleared, ...refreshWarnings, labelWarning, regWarning, warning);
-    return { runId: run, power, ...row, next: nextOf(vj.rows, unread), ...(sandboxChanged ? { sandbox_changed: true } : {}), ...(w ? { warning: w } : {}) };
+    return { runId: run, power, ...row, next: await nextOf(p.dir, unread), ...(sandboxChanged ? { sandbox_changed: true } : {}), ...(w ? { warning: w } : {}) };
   }, lockOpts);
   return withWarning(out, lockWarning);
 }
@@ -823,9 +861,28 @@ export async function recordDecisions(projectDir, { run, input, now = () => new 
     // Validate everything before the decisions are written. A decision identical to the recorded one is a repair, not a change.
     const changed = [];
     const repeated = [];
+    const repairable = async (file, verb) => {
+      try { return await readJson(path.join(p.dir, file)); } catch (err) { throw new Error(`${err.message} — ${verb} to replace it`); }
+    };
+    // usage.json and targets.json matter only to a decision that newly builds: a skip, a buy or a resubmitted
+    // (repaired) decision is never blocked by them
+    const builds = Object.entries(decisions).some(([n, v]) => (v === 'rebuild' || v === 'use') && (vj.decisions[n] ?? vj.rows[n].decision) !== v);
+    const counted = builds ? await repairable('usage.json', 'run cli.js usage --force (or --force --workflows <a,b>)') : null;
+    const landing = builds ? (await repairable('targets.json', 'run cli.js targets --force --from <file>'))?.targets : null;
     try {
       for (const [name, v] of Object.entries(decisions)) {
         const row = vj.rows[name];
+        const same = (vj.decisions[name] ?? row.decision) === v; // resubmitting a recorded decision is a repair, not a change
+        if ((v === 'rebuild' || v === 'use') && !same && !counted) {
+          throw new PolicyRefused(`${v} needs the usage step first: run cli.js usage (or cli.js usage --workflows <a,b> with the owner's own list), then decide ${name}`);
+        }
+        if ((v === 'rebuild' || v === 'use') && !same && !standingTargets(landing?.[name], counted).length) {
+          // building is not the deliverable: a power lands where a user meets it, or it is not built
+          const why = noLandingWhy(landing?.[name], counted);
+          const evidenceFix = /unverified/.test(why) ? 'record the owner\'s workflows with cli.js usage --force --workflows <a,b>, or ' : '';
+          throw new PolicyRefused(`${v} needs a place for ${name} to land: ${why} — ${evidenceFix}`
+            + `record targets with cli.js targets --from <file>, or the owner's own with cli.js targets --set ${name}@<workflow|kind:file[#anchor]>[,…]; otherwise skip or buy it`);
+        }
         if (v === 'use' && row.needs_probe) {
           throw new PolicyRefused(`use needs a clean network probe for ${name} first (cli.js verdict --probe ${name}=clean|found|incomplete); legal verdicts are ${row.legal.join(', ')}`);
         }
@@ -897,7 +954,7 @@ export async function recordDecisions(projectDir, { run, input, now = () => new 
       runId: run,
       decided: names.length - remaining.length,
       remaining,
-      next: unread ? null : remaining.length ? 'verdict' : 'handoff',
+      next: await nextOf(p.dir, unread),
       registry_written,
       ...(sandboxChanged ? { sandbox_changed: true } : {}),
       ...(w ? { warning: w } : {})
