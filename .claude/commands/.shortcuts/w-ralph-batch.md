@@ -148,6 +148,8 @@ STOP and wait for user response.
 
 set -e  # Exit on error
 LOG_FILE="ralph-batch-$(date +%Y%m%d-%H%M%S).log"
+OUT=$(mktemp) || { echo "mktemp failed: no place to capture claude output" >&2; exit 1; }
+trap 'rm -f "$OUT"' EXIT
 KIT=.claude/helpers/kit/cli.js
 SECRETS=.claude/kit/secrets
 GC=$(git rev-parse --git-common-dir 2>/dev/null || true)
@@ -177,6 +179,23 @@ log() {
   fi
 }
 
+# One claude -p run is captured in $OUT, redacted once as a whole (not line by line), and its
+# text appended to the log. A failed redact appends the raw file with a marker; nothing is dropped.
+log_output() {
+  local json text rc
+  [ -s "$OUT" ] || return 0
+  if [ -f "$KIT" ] && { [ -e "$SECRETS" ] || [ -L "$SECRETS" ] || [ -e "$MAIN_SECRETS" ] || [ -L "$MAIN_SECRETS" ]; }; then
+    if json=$(node "$KIT" redact --keep-lines < "$OUT") && text=$(printf '%s' "$json" | node -e 'let s="";process.stdin.on("data",d=>{s+=d}).on("end",()=>{process.stdout.write(JSON.parse(s).text)})'); then
+      printf '%s\n' "$text" | tee -a "$LOG_FILE"
+    else
+      rc=$?
+      { cat "$OUT"; [ -z "$(tail -c1 "$OUT")" ] || echo; printf '[redact failed exit %s]\n' "$rc"; } | tee -a "$LOG_FILE"
+    fi
+  else
+    tee -a "$LOG_FILE" < "$OUT"
+  fi
+}
+
 log "Starting Ralph Batch Processing..."
 log "Start time: $(date)"
 
@@ -184,21 +203,23 @@ log "Start time: $(date)"
 log "Processing RC-001: [Name]..."
 claude -p "/w-ralph-this '[spec]'
 Output <promise>RC001_DONE</promise> when all tests pass.
-Max iterations: 50" 2>&1 | while IFS= read -r out || [ -n "$out" ]; do log "$out"; done
+Max iterations: 50" > "$OUT" 2>&1 || true
+log_output
 log "RC-001 complete: $(date)"
 
 # RC-002: [Name]
 log "Processing RC-002: [Name]..."
 claude -p "/w-ralph-this '[spec]'
 Output <promise>RC002_DONE</promise> when all tests pass.
-Max iterations: 50" 2>&1 | while IFS= read -r out || [ -n "$out" ]; do log "$out"; done
+Max iterations: 50" > "$OUT" 2>&1 || true
+log_output
 log "RC-002 complete: $(date)"
 
 log "Ralph Batch Complete: $(date)"
 echo "Results logged to: $LOG_FILE"
 ```
 
-**Log redaction (inside the generated script):** the `log()` function above pipes each line (the script's own lines and, one by one, every line `claude -p` prints) through `node .claude/helpers/kit/cli.js redact --keep-lines` (stdin to JSON `{ text, replaced }`; the `text` is what is logged) only when, at run time, `.claude/helpers/kit/cli.js` exists and so does a secrets file (`.claude/kit/secrets` in the worktree top, or in the main checkout: `-e` or `-L`, so a dangling symlink or a directory there still goes to `redact` and fails loudly). Otherwise it is the plain `printf | tee -a "$LOG_FILE"`: with no kit the script behaves as it did before, and the test is the script's own `[ -f ... ]`, not a decision made when it was generated. `redact` exit 0 is the redacted line. Exit 1 is bad input or an unreadable secrets file, never "nothing to redact": the line is still written to the log, with the marker `[redact failed exit 1]` after it, and the script continues (a failed redact never drops a line and never stops an overnight run). Any other non-zero exit (for example 127, or a signal) is a failure of that step and gets the same marker with its exit status. A log line that carries the marker was not redacted: review the log before sharing it. Before the first log line the script writes one line saying which case it is in: `log redaction: on`, or `log redaction: off (kit or secrets file not found from $PWD)` with the directory it ran from (`KIT` and `SECRETS` are relative paths, so run the script from the repository top).
+**Log redaction (inside the generated script):** the `log()` function above pipes each of the script's own one-line messages through `node .claude/helpers/kit/cli.js redact --keep-lines` (stdin to JSON `{ text, replaced }`; the `text` is what is logged), and `log_output` does the same once for the whole output of each `claude -p` run, which the script captures in a temp file (`$OUT`) instead of piping it line by line (one `redact` per candidate, not one per line printed). Both redact only when, at run time, `.claude/helpers/kit/cli.js` exists and so does a secrets file (`.claude/kit/secrets` in the worktree top, or in the main checkout: `-e` or `-L`, so a dangling symlink or a directory there still goes to `redact` and fails loudly). Otherwise they are the plain `tee -a "$LOG_FILE"`: with no kit the script behaves as it did before, and the test is the script's own `[ -f ... ]`, not a decision made when it was generated. `redact` exit 0 is the redacted text. Exit 1 is bad input or an unreadable secrets file, never "nothing to redact": the unredacted text is still written to the log (the raw output file for a candidate), followed by the marker line `[redact failed exit 1]`, and the script continues (a failed redact never drops output and never stops an overnight run). Any other non-zero exit (for example 127, or a signal) is a failure of that step and gets the same marker with its exit status. Output that carries the marker was not redacted: review the log before sharing it. Before the first log line the script writes one line saying which case it is in: `log redaction: on`, or `log redaction: off (kit or secrets file not found from $PWD)` with the directory it ran from (`KIT` and `SECRETS` are relative paths, so run the script from the repository top).
 
 **Phased Mode - Sequential Priority Execution:**
 ```

@@ -260,12 +260,14 @@ R=<printed path>
 (
   [ -s "$R" ] || { echo "redacted text file missing or empty: search skipped" >&2; exit 1; }
   Q=$(mktemp 2>/dev/null) && [ -n "$Q" ] || { echo "mktemp failed: search skipped" >&2; exit 1; }
-  trap 'rm -f "$Q"' EXIT INT TERM
+  trap 'rm -f "$Q" "$Q.resp"' EXIT INT TERM
   node -e 'const fs=require("fs");const L=fs.readFileSync(process.argv[1],"utf8").split(/\r?\n/);const i=L.findIndex(l=>/^@title\s*$/.test(l));const t=[];if(i>=0)for(const l of L.slice(i+1)){if(/^@[A-Za-z_-]+\s*$/.test(l))break;t.push(l)}const q=t.join(" ").trim();if(!q)process.exit(1);fs.writeFileSync(process.argv[2],q)' "$R" "$Q" || { echo "no @title in the field file: search skipped" >&2; exit 1; }
-  curl -sS -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q@$Q" --data top_k=3
+  C=$(curl -sS --connect-timeout 10 --max-time 30 -o "$Q.resp" -w '%{http_code}' -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q@$Q" --data top_k=3); RC=$?
+  [ $RC -eq 0 ] || { echo "search failed (curl exit $RC): fork check not done" >&2; exit $RC; }
+  case "$C" in 2??) cat "$Q.resp";; *) echo "search failed (HTTP $C): fork check not done" >&2; cat "$Q.resp" >&2; exit 22;; esac
 )
 ```
-Exit 0 prints the registry's answer: read the top match's id and score from it. Exit 1 is a missing or empty file, mktemp failed or no `@title`: no search ran; fix it and run again. Any other non-zero exit is curl's (for example 6 or 7, no connection) and is a failure of that step. On either, report it and treat the fork check as not done, never as "no similar recipe".
+The curl writes the answer to `$Q.resp` and prints the HTTP status, with a 10 s connect timeout and a 30 s limit on the whole call; no flag here needs a recent curl. Exit 0 means a 2xx status and prints the registry's answer: read the top match's id and score from it. Exit 1 is a missing or empty file, mktemp failed or no `@title`: no search ran; fix it and run again. Exit 22 is curl exit 0 with a status that is not 2xx (a 404, a 502 or 503, a proxy or captive-portal page): it prints "search failed (HTTP <code>): fork check not done" and the body to stderr, and that body is never the answer. Exit 28 is a timeout, 6 or 7 is no connection, and any other non-zero exit is curl's own: "search failed (curl exit N): fork check not done". On any of these, report it and treat the fork check as not done, never as "no similar recipe".
 
 **Build the JSON body from the redacted text.** Shell variables do not persist between Bash calls, so bind `R` to the printed `file=` path and `E` to the path you wrote in the same command. The block encodes the fields with `JSON.stringify` into a new temp file `$B` (`title`, `description`, `tags`, `version` "1.0.0", `steps`, and `forked_from` only when the `@forked_from` block is there), and when the kit and a secrets file exist it runs the encoded body through `redact` once more and refuses to send when that finds anything:
 ```bash
@@ -291,12 +293,15 @@ Exit 0 prints `body=<path>` (call it `$B`). Exit 1 is a missing or empty text fi
 
 ```bash
 B=<printed body path>; R=<printed path>; E=<the path you wrote>; [ -s "$B" ] || { echo "body file missing or empty" >&2; exit 1; }
-curl -sS --fail-with-body -X POST https://pi.ruv.io/v1/memories \
+C=$(curl -sS --connect-timeout 10 --max-time 30 -o "$B.resp" -w '%{http_code}' -X POST https://pi.ruv.io/v1/memories \
   -H "Content-Type: application/json" \
-  --data-binary @"$B" && rm -f -- "$B" "$R" "$E"
+  --data-binary @"$B"); RC=$?
+if [ $RC -ne 0 ]; then echo "POST failed (curl exit $RC): not submitted, files kept" >&2; cat "$B.resp" 2>/dev/null; exit $RC
+else case "$C" in 2??) cat "$B.resp"; rm -f -- "$B" "$R" "$E" "$B.resp";; *) echo "POST failed (HTTP $C): not submitted, files kept" >&2; cat "$B.resp" >&2; exit 22;; esac; fi
 ```
 
-Write the literal printed paths for `B=` and `R=` and the path you wrote for `E=`. `$E` holds the unredacted text, so it is removed on every path, sent or abandoned: after a redact exit 1, a build exit 1 or 2, a failed POST, or a body you decide not to send, run `rm -f -- "$E" "$R" "$B"` with the literal paths (`$R` and `$B` only when a path was printed). `--fail-with-body` makes an HTTP 4xx or 5xx answer a non-zero exit, and the `&&` then leaves the files in place, so a retry needs no rebuild. Exit 0 is submitted (the registry's answer holds the recipe id) and the three files are removed. Exit 22 is an HTTP error from the registry, printed with its body: not submitted, files kept (submitted as: skipped, reason: the printed status, unless a retry succeeds). Any other non-zero exit (for example 6 or 7, no connection, or 127) is a failure of that step: not submitted, files kept, report it. Never read a non-zero exit as submitted; when you give up on the recipe, remove the files as above.
+Write the literal printed paths for `B=` and `R=` and the path you wrote for `E=`. `$E` holds the unredacted text, so it is removed on every path, sent or abandoned: after a redact exit 1, a build exit 1 or 2, a failed POST, or a body you decide not to send, run `rm -f -- "$E" "$R" "$B" "$B.resp"` with the literal paths (`$R` and `$B` only when a path was printed). The curl writes the registry's answer to `$B.resp` and prints the HTTP status (plain flags, so it works on any curl, with a 10 s connect timeout and a 30 s limit on the whole call); the block then decides from the status, and a non-2xx answer leaves the files in place, so a retry needs no rebuild. Exit 0 is a 2xx status: submitted (the answer, printed, holds the recipe id), and the block removes `$B`, `$R`, `$E` and the response file. Exit 22 is curl exit 0 with a status that is not 2xx: it prints the status and the response file, not submitted, files kept (submitted as: skipped, reason: the printed status, unless a retry succeeds). Exit 28 is a timeout, 6 or 7 is no connection, and any other non-zero exit (for example 127) is curl's own: not submitted, files kept, report it. Never read a non-zero exit as submitted; when you give up on the recipe, remove the files as above.
+After a timeout or a reset in the middle of the POST (exit 28, 52 or 56, or the tool being killed) the registry may already have stored the recipe: before resending, run the search fence above again for the exact title (`$R` is kept) and resend only when that recipe is not already there; if it is, report it as submitted with the id found and remove the files. Without that check a retry can post the same public recipe twice.
 
 **REQUIRED OUTPUT:**
 - Recipe-worthy: yes/no
