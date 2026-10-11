@@ -76,21 +76,21 @@
       "name": "sweep-foreign-and-logs",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "4.7 fix round 3 (portable curl status checks, timeouts, per-candidate redact), then unit run, round 4",
+      "next": "4.5 round 4 opus review",
       "tasks": [],
       "isolation": "../danizee-claude-suite-sweep-foreign-and-logs",
       "base": "38552ec51f19e978f3b95bc47716950676a33fa9",
-      "phase": "fix"
+      "phase": "review"
     }
   ],
   "handoff": {
-    "ts": "2026-10-10T21:03:09.812Z",
+    "ts": "2026-10-11T00:14:52.663Z",
     "trigger": "auto",
     "branch": "claude/project-thread-vootem",
-    "commit": "41dd24c",
+    "commit": "35f3036",
     "uncommitted": 0,
     "tasks": [],
-    "context_tokens": 383823,
-    "context_pct": 38.4
+    "context_tokens": 382830,
+    "context_pct": 38.3
   }
 }
