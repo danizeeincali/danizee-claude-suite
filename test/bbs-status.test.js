@@ -19,8 +19,8 @@ const base = {
 };
 
 describe('status — steps and nextStep', () => {
-  it('STEPS are the six verbs in order', () => {
-    assert.deepEqual(STEPS, ['intake', 'fetch', 'inventory', 'map', 'verdict', 'handoff']);
+  it('STEPS are the nine verbs in order', () => {
+    assert.deepEqual(STEPS, ['intake', 'fetch', 'inventory', 'map', 'usage', 'surfaces', 'targets', 'verdict', 'handoff']);
   });
 
   it('no source → intake; pending identity or unfetched → fetch', () => {
@@ -40,9 +40,19 @@ describe('status — steps and nextStep', () => {
     const mapHalf = { candidates: { p1: [], p2: [] }, judgments: { p1: 'have' } };
     assert.equal(nextStep({ ...fetched, powers, map: mapHalf }), 'map', 'every power needs a judgment');
     const map = { candidates: { p1: [], p2: [] }, judgments: { p1: 'have', p2: 'missing' } };
-    assert.equal(nextStep({ ...fetched, powers, map }), 'verdict');
+    assert.equal(nextStep({ ...fetched, powers, map }), 'usage', 'which workflows the owner uses comes before the verdict');
+    const usage = { evidence: 'none', workflows: [] };
+    assert.equal(nextStep({ ...fetched, powers, map, usage }), 'surfaces', 'where a user meets a feature is found in the code before targets');
+    const surfaces = { surfaces: [], owner: [] };
+    assert.equal(nextStep({ ...fetched, powers, map, usage, surfaces }), 'targets', 'where each power lands comes before the verdict');
+    assert.equal(nextStep({ ...fetched, powers, map, usage, surfaces, targets: { targets: { p1: [] } } }), 'targets', 'every power needs an entry');
+    const targets = { targets: { p1: [], p2: [] } };
+    assert.equal(nextStep({ ...fetched, powers, map, usage, surfaces, targets }), 'verdict');
+    assert.equal(nextStep({ ...fetched, powers, map, usage, targets }), 'surfaces', 'targets without surfaces.json still send the run to surfaces');
     const halfDecided = { decisions: { p1: 'skip' } };
-    assert.equal(nextStep({ ...fetched, powers, map, verdicts: halfDecided }), 'verdict');
+    assert.equal(nextStep({ ...fetched, powers, map, verdicts: halfDecided }), 'usage');
+    assert.equal(nextStep({ ...fetched, powers, map, usage, targets, verdicts: halfDecided }), 'surfaces');
+    assert.equal(nextStep({ ...fetched, powers, map, usage, surfaces, targets, verdicts: halfDecided }), 'verdict');
     const verdicts = { decisions: { p1: 'skip', p2: 'rebuild' } };
     assert.equal(nextStep({ ...fetched, powers, map, verdicts }), 'handoff');
     assert.equal(nextStep({ ...fetched, powers, map, verdicts, handoff: { marathonRun: null, powers: [] } }), 'done');
@@ -52,6 +62,30 @@ describe('status — steps and nextStep', () => {
     const reused = { ...base, source: { ...base.source, identity: 'sha256:a', fetched: true, reuse_from: 'old' },
       powers: { powers: [{ name: 'p' }], not_inventoried: [] }, map: { candidates: { p: [] }, judgments: { p: 'missing' } }, verdicts: { decisions: { p: 'rebuild' } } };
     assert.equal(nextStep(reused), 'handoff');
+  });
+});
+
+describe('status — the surfaces row', () => {
+  const fetched = { ...base, source: { ...base.source, identity: 'sha256:a', fetched: true } };
+  const powers = { powers: [{ name: 'p' }], not_inventoried: [] };
+  const map = { candidates: { p: [] }, judgments: { p: 'missing' } };
+  const usage = { evidence: 'none', workflows: [] };
+
+  it('is next after usage, and done with a count by kind once surfaces.json exists', () => {
+    let md = renderStatus({ ...fetched, powers, map, usage });
+    assert.match(md, /- Next: `cli\.js surfaces`\n/);
+    assert.match(md, /\| usage \| done \| none: 0 workflows \|\n\| surfaces \| next \|  \|\n\| targets \| pending \|  \|\n/);
+    const surfaces = { kinds: { ui: 1, api: 2, job: 0 }, surfaces: [{ id: 'ui:a' }, { id: 'api:b' }, { id: 'api:c' }], owner: [{ id: 'api:c' }, { id: 'cli:d' }] };
+    md = renderStatus({ ...fetched, powers, map, usage, surfaces });
+    assert.match(md, /- Next: `cli\.js targets`\n/);
+    assert.match(md, /\| surfaces \| done \| 4 surfaces \(ui 1, api 2\) \|\n/, 'an owner surface already scanned is counted once');
+    md = renderStatus({ ...fetched, powers, map, usage, surfaces: { kinds: {}, surfaces: [], owner: [] } });
+    assert.match(md, /\| surfaces \| done \| 0 surfaces \(none found\) \|\n/);
+  });
+
+  it('a run decided before the surfaces step shows it as skipped', () => {
+    const md = renderStatus({ ...fetched, powers, map, usage, verdicts: { decisions: { p: 'skip' } }, handoff: { marathonRun: null, powers: [] } });
+    assert.match(md, /\| surfaces \| done \| skipped \(decided before the surfaces step\) \|\n/);
   });
 });
 
@@ -146,7 +180,7 @@ describe('status — review r1 regressions', () => {
   it('null, empty or unknown decisions are undecided for nextStep and summary alike', () => {
     for (const bad of [null, '', 'maybe', 'toString']) {
       const verdicts = { decisions: { p1: 'skip', p2: bad } };
-      assert.equal(nextStep({ ...fetched, powers, map, verdicts }), 'verdict', String(bad));
+      assert.equal(nextStep({ ...fetched, powers, map, usage: { evidence: 'none', workflows: [] }, surfaces: { surfaces: [], owner: [] }, targets: { targets: { p1: [], p2: [] } }, verdicts }), 'verdict', String(bad));
       assert.equal(summary({ ...fetched, powers, map, verdicts }).undecided, 1, String(bad));
     }
   });

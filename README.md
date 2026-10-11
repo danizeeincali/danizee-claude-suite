@@ -332,6 +332,21 @@ then `install-user` puts the suite's `/bc` there instead:
 mv ~/.claude/commands/bc.md ~/.claude/commands/bc-old.md
 ```
 
+### Subagent prompt cache
+
+Claude Code caches the main conversation for up to an hour, but subagents, workflows and
+compaction get five minutes by default. Swarms, marathon streams and reviewers are long-running
+subagents, so `init` and `update` set this in `.claude/settings.json`:
+
+```json
+{ "subagentPromptCacheTtl": "1h" }
+```
+
+A one-hour cache write is billed at a higher rate than a five-minute one, so it pays off when a
+subagent pauses longer than five minutes between requests. If the project's settings already
+have a `subagentPromptCacheTtl` (`"5m"` included), the installer leaves it alone. Needs Claude
+Code v2.1.242 or later; older versions ignore the key.
+
 ### Pi Brain Integration
 
 Workflows integrate with the [Pi Brain](https://pi.ruv.io) knowledge network at two points:

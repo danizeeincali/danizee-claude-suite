@@ -6,6 +6,9 @@ so 4.4.0 is the first release after 4.1.0 and carries all three.
 ## 4.4.0 — 2026-10-10
 
 ### Added
+- `init` and `update` set `subagentPromptCacheTtl: "1h"` in `.claude/settings.json`,
+  so subagents keep a one-hour prompt cache like the main conversation. A value the
+  project already set is kept.
 - **`/w-bbs` and `/bbs`**: study another project's harness and decide, power by
   power, what to borrow, build or skip. Verbs for intake, fetch (GET-only with a
   host policy and egress log, hardened shallow clone), inventory, harness map

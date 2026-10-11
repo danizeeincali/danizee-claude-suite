@@ -58,6 +58,9 @@ export function getDefaultSettings() {
         'Write(docs/solutions/**)'
       ]
     },
+    // Swarms, marathon streams and reviewers run as subagents, which get a 5-minute prompt
+    // cache by default; an hour keeps their cache warm across long tool calls and waits.
+    subagentPromptCacheTtl: '1h',
     features: {
       'danizee-compound-memory': true,
       'danizee-compound-checkpoints': true,
@@ -217,6 +220,11 @@ export async function mergeSettings(claudeDir, options = {}) {
     const user = existing.permissions?.[list] || [];
     const ours = defaultSettings.permissions?.[list] || [];
     if (user.length || ours.length) merged.permissions[list] = [...new Set([...user, ...ours])];
+  }
+
+  // The cache TTL is the owner's call once made: keep a value they set ("5m" included).
+  if (existing.subagentPromptCacheTtl !== undefined) {
+    merged.subagentPromptCacheTtl = existing.subagentPromptCacheTtl;
   }
 
   // Register plugin hooks (idempotent)

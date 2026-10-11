@@ -99,6 +99,15 @@ describe('/w-marathon command content', () => {
   it('has no literal backtick escaping artifacts', () => {
     assert.ok(!c().includes('\\`'), 'rendered content must not contain escaped backticks');
   });
+
+  it('the integration stream from a bbs hand-off wires approved steps, records wired and delivered, and is reviewed on the command files', () => {
+    assert.match(c(), /4\.3a Integration stream/);
+    assert.match(c(), /reach test\*\* that goes in through that place/);
+    assert.match(c(), /bbs\/cli\.js integrate --run <bbs run> --power <name>/);
+    assert.match(c(), /cli\.js wired --run <bbs run> --power <name> --record/);
+    assert.match(c(), /cli\.js delivered --run <bbs run> --record/);
+    assert.match(c(), /reached in the normal flow \(a menu links the page, the router mounts the endpoint/);
+  });
 });
 
 describe('kit wiring', () => {

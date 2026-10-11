@@ -762,3 +762,19 @@ describe('graph — review round 4 regressions', () => {
     assert.match(g.stats.cache_error, /cache folder/);
   }));
 });
+
+describe('graph — the unresolved list at its cap (targets review r2)', () => {
+  it('missing-export rows replace other rows at the cap, and once only they remain the rest are counted, not listed', () => tmp(async dir => {
+    // 4 value calls fill the cap of 4; 6 missing exports then replace them and stop when the list is all missing exports
+    const calls = ['a', 'b', 'c', 'd'].map(n => `  ${n}();`).join('\n');
+    const gone = ['g1', 'g2', 'g3', 'g4', 'g5', 'g6'];
+    await repo(dir, {
+      'b.js': 'export const z = 1;\n',
+      'a.js': `import { ${gone.join(', ')} } from './b.js';\nexport function f(a, b, c, d) {\n${calls}\n${gone.map(g => `  ${g}();`).join('\n')}\n}\n`
+    });
+    const g = await buildGraph(dir, { maxUnresolved: 4 });
+    assert.equal(g.unresolved.length, 4);
+    assert.deepEqual(g.unresolved.map(u => u.reason), ['unknown export', 'unknown export', 'unknown export', 'unknown export']);
+    assert.deepEqual(g.unresolved.map(u => u.call).sort(), ['g1', 'g2', 'g3', 'g4']);
+  }));
+});
