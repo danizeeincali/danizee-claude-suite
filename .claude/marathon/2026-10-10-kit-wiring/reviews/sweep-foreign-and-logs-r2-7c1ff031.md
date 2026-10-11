@@ -1,0 +1,21 @@
+# Review 7c1ff031-7a0e-4ea4-942a-32bb7020798b — sweep-foreign-and-logs, round 2
+
+- Commit: 391ab1e
+- Angle: failure conditions and error paths
+- Result: over tolerance
+- 6 findings
+
+## High (1)
+
+- **CHECKPOINT 7 fork-check search sends the unredacted recipe title before any redaction, inside a double-quoted shell argument** — `src/plugins/dot-shortcuts.js:3725` (security): The redaction section says that whenever .claude/kit/secrets exists no recipe text is sent before it has passed through redact, and that recipe text must never go into a double-quoted shell argument. Step 2, the fork check, runs first: curl -s -G .../search --data-urlencode "q=\[recipe title\]" with the raw title, before the field file is written and redacted. A title that quotes a secret reaches pi.ruv.io unredacted; a title with backticks or $( ) runs as a shell command. — fix: Move the fork check after the redact fence, and search with the redacted title read from the file rather than pasted: node -e prints the @title line from $R into a temp file, then curl -s -G ... --data-urlencode "q@$Q". Add a run test asserting the local search endpoint never receives a secret.
+
+## Medium (2)
+
+- **POST treats an HTTP error as success: curl lacks --fail, so && deletes the body and drafts and the 'retry needs no rebuild' claim is false** — `src/plugins/dot-shortcuts.js:3780` (correctness): The fence is curl -X POST ... --data-binary @"$B" && rm -f -- "$B" "$R" "$E". Against a local endpoint returning HTTP 500, curl exited 0 and all three files were removed. A 4xx or 5xx from the registry is reported as exit 0 and the promised retry path is gone. No CP7 run test covers a failed POST. — fix: Use curl -sS --fail-with-body (or -f) -X POST so an HTTP error is a non-zero exit; name that exit (22, with the body printed) as 'not submitted, files kept'. Add a run test with a 500 endpoint asserting a non-zero exit and that $B, $R and $E still exist.
+- **Encoder folds a mistyped or unknown label into the previous field instead of rejecting the field file** — `src/plugins/dot-shortcuts.js:3761` (correctness): The encoder treats a line as a label only when it matches /^@(\[a-z\_\]+)$/ and the name is known; any other @line is pushed into the current field as text. A field file ending '@steps / a / @Tags / foo / @notes / secret stuff' built exit 0 with those lines as steps. A typo such as @forked-from silently posts a fork as a new recipe with the parent id as a step. — fix: Exit 1 on any line matching /^@\[A-Za-z\_-\]+\s\*$/ whose name is not known ("unknown label @x"). Add the case to the prose and to the 'field file the encoder cannot read' test.
+
+## Low (3)
+
+- **A failure parsing the redact-check output is reported as 'body still holds a secret' (exit 2)** — `src/plugins/dot-shortcuts.js:3766` (correctness): N=$(node -e '...replaced' "$B.chk") has no status check. If node fails, N is empty and the next test prints 'body still holds a secret after encoding: not sent (replaced=)' and exits 2: a broken-state exit 1 mislabelled as the secret-found refusal. — fix: Use N=$(node -e ...) || { echo "redact check unreadable: body not sent" \>&2; exit 1; }.
+- **safe-git paragraph lists eight accepted verbs; the verb's allow-list is wider** — `src/plugins/dot-shortcuts.js:6291` (facts): The w-suite-sync and w-multi-repo paragraphs say only rev-parse, rev-list, log, show, diff, ls-files, ls-tree, cat-file are accepted; safe-git's allow-list also has diff-tree, diff-index, diff-files, status, show-ref, for-each-ref, merge-base and others. Conservative, so nothing breaks. — fix: Say 'only read-only verbs on safe-git's allow-list (for example rev-parse, log, show, ls-tree, cat-file)', or list the verbs from the code.
+- **Generated ralph script never says in the log whether redaction is active** — `src/plugins/dot-shortcuts.js:6027` (other): log() falls back to plain tee silently when the kit is missing, there is no secrets file, or the script runs from a directory other than the repository top (KIT and SECRETS are relative paths). The log carries no line saying that redaction was skipped. — fix: Before the first log call, write one line to the log: 'log redaction: on' or 'log redaction: off (kit or secrets file not found from $PWD)'.

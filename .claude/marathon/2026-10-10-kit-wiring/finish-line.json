@@ -1,0 +1,250 @@
+{
+  "tolerance": {
+    "high": 0,
+    "medium": 2,
+    "low": 5,
+    "passes_in_a_row": 2
+  },
+  "lines": [
+    {
+      "id": "tests_green_diff-range",
+      "label": "diff-range: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "diff-range"
+    },
+    {
+      "id": "six_sigma_diff-range",
+      "label": "diff-range: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "diff-range"
+    },
+    {
+      "id": "open_high_diff-range",
+      "label": "diff-range: open high findings",
+      "type": "number",
+      "op": "at_most",
+      "value": 0,
+      "owner": "build",
+      "source": "findings.open:high",
+      "stream": "diff-range"
+    },
+    {
+      "id": "tests_green_pt",
+      "label": "pt: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "pt"
+    },
+    {
+      "id": "six_sigma_pt",
+      "label": "pt: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "pt"
+    },
+    {
+      "id": "open_high_pt",
+      "label": "pt: open high findings",
+      "type": "number",
+      "op": "at_most",
+      "value": 0,
+      "owner": "build",
+      "source": "findings.open:high",
+      "stream": "pt"
+    },
+    {
+      "id": "tests_green_bc",
+      "label": "bc: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "bc"
+    },
+    {
+      "id": "six_sigma_bc",
+      "label": "bc: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "bc"
+    },
+    {
+      "id": "open_high_bc",
+      "label": "bc: open high findings",
+      "type": "number",
+      "op": "at_most",
+      "value": 0,
+      "owner": "build",
+      "source": "findings.open:high",
+      "stream": "bc"
+    },
+    {
+      "id": "tests_green_marathon",
+      "label": "marathon: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "marathon"
+    },
+    {
+      "id": "six_sigma_marathon",
+      "label": "marathon: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "marathon"
+    },
+    {
+      "id": "open_high_marathon",
+      "label": "marathon: open high findings",
+      "type": "number",
+      "op": "at_most",
+      "value": 0,
+      "owner": "build",
+      "source": "findings.open:high",
+      "stream": "marathon"
+    },
+    {
+      "id": "tests_green_bbs",
+      "label": "bbs: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "bbs"
+    },
+    {
+      "id": "six_sigma_bbs",
+      "label": "bbs: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "bbs"
+    },
+    {
+      "id": "open_high_bbs",
+      "label": "bbs: open high findings",
+      "type": "number",
+      "op": "at_most",
+      "value": 0,
+      "owner": "build",
+      "source": "findings.open:high",
+      "stream": "bbs"
+    },
+    {
+      "id": "tests_green_sweep-commits",
+      "label": "sweep-commits: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "sweep-commits"
+    },
+    {
+      "id": "six_sigma_sweep-commits",
+      "label": "sweep-commits: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "sweep-commits"
+    },
+    {
+      "id": "open_high_sweep-commits",
+      "label": "sweep-commits: open high findings",
+      "type": "number",
+      "op": "at_most",
+      "value": 0,
+      "owner": "build",
+      "source": "findings.open:high",
+      "stream": "sweep-commits"
+    },
+    {
+      "id": "tests_green_sweep-foreign-and-logs",
+      "label": "sweep-foreign-and-logs: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "sweep-foreign-and-logs"
+    },
+    {
+      "id": "six_sigma_sweep-foreign-and-logs",
+      "label": "sweep-foreign-and-logs: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "sweep-foreign-and-logs"
+    },
+    {
+      "id": "open_high_sweep-foreign-and-logs",
+      "label": "sweep-foreign-and-logs: open high findings",
+      "type": "number",
+      "op": "at_most",
+      "value": 0,
+      "owner": "build",
+      "source": "findings.open:high",
+      "stream": "sweep-foreign-and-logs"
+    },
+    {
+      "id": "regenerated",
+      "label": "Repo copies under .claude/commands/.shortcuts equal the generator output",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:regenerated",
+      "scope": "run"
+    },
+    {
+      "id": "full_suite",
+      "label": "Full npm test green after the last stream",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:e2e",
+      "scope": "run"
+    },
+    {
+      "id": "merged",
+      "label": "Owner merged the PR",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "human",
+      "source": "checklist:merged",
+      "scope": "run"
+    }
+  ]
+}

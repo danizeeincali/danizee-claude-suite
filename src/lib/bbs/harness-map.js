@@ -9,7 +9,7 @@ import path from 'path';
 import { DEFAULT_CONFIG } from './config.js';
 import { runDir as runDirOf, readJson, writeJson, moveAsideStale, withMapLockDetailed } from './store.js';
 import { RUN_ID, invalidRunId } from './intake.js';
-import { SKIP_DIRS, parseJsonOnly } from './inventory.js';
+import { SKIP_DIRS, SAFE_GIT_LINES, parseJsonOnly } from './inventory.js';
 import { renderStatusSafe, loadState, nextStep } from './status.js';
 
 export const STOP_WORDS = new Set([
@@ -557,6 +557,8 @@ export async function mapBrief(projectDir, { run }, cfg = DEFAULT_CONFIG) {
   lines.push('- **partial**: The tool partially implements this power.');
   lines.push('- **missing**: No tool among these candidates implements this power.');
   lines.push('');
+
+  lines.push(...SAFE_GIT_LINES);
 
   lines.push('## Response Format');
   lines.push('');

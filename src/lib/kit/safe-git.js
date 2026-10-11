@@ -710,7 +710,8 @@ async function eachEntry(dir, count, fn) {
   for await (const e of d) { count(); await fn(e); }
 }
 
-function overrideArgs(names) {
+/** The `-c` argv (as ['-c', 'k=v', ...]): STATIC_OVERRIDES, then every named filter/diff/merge driver switched off. KitExit 2 for a name outside DRIVER_NAME. Also used by diff-range. */
+export function overrideArgs(names) {
   const args = [];
   for (const o of STATIC_OVERRIDES) args.push('-c', o);
   for (const name of [...names].sort()) {

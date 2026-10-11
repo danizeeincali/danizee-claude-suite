@@ -46,14 +46,31 @@ describe('/w-review lens step', () => {
     const a = c.indexOf('### ⛔ CHECKPOINT 1: Code Analysis');
     const b = c.indexOf('### ⛔ CHECKPOINT 2', a);
     const s = c.slice(a, b);
-    assert.match(s, /BASE=\$\(git merge-base HEAD '@\{upstream\}'[^\n]*\)\n/);
-    assert.match(s, /git diff [^\n]*--no-prefix "\$BASE"/);
-    assert.match(s, /git ls-files -z --others --exclude-standard/);
-    assert.match(s, /\nD=\$\(mktemp\)\n\{ git diff/);
-    assert.match(s, /> "\$D"\nnode \.claude\/helpers\/kit\/cli\.js lenses --diff "\$D"; RC=\$\?; rm -f "\$D"; \(exit \$RC\)\n/);
+    assert.match(s, /D=\$\(mktemp\); node \.claude\/helpers\/kit\/cli\.js diff-range > "\$D"; RC=\$\?\n/);
+    assert.match(s, /lenses --diff "\$D"; RC=\$\?;; 3\) echo "no change to review"/);
+    assert.match(s, /rm -f "\$D"; \(exit \$RC\)\n/);
+    assert.match(s, /diff-range --base-only/);
+    assert.match(s, /--base "\$B"/);
     assert.ok(!s.includes('/tmp/w-review.diff'), 'no fixed shared temp path');
     assert.ok(!/git diff HEAD\b/.test(s), 'the lens step must not diff against HEAD only');
+    assert.ok(!/BASE=\$\(git merge-base/.test(s), 'the hand-written range is gone');
+    assert.match(s, /Exit 3 from `diff-range` means an empty range/);
+    assert.match(s, /Any other non-zero exit is wrong input or a broken state/);
     assert.match(s, /--covered no-floating-promises/);
     assert.ok(!s.includes('\\`'));
+  });
+});
+
+describe('/w-review exit-3 wording in all three steps', () => {
+  it('lens, graph and impact paragraphs each say exit 3 is an empty range and any other non-zero exit is reported', () => {
+    const c = commands['w-review'].content;
+    const a = c.indexOf('**🔎 LENS CHECKS');
+    const s = c.slice(a, c.indexOf('**REQUIRED OUTPUT:**', a));
+    const paras = [s.slice(0, s.indexOf('**🕸️')), s.slice(s.indexOf('**🕸️'), s.indexOf('Then the blast radius')), s.slice(s.indexOf('Then the blast radius'))];
+    for (const p of paras) {
+      assert.match(p, /Exit 3 from `diff-range` means an empty range: report "no change to review", never a failure and never "no lens applies"/);
+      assert.match(p, /Any other non-zero exit is wrong input or a broken state: report it, never skip the step/);
+      assert.match(p, /Any other non-zero exit is wrong input or a broken state: report it, never skip the step\. Exit 2 means `diff-range` refused the repository \(for example an include in its own config\): report the refusal as printed\./);
+    }
   });
 });

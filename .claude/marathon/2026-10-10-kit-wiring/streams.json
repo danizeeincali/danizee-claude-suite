@@ -1,0 +1,97 @@
+{
+  "streams": [
+    {
+      "name": "_meta",
+      "state": "meta",
+      "isolation": "worktree",
+      "created": "2026-10-10T16:21:26.598Z",
+      "tasks": [],
+      "finished": "2026-10-11T00:41:21.222Z"
+    },
+    {
+      "name": "diff-range",
+      "state": "done",
+      "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
+      "next": "done; compounded via /bc",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-diff-range",
+      "phase": "review",
+      "skill": "w-plan-tdd-swarm",
+      "base": "5b9822f178da0836d19d91de471e0e2a35f99150"
+    },
+    {
+      "name": "pt",
+      "state": "done",
+      "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
+      "next": "done; compounded via /bc",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-pt",
+      "phase": "review",
+      "skill": "w-plan-tdd-swarm",
+      "base": "9fc73ac51e42ca781e490ecc9e4173645b4ce88f"
+    },
+    {
+      "name": "bc",
+      "state": "done",
+      "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
+      "next": "done; compounded via /bc",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-bc",
+      "phase": "review",
+      "skill": "w-plan-tdd-swarm",
+      "base": "15c224cf666451c6babd935d83cad59185459320"
+    },
+    {
+      "name": "marathon",
+      "state": "done",
+      "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
+      "next": "done; compounded via /bc",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-marathon",
+      "phase": "review",
+      "skill": "w-plan-tdd-swarm",
+      "base": "9ab93ad7f1b526bbebb0d7ea974d2034a812a814"
+    },
+    {
+      "name": "bbs",
+      "state": "done",
+      "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
+      "next": "/bc write-up",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-bbs",
+      "phase": "done",
+      "skill": "w-plan-tdd-swarm",
+      "base": "c8ddc24a976fc488ae86521d82073d04724c5214"
+    },
+    {
+      "name": "sweep-commits",
+      "state": "done",
+      "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
+      "next": "/bc write-up",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-sweep-commits",
+      "base": "6142e8347401b14ce7302dc386c162669ea8d9fe",
+      "phase": "done"
+    },
+    {
+      "name": "sweep-foreign-and-logs",
+      "state": "done",
+      "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
+      "next": "run-wide: merge origin/main into the final branch (5 conflicts), regenerate all shortcuts, full npm test, gate, page, finish, PR",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-sweep-foreign-and-logs",
+      "base": "38552ec51f19e978f3b95bc47716950676a33fa9",
+      "phase": "integrate"
+    }
+  ],
+  "handoff": {
+    "ts": "2026-10-11T00:14:52.663Z",
+    "trigger": "auto",
+    "branch": "claude/project-thread-vootem",
+    "commit": "35f3036",
+    "uncommitted": 0,
+    "tasks": [],
+    "context_tokens": 382830,
+    "context_pct": 38.3
+  }
+}
