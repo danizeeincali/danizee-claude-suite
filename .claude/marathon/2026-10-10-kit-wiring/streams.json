@@ -76,11 +76,11 @@
       "name": "sweep-foreign-and-logs",
       "state": "active",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "4.7 fix round 4 (opus: redact-before-search in w-fix/w-swarm, mktemp clone dir in w-suite-sync, w-compound fail-closed and private temp dir), then unit run, round 5",
+      "next": "4.5 round 5 opus review (checking round-4 fixes)",
       "tasks": [],
       "isolation": "../danizee-claude-suite-sweep-foreign-and-logs",
       "base": "38552ec51f19e978f3b95bc47716950676a33fa9",
-      "phase": "fix"
+      "phase": "review"
     }
   ],
   "handoff": {
