@@ -1,11 +1,11 @@
 # Marathon 2026-10-10-kit-wiring
 
 - State: RUNNING
-- Budget: 6,269,758 / 10,000,000 tokens
+- Budget: 6,164,758 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
-- Gate (run-wide, all streams): 2/2 clean reviews — build gate not met, full gate not met
+- Gate (run-wide, all streams): 3/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "sweep-foreign-and-logs" (next: 4.5 round 5 opus review (checking round-4 fixes)) — /w-marathon --resume 2026-10-10-kit-wiring. Waiting on you: merged (tick them in checklist.md).
+- Next for you: All streams done but the run-wide gate fails on regenerated — run `cli.js gate`, reopen the owning stream (`cli.js stream <name> state=active`) and continue at 4.1. Waiting on you: merged (tick them in checklist.md).
 - Last handoff: 2026-10-11T00:14:52.663Z (auto) on claude/project-thread-vootem@35f3036, 0 uncommitted, tasks: none
 
 ## Streams
@@ -18,7 +18,7 @@
 | marathon | ../danizee-claude-suite-marathon | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | /w-plan-tdd-swarm · review | done; compounded via /bc |  | 0 |
 | bbs | ../danizee-claude-suite-bbs | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | /w-plan-tdd-swarm · done | /bc write-up |  | 0 |
 | sweep-commits | ../danizee-claude-suite-sweep-commits | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | done | /bc write-up |  | 0 |
-| sweep-foreign-and-logs | ../danizee-claude-suite-sweep-foreign-and-logs | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | active | met | review | 4.5 round 5 opus review (checking round-4 fixes) |  | 0 |
+| sweep-foreign-and-logs | ../danizee-claude-suite-sweep-foreign-and-logs | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | compound | /bc write-up of the stream |  | 0 |
 
 ## Finish line
 
@@ -43,7 +43,7 @@
 | sweep-commits: clean reviews in a row | build | met | 7 | at_least 2 |
 | sweep-commits: open high findings | build | met | 0 | at_most 0 |
 | sweep-foreign-and-logs: green unit runs in a row | build | met | 6 | at_least 1 |
-| sweep-foreign-and-logs: clean reviews in a row | build | met | 2 | at_least 2 |
+| sweep-foreign-and-logs: clean reviews in a row | build | met | 3 | at_least 2 |
 | sweep-foreign-and-logs: open high findings | build | met | 0 | at_most 0 |
 | Repo copies under .claude/commands/.shortcuts equal the generator output | build | failing | — | is true |
 | Full npm test green after the last stream | build | met | 11 | at_least 1 |
