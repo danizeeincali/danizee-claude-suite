@@ -86,6 +86,22 @@ const assertRedactBlock = (s) => {
   assert.ok(!s.includes('\\`'), 'no backslash-backtick in the rendered text');
 };
 
+// CHECKPOINT 0.5 of w-fix and w-swarm: the description goes through a file, redact when a secrets file exists, and a portable, timed curl.
+const assertPiSearch = (s, word) => {
+  assert.ok(!s.includes('q=[') && !s.includes('# HTTP fallback') && !s.includes('memories/search?q='), 'no pasted or unencoded query');
+  assert.match(s, new RegExp(`Write the ${word} description as plain text to a temp file \`\\$D\` outside the repository`));
+  assert.match(s, /never into a double-quoted shell argument and never `echo "<text>"` or a heredoc/);
+  assert.match(s, /W=\$\(mktemp -d 2>\/dev\/null\) && \[ -n "\$W" \] \|\| \{ echo "mktemp failed: search skipped" >&2; exit 1; \}\n  trap 'rm -rf -- "\$W"' EXIT INT TERM\n  Q="\$W\/q"/);
+  assert.match(s, /T=\$\(git rev-parse --show-toplevel 2>\/dev\/null\)/);
+  assert.match(s, /\[ -f "\$K" \] \|\| \{ echo "secrets file present but kit missing: not sent \(file kept: \$D\)" >&2; exit 2; \}/);
+  assert.match(s, /node "\$K" redact --keep-lines < "\$D" > "\$W\/j"; RC=\$\?/);
+  assert.match(s, NO_KIT('redact'));
+  assert.equal((s.match(/curl -/g) || []).length, 1, 'one curl call');
+  assert.ok(s.includes(`C=$(curl -sS --connect-timeout 10 --max-time 30 -o "$Q.resp" -w '%{http_code}' -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q@$Q" --data top_k=3); RC=$?`));
+  assert.match(s, /case "\$C" in 2\?\?\) cat "\$Q\.resp";; \*\) echo "search failed \(HTTP \$C\): Pi Brain not searched" >&2; cat "\$Q\.resp" >&2; exit 22;; esac/);
+  for (const e of [/Exit 0 means a 2xx status/, /Exit 1 is a missing or empty description file/, /Exit 2 is the refusal "secrets file present but kit missing: not sent"/, /Exit 22 is curl exit 0 with a status that is not 2xx/, /Exit 28 is a timeout, 6 or 7 is no connection, and any other non-zero exit is curl's own/, /never as "no matches"/, /the kit is advisory and never blocks a workflow that worked before/]) assert.match(s, e);
+};
+
 // CHECKPOINT 7 of w-compound: its bash fences, in order (redact, search, build, post), and a filler for the placeholders.
 const cp7Fences = () => [...section('w-compound', '### 🧠 CHECKPOINT 7', '## Completion Checklist').matchAll(/```bash\n([\s\S]*?)```/g)].map(m => m[1]);
 const fill = (f, v = {}) => f.replace('<printed body path>', v.B ?? '/tmp/b').replace('<printed path>', v.R ?? '/tmp/r').replace('<the path you wrote>', v.E ?? '/tmp/e').replace('[recipe title]', 't');
@@ -168,13 +184,49 @@ describe('w-multi-repo', () => {
 });
 
 describe('w-suite-sync', () => {
-  it('git reads of /tmp/suite-upstream go through safe-git with the clone top as --dir', () => {
+  it('git reads of the mktemp upstream clone go through safe-git with the printed clone top as --dir', () => {
     const s = section('w-suite-sync', '### ⛔ CHECKPOINT 0: Fetch Upstream', '### ⛔ CHECKPOINT 1');
-    assertSafeGit(s, /`\/tmp\/suite-upstream` itself \(the directory the `git clone` above created, not `\/tmp\/suite-upstream\/src`\)/);
-    assert.match(s, /git clone --depth 1 https:\/\/github\.com\/danizeeincali\/danizee-claude-suite \/tmp\/suite-upstream/);
-    assert.match(s, /safe-git --dir \/tmp\/suite-upstream -- rev-parse HEAD/);
+    assertSafeGit(s, /the printed path `\$U` itself \(the directory the `git clone` above created, not `\$U\/src`\)/);
+    assert.match(s, /git clone --depth 1 https:\/\/github\.com\/danizeeincali\/danizee-claude-suite "\$U"/);
+    assert.match(s, /safe-git --dir "\$U" -- rev-parse HEAD/);
     assert.match(s, /only HEAD and its tree are readable/);
     assert.ok(s.indexOf('git clone --depth 1') < s.indexOf('safe-git --dir'));
+  });
+  it('clones into a fresh mktemp -d directory, stops on a failed clone, uses the printed path everywhere and removes it by its literal path', async () => {
+    const c = commands['w-suite-sync'].content;
+    assert.ok(!c.includes('/tmp/suite-upstream'), 'no fixed shared /tmp path');
+    const s = section('w-suite-sync', '### ⛔ CHECKPOINT 0: Fetch Upstream', '### ⛔ CHECKPOINT 1');
+    assert.match(s, /U=\$\(mktemp -d 2>\/dev\/null\) && \[ -n "\$U" \] \|\| \{ echo "mktemp failed: upstream not fetched, sync stopped" >&2; exit 1; \}/);
+    assert.match(s, /\|\| \{ RC=\$\?; echo "git clone failed \(exit \$RC\): upstream not fetched, sync stopped" >&2; rm -rf -- "\$U"; exit \$RC; \}/);
+    assert.match(s, /On a non-zero exit stop this workflow there and report it as printed/);
+    assert.match(s, /use it for every safe-git `--dir`, `ls` and copy below/);
+    for (const d of ['src/plugins/', 'src/lib/', 'src/templates/', 'docs/']) assert.ok(s.includes(`ls "$U/${d}"`), d);
+    const cp3 = section('w-suite-sync', '### ⛔ CHECKPOINT 3: Build Additive Changes', '### ⛔ CHECKPOINT 4');
+    assert.match(cp3, /from the printed clone path `\$U` only/);
+    assert.match(cp3, /remove the clone with `rm -rf -- <printed path>`, writing the literal path printed in CHECKPOINT 0 \(never a pathless, variable-only or wildcard `rm`\)/);
+    const block = /```bash\n# Clone upstream[^\n]*\n([\s\S]*?)```/.exec(s)[1];
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'suite-sync-'));
+    try {
+      const bin = path.join(dir, 'bin');
+      const tmp = path.join(dir, 'tmp');
+      await fs.mkdir(bin); await fs.mkdir(tmp);
+      for (const [code, body] of [[128, 'echo "fatal: unable to access" >&2; exit 128'], [0, 'mkdir -p "$5/src"; exit 0']]) {
+        await fs.writeFile(path.join(bin, 'git'), `#!/bin/bash\n${body}\n`, { mode: 0o755 });
+        const r = spawnSync('bash', ['-c', block], { env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, TMPDIR: tmp }, encoding: 'utf-8' });
+        assert.equal(r.status, code, r.stderr);
+        if (code) {
+          assert.match(r.stderr, /git clone failed \(exit 128\): upstream not fetched, sync stopped/);
+          assert.ok(!/upstream clone:/.test(r.stdout), 'no path printed');
+          assert.deepEqual(await fs.readdir(tmp), [], 'the failed clone directory is removed');
+        } else {
+          const U = /^upstream clone: (\S+)$/m.exec(r.stdout)[1];
+          assert.equal(path.dirname(U), tmp, 'a fresh directory under TMPDIR');
+          assert.equal((await fs.stat(U)).mode & 0o077, 0, 'private');
+        }
+      }
+    } finally {
+      await fs.rm(dir, { recursive: true, force: true });
+    }
   });
   it('lenses at CHECKPOINT 4 Verify No Regressions', () => {
     const s = section('w-suite-sync', '### ⛔ CHECKPOINT 4: Verify No Regressions', '### ⛔ CHECKPOINT 6');
@@ -208,7 +260,12 @@ describe('w-compound: redact to a file before the doc and before the Pi Brain PO
     assert.equal(s.split('pi.ruv.io/v1/memories/search').length - 1, 1, 'one search, after the redact fence');
     assert.ok(!s.includes('[recipe title]') && !s.includes('"q='), 'the title is never pasted into the search command');
     assert.match(s, /node -e '[^']*\/\^@title\\s\*\$\/[^']*' "\$R" "\$Q" \|\| \{ echo "no @title in the field file: search skipped" >&2; exit 1; \}/);
-    assert.match(s, /trap 'rm -f "\$Q" "\$Q\.resp"' EXIT INT TERM/);
+    assert.match(s, /W=\$\(mktemp -d 2>\/dev\/null\) && \[ -n "\$W" \] \|\| \{ echo "mktemp failed: search skipped" >&2; exit 1; \}\n  trap 'rm -rf -- "\$W"' EXIT INT TERM\n  Q="\$W\/q"/);
+    assert.match(s, /trap '\[ -n "\$KEEP" \] \|\| rm -rf -- "\$W"; rm -f -- "\$B\.chk"' EXIT INT TERM/);
+    assert.match(s, /B="\$W\/body\.json"/);
+    assert.ok(!/(Q|B)=\$\(mktemp 2>/.test(s), 'no bare mktemp file whose siblings are written');
+    assert.match(s, /T=\$\(git rev-parse --show-toplevel 2>\/dev\/null\); \[ -n "\$T" \] \|\| T=\.; K="\$T\/\.claude\/helpers\/kit\/cli\.js"; S="\$T\/\.claude\/kit\/secrets"/);
+    assert.equal(s.split('secrets file present but kit missing: not sent').length - 1 >= 3, true, 'redact, search and build each refuse');
     assert.match(s, /case "\$C" in 2\?\?\) cat "\$Q\.resp";; \*\) echo "search failed \(HTTP \$C\): fork check not done" >&2; cat "\$Q\.resp" >&2; exit 22;; esac/);
     assert.match(s, /\[ \$RC -eq 0 \] \|\| \{ echo "search failed \(curl exit \$RC\): fork check not done" >&2; exit \$RC; \}/);
     assert.match(s, /Exit 22 is curl exit 0 with a status that is not 2xx \(a 404, a 502 or 503, a proxy or captive-portal page\): it prints "search failed \(HTTP <code>\): fork check not done"/);
@@ -233,7 +290,7 @@ describe('w-compound: redact to a file before the doc and before the Pi Brain PO
     assert.match(s, /never on the JSON body/);
     assert.match(s, /`JSON\.stringify` escapes a quote, a backslash, a tab or another control character/);
     assert.match(s, /```text\n@title\n[\s\S]*\n@description\n[\s\S]*\n@tags\n[\s\S]*\n@steps\n[\s\S]*\n@forked_from\n/);
-    assert.match(s, /node \.claude\/helpers\/kit\/cli\.js redact < "\$B" > "\$B\.chk"; RC=\$\?/);
+    assert.match(s, /node "\$K" redact < "\$B" > "\$B\.chk"; RC=\$\?/);
     assert.match(s, /echo "body still holds a secret after encoding: not sent \(replaced=\$N\)" >&2; exit 2;/);
     assert.equal(s.split('--data-binary @"$B"').length - 1, 1, 'one POST, of the encoded body file');
     assert.ok(!s.includes('--data-binary @"$R"'), 'the redacted text file is never posted as the body');
@@ -478,7 +535,7 @@ describe('w-compound CHECKPOINT 7 run as written with the real kit against a loc
   });
   it('a title holding backticks and $( ) is sent as text and runs nothing, with a secrets file and without one', async () => {
     const title = 'Fix `touch PWNED` and $(touch PWNED) "quoted" \'single\' $HOME';
-    for (const o of [{}, { secrets: null }, { kit: false }]) {
+    for (const o of [{}, { secrets: null }, { kit: false, secrets: null }]) {
       await withRepo(o, async ({ dir, repo, E, steps, queries }) => {
         await fs.writeFile(E, `@title\n${title}\n@description\nd\n@steps\na -> b\n`);
         const r1 = await steps.redact();
@@ -642,7 +699,7 @@ describe('w-compound CHECKPOINT 7 run as written with the real kit against a loc
   });
 
   it('with no kit, and with no secrets file, the redact fence names file=$E in one line and the text is used as is', async () => {
-    for (const o of [{ kit: false }, { secrets: null }]) {
+    for (const o of [{ kit: false, secrets: null }, { secrets: null }]) {
       await withRepo(o, async ({ E, steps, received }) => {
         const r1 = await steps.redact();
         assert.equal(r1.status, 0, r1.stderr);
@@ -660,6 +717,78 @@ describe('w-compound CHECKPOINT 7 run as written with the real kit against a loc
         assert.equal(JSON.parse(received[0]).title, `Rotate creds ${PW}`, 'advisory path sends the text as written');
       });
     }
+  });
+  it('a secrets file with no kit: redact, search and build each refuse with exit 2, send nothing and keep the files', async () => {
+    await withRepo({ kit: false }, async ({ E, steps, received, queries }) => {
+      const r1 = await steps.redact();
+      assert.equal(r1.status, 2, r1.stderr);
+      assert.match(r1.stderr, /secrets file present but kit missing: not sent \(files kept: /);
+      assert.ok(!/file=/.test(r1.stdout), 'no file named for the search or the body');
+      const rs = await steps.search(E);
+      assert.equal(rs.status, 2, rs.stderr);
+      assert.match(rs.stderr, /secrets file present but kit missing: not sent/);
+      const r2 = await steps.build(E);
+      assert.equal(r2.status, 2, r2.stderr);
+      assert.match(r2.stderr, /secrets file present but kit missing: not sent/);
+      assert.ok(!/body=/.test(r2.stdout));
+      assert.equal(queries.length, 0, 'no search sent');
+      assert.equal(received.length, 0, 'no POST sent');
+      assert.ok(await exists(E), '$E kept');
+    });
+  });
+  it('the kit and secrets are found from the repository top when the fences run from a subdirectory', async () => {
+    await withRepo({}, async ({ repo, E, received, queries }) => {
+      const sub = path.join(repo, 'src', 'deep');
+      await fs.mkdir(sub, { recursive: true });
+      const [redact, , build] = cp7Fences();
+      const run = (code) => new Promise((ok) => { const ch = spawn('bash', ['-c', code], { cwd: sub }); let o = '', e = ''; ch.stdout.on('data', (d) => { o += d; }); ch.stderr.on('data', (d) => { e += d; }); ch.on('close', (status) => ok({ status, stdout: o, stderr: e })); });
+      const rr = await run(`E=${E}; ${redact}`);
+      assert.equal(rr.status, 0, rr.stderr);
+      assert.match(rr.stderr, /replaced=[1-9]/, 'redacted from a subdirectory, not "kit not installed"');
+      const R2 = /^file=(\S+)$/m.exec(rr.stdout)[1];
+      const rb = await run(fill(build, { R: R2, E }));
+      assert.equal(rb.status, 0, rb.stderr);
+      assert.match(rb.stdout, /^body=\S+$/m);
+      const B = /^body=(\S+)$/m.exec(rb.stdout)[1];
+      await fs.rm(path.dirname(B), { recursive: true, force: true });
+      await fs.rm(R2, { force: true });
+      assert.equal(queries.length + received.length, 0);
+    });
+  });
+  it('the search and the body use a private mktemp -d directory: gone after the search, emptied and removed after a 2xx POST, named when kept', async () => {
+    const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'cp7-tmpdir-'));
+    try {
+      await withRepo({ env: { TMPDIR: tmp } }, async ({ steps }) => {
+        const R = /^file=(\S+)$/m.exec((await steps.redact()).stdout)[1];
+        const rs = await steps.search(R);
+        assert.equal(rs.status, 0, rs.stderr);
+        assert.deepEqual(await fs.readdir(tmp), [], 'the search used a directory under TMPDIR and left nothing there');
+        await fs.rm(R, { force: true });
+      });
+    } finally {
+      await fs.rm(tmp, { recursive: true, force: true });
+    }
+    await withRepo({}, async ({ steps }) => {
+      const R = /^file=(\S+)$/m.exec((await steps.redact()).stdout)[1];
+      const B = /^body=(\S+)$/m.exec((await steps.build(R)).stdout)[1];
+      const W = path.dirname(B);
+      assert.equal(path.basename(B), 'body.json');
+      assert.equal((await fs.stat(W)).mode & 0o077, 0, 'the directory is private');
+      assert.ok(!(await exists(`${B}.chk`)));
+      const r3 = await steps.post(B, R);
+      assert.equal(r3.status, 0, r3.stderr);
+      assert.ok(!(await exists(W)), 'the emptied directory is removed after a 2xx');
+    });
+    await withRepo({ postStatus: 500 }, async ({ steps }) => {
+      const R = /^file=(\S+)$/m.exec((await steps.redact()).stdout)[1];
+      const B = /^body=(\S+)$/m.exec((await steps.build(R)).stdout)[1];
+      const r3 = await steps.post(B, R);
+      assert.equal(r3.status, 22);
+      assert.ok(r3.stderr.includes(`not submitted, files kept in ${path.dirname(B)}`), r3.stderr);
+      assert.ok(await exists(B) && await exists(`${B}.resp`));
+      await fs.rm(path.dirname(B), { recursive: true, force: true });
+      await fs.rm(R, { force: true });
+    });
   });
 });
 
@@ -777,35 +906,108 @@ describe('w-swarm: Pi Brain CHECKPOINT 0.5 kept in the ported RuFlo variant', ()
       const i1 = c.indexOf('### ⛔ CHECKPOINT 1: Task Decomposition');
       assert.ok(i0 >= 0 && i05 > i0 && i1 > i05);
       const s = c.slice(i05, i1);
-      assert.match(s, /curl -s -G "https:\/\/pi\.ruv\.io\/v1\/memories\/search" --data-urlencode "q=\[task description\]" --data top_k=3/);
+      assertPiSearch(s, 'task');
       assert.match(s, /\*\*REQUIRED OUTPUT:\*\*\n- Pi Brain memories found: _____ \(0\+ results\)\n- Applicable patterns: _____/);
       const cl = c.slice(c.indexOf('## Completion Checklist'));
       assert.ok(cl.indexOf('- [ ] Pi Brain discovery completed (CHECKPOINT 0.5)') >= 0);
       assert.ok(cl.indexOf('- [ ] Pi Brain discovery completed (CHECKPOINT 0.5)') < cl.indexOf('- [ ] Callers (Checkpoint 1) and lenses'));
-      // The exact block the generator's w-swarm carried before the RuFlo port (94c7f56).
-      assert.equal(s, [
-        '### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery',
-        '**Search the Pi Brain network for existing knowledge matching this task:**',
-        '',
-        '```bash',
-        '# curl, query URL-encoded (preferred)',
-        'curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[task description]" --data top_k=3',
-        '',
-        '# HTTP fallback',
-        'curl -s "https://pi.ruv.io/v1/memories/search?q=[task description]&top_k=3"',
-        '```',
-        '',
-        '**If matching memories found:** Review steps for applicable patterns. Adapt proven approaches. Note memory IDs for voting later.',
-        '**If no matches:** Proceed normally.',
-        '',
-        '**REQUIRED OUTPUT:**',
-        '- Pi Brain memories found: _____ (0+ results)',
-        '- Applicable patterns: _____',
-        '',
-        '---',
-        '',
-        '',
-      ].join('\n'));
+      // The block the generator's w-swarm carried before the RuFlo port (94c7f56), now with the redacted file-fed search: the same as w-fix's but for the noun.
+      const f = section('w-fix', '### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery', '### ⛔ CHECKPOINT 1');
+      assert.equal(s, f.replaceAll('bug', 'task').replace('applicable fix patterns', 'applicable patterns'));
+      assert.ok(s.startsWith('### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery\n**Search the Pi Brain network for existing knowledge matching this task:**\n'));
+      assert.ok(s.endsWith('**If matching memories found:** Review steps for applicable patterns. Adapt proven approaches. Note memory IDs for voting later.\n**If no matches:** Proceed normally.\n\n**REQUIRED OUTPUT:**\n- Pi Brain memories found: _____ (0+ results)\n- Applicable patterns: _____\n\n---\n\n'));
     }
+  });
+});
+
+describe('w-fix and w-swarm CHECKPOINT 0.5: the Pi Brain search run as written against a local endpoint', () => {
+  const KIT = path.join(__dirname, '..', '.claude', 'helpers', 'kit');
+  const fence = (name) => /```bash\n([\s\S]*?)```/.exec(section(name, '### 🧠 CHECKPOINT 0.5', '### ⛔ CHECKPOINT 1'))[1];
+  const run = (code, cwd, env) => new Promise((ok) => {
+    const ch = spawn('bash', ['-c', code], { cwd, env: { ...process.env, ...env } });
+    let stdout = '', stderr = '';
+    ch.stdout.on('data', (d) => { stdout += d; });
+    ch.stderr.on('data', (d) => { stderr += d; });
+    ch.on('close', (status) => ok({ status, stdout, stderr }));
+  });
+  const DESC = 'TypeError at db.connect(postgres://app:SUPERSECRET123@db/x) `touch PWNED` $(touch PWNED) "q" \'s\' & top_k=99';
+  const withSearch = async ({ kit = true, secrets = 'SUPERSECRET123\n', status = 200, env = {} }, fn) => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pi-search-'));
+    const queries = [];
+    const srv = http.createServer((q, r) => { queries.push(q.url); r.statusCode = status; r.end(status === 200 ? '{"results":[]}' : 'down'); });
+    await new Promise((ok) => srv.listen(0, '127.0.0.1', ok));
+    try {
+      const repo = path.join(dir, 'repo');
+      await fs.mkdir(path.join(repo, 'sub'), { recursive: true });
+      if (kit) await fs.cp(KIT, path.join(repo, '.claude', 'helpers', 'kit'), { recursive: true });
+      if (secrets !== null) { await fs.mkdir(path.join(repo, '.claude', 'kit'), { recursive: true }); await fs.writeFile(path.join(repo, '.claude', 'kit', 'secrets'), secrets); }
+      spawnSync('git', ['init', '-q'], { cwd: repo });
+      const D = path.join(dir, 'desc.txt');
+      await fs.writeFile(D, DESC);
+      const url = `http://127.0.0.1:${srv.address().port}`;
+      const search = (name) => run(fence(name).replace('<the path you wrote>', D).replace('https://pi.ruv.io', url), path.join(repo, 'sub'), { TMPDIR: dir, ...env });
+      return await fn({ dir, repo, D, search, queries });
+    } finally {
+      srv.close();
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  };
+  const exists = (f) => fs.access(f).then(() => true, () => false);
+  const qOf = (u) => new URL(u, 'http://x').searchParams;
+
+  for (const name of ['w-fix', 'w-swarm']) {
+    it(`${name}: with a secrets file the query is redacted, sent URL-encoded from the file, and nothing in it runs`, async () => {
+      await withSearch({}, async ({ dir, repo, search, queries }) => {
+        const r = await search(name);
+        assert.equal(r.status, 0, r.stderr);
+        assert.match(r.stderr, /replaced=1/);
+        assert.equal(queries.length, 1);
+        const p = qOf(queries[0]);
+        assert.ok(!queries[0].includes('SUPERSECRET123') && !p.get('q').includes('SUPERSECRET123'), 'the secret never leaves');
+        assert.equal(p.get('q'), DESC.replace('SUPERSECRET123', '[REDACTED]'));
+        assert.equal(p.get('top_k'), '3');
+        for (const d of [dir, repo, path.join(repo, 'sub')]) assert.ok(!(await exists(path.join(d, 'PWNED'))), `nothing ran in ${d}`);
+        assert.deepEqual((await fs.readdir(dir)).sort(), ['desc.txt', 'repo'], 'the private temp directory is gone');
+      });
+    });
+    it(`${name}: a secrets file with no kit is the exit-2 refusal and sends nothing; no secrets file is advisory and sends the text as written`, async () => {
+      await withSearch({ kit: false }, async ({ D, search, queries }) => {
+        const r = await search(name);
+        assert.equal(r.status, 2, r.stderr);
+        assert.match(r.stderr, /secrets file present but kit missing: not sent \(file kept: /);
+        assert.equal(queries.length, 0);
+        assert.ok(await exists(D), 'the description file is kept');
+      });
+      for (const kit of [false, true]) {
+        await withSearch({ kit, secrets: null }, async ({ search, queries }) => {
+          const r = await search(name);
+          assert.equal(r.status, 0, r.stderr);
+          assert.match(r.stdout, kit ? /^no \.claude\/kit\/secrets: nothing to redact/ : /^kit not installed \(\.claude\/helpers\/kit\/cli\.js missing\): redact skipped, advisory/);
+          assert.equal(qOf(queries[0]).get('q'), DESC);
+        });
+      }
+    });
+    it(`${name}: a non-2xx answer is exit 22 and a curl failure is curl's own exit, never "no matches"`, async () => {
+      await withSearch({ status: 503 }, async ({ search }) => {
+        const r = await search(name);
+        assert.equal(r.status, 22);
+        assert.match(r.stderr, /search failed \(HTTP 503\): Pi Brain not searched/);
+        assert.equal(r.stdout.replace(/^.*\n/, ''), '', 'the error body is not printed as the answer');
+      });
+      const bin = await fs.mkdtemp(path.join(os.tmpdir(), 'pi-curl-'));
+      try {
+        await fs.writeFile(path.join(bin, 'curl'), '#!/bin/bash\nexit 28\n', { mode: 0o755 });
+        await withSearch({ secrets: null, env: { PATH: `${bin}:${process.env.PATH}` } }, async ({ search }) => {
+          const r = await search(name);
+          assert.equal(r.status, 28);
+          assert.match(r.stderr, /search failed \(curl exit 28\): Pi Brain not searched/);
+        });
+      } finally {
+        await fs.rm(bin, { recursive: true, force: true });
+      }
+    });
+  }
+  it('w-fix carries the same checks as w-swarm', () => {
+    assertPiSearch(section('w-fix', '### 🧠 CHECKPOINT 0.5', '### ⛔ CHECKPOINT 1'), 'bug');
   });
 });

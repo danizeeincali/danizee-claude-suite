@@ -65,13 +65,33 @@ STOP and wait for user response.
 ### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
 **Search the Pi Brain network for existing knowledge matching this task:**
 
-```bash
-# curl, query URL-encoded (preferred)
-curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[task description]" --data top_k=3
+The search goes to a public service, and a task description can quote a stack trace, a connection string or a token. Write the task description as plain text to a temp file `$D` outside the repository (in the session scratchpad or at a `mktemp` path) with the Write tool, never into a double-quoted shell argument and never `echo "<text>"` or a heredoc (backticks and `$( )` in an error message would run as commands). Then run the block with `D` bound in the same command (`D=<the path you wrote>; <block>`: shell variables do not persist between Bash calls). When `.claude/kit/secrets` exists the text passes through `redact --keep-lines` first, and curl reads the query from the file with `--data-urlencode "q@$Q"`, so nothing of it is pasted into the command or shell-evaluated:
 
-# HTTP fallback
-curl -s "https://pi.ruv.io/v1/memories/search?q=[task description]&top_k=3"
+```bash
+D=<the path you wrote>
+(
+  [ -s "$D" ] || { echo "description file missing or empty: search skipped" >&2; exit 1; }
+  T=$(git rev-parse --show-toplevel 2>/dev/null); [ -n "$T" ] || T=.
+  K="$T/.claude/helpers/kit/cli.js"; S="$T/.claude/kit/secrets"; M="$(git rev-parse --git-common-dir 2>/dev/null)/../.claude/kit/secrets"
+  W=$(mktemp -d 2>/dev/null) && [ -n "$W" ] || { echo "mktemp failed: search skipped" >&2; exit 1; }
+  trap 'rm -rf -- "$W"' EXIT INT TERM
+  Q="$W/q"
+  if [ -e "$S" ] || [ -L "$S" ] || [ -e "$M" ] || [ -L "$M" ]; then
+    [ -f "$K" ] || { echo "secrets file present but kit missing: not sent (file kept: $D)" >&2; exit 2; }
+    node "$K" redact --keep-lines < "$D" > "$W/j"; RC=$?
+    [ $RC -eq 0 ] || { echo "redact failed (exit $RC): search not sent" >&2; exit 1; }
+    node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));fs.writeFileSync(process.argv[2],j.text);console.error("replaced="+j.replaced)' "$W/j" "$Q" || { echo "redact output unreadable: search not sent" >&2; exit 1; }
+  else
+    if [ -f "$K" ]; then echo "no .claude/kit/secrets: nothing to redact, description sent as written"; else echo "kit not installed (.claude/helpers/kit/cli.js missing): redact skipped, advisory: no secrets file, description sent as written"; fi
+    cp -- "$D" "$Q" || { echo "copy failed: search skipped" >&2; exit 1; }
+  fi
+  C=$(curl -sS --connect-timeout 10 --max-time 30 -o "$Q.resp" -w '%{http_code}' -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q@$Q" --data top_k=3); RC=$?
+  [ $RC -eq 0 ] || { echo "search failed (curl exit $RC): Pi Brain not searched" >&2; exit $RC; }
+  case "$C" in 2??) cat "$Q.resp";; *) echo "search failed (HTTP $C): Pi Brain not searched" >&2; cat "$Q.resp" >&2; exit 22;; esac
+)
 ```
+
+Every temp file sits in the private directory `$W` from `mktemp -d`, which the block removes on every path. The curl prints the HTTP status, with a 10 s connect timeout and a 30 s limit on the whole call; no flag here needs a recent curl. Exit 0 means a 2xx status and prints the registry's answer. Exit 1 is a missing or empty description file, mktemp failed, a failed copy, or a `redact` that failed or printed something unreadable ("redact failed (exit N): search not sent": an unreadable secrets file, a dangling symlink or a directory at the secrets path is a broken state, never "nothing to redact"): nothing was sent. Exit 2 is the refusal "secrets file present but kit missing: not sent": a secrets file exists but `.claude/helpers/kit/cli.js` does not, so the raw text is never sent and `$D` is kept for a run after the kit is restored. Exit 22 is curl exit 0 with a status that is not 2xx (a 404, a 502 or 503, a proxy or captive-portal page): it prints "search failed (HTTP <code>): Pi Brain not searched" and the body to stderr, and that body is never the answer. Exit 28 is a timeout, 6 or 7 is no connection, and any other non-zero exit is curl's own: "search failed (curl exit N): Pi Brain not searched". On any non-zero exit report it and record the search as not done, never as "no matches". With no kit and no secrets file the block says so in one line and sends the description as written; the kit is advisory and never blocks a workflow that worked before. When you are done with the search, or give up on it, run `rm -f -- <the path you wrote>` with the literal path.
 
 **If matching memories found:** Review steps for applicable patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.

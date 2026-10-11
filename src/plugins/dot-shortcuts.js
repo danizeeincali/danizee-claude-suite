@@ -81,13 +81,33 @@ STOP and wait for user response.
 ### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
 **Search the Pi Brain network for existing knowledge matching this task:**
 
-\`\`\`bash
-# curl, query URL-encoded (preferred)
-curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[task description]" --data top_k=3
+The search goes to a public service, and a task description can quote a stack trace, a connection string or a token. Write the task description as plain text to a temp file \`$D\` outside the repository (in the session scratchpad or at a \`mktemp\` path) with the Write tool, never into a double-quoted shell argument and never \`echo "<text>"\` or a heredoc (backticks and \`$( )\` in an error message would run as commands). Then run the block with \`D\` bound in the same command (\`D=<the path you wrote>; <block>\`: shell variables do not persist between Bash calls). When \`.claude/kit/secrets\` exists the text passes through \`redact --keep-lines\` first, and curl reads the query from the file with \`--data-urlencode "q@$Q"\`, so nothing of it is pasted into the command or shell-evaluated:
 
-# HTTP fallback
-curl -s "https://pi.ruv.io/v1/memories/search?q=[task description]&top_k=3"
+\`\`\`bash
+D=<the path you wrote>
+(
+  [ -s "$D" ] || { echo "description file missing or empty: search skipped" >&2; exit 1; }
+  T=$(git rev-parse --show-toplevel 2>/dev/null); [ -n "$T" ] || T=.
+  K="$T/.claude/helpers/kit/cli.js"; S="$T/.claude/kit/secrets"; M="$(git rev-parse --git-common-dir 2>/dev/null)/../.claude/kit/secrets"
+  W=$(mktemp -d 2>/dev/null) && [ -n "$W" ] || { echo "mktemp failed: search skipped" >&2; exit 1; }
+  trap 'rm -rf -- "$W"' EXIT INT TERM
+  Q="$W/q"
+  if [ -e "$S" ] || [ -L "$S" ] || [ -e "$M" ] || [ -L "$M" ]; then
+    [ -f "$K" ] || { echo "secrets file present but kit missing: not sent (file kept: $D)" >&2; exit 2; }
+    node "$K" redact --keep-lines < "$D" > "$W/j"; RC=$?
+    [ $RC -eq 0 ] || { echo "redact failed (exit $RC): search not sent" >&2; exit 1; }
+    node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));fs.writeFileSync(process.argv[2],j.text);console.error("replaced="+j.replaced)' "$W/j" "$Q" || { echo "redact output unreadable: search not sent" >&2; exit 1; }
+  else
+    if [ -f "$K" ]; then echo "no .claude/kit/secrets: nothing to redact, description sent as written"; else echo "kit not installed (.claude/helpers/kit/cli.js missing): redact skipped, advisory: no secrets file, description sent as written"; fi
+    cp -- "$D" "$Q" || { echo "copy failed: search skipped" >&2; exit 1; }
+  fi
+  C=$(curl -sS --connect-timeout 10 --max-time 30 -o "$Q.resp" -w '%{http_code}' -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q@$Q" --data top_k=3); RC=$?
+  [ $RC -eq 0 ] || { echo "search failed (curl exit $RC): Pi Brain not searched" >&2; exit $RC; }
+  case "$C" in 2??) cat "$Q.resp";; *) echo "search failed (HTTP $C): Pi Brain not searched" >&2; cat "$Q.resp" >&2; exit 22;; esac
+)
 \`\`\`
+
+Every temp file sits in the private directory \`$W\` from \`mktemp -d\`, which the block removes on every path. The curl prints the HTTP status, with a 10 s connect timeout and a 30 s limit on the whole call; no flag here needs a recent curl. Exit 0 means a 2xx status and prints the registry's answer. Exit 1 is a missing or empty description file, mktemp failed, a failed copy, or a \`redact\` that failed or printed something unreadable ("redact failed (exit N): search not sent": an unreadable secrets file, a dangling symlink or a directory at the secrets path is a broken state, never "nothing to redact"): nothing was sent. Exit 2 is the refusal "secrets file present but kit missing: not sent": a secrets file exists but \`.claude/helpers/kit/cli.js\` does not, so the raw text is never sent and \`$D\` is kept for a run after the kit is restored. Exit 22 is curl exit 0 with a status that is not 2xx (a 404, a 502 or 503, a proxy or captive-portal page): it prints "search failed (HTTP <code>): Pi Brain not searched" and the body to stderr, and that body is never the answer. Exit 28 is a timeout, 6 or 7 is no connection, and any other non-zero exit is curl's own: "search failed (curl exit N): Pi Brain not searched". On any non-zero exit report it and record the search as not done, never as "no matches". With no kit and no secrets file the block says so in one line and sends the description as written; the kit is advisory and never blocks a workflow that worked before. When you are done with the search, or give up on it, run \`rm -f -- <the path you wrote>\` with the literal path.
 
 **If matching memories found:** Review steps for applicable patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
@@ -1574,13 +1594,33 @@ STOP and wait for user response.
 ### 🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery
 **Search the Pi Brain network for existing knowledge matching this bug:**
 
-\`\`\`bash
-# curl, query URL-encoded (preferred)
-curl -s -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q=[bug description]" --data top_k=3
+The search goes to a public service, and a bug description can quote a stack trace, a connection string or a token. Write the bug description as plain text to a temp file \`$D\` outside the repository (in the session scratchpad or at a \`mktemp\` path) with the Write tool, never into a double-quoted shell argument and never \`echo "<text>"\` or a heredoc (backticks and \`$( )\` in an error message would run as commands). Then run the block with \`D\` bound in the same command (\`D=<the path you wrote>; <block>\`: shell variables do not persist between Bash calls). When \`.claude/kit/secrets\` exists the text passes through \`redact --keep-lines\` first, and curl reads the query from the file with \`--data-urlencode "q@$Q"\`, so nothing of it is pasted into the command or shell-evaluated:
 
-# HTTP fallback
-curl -s "https://pi.ruv.io/v1/memories/search?q=[bug description]&top_k=3"
+\`\`\`bash
+D=<the path you wrote>
+(
+  [ -s "$D" ] || { echo "description file missing or empty: search skipped" >&2; exit 1; }
+  T=$(git rev-parse --show-toplevel 2>/dev/null); [ -n "$T" ] || T=.
+  K="$T/.claude/helpers/kit/cli.js"; S="$T/.claude/kit/secrets"; M="$(git rev-parse --git-common-dir 2>/dev/null)/../.claude/kit/secrets"
+  W=$(mktemp -d 2>/dev/null) && [ -n "$W" ] || { echo "mktemp failed: search skipped" >&2; exit 1; }
+  trap 'rm -rf -- "$W"' EXIT INT TERM
+  Q="$W/q"
+  if [ -e "$S" ] || [ -L "$S" ] || [ -e "$M" ] || [ -L "$M" ]; then
+    [ -f "$K" ] || { echo "secrets file present but kit missing: not sent (file kept: $D)" >&2; exit 2; }
+    node "$K" redact --keep-lines < "$D" > "$W/j"; RC=$?
+    [ $RC -eq 0 ] || { echo "redact failed (exit $RC): search not sent" >&2; exit 1; }
+    node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));fs.writeFileSync(process.argv[2],j.text);console.error("replaced="+j.replaced)' "$W/j" "$Q" || { echo "redact output unreadable: search not sent" >&2; exit 1; }
+  else
+    if [ -f "$K" ]; then echo "no .claude/kit/secrets: nothing to redact, description sent as written"; else echo "kit not installed (.claude/helpers/kit/cli.js missing): redact skipped, advisory: no secrets file, description sent as written"; fi
+    cp -- "$D" "$Q" || { echo "copy failed: search skipped" >&2; exit 1; }
+  fi
+  C=$(curl -sS --connect-timeout 10 --max-time 30 -o "$Q.resp" -w '%{http_code}' -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q@$Q" --data top_k=3); RC=$?
+  [ $RC -eq 0 ] || { echo "search failed (curl exit $RC): Pi Brain not searched" >&2; exit $RC; }
+  case "$C" in 2??) cat "$Q.resp";; *) echo "search failed (HTTP $C): Pi Brain not searched" >&2; cat "$Q.resp" >&2; exit 22;; esac
+)
 \`\`\`
+
+Every temp file sits in the private directory \`$W\` from \`mktemp -d\`, which the block removes on every path. The curl prints the HTTP status, with a 10 s connect timeout and a 30 s limit on the whole call; no flag here needs a recent curl. Exit 0 means a 2xx status and prints the registry's answer. Exit 1 is a missing or empty description file, mktemp failed, a failed copy, or a \`redact\` that failed or printed something unreadable ("redact failed (exit N): search not sent": an unreadable secrets file, a dangling symlink or a directory at the secrets path is a broken state, never "nothing to redact"): nothing was sent. Exit 2 is the refusal "secrets file present but kit missing: not sent": a secrets file exists but \`.claude/helpers/kit/cli.js\` does not, so the raw text is never sent and \`$D\` is kept for a run after the kit is restored. Exit 22 is curl exit 0 with a status that is not 2xx (a 404, a 502 or 503, a proxy or captive-portal page): it prints "search failed (HTTP <code>): Pi Brain not searched" and the body to stderr, and that body is never the answer. Exit 28 is a timeout, 6 or 7 is no connection, and any other non-zero exit is curl's own: "search failed (curl exit N): Pi Brain not searched". On any non-zero exit report it and record the search as not done, never as "no matches". With no kit and no secrets file the block says so in one line and sends the description as written; the kit is advisory and never blocks a workflow that worked before. When you are done with the search, or give up on it, run \`rm -f -- <the path you wrote>\` with the literal path.
 
 **If matching memories found:** Review steps for applicable fix patterns. Adapt proven approaches. Note memory IDs for voting later.
 **If no matches:** Proceed normally.
@@ -3739,39 +3779,45 @@ Skip if auto_share.enabled is false.
 <the matched recipe id: only for a fork, appended to $R after the fork check; leave this whole block out when you write $E>
 \`\`\`
 
-Then run the block with \`E\` bound in the same command (\`E=<the path you wrote>; <block>\`). One line when the kit is not installed, and one line when there is no secrets file:
+Then run the block with \`E\` bound in the same command (\`E=<the path you wrote>; <block>\`). The kit and the secrets paths are resolved from the repository top (\`git rev-parse --show-toplevel\`), not from the current directory. One line when there is no secrets file (with or without the kit), and a refusal when a secrets file exists but the kit does not:
 \`\`\`bash
-if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): redact skipped, advisory: use the text from file=$E"; elif S=.claude/kit/secrets; M="$(git rev-parse --git-common-dir 2>/dev/null)/../.claude/kit/secrets"; [ ! -e "$S" ] && [ ! -L "$S" ] && [ ! -e "$M" ] && [ ! -L "$M" ]; then echo "no .claude/kit/secrets: text used as is, nothing to redact: use the text from file=$E"; else ( J=; R=; J=$(mktemp 2>/dev/null) && R=$(mktemp 2>/dev/null) && [ -n "$J" ] && [ -n "$R" ] || { echo "mktemp failed: text not redacted" >&2; rm -f "$J" "$R"; exit 1; }; KEEP=; trap 'rm -f "$J"; [ -n "$KEEP" ] || rm -f "$R"' EXIT INT TERM; node .claude/helpers/kit/cli.js redact --keep-lines < "$E" > "$J"; RC=$?; if [ $RC -eq 0 ]; then node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));fs.writeFileSync(process.argv[2],j.text);console.error("replaced="+j.replaced);console.log("file="+process.argv[2])' "$J" "$R"; RC=$?; [ $RC -eq 0 ] && KEEP=1; else echo "redact failed (exit $RC)" >&2; fi; exit $RC ); fi
+T=$(git rev-parse --show-toplevel 2>/dev/null); [ -n "$T" ] || T=.; K="$T/.claude/helpers/kit/cli.js"; S="$T/.claude/kit/secrets"; M="$(git rev-parse --git-common-dir 2>/dev/null)/../.claude/kit/secrets"; if [ ! -e "$S" ] && [ ! -L "$S" ] && [ ! -e "$M" ] && [ ! -L "$M" ]; then if [ -f "$K" ]; then echo "no .claude/kit/secrets: text used as is, nothing to redact: use the text from file=$E"; else echo "kit not installed (.claude/helpers/kit/cli.js missing): redact skipped, advisory: use the text from file=$E"; fi; elif [ ! -f "$K" ]; then echo "secrets file present but kit missing: not sent (files kept: $E)" >&2; (exit 2); else ( J=; R=; J=$(mktemp 2>/dev/null) && R=$(mktemp 2>/dev/null) && [ -n "$J" ] && [ -n "$R" ] || { echo "mktemp failed: text not redacted" >&2; rm -f "$J" "$R"; exit 1; }; KEEP=; trap 'rm -f "$J"; [ -n "$KEEP" ] || rm -f "$R"' EXIT INT TERM; node "$K" redact --keep-lines < "$E" > "$J"; RC=$?; if [ $RC -eq 0 ]; then node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));fs.writeFileSync(process.argv[2],j.text);console.error("replaced="+j.replaced);console.log("file="+process.argv[2])' "$J" "$R"; RC=$?; [ $RC -eq 0 ] && KEEP=1; else echo "redact failed (exit $RC)" >&2; fi; exit $RC ); fi
 \`\`\`
-The pre-check sends anything present at either secrets path to \`redact\` (\`-e\` or \`-L\`: a dangling symlink or a directory there is a broken state, not "absent"), so only a path with nothing at it prints "no .claude/kit/secrets"; say that in one line and continue with the text as is. Exit 0: redacted; the redacted \`text\` is in the file the block prints as \`file=<path>\` (call it \`$R\`), which the block leaves behind, and stderr shows \`replaced=<n>\`. Exit 1 is bad input or a broken state (an unreadable secrets file, a dangling symlink or a directory at the secrets path, bad flag, mktemp failed, git missing or not a git repository): no file is named; report it, never read it as "nothing to redact", and do **not** POST the unredacted body (submitted as: skipped, reason: redact failed, exit N). Any other non-zero exit (for example 127, or a signal) is a failure of that step: the same. If \`.claude/helpers/kit/cli.js\` is missing the block says so in one line and continues; the kit is advisory and never blocks a workflow that worked before.
-With no kit or no secrets file the block names \`file=$E\` and the text is used as it is: read it once first, and use that path for \`R\` below. After a redact exit 1 or any other failure no search runs and nothing is sent.
+The pre-check sends anything present at either secrets path to \`redact\` (\`-e\` or \`-L\`: a dangling symlink or a directory there is a broken state, not "absent"), so only a path with nothing at it prints "no .claude/kit/secrets"; say that in one line and continue with the text as is. Exit 0: redacted; the redacted \`text\` is in the file the block prints as \`file=<path>\` (call it \`$R\`), which the block leaves behind, and stderr shows \`replaced=<n>\`. Exit 1 is bad input or a broken state (an unreadable secrets file, a dangling symlink or a directory at the secrets path, bad flag, mktemp failed, git missing or not a git repository): no file is named; report it, never read it as "nothing to redact", and do **not** POST the unredacted body (submitted as: skipped, reason: redact failed, exit N). Any other non-zero exit (for example 127, or a signal) is a failure of that step: the same. Exit 2 is the refusal "secrets file present but kit missing: not sent": a secrets file exists at either path but \`.claude/helpers/kit/cli.js\` does not, so the raw text is never used in place of redacted text; nothing is searched or sent, and \`$E\` is kept for a run after the kit is restored (when you give up on the recipe, remove it as below). If \`.claude/helpers/kit/cli.js\` is missing and there is no secrets file the block says so in one line and continues; the kit is advisory and never blocks a workflow that worked before.
+With no secrets file (kit or no kit) the block names \`file=$E\` and the text is used as it is: read it once first, and use that path for \`R\` below. After a redact exit 1 or 2 or any other failure no search runs and nothing is sent.
 
 **Fork check: search with the redacted title, read from the file.** Bind \`R\` to the printed \`file=\` path in the same command (with no kit or no secrets file that is \`$E\` itself, so the title is read from \`$E\`). A \`node -e\` prints the \`@title\` value from \`$R\` into a temp file \`$Q\`, and curl sends it with \`--data-urlencode "q@$Q"\`: curl reads the file and URL-encodes it, so the title is never pasted into the command and nothing of it is shell-evaluated:
 \`\`\`bash
 R=<printed path>
 (
   [ -s "$R" ] || { echo "redacted text file missing or empty: search skipped" >&2; exit 1; }
-  Q=$(mktemp 2>/dev/null) && [ -n "$Q" ] || { echo "mktemp failed: search skipped" >&2; exit 1; }
-  trap 'rm -f "$Q" "$Q.resp"' EXIT INT TERM
+  T=$(git rev-parse --show-toplevel 2>/dev/null); [ -n "$T" ] || T=.; K="$T/.claude/helpers/kit/cli.js"; S="$T/.claude/kit/secrets"; M="$(git rev-parse --git-common-dir 2>/dev/null)/../.claude/kit/secrets"
+  [ -f "$K" ] || ! { [ -e "$S" ] || [ -L "$S" ] || [ -e "$M" ] || [ -L "$M" ]; } || { echo "secrets file present but kit missing: not sent (files kept: $R)" >&2; exit 2; }
+  W=$(mktemp -d 2>/dev/null) && [ -n "$W" ] || { echo "mktemp failed: search skipped" >&2; exit 1; }
+  trap 'rm -rf -- "$W"' EXIT INT TERM
+  Q="$W/q"
   node -e 'const fs=require("fs");const L=fs.readFileSync(process.argv[1],"utf8").split(/\\r?\\n/);const i=L.findIndex(l=>/^@title\\s*$/.test(l));const t=[];if(i>=0)for(const l of L.slice(i+1)){if(/^@[A-Za-z_-]+\\s*$/.test(l))break;t.push(l)}const q=t.join(" ").trim();if(!q)process.exit(1);fs.writeFileSync(process.argv[2],q)' "$R" "$Q" || { echo "no @title in the field file: search skipped" >&2; exit 1; }
   C=$(curl -sS --connect-timeout 10 --max-time 30 -o "$Q.resp" -w '%{http_code}' -G "https://pi.ruv.io/v1/memories/search" --data-urlencode "q@$Q" --data top_k=3); RC=$?
   [ $RC -eq 0 ] || { echo "search failed (curl exit $RC): fork check not done" >&2; exit $RC; }
   case "$C" in 2??) cat "$Q.resp";; *) echo "search failed (HTTP $C): fork check not done" >&2; cat "$Q.resp" >&2; exit 22;; esac
 )
 \`\`\`
-The curl writes the answer to \`$Q.resp\` and prints the HTTP status, with a 10 s connect timeout and a 30 s limit on the whole call; no flag here needs a recent curl. Exit 0 means a 2xx status and prints the registry's answer: read the top match's id and score from it. Exit 1 is a missing or empty file, mktemp failed or no \`@title\`: no search ran; fix it and run again. Exit 22 is curl exit 0 with a status that is not 2xx (a 404, a 502 or 503, a proxy or captive-portal page): it prints "search failed (HTTP <code>): fork check not done" and the body to stderr, and that body is never the answer. Exit 28 is a timeout, 6 or 7 is no connection, and any other non-zero exit is curl's own: "search failed (curl exit N): fork check not done". On any of these, report it and treat the fork check as not done, never as "no similar recipe".
+\`$Q\` and the answer \`$Q.resp\` sit in the private directory \`$W\` from \`mktemp -d\`, which the block removes on every path. The curl writes the answer to \`$Q.resp\` and prints the HTTP status, with a 10 s connect timeout and a 30 s limit on the whole call; no flag here needs a recent curl. Exit 0 means a 2xx status and prints the registry's answer: read the top match's id and score from it. Exit 1 is a missing or empty file, mktemp failed or no \`@title\`: no search ran; fix it and run again. Exit 2 is the refusal "secrets file present but kit missing: not sent": no search ran and \`$R\` is kept. Exit 22 is curl exit 0 with a status that is not 2xx (a 404, a 502 or 503, a proxy or captive-portal page): it prints "search failed (HTTP <code>): fork check not done" and the body to stderr, and that body is never the answer. Exit 28 is a timeout, 6 or 7 is no connection, and any other non-zero exit is curl's own: "search failed (curl exit N): fork check not done". On any of these, report it and treat the fork check as not done, never as "no similar recipe".
 
 **Build the JSON body from the redacted text.** Shell variables do not persist between Bash calls, so bind \`R\` to the printed \`file=\` path and \`E\` to the path you wrote in the same command. The block encodes the fields with \`JSON.stringify\` into a new temp file \`$B\` (\`title\`, \`description\`, \`tags\`, \`version\` "1.0.0", \`steps\`, and \`forked_from\` only when the \`@forked_from\` block is there), and when the kit and a secrets file exist it runs the encoded body through \`redact\` once more and refuses to send when that finds anything:
 \`\`\`bash
 R=<printed path>; E=<the path you wrote>
 (
   [ -s "$R" ] || { echo "redacted text file missing or empty" >&2; exit 1; }
-  KEEP=; B=$(mktemp 2>/dev/null) && [ -n "$B" ] || { echo "mktemp failed: body not built" >&2; exit 1; }
-  trap '[ -n "$KEEP" ] || rm -f "$B"; rm -f "$B.chk"' EXIT INT TERM
+  T=$(git rev-parse --show-toplevel 2>/dev/null); [ -n "$T" ] || T=.; K="$T/.claude/helpers/kit/cli.js"; S="$T/.claude/kit/secrets"; M="$(git rev-parse --git-common-dir 2>/dev/null)/../.claude/kit/secrets"
+  SEC=; if [ -e "$S" ] || [ -L "$S" ] || [ -e "$M" ] || [ -L "$M" ]; then SEC=1; fi
+  [ -f "$K" ] || [ -z "$SEC" ] || { echo "secrets file present but kit missing: not sent (files kept: $R)" >&2; exit 2; }
+  KEEP=; W=$(mktemp -d 2>/dev/null) && [ -n "$W" ] || { echo "mktemp failed: body not built" >&2; exit 1; }
+  B="$W/body.json"
+  trap '[ -n "$KEEP" ] || rm -rf -- "$W"; rm -f -- "$B.chk"' EXIT INT TERM
   node -e 'const fs=require("fs");const K=["title","description","tags","steps","forked_from"];const f={};let k=null;for(const l of fs.readFileSync(process.argv[1],"utf8").split(/\\r?\\n/)){const m=/^@([A-Za-z_-]+)\\s*$/.exec(l);if(m){if(!K.includes(m[1])){console.error("unknown label @"+m[1]);process.exit(1)}if(m[1] in f){console.error("@"+m[1]+" given twice");process.exit(1)}k=m[1];f[k]=[];continue}if(k===null){if(l.trim()){console.error("text before the first @field line");process.exit(1)}continue}f[k].push(l)}const one=n=>(f[n]||[]).join("\\n").trim();const list=n=>(f[n]||[]).flatMap(s=>n==="tags"?s.split(","):[s]).map(s=>s.trim()).filter(Boolean);const b={title:one("title"),description:one("description"),tags:list("tags"),version:"1.0.0",steps:list("steps")};if(one("forked_from"))b.forked_from=one("forked_from");for(const n of ["title","description","steps"])if(!b[n].length){console.error("missing @"+n);process.exit(1)}fs.writeFileSync(process.argv[2],JSON.stringify(b))' "$R" "$B" || { echo "body not built (exit $?): fix the field file and run again" >&2; exit 1; }
-  S=.claude/kit/secrets; M="$(git rev-parse --git-common-dir 2>/dev/null)/../.claude/kit/secrets"
-  if [ -f .claude/helpers/kit/cli.js ] && { [ -e "$S" ] || [ -L "$S" ] || [ -e "$M" ] || [ -L "$M" ]; }; then
-    node .claude/helpers/kit/cli.js redact < "$B" > "$B.chk"; RC=$?
+  if [ -n "$SEC" ]; then
+    node "$K" redact < "$B" > "$B.chk"; RC=$?
     [ $RC -eq 0 ] || { echo "redact check failed (exit $RC): body not sent" >&2; exit 1; }
     N=$(node -e 'const n=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).replaced;if(!Number.isInteger(n))process.exit(1);console.log(n)' "$B.chk") || { echo "redact check unreadable: body not sent" >&2; exit 1; }
     [ "$N" = 0 ] || { echo "body still holds a secret after encoding: not sent (replaced=$N)" >&2; exit 2; }
@@ -3779,7 +3825,7 @@ R=<printed path>; E=<the path you wrote>
   KEEP=1; echo "body=$B"
 )
 \`\`\`
-Exit 0 prints \`body=<path>\` (call it \`$B\`). Exit 1 is a missing or empty text file, mktemp failed, a field file the encoder cannot read (text before the first label, a label given twice, an unknown label: any line holding only \`@\` and a name that is not one of \`@title\`, \`@description\`, \`@tags\`, \`@steps\`, \`@forked_from\`, such as \`@Tags\` or \`@forked-from\`, refused as "unknown label @x" rather than read as text of the previous field, or no \`@title\`, \`@description\` or \`@steps\`), a failed check, or a check whose output cannot be read ("redact check unreadable: body not sent"); exit 2 is the refusal "body still holds a secret after encoding". On any non-zero exit no body file is left and nothing is sent: report it as printed (submitted as: skipped, reason: the printed line), never read it as "nothing to redact".
+The body \`$B\` and the check file \`$B.chk\` sit in a private directory from \`mktemp -d\`: on success the block removes only the check file and keeps the directory holding the body, and on any failure it removes the whole directory. Exit 0 prints \`body=<path>\` (call it \`$B\`; the directory is the one holding it). Exit 1 is a missing or empty text file, mktemp failed, a field file the encoder cannot read (text before the first label, a label given twice, an unknown label: any line holding only \`@\` and a name that is not one of \`@title\`, \`@description\`, \`@tags\`, \`@steps\`, \`@forked_from\`, such as \`@Tags\` or \`@forked-from\`, refused as "unknown label @x" rather than read as text of the previous field, or no \`@title\`, \`@description\` or \`@steps\`), a failed check, or a check whose output cannot be read ("redact check unreadable: body not sent"); exit 2 is a refusal: "body still holds a secret after encoding", or "secrets file present but kit missing: not sent" when a secrets file exists but the kit does not (the redacted text is never replaced by raw text, and \`$R\` is kept). On any non-zero exit no body file is left and nothing is sent: report it as printed (submitted as: skipped, reason: the printed line), never read it as "nothing to redact".
 
 **POST the body file.** One fence, one POST: a fork and a new recipe differ only by the \`@forked_from\` block in \`$R\`, so the same curl sends either. Send the body from the file, never by pasting it into the command; bind the printed path in the same command, or an unset \`$B\` posts an empty body:
 
@@ -3788,11 +3834,11 @@ B=<printed body path>; R=<printed path>; E=<the path you wrote>; [ -s "$B" ] || 
 C=$(curl -sS --connect-timeout 10 --max-time 30 -o "$B.resp" -w '%{http_code}' -X POST https://pi.ruv.io/v1/memories \\
   -H "Content-Type: application/json" \\
   --data-binary @"$B"); RC=$?
-if [ $RC -ne 0 ]; then echo "POST failed (curl exit $RC): not submitted, files kept" >&2; cat "$B.resp" 2>/dev/null; exit $RC
-else case "$C" in 2??) cat "$B.resp"; rm -f -- "$B" "$R" "$E" "$B.resp";; *) echo "POST failed (HTTP $C): not submitted, files kept" >&2; cat "$B.resp" >&2; exit 22;; esac; fi
+if [ $RC -ne 0 ]; then echo "POST failed (curl exit $RC): not submitted, files kept in $(dirname -- "$B")" >&2; cat "$B.resp" 2>/dev/null; exit $RC
+else case "$C" in 2??) cat "$B.resp"; rm -f -- "$B" "$R" "$E" "$B.resp"; rmdir -- "$(dirname -- "$B")" 2>/dev/null || true;; *) echo "POST failed (HTTP $C): not submitted, files kept in $(dirname -- "$B")" >&2; cat "$B.resp" >&2; exit 22;; esac; fi
 \`\`\`
 
-Write the literal printed paths for \`B=\` and \`R=\` and the path you wrote for \`E=\`. \`$E\` holds the unredacted text, so it is removed on every path, sent or abandoned: after a redact exit 1, a build exit 1 or 2, a failed POST, or a body you decide not to send, run \`rm -f -- "$E" "$R" "$B" "$B.resp"\` with the literal paths (\`$R\` and \`$B\` only when a path was printed). The curl writes the registry's answer to \`$B.resp\` and prints the HTTP status (plain flags, so it works on any curl, with a 10 s connect timeout and a 30 s limit on the whole call); the block then decides from the status, and a non-2xx answer leaves the files in place, so a retry needs no rebuild. Exit 0 is a 2xx status: submitted (the answer, printed, holds the recipe id), and the block removes \`$B\`, \`$R\`, \`$E\` and the response file. Exit 22 is curl exit 0 with a status that is not 2xx: it prints the status and the response file, not submitted, files kept (submitted as: skipped, reason: the printed status, unless a retry succeeds). Exit 28 is a timeout, 6 or 7 is no connection, and any other non-zero exit (for example 127) is curl's own: not submitted, files kept, report it. Never read a non-zero exit as submitted; when you give up on the recipe, remove the files as above.
+Write the literal printed paths for \`B=\` and \`R=\` and the path you wrote for \`E=\`. \`$E\` holds the unredacted text, so it is removed on every path, sent or abandoned: after a redact exit 1, a build exit 1 or 2, a failed POST, or a body you decide not to send, run \`rm -f -- "$E" "$R" "$B" "$B.resp"\` with the literal paths (\`$R\` and \`$B\` only when a path was printed), then \`rmdir -- <the directory holding $B>\` with its literal path (never \`rm -rf\` on a computed path: \`rmdir\` only removes an empty directory). The curl writes the registry's answer to \`$B.resp\`, in the same private directory as \`$B\`, and prints the HTTP status (plain flags, so it works on any curl, with a 10 s connect timeout and a 30 s limit on the whole call); the block then decides from the status, and a non-2xx answer leaves the files in place, so a retry needs no rebuild. Exit 0 is a 2xx status: submitted (the answer, printed, holds the recipe id), and the block removes \`$B\`, \`$R\`, \`$E\` and the response file, then the emptied directory with \`rmdir\`. A failed POST prints "files kept in <dir>" with the literal directory, so the kept files are named. Exit 22 is curl exit 0 with a status that is not 2xx: it prints the status and the response file, not submitted, files kept (submitted as: skipped, reason: the printed status, unless a retry succeeds). Exit 28 is a timeout, 6 or 7 is no connection, and any other non-zero exit (for example 127) is curl's own: not submitted, files kept, report it. Never read a non-zero exit as submitted; when you give up on the recipe, remove the files as above.
 After a timeout or a reset in the middle of the POST (exit 28, 52 or 56, or the tool being killed) the registry may already have stored the recipe: before resending, run the search fence above again for the exact title (\`$R\` is kept) and resend only when that recipe is not already there; if it is, report it as submitted with the id found and remove the files. Without that check a retry can post the same public recipe twice.
 
 **REQUIRED OUTPUT:**
@@ -6319,18 +6365,27 @@ Use TodoWrite NOW to create todos for ALL phases:
 **Parallel fetch all content categories from upstream source:**
 
 \`\`\`bash
-# Clone or fetch upstream
-git clone --depth 1 https://github.com/danizeeincali/danizee-claude-suite /tmp/suite-upstream
-
-# Inventory by category
-ls /tmp/suite-upstream/src/plugins/     # Workflow commands
-ls /tmp/suite-upstream/src/lib/         # Library modules
-ls /tmp/suite-upstream/src/templates/   # Templates
-ls /tmp/suite-upstream/docs/            # Documentation
+# Clone upstream into a fresh private directory (never a fixed /tmp path)
+(
+  U=$(mktemp -d 2>/dev/null) && [ -n "$U" ] || { echo "mktemp failed: upstream not fetched, sync stopped" >&2; exit 1; }
+  git clone --depth 1 https://github.com/danizeeincali/danizee-claude-suite "$U" || { RC=$?; echo "git clone failed (exit $RC): upstream not fetched, sync stopped" >&2; rm -rf -- "$U"; exit $RC; }
+  echo "upstream clone: $U"
+)
 \`\`\`
 
-**🔒 Git reads of the upstream clone (safe-git):** \`/tmp/suite-upstream\` is a repository you did not write. Every git read of it goes through \`node .claude/helpers/kit/cli.js safe-git --dir <clone top> -- <git args>\`, never plain \`git -C <path> ...\` and never \`cd\` into it to run git (its config and hooks were not written by you). \`<clone top>\` is \`/tmp/suite-upstream\` itself (the directory the \`git clone\` above created, not \`/tmp/suite-upstream/src\`); \`--dir\` must be the clone top itself, not a subfolder of it, and paths in the git args are relative to it. Only read-only verbs on safe-git's allow-list are accepted (for example rev-parse, log, show, ls-tree, cat-file); any other verb is refused. Read the process exit code, not a field of the output: 0 git ok (it prints \`{ stdout, stderr, code, exit }\` and \`stdout\` is the answer), 1 bad input (stdout is empty, the reason is a \`kit:\` line on stderr: fix the call, retry once), 2 refused (stdout is empty, the reason is a \`kit: refused:\` line on stderr: do not retry, report it as printed and treat that read as not done), 3 git failed or timed out (when git ran and failed it prints \`{ stdout, stderr, code, exit }\` with a non-zero \`code\`: fix a wrong call and retry once; when git timed out, printed over 256 MiB or was killed by a signal it prints nothing on stdout, only a \`kit:\` line on stderr, and \`--timeout <ms>\` raises the 60000 ms default). Only exit 0 and a git-ran exit 3 print that JSON; a timeout, overflow or kill prints only a \`kit:\` stderr line. Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found. If \`.claude/helpers/kit/cli.js\` is missing, say "kit not installed (.claude/helpers/kit/cli.js missing): safe-git skipped, advisory" in one line and continue without running git on that checkout (read its files directly); the kit is advisory and never blocks a workflow that worked before.
-The clone is depth 1 (a single commit), so only HEAD and its tree are readable: asking for history beyond HEAD (\`HEAD~1\`, \`log\` ranges, \`rev-list\` ranges, \`diff\` against an older commit) is a wrong call. The upstream version is \`node .claude/helpers/kit/cli.js safe-git --dir /tmp/suite-upstream -- rev-parse HEAD\`; a file list is \`... safe-git --dir /tmp/suite-upstream -- ls-tree -r --name-only HEAD\`.
+Clone top: the path the block prints as \`upstream clone: <path>\` (call it \`$U\`). Bind it in every later command (\`U=<printed path>; ...\`: shell variables do not persist between Bash calls) and use it for every safe-git \`--dir\`, \`ls\` and copy below; never read or copy from any other path. Exit 0 printed the path. Exit 1 is mktemp failed; any other non-zero exit is \`git clone\`'s own (no network, a bad URL, a full disk): the block removes its directory and prints "git clone failed (exit N): upstream not fetched, sync stopped". On a non-zero exit stop this workflow there and report it as printed: nothing is compared or copied, and an earlier or leftover clone is never used in its place. The clone is removed at the end with \`rm -rf -- <printed path>\` (the literal path, in CHECKPOINT 3, or wherever the workflow stops before it).
+
+\`\`\`bash
+# Inventory by category
+U=<printed path>
+ls "$U/src/plugins/"     # Workflow commands
+ls "$U/src/lib/"         # Library modules
+ls "$U/src/templates/"   # Templates
+ls "$U/docs/"            # Documentation
+\`\`\`
+
+**🔒 Git reads of the upstream clone (safe-git):** The clone at \`$U\` is a repository you did not write. Every git read of it goes through \`node .claude/helpers/kit/cli.js safe-git --dir <clone top> -- <git args>\`, never plain \`git -C <path> ...\` and never \`cd\` into it to run git (its config and hooks were not written by you). \`<clone top>\` is the printed path \`$U\` itself (the directory the \`git clone\` above created, not \`$U/src\`); \`--dir\` must be the clone top itself, not a subfolder of it, and paths in the git args are relative to it. Only read-only verbs on safe-git's allow-list are accepted (for example rev-parse, log, show, ls-tree, cat-file); any other verb is refused. Read the process exit code, not a field of the output: 0 git ok (it prints \`{ stdout, stderr, code, exit }\` and \`stdout\` is the answer), 1 bad input (stdout is empty, the reason is a \`kit:\` line on stderr: fix the call, retry once), 2 refused (stdout is empty, the reason is a \`kit: refused:\` line on stderr: do not retry, report it as printed and treat that read as not done), 3 git failed or timed out (when git ran and failed it prints \`{ stdout, stderr, code, exit }\` with a non-zero \`code\`: fix a wrong call and retry once; when git timed out, printed over 256 MiB or was killed by a signal it prints nothing on stdout, only a \`kit:\` line on stderr, and \`--timeout <ms>\` raises the 60000 ms default). Only exit 0 and a git-ran exit 3 print that JSON; a timeout, overflow or kill prints only a \`kit:\` stderr line. Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found. If \`.claude/helpers/kit/cli.js\` is missing, say "kit not installed (.claude/helpers/kit/cli.js missing): safe-git skipped, advisory" in one line and continue without running git on that checkout (read its files directly); the kit is advisory and never blocks a workflow that worked before.
+The clone is depth 1 (a single commit), so only HEAD and its tree are readable: asking for history beyond HEAD (\`HEAD~1\`, \`log\` ranges, \`rev-list\` ranges, \`diff\` against an older commit) is a wrong call. The upstream version is \`node .claude/helpers/kit/cli.js safe-git --dir "$U" -- rev-parse HEAD\`; a file list is \`... safe-git --dir "$U" -- ls-tree -r --name-only HEAD\` (with \`U=<printed path>\` bound in the same command).
 
 **REQUIRED OUTPUT:**
 - Upstream version: _____
@@ -6393,9 +6448,10 @@ STOP and wait for user response.
 ### ⛔ CHECKPOINT 3: Build Additive Changes
 **Create ONLY new files from approved upstream content:**
 
-- Copy selected new files to local project
+- Copy selected new files to local project, from the printed clone path \`$U\` only
 - Adapt imports/paths to local conventions if needed
 - DO NOT modify any existing files
+- When the copy is done, remove the clone with \`rm -rf -- <printed path>\`, writing the literal path printed in CHECKPOINT 0 (never a pathless, variable-only or wildcard \`rm\`)
 
 **REQUIRED OUTPUT:**
 - Files created: _____ (list)

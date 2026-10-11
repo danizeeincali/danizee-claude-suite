@@ -43,18 +43,27 @@ Use TodoWrite NOW to create todos for ALL phases:
 **Parallel fetch all content categories from upstream source:**
 
 ```bash
-# Clone or fetch upstream
-git clone --depth 1 https://github.com/danizeeincali/danizee-claude-suite /tmp/suite-upstream
-
-# Inventory by category
-ls /tmp/suite-upstream/src/plugins/     # Workflow commands
-ls /tmp/suite-upstream/src/lib/         # Library modules
-ls /tmp/suite-upstream/src/templates/   # Templates
-ls /tmp/suite-upstream/docs/            # Documentation
+# Clone upstream into a fresh private directory (never a fixed /tmp path)
+(
+  U=$(mktemp -d 2>/dev/null) && [ -n "$U" ] || { echo "mktemp failed: upstream not fetched, sync stopped" >&2; exit 1; }
+  git clone --depth 1 https://github.com/danizeeincali/danizee-claude-suite "$U" || { RC=$?; echo "git clone failed (exit $RC): upstream not fetched, sync stopped" >&2; rm -rf -- "$U"; exit $RC; }
+  echo "upstream clone: $U"
+)
 ```
 
-**🔒 Git reads of the upstream clone (safe-git):** `/tmp/suite-upstream` is a repository you did not write. Every git read of it goes through `node .claude/helpers/kit/cli.js safe-git --dir <clone top> -- <git args>`, never plain `git -C <path> ...` and never `cd` into it to run git (its config and hooks were not written by you). `<clone top>` is `/tmp/suite-upstream` itself (the directory the `git clone` above created, not `/tmp/suite-upstream/src`); `--dir` must be the clone top itself, not a subfolder of it, and paths in the git args are relative to it. Only read-only verbs on safe-git's allow-list are accepted (for example rev-parse, log, show, ls-tree, cat-file); any other verb is refused. Read the process exit code, not a field of the output: 0 git ok (it prints `{ stdout, stderr, code, exit }` and `stdout` is the answer), 1 bad input (stdout is empty, the reason is a `kit:` line on stderr: fix the call, retry once), 2 refused (stdout is empty, the reason is a `kit: refused:` line on stderr: do not retry, report it as printed and treat that read as not done), 3 git failed or timed out (when git ran and failed it prints `{ stdout, stderr, code, exit }` with a non-zero `code`: fix a wrong call and retry once; when git timed out, printed over 256 MiB or was killed by a signal it prints nothing on stdout, only a `kit:` line on stderr, and `--timeout <ms>` raises the 60000 ms default). Only exit 0 and a git-ran exit 3 print that JSON; a timeout, overflow or kill prints only a `kit:` stderr line. Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found. If `.claude/helpers/kit/cli.js` is missing, say "kit not installed (.claude/helpers/kit/cli.js missing): safe-git skipped, advisory" in one line and continue without running git on that checkout (read its files directly); the kit is advisory and never blocks a workflow that worked before.
-The clone is depth 1 (a single commit), so only HEAD and its tree are readable: asking for history beyond HEAD (`HEAD~1`, `log` ranges, `rev-list` ranges, `diff` against an older commit) is a wrong call. The upstream version is `node .claude/helpers/kit/cli.js safe-git --dir /tmp/suite-upstream -- rev-parse HEAD`; a file list is `... safe-git --dir /tmp/suite-upstream -- ls-tree -r --name-only HEAD`.
+Clone top: the path the block prints as `upstream clone: <path>` (call it `$U`). Bind it in every later command (`U=<printed path>; ...`: shell variables do not persist between Bash calls) and use it for every safe-git `--dir`, `ls` and copy below; never read or copy from any other path. Exit 0 printed the path. Exit 1 is mktemp failed; any other non-zero exit is `git clone`'s own (no network, a bad URL, a full disk): the block removes its directory and prints "git clone failed (exit N): upstream not fetched, sync stopped". On a non-zero exit stop this workflow there and report it as printed: nothing is compared or copied, and an earlier or leftover clone is never used in its place. The clone is removed at the end with `rm -rf -- <printed path>` (the literal path, in CHECKPOINT 3, or wherever the workflow stops before it).
+
+```bash
+# Inventory by category
+U=<printed path>
+ls "$U/src/plugins/"     # Workflow commands
+ls "$U/src/lib/"         # Library modules
+ls "$U/src/templates/"   # Templates
+ls "$U/docs/"            # Documentation
+```
+
+**🔒 Git reads of the upstream clone (safe-git):** The clone at `$U` is a repository you did not write. Every git read of it goes through `node .claude/helpers/kit/cli.js safe-git --dir <clone top> -- <git args>`, never plain `git -C <path> ...` and never `cd` into it to run git (its config and hooks were not written by you). `<clone top>` is the printed path `$U` itself (the directory the `git clone` above created, not `$U/src`); `--dir` must be the clone top itself, not a subfolder of it, and paths in the git args are relative to it. Only read-only verbs on safe-git's allow-list are accepted (for example rev-parse, log, show, ls-tree, cat-file); any other verb is refused. Read the process exit code, not a field of the output: 0 git ok (it prints `{ stdout, stderr, code, exit }` and `stdout` is the answer), 1 bad input (stdout is empty, the reason is a `kit:` line on stderr: fix the call, retry once), 2 refused (stdout is empty, the reason is a `kit: refused:` line on stderr: do not retry, report it as printed and treat that read as not done), 3 git failed or timed out (when git ran and failed it prints `{ stdout, stderr, code, exit }` with a non-zero `code`: fix a wrong call and retry once; when git timed out, printed over 256 MiB or was killed by a signal it prints nothing on stdout, only a `kit:` line on stderr, and `--timeout <ms>` raises the 60000 ms default). Only exit 0 and a git-ran exit 3 print that JSON; a timeout, overflow or kill prints only a `kit:` stderr line. Any other non-zero exit (for example 127, or a signal) is a failure of that step: report it, never read it as nothing found. If `.claude/helpers/kit/cli.js` is missing, say "kit not installed (.claude/helpers/kit/cli.js missing): safe-git skipped, advisory" in one line and continue without running git on that checkout (read its files directly); the kit is advisory and never blocks a workflow that worked before.
+The clone is depth 1 (a single commit), so only HEAD and its tree are readable: asking for history beyond HEAD (`HEAD~1`, `log` ranges, `rev-list` ranges, `diff` against an older commit) is a wrong call. The upstream version is `node .claude/helpers/kit/cli.js safe-git --dir "$U" -- rev-parse HEAD`; a file list is `... safe-git --dir "$U" -- ls-tree -r --name-only HEAD` (with `U=<printed path>` bound in the same command).
 
 **REQUIRED OUTPUT:**
 - Upstream version: _____
@@ -117,9 +126,10 @@ STOP and wait for user response.
 ### ⛔ CHECKPOINT 3: Build Additive Changes
 **Create ONLY new files from approved upstream content:**
 
-- Copy selected new files to local project
+- Copy selected new files to local project, from the printed clone path `$U` only
 - Adapt imports/paths to local conventions if needed
 - DO NOT modify any existing files
+- When the copy is done, remove the clone with `rm -rf -- <printed path>`, writing the literal path printed in CHECKPOINT 0 (never a pathless, variable-only or wildcard `rm`)
 
 **REQUIRED OUTPUT:**
 - Files created: _____ (list)
