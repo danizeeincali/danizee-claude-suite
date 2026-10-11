@@ -76,11 +76,11 @@
       "name": "sweep-foreign-and-logs",
       "state": "done",
       "plan": ".claude/marathon/2026-10-10-kit-wiring/kickoff.md",
-      "next": "/bc write-up of the stream",
+      "next": "run-wide: merge origin/main into the final branch (5 conflicts), regenerate all shortcuts, full npm test, gate, page, finish, PR",
       "tasks": [],
       "isolation": "../danizee-claude-suite-sweep-foreign-and-logs",
       "base": "38552ec51f19e978f3b95bc47716950676a33fa9",
-      "phase": "compound"
+      "phase": "integrate"
     }
   ],
   "handoff": {

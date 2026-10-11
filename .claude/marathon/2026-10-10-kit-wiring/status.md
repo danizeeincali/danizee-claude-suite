@@ -1,7 +1,7 @@
 # Marathon 2026-10-10-kit-wiring
 
 - State: RUNNING
-- Budget: 6,164,758 / 10,000,000 tokens
+- Budget: 6,434,707 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 3/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
@@ -18,7 +18,7 @@
 | marathon | ../danizee-claude-suite-marathon | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | /w-plan-tdd-swarm · review | done; compounded via /bc |  | 0 |
 | bbs | ../danizee-claude-suite-bbs | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | /w-plan-tdd-swarm · done | /bc write-up |  | 0 |
 | sweep-commits | ../danizee-claude-suite-sweep-commits | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | done | /bc write-up |  | 0 |
-| sweep-foreign-and-logs | ../danizee-claude-suite-sweep-foreign-and-logs | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | compound | /bc write-up of the stream |  | 0 |
+| sweep-foreign-and-logs | ../danizee-claude-suite-sweep-foreign-and-logs | .claude/marathon/2026-10-10-kit-wiring/kickoff.md | done | met | integrate | run-wide: merge origin/main into the final branch (5 conflicts), regenerate all shortcuts, full npm test, gate, page, finish, PR |  | 0 |
 
 ## Finish line
 
