@@ -64,3 +64,15 @@
 {"key":"wired_exit-code-contract-separating-infrastruc","value":2,"id":"47522d27-52d2-42f3-ab5c-1c6bedcdab3f","ts":"2026-10-15T19:52:46.482Z"}
 {"key":"wired_sarif-junit-and-sticky-pr-comment-render","value":2,"id":"33e8c115-6e58-43be-81ca-ba8529cda241","ts":"2026-10-15T19:52:46.648Z"}
 {"key":"delivered","value":true,"id":"d22ade50-e4ed-4437-8a9b-3b8b6e584940","ts":"2026-10-15T19:53:01.964Z"}
+{"key":"wired_noise-ledger-with-flake-quarantine","value":2,"id":"041fad2f-36ff-43a7-958e-d538cbebe92f","ts":"2026-10-15T21:21:08.435Z"}
+{"key":"wired_two-pass-finding-clustering","value":4,"id":"cde58f79-9a9a-4a3e-9b43-4071f18dd6f5","ts":"2026-10-15T21:21:08.598Z"}
+{"key":"wired_asymmetric-threshold-router","value":4,"id":"76eb1b4e-63e8-4d72-a632-7ccced51149e","ts":"2026-10-15T21:21:08.749Z"}
+{"key":"wired_finding-triage-with-fingerprint-dedup-an","value":3,"id":"9bb1e88f-dc45-4f2b-a32c-a97fe7bba3ed","ts":"2026-10-15T21:21:08.934Z"}
+{"key":"wired_shared-budget-for-claim-sub-sessions","value":2,"id":"b9e2b2c5-0022-4a5f-be2d-1a1ed7e84f8d","ts":"2026-10-15T21:21:09.105Z"}
+{"key":"wired_trouble-log-reflection-into-lesson-memor","value":3,"id":"dfbff40b-664b-4e0b-afaa-d53c2c614446","ts":"2026-10-15T21:21:09.267Z"}
+{"key":"wired_repeated-replay-gate-for-claims","value":4,"id":"d617b137-b2ff-46be-9b8f-14dd1e6f81ed","ts":"2026-10-15T21:21:09.441Z"}
+{"key":"wired_change-impact-test-plan","value":4,"id":"dec70abb-08a6-45d1-829a-cb0fbbc77194","ts":"2026-10-15T21:21:09.581Z"}
+{"key":"wired_preflight-doctor-checks-before-a-run","value":2,"id":"94239018-a6bb-429e-8225-679d673cff48","ts":"2026-10-15T21:21:09.723Z"}
+{"key":"wired_exit-code-contract-separating-infrastruc","value":2,"id":"b59f8ada-29a0-4aa3-966f-688daa22476f","ts":"2026-10-15T21:21:09.895Z"}
+{"key":"wired_sarif-junit-and-sticky-pr-comment-render","value":2,"id":"b0ac3e94-a497-4478-b023-e93cc3045d2a","ts":"2026-10-15T21:21:10.037Z"}
+{"key":"delivered","value":true,"id":"db2ec58c-e877-4296-b552-53b2a7ea4859","ts":"2026-10-15T21:21:10.176Z"}

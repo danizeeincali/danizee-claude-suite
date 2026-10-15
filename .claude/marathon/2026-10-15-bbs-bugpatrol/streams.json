@@ -6,7 +6,7 @@
       "isolation": "worktree",
       "created": "2026-10-15T14:36:46.599Z",
       "tasks": [],
-      "finished": "2026-10-15T19:53:17.799Z"
+      "finished": "2026-10-15T21:21:10.849Z"
     },
     {
       "name": "noise-ledger-with-flake-quarantine",
@@ -131,12 +131,12 @@
     },
     {
       "name": "integration",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/integration.md",
-      "next": "review /pt and /mt wiring until 2 clean passes; then re-measure wired, delivered",
+      "next": "owner's go to push",
       "tasks": [],
       "isolation": "/home/claude/danizee-claude-suite-integration",
-      "phase": "review",
+      "phase": "done",
       "base": "5297ea6de9628c7d10d431d5cc42dc45f6ebfcb6"
     }
   ],
