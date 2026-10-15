@@ -16,7 +16,7 @@
  * "unattributed" suite; an incomplete run adds an explicit <error>. All XML text is escaped and characters that
  * XML 1.0 forbids become U+FFFD. Comment: a hidden marker line `<!-- kit-render:<key> -->` (key from --key,
  * default "review"; export findMarker(body, key) so a caller can find and edit the same comment), one verdict
- * line, then Blocking / Filed / Needs decision / Advisory sections. `<` in finding text is escaped so text can
+ * line, then Blocking / Filed / Needs decision / Advisory sections. `<` in finding text is escaped (and `<!--` broken in code spans), and findMarker matches only at the start of the body, so text can
  * never forge a marker.
  * Built from ideas audited by /w-bbs (run 2026-10-15-bugpatrol); no foreign code.
  */
@@ -96,7 +96,13 @@ const incompleteText = n => `Run did not finish${n.reason ? `: ${n.reason}` : ''
 // ---- SARIF ----
 
 /** A repo path as a URI reference: backslashes become '/', each segment is percent-encoded. */
-const fileUri = file => file.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
+const wellFormed = s => String(s).replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, '\ufffd');
+const fileUri = file => {
+  const p = wellFormed(file).replace(/\\/g, '/');
+  const drive = /^([A-Za-z]):\//.exec(p);
+  if (drive) return `file:///${drive[1]}:/${p.slice(3).split('/').map(encodeURIComponent).join('/')}`;
+  return p.split('/').map(encodeURIComponent).join('/');
+};
 
 export function renderSarif(input) {
   const n = normalize(input);
@@ -207,13 +213,15 @@ export function marker(key = DEFAULT_KEY) { return `<!-- kit-render:${checkKey(k
 export function findMarker(body, key = DEFAULT_KEY) {
   const m = marker(key);
   if (typeof body !== 'string') return null;
-  const start = body.indexOf(m);
-  return start === -1 ? null : { start, end: start + m.length };
+  // The marker is always the first thing in the body, so only a match at the very start counts.
+  return body.startsWith(m) ? { start: 0, end: m.length } : null;
 }
 
 const md = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\s*[\r\n]+\s*/g, ' ');
 // Inside a code span entities are not decoded, so only neutralise backticks and newlines (a span cannot forge the marker).
-const codeSpan = s => String(s).replace(/\s*[\r\n]+\s*/g, ' ').replace(/`/g, "'");
+const codeSpan = s => String(s).replace(/\s*[\r\n]+\s*/g, ' ').replace(/`/g, "'").replace(/<!--/g, '\uff1c!--');
+const REASON_MAX = 500;
+const shortReason = r => { const t = String(r); return t.length > REASON_MAX ? `${t.slice(0, REASON_MAX)}... (full text in the SARIF notification or JUnit error)` : t; };
 export const COMMENT_CAP = 60000;
 const bullet = (f, tagBlocking = false) => {
   const loc = f.file ? ` (\`${codeSpan(f.file)}${f.line ? `:${f.line}` : ''}\`)` : '';
@@ -230,7 +238,7 @@ export function renderComment(input, { key = DEFAULT_KEY } = {}) {
   const decide = n.findings.filter(f => f.disposition === 'needs-decision');
   const advisory = n.findings.filter(f => f.severity !== 'blocking' && f.disposition === 'open');
   let verdict;
-  if (n.incomplete) verdict = `**Review incomplete** - the run did not finish${n.reason ? ` (${md(n.reason)})` : ''}${blocking.length ? `; ${blocking.length} blocking finding${blocking.length === 1 ? '' : 's'} so far` : ''}`;
+  if (n.incomplete) verdict = `**Review incomplete** - the run did not finish${n.reason ? ` (${md(shortReason(n.reason))})` : ''}${blocking.length ? `; ${blocking.length} blocking finding${blocking.length === 1 ? '' : 's'} so far` : ''}`;
   else if (blocking.length) {
     const other = counts.blockingFiled + counts.blockingNeedsDecision;
     verdict = `**Blocked** - ${blocking.length} blocking finding${blocking.length === 1 ? '' : 's'}${other ? ` (${other} more blocking filed or awaiting a decision)` : ''}`;
@@ -248,7 +256,7 @@ export function renderComment(input, { key = DEFAULT_KEY } = {}) {
     let shown = 0;
     for (const f of list) {
       const b = bullet(f, title === 'Filed' || title === 'Needs decision');
-      if (size + b.length + 1 + NOTE_RESERVE > COMMENT_CAP) break;
+      if (size + b.length + 1 + NOTE_RESERVE > COMMENT_CAP) continue;
       lines.push(b); size += b.length + 1; shown++;
     }
     if (shown < list.length) {

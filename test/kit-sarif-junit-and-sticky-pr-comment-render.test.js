@@ -253,4 +253,34 @@ describe('r2 fixes', () => {
     assert.match(x, /<testcase name="review" classname="run">/);
     assert.ok(!x.includes('tests="0"'));
   });
+  it('a file path holding another key marker cannot forge it, and findMarker matches only at the start', () => {
+    const c = renderComment({ findings: [{ message: 'm', file: '<!-- kit-render:security -->' }] });
+    assert.equal(findMarker(c, 'security'), null);
+    assert.ok(findMarker(c, 'review'));
+    assert.equal(findMarker('text\n' + marker('ci'), 'ci'), null);
+    assert.deepEqual(findMarker(marker('ci') + '\nx', 'ci'), { start: 0, end: marker('ci').length });
+  });
+  it('truncates a long incomplete reason so the body stays under the cap', () => {
+    const body = renderComment({ findings: [], incomplete: true, reason: 'x'.repeat(70000) });
+    assert.ok(body.length <= render.COMMENT_CAP, `length ${body.length}`);
+    assert.match(body.split('\n')[1], /\.\.\./);
+  });
+  it('an oversized bullet does not hide later blocking findings', () => {
+    const body = renderComment({ findings: [
+      { message: 'y'.repeat(59900), severity: 'blocking', id: 'big' },
+      { message: 'short real blocker', severity: 'blocking', id: 'small' },
+      { message: 'adv', severity: 'advisory', id: 'a1' },
+    ] });
+    assert.ok(body.length <= render.COMMENT_CAP);
+    assert.ok(body.includes('short real blocker'));
+  });
+  it('SARIF does not crash on a lone surrogate in a path', () => {
+    const s = renderSarif({ findings: [{ message: 'm', file: 'a\ud800b.js' }] });
+    assert.equal(s.runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri, 'a%EF%BF%BDb.js');
+  });
+  it('emits a file URI for a Windows drive-letter path', () => {
+    const s = renderSarif({ findings: [{ message: 'm', file: 'C:\\repo\\src\\x y.js' }, { message: 'm', file: 'd:/a/b.js' }] });
+    const uris = s.runs[0].results.map(r => r.locations[0].physicalLocation.artifactLocation.uri);
+    assert.deepEqual(uris, ['file:///C:/repo/src/x%20y.js', 'file:///d:/a/b.js']);
+  });
 });
