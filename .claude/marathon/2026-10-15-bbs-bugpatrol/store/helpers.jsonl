@@ -213,3 +213,6 @@
 {"role":"review","model":"opus","stream":"exit-code-contract-separating-infrastruc","budget":150000,"event":"spawn","id":"e484fa91-a456-49ad-87c6-ff60beb4e8bb","ts":"2026-10-15T17:57:06.358Z"}
 {"role":"fix","model":"sonnet","stream":"finding-triage-with-fingerprint-dedup-an","budget":150000,"event":"spawn","id":"b31febb0-cfaa-41cc-8e2e-76ea9cfc1cd4","ts":"2026-10-15T17:57:08.272Z"}
 {"helper_id":"5a1da720-c259-4118-9fe9-d789cb0ae354","tokens":87528,"outcome":"green","event":"done","id":"cf80efb3-6265-4623-bcc9-a469fc3eba74","ts":"2026-10-15T17:57:12.939Z"}
+{"helper_id":"b31febb0-cfaa-41cc-8e2e-76ea9cfc1cd4","tokens":70666,"outcome":"green","event":"done","id":"a278f5be-f07a-449e-88a2-cd08a7cd0e6b","ts":"2026-10-15T18:00:24.445Z"}
+{"role":"fix","model":"sonnet","stream":"exit-code-contract-separating-infrastruc","budget":150000,"event":"spawn","id":"422a3551-cb75-41a6-aa70-47f36c95c385","ts":"2026-10-15T18:00:27.079Z"}
+{"helper_id":"e484fa91-a456-49ad-87c6-ff60beb4e8bb","tokens":110736,"outcome":"green","event":"done","id":"39b7ba10-e24b-4982-9b14-5fd310f02d64","ts":"2026-10-15T18:00:33.882Z"}
