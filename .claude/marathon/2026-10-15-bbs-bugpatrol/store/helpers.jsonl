@@ -139,3 +139,6 @@
 {"role":"review","model":"opus","stream":"preflight-doctor-checks-before-a-run","budget":150000,"event":"spawn","id":"7cafe9fe-1aa5-4977-b971-d6f4fc8cb8e7","ts":"2026-10-15T17:23:11.551Z"}
 {"helper_id":"389d9a44","tokens":85477,"outcome":"green","event":"done","id":"e73d8d55-f933-4bce-b503-5315ef4c0029","ts":"2026-10-15T17:23:38.402Z"}
 {"role":"fix","model":"sonnet","stream":"sarif-junit-and-sticky-pr-comment-render","budget":100000,"event":"spawn","id":"ae560d49-ffb0-4cbd-b502-e9dc58e3f092","ts":"2026-10-15T17:23:38.565Z"}
+{"helper_id":"7cafe9fe-1aa5-4977-b971-d6f4fc8cb8e7","tokens":91870,"outcome":"green","event":"done","id":"536e7205-d4dd-4fb6-95a1-70670d1b28bf","ts":"2026-10-15T17:25:54.907Z"}
+{"helper_id":"99269c85-b873-425d-993c-1d68de802cb7","tokens":90014,"outcome":"green","event":"done","id":"25f06284-07de-4d31-8bf6-5b72d739bfcd","ts":"2026-10-15T17:25:56.183Z"}
+{"role":"fix","model":"sonnet","stream":"exit-code-contract-separating-infrastruc","budget":100000,"event":"spawn","id":"dd925a9e-d3f4-4684-8068-818ec7f4faff","ts":"2026-10-15T17:25:56.380Z"}

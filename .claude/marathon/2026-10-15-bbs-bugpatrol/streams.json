@@ -86,12 +86,12 @@
     },
     {
       "name": "preflight-doctor-checks-before-a-run",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/preflight-doctor-checks-before-a-run.md",
-      "next": "builder writes contract, failing tests, verb, packaged test",
+      "next": "integration stream wires it",
       "tasks": [],
       "isolation": "/home/claude/danizee-claude-suite-preflight-doctor-checks-before-a-run",
-      "phase": "build",
+      "phase": "done",
       "skill": "w-tdd-swarm",
       "base": "08e87411186ecde569922ff1eb5818da246d8528"
     },

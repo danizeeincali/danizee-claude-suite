@@ -28,3 +28,6 @@
 {"key":"packaged_change-impact-test-plan","value":true,"id":"2ad24f4a-1144-46fb-bf10-3f094e77c4c2","ts":"2026-10-15T17:19:11.206Z"}
 {"key":"egress_zero_change-impact-test-plan","value":true,"id":"ecb81c81-08bb-4c8d-9788-803ed396a728","ts":"2026-10-15T17:19:11.363Z"}
 {"key":"callers_change-impact-test-plan","value":0,"id":"90f5660f-fca2-4e4b-a3c4-d2b91fd34e71","ts":"2026-10-15T17:19:11.555Z"}
+{"key":"packaged_preflight-doctor-checks-before-a-run","value":true,"id":"8590cc89-168f-4f1e-8ada-63fe70679ab5","ts":"2026-10-15T17:26:00.174Z"}
+{"key":"egress_zero_preflight-doctor-checks-before-a-run","value":true,"id":"f66d094b-4fb6-41d0-9de2-197b2bc381b9","ts":"2026-10-15T17:26:00.355Z"}
+{"key":"callers_preflight-doctor-checks-before-a-run","value":0,"id":"3e4853d7-5276-40fd-8a80-a8f9e3cb3895","ts":"2026-10-15T17:26:00.506Z"}
