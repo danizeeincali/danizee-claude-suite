@@ -144,3 +144,15 @@
 {"role":"fix","model":"sonnet","stream":"exit-code-contract-separating-infrastruc","budget":100000,"event":"spawn","id":"dd925a9e-d3f4-4684-8068-818ec7f4faff","ts":"2026-10-15T17:25:56.380Z"}
 {"helper_id":"fef84b49-67e5-4cac-9936-682120ae6195","tokens":95398,"outcome":"green","event":"done","id":"1736bd55-ca16-4a8a-b6f3-617d3f118c56","ts":"2026-10-15T17:26:04.902Z"}
 {"role":"review","model":"opus","stream":"trouble-log-reflection-into-lesson-memor","budget":150000,"event":"spawn","id":"1682f441-ae2f-4331-b32f-a94eab954c06","ts":"2026-10-15T17:26:19.843Z"}
+{"helper_id":"818299f1-a962-4dd8-a208-0c2a7d58b7f8","tokens":86923,"outcome":"green","event":"done","id":"92d69ff5-cddd-446c-820d-790883acab89","ts":"2026-10-15T17:27:22.741Z"}
+{"role":"review","model":"opus","stream":"finding-triage-with-fingerprint-dedup-an","budget":150000,"event":"spawn","id":"8f129ee5-ee4a-49af-a1f8-fd4f534e44b2","ts":"2026-10-15T17:27:44.058Z"}
+{"helper_id":"ae560d49-ffb0-4cbd-b502-e9dc58e3f092","tokens":72410,"outcome":"green","event":"done","id":"86548317-5720-4da8-8e7c-67f67630cba0","ts":"2026-10-15T17:27:48.585Z"}
+{"role":"review","model":"opus","stream":"sarif-junit-and-sticky-pr-comment-render","budget":150000,"event":"spawn","id":"57016f1f-8e7b-475f-8922-075ccdf68d12","ts":"2026-10-15T17:27:55.959Z"}
+{"helper_id":"dd925a9e-d3f4-4684-8068-818ec7f4faff","tokens":72679,"outcome":"green","event":"done","id":"228c4ff5-d69e-436b-8dd0-c616e0551470","ts":"2026-10-15T17:27:56.169Z"}
+{"role":"review","model":"opus","stream":"exit-code-contract-separating-infrastruc","budget":150000,"event":"spawn","id":"b65b3df3-9245-4109-bf5d-50beb5d70339","ts":"2026-10-15T17:28:04.423Z"}
+{"helper_id":"7603c06d-7f4c-42ef-beab-3064af726697","tokens":86410,"outcome":"green","event":"done","id":"3419fb4e-ee34-4229-a663-6f8b2abbfa6c","ts":"2026-10-15T17:28:04.630Z"}
+{"role":"review","model":"opus","stream":"noise-ledger-with-flake-quarantine","budget":150000,"event":"spawn","id":"aaf7a209-9843-4fd6-9e30-f670f160a408","ts":"2026-10-15T17:28:39.364Z"}
+{"helper_id":"1682f441-ae2f-4331-b32f-a94eab954c06","tokens":95792,"outcome":"green","event":"done","id":"92b12023-7ab4-44c0-8012-0c71564098c4","ts":"2026-10-15T17:31:20.038Z"}
+{"role":"fix","model":"sonnet","stream":"trouble-log-reflection-into-lesson-memor","budget":100000,"event":"spawn","id":"5a4dacb6-603b-4b04-b29a-6d85745e73ae","ts":"2026-10-15T17:31:20.225Z"}
+{"helper_id":"31e3e0e6-e0ca-4fee-8bd2-d7efa188c253","tokens":91031,"outcome":"green","event":"done","id":"23a04127-9b99-4543-add5-c74e739c055a","ts":"2026-10-15T17:31:20.430Z"}
+{"role":"review","model":"opus","stream":"shared-budget-for-claim-sub-sessions","budget":150000,"event":"spawn","id":"101c4db8-e43e-4131-88c2-dcd51df46455","ts":"2026-10-15T17:31:59.994Z"}

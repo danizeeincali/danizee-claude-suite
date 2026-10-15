@@ -1,7 +1,7 @@
 # Marathon 2026-10-15-bbs-bugpatrol
 
 - State: RUNNING
-- Budget: 6,438,785 / 14,000,000 tokens
+- Budget: 7,084,030 / 14,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
@@ -29,7 +29,7 @@
 
 | Line | Owner | Status | Actual | Target |
 |---|---|---|---|---|
-| noise-ledger-with-flake-quarantine: green unit runs in a row | build | met | 4 | at_least 1 |
+| noise-ledger-with-flake-quarantine: green unit runs in a row | build | met | 6 | at_least 1 |
 | noise-ledger-with-flake-quarantine: zero egress in the packaged check | build | failing | — | is true |
 | noise-ledger-with-flake-quarantine: clean reviews in a row | build | met | 4 | at_least 2 |
 | noise-ledger-with-flake-quarantine: wired into its target, reached by a user | build | failing | — | at_least 1 |
@@ -49,12 +49,12 @@
 | change-impact-test-plan: clean reviews in a row | build | met | 4 | at_least 2 |
 | change-impact-test-plan: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | change-impact-test-plan: packaged check passes | build | met | true | is true |
-| finding-triage-with-fingerprint-dedup-an: green unit runs in a row | build | met | 2 | at_least 1 |
+| finding-triage-with-fingerprint-dedup-an: green unit runs in a row | build | met | 4 | at_least 1 |
 | finding-triage-with-fingerprint-dedup-an: zero egress in the packaged check | build | failing | — | is true |
 | finding-triage-with-fingerprint-dedup-an: clean reviews in a row | build | failing | 0 | at_least 2 |
 | finding-triage-with-fingerprint-dedup-an: wired into its target, reached by a user | build | failing | — | at_least 1 |
 | finding-triage-with-fingerprint-dedup-an: packaged check passes | build | failing | — | is true |
-| shared-budget-for-claim-sub-sessions: green unit runs in a row | build | met | 3 | at_least 1 |
+| shared-budget-for-claim-sub-sessions: green unit runs in a row | build | met | 4 | at_least 1 |
 | shared-budget-for-claim-sub-sessions: zero egress in the packaged check | build | failing | — | is true |
 | shared-budget-for-claim-sub-sessions: clean reviews in a row | build | failing | 0 | at_least 2 |
 | shared-budget-for-claim-sub-sessions: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
@@ -69,12 +69,12 @@
 | preflight-doctor-checks-before-a-run: clean reviews in a row | build | met | 3 | at_least 2 |
 | preflight-doctor-checks-before-a-run: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | preflight-doctor-checks-before-a-run: packaged check passes | build | met | true | is true |
-| exit-code-contract-separating-infrastruc: green unit runs in a row | build | met | 4 | at_least 1 |
+| exit-code-contract-separating-infrastruc: green unit runs in a row | build | met | 5 | at_least 1 |
 | exit-code-contract-separating-infrastruc: zero egress in the packaged check | build | failing | — | is true |
 | exit-code-contract-separating-infrastruc: clean reviews in a row | build | failing | 0 | at_least 2 |
 | exit-code-contract-separating-infrastruc: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | exit-code-contract-separating-infrastruc: packaged check passes | build | failing | — | is true |
-| sarif-junit-and-sticky-pr-comment-render: green unit runs in a row | build | met | 3 | at_least 1 |
+| sarif-junit-and-sticky-pr-comment-render: green unit runs in a row | build | met | 4 | at_least 1 |
 | sarif-junit-and-sticky-pr-comment-render: zero egress in the packaged check | build | failing | — | is true |
 | sarif-junit-and-sticky-pr-comment-render: clean reviews in a row | build | met | 3 | at_least 2 |
 | sarif-junit-and-sticky-pr-comment-render: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
@@ -87,7 +87,7 @@
 | The owner was told what they got: delivered.md lists every power, wired, with its command | build | failing | — | is true |
 | Clean reviews in a row | build | failing | 0 | at_least 2 |
 | High findings in the latest review | build | failing | 1 | at_most 0 |
-| Open high findings | build | failing | 2 | at_most 0 |
+| Open high findings | build | failing | 1 | at_most 0 |
 
 ## Waiting on human
 

@@ -33,3 +33,10 @@
 {"kind":"unit","status":"green","stream":"exit-code-contract-separating-infrastruc","commit":"7b20e3e","id":"ab4da3ea-a1e5-492a-aba1-9d2d4e139ea3","ts":"2026-10-15T17:22:51.363Z"}
 {"kind":"unit","status":"green","stream":"preflight-doctor-checks-before-a-run","commit":"97cafcd","id":"85fa2c5c-d634-45d5-b46c-d7fa4363ab46","ts":"2026-10-15T17:23:08.082Z"}
 {"kind":"unit","status":"green","stream":"trouble-log-reflection-into-lesson-memor","commit":"1622483","id":"42db7b89-da47-4f23-80af-ad94893060a1","ts":"2026-10-15T17:26:15.789Z"}
+{"kind":"unit","status":"green","stream":"finding-triage-with-fingerprint-dedup-an","commit":"425a332","id":"797c6dd1-1dd0-4a66-a611-9977cd146cb8","ts":"2026-10-15T17:27:37.612Z"}
+{"kind":"unit","status":"green","stream":"sarif-junit-and-sticky-pr-comment-render","commit":"752343a","id":"e0e2c21b-0af7-40f8-8469-fab12ebfd440","ts":"2026-10-15T17:27:52.549Z"}
+{"kind":"unit","status":"green","stream":"exit-code-contract-separating-infrastruc","commit":"c97267f","id":"3d95e120-7fd8-4555-9282-e9ef0171fe0e","ts":"2026-10-15T17:28:01.834Z"}
+{"kind":"unit","status":"green","stream":"noise-ledger-with-flake-quarantine","commit":"01e365c","id":"75cf1475-1924-4ca9-b235-6603eeaaff2e","ts":"2026-10-15T17:28:36.102Z"}
+{"kind":"unit","status":"green","stream":"shared-budget-for-claim-sub-sessions","commit":"16a4f77","id":"7483be37-2f49-4ec7-bdb4-028c7b1e0d66","ts":"2026-10-15T17:31:56.836Z"}
+{"kind":"unit","status":"green","stream":"noise-ledger-with-flake-quarantine","commit":"325a9ae","id":"24d37133-8f14-4242-8160-4ea3e168a696","ts":"2026-10-15T17:32:30.881Z"}
+{"kind":"unit","status":"green","stream":"finding-triage-with-fingerprint-dedup-an","commit":"b2a4db8","id":"85c0ac34-474a-44c0-8b08-26d2c2684312","ts":"2026-10-15T17:32:45.828Z"}
