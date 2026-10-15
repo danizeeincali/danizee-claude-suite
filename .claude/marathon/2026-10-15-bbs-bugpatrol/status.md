@@ -1,19 +1,19 @@
 # Marathon 2026-10-15-bbs-bugpatrol
 
 - State: RUNNING
-- Budget: 0 / 10,000,000 tokens
+- Budget: 450,000 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Next stream "noise-ledger-with-flake-quarantine": create its worktree (`git worktree add ../<repo>-noise-ledger-with-flake-quarantine -b marathon/2026-10-15-bbs-bugpatrol/noise-ledger-with-flake-quarantine`) and activate it with `cli.js stream noise-ledger-with-flake-quarantine state=active isolation=<path>`, then /w-marathon --resume 2026-10-15-bbs-bugpatrol.
+- Next for you: Continue stream "noise-ledger-with-flake-quarantine" (next: builder writes contract, failing tests, verb, packaged test) — /w-marathon --resume 2026-10-15-bbs-bugpatrol.
 
 ## Streams
 
 | Stream | Isolation | Plan | State | Gate | Phase | Next | Tasks | Escapes |
 |---|---|---|---|---|---|---|---|---|
-| noise-ledger-with-flake-quarantine |  | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/noise-ledger-with-flake-quarantine.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
-| two-pass-finding-clustering |  | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/two-pass-finding-clustering.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
-| asymmetric-threshold-router |  | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/asymmetric-threshold-router.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
+| noise-ledger-with-flake-quarantine | /home/claude/danizee-claude-suite-noise-ledger-with-flake-quarantine | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/noise-ledger-with-flake-quarantine.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
+| two-pass-finding-clustering | /home/claude/danizee-claude-suite-two-pass-finding-clustering | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/two-pass-finding-clustering.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
+| asymmetric-threshold-router | /home/claude/danizee-claude-suite-asymmetric-threshold-router | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/asymmetric-threshold-router.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
 | change-impact-test-plan |  | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/change-impact-test-plan.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | finding-triage-with-fingerprint-dedup-an |  | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/finding-triage-with-fingerprint-dedup-an.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | shared-budget-for-claim-sub-sessions |  | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/shared-budget-for-claim-sub-sessions.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |

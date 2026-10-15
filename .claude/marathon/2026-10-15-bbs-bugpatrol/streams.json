@@ -9,24 +9,36 @@
     },
     {
       "name": "noise-ledger-with-flake-quarantine",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/noise-ledger-with-flake-quarantine.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract, failing tests, verb, packaged test",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-noise-ledger-with-flake-quarantine",
+      "phase": "build",
+      "skill": "w-tdd-swarm",
+      "base": "34cd7f04b70e49e5a1d8844f0b4b5bf351912a65"
     },
     {
       "name": "two-pass-finding-clustering",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/two-pass-finding-clustering.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract, failing tests, verb, packaged test",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-two-pass-finding-clustering",
+      "phase": "build",
+      "skill": "w-tdd-swarm",
+      "base": "34cd7f04b70e49e5a1d8844f0b4b5bf351912a65"
     },
     {
       "name": "asymmetric-threshold-router",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/asymmetric-threshold-router.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract, failing tests, verb, packaged test",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-asymmetric-threshold-router",
+      "phase": "build",
+      "skill": "w-tdd-swarm",
+      "base": "34cd7f04b70e49e5a1d8844f0b4b5bf351912a65"
     },
     {
       "name": "change-impact-test-plan",
