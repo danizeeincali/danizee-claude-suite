@@ -140,13 +140,13 @@
     }
   ],
   "handoff": {
-    "ts": "2026-10-15T17:35:01.106Z",
+    "ts": "2026-10-15T19:27:07.894Z",
     "trigger": "auto",
     "branch": "claude/project-thread-24nlxj",
-    "commit": "c0b0de2",
+    "commit": "ddea5fc",
     "uncommitted": 0,
     "tasks": [],
-    "context_tokens": 382200,
-    "context_pct": 38.2
+    "context_tokens": 383707,
+    "context_pct": 38.4
   }
 }

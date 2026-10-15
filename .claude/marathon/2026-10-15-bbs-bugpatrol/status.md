@@ -1,12 +1,12 @@
 # Marathon 2026-10-15-bbs-bugpatrol
 
 - State: RUNNING
-- Budget: 11,818,691 / 14,000,000 tokens
+- Budget: 11,967,508 / 14,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
 - Next for you: Continue stream "integration" (next: integration review r1; then wired/delivered record) — /w-marathon --resume 2026-10-15-bbs-bugpatrol.
-- Last handoff: 2026-10-15T17:35:01.106Z (auto) on claude/project-thread-24nlxj@c0b0de2, 0 uncommitted, tasks: none
+- Last handoff: 2026-10-15T19:27:07.894Z (auto) on claude/project-thread-24nlxj@ddea5fc, 0 uncommitted, tasks: none
 
 ## Streams
 
@@ -86,7 +86,7 @@
 | repeated-replay-gate-for-claims: packaged check passes | build | met | true | is true |
 | The owner was told what they got: delivered.md lists every power, wired, with its command | build | failing | — | is true |
 | Clean reviews in a row | build | failing | 0 | at_least 2 |
-| High findings in the latest review | build | failing | 1 | at_most 0 |
+| High findings in the latest review | build | met | 0 | at_most 0 |
 | Open high findings | build | met | 0 | at_most 0 |
 
 ## Waiting on human
