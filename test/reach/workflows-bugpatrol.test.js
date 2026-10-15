@@ -279,7 +279,7 @@ test('w-fix test plan follows the /pt pattern: mktemp -d once, test-plan --scan 
   const sec = stepSection(installed('w-fix'), '⛔ CHECKPOINT 2: Fix Applied');
   assert.match(sec, /run \\?`?mktemp -d\\?`? once/);
   assert.match(sec, /test-plan --scan > <printed dir>\/test-map\.json/);
-  assert.match(sec, /P=\/tmp\/tmp\.AbC123;/);
+  assert.match(sec, /P='<printed dir>'; if \[ ! -d "\$P" \]; then echo "P is still the placeholder/);
   assert.match(sec, /test-plan --in "\$P\/test-map\.json" --changed "\$P\/changed\.txt"/);
   assert.match(sec, /grep -q '"id"' "\$P\/test-map\.json"/);
   assert.match(sec, /scan failed or no test files[^\n]*run the full suite/);
@@ -289,7 +289,7 @@ test('w-fix test plan follows the /pt pattern: mktemp -d once, test-plan --scan 
 test('w-fix and w-bbs reflection name a literal E= path and the newest transcript under ~/.claude/projects/<project>/', () => {
   for (const [wf, heading] of [['w-fix', '⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)'], ['w-bbs', '⛔ CHECKPOINT 6: Compound (MANDATORY)']]) {
     const sec = stepSection(installed(wf), heading);
-    assert.match(sec, /E=\/tmp\/tmp\.AbC123\/events\.jsonl; if \[/, `${wf}: literal E=`);
+    assert.match(sec, /E='<printed dir>\/events\.jsonl'; if \[ ! -f "\$E" \]; then echo "E is still the placeholder/, `${wf}: guarded E=`);
     assert.match(sec, /~\/\.claude\/projects\/<project>\/<session>\.jsonl/, `${wf}: transcript location`);
     assert.match(sec, /take the newest file of this project's folder/, `${wf}: newest transcript`);
   }
@@ -323,3 +323,17 @@ test('every kit/cli.js bash block of w-fix, w-bbs, w-plan-tdd-swarm, w-marathon 
     }
   }
 });
+
+test('r12: no block carries a runnable example temp path, and every placeholder block is guarded', async () => {
+    const src = fs.readFileSync(new URL('../../src/plugins/dot-shortcuts.js', import.meta.url), 'utf8');
+    assert.ok(!/^[A-Z]=\/tmp\/tmp\.AbC123/m.test(src), 'a block still assigns the runnable example path');
+    const assigns = src.split('\n').filter((l) => /^[A-Z]='<printed dir>/.test(l));
+    assert.ok(assigns.length >= 20, `expected the guarded blocks, found ${assigns.length}`);
+    for (const l of assigns) assert.match(l, /^([A-Z])='<printed dir>[^']*'; if \[ ! -[df] "\$\1" \]; then echo "\1 is still the placeholder or does not exist[^"]*" >&2; \(exit 1\); el/, l.slice(0, 120));
+  });
+test('r12: a guarded block run as written fails with a message naming the placeholder', async () => {
+    const r = spawnSync('bash', ['-c', `P='<printed dir>'; if [ ! -d "$P" ]; then echo "P is still the placeholder or does not exist: put the directory mktemp -d printed in place of <printed dir>" >&2; (exit 1); else echo ran; fi`], { encoding: 'utf8' });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /P is still the placeholder/);
+    assert.ok(!r.stdout.includes('ran'));
+  });
