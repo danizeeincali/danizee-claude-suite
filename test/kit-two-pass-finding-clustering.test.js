@@ -40,6 +40,16 @@ describe('cluster — pass 1 (deterministic)', () => {
   it('a subset file set also counts as overlap-but-different; disjoint and equal do not', () => {
     assert.equal(pass1([f('a', 'r', 'low', ['x']), f('b', 'r', 'low', ['x', 'y'])]).pending_pairs.length, 1);
     assert.equal(pass1([f('a', 'r', 'low', ['x']), f('b', 'r', 'low', ['y'])]).pending_pairs.length, 0);
+    const eq = pass1([f('a', 'r', 'low', ['x', 'y']), f('b', 'r', 'low', ['./y', 'x'])]);
+    assert.equal(eq.clusters.length, 1);
+    assert.equal(eq.pending_pairs.length, 0);
+  });
+  it('path:line:col locations keep the file whole', () => {
+    const r = pass1([f('a', 'r', 'low', [], { locations: ['src/a.js:12:5'] }), f('b', 'r', 'low', [], { locations: ['src/a.js:40:2'] })]);
+    assert.equal(r.clusters.length, 1);
+    assert.deepEqual(r.clusters[0].files, ['src/a.js']);
+    assert.ok(r.clusters[0].locations.some(l => l.file === 'src/a.js' && l.line === 12));
+    assert.ok(r.clusters[0].locations.some(l => l.file === 'src/a.js' && l.line === 40));
   });
 });
 
@@ -113,9 +123,24 @@ describe('cluster — pass 2 (judgments)', () => {
     assert.deepEqual(seen, ['cd']);
     assert.equal(r.clusters.length, 3);
   });
-  it('rejects a malformed decide result or answer', async () => {
-    await assert.rejects(cluster(base, { decide: () => ({ same: 'yes' }) }), /decide/);
-    await assert.rejects(cluster(base, { answers: [{ a: 'a', b: 'b', same: true, p: 2, confidence: 'high' }] }), /p/);
+  it('a malformed decide reply leaves the pair pending, is listed, and does not abort the run', async () => {
+    const list = [f('a', 'r', 'low', ['x', 'y']), f('b', 'r', 'low', ['y', 'z']), f('c', 'q', 'low', ['x', 'y']), f('d', 'q', 'low', ['y'])];
+    const replies = { ab: { same: true, p: 0.9, confidence: 'High' }, cd: yes };
+    for (const bad of [{ same: 'yes' }, { same: true, p: '0.8', confidence: 'high' }, { same: true, p: 0.9, confidence: 'High' }, 'merge', []]) {
+      const r = await cluster(list, { decide: async (p) => (p.a === 'a' ? bad : replies.cd) });
+      assert.equal(r.clusters.length, 3, 'only the valid pair merged');
+      assert.deepEqual(r.pending_pairs.map(p => `${p.a}${p.b}`), ['ab']);
+      assert.equal(r.invalid_judgments.length, 1);
+      assert.deepEqual([r.invalid_judgments[0].a, r.invalid_judgments[0].b], ['a', 'b']);
+      assert.ok(r.invalid_judgments[0].reason.length > 0);
+      assert.equal(r.judged_pairs.length, 1);
+    }
+    const thrown = await cluster(base, { decide: () => { throw new Error('boom'); } }).catch(e => e);
+    assert.match(thrown.message, /boom/, 'a decide that throws is the caller\'s bug and still propagates');
+    assert.deepEqual((await cluster(base)).invalid_judgments, []);
+  });
+  it('rejects a malformed answer', async () => {
+    await assert.rejects(cluster(base, { answers: [{ a: 'a', b: 'b', same: true, p: 2, confidence: 'high' }] }), /"p" must be a number/);
     await assert.rejects(cluster(base, { answers: [{ a: 'a', b: 'b', same: true, p: 1, confidence: 'sure' }] }), /confidence/);
   });
 });
@@ -156,6 +181,15 @@ describe('cluster — run (CLI surface)', () => {
       await fs.writeFile(path.join(d, 'bad.json'), '{nope');
       for (const [args, stdin] of [[['--file', 'bad.json'], ''], [['--file', 'missing.json'], ''], [['--wat'], ''], [[], ''], [['--answers', 'bad.json'], '[]']]) {
         await assert.rejects(run(args, io(d, stdin)), (e) => e.code === 1, args.join(' '));
+      }
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+  it('an empty --file or --answers value is rejected, not treated as absent', async () => {
+    const d = await fs.mkdtemp(path.join(os.tmpdir(), 'cluster-'));
+    try {
+      await fs.writeFile(path.join(d, 'in.json'), '[]');
+      for (const args of [['--file', ''], ['--file', 'in.json', '--answers', '']]) {
+        await assert.rejects(run(args, io(d, '[]')), (e) => e.code === 1 && /needs a value/.test(e.message), args.join(' '));
       }
     } finally { await fs.rm(d, { recursive: true, force: true }); }
   });

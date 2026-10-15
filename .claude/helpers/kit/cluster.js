@@ -5,7 +5,7 @@
  *
  * Input: a list of findings, or { findings: [...] }. Each: { id, rule, severity, files?, locations?, title? }.
  *   id unique string · rule non-empty string · severity critical|high|medium|low|info · files: list of paths ·
- *   locations: list of { file, line? } or "path:line" strings (their files count as files too). At least one file in all.
+ *   locations: list of { file, line? } or "path:line" or "path:line:col" strings (their files count as files too). At least one file in all.
  *   Paths are normalised (backslashes, "./", repeated slashes) before comparing.
  * PASS 1 (free, deterministic). Findings are bucketed by rule + the sorted, de-duplicated set of files. Each bucket is a
  *   cluster: the most severe member is the representative (ties: smallest id), and the cluster lists every member id, every
@@ -24,7 +24,8 @@
  *   never merge across a pair nobody agreed on, and the result does not depend on the order of the answers.
  * Library: `await cluster(findings, { answers, decide })` — `decide(pair)` may be sync or async and returns a judgment (or
  *   null to leave the pair pending); it is called once, in sorted order, for each pending pair without an answer.
- * Output: { clusters, pending_pairs, judged_pairs, ignored_answers, conflicting_answers, blocked, stats }.
+ * A reply that fails validation leaves the pair pending (never merges) and is listed in `invalid_judgments` { a, b, reason }.
+ * Output: { clusters, pending_pairs, judged_pairs, ignored_answers, conflicting_answers, invalid_judgments, blocked, stats }.
  * Exit 1 on invalid input. Built from ideas audited by /w-bbs (run 2026-10-15-bugpatrol); no foreign code.
  */
 import fs from 'fs/promises';
@@ -50,6 +51,14 @@ const byStr = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
 /** True when a judgment clears the bar to merge: same, p >= 0.5, confidence high. */
 export function mergeBar(j) {
   return !!j && j.same === true && typeof j.p === 'number' && j.p >= 0.5 && j.confidence === 'high';
+}
+
+function judgmentProblem(j) {
+  if (!j || typeof j !== 'object' || Array.isArray(j)) return 'not an object';
+  if (typeof j.same !== 'boolean') return '"same" must be true or false';
+  if (typeof j.p !== 'number' || !(j.p >= 0 && j.p <= 1)) return '"p" must be a number from 0 to 1';
+  if (!CONFIDENCE.includes(j.confidence)) return '"confidence" must be high, medium or low';
+  return null;
 }
 
 function checkJudgment(j, label) {
@@ -81,7 +90,7 @@ function normaliseFinding(f, i) {
     for (const l of f.locations) {
       let file; let line = null;
       if (typeof l === 'string') {
-        const m = /^(.*):(\d+)$/.exec(l);
+        const m = /^(.*?):(\d+)(?::\d+)?$/.exec(l);
         file = normPath(m ? m[1] : l); line = m ? Number(m[2]) : null;
       } else if (l && typeof l === 'object' && typeof l.file === 'string') {
         file = normPath(l.file);
@@ -184,7 +193,7 @@ export async function cluster(findings, { answers = [], decide } = {}) {
     byPair.get(k).push(x);
   }
   const verdict = new Map(); // key -> 'approved' | 'refused'
-  const conflicting = [];
+  const conflicting = []; const invalid = [];
   for (const [k, xs] of byPair) {
     const oks = xs.map(mergeBar);
     if (oks.every(Boolean)) verdict.set(k, 'approved');
@@ -196,7 +205,8 @@ export async function cluster(findings, { answers = [], decide } = {}) {
       if (verdict.has(k)) continue;
       const j = await decide({ ...p });
       if (j === null || j === undefined) continue;
-      checkJudgment(j, `decide(${p.a}, ${p.b}) result`);
+      const problem = judgmentProblem(j);
+      if (problem) { invalid.push({ a: p.a, b: p.b, reason: problem }); continue; } // unreadable reply: leave pending, never merge
       verdict.set(k, mergeBar(j) ? 'approved' : 'refused');
     }
   }
@@ -233,7 +243,7 @@ export async function cluster(findings, { answers = [], decide } = {}) {
   const findingsCount = first.clusters.reduce((n, c) => n + c.members.length, 0);
   return {
     clusters, pending_pairs: open, judged_pairs: judged,
-    ignored_answers: ignored, conflicting_answers: conflicting, blocked,
+    ignored_answers: ignored, conflicting_answers: conflicting, invalid_judgments: invalid, blocked,
     stats: { findings: findingsCount, pass1_clusters: first.clusters.length, clusters: clusters.length, pending_pairs: open.length, judged_pairs: judged.length, merged_clusters: first.clusters.length - clusters.length }
   };
 }
@@ -252,15 +262,17 @@ export async function run(args, io) {
     if (a === '--help') return { usage };
     if (a !== '--file' && a !== '--answers') throw bad(`unknown argument "${a}" (see --help)`);
     if (!rest.length) throw bad(`${a} needs a value`);
-    if (a === '--file') file = rest.shift(); else answersFile = rest.shift();
+    const v = rest.shift();
+    if (v === '') throw bad(`${a} needs a value`);
+    if (a === '--file') file = v; else answersFile = v;
   }
   let input;
-  if (file) input = await readJsonFile(io, file, 'findings');
+  if (file !== null) input = await readJsonFile(io, file, 'findings');
   else {
     const text = io.stdinIsTTY ? '' : await io.stdin();
     if (!text.trim()) throw bad('no findings: pass --file <findings.json> or JSON on stdin');
     try { input = JSON.parse(text); } catch { throw bad('stdin is not valid JSON'); }
   }
-  const answers = answersFile ? await readJsonFile(io, answersFile, 'answers') : [];
+  const answers = answersFile !== null ? await readJsonFile(io, answersFile, 'answers') : [];
   return cluster(input, { answers });
 }
