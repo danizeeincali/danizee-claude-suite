@@ -9,9 +9,10 @@
  *
  * --result <file|-> is the JSON a product judge printed (a regular file of at most 1 MiB, or piped stdin). A judge exits 2 both when it
  * judged the product and said no and when it could not judge at all, so without --result a judge's 2 is a regression. With it, an exit 2 whose
- * result shows nothing was judged is infrastructure and never blocks: scrub with hit_count 0 and a non-empty not_scanned list or complete false
- * (e.g. a partial clone with the remote unreachable); push-gate with decision deny and scrub.ran false, a reason that says the check
- * 'could not run' (e.g. git timed out), or a scrub block with hit_count 0 and an incomplete scan. Any hit, or a review deny, stays a regression.
+ * result shows nothing was judged is infrastructure and never blocks: scrub with hit_count 0 and a non-empty not_scanned list
+ * where every not_scanned reason is an environment reason (a partial clone with the remote unreachable); push-gate with decision deny and scrub.ran false, a reason
+ * that says the check 'could not run' (e.g. git timed out), or a scrub block that is such a zero-hit partial-clone-only scan. Size, total,
+ * not-a-regular-file and other reasons stay blocking (fail closed, described by their reason), as does any hit or a review deny.
  * The library takes the parsed object: classify({ code, verb, result }), blocksMerge(code, verb, signal, result). 124 (timeout(1)) is infrastructure.
  *
  * Classes: clean (0), regression (2 from a listed product judge only: the ONLY class allowed to block a merge), usage (1, invalid input
@@ -106,6 +107,14 @@ export function unjudgedReason(v, result) {
   return null;
 }
 
+/** The not_scanned reasons of a zero-hit judge result that stayed blocking, or null (fail closed: unscanned files, no verdict on them). */
+function failClosedReasons(v, result) {
+  const scan = v === 'scrub' ? result : v === 'push-gate' && result && result.decision === 'deny' ? result.scrub : null;
+  if (!scan || typeof scan !== 'object' || scan.hit_count !== 0 || !Array.isArray(scan.not_scanned) || !scan.not_scanned.length) return null;
+  const reasons = [...new Set(scan.not_scanned.map((e) => (e && typeof e === 'object' && typeof e.reason === 'string' ? e.reason : 'unknown reason')))];
+  return reasons.slice(0, 5).join('; ') + (reasons.length > 5 ? '; ...' : '');
+}
+
 const AMBIGUOUS = { 3: 'Status 3 means different things per verb (safe-git: git failed, infrastructure; diff-range: empty range, clean); pass the verb to classify it.' };
 
 /**
@@ -122,6 +131,8 @@ export function classify({ code = null, signal = null, verb: v = null, result = 
   if (code === 2 && v && PRODUCT_JUDGES.includes(v)) {
     const why = unjudgedReason(v, result);
     if (why) return { ...base, class: 'infrastructure', known: true, blocks: false, judged: false, description: NOT_JUDGED.replace('%s', why) };
+    const fc = failClosedReasons(v, result);
+    if (fc) return { ...base, class: 'regression', known: true, blocks: true, description: `Fail closed: ${v} found no hits but some files were not scanned for a product reason (${fc}), so it blocks. Shrink or split those files, or scan with a higher limit, then rerun.` };
   }
   const over = v && Object.hasOwn(VERB_OVERRIDES, v) ? VERB_OVERRIDES[v][code] : undefined;
   if (over) return { ...base, class: over.class, known: true, blocks: CLASSES[over.class].blocks, description: over.description };
@@ -181,6 +192,7 @@ async function readResult(arg, io) {
     text = await fs.readFile(file, 'utf-8');
   }
   if (Buffer.byteLength(text) > MAX_RESULT_BYTES) throw new KitExit(`--result is larger than ${MAX_RESULT_BYTES} bytes`, 1);
+  if (!text.trim()) throw new KitExit('--result is empty (the verb printed nothing; did it crash?)', 1);
   let j;
   try { j = JSON.parse(text); } catch { throw new KitExit('--result is not valid JSON (pass the verb\'s JSON output)', 1); }
   if (!j || typeof j !== 'object' || Array.isArray(j)) throw new KitExit('--result must be a JSON object (the verb\'s output)', 1);

@@ -228,4 +228,28 @@ describe('exit-codes', () => {
       await assert.rejects(run(['blocks', '2', '--result', f]), (e) => e.code === 1);
     } finally { fs.rmSync(d, { recursive: true, force: true }); }
   });
+
+  it('a fail-closed incomplete scan with --result is described by its unscanned reason, not as a verdict', () => {
+    const ns = [{ path: 'a', reason: 'larger than 100 bytes' }, { path: 'b', reason: 'not a regular file' }];
+    const r = classify({ code: 2, verb: 'scrub', result: { hit_count: 0, not_scanned: ns } });
+    assert.equal(r.blocks, true);
+    assert.equal(r.class, 'regression');
+    assert.match(r.description, /fail closed/i);
+    assert.match(r.description, /larger than 100 bytes/);
+    assert.match(r.description, /not a regular file/);
+    assert.doesNotMatch(r.description, /ran and said no/);
+    const pg = classify({ code: 2, verb: 'push-gate', result: { decision: 'deny', reason: 'x', scrub: { ran: true, hit_count: 0, not_scanned: ns } } });
+    assert.equal(pg.blocks, true);
+    assert.match(pg.description, /larger than 100 bytes/);
+    // real hits keep the generic text
+    assert.match(classify({ code: 2, verb: 'scrub', result: { hit_count: 1, not_scanned: ns } }).description, /ran and said no/);
+  });
+  it('the header describes the partial-clone-only rule', () => {
+    const src = fs.readFileSync(new URL('../src/lib/kit/exit-codes.js', import.meta.url), 'utf-8');
+    assert.doesNotMatch(src, /or complete false/);
+    assert.match(src.split('*/')[0], /every not_scanned reason/);
+  });
+  it('an empty piped --result says nothing was piped', async () => {
+    await assert.rejects(run(['blocks', '2', '--verb', 'scrub', '--result', '-'], { stdin: async () => Buffer.from('  \n'), stdinIsTTY: false }), (e) => e.code === 1 && /empty/.test(e.message) && !/not valid JSON/.test(e.message));
+  });
 });
