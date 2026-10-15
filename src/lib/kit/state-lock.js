@@ -7,7 +7,7 @@
  *   readJsonState(file, { fallback })                                                      → parsed JSON
  *   writeJsonAtomic(file, value)                                                           → undefined
  *
- * LOCK. The file's folder is created if missing. `<file>.lock` is created with O_EXCL ('wx') and holds {token, pid, host, beat}. Only EEXIST means "held";
+ * LOCK. The file's folder is created if missing. `<file>.lock` is created with O_EXCL ('wx') and holds {token, pid, host, pidns, beat}. Only EEXIST means "held";
  * any other open error is fatal (KitExit 1 "cannot lock <file>: <code>"). While fn runs, the holder rewrites the lock
  * every staleMs/3 with beat+1 (opened 'r+', so a removed lock is never recreated, and only while it still holds our
  * token). Release removes the lock only if it still holds our token.
@@ -15,7 +15,7 @@
  * STALENESS is judged only by what the waiter itself sees on its own monotonic clock: a lock is stale when its exact
  * content has stayed unchanged for staleMs of the waiter's observation. File mtimes and wall clocks are never used, so
  * clock skew on a network filesystem cannot break a live lock. Shortcut: a lock written on this host whose pid no
- * longer exists (kill(pid, 0) → ESRCH) is stale at once.
+ * longer exists (kill(pid, 0) → ESRCH) is stale at once, but only when the lock names this pid namespace too.
  *
  * BREAK. A waiter that judged the lock stale takes `<file>.lock.break` ('wx'; a non-EEXIST error is fatal, never
  * retried), re-reads the lock and removes it only if its content is byte-identical to what was judged stale, then
@@ -28,6 +28,7 @@
  * (no heartbeat for staleMs) can be affected.
  */
 
+import fsSync from 'node:fs';
 import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -37,6 +38,10 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { KitExit } from './kit-exit.js';
 
 const HOST = os.hostname();
+// The pid namespace (Linux). Containers can share a hostname and a volume but not a pid namespace, so a pid that is
+// invisible here may be alive there; the dead-pid shortcut applies only when both locks name the same namespace
+// (or neither platform has one).
+const PIDNS = (() => { try { return fsSync.readlinkSync('/proc/self/ns/pid'); } catch { return null; } })();
 
 function holderOf(content) {
   try {
@@ -49,6 +54,7 @@ function holderOf(content) {
 function deadOnThisHost(content) {
   const h = holderOf(content);
   if (!h || h.host !== HOST || !Number.isInteger(h.pid) || h.pid <= 0) return false;
+  if (h.pidns !== undefined && h.pidns !== PIDNS) return false;
   try { process.kill(h.pid, 0); return false; } catch (err) { return err.code === 'ESRCH'; }
 }
 
@@ -103,7 +109,7 @@ export async function withStateLock(file, fn, opts = {}) {
   const lock = `${file}.lock`;
   const brk = `${lock}.break`;
   const token = randomUUID();
-  const body = beat => JSON.stringify({ token, pid: process.pid, host: HOST, beat });
+  const body = beat => JSON.stringify({ token, pid: process.pid, host: HOST, pidns: PIDNS, beat });
 
   // What this waiter has seen at each path: { content, since } on its own clock.
   const seen = new Map();
