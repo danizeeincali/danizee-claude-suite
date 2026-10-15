@@ -84,17 +84,22 @@ export const TABLE = freeze({
 const MAX_RESULT_BYTES = 1048576;
 const NOT_JUDGED = 'The judge exited 2 but its result shows it could not judge the product (%s); nothing was decided about the product, so this is infrastructure and never blocks. Fix the environment (network, partial clone, git speed) and rerun.';
 
-const incompleteNoHits = (o) => o && typeof o === 'object' && o.hit_count === 0 && (o.complete === false || (Array.isArray(o.not_scanned) && o.not_scanned.length > 0));
+/** The only not_scanned reasons that come from the environment, not the product (the exact string scrub.js writes). Size limits, total limit, not-a-regular-file, unreadable and unknown reasons may hide a secret, so they stay blocking. */
+const ENV_REASONS = freeze(['object not available locally (partial clone?)']);
+
+const incompleteNoHits = (o) => o && typeof o === 'object' && o.hit_count === 0
+  && Array.isArray(o.not_scanned) && o.not_scanned.length > 0
+  && o.not_scanned.every((e) => e && typeof e === 'object' && ENV_REASONS.includes(e.reason));
 
 /** Why a judge's result shows nothing was judged, or null. Field names are those of scrub.js and push-gate.js. */
 export function unjudgedReason(v, result) {
   if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
-  if (v === 'scrub') return incompleteNoHits(result) ? 'scrub found no hits but did not scan everything (not_scanned / complete false)' : null;
+  if (v === 'scrub') return incompleteNoHits(result) ? 'scrub found no hits but every file it skipped was skipped for an environment reason (partial clone)' : null;
   if (v === 'push-gate') {
     if (result.decision !== 'deny') return null;
     if (result.scrub && typeof result.scrub === 'object') {
       if (result.scrub.ran === false) return 'the scrub check could not run (scrub.ran false)';
-      if (incompleteNoHits(result.scrub)) return 'the scrub check scanned incompletely and found no hits';
+      if (incompleteNoHits(result.scrub)) return 'the scrub check skipped files only for an environment reason and found no hits';
     }
     if (typeof result.reason === 'string' && /could not run/i.test(result.reason) && !(result.scrub && result.scrub.hit_count > 0)) return 'the scrub check could not run';
   }

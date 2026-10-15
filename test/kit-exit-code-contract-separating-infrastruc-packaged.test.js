@@ -53,6 +53,15 @@ describe('exit-codes — packaged end to end', () => {
       assert.equal(pkg.kit(['exit-codes', 'blocks', '2', '--verb', 'push-gate', '--result', '-'], pg.out).json.blocks, false);
       assert.equal(pkg.kit(['exit-codes', 'classify', '--code', '124']).json.class, 'infrastructure');
       assert.equal(pkg.kit(['exit-codes', 'blocks', '2', '--result', '-'], 'nope').code, 1);
+      fs.writeFileSync(path.join(repo, 'creds.txt'), 'AKIAABCDEFGHIJKLMNOP\n' + 'x'.repeat(300) + '\n');
+      fs.writeFileSync(path.join(repo, '.claude', 'kit', 'scrub-patterns'), 'AKIA[0-9A-Z]{16}\n');
+      g('add', '-A'); g('commit', '-qm', 'y');
+      const big = pkg.kit(['scrub', '--max-file-bytes', '100'], undefined, { cwd: repo });
+      assert.equal(big.code, 2);
+      assert.equal(big.json.hit_count, 0);
+      assert.equal(pkg.kit(['exit-codes', 'blocks', '2', '--verb', 'scrub', '--result', '-'], big.out).json.blocks, true);
+      assert.equal(pkg.kit(['exit-codes', 'classify', '--code', '2', '--verb', 'scrub', '--result', '-'], big.out).json.class, 'regression');
+      assert.deepEqual(pkg.egress(), []);
     } finally { fs.rmSync(repo, { recursive: true, force: true }); }
   });
 });

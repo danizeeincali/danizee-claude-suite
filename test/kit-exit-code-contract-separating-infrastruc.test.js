@@ -163,7 +163,7 @@ describe('exit-codes', () => {
     }
   });
   it('scrub exit 2 with zero hits and an incomplete scan is infrastructure with --result', () => {
-    for (const result of [partial, { hit_count: 0, complete: false, not_scanned: [] }, { hit_count: 0, not_scanned: ['x'] }]) {
+    for (const result of [partial, { hit_count: 0, complete: false, not_scanned: [{ file: 'a', reason: 'object not available locally (partial clone?)' }, { file: 'b', reason: 'object not available locally (partial clone?)' }] }]) {
       const r = classify({ code: 2, verb: 'scrub', result });
       assert.equal(r.class, 'infrastructure');
       assert.equal(r.blocks, false);
@@ -176,8 +176,21 @@ describe('exit-codes', () => {
     assert.equal(classify({ code: 2, verb: 'scrub', result: { hit_count: 2, complete: false, not_scanned: ['x'] } }).blocks, true);
     assert.equal(classify({ code: 2, verb: 'scrub', result: { hit_count: 0, complete: true, not_scanned: [] } }).blocks, true, 'nothing shows it did not judge');
   });
+  it('scrub exit 2 where any skipped file has a product or unknown reason stays a regression with --result', () => {
+    const env = { file: 'a', reason: 'object not available locally (partial clone?)' };
+    for (const reason of ['larger than 100 bytes', 'total size limit reached', 'not a regular file on disk', 'tracked but missing on disk', 'cannot read: EACCES', 'something new', undefined]) {
+      for (const ns of [[{ file: 'big', reason }], [env, { file: 'big', reason }]]) {
+        const result = { hit_count: 0, complete: false, not_scanned: ns };
+        assert.equal(classify({ code: 2, verb: 'scrub', result }).class, 'regression', String(reason));
+        assert.equal(blocksMerge(2, 'scrub', null, result), true);
+        const pg = { decision: 'deny', reason: 'the scrub check refused this push: x', scrub: { ran: true, hit_count: 0, complete: false, not_scanned: ns } };
+        assert.equal(classify({ code: 2, verb: 'push-gate', result: pg }).blocks, true, String(reason));
+      }
+    }
+    for (const ns of [[], ['x'], undefined]) assert.equal(blocksMerge(2, 'scrub', null, { hit_count: 0, complete: false, not_scanned: ns }), true);
+  });
   it('push-gate deny where the scrub check could not run is infrastructure with --result', () => {
-    for (const result of [pgTimeout, { decision: 'deny', reason: 'the scrub check is configured but could not run: x' }, { decision: 'deny', reason: 'r', scrub: { ran: true, hit_count: 0, complete: false, not_scanned: ['a'] } }]) {
+    for (const result of [pgTimeout, { decision: 'deny', reason: 'the scrub check is configured but could not run: x' }, { decision: 'deny', reason: 'r', scrub: { ran: true, hit_count: 0, complete: false, not_scanned: [{ file: 'a', reason: 'object not available locally (partial clone?)' }] } }]) {
       const r = classify({ code: 2, verb: 'push-gate', result });
       assert.equal(r.class, 'infrastructure');
       assert.equal(r.blocks, false);
