@@ -55,6 +55,7 @@ const isUnit = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n
 export function resolveThresholds(t = {}) {
   if (t === null) t = {};
   if (typeof t !== 'object' || Array.isArray(t)) throw invalid(`thresholds must be an object { low, high } (got ${JSON.stringify(t)})`);
+  for (const k of Object.keys(t)) if (k !== 'low' && k !== 'high') throw invalid(`unknown threshold key "${k}" (only low and high are allowed)`);
   const low = t.low === undefined ? DEFAULT_THRESHOLDS.low : t.low;
   const high = t.high === undefined ? DEFAULT_THRESHOLDS.high : t.high;
   if (!isUnit(low)) throw invalid(`low must be a number from 0 to 1 (got ${JSON.stringify(low)})`);
@@ -169,10 +170,11 @@ export async function run(args, io = {}) {
   }
   if (!text.trim()) throw invalid('no input: give JSON on stdin or --file <path> (see --help)');
   let data;
-  try { data = JSON.parse(text); } catch { throw invalid('input is not valid JSON'); }
+  try { data = JSON.parse(text.replace(/^\uFEFF/, '')); } catch { throw invalid('input is not valid JSON'); }
   let items = data;
   let fromInput = {};
   if (data && typeof data === 'object' && !Array.isArray(data)) {
+    for (const k of Object.keys(data)) if (k !== 'items' && k !== 'thresholds') throw invalid(`unknown top-level key "${k}" (only items and thresholds are allowed)`);
     items = data.items;
     if (data.thresholds !== undefined) {
       if (!data.thresholds || typeof data.thresholds !== 'object' || Array.isArray(data.thresholds)) throw invalid('thresholds must be an object { low, high }');

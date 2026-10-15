@@ -201,6 +201,14 @@ describe('threshold-route: routeAll and input validation', () => {
     assert.equal(routeAll([{ ledgerMatch: true, answer: ans('nope', 0.5) }], T).results[0].route, 'as-intended');
     assert.equal(routeAll([{ deterministicRegression: true, answer: ans('nope', 0.5) }], T).results[0].route, 'block');
   });
+  it('misspelled threshold keys throw exit 1 in the module API', () => {
+    for (const bad of [{ hi: 0.95 }, { High: 0.95 }, { low: 0.2, high: 0.9, mid: 0.5 }]) {
+      assert.throws(() => routeAll([{ answer: ans('suppress', 0.85) }], bad), (e) => e.code === 1, JSON.stringify(bad));
+      assert.throws(() => routeItem({}, bad), (e) => e.code === 1);
+      assert.throws(() => autoFixEligible({}, bad), (e) => e.code === 1);
+      assert.throws(() => resolveThresholds(bad), (e) => e.code === 1);
+    }
+  });
   it('non-object thresholds throw exit 1 in the module API', () => {
     for (const bad of [0.95, '0.9', true, [], [0.4, 0.8]]) {
       assert.throws(() => routeAll([], bad), (e) => e.code === 1, JSON.stringify(bad));
@@ -240,6 +248,27 @@ describe('threshold-route: run', () => {
       const body = JSON.stringify({ thresholds: { low: 0.1, high: 0.3 }, items: [] });
       assert.deepEqual((await run([], io(dir, body))).thresholds, { low: 0.1, high: 0.3 });
       assert.deepEqual((await run(['--high', '0.9'], io(dir, body))).thresholds, { low: 0.1, high: 0.9 });
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+  it('a UTF-8 BOM before the JSON is accepted', async () => {
+    const dir = await mk();
+    try {
+      const body = '\uFEFF' + JSON.stringify([{ id: 'r', deterministicRegression: true }]);
+      assert.equal((await run([], io(dir, body))).blocks, true);
+      await fs.writeFile(path.join(dir, 'bom.json'), body);
+      assert.equal((await run(['--file', 'bom.json'], io(dir))).blocks, true);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+  it('unknown threshold keys and unknown top-level keys exit 1', async () => {
+    const dir = await mk();
+    try {
+      const items = [{ answer: ans('suppress', 0.85) }];
+      for (const body of [
+        { items, thresholds: { hi: 0.95 } },
+        { items, thresholds: { High: 0.95 } },
+        { items, threshold: { high: 0.95 } },
+        { items, thresholds: { high: 0.95 }, extra: 1 }
+      ]) await assert.rejects(run([], io(dir, JSON.stringify(body))), (e) => e.code === 1, JSON.stringify(body));
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
   it('a malformed answer from stdin routes to ask-human and does not stop a block', async () => {
