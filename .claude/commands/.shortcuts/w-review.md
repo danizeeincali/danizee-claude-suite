@@ -87,9 +87,9 @@ case $RC in 0) node .claude/helpers/kit/cli.js lenses --diff "$D"; RC=$?;; 3) ec
 Exit 3 from `diff-range` means an empty range: report "no change to review", never a failure and never "no lens applies". Any other non-zero exit is wrong input or a broken state: report it, never skip the step. Exit 2 means `diff-range` refused the repository (for example an include in its own config): report the refusal as printed. (Wrong input includes not a repository, an unknown base or a git failure.)
 Each entry in `fired` has a `name`, the `files` it matched and a `body`: apply the body as an extra check on those files and add its findings to the table below. A non-empty `capped` list means more lenses applied than the cap (4); mention them in the table. If a deterministic check already ran for the same rule, say so with `--covered` (for example `--covered no-floating-promises`) and that lens stands down. The block keeps the exit status after removing the temp file. A non-zero exit from `lenses` itself means wrong input or a broken lens file: report it, do not skip the step.
 
-**🧩 CLUSTER (advisory):** Findings from parallel agents often repeat. Write them as JSON (`[{"id","rule","severity","files":[...]}]`) to a temp file `$F`, then group them before the list is shown:
+**🧩 CLUSTER (advisory):** Findings from parallel agents often repeat. Write them as JSON (`[{"id","rule","severity","files":[...]}]`) to `<printed dir>/findings.json`, then group them before the list is shown. Shell variables do not persist between Bash calls: run `mktemp -d` once and read the printed directory, write the file with the Write tool there, and put the literal path in the block (`/tmp/tmp.AbC123` is an example: write the printed one in its place); remove the directory when done.
 ```bash
-if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): cluster skipped, advisory"; else node .claude/helpers/kit/cli.js cluster --file "$F"; fi
+F=/tmp/tmp.AbC123/findings.json; if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): cluster skipped, advisory"; else node .claude/helpers/kit/cli.js cluster --file "$F"; fi
 ```
 Exit 0: show one entry per cluster (the representative, with its member ids). For each `pending_pairs` entry, judge whether the two clusters are one defect; only when sure, write `[{"a","b","same":true,"p":0.9,"confidence":"high"}]` to a file and rerun with `--answers <file>` (an unjudged pair stays apart). Exit 1: invalid input, say so and keep the unclustered list. If the kit is not installed, say so in one line and keep the list as is. Either way the review goes on.
 
@@ -147,17 +147,17 @@ List what to check from the result: each symbol in `touched`, then the `impacted
 - Bug fix patterns that recur
 - Feature patterns worth templating
 
-**🔇 NOISE LEDGER AND TRIAGE (advisory):** Before any candidate is filed, put the findings through the ledger and then the fingerprint triage, as two separate commands. `$F` holds `[{"id","severity","rule","locations":[...],"failures","reproductions"}]` (`severity` high|medium|low only: map critical to high and info to low; retry counts from re-running the check), `$V` holds `{"scopes":[...],"enabled":[rules that ran],"violations":[{"scope","rule","source":"auto"|"agent","element"}]}`, `$S` is this review's session id. If the kit is not installed (`.claude/helpers/kit/cli.js` missing), say so in one line, skip both commands and file candidates as before.
+**🔇 NOISE LEDGER AND TRIAGE (advisory):** Before any candidate is filed, put the findings through the ledger and then the fingerprint triage, as two separate commands. `<printed dir>/findings.json` holds `[{"id","severity","rule","locations":[...],"failures","reproductions"}]` (`severity` high|medium|low only: map critical to high and info to low; retry counts from re-running the check), `<printed dir>/visit.json` holds `{"scopes":[...],"enabled":[rules that ran],"violations":[{"scope","rule","source":"auto"|"agent","element"}]}`, the session id is this review's own (substitute it for `s1` in the block). Shell variables do not persist between Bash calls: run `mktemp -d` once and read the printed directory, write each input file there with the Write tool, and put the literal paths in each block (`/tmp/tmp.AbC123` is an example: write the printed one in its place); remove the directory when done. If the kit is not installed (`.claude/helpers/kit/cli.js` missing), say so in one line, skip both commands and file candidates as before.
 
 First the ledger:
 ```bash
-node .claude/helpers/kit/cli.js noise-ledger apply --in "$F"
+P=/tmp/tmp.AbC123; node .claude/helpers/kit/cli.js noise-ledger apply --in "$P/findings.json"
 ```
 `noise-ledger` exit 0: file the `filed` items as candidates, mention the one `summary` for the folded rest, list `quarantined` ones (did not reproduce on retry) and ledger-`accepted` ones without filing them; exit 1: invalid input, report it. If `noise-ledger` fails, do not run `triage`: file candidates as before.
 
 Then the triage (only after `noise-ledger` exited 0):
 ```bash
-node .claude/helpers/kit/cli.js triage visit --session "$S" --in "$V"
+P=/tmp/tmp.AbC123; node .claude/helpers/kit/cli.js triage visit --session s1 --in "$P/visit.json"
 ```
 `triage` exit 0: raise only `raise` and `recurred` entries (a decided one is never raised again; a repeat of a record nobody has decided yet comes back as a `raise` entry with status `pending` or `reopened`, not as `recurred`, which holds only filed records). Mention `closed` ones (no longer seen) only for rows with source `auto`: a record with an `agent` row never closes on absence (it is listed in `skipped`), so `closed` stays empty for agent-sourced rows. Record a decision with `node .claude/helpers/kit/cli.js triage decide <fingerprint> --as filed|dismissed|accepted`; exit 1 invalid input or corrupt state, exit 2 refused (state path is a symbolic link): report it. The review goes on.
 
@@ -215,9 +215,9 @@ If the kit is not installed (`.claude/helpers/kit/cli.js` missing), say so in on
 
 ### ⛔ CHECKPOINT 5: Compound (MANDATORY - NEVER SKIP)
 
-**📄 RENDER REPORTS (advisory):** Render the findings for CI and the PR. `$F` holds `{"findings":[{"message","severity":"blocking"|"advisory"|"note","file","line","disposition"}]}`. Findings quote the session's code and messages, so nothing is posted or kept before it has passed through `redact --keep-lines`, and the outputs go to a private `mktemp` directory, never to `reports/` at the repository root (it is not git-ignored). First run `mktemp -d` and read the printed directory; use it literally as `W` in the next command (shell variables do not persist between Bash calls):
+**📄 RENDER REPORTS (advisory):** Render the findings for CI and the PR. `<printed dir>/findings.json` holds `{"findings":[{"message","severity":"blocking"|"advisory"|"note","file","line","disposition"}]}`. Findings quote the session's code and messages, so nothing is posted or kept before it has passed through `redact --keep-lines`, and the outputs go to a private `mktemp` directory, never to `reports/` at the repository root (it is not git-ignored). First run `mktemp -d` and read the printed directory; use it literally as `W` in the next command (shell variables do not persist between Bash calls):
 ```bash
-W=<printed dir>
+W=<printed dir>; F="$W/findings.json"
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): render skipped, advisory"; else
   for X in sarif:review.sarif junit:review.junit.xml comment:review-comment.md; do
     A=; [ "${X%%:*}" = comment ] && A="--key review"

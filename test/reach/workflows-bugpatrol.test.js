@@ -273,3 +273,53 @@ test('r8: per-stream test map, defect-specific cluster rule, fixed lessons roles
     assert.doesNotMatch(t, /--role <role>/, `${wf} leaves no free role`);
   }
 });
+
+// Round 10: the test-plan step builds its own map, the reflection names a literal event log, changed paths share the scan's base.
+test('w-fix test plan follows the /pt pattern: mktemp -d once, test-plan --scan into a literal dir, changed.txt with untracked files, empty-map fallback', () => {
+  const sec = stepSection(installed('w-fix'), '⛔ CHECKPOINT 2: Fix Applied');
+  assert.match(sec, /run \\?`?mktemp -d\\?`? once/);
+  assert.match(sec, /test-plan --scan > <printed dir>\/test-map\.json/);
+  assert.match(sec, /P=\/tmp\/tmp\.AbC123;/);
+  assert.match(sec, /test-plan --in "\$P\/test-map\.json" --changed "\$P\/changed\.txt"/);
+  assert.match(sec, /grep -q '"id"' "\$P\/test-map\.json"/);
+  assert.match(sec, /scan failed or no test files[^\n]*run the full suite/);
+  assert.doesNotMatch(sec, /--in "\$M"|--changed "\$C"/);
+});
+
+test('w-fix and w-bbs reflection name a literal E= path and the newest transcript under ~/.claude/projects/<project>/', () => {
+  for (const [wf, heading] of [['w-fix', '⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)'], ['w-bbs', '⛔ CHECKPOINT 6: Compound (MANDATORY)']]) {
+    const sec = stepSection(installed(wf), heading);
+    assert.match(sec, /E=\/tmp\/tmp\.AbC123\/events\.jsonl; if \[/, `${wf}: literal E=`);
+    assert.match(sec, /~\/\.claude\/projects\/<project>\/<session>\.jsonl/, `${wf}: transcript location`);
+    assert.match(sec, /take the newest file of this project's folder/, `${wf}: newest transcript`);
+  }
+});
+
+test('changed paths share the scan base: git diff --name-only --relative plus git ls-files --others --exclude-standard (/pt, /w-fix, /mt)', () => {
+  for (const wf of ['w-plan-tdd-swarm', 'w-fix', 'w-marathon']) {
+    const t = installed(wf);
+    assert.match(t, /git diff --name-only --relative (HEAD|<base>)/, `${wf}: --relative`);
+    assert.match(t, /git ls-files --others --exclude-standard/, `${wf}: untracked files`);
+    assert.doesNotMatch(t, /git diff --name-only HEAD >|git -C <worktree> diff --name-only/, `${wf}: no git-root relative list`);
+  }
+  assert.match(installed('w-marathon'), /\(cd <worktree> && \{ git diff --name-only --relative <base>;/);
+});
+
+test('every kit/cli.js bash block of w-fix, w-bbs, w-plan-tdd-swarm, w-marathon assigns each "$VAR" it uses in the same block', () => {
+  const ENV = new Set(['HOME', 'PWD', 'PATH', 'RC']);
+  // Documented literal placeholder: the w-bbs evidence block is run as `E=<the path you wrote>; <block>` (its text says so).
+  const PLACEHOLDER = { 'w-bbs': { E: /`E=<the path you wrote>; <block>`/ } };
+  for (const wf of ['w-fix', 'w-bbs', 'w-plan-tdd-swarm', 'w-marathon']) {
+    const blocks = [...installed(wf).matchAll(/```(?:bash|sh)\n([\s\S]*?)```/g)].map(m => m[1]).filter(b => b.includes('kit/cli.js'));
+    assert.ok(blocks.length > 0, `${wf}: no kit blocks found`);
+    for (const b of blocks) {
+      const used = new Set([...b.matchAll(/\$\{?([A-Za-z_][A-Za-z0-9_]*)/g)].map(m => m[1]));
+      for (const v of used) {
+        if (ENV.has(v)) continue;
+        if (PLACEHOLDER[wf]?.[v]) { assert.match(installed(wf), PLACEHOLDER[wf][v], `${wf}: "$${v}" placeholder is not documented`); continue; }
+        const assigned = new RegExp(`(^|[\\s;&(|{])${v}=|for ${v} |read (-r )?${v}\\b`).test(b);
+        assert.ok(assigned, `${wf}: "$${v}" is used but not assigned in its block: ${b.slice(0, 120).replace(/\n/g, ' ')}`);
+      }
+    }
+  }
+});
