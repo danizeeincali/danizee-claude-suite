@@ -1,7 +1,7 @@
 # Marathon 2026-10-15-bbs-bugpatrol
 
 - State: FINISHED
-- Budget: 12,459,797 / 14,000,000 tokens
+- Budget: 12,785,106 / 14,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 2/2 clean reviews — build gate met, full gate met
 - Escapes: 0
@@ -23,7 +23,7 @@
 | exit-code-contract-separating-infrastruc | /home/claude/danizee-claude-suite-exit-code-contract-separating-infrastruc | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/exit-code-contract-separating-infrastruc.md | done | met | /w-tdd-swarm · build | done: build gate met |  | 0 |
 | sarif-junit-and-sticky-pr-comment-render | /home/claude/danizee-claude-suite-sarif-junit-and-sticky-pr-comment-render | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/sarif-junit-and-sticky-pr-comment-render.md | done | met | //w-tdd-swarm · build | done: build gate met |  | 0 |
 | repeated-replay-gate-for-claims | /home/claude/danizee-claude-suite-repeated-replay-gate-for-claims | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/repeated-replay-gate-for-claims.md | done | met | //w-tdd-swarm · done | integration stream wires it |  | 0 |
-| integration | /home/claude/danizee-claude-suite-integration | .claude/bbs/runs/2026-10-15-bugpatrol/integration.md | done | met | done | owner's go to push |  | 0 |
+| integration | /home/claude/danizee-claude-suite-integration | .claude/bbs/runs/2026-10-15-bugpatrol/integration.md | active | met | review | review /pt and /mt wiring until 2 clean passes; then re-measure wired, delivered |  | 0 |
 
 ## Finish line
 

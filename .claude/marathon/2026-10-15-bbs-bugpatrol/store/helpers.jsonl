@@ -294,3 +294,6 @@
 {"helper_id":"39406ea0-bf1f-4c97-b782-dff3ed091d0b","tokens":74367,"outcome":"green","event":"done","id":"fe6526e7-a86b-4701-aa6e-0ae29cfd2f37","ts":"2026-10-15T19:47:32.869Z"}
 {"role":"review","model":"opus","stream":"integration","budget":150000,"event":"spawn","id":"39c99421-c5a2-4de1-8424-fba81f1e2b7e","ts":"2026-10-15T19:47:39.640Z"}
 {"helper_id":"39c99421-c5a2-4de1-8424-fba81f1e2b7e","tokens":150975,"outcome":"green","event":"done","id":"5cb9e8ab-d911-4a99-8df0-a2f30cbdf59d","ts":"2026-10-15T19:52:03.679Z"}
+{"role":"build","model":"opus","stream":"integration","budget":200000,"event":"spawn","id":"321e529b-d8ca-4a43-8b0a-750a418c6151","ts":"2026-10-15T20:20:51.018Z"}
+{"helper_id":"321e529b-d8ca-4a43-8b0a-750a418c6151","tokens":175309,"outcome":"green","event":"done","id":"6b2b6d17-bfbf-411f-a5db-93b6701692d1","ts":"2026-10-15T20:30:53.897Z"}
+{"role":"review","model":"opus","stream":"integration","budget":150000,"event":"spawn","id":"62a52fd1-f12b-45e6-be08-13ffae7621e5","ts":"2026-10-15T20:31:00.628Z"}
