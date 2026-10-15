@@ -1,7 +1,7 @@
 # Marathon 2026-10-15-bbs-bugpatrol
 
 - State: RUNNING
-- Budget: 1,795,300 / 10,000,000 tokens
+- Budget: 2,338,418 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 3/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
@@ -17,9 +17,9 @@
 | change-impact-test-plan | /home/claude/danizee-claude-suite-change-impact-test-plan | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/change-impact-test-plan.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
 | finding-triage-with-fingerprint-dedup-an | /home/claude/danizee-claude-suite-finding-triage-with-fingerprint-dedup-an | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/finding-triage-with-fingerprint-dedup-an.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
 | shared-budget-for-claim-sub-sessions | /home/claude/danizee-claude-suite-shared-budget-for-claim-sub-sessions | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/shared-budget-for-claim-sub-sessions.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
-| trouble-log-reflection-into-lesson-memor |  | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/trouble-log-reflection-into-lesson-memor.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
-| preflight-doctor-checks-before-a-run |  | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/preflight-doctor-checks-before-a-run.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
-| exit-code-contract-separating-infrastruc |  | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/exit-code-contract-separating-infrastruc.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
+| trouble-log-reflection-into-lesson-memor | /home/claude/danizee-claude-suite-trouble-log-reflection-into-lesson-memor | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/trouble-log-reflection-into-lesson-memor.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
+| preflight-doctor-checks-before-a-run | /home/claude/danizee-claude-suite-preflight-doctor-checks-before-a-run | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/preflight-doctor-checks-before-a-run.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
+| exit-code-contract-separating-infrastruc | /home/claude/danizee-claude-suite-exit-code-contract-separating-infrastruc | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/exit-code-contract-separating-infrastruc.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
 | sarif-junit-and-sticky-pr-comment-render |  | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/sarif-junit-and-sticky-pr-comment-render.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | repeated-replay-gate-for-claims |  | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/repeated-replay-gate-for-claims.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | integration |  | .claude/bbs/runs/2026-10-15-bugpatrol/integration.md | queued | clean 0/2 |  | after every build stream is done: wire each power into its approved steps |  | 0 |
@@ -48,7 +48,7 @@
 | change-impact-test-plan: clean reviews in a row | build | failing | 0 | at_least 2 |
 | change-impact-test-plan: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | change-impact-test-plan: packaged check passes | build | failing | — | is true |
-| finding-triage-with-fingerprint-dedup-an: green unit runs in a row | build | failing | 0 | at_least 1 |
+| finding-triage-with-fingerprint-dedup-an: green unit runs in a row | build | met | 1 | at_least 1 |
 | finding-triage-with-fingerprint-dedup-an: zero egress in the packaged check | build | failing | — | is true |
 | finding-triage-with-fingerprint-dedup-an: clean reviews in a row | build | failing | 0 | at_least 2 |
 | finding-triage-with-fingerprint-dedup-an: wired into its target, reached by a user | build | failing | — | at_least 1 |

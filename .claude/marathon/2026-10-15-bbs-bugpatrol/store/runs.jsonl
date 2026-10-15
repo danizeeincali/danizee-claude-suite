@@ -6,3 +6,4 @@
 {"kind":"unit","status":"green","stream":"noise-ledger-with-flake-quarantine","commit":"58fcc7b","id":"c6911823-f5ac-4c4d-bd6f-b180b6d043c3","ts":"2026-10-15T16:54:42.490Z"}
 {"kind":"unit","status":"green","stream":"asymmetric-threshold-router","commit":"779aca3","id":"56d76ee0-9db8-4775-ba22-0792914ca265","ts":"2026-10-15T16:55:07.648Z"}
 {"kind":"unit","status":"green","stream":"two-pass-finding-clustering","commit":"2eb1640","id":"8b7e3da7-d92f-41c3-99b9-596e9d95c3c5","ts":"2026-10-15T16:55:12.333Z"}
+{"kind":"unit","status":"green","stream":"finding-triage-with-fingerprint-dedup-an","commit":"6707b32","id":"6feef9ef-cb5b-455c-bf0d-5ccecf2532c1","ts":"2026-10-15T16:55:29.993Z"}

@@ -75,24 +75,36 @@
     },
     {
       "name": "trouble-log-reflection-into-lesson-memor",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/trouble-log-reflection-into-lesson-memor.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract, failing tests, verb, packaged test",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-trouble-log-reflection-into-lesson-memor",
+      "phase": "build",
+      "skill": "w-tdd-swarm",
+      "base": "08e87411186ecde569922ff1eb5818da246d8528"
     },
     {
       "name": "preflight-doctor-checks-before-a-run",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/preflight-doctor-checks-before-a-run.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract, failing tests, verb, packaged test",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-preflight-doctor-checks-before-a-run",
+      "phase": "build",
+      "skill": "w-tdd-swarm",
+      "base": "08e87411186ecde569922ff1eb5818da246d8528"
     },
     {
       "name": "exit-code-contract-separating-infrastruc",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/exit-code-contract-separating-infrastruc.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract, failing tests, verb, packaged test",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-exit-code-contract-separating-infrastruc",
+      "phase": "build",
+      "skill": "w-tdd-swarm",
+      "base": "08e87411186ecde569922ff1eb5818da246d8528"
     },
     {
       "name": "sarif-junit-and-sticky-pr-comment-render",
