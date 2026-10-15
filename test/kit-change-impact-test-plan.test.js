@@ -212,4 +212,36 @@ describe('test-plan', () => {
     const r = await run([], io(JSON.stringify({ ...input, changed: [] })));
     assert.equal(r.coverage.changed_total, 0);
   });
+
+  it('blank entries in the changed argument and input.changed are dropped, not thrown on', () => {
+    const t = [{ id: 'a', files: ['x.js'] }];
+    const r = planTests({ targets: t }, 'x.js\n'.split('\n'));
+    assert.equal(r.coverage.changed_total, 1);
+    assert.equal(r.plan[0].id, 'a');
+    const r2 = planTests({ targets: t, changed: ['x.js', '', '  '] });
+    assert.equal(r2.coverage.changed_total, 1);
+    assert.throws(() => planTests({ targets: t }, [5]), (e) => e.code === 1);
+  });
+
+  it('an empty --diff or --changed file is low confidence with a smoke set, not a confident empty plan', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'tp-empty-'));
+    try {
+      await fs.writeFile(path.join(dir, 'empty.diff'), '');
+      await fs.writeFile(path.join(dir, 'ws.txt'), ' \n\n');
+      await fs.writeFile(path.join(dir, 'empty.json'), '[]');
+      const io = (s) => ({ cwd: dir, stdin: async () => s, stdinIsTTY: false });
+      for (const a of [['--diff', 'empty.diff'], ['--changed', 'ws.txt'], ['--changed', 'empty.json']]) {
+        const r = await run(a, io(JSON.stringify(base())));
+        assert.equal(r.low_confidence, true, a.join(' '));
+        assert.equal(r.low_confidence_reason, 'change source was empty');
+        assert.equal(r.coverage.changed_total, 0);
+        assert.ok(r.plan.some(i => i.reason === 'smoke'));
+      }
+      const r2 = await run(['--diff', 'empty.diff'], io(JSON.stringify({ ...base(), changed: ['src/cart.js'] })));
+      assert.equal(r2.low_confidence, false);
+      const r3 = await run([], io(JSON.stringify({ ...base(), changed: [] })));
+      assert.equal(r3.low_confidence, false);
+      assert.deepEqual(r3.plan.map(i => i.id), ['about']);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
 });

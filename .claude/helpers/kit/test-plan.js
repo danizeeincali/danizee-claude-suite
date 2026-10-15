@@ -16,7 +16,7 @@
  *   3. Any flow holding a targeted item pulls in every target of that flow: reason "flow".
  *   4. If the share of changed files that map to any target is below --min-mapped-pct (default 60), a smoke set is added
  *      (all entry targets plus the --smoke N, default 3, most connected targets by edge degree, ties by id) with reason
- *      "smoke", and the plan says low_confidence: true with a reason. Never silent. No changed files: no smoke, no flag; but run() exits 1 when no change source was given at all.
+ *      "smoke", and the plan says low_confidence: true with a reason. Never silent. No changed files: no smoke, no flag; but run() exits 1 when no change source was given at all, and a --changed/--diff file that resolves to zero paths (with nothing else changed) is low_confidence "change source was empty" with the smoke set.
  *   5. Items dedupe by target id, keeping the strongest reason. STRENGTH: direct-change > shared-component > flow >
  *      smoke > always. All reasons seen stay in `reasons`. Items from `always` are appended last.
  * OUTPUT: { plan:[{id, reason, reasons, via?, flows?, critical?}], low_confidence, low_confidence_reason?,
@@ -45,6 +45,12 @@ export function normPath(p) {
   while (s.startsWith('./')) s = s.slice(2);
   return s.replace(/\/+$/, '');
 }
+
+/** A list of strings; blank entries are allowed (callers dropping them with normPath), used for change lists. */
+const pathList = (v, what) => {
+  if (!Array.isArray(v) || !v.every(x => typeof x === 'string')) throw bad(`${what} must be a list of strings`);
+  return v;
+};
 
 const strList = (v, what) => {
   if (!Array.isArray(v) || !v.every(x => typeof x === 'string' && x.trim())) throw bad(`${what} must be a list of non-empty strings`);
@@ -76,7 +82,7 @@ export function validateInput(input) {
     if (!Array.isArray(e) || e.length !== 2 || !e.every(x => ids.has(x))) throw bad('every edge must be [from, to] of known target ids');
   }
   if (input.always !== undefined) for (const a of strList(input.always, '"always"')) if (!ids.has(a)) throw bad(`"always" names unknown target "${a}"`);
-  if (input.changed !== undefined) strList(input.changed, '"changed"');
+  if (input.changed !== undefined) pathList(input.changed, '"changed"');
 }
 
 /** Changed paths from a unified diff: new path, plus old path for deletions and renames. */
@@ -96,10 +102,10 @@ const pct = (a, b) => (b === 0 ? 0 : Math.round((a / b) * 1000) / 10);
  */
 export function planTests(input, changed, opts = {}) {
   validateInput(input);
-  const { sharedPct = 30, minMappedPct = 60, smoke = 3 } = opts;
+  const { sharedPct = 30, minMappedPct = 60, smoke = 3, emptySource = false } = opts;
   const targets = input.targets;
   const total = targets.length;
-  if (changed !== undefined && changed !== null) strList(changed, 'the changed argument');
+  if (changed !== undefined && changed !== null) pathList(changed, 'the changed argument');
   const files = [...new Set([...(input.changed ?? []), ...(changed ?? [])].map(normPath).filter(Boolean))].sort();
 
   const index = new Map(); // file -> Set(target ids)
@@ -144,7 +150,8 @@ export function planTests(input, changed, opts = {}) {
   const mappedPct = files.length ? pct(mapped, files.length) : 100;
   let low = false;
   let lowReason;
-  if (files.length && mapped * 100 < minMappedPct * files.length) {
+  const emptyChange = emptySource && !files.length;
+  if (emptyChange || (files.length && mapped * 100 < minMappedPct * files.length)) {
     low = true;
     const degree = new Map(targets.map(t => [t.id, 0]));
     for (const [a, b] of input.edges ?? []) { degree.set(a, degree.get(a) + 1); degree.set(b, degree.get(b) + 1); }
@@ -153,7 +160,7 @@ export function planTests(input, changed, opts = {}) {
     for (const t of ranked.slice(0, Math.max(0, smoke))) add(t.id, 'smoke');
     const smoked = [...seen.entries()].filter(([, s]) => s.reasons.has('smoke')).length;
     const note = smoked ? `smoke set: ${smoked} target${smoked === 1 ? '' : 's'}` : 'no smoke targets available';
-    lowReason = `only ${mapped} of ${files.length} changed files (${mappedPct}%) map to a target, below ${minMappedPct}%; ${note}`;
+    lowReason = emptyChange ? 'change source was empty' : `only ${mapped} of ${files.length} changed files (${mappedPct}%) map to a target, below ${minMappedPct}%; ${note}`;
   }
   for (const id of input.always ?? []) add(id, 'always');
 
@@ -244,7 +251,8 @@ export async function run(args, io = {}) {
     let list;
     if (text.trimStart().startsWith('[')) {
       try { list = JSON.parse(text); } catch { throw bad('--changed file looks like JSON but is not valid'); }
-      strList(list, '--changed file');
+      pathList(list, '--changed file');
+      list = list.map(l => l.trim()).filter(Boolean);
     } else list = text.split('\n').map(l => l.trim()).filter(Boolean);
     changed.push(...list);
   }
@@ -253,5 +261,7 @@ export async function run(args, io = {}) {
     if (text.trim() && !/^(\+\+\+ |--- |diff --git )/m.test(text)) throw bad('--diff is not a unified diff');
     changed.push(...changedFromDiff(text));
   }
+  // a --changed/--diff file that yields no path at all is a missing input, not "nothing changed"
+  if (flags.changed || flags.diff) opts.emptySource = true;
   return planTests(input, changed, opts);
 }
