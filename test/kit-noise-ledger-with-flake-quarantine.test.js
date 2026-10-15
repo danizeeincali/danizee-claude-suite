@@ -221,6 +221,63 @@ describe('noise-ledger: ledger lifecycle (r2)', () => {
     assert.equal(JSON.parse(await fs.readFile(p, 'utf-8')).entries.length, 1);
     await assert.rejects(fs.stat(`${p}.lock`));
   }));
+  it('parallel accepts against a pre-existing stale lock keep every entry (r3)', async () => {
+    for (let t = 0; t < 25; t++) {
+      await tmp(async (dir) => {
+        const p = path.join(dir, 'ledger.json');
+        await fs.writeFile(`${p}.lock`, 'dead-run');
+        const old = new Date(Date.now() - 600000);
+        await fs.utimes(`${p}.lock`, old, old);
+        await Promise.all(Array.from({ length: 8 }, (_, i) => nl.run(['accept', '--ledger', p, '--id', `id${i}`, '--reason', 'r', '--now', NOW], io(dir))));
+        const l = JSON.parse(await fs.readFile(p, 'utf-8'));
+        assert.deepEqual(l.entries.map(e => e.id), Array.from({ length: 8 }, (_, i) => `id${i}`));
+        assert.deepEqual((await fs.readdir(dir)).sort(), ['ledger.json']);
+      });
+    }
+  });
+  it('separate processes against a pre-aged lock keep every write, 10 times (r3)', async () => {
+    const { spawn } = await import('child_process');
+    const mod = new URL('../src/lib/kit/noise-ledger.js', import.meta.url).href;
+    for (let t = 0; t < 10; t++) {
+      await tmp(async (dir) => {
+        const p = path.join(dir, 'ledger.json');
+        await fs.writeFile(`${p}.lock`, 'dead-run');
+        const old = new Date(Date.now() - 600000);
+        await fs.utimes(`${p}.lock`, old, old);
+        const child = (i) => new Promise((resolve, reject) => {
+          const c = spawn(process.execPath, ['--input-type=module', '-e',
+            `import * as nl from ${JSON.stringify(mod)}; await nl.run(['accept','--ledger',${JSON.stringify(p)},'--id','id${i}','--reason','r','--now','${NOW}'], {cwd:${JSON.stringify(dir)}, env:{}});`], { stdio: 'inherit' });
+          c.on('error', reject);
+          c.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`child ${i} exited ${code}`))));
+        });
+        await Promise.all(Array.from({ length: 8 }, (_, i) => child(i)));
+        const l = JSON.parse(await fs.readFile(p, 'utf-8'));
+        assert.deepEqual(l.entries.map(e => e.id).sort(), Array.from({ length: 8 }, (_, i) => `id${i}`));
+        assert.deepEqual((await fs.readdir(dir)).sort(), ['ledger.json']);
+      });
+    }
+  });
+  it('prune with nothing expired takes no lock and creates nothing (r3)', () => tmp(async (dir) => {
+    const missing = path.join(dir, 'sub', 'ledger.json');
+    const r0 = await nl.run(['prune', '--ledger', missing, '--now', NOW], io(dir));
+    assert.deepEqual(r0.pruned, []);
+    assert.deepEqual(await fs.readdir(dir), []);
+    const p = path.join(dir, 'ledger.json');
+    await fs.writeFile(p, JSON.stringify({ version: 1, entries: [{ id: 'a', reason: 'r', added: '2026-10-01' }] }));
+    await fs.writeFile(`${p}.lock`, 'someone-else'); // fresh lock held by another run
+    const r = await nl.run(['prune', '--ledger', p, '--now', NOW], io(dir));
+    assert.equal(r.remaining, 1);
+    assert.equal(await fs.readFile(`${p}.lock`, 'utf-8'), 'someone-else');
+  }));
+  it('prune with expired entries still removes them under the lock (r3)', () => tmp(async (dir) => {
+    const p = path.join(dir, 'ledger.json');
+    await fs.writeFile(p, JSON.stringify({ version: 1, entries: [
+      { id: 'a', reason: 'r', added: '2026-01-01', expires: '2026-02-01' }, { id: 'b', reason: 'r', added: '2026-01-01' }] }));
+    const r = await nl.run(['prune', '--ledger', p, '--now', NOW], io(dir));
+    assert.deepEqual(r.pruned.map(e => e.id), ['a']);
+    assert.deepEqual(JSON.parse(await fs.readFile(p, 'utf-8')).entries.map(e => e.id), ['b']);
+    assert.deepEqual((await fs.readdir(dir)).sort(), ['ledger.json']);
+  }));
   it('refuses an entry whose reason or added is present but not a string', () => tmp(async (dir) => {
     const p = path.join(dir, 'ledger.json');
     const bad = (e) => JSON.stringify({ version: 1, entries: [e] });
