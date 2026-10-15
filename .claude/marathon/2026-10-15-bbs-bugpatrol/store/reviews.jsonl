@@ -1,0 +1,3 @@
+{"stream":"asymmetric-threshold-router","counts":{"high":0,"medium":2,"low":1},"angle":"r1: full read against the idea","tokens":80375,"commit":"73ee3a9","pass":true,"round":1,"id":"06839914-09f8-44ac-b9d7-fdfa3f03feca","ts":"2026-10-15T16:53:19.462Z"}
+{"stream":"noise-ledger-with-flake-quarantine","counts":{"high":0,"medium":2,"low":2},"angle":"r1: full read against the idea","tokens":83737,"commit":"19973a4","pass":true,"round":1,"id":"fbdbe4c3-0dea-4863-a918-1e34ffabc558","ts":"2026-10-15T16:53:28.786Z"}
+{"stream":"two-pass-finding-clustering","counts":{"high":0,"medium":2,"low":3},"angle":"r1: full read against the idea","tokens":85836,"commit":"3ccd3cc","pass":true,"round":1,"id":"4af0abd5-8788-4bd0-b3f9-a7b29c59d7d5","ts":"2026-10-15T16:53:48.558Z"}

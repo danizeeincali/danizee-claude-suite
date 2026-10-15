@@ -1,0 +1,17 @@
+# Review 4af0abd5-8788-4bd0-b3f9-a7b29c59d7d5 — two-pass-finding-clustering, round 1
+
+- Commit: 3ccd3cc
+- Angle: r1: full read against the idea
+- Result: pass
+- 5 findings
+
+## Medium (2)
+
+- **"path:line:col" locations are read as file "path:line", which splits one file into many** — `src/lib/kit/cluster.js:84` (correctness): The location regex /^(.\*):(\d+)$/ only strips the last :N. For 'src/a.js:12:5', a format linters, tsc and review agents commonly emit, the file becomes 'src/a.js:12' and the line becomes 5 (confirmed: two findings with the same rule at 'src/a.js:12:5' and 'src/a.js:40:2' get the file sets \['src/a.js:12'\] and \['src/a.js:40'\]). Findings in the same file therefore land in different buckets, their file sets are disjoint, and they are never even offered as a pending pair. The feature fails silently on this input: duplicates stay apart, and the files list names paths that do not exist. The same applies to .claude/helpers/kit/cluster.js:84. — fix: Parse an optional column, /^(.\*?):(\d+)(?::\d+)?$/, and keep the column or drop it; add a test with a 'path:line:col' location.
+- **One malformed decide() reply aborts the run and discards every judgment already paid for** — `src/lib/kit/cluster.js:199` (correctness): decide() is the model hook, so its replies are untrusted model output. checkJudgment throws on the first reply that is slightly off (for example confidence 'High', since confidence is case-sensitive while severity is lowercased at line 68, or p given as the string '0.8'). The throw rejects the whole cluster() call: pass-1 results and the verdicts from every earlier decide call are lost, and the caller has nothing to show for the model spend. A null reply already means 'leave the pair pending'. A reply that cannot be read should degrade the same way and never merge, because merging is the risky direction. — fix: In the decide loop, treat a reply that fails checkJudgment as unjudged (leave the pair pending and record it, e.g. in an invalid\_judgments list) instead of throwing. Optionally lowercase confidence before validating it.
+
+## Low (3)
+
+- **--file with an empty value silently falls back to stdin** — `src/lib/kit/cluster.js:258` (correctness): \`if (file)\` treats \`--file ''\`, for example from an unset shell variable, as if --file were absent. The verb then reads stdin, or fails with 'no findings: pass --file', which hides the real cause. The --answers file has the same problem at line 264: an empty value silently means 'no answers'. — fix: Check \`file !== null\` / \`answersFile !== null\` and reject an empty value with 'needs a value'.
+- **The /p/ error regex matches almost any message** — `test/kit-two-pass-finding-clustering.test.js:118` (test-quality): The malformed-answer check asserts the rejection message matches /p/. Most error texts contain a 'p', so the test would still pass if validation failed for an unrelated reason, such as a missing a/b. — fix: Assert on /"p" must be a number/.
+- **Test says equal file sets are never pending but never tests it** — `test/kit-two-pass-finding-clustering.test.js:40` (test-quality): The test is named 'a subset file set also counts as overlap-but-different; disjoint and equal do not', but it only checks the subset case and the disjoint case. Equal file sets with the same rule but different input ordering or ./ prefixes are never checked to produce zero pending pairs. — fix: Add an assertion: pass1(\[f('a','r','low',\['x','y'\]), f('b','r','low',\['./y','x'\])\]) gives one cluster and pending\_pairs.length === 0.
