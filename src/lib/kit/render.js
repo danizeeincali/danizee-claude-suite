@@ -95,6 +95,9 @@ const incompleteText = n => `Run did not finish${n.reason ? `: ${n.reason}` : ''
 
 // ---- SARIF ----
 
+/** A repo path as a URI reference: backslashes become '/', each segment is percent-encoded. */
+const fileUri = file => file.replace(/\\/g, '/').split('/').map(encodeURIComponent).join('/');
+
 export function renderSarif(input) {
   const n = normalize(input);
   const ruleIds = [...new Set(n.findings.map(f => f.id || FALLBACK_RULE))];
@@ -105,7 +108,7 @@ export function renderSarif(input) {
     if (f.testCase) r.properties.testCase = f.testCase;
     // GitHub code scanning refuses a result with no location, so a finding with no file points at the repo root
     // and names itself as a logical location.
-    const physicalLocation = { artifactLocation: { uri: f.file || '.' } };
+    const physicalLocation = { artifactLocation: { uri: f.file ? fileUri(f.file) : '.' } };
     if (f.file && f.line) physicalLocation.region = { startLine: f.line };
     r.locations = [{ physicalLocation }];
     if (!f.file) r.locations[0].logicalLocations = [{ name: f.id || f.message.slice(0, 80) }];
@@ -162,6 +165,8 @@ export function renderJunit(input) {
     else slot(orphanSuite, ORPHAN_SUITE, f.id || f.message.slice(0, 80)).findings.push(f);
   }
   if (n.incomplete) slot(runSuite, RUN_SUITE, 'run-completed').error = incompleteText(n);
+  // A clean run with no cases would read as "no test results"; give it one passing case.
+  if (!userSuites.size && !orphanSuite.size && !runSuite.size) slot(runSuite, RUN_SUITE, 'review');
   const suites = [...userSuites, ...orphanSuite, ...runSuite];
   let tTests = 0, tFail = 0, tErr = 0;
   const body = [];
@@ -207,8 +212,11 @@ export function findMarker(body, key = DEFAULT_KEY) {
 }
 
 const md = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\s*[\r\n]+\s*/g, ' ');
+// Inside a code span entities are not decoded, so only neutralise backticks and newlines (a span cannot forge the marker).
+const codeSpan = s => String(s).replace(/\s*[\r\n]+\s*/g, ' ').replace(/`/g, "'");
+export const COMMENT_CAP = 60000;
 const bullet = (f, tagBlocking = false) => {
-  const loc = f.file ? ` (\`${md(f.file).replace(/`/g, "'")}${f.line ? `:${f.line}` : ''}\`)` : '';
+  const loc = f.file ? ` (\`${codeSpan(f.file)}${f.line ? `:${f.line}` : ''}\`)` : '';
   const link = f.url ? ` - ${md(f.url)}` : '';
   return `- ${tagBlocking && f.severity === 'blocking' ? '[blocking] ' : ''}${f.id ? `**${md(f.id)}** ` : ''}${md(f.message)}${loc}${link}`;
 };
@@ -222,7 +230,7 @@ export function renderComment(input, { key = DEFAULT_KEY } = {}) {
   const decide = n.findings.filter(f => f.disposition === 'needs-decision');
   const advisory = n.findings.filter(f => f.severity !== 'blocking' && f.disposition === 'open');
   let verdict;
-  if (n.incomplete) verdict = `**Review incomplete** - the run did not finish${n.reason ? ` (${md(n.reason)})` : ''}`;
+  if (n.incomplete) verdict = `**Review incomplete** - the run did not finish${n.reason ? ` (${md(n.reason)})` : ''}${blocking.length ? `; ${blocking.length} blocking finding${blocking.length === 1 ? '' : 's'} so far` : ''}`;
   else if (blocking.length) {
     const other = counts.blockingFiled + counts.blockingNeedsDecision;
     verdict = `**Blocked** - ${blocking.length} blocking finding${blocking.length === 1 ? '' : 's'}${other ? ` (${other} more blocking filed or awaiting a decision)` : ''}`;
@@ -230,9 +238,26 @@ export function renderComment(input, { key = DEFAULT_KEY } = {}) {
   else if (counts.blockingFiled) verdict = `**Clear** - no open blocking findings (${advisory.length} advisory, ${filed.length} filed, ${counts.blockingFiled} blocking filed)`;
   else verdict = `**Clear** - no blocking findings (${advisory.length} advisory, ${filed.length} filed)`;
   const out = [m, verdict, ''];
+  let size = out.join('\n').length + 1;
+  const NOTE_RESERVE = 200; // room for the "... and N more" line of this and of later sections
   for (const [title, list] of [['Blocking', blocking], ['Filed', filed], ['Needs decision', decide], ['Advisory', advisory]]) {
     if (!list.length) continue;
-    out.push(`### ${title} (${list.length})`, ...list.map(f => bullet(f, title === 'Filed' || title === 'Needs decision')), '');
+    const head = `### ${title} (${list.length})`;
+    const lines = [head];
+    size += head.length + 1;
+    let shown = 0;
+    for (const f of list) {
+      const b = bullet(f, title === 'Filed' || title === 'Needs decision');
+      if (size + b.length + 1 + NOTE_RESERVE > COMMENT_CAP) break;
+      lines.push(b); size += b.length + 1; shown++;
+    }
+    if (shown < list.length) {
+      const lower = title.toLowerCase();
+      const note = `... and ${list.length - shown} more ${lower} finding${list.length - shown === 1 ? '' : 's'} (see SARIF/JUnit)`;
+      lines.push(note); size += note.length + 1;
+    }
+    lines.push(''); size += 1;
+    out.push(...lines);
   }
   return out.join('\n');
 }

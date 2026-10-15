@@ -216,3 +216,41 @@ describe('run', () => {
     await assert.rejects(run(['sarif'], io('{"findings":[],"bogus":1}')), e => e.code === 1);
   });
 });
+
+describe('r2 fixes', () => {
+  it('caps the comment under 60000 characters and keeps marker, verdict and Blocking', () => {
+    const findings = [{ id: 'b1', message: 'Real blocker', severity: 'blocking', file: 'src/x.js', line: 3 }];
+    for (let i = 0; i < 1000; i++) findings.push({ id: `a${i}`, message: `Advisory message number ${i} with some ordinary words in it`, severity: 'advisory', file: `src/dir/file${i}.js`, line: 5 });
+    const body = renderComment({ findings });
+    assert.ok(body.length <= 60000, `length ${body.length}`);
+    const lines = body.split('\n');
+    assert.equal(lines[0], marker());
+    assert.match(lines[1], /Blocked/);
+    assert.ok(body.includes('### Blocking (1)') && body.includes('Real blocker'));
+    assert.match(body, /\.\.\. and \d+ more advisory findings \(see SARIF\/JUnit\)/);
+  });
+  it('percent-encodes SARIF uris per segment and normalises backslashes', () => {
+    const s = renderSarif({ findings: [{ message: 'm', file: 'src/c#/a b%.cs' }, { message: 'm', file: 'src\\x.js' }] });
+    const uris = s.runs[0].results.map(r => r.locations[0].physicalLocation.artifactLocation.uri);
+    assert.deepEqual(uris, ['src/c%23/a%20b%25.cs', 'src/x.js']);
+  });
+  it('shows raw paths inside code spans', () => {
+    const body = renderComment({ findings: [{ message: 'm', file: 'a<b&c.js' }] });
+    assert.ok(body.includes('`a<b&c.js`'));
+    assert.ok(!body.includes('&amp;c.js') && !body.includes('&lt;b'));
+    const nl = renderComment({ findings: [{ message: 'm', file: 'a`b\nc.js' }] });
+    assert.ok(nl.includes("`a'b c.js`"));
+  });
+  it('puts the blocking count in the incomplete verdict', () => {
+    const v = renderComment({ findings: [{ message: 'm', severity: 'blocking' }], incomplete: true, reason: 'timeout' }).split('\n')[1];
+    assert.match(v, /incomplete/i);
+    assert.match(v, /1 blocking finding so far/);
+    assert.doesNotMatch(renderComment({ findings: [], incomplete: true }).split('\n')[1], /blocking/);
+  });
+  it('emits one passing testcase for an empty clean run', () => {
+    const x = renderJunit({ findings: [] });
+    assert.match(x, /tests="1" failures="0" errors="0"/);
+    assert.match(x, /<testcase name="review" classname="run">/);
+    assert.ok(!x.includes('tests="0"'));
+  });
+});
