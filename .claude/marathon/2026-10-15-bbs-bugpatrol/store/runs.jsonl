@@ -45,3 +45,5 @@
 {"kind":"unit","status":"green","stream":"exit-code-contract-separating-infrastruc","commit":"4ddb8f1","id":"3004b492-30e7-427d-8df2-61bda6f9cc83","ts":"2026-10-15T17:36:37.870Z"}
 {"kind":"unit","status":"green","stream":"sarif-junit-and-sticky-pr-comment-render","commit":"546916f","id":"600dba4e-b72a-4d4e-b76f-eb81aaae1c15","ts":"2026-10-15T17:39:10.851Z"}
 {"kind":"unit","status":"green","stream":"exit-code-contract-separating-infrastruc","commit":"962b2ed","id":"d05a1889-2055-47f8-98ea-c7f811ba3fd0","ts":"2026-10-15T17:40:35.734Z"}
+{"kind":"unit","status":"green","stream":"finding-triage-with-fingerprint-dedup-an","commit":"dd599d7","id":"252eb752-35f1-498d-9feb-a6b9498ed685","ts":"2026-10-15T17:43:03.944Z"}
+{"kind":"unit","status":"green","stream":"sarif-junit-and-sticky-pr-comment-render","commit":"ff704ae","id":"7452427f-045c-48c7-ae35-56bdc4ac0efd","ts":"2026-10-15T17:43:09.596Z"}

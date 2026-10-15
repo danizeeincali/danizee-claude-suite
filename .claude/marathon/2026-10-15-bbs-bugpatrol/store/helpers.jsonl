@@ -185,3 +185,7 @@
 {"helper_id":"9f192d0c-eb3e-4e39-a32b-bc6005acb1b3","tokens":70765,"outcome":"green","event":"done","id":"f55de393-929c-4155-9043-a9f89f9a57b2","ts":"2026-10-15T17:40:29.822Z"}
 {"helper_id":"2939b1f0-a9cc-454e-8f72-368fdf03903d","tokens":75749,"outcome":"green","event":"done","id":"fcda2dcb-4b06-4847-bafb-7891169bf56e","ts":"2026-10-15T17:40:29.975Z"}
 {"role":"review","model":"opus","stream":"exit-code-contract-separating-infrastruc","budget":150000,"event":"spawn","id":"63cab043-eeaf-458f-88bb-ad5bc81f3cb2","ts":"2026-10-15T17:40:38.750Z"}
+{"helper_id":"1bf59208-2aa9-423e-97e9-616b6f4fb5c6","tokens":78381,"outcome":"green","event":"done","id":"7dfcee9e-a2dc-497c-be8d-81deab0a1544","ts":"2026-10-15T17:42:51.914Z"}
+{"role":"review","model":"opus","stream":"finding-triage-with-fingerprint-dedup-an","budget":150000,"event":"spawn","id":"22c34e7c-c66a-473e-921e-6a70307b3ab8","ts":"2026-10-15T17:43:06.821Z"}
+{"helper_id":"fe2df6a7-c652-42b7-9bff-4c8aed8d2b1e","tokens":68864,"outcome":"green","event":"done","id":"9a950ea6-c351-4749-ac98-7264a2e1a68a","ts":"2026-10-15T17:43:07.017Z"}
+{"role":"review","model":"opus","stream":"sarif-junit-and-sticky-pr-comment-render","budget":150000,"event":"spawn","id":"6d6a94f0-3597-4a5b-91cc-3b4a25e48f96","ts":"2026-10-15T17:43:12.601Z"}

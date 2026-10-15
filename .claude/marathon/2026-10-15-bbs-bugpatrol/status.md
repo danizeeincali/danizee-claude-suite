@@ -1,7 +1,7 @@
 # Marathon 2026-10-15-bbs-bugpatrol
 
 - State: RUNNING
-- Budget: 7,975,883 / 14,000,000 tokens
+- Budget: 8,073,128 / 14,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 1/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
@@ -49,7 +49,7 @@
 | change-impact-test-plan: clean reviews in a row | build | met | 4 | at_least 2 |
 | change-impact-test-plan: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | change-impact-test-plan: packaged check passes | build | met | true | is true |
-| finding-triage-with-fingerprint-dedup-an: green unit runs in a row | build | met | 4 | at_least 1 |
+| finding-triage-with-fingerprint-dedup-an: green unit runs in a row | build | met | 5 | at_least 1 |
 | finding-triage-with-fingerprint-dedup-an: zero egress in the packaged check | build | failing | — | is true |
 | finding-triage-with-fingerprint-dedup-an: clean reviews in a row | build | failing | 1 | at_least 2 |
 | finding-triage-with-fingerprint-dedup-an: wired into its target, reached by a user | build | failing | — | at_least 1 |
@@ -74,7 +74,7 @@
 | exit-code-contract-separating-infrastruc: clean reviews in a row | build | failing | 0 | at_least 2 |
 | exit-code-contract-separating-infrastruc: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | exit-code-contract-separating-infrastruc: packaged check passes | build | failing | — | is true |
-| sarif-junit-and-sticky-pr-comment-render: green unit runs in a row | build | met | 6 | at_least 1 |
+| sarif-junit-and-sticky-pr-comment-render: green unit runs in a row | build | met | 7 | at_least 1 |
 | sarif-junit-and-sticky-pr-comment-render: zero egress in the packaged check | build | failing | — | is true |
 | sarif-junit-and-sticky-pr-comment-render: clean reviews in a row | build | met | 6 | at_least 2 |
 | sarif-junit-and-sticky-pr-comment-render: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
