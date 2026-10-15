@@ -292,7 +292,20 @@ describe('r2 fixes', () => {
     const s = renderSarif({ findings: files.map(file => ({ message: 'm', file })) });
     const uris = s.runs[0].results.map(r => r.locations[0].physicalLocation.artifactLocation.uri);
     for (const u of uris) assert.ok(!u.startsWith('/'), u);
-    assert.deepEqual(uris, ['attacker.example/share/x.js', 'evil.example/x.js', 'x.js', 'file:///etc/x.js', '.', '.']);
+    assert.deepEqual(uris, ['attacker.example/share/x.js', 'evil.example/x.js', 'file:///x.js', 'file:///etc/x.js', '.', '.']);
     assert.equal(new URL(uris[0], 'file:///C:/repo/').href, 'file:///C:/repo/attacker.example/share/x.js');
+  });
+  it('fileUri table: no network-path reference, POSIX absolute -> file:///, only exactly two leading slashes are UNC', () => {
+    const table = [
+      ['', '.'], ['/', 'file:///'], ['//', '.'], ['///', 'file:///'], ['////x', 'file:///x'], ['/a', 'file:///a'],
+      ['//h/s/x', 'h/s/x'], ['///a/b', 'file:///a/b'], ['\\\\h\\s\\x', 'h/s/x'], ['C:\\a', 'file:///C:/a'],
+      ['C:/a', 'file:///C:/a'], ['a/b', 'a/b'], ['./a', './a'], ['a b/%c', 'a%20b/%25c'],
+    ];
+    const uris = table.map(([file]) => render.fileUri(file));
+    table.forEach(([file, want], i) => {
+      assert.equal(uris[i], want, JSON.stringify(file));
+      assert.ok(!(uris[i].startsWith('//') && !uris[i].startsWith('file:')), `network-path reference for ${JSON.stringify(file)}`);
+      if (file.startsWith('/') && !file.startsWith('//') || file.startsWith('///')) assert.ok(uris[i].startsWith('file:///'), file);
+    });
   });
 });

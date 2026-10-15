@@ -95,18 +95,27 @@ const incompleteText = n => `Run did not finish${n.reason ? `: ${n.reason}` : ''
 
 // ---- SARIF ----
 
-/** A repo path as a URI reference: backslashes become '/', each segment is percent-encoded. */
+/**
+ * A file path as a SARIF artifact uri. Backslashes become '/', each segment is percent-encoded, and lone surrogates
+ * become U+FFFD. Cases:
+ *  - drive-letter path ('C:\\a', 'C:/a') -> 'file:///C:/a'
+ *  - POSIX absolute path (one leading '/', or three or more, which POSIX reads as one) -> 'file:///...'
+ *  - exactly two leading slashes or backslashes (UNC / '//host/share') -> the leading slashes are stripped and the
+ *    rest is a relative reference, so a network-path reference is never emitted
+ *  - anything else -> a relative reference; an empty result becomes '.'
+ */
 const wellFormed = s => String(s).replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, '\ufffd');
-const fileUri = file => {
+const encodePath = p => p.split('/').map(encodeURIComponent).join('/');
+export const fileUri = file => {
   const p = wellFormed(file).replace(/\\/g, '/');
   const drive = /^([A-Za-z]):\//.exec(p);
-  if (drive) return `file:///${drive[1]}:/${p.slice(3).split('/').map(encodeURIComponent).join('/')}`;
-  // A single leading '/' is a POSIX absolute path: keep it as a file URI.
-  if (p.startsWith('/') && !p.startsWith('//')) return `file://${p.split('/').map(encodeURIComponent).join('/')}`;
-  // Drop leading empty segments so the result is never a '//host/...' network-path reference.
-  const segs = p.split('/');
-  while (segs.length && segs[0] === '') segs.shift();
-  return segs.length ? segs.map(encodeURIComponent).join('/') : '.';
+  if (drive) return `file:///${drive[1]}:/${encodePath(p.slice(3))}`;
+  if (p.startsWith('//') && !p.startsWith('///')) {
+    const rest = p.slice(2);
+    return rest ? encodePath(rest) : '.';
+  }
+  if (p.startsWith('/')) return `file:///${encodePath(p.replace(/^\/+/, ''))}`;
+  return p === '' ? '.' : encodePath(p);
 };
 
 export function renderSarif(input) {
