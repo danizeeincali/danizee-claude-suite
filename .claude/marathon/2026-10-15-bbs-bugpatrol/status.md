@@ -1,7 +1,7 @@
 # Marathon 2026-10-15-bbs-bugpatrol
 
 - State: RUNNING
-- Budget: 11,967,508 / 14,000,000 tokens
+- Budget: 12,054,590 / 14,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
