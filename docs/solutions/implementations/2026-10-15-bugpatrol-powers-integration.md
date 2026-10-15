@@ -38,10 +38,16 @@ Reach tests live in `test/reach/` and are part of `npm test`.
 - **Build shared state infra once.** Four stateful verbs kept losing writes until one
   `src/lib/kit/state-lock.js` replaced per-verb fixes.
 
+## Follow-up: /pt and /mt (owner's choice)
+
+The owner uses /pt, /mt and /bbs, so the review powers were also wired into the review, verification, build and
+compound steps of /pt and the 4.5 review and fix rounds of /mt (32 of 32 targets). Lessons are read back at the start
+of /pt, /w-fix and /w-bbs as advice that never overrides a gate. The test map comes from `kit test-plan --scan`.
+Lessons refuse credential-shaped strings, and trouble-log masks them.
+
 ## Left open (within tolerance)
 
 - CI writes JUnit/SARIF to `$RUNNER_TEMP` and nothing uploads them (an upload step would add
   `actions/upload-artifact`, a dependency the owner must approve).
-- w-review names `kit/cli.js triage decide` instead of `node .claude/helpers/kit/cli.js triage decide`.
-- ci-step labels any status classify calls infrastructure (such as 5) "timed out, rerun".
-- The noise-ledger input text does not say `critical` must be mapped to `high`.
+- Workflow blocks use the runnable example path `/tmp/tmp.AbC123`; a block run without substituting the printed
+  mktemp path fails with a message about the scan rather than the path.
