@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
+import { execFile } from 'child_process';
+import { fileURLToPath } from 'url';
 import * as sb from '../src/lib/kit/shared-budget.js';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
 
@@ -165,5 +167,139 @@ describe('shared-budget CLI', () => {
     assert.equal(await code(call(dir, ['status', '--now', '-1'])), 1);
     await fs.writeFile(path.join(dir, 'b.json'), '{not json');
     assert.equal(await code(call(dir, ['status'])), 1);
+  }));
+});
+
+const KIT_CLI = fileURLToPath(new URL('../src/lib/kit/cli.js', import.meta.url));
+const proc = (dir, args) => new Promise((resolve) => execFile(process.execPath, [KIT_CLI, 'shared-budget', '--state', 'b.json', ...args], { cwd: dir },
+  (err, stdout, stderr) => resolve({ code: err ? err.code : 0, stdout, stderr })));
+const readState = async (dir) => JSON.parse(await fs.readFile(path.join(dir, 'b.json'), 'utf8'));
+
+describe('shared-budget reservations (grants hold budget)', () => {
+  it('a grant reserves what it hands out; later grants only get the rest', () => {
+    let s = sb.openBudget({ steps: 10, cost: 5 }, 0);
+    const g1 = sb.grantFor(s, { helper: 'a' }, 0);
+    s = sb.recordGrant(s, 'a', g1);
+    assert.deepEqual(g1.remaining, { steps: 10, cost: 5, timeMs: null });
+    const g2 = sb.grantFor(s, { helper: 'b' }, 0);
+    assert.equal(g2.skip, true);
+    assert.match(g2.reason, /reserved/);
+  });
+
+  it('a spend releases its helper reservation', () => {
+    let s = sb.openBudget({ steps: 10 }, 0);
+    s = sb.recordGrant(s, 'a', sb.grantFor(s, { helper: 'a' }, 0));
+    s = sb.recordSpend(s, { helper: 'a', steps: 3, cost: 0, outcome: 'ok' }).state;
+    const g = sb.grantFor(s, { helper: 'b' }, 0);
+    assert.equal(g.skip, false);
+    assert.equal(g.remaining.steps, 7);
+  });
+
+  it('re-granting the same helper replaces, not stacks, its reservation', () => {
+    let s = sb.openBudget({ steps: 10 }, 0);
+    s = sb.recordGrant(s, 'a', sb.grantFor(s, { helper: 'a' }, 0));
+    const again = sb.grantFor(s, { helper: 'a' }, 0);
+    assert.equal(again.skip, false);
+    assert.equal(again.remaining.steps, 10);
+  });
+
+  it('check grants reserve nothing and time is never reserved', () => {
+    let s = sb.openBudget({ steps: 2, timeMs: 1000 }, 0);
+    s = sb.recordGrant(s, 'c', sb.grantFor(s, { helper: 'c', kind: 'check' }, 0));
+    assert.equal(sb.grantFor(s, { helper: 'm' }, 0).skip, false);
+    s = sb.recordGrant(s, 'm', sb.grantFor(s, { helper: 'm' }, 0));
+    assert.equal(sb.grantFor(s, { helper: 'c2', kind: 'check' }, 0).skip, false);
+    assert.equal(sb.statusOf(s, 0).remaining.timeMs, 1000);
+  });
+
+  it('status shows reserved and available amounts', () => {
+    let s = sb.openBudget({ steps: 10, cost: 4 }, 0);
+    s = sb.recordGrant(s, 'a', sb.grantFor(s, { helper: 'a' }, 0));
+    const st = sb.statusOf(s, 0);
+    assert.deepEqual(st.reserved, { steps: 10, cost: 4 });
+    assert.deepEqual(st.available, { steps: 0, cost: 0, timeMs: null });
+    assert.equal(st.remaining.steps, 10);
+  });
+
+  it('parallel grants together never exceed the limit', () => withDir(async (dir) => {
+    await call(dir, ['open', '--steps', '10', '--now', '0']);
+    const grants = await Promise.all(['a', 'b', 'c', 'd', 'e'].map((h) => call(dir, ['grant', '--helper', h, '--now', '1'])));
+    const live = grants.filter((g) => !g.skip);
+    assert.equal(live.length, 1);
+    assert.equal(live.reduce((n, g) => n + g.remaining.steps, 0), 10);
+    for (const g of grants.filter((x) => x.skip)) assert.match(g.reason, /reserved/);
+    const st = await call(dir, ['status', '--now', '2']);
+    assert.deepEqual(st.reserved.steps, 10);
+  }));
+
+  it('parallel grants from separate processes never exceed the limit', () => withDir(async (dir) => {
+    await call(dir, ['open', '--steps', '10', '--cost', '6', '--now', '0']);
+    const rs = await Promise.all(['a', 'b', 'c', 'd', 'e', 'f'].map((h) => proc(dir, ['grant', '--helper', h, '--now', '1'])));
+    for (const r of rs) assert.equal(r.code, 0, r.stderr);
+    const gs = rs.map((r) => JSON.parse(r.stdout));
+    assert.equal(gs.reduce((n, g) => n + (g.skip ? 0 : g.remaining.steps), 0), 10);
+    assert.equal(gs.reduce((n, g) => n + (g.skip ? 0 : g.remaining.cost), 0), 6);
+  }));
+
+  it('old state rows without a reservation still load', () => {
+    const s = sb.openBudget({ steps: 3 }, 0);
+    s.helpers.x = { steps: 1, cost: 0, ok: 1, failed: 0, grants: 1, skipped: 0 };
+    sb.checkState(s);
+    assert.equal(sb.grantFor(s, { helper: 'y' }, 0).remaining.steps, 3);
+  });
+});
+
+describe('shared-budget concurrent writers keep every write', () => {
+  it('20 parallel in-process spends are all recorded', () => withDir(async (dir) => {
+    await call(dir, ['open', '--now', '0']);
+    const rs = await Promise.all(Array.from({ length: 20 }, (_, i) => call(dir, ['spend', '--helper', `h${i % 4}`, '--steps', '1', '--outcome', 'ok', '--now', '1'])));
+    assert.equal(rs.length, 20);
+    const s = await readState(dir);
+    assert.equal(s.spent.steps, 20);
+    assert.equal(Object.values(s.helpers).reduce((n, h) => n + h.ok, 0), 20);
+    assert.deepEqual((await fs.readdir(dir)).filter((f) => f !== 'b.json'), []);
+  }));
+
+  it('20 parallel spend processes are all recorded', () => withDir(async (dir) => {
+    await call(dir, ['open', '--now', '0']);
+    const rs = await Promise.all(Array.from({ length: 20 }, (_, i) => proc(dir, ['spend', '--helper', `h${i}`, '--steps', '1', '--outcome', 'ok', '--now', '1'])));
+    for (const r of rs) assert.equal(r.code, 0, r.stderr);
+    const s = await readState(dir);
+    assert.equal(s.spent.steps, 20);
+    assert.equal(Object.keys(s.helpers).length, 20);
+    assert.deepEqual((await fs.readdir(dir)).filter((f) => f !== 'b.json'), []);
+  }));
+
+  it('parallel start/stop keep the depth counter exact', () => withDir(async (dir) => {
+    await call(dir, ['open', '--now', '0']);
+    await Promise.all(Array.from({ length: 10 }, () => call(dir, ['start', '--now', '5'])));
+    assert.equal((await readState(dir)).clock.depth, 10);
+    await Promise.all(Array.from({ length: 10 }, () => call(dir, ['stop', '--now', '15'])));
+    const s = await readState(dir);
+    assert.equal(s.clock.depth, 0);
+    assert.equal(s.clock.elapsedMs, 10);
+  }));
+
+  it('parallel grants keep every grant count', () => withDir(async (dir) => {
+    await call(dir, ['open', '--now', '0']);
+    await Promise.all(Array.from({ length: 12 }, () => call(dir, ['grant', '--helper', 'same', '--now', '1'])));
+    assert.equal((await readState(dir)).helpers.same.grants, 12);
+  }));
+
+  it('a stale lock file from a dead process is broken', () => withDir(async (dir) => {
+    await call(dir, ['open', '--now', '0']);
+    const lock = path.join(dir, 'b.json.lock');
+    await fs.writeFile(lock, 'dead');
+    const old = new Date(Date.now() - 10 * 60 * 1000);
+    await fs.utimes(lock, old, old);
+    await call(dir, ['spend', '--helper', 'a', '--steps', '1', '--outcome', 'ok', '--now', '1']);
+    assert.equal((await readState(dir)).spent.steps, 1);
+    assert.deepEqual((await fs.readdir(dir)).filter((f) => f !== 'b.json'), []);
+  }));
+
+  it('the lock is released when a command fails', () => withDir(async (dir) => {
+    await call(dir, ['open', '--now', '0']);
+    assert.equal(await code(call(dir, ['stop', '--now', '1'])), 1);
+    assert.deepEqual((await fs.readdir(dir)).filter((f) => f !== 'b.json'), []);
   }));
 });
