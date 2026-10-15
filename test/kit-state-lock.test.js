@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import fsSync from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { withStateLock, readJsonState, writeJsonAtomic } from '../src/lib/kit/state-lock.js';
@@ -38,6 +39,11 @@ function deadPid() {
 
 async function count(file) { return (await readJsonState(file)).count; }
 
+// This machine's identity as the lock module records it: a lock written by a dead process here names all three.
+const PIDNS = (() => { try { return fsSync.readlinkSync('/proc/self/ns/pid'); } catch { return null; } })();
+const BOOT = (() => { try { return fsSync.readFileSync('/proc/sys/kernel/random/boot_id', 'utf-8').trim() || null; } catch { return null; } })();
+const here = () => ({ host: os.hostname(), pidns: PIDNS, boot: BOOT });
+
 const lockBody = o => JSON.stringify({ token: 'x-' + Math.random(), beat: 0, ...o });
 
 describe('state-lock: parallel processes', () => {
@@ -57,7 +63,7 @@ describe('state-lock: parallel processes', () => {
   it('a lock left by a dead process on this host is taken at once and every write is kept', async () => {
     await inTemp(async dir => {
       const file = path.join(dir, 'counter.json');
-      await fs.writeFile(file + '.lock', lockBody({ pid: deadPid(), host: os.hostname() }));
+      await fs.writeFile(file + '.lock', lockBody({ pid: deadPid(), ...here() }));
       const t0 = performance.now();
       const runs = await Promise.all(Array.from({ length: 4 }, () => worker(file, 5, { staleMs: 10000, pollMs: 5 })));
       const took = performance.now() - t0;
@@ -79,6 +85,24 @@ describe('state-lock: parallel processes', () => {
       assert.ok(took >= 1400, `took ${took} ms: a lock from another pid namespace must wait the full staleMs`);
     });
   });
+
+  for (const [label, extra] of [
+    ['a different boot id (another machine with the same hostname)', { boot: 'another-machine-boot-id' }],
+    ['no boot field', { boot: undefined }],
+  ]) {
+    it(`a same-host, same-pidns lock with ${label} is not taken by the dead-pid shortcut`, async () => {
+      await inTemp(async dir => {
+        const file = path.join(dir, 'counter.json');
+        await fs.writeFile(file + '.lock', lockBody({ pid: deadPid(), ...here(), ...extra }));
+        const t0 = performance.now();
+        const r = await worker(file, 1, { staleMs: 1500, waitMs: 8000, pollMs: 5 });
+        const took = performance.now() - t0;
+        assert.equal(r.code, 0, r.stderr);
+        assert.equal(await count(file), 1);
+        assert.ok(took >= 1400, `took ${took} ms: a lock with ${label} must wait the full staleMs`);
+      });
+    });
+  }
 
   it('a lock from another host whose content never changes is broken after staleMs', async () => {
     await inTemp(async dir => {
@@ -215,8 +239,8 @@ describe('state-lock: bounded waits', () => {
   it('a leftover break file from a dead breaker is cleared and the stale lock is broken', async () => {
     await inTemp(async dir => {
       const file = path.join(dir, 'counter.json');
-      await fs.writeFile(file + '.lock', lockBody({ pid: deadPid(), host: os.hostname() }));
-      await fs.writeFile(file + '.lock.break', lockBody({ pid: deadPid(), host: os.hostname() }));
+      await fs.writeFile(file + '.lock', lockBody({ pid: deadPid(), ...here() }));
+      await fs.writeFile(file + '.lock.break', lockBody({ pid: deadPid(), ...here() }));
       const t0 = performance.now();
       const runs = await Promise.all(Array.from({ length: 3 }, () => worker(file, 3, { staleMs: 5000, pollMs: 5 })));
       for (const r of runs) assert.equal(r.code, 0, r.stderr);
@@ -235,6 +259,63 @@ describe('state-lock: bounded waits', () => {
       await withStateLock(file, async () => { ran = true; }, { staleMs: 150, waitMs: 2000, pollMs: 5 });
       assert.ok(ran);
       assert.deepEqual(await fs.readdir(dir), []);
+    });
+  });
+
+  it('a holder whose heartbeat stalled and lost the lock saves nothing; the other run\'s write survives', async () => {
+    await inTemp(async dir => {
+      const file = path.join(dir, 'counter.json');
+      // The holder's heartbeat cannot reopen its lock (stalled filesystem), so a waiter judges it stale and breaks it.
+      const stalled = { ...fs, async open(p, flags, mode) {
+        if (flags === 'r+') throw Object.assign(new Error('stalled'), { code: 'EIO' });
+        return fs.open(p, flags, mode);
+      } };
+      let inside;
+      const entered = new Promise(r => { inside = r; });
+      let resume;
+      const resumed = new Promise(r => { resume = r; });
+      const first = withStateLock(file, async () => {
+        inside();
+        await resumed;
+        await writeJsonAtomic(file, { who: 'first' });
+      }, { staleMs: 100, waitMs: 2000, pollMs: 5, fs: stalled });
+      const firstDone = first.then(() => null, err => err);
+      await entered;
+      await withStateLock(file, async () => { await writeJsonAtomic(file, { who: 'second' }); }, { staleMs: 100, waitMs: 2000, pollMs: 5 });
+      resume();
+      const err = await firstDone;
+      assert.ok(err instanceof KitExit, `the first holder must fail, got ${err}`);
+      assert.equal(err.code, 1);
+      assert.equal(err.message, `lost the lock on ${file} to another run; nothing saved`);
+      assert.ok(!err.message.includes('first'), 'no content in the message');
+      assert.deepEqual(await readJsonState(file), { who: 'second' });
+      assert.deepEqual(await fs.readdir(dir), ['counter.json'], 'no temp or lock file left behind');
+    });
+  });
+
+  it('a holder whose lock file was replaced by another token mid-fn saves nothing', async () => {
+    await inTemp(async dir => {
+      const file = path.join(dir, 'counter.json');
+      await writeJsonAtomic(file, { who: 'before' });
+      await assert.rejects(withStateLock(file, async () => {
+        await fs.writeFile(file + '.lock', lockBody({ pid: 1, host: 'other.invalid' }));
+        await writeJsonAtomic(file, { who: 'other' }); // still our context, so it must refuse too
+      }, { staleMs: 1000 }), err => err instanceof KitExit && err.code === 1 && err.message === `lost the lock on ${file} to another run; nothing saved`);
+      assert.deepEqual(await readJsonState(file), { who: 'before' });
+      assert.deepEqual((await fs.readdir(dir)).sort(), ['counter.json', 'counter.json.lock'], 'the other run\'s lock is left alone');
+    });
+  });
+
+  it('inside a lock, writeJsonAtomic to another file is not checked against this lock', async () => {
+    await inTemp(async dir => {
+      const file = path.join(dir, 'a.json');
+      const other = path.join(dir, 'b.json');
+      await withStateLock(file, async () => {
+        await writeJsonAtomic(other, { b: 1 });
+        await writeJsonAtomic(file, { a: 1 });
+      });
+      assert.deepEqual(await readJsonState(other), { b: 1 });
+      assert.deepEqual(await readJsonState(file), { a: 1 });
     });
   });
 
