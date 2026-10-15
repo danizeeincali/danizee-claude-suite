@@ -11,7 +11,7 @@
  * blocks (class regression), whatever the result says: judges fail closed. scrub never fetches (GIT_NO_LAZY_FETCH=1), so a file whose
  * object is missing locally is skipped deterministically in a sparse or blobless clone; that is not a network fault and never infrastructure.
  * --result only does two things: (1) it rejects a result whose numeric `exit` field differs from the code (KitExit 1: a stale $? must not turn
- * a hit into clean; checked at any code), and (2) it describes the 2 better: the hit count, the unscanned files with their reasons, and a
+ * a hit into clean; checked at any code), and (2) it describes the 2 better: the hit count, the first few unscanned file paths with their reasons, and a
  * remedy that fits each reason (e.g. 'fetch the missing blobs or run in a full clone'). Empty, truncated, oversized or non-object output at
  * exit 2 also blocks. The result is read only for a judge verb with no signal; at a code other than 2, empty or unparseable content is ignored.
  * The library takes the parsed object or the judge's stdout string (parsed like --result): classify({ code, verb, result }), blocksMerge(code, verb, signal, result). It fails closed like the CLI: a verb outside the registered kit verbs, a bad code or a bad result throws KitExit 1 (blocksMerge rethrows; an input error never means 'does not block'). 124 (timeout(1)) is infrastructure.
@@ -44,7 +44,7 @@ const freeze = (o) => Object.freeze(o);
 export const CLASSES = freeze({
   clean: freeze({ code: 0, blocks: false, description: 'The verb succeeded; nothing to report.' }),
   usage: freeze({ code: 1, blocks: false, description: 'Invalid input, broken state, or a tool failure (not separable yet): the call was malformed or the data unusable, or the tool crashed or a git child failed, since cli.js reports any crash as 1. Check the message before blaming the caller; never block on it.' }),
-  regression: freeze({ code: 2, blocks: true, description: 'Regression: a verb that judges the product (see product_judges) ran and said no. The only outcome allowed to block a merge. Exit 2 from any other verb, or with no verb, is a refusal (precondition) and does not block. A judge also exits 2 when it could not judge (scrub on an incomplete scan, push-gate whose scrub check could not run); that still blocks (fail closed). Pass --result <file|-> (the verb\'s JSON output) for the hit count, the unscanned files with reasons and a remedy.' }),
+  regression: freeze({ code: 2, blocks: true, description: 'Regression: a verb that judges the product (see product_judges) ran and said no. The only outcome allowed to block a merge. Exit 2 from any other verb, or with no verb, is a refusal (precondition) and does not block. A judge also exits 2 when it could not judge (scrub on an incomplete scan, push-gate whose scrub check could not run); that still blocks (fail closed). Pass --result <file|-> (the verb\'s JSON output) for the hit count, the first unscanned paths with reasons and a remedy.' }),
   precondition: freeze({ code: 4, blocks: false, description: 'A prerequisite was never met (missing tool, file, credential or setup); nothing was judged.' }),
   infrastructure: freeze({ code: 5, blocks: false, description: 'The tool or environment failed (timeout, crash, signal, git failure); says nothing about the product. Retry or repair, never block on it alone.' }),
 });
@@ -98,6 +98,16 @@ function scanOf(v, result) {
   const scan = v === 'scrub' ? result : v === 'push-gate' && result && result.decision === 'deny' ? result.scrub : null;
   return scan && typeof scan === 'object' && !Array.isArray(scan) ? scan : null;
 }
+const PATH_LISTED = 5;
+const PATH_CAP = 80;
+/** The path of a not_scanned entry (an object's file or path, or a bare string), or null. */
+const pathOf = (e) => (typeof e === 'string' ? e : e && typeof e === 'object' ? (typeof e.file === 'string' ? e.file : typeof e.path === 'string' ? e.path : null) : null);
+/** The first few unscanned paths, each JSON-escaped and capped in length, then '+N more' (N counts every entry not named). */
+function pathsOf(ns) {
+  const shown = ns.slice(0, PATH_LISTED).map(pathOf).filter((x) => x !== null).map((x) => JSON.stringify(x.length > PATH_CAP ? `${x.slice(0, PATH_CAP)}...` : x));
+  const more = ns.length - shown.length;
+  return shown.length ? `: ${shown.join(', ')}${more > 0 ? `, +${more} more` : ''}` : '';
+}
 const reasonOf = (e) => (e && typeof e === 'object' && typeof e.reason === 'string' ? e.reason : 'unknown reason');
 
 /** The remedy that fits the not_scanned reasons (missing object, size, total, or a file that is missing, not regular or unreadable). */
@@ -120,8 +130,8 @@ function describeJudge(v, result) {
   const reasons = [...new Set(rs)];
   const list = reasons.slice(0, 5).join('; ') + (reasons.length > 5 ? '; ...' : '');
   const hidden = v === 'push-gate' && ns.length >= PUSH_GATE_NOT_SCANNED_CAP ? `; push-gate lists at most ${PUSH_GATE_NOT_SCANNED_CAP} files, so more may be hidden, including oversized ones` : '';
-  if (hits > 0) return `${CLASSES.regression.description.split(' A judge also')[0]} ${v} found ${hits} hit(s)${ns.length ? ` and did not scan ${ns.length} file(s) (${list}${hidden})` : ''}.`;
-  if (ns.length) return `Fail closed: ${v} found no hits but ${ns.length} file(s) were not scanned (${list}${hidden}), so nothing shows they are clean and it blocks. ${remedy(v, rs)}`;
+  if (hits > 0) return `${CLASSES.regression.description.split(' A judge also')[0]} ${v} found ${hits} hit(s)${ns.length ? ` and did not scan ${ns.length} file(s)${pathsOf(ns)} (${list}${hidden})` : ''}.`;
+  if (ns.length) return `Fail closed: ${v} found no hits but ${ns.length} file(s) were not scanned${pathsOf(ns)} (${list}${hidden}), so nothing shows they are clean and it blocks. ${remedy(v, rs)}`;
   return null;
 }
 
@@ -294,8 +304,8 @@ function toSignal(s) {
 
 export async function run(args, io = {}) {
   const [sub, ...rest] = args;
-  if (!sub || sub === '--help') return { usage };
-  if (rest.includes('--help') && ['table', 'describe', 'blocks', 'classify'].includes(sub)) return { usage };
+  if (!sub || sub === '--help' || sub === '-h') return { usage };
+  if ((rest.includes('--help') || rest.includes('-h')) && ['table', 'describe', 'blocks', 'classify'].includes(sub)) return { usage };
   if (sub === 'table') { parse(rest, 0, []); return TABLE; }
   if (sub === 'describe' || sub === 'blocks') {
     const p = parse(rest, 1, ['--verb', '--result']);

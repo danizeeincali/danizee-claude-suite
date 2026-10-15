@@ -141,6 +141,32 @@ describe('exit-codes', () => {
     assert.match(classify({ code: 127 }).description, /not found/i);
     assert.match(classify({ code: 126 }).description, /not executable/i);
   });
+  it('-h is help like --help', async () => {
+    assert.ok((await run(['-h'])).usage);
+    for (const sub of ['table', 'describe', 'blocks', 'classify']) assert.ok((await run([sub, '-h'])).usage, sub);
+  });
+  it('the description names the first unscanned paths (escaped, capped, at most 5, then +N more)', () => {
+    const ns = (n) => Array.from({ length: n }, (_, i) => ({ file: `dir/f${i}.bin`, reason: 'object not available locally (partial clone?)' }));
+    const d = (n, v = 'scrub') => classify({ code: 2, verb: v, result: { hit_count: 0, complete: false, not_scanned: ns(n) } }).description;
+    assert.match(d(2), /"dir\/f0\.bin"/);
+    assert.match(d(2), /"dir\/f1\.bin"/);
+    assert.doesNotMatch(d(2), /more/);
+    assert.match(d(5), /"dir\/f4\.bin"/);
+    assert.doesNotMatch(d(5), /more\)|\+\d+ more/);
+    assert.match(d(8), /"dir\/f4\.bin"/);
+    assert.doesNotMatch(d(8), /f5\.bin/);
+    assert.match(d(8), /\+3 more/);
+    const hit = classify({ code: 2, verb: 'scrub', result: { hit_count: 1, not_scanned: ns(7) } }).description;
+    assert.match(hit, /"dir\/f0\.bin"/);
+    assert.match(hit, /\+2 more/);
+    const evil = 'a\nb"c' + 'x'.repeat(500);
+    const e = classify({ code: 2, verb: 'scrub', result: { hit_count: 0, not_scanned: [{ path: evil, reason: 'r' }, 'plain.txt', { reason: 'r' }, 7] } });
+    assert.ok(!e.description.includes('\n'));
+    assert.ok(e.description.includes('\\n'));
+    assert.ok(e.description.length < 700);
+    assert.match(e.description, /"plain\.txt"/);
+    assert.equal(e.blocks, true);
+  });
   it('describe --help prints usage', async () => {
     assert.ok((await run(['describe', '--help'])).usage);
   });
