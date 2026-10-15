@@ -79,7 +79,7 @@ export function runStep(classify, { env = process.env, log = console.log } = {})
       const c = classify({ code, signal });
       const ended = signal ? `signal ${signal}` : `status ${code}`;
       const label = c.class === 'infrastructure' ? 'infrastructure: timed out / killed by a signal, rerun'
-        : c.class === 'precondition' ? 'precondition: the test command could not start'
+        : c.class === 'precondition' ? (code === 126 || code === 127 ? 'precondition: the test command could not start' : `precondition: test command failed with status ${code}`)
         : 'product failure: tests failed';
       log(`::error::"${command}" ended with ${ended}: ${label}. ${c.description || ''} The job fails.`.replace(/ {2,}/g, ' '));
       resolve(code || 1);

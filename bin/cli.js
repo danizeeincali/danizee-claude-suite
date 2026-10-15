@@ -6,7 +6,7 @@ import ora from 'ora';
 import os from 'os';
 import { DaniZeeSuiteInstaller } from '../src/installer.js';
 import * as bc from '../src/plugins/bc.js';
-import { runDoctor } from '../src/lib/kit/doctor.js';
+import { runDoctor, loadProjectChecks } from '../src/lib/kit/doctor.js';
 import { classify, CLASSES } from '../src/lib/kit/exit-codes.js';
 
 const program = new Command();
@@ -135,7 +135,8 @@ program
       }
 
       // Preflight doctor: named checks, fatal ones block (exit 4), advisory ones only warn.
-      const doctor = await runDoctor({ profile: options.profile, cwd: options.path, env: process.env });
+      const project = await loadProjectChecks(options.path); // .claude/kit/doctor.json; an invalid one throws (usage)
+      const doctor = await runDoctor({ profile: options.profile, cwd: options.path, env: process.env, custom: project.checks, customBase: project.base });
       console.log(chalk.bold('\nDoctor checks (' + doctor.profile + ')\n'));
       for (const c of doctor.checks) {
         const mark = c.ok ? chalk.green('✓') : (c.fatal ? chalk.red('✗') : chalk.yellow('!'));

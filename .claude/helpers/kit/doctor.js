@@ -249,6 +249,11 @@ async function loadConfig(cwd, root, configArg) {
   return { checks: parseConfig(parsed, explicit ? configArg : DEFAULT_CONFIG), base };
 }
 
+/** The project's own checks from the default .claude/kit/doctor.json, as `{ checks, base }` (what the doctor verb loads). */
+export async function loadProjectChecks(cwd) {
+  return loadConfig(cwd, await findProjectRoot(cwd));
+}
+
 export async function customCheck(c, { cwd, env, base }) {
   const opts = { cwd: base ?? await findProjectRoot(cwd), env, fatal: c.fatal, name: c.name };
   if (c.kind === 'file') return checkFile(c.target, opts);

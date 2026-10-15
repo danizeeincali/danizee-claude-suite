@@ -101,6 +101,8 @@ test('w-marathon 4.1a: state per run and stream, opened at 4.2, explicit grant a
   assert.doesNotMatch(t, /\.claude\/marathon\/helper-budget\.json/, 'no fixed shared state path');
   assert.match(sec, /shared-budget grant --state "\$S" --helper <id> --steps <[^>]+> --cost <[^>]+>/, 'grant passes an amount');
   assert.match(sec, /shared-budget spend --state "\$S"/, 'spend line carries --state');
+  assert.doesNotMatch(sec, /--time-ms/, 'no wall-clock allowance');
+  assert.match(sec, /shared-budget status --state "\$S"[^\n]*depth[^\n]*stop --state "\$S"[^\n]*until depth is 0/, 'resume drains depth');
   assert.match(sec, /shared-budget release --state "\$S" --helper <id>/, 'release for a helper that ends without a spend');
   assert.match(sec, /fully reserved by other sub-sessions[^\n]*\*\*wait\*\*/, 'a reserved skip means wait');
   assert.match(sec, /exhausted[^\n]*CHECKPOINT 5/, 'only an exhausted limit goes to CHECKPOINT 5');
@@ -111,7 +113,8 @@ test('w-marathon 4.1a: state per run and stream, opened at 4.2, explicit grant a
 test('w-review claim budget: state lives under a fresh mktemp -d, removed at the end of the checkpoint', () => {
   const sec = stepSection(installed('w-review'), VER);
   assert.match(sec, /D=\$\(mktemp -d\)/);
-  assert.match(sec, /B="\$D\/review-budget\.json"/);
+  assert.match(sec, /B=<printed dir>\/review-budget\.json/);
+  assert.match(sec, /Shell variables do not persist between Bash calls/);
   assert.match(sec, /rm -rf "\$D"/);
   assert.doesNotMatch(sec, /\.claude\/kit\/review-budget\.json/, 'no fixed state file');
   assert.match(sec, /shared-budget grant --state "\$B" --helper <id> --steps <n>/);

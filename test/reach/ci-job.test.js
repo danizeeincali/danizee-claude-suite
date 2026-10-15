@@ -91,7 +91,7 @@ for (const [label, command, pattern] of [
   ['a timeout (124)', 'exit 124', /status 124: infrastructure: timed out \/ killed by a signal, rerun/],
   ['a signal death', 'kill -9 $$', /infrastructure: timed out \/ killed by a signal, rerun/],
   ['a tool that is not found (127)', 'exit 127', /status 127: precondition: the test command could not start/],
-  ['exit 2', 'exit 2', /status 2: precondition/],
+  ['exit 2', 'exit 2', /status 2: precondition: test command failed with status 2/],
   ['an OOM kill (137)', 'exit 137', /status 137: infrastructure/],
 ]) {
   test(`test step: ${label} fails the step with a label`, () => {
