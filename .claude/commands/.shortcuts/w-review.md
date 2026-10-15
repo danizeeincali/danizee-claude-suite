@@ -207,11 +207,20 @@ If the kit is not installed (`.claude/helpers/kit/cli.js` missing), say so in on
 
 ### ⛔ CHECKPOINT 5: Compound (MANDATORY - NEVER SKIP)
 
-**📄 RENDER REPORTS (advisory):** Render the findings for CI and the PR. `$F` holds `{"findings":[{"message","severity":"blocking"|"advisory"|"note","file","line","disposition"}]}`:
+**📄 RENDER REPORTS (advisory):** Render the findings for CI and the PR. `$F` holds `{"findings":[{"message","severity":"blocking"|"advisory"|"note","file","line","disposition"}]}`. Findings quote the session's code and messages, so nothing is posted or kept before it has passed through `redact --keep-lines`, and the outputs go to a private `mktemp` directory, never to `reports/` at the repository root (it is not git-ignored). First run `mktemp -d` and read the printed directory; use it literally as `W` in the next command (shell variables do not persist between Bash calls):
 ```bash
-if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): render skipped, advisory"; else mkdir -p reports && node .claude/helpers/kit/cli.js render sarif --file "$F" --out reports/review.sarif && node .claude/helpers/kit/cli.js render junit --file "$F" --out reports/review.junit.xml && node .claude/helpers/kit/cli.js render comment --file "$F" --key review --out reports/review-comment.md; fi
+W=<printed dir>
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): render skipped, advisory"; else
+  for X in sarif:review.sarif junit:review.junit.xml comment:review-comment.md; do
+    A=; [ "${X%%:*}" = comment ] && A="--key review"
+    node .claude/helpers/kit/cli.js render "${X%%:*}" --file "$F" $A --out "$W/raw" || { echo "render ${X%%:*} failed: nothing posted" >&2; exit 1; }
+    node .claude/helpers/kit/cli.js redact --keep-lines < "$W/raw" > "$W/j"; RC=$?
+    [ $RC -eq 0 ] || { echo "redact failed (exit $RC): do not post ${X%%:*}" >&2; exit 1; }
+    node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));fs.writeFileSync(process.argv[2],j.text);console.error("replaced="+j.replaced)' "$W/j" "$W/${X#*:}" || { echo "redact output unreadable: do not post ${X%%:*}" >&2; exit 1; }
+  done; rm -f -- "$W/raw" "$W/j"; echo "written: $W/review.sarif $W/review.junit.xml $W/review-comment.md"
+fi
 ```
-Exit 0: `reports/review.sarif`, `reports/review.junit.xml` and `reports/review-comment.md` are written; post the comment yourself (the verb never posts), editing the earlier comment that starts with its `<!-- kit-render:review -->` marker instead of adding a new one. Exit 1: invalid input, report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
+Exit 0: the three redacted files are in `$W`; post `$W/review-comment.md` yourself (the verb never posts), editing the earlier comment that starts with its `<!-- kit-render:review -->` marker instead of adding a new one, then `rm -rf -- <that directory>` with the literal path (keep the SARIF and JUnit files there only as long as CI needs them). If `render` or `redact` exits non-zero (1: invalid input, an unreadable secrets file or a broken state), do not post the comment and do not keep the outputs: report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
 **REQUIRED OUTPUT:**
 - Memory key: project/reviews/_____
 - Doc path: docs/solutions/reviews/_____.md

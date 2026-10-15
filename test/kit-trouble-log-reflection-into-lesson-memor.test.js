@@ -186,6 +186,39 @@ describe('reflect lessons', () => {
     assert.equal(overlap('Wait for the spinner', 'wait for spinner!'), 1);
     assert.ok(overlap('Retry the login form', 'Clear cache before build') < 0.1);
   });
+  it('--text-file stores a lesson with backticks and $( ) verbatim and runs nothing; --reason-file likewise', async () => {
+    const d = await tmp();
+    try {
+      const lesson = 'Run `touch pwned` and $(touch pwned2) only after reading the error output.';
+      await fs.writeFile(path.join(d, 'lesson.txt'), lesson + '\n');
+      const r = await call(['lessons', 'save', '--role', 'fixer', '--session', 'tf1', '--text-file', 'lesson.txt'], d);
+      assert.equal(r.code, 0, r.err);
+      const store = JSON.parse(await fs.readFile(path.join(d, '.claude/kit/lessons.json'), 'utf-8'));
+      assert.equal(store.lessons[0].text, lesson);
+      const why = 'wrong: `id` and $(whoami) were quoted';
+      await fs.writeFile(path.join(d, 'why.txt'), why + '\n');
+      assert.equal((await call(['lessons', 'retire', '--id', store.lessons[0].id, '--reason-file', 'why.txt'], d)).code, 0);
+      const after = JSON.parse(await fs.readFile(path.join(d, '.claude/kit/lessons.json'), 'utf-8'));
+      assert.equal(after.lessons[0].retire_reason, why);
+      assert.equal(fsSync.existsSync(path.join(d, 'pwned')), false);
+      assert.equal(fsSync.existsSync(path.join(d, 'pwned2')), false);
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+  it('--text-file and --reason-file refuse both forms, an unreadable file and a wrong command (exit 1)', async () => {
+    const d = await tmp();
+    try {
+      await fs.writeFile(path.join(d, 'l.txt'), 'Wait for the spinner to vanish before clicking save.\n');
+      const both = await call(['lessons', 'save', '--role', 'fixer', '--session', 's1', '--text', 'Wait for it.', '--text-file', 'l.txt'], d);
+      assert.equal(both.code, 1);
+      const missing = await call(['lessons', 'save', '--role', 'fixer', '--session', 's1', '--text-file', 'nope.txt'], d);
+      assert.equal(missing.code, 1);
+      const bothR = await call(['lessons', 'retire', '--id', 'L1', '--reason', 'x', '--reason-file', 'l.txt'], d);
+      assert.equal(bothR.code, 1);
+      const missingR = await call(['lessons', 'retire', '--id', 'L1', '--reason-file', 'nope.txt'], d);
+      assert.equal(missingR.code, 1);
+      assert.equal(fsSync.existsSync(path.join(d, '.claude/kit/lessons.json')), false);
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
   it('save and retire refuse text, scope or reason holding a project secret; nothing is stored', async () => {
     const d = await tmp();
     try {

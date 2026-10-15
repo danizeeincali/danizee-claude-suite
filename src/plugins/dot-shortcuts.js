@@ -1728,7 +1728,7 @@ Exit 3 from \`diff-range\` means an empty range: report "no change to review", n
 \`\`\`bash
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): reflect skipped, advisory"; else node .claude/helpers/kit/cli.js reflect trouble-log --in "$E"; fi
 \`\`\`
-Exit 0: read the signals (repeated calls, failed actions, repeated edits, waits, the stop reason) and write at most 3 one-sentence imperative lessons that would have avoided them. Save each with \`node .claude/helpers/kit/cli.js reflect lessons save --role <role> --text "<lesson>" --session <session id>\`; \`reflect lessons keep --id <id>\` confirms a listed lesson that held, \`reflect lessons retire --id <id> --reason "<why>"\` drops one that no longer does. Exit 2 refused (a near duplicate: the message names its id): keep that one with \`--confirm <id>\`, or \`--distinct\` only if the lesson truly differs. Exit 1: invalid input, report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
+Exit 0: read the signals (repeated calls, failed actions, repeated edits, waits, the stop reason) and write at most 3 one-sentence imperative lessons that would have avoided them. A lesson can quote an error message, so never put its text in a shell argument (backticks and \`$( )\` would run): run \`mktemp -d\` once and read the printed directory, write each lesson with the Write tool to \`<that directory>/lesson.txt\` (the literal path: shell variables do not persist between Bash calls), save it with \`node .claude/helpers/kit/cli.js reflect lessons save --role <role> --text-file <that path> --session <session id>\`, and remove the file and directory after the last one. \`reflect lessons keep --id <id>\` confirms a listed lesson that held; \`reflect lessons retire --id <id> --reason-file <path of a file written the same way>\` drops one that no longer does. Exit 2 refused (a near duplicate: the message names its id): keep that one with \`--confirm <id>\`, or \`--distinct\` only if the lesson truly differs. Exit 1: invalid input, report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
 
 **REQUIRED OUTPUT:**
 - Memory key: project/bugs/_____
@@ -2631,11 +2631,20 @@ If the kit is not installed (\`.claude/helpers/kit/cli.js\` missing), say so in 
 
 ### ⛔ CHECKPOINT 5: Compound (MANDATORY - NEVER SKIP)
 
-**📄 RENDER REPORTS (advisory):** Render the findings for CI and the PR. \`$F\` holds \`{"findings":[{"message","severity":"blocking"|"advisory"|"note","file","line","disposition"}]}\`:
+**📄 RENDER REPORTS (advisory):** Render the findings for CI and the PR. \`$F\` holds \`{"findings":[{"message","severity":"blocking"|"advisory"|"note","file","line","disposition"}]}\`. Findings quote the session's code and messages, so nothing is posted or kept before it has passed through \`redact --keep-lines\`, and the outputs go to a private \`mktemp\` directory, never to \`reports/\` at the repository root (it is not git-ignored). First run \`mktemp -d\` and read the printed directory; use it literally as \`W\` in the next command (shell variables do not persist between Bash calls):
 \`\`\`bash
-if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): render skipped, advisory"; else mkdir -p reports && node .claude/helpers/kit/cli.js render sarif --file "$F" --out reports/review.sarif && node .claude/helpers/kit/cli.js render junit --file "$F" --out reports/review.junit.xml && node .claude/helpers/kit/cli.js render comment --file "$F" --key review --out reports/review-comment.md; fi
+W=<printed dir>
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): render skipped, advisory"; else
+  for X in sarif:review.sarif junit:review.junit.xml comment:review-comment.md; do
+    A=; [ "\${X%%:*}" = comment ] && A="--key review"
+    node .claude/helpers/kit/cli.js render "\${X%%:*}" --file "$F" $A --out "$W/raw" || { echo "render \${X%%:*} failed: nothing posted" >&2; exit 1; }
+    node .claude/helpers/kit/cli.js redact --keep-lines < "$W/raw" > "$W/j"; RC=$?
+    [ $RC -eq 0 ] || { echo "redact failed (exit $RC): do not post \${X%%:*}" >&2; exit 1; }
+    node -e 'const fs=require("fs");const j=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));fs.writeFileSync(process.argv[2],j.text);console.error("replaced="+j.replaced)' "$W/j" "$W/\${X#*:}" || { echo "redact output unreadable: do not post \${X%%:*}" >&2; exit 1; }
+  done; rm -f -- "$W/raw" "$W/j"; echo "written: $W/review.sarif $W/review.junit.xml $W/review-comment.md"
+fi
 \`\`\`
-Exit 0: \`reports/review.sarif\`, \`reports/review.junit.xml\` and \`reports/review-comment.md\` are written; post the comment yourself (the verb never posts), editing the earlier comment that starts with its \`<!-- kit-render:review -->\` marker instead of adding a new one. Exit 1: invalid input, report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
+Exit 0: the three redacted files are in \`$W\`; post \`$W/review-comment.md\` yourself (the verb never posts), editing the earlier comment that starts with its \`<!-- kit-render:review -->\` marker instead of adding a new one, then \`rm -rf -- <that directory>\` with the literal path (keep the SARIF and JUnit files there only as long as CI needs them). If \`render\` or \`redact\` exits non-zero (1: invalid input, an unreadable secrets file or a broken state), do not post the comment and do not keep the outputs: report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
 **REQUIRED OUTPUT:**
 - Memory key: project/reviews/_____
 - Doc path: docs/solutions/reviews/_____.md
@@ -5204,7 +5213,7 @@ On any non-zero exit (scrub exit 1 or 2, or a failed \`git add\`) the block unst
 \`\`\`bash
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): reflect skipped, advisory"; else node .claude/helpers/kit/cli.js reflect trouble-log --in "$E"; fi
 \`\`\`
-Exit 0: write at most 3 one-sentence imperative lessons from the signals and save each with \`node .claude/helpers/kit/cli.js reflect lessons save --role <role> --text "<lesson>" --session <run id>\`; \`reflect lessons keep --id <id>\` / \`retire --id <id> --reason "<why>"\` curate old ones. Exit 2 refused: a near duplicate (\`--confirm <id>\` keeps that one, \`--distinct\` only when truly different). Exit 1: invalid input, report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
+Exit 0: write at most 3 one-sentence imperative lessons from the signals. A lesson can quote an error message, so never put its text in a shell argument (backticks and \`$( )\` would run): run \`mktemp -d\` and read the printed directory, write each lesson with the Write tool to \`<that directory>/lesson.txt\` (the literal path: shell variables do not persist between Bash calls), save it with \`node .claude/helpers/kit/cli.js reflect lessons save --role <role> --text-file <that path> --session <run id>\`, and remove the file and directory afterwards; \`reflect lessons keep --id <id>\` / \`retire --id <id> --reason-file <path>\` (a file written the same way) curate old ones. Exit 2 refused: a near duplicate (\`--confirm <id>\` keeps that one, \`--distinct\` only when truly different). Exit 1: invalid input, report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
 
 Then \`/bc\`: write-up, the run's registry row and labels, durable facts to memory, commit, never push. \`fetched/\` is git-ignored and must not be added.
 

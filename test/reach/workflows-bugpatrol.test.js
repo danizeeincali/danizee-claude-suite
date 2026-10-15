@@ -127,3 +127,31 @@ test('w-review replay gate: exit 1 or a missing kit is FAIL, never PASS', () => 
   assert.doesNotMatch(sec, /nothing fails the check on unreplayed evidence/);
   assert.match(sec, /fails closed \(FAIL, "replay gate could not run: kit not installed"\)/);
 });
+
+test('reflect steps (w-fix, w-bbs): lessons go in by --text-file / --reason-file, never in a quoted shell argument', () => {
+  for (const [wf, heading] of [['w-fix', '⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)'], ['w-bbs', '⛔ CHECKPOINT 6: Compound (MANDATORY)']]) {
+    const sec = stepSection(installed(wf), heading);
+    assert.match(sec, /reflect lessons save --role <role> --text-file </, `${wf} saves with --text-file`);
+    assert.match(sec, /retire --id <id> --reason-file </, `${wf} retires with --reason-file`);
+    assert.match(sec, /mktemp -d/, `${wf} writes the lesson under a mktemp directory`);
+    assert.match(sec, /shell variables do not persist/, `${wf} uses the printed path literally`);
+    assert.doesNotMatch(sec, /--text "/, `${wf} no longer puts the lesson in --text "..."`);
+    assert.doesNotMatch(sec, /--reason "/, `${wf} no longer puts the reason in --reason "..."`);
+  }
+});
+
+test('w-review render step: redact --keep-lines sits before any post, outputs go to a mktemp directory, no repo-root reports/', () => {
+  const sec = stepSection(installed('w-review'), '⛔ CHECKPOINT 5: Compound (MANDATORY - NEVER SKIP)');
+  const lines = sec.split(/\r?\n/);
+  const render = lines.findIndex(l => /cli\.js render /.test(l));
+  const redact = lines.findIndex(l => /cli\.js redact --keep-lines </.test(l));
+  const post = lines.findIndex(l => /post `?\$W\/review-comment\.md/.test(l));
+  assert.ok(render >= 0 && redact > render && post > redact, `render ${render}, redact ${redact}, post ${post}`);
+  assert.match(sec, /redact exits non-zero|`redact` exits non-zero/);
+  assert.match(sec, /do not post/);
+  assert.match(sec, /mktemp -d/);
+  assert.match(sec, /--out "\$W\/raw"/);
+  assert.doesNotMatch(sec, /--out reports\//);
+  assert.doesNotMatch(sec, /mkdir -p reports/);
+  assert.doesNotMatch(sec, /`reports\/review/);
+});

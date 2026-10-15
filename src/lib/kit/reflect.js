@@ -42,8 +42,8 @@ import { redactSecrets, parseSecretsFile, secretsRoots, loadProjectSecrets } fro
 
 export const verb = 'reflect';
 export const usage = 'cli.js reflect trouble-log [--in <events.jsonl>] [--max-lines <n>] [--max-line-length <n>] [--repeat-min <n>] [--target-min <n>] [--secrets-file <f>] | '
-  + 'reflect lessons save --role <r> --text "<one sentence; the imperative check applies to English only>" [--scope <s>] --session <id> [--max-new <n>] [--threshold <0..1>] [--confirm <id> | --distinct] [--store <f>] | '
-  + 'reflect lessons keep --id <id> | reflect lessons retire --id <id> --reason "<why>" | reflect lessons list [--role <r>] [--all]   '
+  + 'reflect lessons save --role <r> (--text "<one sentence; the imperative check applies to English only>" | --text-file <f>) [--scope <s>] --session <id> [--max-new <n>] [--threshold <0..1>] [--confirm <id> | --distinct] [--store <f>] | '
+  + 'reflect lessons keep --id <id> | reflect lessons retire --id <id> (--reason "<why>" | --reason-file <f>) | reflect lessons list [--role <r>] [--all]   '
   + '(no model call: trouble-log is the reviewer\'s input, lessons are the guarded memory; exit 0 done, 1 invalid, 2 refused save)';
 
 export const DEFAULT_STORE = path.join('.claude', 'kit', 'lessons.json');
@@ -333,7 +333,7 @@ export function listLessons(data, { role, all = false } = {}) {
 // ================================================================ CLI
 
 const BOOL = ['distinct', 'all'];
-const VALUE = ['in', 'max-lines', 'max-line-length', 'repeat-min', 'target-min', 'secrets-file', 'role', 'text', 'scope', 'session', 'max-new', 'threshold', 'confirm', 'id', 'reason', 'store'];
+const VALUE = ['in', 'max-lines', 'max-line-length', 'repeat-min', 'target-min', 'secrets-file', 'role', 'text', 'scope', 'session', 'max-new', 'threshold', 'confirm', 'id', 'reason', 'text-file', 'reason-file', 'store'];
 
 function parse(args) {
   const flags = {};
@@ -408,6 +408,15 @@ export async function run(args, io) {
       if (!Number.isFinite(threshold) || threshold <= 0 || threshold > 1) throw invalid('--threshold must be a number in (0, 1]');
     }
     const maxNew = sub === 'save' ? posInt(flags, 'max-new', DEFAULTS.maxNew) : 0;
+    // --text-file / --reason-file keep a lesson out of the shell command line (backticks and $( ) would run there).
+    for (const [fk, vk, ok] of [['text-file', 'text', 'save'], ['reason-file', 'reason', 'retire']]) {
+      if (flags[fk] === undefined) continue;
+      if (sub !== ok) throw invalid(`--${fk} is only for lessons ${ok}`);
+      if (flags[vk] !== undefined) throw invalid(`give --${vk} or --${fk}, not both`);
+      let t;
+      try { t = await fs.readFile(path.resolve(cwd, flags[fk]), 'utf-8'); } catch (e) { throw invalid(`cannot read --${fk}: ${e.code || 'read failed'}`); }
+      flags[vk] = t.replace(/\r?\n$/, '');
+    }
     if (sub === 'save' || sub === 'retire') {
       // The store is not git-ignored and is read back into later prompts: never write a project secret into it.
       const secrets = await loadSecrets(flags, cwd);
