@@ -1,0 +1,15 @@
+# Review 7251c33f-1a56-4253-a82f-33699d4499ae — shared-budget-for-claim-sub-sessions, round 1
+
+- Commit: da491cd
+- Angle: r1: full read, concurrency
+- Result: over tolerance
+- 3 findings
+
+## High (1)
+
+- **Concurrent callers silently lose spend (unlocked read-modify-write)** — `src/lib/kit/shared-budget.js:259` (correctness): run() does load(file) -\> pure update -\> save(file) with no lock or compare-and-swap; the atomic rename only prevents torn files, not lost updates. Confirmed: 20 parallel \`shared-budget spend --steps 1\` processes against one state file all exited 0, but the file ended with spent.steps=10 and 10 helper rows. Half the spend vanished with no error, so the shared allowance under-reports and later grants hand out budget that was already used: sub-sessions overspend. The same race drops grant/skip counts and start/stop depth changes (a lost \`start\` leaves depth one short, so a later \`stop\` banks time early or throws 'stop without a matching start'). The idea's stated use is several sub-agents sharing one allowance, so concurrent callers are the normal path. Mirrored in .claude/helpers/kit/shared-budget.js. — fix: Serialize every mutating command with an exclusive lock file (fs.open(file+'.lock','wx') with retry/backoff and stale-lock timeout) held across load..save, and add a test that runs N parallel spends and asserts spent.steps === N.
+
+## Medium (2)
+
+- **Grants do not reserve budget, so parallel sub-sessions together overspend** — `src/lib/kit/shared-budget.js:129` (correctness): grantFor returns the full remaining allowance to every caller and recordGrant only bumps a counter; nothing is held in flight. Confirmed: with --steps 10, three concurrent grants each returned remaining.steps=10, licensing 30 steps against a 10-step limit. The only guard is the after-the-fact \`overrun\` report. The existing src/lib/marathon/budget.js canFanOut counts in-flight budgets for exactly this reason; this verb drops that, so the 'one allowance shared by several sub-agents' promise does not hold for any fan-out. — fix: Record each grant's reservation (e.g. helpers\[id\].reserved) and subtract outstanding reservations in remainingOf; release/replace the reservation on spend. Alternatively document that grants are sequential-only and give a --share/--parts option that splits the remainder.
+- **Temp file name collides for same-process concurrent saves** — `src/lib/kit/shared-budget.js:233` (correctness): save() names the temp file \`${file}.${process.pid}.${Date.now()}.tmp\`. Two run() calls in the same process within one millisecond (library use, e.g. Promise.all over sub-sessions) write and rename the same temp path. Confirmed: 10 concurrent run(\['spend',...\]) calls in one process -\> 8 rejected with 'cannot write ...: ENOENT', only 2 recorded. The failed spends are lost even though the sub-sessions did the work, contradicting 'spend is recorded at once, failures included'. — fix: Use a unique temp suffix (crypto.randomUUID() or an incrementing counter) and, together with the lock from the first finding, serialize writers.

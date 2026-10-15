@@ -7,3 +7,11 @@
 {"kind":"unit","status":"green","stream":"asymmetric-threshold-router","commit":"779aca3","id":"56d76ee0-9db8-4775-ba22-0792914ca265","ts":"2026-10-15T16:55:07.648Z"}
 {"kind":"unit","status":"green","stream":"two-pass-finding-clustering","commit":"2eb1640","id":"8b7e3da7-d92f-41c3-99b9-596e9d95c3c5","ts":"2026-10-15T16:55:12.333Z"}
 {"kind":"unit","status":"green","stream":"finding-triage-with-fingerprint-dedup-an","commit":"6707b32","id":"6feef9ef-cb5b-455c-bf0d-5ccecf2532c1","ts":"2026-10-15T16:55:29.993Z"}
+{"kind":"unit","status":"green","stream":"noise-ledger-with-flake-quarantine","commit":"4fbf706","id":"0e40fba3-e906-499c-bcaf-9c86a29da444","ts":"2026-10-15T16:58:55.089Z"}
+{"kind":"unit","status":"green","stream":"two-pass-finding-clustering","commit":"abee777","id":"bb8474c4-f5f8-4498-a850-4ce21487d4b8","ts":"2026-10-15T16:59:00.128Z"}
+{"kind":"unit","status":"green","stream":"asymmetric-threshold-router","commit":"038d3cd","id":"9fc48695-29be-4c60-a8aa-78263d77d70b","ts":"2026-10-15T16:59:04.721Z"}
+{"kind":"unit","status":"green","stream":"change-impact-test-plan","commit":"8c6ddcc","id":"15b4eeef-e3d5-4af8-880b-67892cccc439","ts":"2026-10-15T16:59:08.773Z"}
+{"kind":"unit","status":"green","stream":"preflight-doctor-checks-before-a-run","commit":"6c2ea60","id":"9b35f3d5-9d2c-4cb3-bb84-9a1b88d51f03","ts":"2026-10-15T16:59:13.263Z"}
+{"kind":"unit","status":"green","stream":"exit-code-contract-separating-infrastruc","commit":"4dbe3b4","id":"73e4eccd-dfdb-41eb-b316-d8a22986fe28","ts":"2026-10-15T16:59:18.763Z"}
+{"kind":"unit","status":"green","stream":"shared-budget-for-claim-sub-sessions","commit":"0c77385","id":"68e1c8ab-ba40-4518-8b0d-4d82f8c93410","ts":"2026-10-15T16:59:34.657Z"}
+{"kind":"unit","status":"green","stream":"trouble-log-reflection-into-lesson-memor","commit":"cc02796","id":"5fe5078d-3fb9-4eef-bd99-bd2daa6c42b6","ts":"2026-10-15T16:59:39.692Z"}

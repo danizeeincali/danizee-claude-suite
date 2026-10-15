@@ -41,3 +41,4 @@ Add a rule the second time something goes wrong.
 
 - The workflow targets of this run were proposed on a cloud machine whose session history showed only w-bbs, so each carries an `unused_reason`. Before the integration stream wires a workflow row, confirm that workflow is one the owner runs; a row in a workflow they never use is a power nobody reaches.
 - Sub-agent helpers can return their JSON without writing the output file they were told to write. Check that the file exists before the next verb reads it, and write it from the returned JSON when it is missing.
+- Any kit verb that read-modify-writes a state file (ledgers, budgets, lesson stores, triage state) takes an exclusive lock file (`fs.open(<file>.lock, 'wx')`, bounded retry, stale-lock timeout) across load..save, writes through a uniquely named temp file + rename, and has a test that runs parallel writers and expects every write kept. Seen in two r1/r2 reviews (shared-budget, noise-ledger).
