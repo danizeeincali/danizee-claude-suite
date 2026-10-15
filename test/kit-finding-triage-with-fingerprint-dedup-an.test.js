@@ -255,11 +255,46 @@ describe('triage review round 1 fixes', () => {
     try { assert.equal((await run(['list', '--state', 'st.json'], { cwd: dir })).records.length, 1); } finally { await fs.chmod(dir, 0o755); }
   }));
 
+  it('scopes and rules named like Object.prototype members are ordinary names', () => withDir(async (dir) => {
+    for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      const r = await visit(dir, 's1', body([v(name, name, 'a')], [name], [name]));
+      assert.equal(r.raise.length, 1, name);
+    }
+    for (const s of ['s2', 's3', 's4']) await visit(dir, s, body([], ['constructor', 'toString', '__proto__'], ['constructor']));
+    const list = await run(['list', '--state', 'st.json'], { cwd: dir });
+    assert.equal(list.records.length, 4);
+    assert.equal(list.records.find((x) => x.scope === 'constructor').status, 'fixed');
+  }));
+
+  it('a large visit on distinct scopes stays fast (records indexed by scope+rule)', { timeout: 60000 }, () => withDir(async (dir) => {
+    const vs = Array.from({ length: 20000 }, (_, i) => v(`s${i}`, 'r1', 'a'));
+    const t = Date.now();
+    const r = await visit(dir, 'big', body(vs));
+    assert.equal(r.raise.length, 20000);
+    const again = await visit(dir, 'big2', body(vs));
+    assert.equal(again.raise.length, 20000);
+    assert.ok(Date.now() - t < 20000, `took ${Date.now() - t}ms`);
+  }));
+
+  it('a state path whose parent is a file fails with a triage message, not raw errno text', () => withDir(async (dir) => {
+    await fs.writeFile(path.join(dir, 'f'), 'x');
+    for (const args of [['visit', '--session', 's', '--state', 'f/st.json'], ['decide', 'abcdefabcdef', '--as', 'filed', '--state', 'f/st.json']]) {
+      await assert.rejects(run(args, { cwd: dir, stdin: async () => JSON.stringify(body([v('p', 'r1', 'a')])) }),
+        (e) => e.code === 1 && /triage state|f\/st\.json/.test(e.message) && !/^kit: EEXIST/.test(e.message));
+    }
+  }));
+
+  it('an unremovable stale lock fails with "locked by another run" instead of hanging', () => withDir(async (dir) => {
+    await fs.mkdir(path.join(dir, 'st.json.lock'));
+    await assert.rejects(run(['visit', '--session', 's', '--state', 'st.json'], { cwd: dir, lockOpts: { staleMs: 100, waitMs: 400 }, stdin: async () => JSON.stringify(body([v('p', 'r1', 'a')])) }),
+      (e) => e.code === 1 && /locked by another run|cannot lock/.test(e.message));
+  }));
+
   it('parallel writer processes keep every write, with a pre-aged stale lock, repeated 10 times', { timeout: 280000 }, async () => {
     const mod = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/lib/kit/triage.js');
     const child = `import { run } from ${JSON.stringify('file://' + mod)};
 const [dir, id] = process.argv.slice(1);
-await run(['visit', '--session', 's' + id, '--state', 'st.json'], { cwd: dir, stdin: async () => JSON.stringify({ enabled: ['r1'], violations: [{ scope: 'p' + id, rule: 'r1', source: 'auto', element: 'e' }] }) });`;
+await run(['visit', '--session', 's' + id, '--state', 'st.json'], { cwd: dir, lockOpts: { staleMs: 600 }, stdin: async () => JSON.stringify({ enabled: ['r1'], violations: [{ scope: 'p' + id, rule: 'r1', source: 'auto', element: 'e' }] }) });`;
     for (let round = 0; round < 10; round++) {
       await withDir(async (dir) => {
         const lock = path.join(dir, 'st.json.lock');
