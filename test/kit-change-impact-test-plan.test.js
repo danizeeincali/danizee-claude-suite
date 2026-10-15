@@ -72,7 +72,7 @@ describe('test-plan', () => {
   });
 
   it('low mapped share adds smoke (entries + most connected) and flags low confidence', () => {
-    const r = planTests(base(), ['src/cart.js', 'docs/a.md', 'docs/b.md'], { smoke: 2 });
+    const r = planTests(base(), ['src/cart.js', 'docs/a.md', 'docs/b.md'], { smoke: 1 });
     assert.equal(r.low_confidence, true);
     assert.match(r.low_confidence_reason, /1 of 3/);
     assert.equal(reasonOf(r, 'home'), 'smoke'); // entry
@@ -83,7 +83,7 @@ describe('test-plan', () => {
   });
 
   it('smoke ranks by edge degree then id, and respects --smoke', () => {
-    const r = planTests({ targets: [{ id: 'a', files: [] }, { id: 'b', files: [] }, { id: 'c', files: [] }], edges: [['c', 'a'], ['c', 'b']] }, ['z.js'], { smoke: 2 });
+    const r = planTests({ targets: [{ id: 'a', files: [] }, { id: 'b', files: [] }, { id: 'c', files: [] }], edges: [['c', 'a'], ['c', 'b']] }, ['z.js'], { smoke: 1 });
     assert.deepEqual(r.plan.map(i => i.id), ['c']);
     const r0 = planTests({ targets: [{ id: 'a', files: [] }] }, ['z.js'], { smoke: 0 });
     assert.deepEqual(r0.plan, []);
