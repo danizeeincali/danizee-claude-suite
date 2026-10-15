@@ -27,8 +27,8 @@
  */
 import fs from 'fs/promises';
 import path from 'path';
-import { randomBytes } from 'crypto';
 import { KitExit } from './kit-exit.js';
+import { withStateLock, readJsonState, writeJsonAtomic } from './state-lock.js';
 
 export const verb = 'noise-ledger';
 export const usage = 'cli.js noise-ledger apply [--in <file>] [--cap N] [--first-run] [--ledger <path>] [--now <date>] | accept --id <id> --reason <text> [--expires YYYY-MM-DD] | prune   '
@@ -200,78 +200,8 @@ export function parseArgs(args) {
 }
 
 async function readLedger(file, { mustExist }) {
-  let text;
-  try { text = await fs.readFile(file, 'utf-8'); } catch (e) {
-    if (e.code === 'ENOENT') { if (mustExist) throw invalid(`ledger ${file} does not exist`); return { version: 1, entries: [] }; }
-    throw invalid(`cannot read ledger ${file}: ${e.code || e.message}`);
-  }
-  let parsed;
-  try { parsed = JSON.parse(text.replace(/^\uFEFF/, '')); } catch { throw invalid(`ledger ${file} is not valid JSON`); }
+  const parsed = await readJsonState(file, mustExist ? {} : { fallback: { version: 1, entries: [] } });
   return normalizeLedger(parsed);
-}
-
-async function writeLedger(file, ledger) {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
-  try {
-    await fs.writeFile(tmp, JSON.stringify(ledger, null, 2) + '\n');
-    await fs.rename(tmp, file);
-  } catch (e) { await fs.rm(tmp, { force: true }); throw e; }
-}
-
-const LOCK_STALE_MS = 30000;
-const LOCK_WAIT_MS = LOCK_STALE_MS + 10000; // longer than the stale age, so a waiter always reaches the break path
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const readToken = async (file) => { try { return await fs.readFile(file, 'utf-8'); } catch { return null; } };
-
-/** Remove a stale lock: take `<lock>.break` (wx), re-read the lock, remove it only if its token is unchanged. */
-async function breakStale(lock, seen) {
-  const brk = `${lock}.break`;
-  let h;
-  try { h = await fs.open(brk, 'wx'); } catch (e) {
-    if (e.code === 'EEXIST') {
-      try { const st = await fs.stat(brk); if (Date.now() - st.mtimeMs > 2 * LOCK_STALE_MS) await fs.rm(brk, { force: true }); } catch { /* gone */ }
-    }
-    return;
-  }
-  try {
-    await h.close();
-    if ((await readToken(lock)) === seen) await fs.rm(lock, { force: true });
-  } finally { await fs.rm(brk, { force: true }); }
-}
-
-/** Hold an exclusive `<file>.lock` (created with 'wx', holding a random token) while fn runs. */
-async function withLock(file, fn) {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const lock = `${file}.lock`;
-  const token = randomBytes(12).toString('hex');
-  const start = Date.now();
-  for (;;) {
-    try {
-      const h = await fs.open(lock, 'wx');
-      try { await h.writeFile(token); } finally { await h.close(); }
-      break;
-    } catch (e) {
-      if (e.code !== 'EEXIST') throw invalid(`cannot lock ledger ${file}: ${e.code || e.message}`);
-      try {
-        const st = await fs.stat(lock);
-        if (Date.now() - st.mtimeMs > LOCK_STALE_MS) {
-          const seen = await readToken(lock);
-          if (seen !== null) await breakStale(lock, seen);
-          continue;
-        }
-      } catch { continue; }
-      if (Date.now() - start > LOCK_WAIT_MS) throw invalid(`ledger ${file} is locked by another run (${lock}); try again`);
-      await sleep(10 + Math.random() * 30);
-    }
-  }
-  const beat = setInterval(() => { const n = new Date(); fs.utimes(lock, n, n).catch(() => {}); }, LOCK_STALE_MS / 3);
-  beat.unref();
-  try { return await fn(); } finally {
-    clearInterval(beat);
-    if ((await readToken(lock)) === token) await fs.rm(lock, { force: true });
-  }
 }
 
 export async function run(args, io = {}) {
@@ -313,15 +243,15 @@ export async function run(args, io = {}) {
       if (f.expires < day) throw invalid(`--expires ${f.expires} is already in the past`);
       expires = f.expires;
     }
-    return withLock(ledgerFile, async () => {
+    return withStateLock(ledgerFile, async () => {
       const ledger = await readLedger(ledgerFile, { mustExist: false });
       const entry = { id: f.id, reason: f.reason, added: day, ...(expires ? { expires } : {}) };
       const replaced = ledger.entries.some((e) => e.id === f.id);
       ledger.entries = [...ledger.entries.filter((e) => e.id !== f.id), entry];
       const out = normalizeLedger(ledger);
-      await writeLedger(ledgerFile, out);
+      await writeJsonAtomic(ledgerFile, out);
       return { ledger: path.relative(cwd, ledgerFile) || ledgerFile, entry, replaced, entries: out.entries.length };
-    });
+    }, io.lockOpts);
   }
 
   const expired = (l) => l.entries.filter((e) => isExpired(e, day));
@@ -329,10 +259,10 @@ export async function run(args, io = {}) {
   // nothing to write: read without the lock, so a read-only checkout works and nothing is created
   const peek = await readLedger(ledgerFile, { mustExist: false });
   if (!expired(peek).length) return { ledger: rel, date: day, pruned: [], remaining: peek.entries.length };
-  return withLock(ledgerFile, async () => {
+  return withStateLock(ledgerFile, async () => {
     const ledger = await readLedger(ledgerFile, { mustExist: false });
     const pruned = expired(ledger);
-    if (pruned.length) await writeLedger(ledgerFile, { ...ledger, entries: ledger.entries.filter((e) => !isExpired(e, day)) });
+    if (pruned.length) await writeJsonAtomic(ledgerFile, { ...ledger, entries: ledger.entries.filter((e) => !isExpired(e, day)) });
     return { ledger: rel, date: day, pruned, remaining: ledger.entries.length - pruned.length };
-  });
+  }, io.lockOpts);
 }

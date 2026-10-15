@@ -13,6 +13,9 @@ async function tmp(fn) {
   try { return await fn(dir); } finally { await fs.rm(dir, { recursive: true, force: true }); }
 }
 const io = (cwd, stdin = '') => ({ cwd, stdin: async () => stdin, env: {} });
+// short lock timing so pre-aged locks are judged stale quickly (plumbing only)
+const LOCK = { staleMs: 300, waitMs: 20000, pollMs: 5 };
+const lio = (cwd) => ({ ...io(cwd), lockOpts: LOCK });
 const code = async (p) => { try { await p; return null; } catch (e) { return e.code; } };
 
 describe('noise-ledger: planning', () => {
@@ -215,9 +218,7 @@ describe('noise-ledger: ledger lifecycle (r2)', () => {
   it('a stale lock file is broken and the lock is released', () => tmp(async (dir) => {
     const p = path.join(dir, 'ledger.json');
     await fs.writeFile(`${p}.lock`, '');
-    const old = new Date(Date.now() - 600000);
-    await fs.utimes(`${p}.lock`, old, old);
-    await nl.run(['accept', '--ledger', p, '--id', 'a', '--reason', 'r', '--now', NOW], io(dir));
+    await nl.run(['accept', '--ledger', p, '--id', 'a', '--reason', 'r', '--now', NOW], lio(dir));
     assert.equal(JSON.parse(await fs.readFile(p, 'utf-8')).entries.length, 1);
     await assert.rejects(fs.stat(`${p}.lock`));
   }));
@@ -226,9 +227,7 @@ describe('noise-ledger: ledger lifecycle (r2)', () => {
       await tmp(async (dir) => {
         const p = path.join(dir, 'ledger.json');
         await fs.writeFile(`${p}.lock`, 'dead-run');
-        const old = new Date(Date.now() - 600000);
-        await fs.utimes(`${p}.lock`, old, old);
-        await Promise.all(Array.from({ length: 8 }, (_, i) => nl.run(['accept', '--ledger', p, '--id', `id${i}`, '--reason', 'r', '--now', NOW], io(dir))));
+        await Promise.all(Array.from({ length: 8 }, (_, i) => nl.run(['accept', '--ledger', p, '--id', `id${i}`, '--reason', 'r', '--now', NOW], lio(dir))));
         const l = JSON.parse(await fs.readFile(p, 'utf-8'));
         assert.deepEqual(l.entries.map(e => e.id), Array.from({ length: 8 }, (_, i) => `id${i}`));
         assert.deepEqual((await fs.readdir(dir)).sort(), ['ledger.json']);
@@ -242,11 +241,9 @@ describe('noise-ledger: ledger lifecycle (r2)', () => {
       await tmp(async (dir) => {
         const p = path.join(dir, 'ledger.json');
         await fs.writeFile(`${p}.lock`, 'dead-run');
-        const old = new Date(Date.now() - 600000);
-        await fs.utimes(`${p}.lock`, old, old);
         const child = (i) => new Promise((resolve, reject) => {
           const c = spawn(process.execPath, ['--input-type=module', '-e',
-            `import * as nl from ${JSON.stringify(mod)}; await nl.run(['accept','--ledger',${JSON.stringify(p)},'--id','id${i}','--reason','r','--now','${NOW}'], {cwd:${JSON.stringify(dir)}, env:{}});`], { stdio: 'inherit' });
+            `import * as nl from ${JSON.stringify(mod)}; await nl.run(['accept','--ledger',${JSON.stringify(p)},'--id','id${i}','--reason','r','--now','${NOW}'], {cwd:${JSON.stringify(dir)}, env:{}, lockOpts:${JSON.stringify(LOCK)}});`], { stdio: 'inherit' });
           c.on('error', reject);
           c.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`child ${i} exited ${code}`))));
         });
@@ -257,7 +254,22 @@ describe('noise-ledger: ledger lifecycle (r2)', () => {
       });
     }
   });
-  it('prune with nothing expired takes no lock and creates nothing (r3)', () => tmp(async (dir) => {
+    it('a stale-check that is slow cannot make a waiter remove a fresh lock (r4)', async () => {
+    const real = fs.stat;
+    fs.stat = async (...a) => { const r = await real(...a); await new Promise((res) => setTimeout(res, Math.random() * 15)); return r; };
+    try {
+      for (let t = 0; t < 30; t++) {
+        await tmp(async (dir) => {
+          const p = path.join(dir, 'ledger.json');
+          await fs.writeFile(`${p}.lock`, 'dead-run');
+          await Promise.all(Array.from({ length: 8 }, (_, i) => nl.run(['accept', '--ledger', p, '--id', `id${i}`, '--reason', 'r', '--now', NOW], lio(dir))));
+          const l = JSON.parse(await fs.readFile(p, 'utf-8'));
+          assert.equal(l.entries.length, 8);
+        });
+      }
+    } finally { fs.stat = real; }
+  });
+it('prune with nothing expired takes no lock and creates nothing (r3)', () => tmp(async (dir) => {
     const missing = path.join(dir, 'sub', 'ledger.json');
     const r0 = await nl.run(['prune', '--ledger', missing, '--now', NOW], io(dir));
     assert.deepEqual(r0.pruned, []);
