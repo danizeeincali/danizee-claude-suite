@@ -61,3 +61,5 @@
 {"kind":"unit","status":"green","stream":"finding-triage-with-fingerprint-dedup-an","commit":"faeadc5","id":"cb1703a6-3202-43eb-bdeb-6af2b2836e0c","ts":"2026-10-15T18:05:31.491Z"}
 {"kind":"unit","status":"green","stream":"finding-triage-with-fingerprint-dedup-an","commit":"faeadc5","id":"58e384ef-da10-4172-adc6-d7ac0b32b7c0","ts":"2026-10-15T18:07:14.446Z"}
 {"kind":"unit","status":"green","stream":"noise-ledger-with-flake-quarantine","commit":"e8b42b8","id":"7e0fc757-0a7d-401d-a5c0-68c27ae5185c","ts":"2026-10-15T18:08:02.083Z"}
+{"kind":"unit","status":"green","stream":"trouble-log-reflection-into-lesson-memor","commit":"3ba9514","id":"1d9e50ae-5ad7-47fd-86a7-7dab5c5efc9d","ts":"2026-10-15T18:10:02.345Z"}
+{"kind":"unit","status":"green","stream":"exit-code-contract-separating-infrastruc","commit":"3edc771","id":"942be267-c16a-447d-97ce-1bb2f6f830cb","ts":"2026-10-15T18:10:19.532Z"}

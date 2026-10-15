@@ -231,3 +231,8 @@
 {"role":"fix","model":"sonnet","stream":"trouble-log-reflection-into-lesson-memor","budget":150000,"event":"spawn","id":"14a8b9ed-98d7-45a7-9e33-856f6ebe2535","ts":"2026-10-15T18:08:06.439Z"}
 {"helper_id":"d5d36f17-41a1-419d-8372-c0726a4dea3c","tokens":96794,"outcome":"green","event":"done","id":"0a69a290-fe87-4d17-969d-808bd32cc02e","ts":"2026-10-15T18:08:13.906Z"}
 {"role":"fix","model":"sonnet","stream":"exit-code-contract-separating-infrastruc","budget":150000,"event":"spawn","id":"3dd9b52c-dbb0-47f1-976f-2804a2c316d5","ts":"2026-10-15T18:08:14.931Z"}
+{"helper_id":"14a8b9ed-98d7-45a7-9e33-856f6ebe2535","tokens":65109,"outcome":"green","event":"done","id":"4d6da838-4349-4f89-a9c1-88f15a37e589","ts":"2026-10-15T18:09:47.787Z"}
+{"role":"review","model":"opus","stream":"trouble-log-reflection-into-lesson-memor","budget":150000,"event":"spawn","id":"9341b607-33ad-4bbf-bedb-4de5f080442d","ts":"2026-10-15T18:10:06.718Z"}
+{"helper_id":"3dd9b52c-dbb0-47f1-976f-2804a2c316d5","tokens":80678,"outcome":"green","event":"done","id":"539aa562-4bb3-4c6c-856f-d9d961d5e6a0","ts":"2026-10-15T18:10:11.654Z"}
+{"role":"review","model":"opus","stream":"exit-code-contract-separating-infrastruc","budget":150000,"event":"spawn","id":"fa081630-a730-4b3e-9628-d46a906b0d59","ts":"2026-10-15T18:10:23.406Z"}
+{"helper_id":"e56ec67e-68c4-49d5-95f4-0ba6106d4291","tokens":89644,"outcome":"green","event":"done","id":"bfd37b6e-3646-49a9-9c68-59fac670a23c","ts":"2026-10-15T18:10:31.006Z"}

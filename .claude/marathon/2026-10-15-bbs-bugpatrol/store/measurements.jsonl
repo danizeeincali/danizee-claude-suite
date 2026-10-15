@@ -37,3 +37,6 @@
 {"key":"packaged_sarif-junit-and-sticky-pr-comment-render","value":true,"id":"ffd36077-8f77-4faf-90ab-afd50e40fbd1","ts":"2026-10-15T17:45:29.617Z"}
 {"key":"egress_zero_sarif-junit-and-sticky-pr-comment-render","value":true,"id":"9eeea8e3-ee61-44ed-a160-8a27ceb34486","ts":"2026-10-15T17:45:29.757Z"}
 {"key":"callers_sarif-junit-and-sticky-pr-comment-render","value":0,"id":"91fcd574-5989-4ae4-8e10-e3012661a893","ts":"2026-10-15T17:45:29.904Z"}
+{"key":"packaged_finding-triage-with-fingerprint-dedup-an","value":true,"id":"fd6d5818-3484-4454-910f-ed523576c19e","ts":"2026-10-15T18:10:36.279Z"}
+{"key":"egress_zero_finding-triage-with-fingerprint-dedup-an","value":true,"id":"3241b700-7280-4bfb-a551-f43c58a42c21","ts":"2026-10-15T18:10:36.490Z"}
+{"key":"callers_finding-triage-with-fingerprint-dedup-an","value":0,"id":"8e135e02-d317-4a05-abd3-83d04b0cd066","ts":"2026-10-15T18:10:36.678Z"}
