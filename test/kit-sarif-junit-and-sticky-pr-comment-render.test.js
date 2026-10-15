@@ -110,8 +110,8 @@ describe('JUnit reserved suites', () => {
     assert.match(x, /errors="1"/);
     assert.match(x, /failures="1"/);
     assert.equal((x.match(/<testcase /g) || []).length, 4);
-    assert.match(x, /<testcase name="x" classname="unattributed">\s*</testcase>/);
-    assert.match(x, /<testcase name="run-completed" classname="run">\s*</testcase>/);
+    assert.match(x, /<testcase name="x" classname="unattributed">\s*<\/testcase>/);
+    assert.match(x, /<testcase name="run-completed" classname="run">\s*<\/testcase>/);
   });
 });
 
