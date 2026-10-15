@@ -31,7 +31,7 @@ import { KitExit } from './kit-exit.js';
 import { withStateLock, readJsonState, writeJsonAtomic } from './state-lock.js';
 
 export const verb = 'noise-ledger';
-export const usage = 'cli.js noise-ledger apply [--in <file>] [--cap N] [--first-run] [--ledger <path>] [--now <date>] | accept --id <id> --reason <text> [--expires YYYY-MM-DD] | prune   '
+export const usage = 'cli.js noise-ledger apply [--in <file>] [--cap N] [--first-run] [--ledger <path>] [--now <date>] | accept --id <id> --reason <text> [--expires YYYY-MM-DD] [--ledger <path>] [--now <date>] | prune [--ledger <path>] [--now <date>]   (--in - = stdin)  '
   + '(findings JSON on stdin: ranks by severity then places touched, files the top N and folds the rest, quarantines findings that never reproduced on 2+ retries, '
   + 'reports ledger-accepted ones, --first-run never blocks; advisory: exit 0 even with findings, 1 for invalid input)';
 
@@ -41,6 +41,8 @@ export const QUARANTINE_AFTER = 2;
 export const LEDGER_VERSION = 1;
 const SEVERITY_RANK = { high: 0, medium: 1, low: 2 };
 const invalid = (m) => new KitExit(m, 1);
+/** An untrusted value for an error message: JSON-escaped (no raw control bytes), capped at 80 characters. */
+const q = (v) => JSON.stringify(String(v)).slice(0, 80);
 
 // ================================================================ dates
 
@@ -63,7 +65,7 @@ export function parseDate(v) {
 function today(now) {
   if (now === undefined) return new Date().toISOString().slice(0, 10);
   const d = now instanceof Date ? (Number.isNaN(now.getTime()) ? null : now.toISOString().slice(0, 10)) : parseDate(now);
-  if (!d) throw invalid(`--now ${JSON.stringify(String(now)).slice(0, 40)} is not a date (YYYY-MM-DD)`);
+  if (!d) throw invalid(`--now ${q(now)} is not a date (YYYY-MM-DD)`);
   return d;
 }
 
@@ -75,7 +77,7 @@ export const isExpired = (entry, day) => entry.expires != null && entry.expires 
 const str = (v) => typeof v === 'string' && v.trim() !== '';
 const count = (v, what, id) => {
   if (v === undefined) return 0;
-  if (!Number.isInteger(v) || v < 0) throw invalid(`finding ${id}: ${what} must be a whole number >= 0`);
+  if (!Number.isInteger(v) || v < 0) throw invalid(`finding ${q(id)}: ${what} must be a whole number >= 0`);
   return v;
 };
 
@@ -87,19 +89,19 @@ export function normalizeFindings(list) {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw invalid(`finding #${i + 1} is not an object`);
     const id = str(raw.id) ? raw.id : raw.fingerprint;
     if (!str(id)) throw invalid(`finding #${i + 1} needs an id or fingerprint`);
-    if (seen.has(id)) throw invalid(`duplicate finding id ${JSON.stringify(id).slice(0, 80)}`);
+    if (seen.has(id)) throw invalid(`duplicate finding id ${q(id)}`);
     seen.add(id);
-    if (!Object.hasOwn(SEVERITY_RANK, raw.severity)) throw invalid(`finding ${id}: severity must be high, medium or low`);
+    if (!Object.hasOwn(SEVERITY_RANK, raw.severity)) throw invalid(`finding ${q(id)}: severity must be high, medium or low`);
     const places = [];
     for (const k of ['locations', 'screens', 'files']) {
       if (raw[k] === undefined) continue;
-      if (!Array.isArray(raw[k]) || raw[k].some((x) => !str(x))) throw invalid(`finding ${id}: ${k} must be a list of non-empty strings`);
+      if (!Array.isArray(raw[k]) || raw[k].some((x) => !str(x))) throw invalid(`finding ${q(id)}: ${k} must be a list of non-empty strings`);
       places.push(...raw[k]);
     }
-    if (raw.rule !== undefined && typeof raw.rule !== 'string') throw invalid(`finding ${id}: rule must be a string`);
+    if (raw.rule !== undefined && typeof raw.rule !== 'string') throw invalid(`finding ${q(id)}: rule must be a string`);
     const failures = count(raw.failures, 'failures', id);
     const reproductions = count(raw.reproductions, 'reproductions', id);
-    if (reproductions > failures) throw invalid(`finding ${id}: reproductions (${reproductions}) exceed failures (${failures})`);
+    if (reproductions > failures) throw invalid(`finding ${q(id)}: reproductions (${reproductions}) exceed failures (${failures})`);
     return { id, severity: raw.severity, rule: raw.rule ?? null, locations: [...new Set(places)].sort(), failures, reproductions };
   });
 }
@@ -112,11 +114,11 @@ export function normalizeLedger(l) {
   const seen = new Set();
   const entries = l.entries.map((e, i) => {
     if (!e || typeof e !== 'object' || !str(e.id)) throw invalid(`ledger entry #${i + 1} needs an id`);
-    if (seen.has(e.id)) throw invalid(`ledger has a duplicate id ${JSON.stringify(e.id).slice(0, 80)}`);
+    if (seen.has(e.id)) throw invalid(`ledger has a duplicate id ${q(e.id)}`);
     seen.add(e.id);
-    if (e.expires != null && (typeof e.expires !== 'string' || parseDate(e.expires) !== e.expires)) throw invalid(`ledger entry ${e.id}: expires must be a real YYYY-MM-DD date`);
-    if (e.reason != null && typeof e.reason !== 'string') throw invalid(`ledger entry ${e.id}: reason must be a string`);
-    if (e.added != null && typeof e.added !== 'string') throw invalid(`ledger entry ${e.id}: added must be a string`);
+    if (e.expires != null && (typeof e.expires !== 'string' || parseDate(e.expires) !== e.expires)) throw invalid(`ledger entry ${q(e.id)}: expires must be a real YYYY-MM-DD date`);
+    if (e.reason != null && typeof e.reason !== 'string') throw invalid(`ledger entry ${q(e.id)}: reason must be a string`);
+    if (e.added != null && typeof e.added !== 'string') throw invalid(`ledger entry ${q(e.id)}: added must be a string`);
     return { ...e, id: e.id, reason: e.reason ?? '', ...(e.added != null ? { added: e.added } : {}), ...(e.expires != null ? { expires: e.expires } : {}) };
   });
   entries.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -194,7 +196,7 @@ export function parseArgs(args) {
       continue;
     }
     if (!name && f.cmd === null) { f.cmd = a; continue; }
-    throw invalid(`${name ? 'unknown flag' : 'unexpected argument'} ${a} (see --help)`);
+    throw invalid(`${name ? 'unknown flag' : 'unexpected argument'} ${q(a)} (see --help)`);
   }
   return f;
 }
@@ -221,7 +223,7 @@ export async function run(args, io = {}) {
     }
     let text;
     if (f.in !== undefined && f.in !== '-') {
-      try { text = await fs.readFile(path.resolve(cwd, f.in), 'utf-8'); } catch (e) { throw invalid(`cannot read ${f.in}: ${e.code || e.message}`); }
+      try { text = await fs.readFile(path.resolve(cwd, f.in), 'utf-8'); } catch (e) { throw invalid(`cannot read ${q(f.in)}: ${e.code || e.message}`); }
     } else {
       if (io.stdinIsTTY) throw invalid('give findings on stdin or --in <file>');
       text = io.stdin ? await io.stdin() : '';
@@ -240,7 +242,7 @@ export async function run(args, io = {}) {
     let expires;
     if (f.expires !== undefined) {
       if (parseDate(f.expires) !== f.expires) throw invalid('--expires must be a real YYYY-MM-DD date');
-      if (f.expires < day) throw invalid(`--expires ${f.expires} is already in the past`);
+      if (f.expires < day) throw invalid(`--expires ${q(f.expires)} is already in the past`);
       expires = f.expires;
     }
     return withStateLock(ledgerFile, async () => {

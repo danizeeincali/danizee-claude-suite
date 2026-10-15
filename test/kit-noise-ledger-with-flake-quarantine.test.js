@@ -308,3 +308,41 @@ it('prune with nothing expired takes no lock and creates nothing (r3)', () => tm
     assert.equal((await nl.run(['prune', '--ledger', p, '--now', NOW], io(dir))).remaining, 2);
   }));
 });
+
+describe('noise-ledger: error text is terminal-safe', () => {
+  const EVIL = 'a\u001b[31mRED\nkit: ok';
+  const clean = (m) => assert.ok(!/[\u0000-\u001f\u007f]/.test(m), `control bytes in: ${JSON.stringify(m)}`);
+  const msg = (fn) => { try { fn(); } catch (e) { return e.message; } assert.fail('expected a throw'); };
+  it('finding ids with control characters are escaped in every message', () => {
+    const base = { id: EVIL, severity: 'high' };
+    for (const bad of [
+      { ...base, severity: 'bad' }, { ...base, locations: 'x' }, { ...base, rule: 5 },
+      { ...base, failures: -1 }, { ...base, failures: 1, reproductions: 2 }
+    ]) {
+      const m = msg(() => nl.normalizeFindings([bad]));
+      clean(m);
+      assert.ok(m.includes('\\u001b'), m);
+    }
+  });
+  it('ledger ids with control characters are escaped', () => {
+    for (const bad of [{ expires: 'nope' }, { reason: 5 }, { added: 5 }]) {
+      const m = msg(() => nl.normalizeLedger({ entries: [{ id: EVIL, ...bad }] }));
+      clean(m);
+    }
+  });
+  it('flag values echoed in errors are escaped', () => tmp(async (dir) => {
+    const e = await nl.run(['apply', '--in', 'no\u001b[2Jfile\nx'], io(dir)).catch((x) => x);
+    clean(e.message);
+    const e2 = await nl.run(['bogus\u001b[0m'], io(dir)).catch((x) => x);
+    clean(e2.message);
+  }));
+});
+
+describe('noise-ledger: --help', () => {
+  it('lists --ledger/--now for accept and prune and says --in - is stdin', async () => {
+    const { usage } = await nl.run(['--help'], {});
+    assert.match(usage, /accept --id <id> --reason <text> \[--expires YYYY-MM-DD\] \[--ledger <path>\] \[--now <date>\]/);
+    assert.match(usage, /prune \[--ledger <path>\] \[--now <date>\]/);
+    assert.match(usage, /--in - = stdin/);
+  });
+});
