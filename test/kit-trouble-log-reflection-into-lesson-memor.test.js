@@ -5,10 +5,16 @@ import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
-import { run, troubleLog, overlap, checkLessonText, saveLesson, withLock } from '../src/lib/kit/reflect.js';
+import { run, troubleLog, overlap, checkLessonText, saveLesson } from '../src/lib/kit/reflect.js';
+import { withStateLock as withLock } from '../src/lib/kit/state-lock.js';
 
 const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '../src/lib/kit/cli.js');
 const jl = (arr) => arr.map((o) => JSON.stringify(o)).join('\n');
+// A lock left by a process that no longer exists on this host: the shared lock breaks it at once.
+async function deadHolder() {
+  const pid = await new Promise((res) => { const p = spawn(process.execPath, ['-e', '0'], { stdio: 'ignore' }); p.on('close', () => res(p.pid)); });
+  return JSON.stringify({ token: 'dead-token', pid, host: os.hostname(), beat: 0 });
+}
 async function tmp() { return fs.mkdtemp(path.join(os.tmpdir(), 'reflect-')); }
 async function call(args, cwd, stdin = '') {
   try { return { code: 0, out: await run(args, { cwd, stdin: async () => stdin, stdinIsTTY: false, env: {} }) }; } catch (e) { return { code: e.code ?? 99, err: e.message }; }
@@ -100,6 +106,43 @@ describe('reflect trouble-log', () => {
       assert.equal((await call(['trouble-log'], d, '[1]')).code, 1);
       assert.equal((await call(['trouble-log', '--in', 'missing'], d)).code, 1);
       assert.equal((await call(['trouble-log', '--max-lines', '0'], d, '')).code, 1);
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+  it('a secret with a quote or backslash inside an object error never reaches a failed line', () => {
+    const secret = 'pa"ss\\-LONGSECRET';
+    const ev = [{ type: 'tool', name: 'Login', input: {}, ok: false, error: { message: 'bad password ' + secret } }];
+    const out = JSON.stringify(troubleLog(ev, { secrets: [secret] }));
+    assert.ok(!out.includes('LONGSECRET'), out);
+    assert.ok(troubleLog(ev, { secrets: [secret] }).lines.some((l) => l.startsWith('failed: Login')));
+  });
+  it('a secret with a tab or two spaces inside a string error never reaches a failed line', () => {
+    for (const secret of ['my\tpass-LONGSECRET', 'my  pass-LONGSECRET']) {
+      const ev = [{ type: 'tool', name: 'Login', input: {}, ok: false, error: 'bad ' + secret }];
+      assert.ok(!JSON.stringify(troubleLog(ev, { secrets: [secret] })).includes('LONGSECRET'));
+    }
+  });
+  it('a secret in a transcript tool_result error block never reaches a failed line', () => {
+    const secret = 'tok"en\\-LONGSECRET';
+    const ev = [
+      { type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'x' } }] } },
+      { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', is_error: true, content: [{ type: 'text', text: 'denied ' + secret }] }] } }
+    ];
+    const r = troubleLog(ev, { secrets: [secret] });
+    assert.ok(!JSON.stringify(r).includes('LONGSECRET'));
+    assert.ok(r.lines.some((l) => l.startsWith('failed: Bash')));
+  });
+  it('empty or unrecognised input is exit 1, never a clean log', async () => {
+    for (const objs of [[], [{ type: 'message' }, { event: 'tool_call' }]]) {
+      assert.throws(() => troubleLog(objs), (e) => e.code === 1);
+    }
+    const d = await tmp();
+    try {
+      assert.equal((await call(['trouble-log'], d, '')).code, 1);
+      assert.equal((await call(['trouble-log'], d, '\n  \n')).code, 1);
+      assert.equal((await call(['trouble-log'], d, jl([{ type: 'message' }, { event: 'tool_call' }]))).code, 1);
+      await fs.writeFile(path.join(d, 'e.jsonl'), '');
+      assert.equal((await call(['trouble-log', '--in', 'e.jsonl'], d)).code, 1);
+      assert.equal((await call(['trouble-log'], d, jl([{ type: 'message' }, { type: 'stop', reason: 'end_turn' }]))).code, 0);
     } finally { await fs.rm(d, { recursive: true, force: true }); }
   });
 });
@@ -221,14 +264,21 @@ describe('reflect lessons', () => {
       assert.deepEqual((await fs.readdir(path.join(d, '.claude/kit'))).sort(), ['lessons.json']);
     } finally { await fs.rm(d, { recursive: true, force: true }); }
   });
+  it('list reads without taking the lock, so a held lock does not block it', async () => {
+    const d = await tmp();
+    try {
+      await fs.mkdir(path.join(d, '.claude/kit'), { recursive: true });
+      await fs.writeFile(path.join(d, '.claude/kit/lessons.json'), JSON.stringify({ version: 1, lessons: [{ id: 'L1', role: 'r', text: 'Do a thing well.', status: 'active' }] }));
+      await fs.writeFile(path.join(d, '.claude/kit/lessons.json.lock'), JSON.stringify({ token: 't', pid: process.pid, host: os.hostname(), beat: 0 }));
+      assert.equal((await call(['lessons', 'list'], d)).out.lessons.length, 1);
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
   it('a stale lock is broken', async () => {
     const d = await tmp();
     try {
       await fs.mkdir(path.join(d, '.claude/kit'), { recursive: true });
       const lock = path.join(d, '.claude/kit/lessons.json.lock');
-      await fs.writeFile(lock, 'old-token');
-      const old = new Date(Date.now() - 60000);
-      await fs.utimes(lock, old, old);
+      await fs.writeFile(lock, await deadHolder());
       assert.equal((await save(d, ['--role', 'r', '--text', 'Check logs before restarting the daemon.'])).code, 0);
       assert.deepEqual((await fs.readdir(path.join(d, '.claude/kit'))).sort(), ['lessons.json']);
     } finally { await fs.rm(d, { recursive: true, force: true }); }
@@ -239,14 +289,16 @@ describe('reflect lessons', () => {
       const store = path.join(d, 'k/lessons.json');
       await fs.mkdir(path.dirname(store), { recursive: true });
       const lock = store + '.lock';
-      await fs.writeFile(lock, 'holder-token');
-      const beat = setInterval(() => { const n = new Date(); fs.utimes(lock, n, n).catch(() => {}); }, 20);
+      const holder = (n) => JSON.stringify({ token: 'holder-token', pid: process.pid, host: os.hostname(), beat: n });
+      await fs.writeFile(lock, holder(0));
+      let n = 0;
+      const beat = setInterval(() => { fs.writeFile(lock, holder(++n)).catch(() => {}); }, 20);
       let ran = false;
       try {
         await assert.rejects(withLock(store, async () => { ran = true; }, { staleMs: 200, waitMs: 400 }), (e) => e.code === 1 && /locked/.test(e.message));
       } finally { clearInterval(beat); }
       assert.equal(ran, false);
-      assert.equal(await fs.readFile(lock, 'utf-8'), 'holder-token');
+      assert.equal(JSON.parse(await fs.readFile(lock, 'utf-8')).token, 'holder-token');
     } finally { await fs.rm(d, { recursive: true, force: true }); }
   });
   it('the total wait is longer than the stale age, so a waiter reaches the break path', async () => {
@@ -256,7 +308,7 @@ describe('reflect lessons', () => {
       await fs.mkdir(path.dirname(store), { recursive: true });
       await fs.writeFile(store + '.lock', 'dead');
       let ran = false;
-      await withLock(store, async () => { ran = true; }, { staleMs: 300, waitMs: 10 });
+      await withLock(store, async () => { ran = true; }, { staleMs: 300, waitMs: 1500 });
       assert.equal(ran, true);
     } finally { await fs.rm(d, { recursive: true, force: true }); }
   });
@@ -274,8 +326,6 @@ describe('reflect lessons', () => {
       await fs.rm(lock);
       await fs.writeFile(lock, 'dead');
       await fs.writeFile(lock + '.break', '');
-      const old = new Date(Date.now() - 5000);
-      await fs.utimes(lock, old, old); await fs.utimes(lock + '.break', old, old);
       await withLock(store, async () => {}, { staleMs: 100, waitMs: 2000 });
       await assert.rejects(fs.stat(lock + '.break'));
     } finally { await fs.rm(d, { recursive: true, force: true }); }
@@ -286,9 +336,7 @@ describe('reflect lessons', () => {
       try {
         await fs.mkdir(path.join(d, '.claude/kit'), { recursive: true });
         const lock = path.join(d, '.claude/kit/lessons.json.lock');
-        await fs.writeFile(lock, 'dead-token');
-        const old = new Date(Date.now() - 60000);
-        await fs.utimes(lock, old, old);
+        await fs.writeFile(lock, await deadHolder());
         const names = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
         const codes = await Promise.all(names.map((t) => new Promise((res) => {
           const p = spawn(process.execPath, [CLI, 'reflect', 'lessons', 'save', '--role', 'r', '--session', 's' + t, '--distinct', '--text', `Verify ${t}${t}${t} ${t}${t}x ${t}${t}y config before deploy.`], { cwd: d, stdio: 'ignore' });

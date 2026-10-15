@@ -27,14 +27,16 @@
  * as deliberately different). Near match = Jaccard overlap >= --threshold (default 0.5) of the normalised word sets
  * (lower-cased, punctuation dropped, stop words dropped, a trailing plural "s" dropped). A lesson may be saved for
  * another role. Retired lessons stay in the file with their reason and are hidden from `list` unless --all.
- * Writes are atomic (UUID-named temp file, then rename) and every change holds an exclusive `<store>.lock` file
- * (random token, bounded retry, stale lock broken under a `.lock.break` lock after 10 s) from load to save, so parallel saves are all kept; a leading BOM is ignored. Exit 0 done, 1 invalid input, 2 refused save.
+ * Every change holds the shared state lock (./state-lock.js: `<store>.lock`, heartbeat, stale-lock break) from load to
+ * save and writes atomically through it, so parallel saves are all kept; `list` only reads and takes no lock. A leading
+ * BOM is ignored. trouble-log exits 1 when its input has no events it recognises (empty, or neither shape).
+ * Exit 0 done, 1 invalid input, 2 refused save.
  * Built from ideas audited by /w-bbs (run 2026-10-15-bugpatrol); no foreign code.
  */
-import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
+import { withStateLock, readJsonState, writeJsonAtomic } from './state-lock.js';
 import { redactSecrets, parseSecretsFile, secretsRoots, loadProjectSecrets } from './redact.js';
 
 export const verb = 'reflect';
@@ -76,14 +78,17 @@ export function parseJsonl(text) {
   return out;
 }
 
-/** Detect each object's shape and produce one flat list: {type:'tool'|'wait'|'stop', ...}. */
+/** Detect each object's shape and produce one flat list: {type:'tool'|'wait'|'stop', ...}; `recognised` counts the objects that matched a shape. A tool event's `error` stays RAW so it can be redacted before it is flattened. */
 export function normalizeEvents(objs) {
   const events = [];
   const pending = new Map(); // tool_use id -> event
   let stop = null;
+  let recognised = 0;
   for (const o of objs) {
+    if ((o.type === 'tool' && typeof o.name === 'string') || o.type === 'wait' || o.type === 'stop'
+      || ((o.type === 'assistant' || o.type === 'user') && o.message && Array.isArray(o.message.content))) recognised++;
     if (o.type === 'tool' && typeof o.name === 'string') {
-      events.push({ type: 'tool', name: o.name, input: o.input, ok: o.ok !== false, error: o.error == null ? '' : textOf(o.error) });
+      events.push({ type: 'tool', name: o.name, input: o.input, ok: o.ok !== false, error: o.error == null ? '' : o.error });
     } else if (o.type === 'wait') events.push({ type: 'wait' });
     else if (o.type === 'stop') stop = String(o.reason ?? '');
     else if ((o.type === 'assistant' || o.type === 'user') && o.message && Array.isArray(o.message.content)) {
@@ -96,7 +101,7 @@ export function normalizeEvents(objs) {
         } else if (b.type === 'tool_result' && pending.has(b.tool_use_id) && b.is_error === true) {
           const ev = pending.get(b.tool_use_id);
           ev.ok = false;
-          ev.error = textOf(b.content);
+          ev.error = b.content;
         }
       }
       if (o.type === 'assistant' && typeof o.message.stop_reason === 'string') stop = o.message.stop_reason;
@@ -108,7 +113,7 @@ export function normalizeEvents(objs) {
       ev.type = 'wait';
     }
   }
-  return { events, stop };
+  return { events, stop, recognised };
 }
 
 const stable = (v) => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x)
@@ -127,6 +132,11 @@ export function findSignals(events, stop, opts = {}) {
   const repeatMin = opts.repeatMin ?? DEFAULTS.repeatMin;
   const targetMin = opts.targetMin ?? DEFAULTS.targetMin;
   const waitRun = opts.waitRun ?? DEFAULTS.waitRun;
+  // Input and error are redacted value by value BEFORE they are serialised or collapsed: JSON escaping (\" and \\) and
+  // whitespace collapsing would otherwise stop a secret matching.
+  const safe = (v) => (typeof v === 'string' ? redactSecrets(v, opts.secrets || []).text
+    : Array.isArray(v) ? v.map(safe)
+      : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [safe(k), safe(x)])) : v);
   const failures = [];
   const waits = [];
   const repeats = [];
@@ -135,7 +145,7 @@ export function findSignals(events, stop, opts = {}) {
   for (const e of events) {
     if (e.type === 'tool' && !e.ok) {
       const t = targetOf(e.input);
-      failures.push(`failed: ${e.name}${t ? ` ${t}` : ''}${e.error ? ` - ${oneLine(e.error)}` : ''}`);
+      failures.push(`failed: ${e.name}${t ? ` ${t}` : ''}${e.error ? ` - ${oneLine(textOf(safe(e.error)))}` : ''}`);
     }
   }
   let run = 0;
@@ -153,10 +163,6 @@ export function findSignals(events, stop, opts = {}) {
     const t = isEditCall(e) ? (targetOf(e.input) || (/computer/i.test(e.name) ? 'the focused field' : null)) : null;
     if (t) edits.set(t, (edits.get(t) || 0) + 1);
   }
-  // The input is redacted value by value BEFORE it is serialised: JSON escaping (\" and \\) would otherwise stop a secret matching.
-  const safe = (v) => (typeof v === 'string' ? redactSecrets(v, opts.secrets || []).text
-    : Array.isArray(v) ? v.map(safe)
-      : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [safe(k), safe(x)])) : v);
   for (const s of same.values()) if (s.n >= repeatMin) repeats.push(`repeated: ${s.name} ${s.n} times with identical input ${oneLine(stable(safe(s.input)))}`);
   for (const [t, n] of edits) if (n >= targetMin) targets.push(`same target edited ${n} times: ${t}`);
 
@@ -174,7 +180,9 @@ function cap(text, max) {
  * is shortened.
  */
 export function troubleLog(objs, { secrets = [], maxLines = DEFAULTS.maxLines, maxLineLength = DEFAULTS.maxLineLength, ...rest } = {}) {
-  const { events, stop } = normalizeEvents(objs);
+  const { events, stop, recognised } = normalizeEvents(objs);
+  if (!objs.length) throw invalid('the input has no events; trouble-log needs a JSON Lines event log (a wiring mistake would otherwise read as a clean session)');
+  if (!recognised) throw invalid(`none of the ${objs.length} input lines is a known event shape (tool, wait, stop or a transcript message); refusing to report a clean log`);
   const sig = findSignals(events, stop, { ...rest, secrets });
   const clean = sig.lines.map((l) => cap(redactSecrets(l, secrets).text, maxLineLength));
   const lines = clean.slice(0, maxLines);
@@ -228,82 +236,9 @@ export function checkLessonText(text) {
 }
 
 async function loadStore(file) {
-  let raw;
-  try { raw = await fs.readFile(file, 'utf-8'); } catch (e) {
-    if (e.code === 'ENOENT') return { version: 1, lessons: [] };
-    throw invalid(`cannot read lessons store ${file}: ${e.code || 'read failed'}`);
-  }
-  let data;
-  try { data = JSON.parse(raw.replace(/^\uFEFF/, '')); } catch { throw invalid(`lessons store ${file} is not valid JSON`); }
+  const data = await readJsonState(file, { fallback: { version: 1, lessons: [] } });
   if (!data || !Array.isArray(data.lessons)) throw invalid(`lessons store ${file} has no lessons list`);
   return data;
-}
-
-async function saveStore(file, data) {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
-  try {
-    await fs.writeFile(tmp, JSON.stringify(data, null, 2) + '\n', { flag: 'wx' });
-    await fs.rename(tmp, file);
-  } catch (e) {
-    await fs.rm(tmp, { force: true }).catch(() => {});
-    throw invalid(`cannot write lessons store ${file}: ${e.code || 'write failed'}`);
-  }
-}
-
-const LOCK_STALE_MS = 10000;
-const LOCK_WAIT_MS = 20000;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const readText = (f) => fs.readFile(f, 'utf-8').catch(() => null);
-const ageOf = async (f) => { try { return Date.now() - (await fs.stat(f)).mtimeMs; } catch { return null; } };
-
-/**
- * A waiter that judges <lock> stale reads its token T, then takes <lock>.break (wx). While it holds that it re-reads the
- * lock and removes it only if the token is still T (and it is still stale); then it releases the break lock. A break
- * lock older than 2x the stale age may itself be removed.
- */
-async function breakStale(lock, staleMs) {
-  const brk = `${lock}.break`;
-  const age = await ageOf(lock);
-  if (age === null || age <= staleMs) return;
-  const t = await readText(lock);
-  if (t === null) return;
-  let h;
-  try { h = await fs.open(brk, 'wx'); } catch (e) {
-    if (e.code === 'EEXIST') { const a = await ageOf(brk); if (a !== null && a > 2 * staleMs) await fs.rm(brk, { force: true }).catch(() => {}); }
-    return;
-  }
-  try {
-    await h.close();
-    const again = await ageOf(lock);
-    if (again !== null && again > staleMs && await readText(lock) === t) await fs.rm(lock, { force: true });
-  } finally { await fs.rm(brk, { force: true }).catch(() => {}); }
-}
-
-/**
- * Run fn while holding <store>.lock (created with 'wx', holding a random token). The wait is never shorter than 1.5x the
- * stale age, so a waiter always reaches the break path. The lock is removed only if it still holds our token.
- */
-export async function withLock(store, fn, { staleMs = LOCK_STALE_MS, waitMs = LOCK_WAIT_MS } = {}) {
-  await fs.mkdir(path.dirname(store), { recursive: true });
-  const lock = `${store}.lock`;
-  const token = crypto.randomUUID();
-  const deadline = Date.now() + Math.max(waitMs, staleMs * 1.5);
-  for (;;) {
-    try {
-      const h = await fs.open(lock, 'wx');
-      try { await h.writeFile(token); } finally { await h.close(); }
-      break;
-    } catch (e) {
-      if (e.code !== 'EEXIST') throw invalid(`cannot lock lessons store: ${e.code || 'lock failed'}`);
-      await breakStale(lock, staleMs);
-      if (Date.now() > deadline) throw invalid('lessons store is locked by another process; try again');
-      await sleep(15 + Math.floor(Math.random() * 35));
-    }
-  }
-  try { return await fn(); } finally {
-    if (await readText(lock) === token) await fs.rm(lock, { force: true }).catch(() => {});
-  }
 }
 
 const nextId = (lessons) => 'L' + (1 + Math.max(0, ...lessons.map((l) => Number(String(l.id).slice(1)) || 0)));
@@ -452,13 +387,13 @@ export async function run(args, io) {
       if (!Number.isFinite(threshold) || threshold <= 0 || threshold > 1) throw invalid('--threshold must be a number in (0, 1]');
     }
     const maxNew = sub === 'save' ? posInt(flags, 'max-new', DEFAULTS.maxNew) : 0;
-    return withLock(store, async () => {
+    return withStateLock(store, async () => {
       const data = await loadStore(store);
       let result;
       if (sub === 'save') result = saveLesson(data, { role: flags.role, text: flags.text, scope: flags.scope, session: flags.session, maxNew, threshold, confirm: flags.confirm, distinct: !!flags.distinct });
       else if (sub === 'keep') result = keepLesson(data, needText(flags.id, 'id'));
       else result = retireLesson(data, needText(flags.id, 'id'), flags.reason);
-      await saveStore(store, data);
+      await writeJsonAtomic(store, data);
       return result;
     });
   }
