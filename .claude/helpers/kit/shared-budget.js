@@ -25,12 +25,12 @@
  * available remainder. A helper's `spend` releases its reservation; re-granting a helper replaces its reservation.
  * `release --helper <id>` frees the reservation of a helper that died before it could spend (nothing is spent).
  * Time is not reserved (one shared clock) and check grants reserve nothing.
- * Every mutating command holds an exclusive lock file (<state>.lock, O_EXCL, bounded retry) from load to save, so
- * concurrent callers (processes or Promise.all in one process) never lose a write. Each lock holds a random token and is
- * removed only by its owner. A waiter that judges a lock stale (30 s) takes a second lock <state>.lock.break, re-reads the
- * lock and removes it only if the token is still the one it judged stale, so a fresh lock is never stolen; the total
- * wait (45 s) is longer than the stale age, so a waiter always reaches the break path. State writes are atomic
- * (uniquely named temp file + rename). Time never goes backwards: a clock that jumps back adds nothing.
+ * Every mutating command holds the shared state lock (./state-lock.js: <state>.lock, O_EXCL, bounded wait, heartbeat) from
+ * load to save, so concurrent callers (processes or Promise.all in one process) never lose a write. A lock is judged stale
+ * only by the waiter's own monotonic clock (content unchanged for 30 s), never by file mtimes, so clock skew between hosts
+ * cannot break a live lock; a failing break or an unwritable folder ends in exit 1 within the wait bound (60 s). `status`
+ * only reads and takes no lock. State writes are atomic (uniquely named temp file + rename). Time never goes backwards: a
+ * clock that jumps back adds nothing. Test hook: SHARED_BUDGET_LOCK_STALE_MS shortens the stale age (wait = 4x).
  * This is a per-job allowance and sits beside, not inside, the marathon token budget in src/lib/marathon/budget.js.
  *
  * Exit codes: 0 done (including a skip and an overrun), 1 invalid input or corrupt state. No network, no model use.
@@ -38,8 +38,8 @@
  */
 import fs from 'fs/promises';
 import path from 'path';
-import { randomUUID } from 'crypto';
 import { KitExit } from './kit-exit.js';
+import { withStateLock, readJsonState, writeJsonAtomic } from './state-lock.js';
 
 export const verb = 'shared-budget';
 export const usage = 'cli.js shared-budget open|grant|release|start|stop|spend|status --state <file> '
@@ -298,87 +298,29 @@ function num(name, raw) {
 }
 
 async function load(file) {
-  let text;
-  try { text = await fs.readFile(file, 'utf-8'); } catch (e) {
-    if (e.code === 'ENOENT') throw bad(`no budget state at ${file}; run open first`);
-    throw bad(`cannot read ${file}: ${e.code || e.message}`);
-  }
   let data;
-  try { data = JSON.parse(text); } catch { throw bad(`budget state ${file} is not valid JSON`); }
+  try { data = await readJsonState(file); } catch (e) {
+    if (!(e instanceof KitExit)) throw e;
+    if (/does not exist$/.test(e.message)) throw bad(`no budget state at ${file}; run open first`);
+    if (/is not valid JSON$/.test(e.message)) throw bad(`budget state ${file} is not valid JSON`);
+    throw e;
+  }
   return checkState(data);
 }
 
-async function save(file, state) {
-  const tmp = `${file}.${process.pid}.${randomUUID()}.tmp`;
-  try {
-    await fs.writeFile(tmp, JSON.stringify(state, null, 2) + '\n');
-    await fs.rename(tmp, file);
-  } catch (e) {
-    await fs.rm(tmp, { force: true }).catch(() => {});
-    throw bad(`cannot write ${file}: ${e.code || e.message}`);
-  }
-}
+const save = writeJsonAtomic;
 
 export const LOCK_STALE_MS = 30000;
-export const LOCK_WAIT_MS = 45000; // longer than the stale age, so a waiter always reaches the break path
+export const LOCK_WAIT_MS = 2 * LOCK_STALE_MS; // longer than the stale age, so a waiter always reaches the break path
 
-async function writeToken(fh, token) {
-  try { await fh.writeFile(token); } finally { await fh.close(); }
-}
-const tokenOf = (f) => fs.readFile(f, 'utf-8').catch(() => null);
-const ageOf = async (f) => { const st = await fs.stat(f).catch(() => null); return st ? Date.now() - st.mtimeMs : null; };
-
-/** Remove `lock` only if it still holds the token we judged stale, under the <lock>.break lock. Returns once tried. */
-async function breakStale(lock, judged) {
-  const brk = `${lock}.break`;
-  const mine = `${process.pid}.${randomUUID()}`;
-  let fh;
-  try { fh = await fs.open(brk, 'wx'); } catch (e) {
-    if (e.code === 'EEXIST') {
-      const age = await ageOf(brk);
-      if (age !== null && age > 2 * LOCK_STALE_MS) await fs.rm(brk, { force: true }); // a dead breaker
-      return;
-    }
-    return;
-  }
-  try {
-    await writeToken(fh, mine);
-    const now = await tokenOf(lock);
-    const age = await ageOf(lock);
-    if (now === judged && age !== null && age > LOCK_STALE_MS) await fs.rm(lock, { force: true });
-  } finally {
-    if ((await tokenOf(brk)) === mine) await fs.rm(brk, { force: true });
-  }
+function lockOpts(io) {
+  const fsOpt = io && io.lockFs ? { fs: io.lockFs } : {};
+  const n = Number(process.env.SHARED_BUDGET_LOCK_STALE_MS);
+  return Number.isFinite(n) && n > 0 ? { ...fsOpt, staleMs: n, waitMs: 4 * n } : { ...fsOpt, staleMs: LOCK_STALE_MS, waitMs: LOCK_WAIT_MS };
 }
 
-/** Exclusive lock file around a read-modify-write: O_EXCL create with a random token, bounded retry (longer than the stale age), stale lock broken under a second lock, removed only if still ours. */
-async function withLock(file, fn, missing) {
-  const lock = `${file}.lock`;
-  const token = `${process.pid}.${randomUUID()}`;
-  const started = Date.now();
-  let delay = 2;
-  for (;;) {
-    try {
-      const fh = await fs.open(lock, 'wx');
-      await writeToken(fh, token);
-      break;
-    } catch (e) {
-      if (e.code === 'ENOENT' && missing) throw bad(missing);
-      if (e.code !== 'EEXIST') throw bad(`cannot lock ${file}: ${e.code || e.message}`);
-      const age = await ageOf(lock);
-      if (age !== null && age > LOCK_STALE_MS) {
-        const judged = await tokenOf(lock);
-        if (judged !== null) { await breakStale(lock, judged); continue; }
-      }
-      if (Date.now() - started > LOCK_WAIT_MS) throw bad(`budget state is locked (${lock}); delete it if no other sub-session is using the budget`);
-      await new Promise((r) => setTimeout(r, delay));
-      delay = Math.min(delay * 2, 50);
-    }
-  }
-  try { return await fn(); } finally {
-    if ((await tokenOf(lock)) === token) await fs.rm(lock, { force: true });
-  }
-}
+/** The shared state lock around a read-modify-write. */
+const withLock = (file, fn, io) => withStateLock(file, fn, lockOpts(io));
 
 export async function run(args, io) {
   const { cmd, flags } = parse(args);
@@ -401,7 +343,7 @@ export async function run(args, io) {
       try { await fs.access(file); throw bad(`${file} already exists`); } catch (e) { if (e instanceof KitExit) throw e; }
       await save(file, s);
       return { opened: true, limits: s.limits };
-    });
+    }, io);
   }
 
   if (cmd === 'status') return statusOf(await load(file), now); // read-only: the atomic rename means never a torn file
@@ -412,6 +354,7 @@ export async function run(args, io) {
     if (flags.steps === undefined && flags.cost === undefined) throw bad('spend needs --steps and/or --cost');
     spendIn = { helper: flags.helper, steps: num('--steps', flags.steps), cost: num('--cost', flags.cost), outcome: flags.outcome };
   }
+  await load(file); // a missing or corrupt state fails before any lock or folder is created
   return withLock(file, async () => {
     const state = await load(file);
     if (cmd === 'start' || cmd === 'stop') {
@@ -433,5 +376,5 @@ export async function run(args, io) {
     await save(file, r.state);
     const st = statusOf(r.state, now);
     return { recorded: true, helper: flags.helper, outcome: flags.outcome, overrun: r.overrun, remaining: st.remaining, exhausted: st.exhausted };
-  }, `no budget state at ${file}; run open first`);
+  }, io);
 }

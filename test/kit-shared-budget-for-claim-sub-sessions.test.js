@@ -12,7 +12,8 @@ async function withDir(fn) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'shared-budget-'));
   try { return await fn(dir); } finally { await fs.rm(dir, { recursive: true, force: true }); }
 }
-const call = (dir, args) => sb.run(['--state', 'b.json', ...args], { cwd: dir });
+const call = (dir, args, io = {}) => sb.run(['--state', 'b.json', ...args], { cwd: dir, ...io });
+const withStale = async (ms, fn) => { process.env.SHARED_BUDGET_LOCK_STALE_MS = String(ms); try { return await fn(); } finally { delete process.env.SHARED_BUDGET_LOCK_STALE_MS; } };
 const code = async (p) => { try { await p; return 0; } catch (e) { assert.ok(e instanceof KitExit); return e.code; } };
 
 describe('shared-budget library', () => {
@@ -171,7 +172,7 @@ describe('shared-budget CLI', () => {
 });
 
 const KIT_CLI = fileURLToPath(new URL('../src/lib/kit/cli.js', import.meta.url));
-const proc = (dir, args) => new Promise((resolve) => execFile(process.execPath, [KIT_CLI, 'shared-budget', '--state', 'b.json', ...args], { cwd: dir },
+const proc = (dir, args, env = {}) => new Promise((resolve) => execFile(process.execPath, [KIT_CLI, 'shared-budget', '--state', 'b.json', ...args], { cwd: dir, env: { ...process.env, ...env } },
   (err, stdout, stderr) => resolve({ code: err ? err.code : 0, stdout, stderr })));
 const readState = async (dir) => JSON.parse(await fs.readFile(path.join(dir, 'b.json'), 'utf8'));
 
@@ -290,9 +291,7 @@ describe('shared-budget concurrent writers keep every write', () => {
     await call(dir, ['open', '--now', '0']);
     const lock = path.join(dir, 'b.json.lock');
     await fs.writeFile(lock, 'dead');
-    const old = new Date(Date.now() - 10 * 60 * 1000);
-    await fs.utimes(lock, old, old);
-    await call(dir, ['spend', '--helper', 'a', '--steps', '1', '--outcome', 'ok', '--now', '1']);
+    await withStale(300, () => call(dir, ['spend', '--helper', 'a', '--steps', '1', '--outcome', 'ok', '--now', '1']));
     assert.equal((await readState(dir)).spent.steps, 1);
     assert.deepEqual((await fs.readdir(dir)).filter((f) => f !== 'b.json'), []);
   }));
@@ -399,23 +398,17 @@ describe('shared-budget stale-lock breaking, final form', () => {
       await call(dir, ['open', '--now', '0']);
       const lock = path.join(dir, 'b.json.lock');
       await fs.writeFile(lock, 'crashed-holder');
-      const old = new Date(Date.now() - 2 * 60 * 1000);
-      await fs.utimes(lock, old, old);
-      const rs = await Promise.all(Array.from({ length: 20 }, (_, i) => proc(dir, ['spend', '--helper', `h${i}`, '--steps', '1', '--outcome', 'ok', '--now', '1'])));
+      const rs = await Promise.all(Array.from({ length: 20 }, (_, i) => proc(dir, ['spend', '--helper', `h${i}`, '--steps', '1', '--outcome', 'ok', '--now', '1'], { SHARED_BUDGET_LOCK_STALE_MS: '1500' })));
       for (const r of rs) assert.equal(r.code, 0, r.stderr);
       assert.equal((await readState(dir)).spent.steps, 20);
       assert.deepEqual((await fs.readdir(dir)).filter((f) => f !== 'b.json'), []);
     }));
   }
 
-  it('a leftover break lock older than twice the stale age is removed', () => withDir(async (dir) => {
+  it('a leftover break lock unchanged for the stale age is removed', () => withDir(async (dir) => {
     await call(dir, ['open', '--now', '0']);
-    const old = new Date(Date.now() - 5 * 60 * 1000);
-    for (const f of ['b.json.lock', 'b.json.lock.break']) {
-      await fs.writeFile(path.join(dir, f), 'dead');
-      await fs.utimes(path.join(dir, f), old, old);
-    }
-    await call(dir, ['spend', '--helper', 'a', '--steps', '1', '--outcome', 'ok', '--now', '1']);
+    for (const f of ['b.json.lock', 'b.json.lock.break']) await fs.writeFile(path.join(dir, f), 'dead');
+    await withStale(300, () => call(dir, ['spend', '--helper', 'a', '--steps', '1', '--outcome', 'ok', '--now', '1']));
     assert.equal((await readState(dir)).spent.steps, 1);
     assert.deepEqual((await fs.readdir(dir)).filter((f) => f !== 'b.json'), []);
   }));
@@ -432,4 +425,65 @@ describe('shared-budget stale-lock breaking, final form', () => {
     await p;
     assert.equal((await readState(dir)).spent.steps, 1);
   }));
+});
+
+describe('shared-budget lock failure bound and clock skew', () => {
+  const spendArgs = ['spend', '--helper', 'a', '--steps', '1', '--outcome', 'ok', '--now', '1'];
+
+  it('a failing break-file open exits 1 within the wait bound and spends nothing', () => withDir(async (dir) => {
+    await call(dir, ['open', '--now', '0']);
+    await fs.writeFile(path.join(dir, 'b.json.lock'), 'crashed-holder');
+    const lockFs = { ...fs, open: async (p, ...rest) => {
+      if (String(p).endsWith('.lock.break')) throw Object.assign(new Error('read-only file system'), { code: 'EROFS' });
+      return fs.open(p, ...rest);
+    } };
+    const t0 = Date.now();
+    await withStale(300, async () => {
+      assert.equal(await code(call(dir, spendArgs, { lockFs })), 1);
+    });
+    assert.ok(Date.now() - t0 < 3000, `took ${Date.now() - t0} ms`);
+    assert.equal((await readState(dir)).spent.steps, 0);
+  }));
+
+  it('a break file that cannot be judged or removed still ends in exit 1 within the wait bound', () => withDir(async (dir) => {
+    await call(dir, ['open', '--now', '0']);
+    await fs.writeFile(path.join(dir, 'b.json.lock'), 'crashed-holder');
+    await fs.mkdir(path.join(dir, 'b.json.lock.break')); // not a file: cannot be read or replaced
+    const t0 = Date.now();
+    const r = await proc(dir, spendArgs, { SHARED_BUDGET_LOCK_STALE_MS: '300' });
+    assert.equal(r.code, 1, r.stderr);
+    assert.ok(Date.now() - t0 < 3000, `took ${Date.now() - t0} ms`);
+  }));
+
+  it('a live lock with an old mtime is not broken', () => withDir(async (dir) => {
+    await call(dir, ['open', '--now', '0']);
+    const lock = path.join(dir, 'b.json.lock');
+    await fs.writeFile(lock, 'live-holder');
+    const old = new Date(Date.now() - 10 * 60 * 1000);
+    await fs.utimes(lock, old, old);
+    const p = call(dir, spendArgs);
+    await new Promise((r) => setTimeout(r, 300));
+    assert.equal(await fs.readFile(lock, 'utf8'), 'live-holder');
+    assert.equal((await readState(dir)).spent.steps, 0);
+    await fs.rm(lock);
+    await p;
+    assert.equal((await readState(dir)).spent.steps, 1);
+  }));
+
+  for (const [name, offsetMs] of [['ahead', 60000], ['behind', -600000]]) {
+    it(`30 parallel spends lose nothing while the lock mtime is skewed ${name}`, () => withDir(async (dir) => {
+      await call(dir, ['open', '--now', '0']);
+      const lock = path.join(dir, 'b.json.lock');
+      const skew = setInterval(() => {
+        const t = new Date(Date.now() + offsetMs);
+        fs.utimes(lock, t, t).catch(() => {});
+      }, 1);
+      let rs;
+      try {
+        rs = await Promise.all(Array.from({ length: 30 }, (_, i) => proc(dir, ['spend', '--helper', `h${i}`, '--steps', '1', '--outcome', 'ok', '--now', '1'])));
+      } finally { clearInterval(skew); }
+      for (const r of rs) assert.equal(r.code, 0, r.stderr);
+      assert.equal((await readState(dir)).spent.steps, 30);
+    }));
+  }
 });
