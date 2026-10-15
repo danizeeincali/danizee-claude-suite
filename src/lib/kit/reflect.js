@@ -391,6 +391,15 @@ export async function run(args, io) {
       if (!Number.isFinite(threshold) || threshold <= 0 || threshold > 1) throw invalid('--threshold must be a number in (0, 1]');
     }
     const maxNew = sub === 'save' ? posInt(flags, 'max-new', DEFAULTS.maxNew) : 0;
+    if (sub === 'save' || sub === 'retire') {
+      // The store is not git-ignored and is read back into later prompts: never write a project secret into it.
+      const secrets = await loadSecrets(flags, cwd);
+      for (const k of ['text', 'scope', 'reason', 'session', 'role', 'id', 'confirm']) {
+        if (typeof flags[k] === 'string' && redactSecrets(flags[k], secrets).replaced > 0) {
+          throw invalid(`--${k} contains a project secret; lessons are saved unredacted, so rewrite it without the secret`);
+        }
+      }
+    }
     return withStateLock(store, async () => {
       const data = await loadStore(store);
       let result;

@@ -182,6 +182,30 @@ describe('reflect lessons', () => {
     assert.equal(overlap('Wait for the spinner', 'wait for spinner!'), 1);
     assert.ok(overlap('Retry the login form', 'Clear cache before build') < 0.1);
   });
+  it('save and retire refuse text, scope or reason holding a project secret; nothing is stored', async () => {
+    const d = await tmp();
+    try {
+      await fs.mkdir(path.join(d, '.claude/kit'), { recursive: true });
+      await fs.writeFile(path.join(d, 's'), 'SuperSecretToken123\n');
+      const sf = ['--secrets-file', 's'];
+      const ok = await save(d, ['--role', 'fixer', '--text', 'Wait for the spinner to vanish before clicking save.', ...sf]);
+      assert.equal(ok.code, 0);
+      const t = await save(d, ['--role', 'fixer', '--text', 'Use token SuperSecretToken123 when calling the staging API.', ...sf]);
+      assert.equal(t.code, 1);
+      assert.ok(!String(t.err).includes('SuperSecretToken123'));
+      const sc = await save(d, ['--role', 'fixer', '--text', 'Bring the staging server up before the e2e run.', '--scope', 'SuperSecretToken123', ...sf]);
+      assert.equal(sc.code, 1);
+      const r = await call(['lessons', 'retire', '--id', 'L1', '--reason', 'token SuperSecretToken123 rotated', ...sf], d);
+      assert.equal(r.code, 1);
+      assert.ok(!String(r.err).includes('SuperSecretToken123'));
+      // default path: secrets file in the project, no flag
+      await fs.writeFile(path.join(d, '.claude/kit/secrets'), 'SuperSecretToken123\n');
+      await call(['lessons', 'save', '--role', 'fixer', '--session', 'sq', '--text', 'Use token SuperSecretToken123 when calling the staging API.'], d);
+      const stored = await fs.readFile(path.join(d, '.claude/kit/lessons.json'), 'utf-8');
+      assert.ok(!stored.includes('SuperSecretToken123'), stored);
+      assert.equal((await call(['lessons', 'list', '--all'], d)).out.lessons.length, 1);
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
   it('save, list, keep, retire with reason; retired hidden but kept in file', async () => {
     const d = await tmp();
     try {
