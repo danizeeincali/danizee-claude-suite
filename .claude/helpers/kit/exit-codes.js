@@ -113,7 +113,7 @@ const reasonOf = (e) => (e && typeof e === 'object' && typeof e.reason === 'stri
 /** The remedy that fits the not_scanned reasons (missing object, size, total, or a file that is missing, not regular or unreadable). */
 function remedy(v, rs) {
   const parts = [];
-  if (rs.some((r) => r === MISSING_OBJECT)) parts.push('Fetch the missing blobs (git sparse-checkout disable, or git backfill on git 2.49+; a plain git fetch keeps the clone filter and does not fill them in) or run in a full clone; scrub never fetches by itself, so a rerun in the same clone gives the same result.');
+  if (rs.some((r) => r === MISSING_OBJECT)) parts.push('Fetch the missing blobs (the command depends on how the clone was made: sparse, --no-checkout or blobless; a plain git fetch does not fill them in) or run in a full clone; scrub never fetches by itself, so a rerun in the same clone gives the same result.');
   if (rs.some((r) => /^larger than /.test(r))) parts.push(v === 'scrub' ? 'Shrink or split the oversized files, or rerun scrub with a higher --max-file-bytes.' : 'Shrink or split the oversized files, or run scrub with a higher --max-file-bytes.');
   if (rs.some((r) => r === 'total size limit reached')) parts.push('Scan a smaller range (scrub --history <base>), since the total size limit cannot be raised.');
   if (rs.some((r) => r === 'tracked but missing on disk' || r === 'not a regular file on disk' || r.startsWith('cannot read'))) parts.push('Restore or fix the missing, non-regular or unreadable files, then rerun.');
