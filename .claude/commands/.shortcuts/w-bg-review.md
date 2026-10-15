@@ -172,6 +172,10 @@ Exit 0: show one entry per cluster (the representative, with its member ids). Fo
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
 
+**AUTORESEARCH CANDIDATE CHECK (RC-A):**
+Scan the work just completed for measurable optimization targets (function runtimes, test duration, bundle size, query counts, coverage gaps). If any, append an RC-A entry (KPI, baseline, benchmark command, impact score) to .claude/ralph-candidates.md.
+- RC-A candidates found: yes/no
+
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 
 **AUTO-PROCEED:** Continue to Git Commit phase.
