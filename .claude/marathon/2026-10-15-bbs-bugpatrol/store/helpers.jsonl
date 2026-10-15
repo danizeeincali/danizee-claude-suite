@@ -112,3 +112,8 @@
 {"helper_id":"62cb5de5","tokens":81516,"outcome":"green","event":"done","id":"0058ce46-3b45-423f-b0e9-7c0d2b31382d","ts":"2026-10-15T17:09:17.702Z"}
 {"helper_id":"dfc59c3a","tokens":86957,"outcome":"green","event":"done","id":"2c5303a0-eb5e-4ec2-a324-64a2fbffc26e","ts":"2026-10-15T17:09:26.461Z"}
 {"helper_id":"060b962d","tokens":86987,"outcome":"green","event":"done","id":"48496ca4-088d-4f30-bf57-4d77928974ff","ts":"2026-10-15T17:17:01.633Z"}
+{"role":"build","model":"opus","stream":"noise-ledger-with-flake-quarantine","budget":150000,"event":"spawn","id":"a2fe667e-04dc-4683-9ab9-d67bdb36eb50","ts":"2026-10-15T17:17:11.068Z"}
+{"role":"fix","model":"sonnet","stream":"preflight-doctor-checks-before-a-run","budget":100000,"event":"spawn","id":"cd58cce0-8dc7-483f-b682-a58463620a31","ts":"2026-10-15T17:17:11.223Z"}
+{"role":"review","model":"opus","stream":"change-impact-test-plan","budget":150000,"event":"spawn","id":"61f19d2e-6c28-4145-abc0-b11700c002f9","ts":"2026-10-15T17:17:51.916Z"}
+{"role":"review","model":"opus","stream":"sarif-junit-and-sticky-pr-comment-render","budget":150000,"event":"spawn","id":"1b2d0ae5-b8aa-4b97-83e0-a84073c52ff5","ts":"2026-10-15T17:17:58.006Z"}
+{"role":"review","model":"opus","stream":"exit-code-contract-separating-infrastruc","budget":150000,"event":"spawn","id":"23967535-4448-4768-ae53-35158ec17538","ts":"2026-10-15T17:18:04.270Z"}

@@ -25,3 +25,6 @@
 {"kind":"unit","status":"green","stream":"trouble-log-reflection-into-lesson-memor","commit":"2d24c8f","id":"7874749c-3566-4953-96eb-c719525a39a3","ts":"2026-10-15T17:05:43.721Z"}
 {"kind":"unit","status":"green","stream":"repeated-replay-gate-for-claims","commit":"0252e36","id":"8583a1ca-1df1-4ca4-aab5-1a7524f90f8e","ts":"2026-10-15T17:06:22.745Z"}
 {"kind":"unit","status":"green","stream":"shared-budget-for-claim-sub-sessions","commit":"23e1898","id":"bed9cc96-b2f4-458a-afba-32d20eeac92f","ts":"2026-10-15T17:06:49.739Z"}
+{"kind":"unit","status":"green","stream":"change-impact-test-plan","commit":"b3c3754","id":"554080c6-3e3d-4191-b52a-eb159108bf19","ts":"2026-10-15T17:17:48.358Z"}
+{"kind":"unit","status":"green","stream":"sarif-junit-and-sticky-pr-comment-render","commit":"7e50d46","id":"c5245677-724b-4a39-8da6-aeac2c7378d3","ts":"2026-10-15T17:17:55.222Z"}
+{"kind":"unit","status":"green","stream":"exit-code-contract-separating-infrastruc","commit":"57e08b0","id":"3aaac8f6-d876-49f5-a761-c88d87f6c336","ts":"2026-10-15T17:18:01.386Z"}

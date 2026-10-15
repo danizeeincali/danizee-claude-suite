@@ -1,7 +1,7 @@
 # Marathon 2026-10-15-bbs-bugpatrol
 
 - State: RUNNING
-- Budget: 9,856,445 / 14,000,000 tokens
+- Budget: 10,556,445 / 14,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
@@ -44,7 +44,7 @@
 | asymmetric-threshold-router: clean reviews in a row | build | met | 3 | at_least 2 |
 | asymmetric-threshold-router: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | asymmetric-threshold-router: packaged check passes | build | met | true | is true |
-| change-impact-test-plan: green unit runs in a row | build | met | 3 | at_least 1 |
+| change-impact-test-plan: green unit runs in a row | build | met | 4 | at_least 1 |
 | change-impact-test-plan: zero egress in the packaged check | build | failing | — | is true |
 | change-impact-test-plan: clean reviews in a row | build | met | 3 | at_least 2 |
 | change-impact-test-plan: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
@@ -69,12 +69,12 @@
 | preflight-doctor-checks-before-a-run: clean reviews in a row | build | failing | 1 | at_least 2 |
 | preflight-doctor-checks-before-a-run: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | preflight-doctor-checks-before-a-run: packaged check passes | build | failing | — | is true |
-| exit-code-contract-separating-infrastruc: green unit runs in a row | build | met | 2 | at_least 1 |
+| exit-code-contract-separating-infrastruc: green unit runs in a row | build | met | 3 | at_least 1 |
 | exit-code-contract-separating-infrastruc: zero egress in the packaged check | build | failing | — | is true |
 | exit-code-contract-separating-infrastruc: clean reviews in a row | build | met | 2 | at_least 2 |
 | exit-code-contract-separating-infrastruc: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | exit-code-contract-separating-infrastruc: packaged check passes | build | failing | — | is true |
-| sarif-junit-and-sticky-pr-comment-render: green unit runs in a row | build | met | 1 | at_least 1 |
+| sarif-junit-and-sticky-pr-comment-render: green unit runs in a row | build | met | 2 | at_least 1 |
 | sarif-junit-and-sticky-pr-comment-render: zero egress in the packaged check | build | failing | — | is true |
 | sarif-junit-and-sticky-pr-comment-render: clean reviews in a row | build | failing | 1 | at_least 2 |
 | sarif-junit-and-sticky-pr-comment-render: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
