@@ -5,7 +5,7 @@
  *
  * Input: a list of findings, or { findings: [...] }. Each: { id, rule, severity, files?, locations?, title? }.
  *   id unique string · rule non-empty string · severity critical|high|medium|low|info · files: list of paths ·
- *   locations: list of { file, line? } or "path:line" or "path:line:col" strings (their files count as files too). At least one file in all.
+ *   locations: list of { file, line? } or "path:line", "path:line:col" or "path:start-end" strings (their files count as files too). At least one file in all.
  *   Paths are normalised (backslashes, "./", repeated slashes) before comparing.
  * PASS 1 (free, deterministic). Findings are bucketed by rule + the sorted, de-duplicated set of files. Each bucket is a
  *   cluster: the most severe member is the representative (ties: smallest id), and the cluster lists every member id, every
@@ -19,8 +19,9 @@
  *   Without answers, nothing merges and the pairs are listed for the calling workflow to judge.
  *   Answers for a pair that is not pending are ignored and listed in `ignored_answers`. Several answers for one pair must all
  *   clear the bar; if they disagree the pair stays apart and is listed in `conflicting_answers`.
- *   Transitive safety: approved merges are applied in sorted pair order, and a merge is skipped (listed in `blocked`) when it
- *   would put two clusters together that form a pending pair which was not approved (refused or unjudged). Chains therefore
+ *   Transitive safety: approved merges are applied in sorted pair order, and a merge is skipped (listed in `blocked`) unless
+ *   every pair of pass-1 clusters it would put together is itself an approved pending pair. A cross pair that was refused or
+ *   unjudged, or that pass 1 kept apart (same rule, disjoint files: `why: "disjoint"`), blocks it. Chains therefore
  *   never merge across a pair nobody agreed on, and the result does not depend on the order of the answers.
  * Library: `await cluster(findings, { answers, decide })` — `decide(pair)` may be sync or async and returns a judgment (or
  *   null to leave the pair pending); it is called once, in sorted order, for each pending pair without an answer.
@@ -90,7 +91,7 @@ function normaliseFinding(f, i) {
     for (const l of f.locations) {
       let file; let line = null;
       if (typeof l === 'string') {
-        const m = /^(.*?):(\d+)(?::\d+)?$/.exec(l);
+        const m = /^(.*?):(\d+)(?::\d+)?(?:-\d+(?::\d+)?)?$/.exec(l);
         file = normPath(m ? m[1] : l); line = m ? Number(m[2]) : null;
       } else if (l && typeof l === 'object' && typeof l.file === 'string') {
         file = normPath(l.file);
@@ -220,7 +221,8 @@ export async function cluster(findings, { answers = [], decide } = {}) {
     const veto = [];
     for (const x of ca) for (const y of cb) {
       const k = pairKey(x, y);
-      if (pending.has(k) && verdict.get(k) !== 'approved') veto.push({ a: pending.get(k).a, b: pending.get(k).b, why: verdict.has(k) ? 'refused' : 'unjudged' });
+      if (!pending.has(k)) { veto.push({ a: x < y ? x : y, b: x < y ? y : x, why: 'disjoint' }); continue; } // pass 1 kept them apart: nobody could approve them
+      if (verdict.get(k) !== 'approved') veto.push({ a: pending.get(k).a, b: pending.get(k).b, why: verdict.has(k) ? 'refused' : 'unjudged' });
     }
     if (veto.length) { blocked.push({ a: p.a, b: p.b, because: veto.sort((u, v) => byStr(pairKey(u.a, u.b), pairKey(v.a, v.b))) }); continue; }
     const merged = [...ca, ...cb];
@@ -251,7 +253,7 @@ export async function cluster(findings, { answers = [], decide } = {}) {
 async function readJsonFile(io, p, what) {
   let text;
   try { text = await fs.readFile(path.resolve(io.cwd, p), 'utf-8'); } catch { throw bad(`${what} file "${p}" cannot be read`); }
-  try { return JSON.parse(text); } catch { throw bad(`${what} file "${p}" is not valid JSON`); }
+  try { return JSON.parse(text.replace(/^\uFEFF/, '')); } catch { throw bad(`${what} file "${p}" is not valid JSON`); }
 }
 
 export async function run(args, io) {
@@ -271,7 +273,7 @@ export async function run(args, io) {
   else {
     const text = io.stdinIsTTY ? '' : await io.stdin();
     if (!text.trim()) throw bad('no findings: pass --file <findings.json> or JSON on stdin');
-    try { input = JSON.parse(text); } catch { throw bad('stdin is not valid JSON'); }
+    try { input = JSON.parse(text.replace(/^\uFEFF/, '')); } catch { throw bad('stdin is not valid JSON'); }
   }
   const answers = answersFile !== null ? await readJsonFile(io, answersFile, 'answers') : [];
   return cluster(input, { answers });

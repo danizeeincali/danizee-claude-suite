@@ -51,6 +51,13 @@ describe('cluster — pass 1 (deterministic)', () => {
     assert.ok(r.clusters[0].locations.some(l => l.file === 'src/a.js' && l.line === 12));
     assert.ok(r.clusters[0].locations.some(l => l.file === 'src/a.js' && l.line === 40));
   });
+  it('path:start-end line ranges keep the file whole and take the start line', () => {
+    const r = pass1([f('a', 'r', 'low', ['src/a.js']), f('b', 'r', 'low', [], { locations: ['src/a.js:12-14', 'src/a.js:20:3-9'] })]);
+    assert.equal(r.clusters.length, 1);
+    assert.deepEqual(r.clusters[0].files, ['src/a.js']);
+    assert.ok(r.clusters[0].locations.some(l => l.file === 'src/a.js' && l.line === 12));
+    assert.ok(r.clusters[0].locations.some(l => l.file === 'src/a.js' && l.line === 20));
+  });
 });
 
 describe('cluster — pass 2 (judgments)', () => {
@@ -104,6 +111,19 @@ describe('cluster — pass 2 (judgments)', () => {
     // unjudged vetoing pair
     const r2 = await cluster(list, { answers: [{ a: 'a', b: 'b', ...yes }, { a: 'b', b: 'c', ...yes }] });
     assert.equal(r2.clusters.length, 2);
+  });
+  it('a chain through clusters pass 1 kept apart (disjoint files) is blocked, not merged', async () => {
+    // A{header,p1} B{header,footer} C{footer,p2}: A~B and B~C pending and approved, A and C disjoint (never offered)
+    const list = [f('A', 'r', 'low', ['header.tsx', 'p1.tsx']), f('B', 'r', 'low', ['header.tsx', 'footer.tsx']), f('C', 'r', 'low', ['footer.tsx', 'p2.tsx'])];
+    const answers = [{ a: 'A', b: 'B', ...yes }, { a: 'B', b: 'C', ...yes }];
+    const r = await cluster(list, { answers });
+    assert.equal(r.clusters.length, 2);
+    assert.equal(r.blocked.length, 1);
+    assert.deepEqual(r.blocked[0].because.map(v => [v.a, v.b, v.why]), [['A', 'C', 'disjoint']]);
+    const again = await cluster(list, { answers: [...answers].reverse() });
+    assert.deepEqual(again.clusters, r.clusters);
+    assert.deepEqual(again.blocked, r.blocked);
+    assert.ok(r.judged_pairs.some(j => j.a === 'B' && j.b === 'C' && j.outcome === 'blocked'));
   });
   it('a full clique of approvals merges all', async () => {
     const list = [f('a', 'r', 'low', ['x', 'y']), f('b', 'r', 'low', ['y', 'z']), f('c', 'r', 'low', ['x', 'z'])];
@@ -173,6 +193,17 @@ describe('cluster — run (CLI surface)', () => {
       assert.equal(done.clusters.length, 1);
       const viaStdin = await run([], io(d, JSON.stringify([f('a', 'r', 'low', ['x'])])));
       assert.equal(viaStdin.clusters.length, 1);
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+  it('strips a leading BOM from findings and answers files', async () => {
+    const d = await fs.mkdtemp(path.join(os.tmpdir(), 'cluster-'));
+    try {
+      await fs.writeFile(path.join(d, 'in.json'), '\uFEFF' + JSON.stringify([f('a', 'r', 'low', ['x', 'y']), f('b', 'r', 'high', ['y', 'z'])]));
+      await fs.writeFile(path.join(d, 'ans.json'), '\uFEFF' + JSON.stringify([{ a: 'a', b: 'b', ...yes }]));
+      const r = await run(['--file', 'in.json', '--answers', 'ans.json'], io(d));
+      assert.equal(r.clusters.length, 1);
+      const s = await run([], io(d, '\uFEFF' + JSON.stringify([f('a', 'r', 'low', ['x'])])));
+      assert.equal(s.clusters.length, 1);
     } finally { await fs.rm(d, { recursive: true, force: true }); }
   });
   it('exit 1 on bad json, missing file, unknown flag, empty stdin', async () => {
