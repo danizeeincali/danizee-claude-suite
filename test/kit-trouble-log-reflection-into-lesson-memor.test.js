@@ -401,4 +401,11 @@ describe('reflect lessons', () => {
     assert.throws(() => saveLesson(data, { role: 'r', session: 's', text: 'Check logs before restarting daemon.' }), (e) => e.code === 2 && e.match.id === 'L1');
     assert.equal(data.lessons.length, 1);
   });
+  it('accepts lessons in non-ASCII scripts and scores accented words whole', () => {
+    for (const ok of ['Éteignez le cache avant les tests.', 'Überprüfe die Konfiguration vor dem Deploy.', 'Проверьте конфигурацию перед деплоем.', '設定を確認してからデプロイする。']) {
+      assert.equal(checkLessonText(ok), ok);
+    }
+    assert.ok(overlap('Vérifiez la configuration avant le déploiement', 'Vérifiez la configuration avant le déploiement') === 1);
+    assert.ok(overlap('Vérifiez le cache', 'Rifiez le cache') < 0.7);
+  });
 });

@@ -202,7 +202,7 @@ const STOP_WORDS = new Set(['the', 'a', 'an', 'to', 'of', 'in', 'on', 'and', 'or
 /** Normalised word set used for the overlap measure. */
 export function words(text) {
   const out = new Set();
-  for (let w of String(text).toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)) {
+  for (let w of String(text).toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/)) {
     if (!w || STOP_WORDS.has(w)) continue;
     if (w.length > 3 && w.endsWith('s')) w = w.slice(0, -1);
     out.add(w);
@@ -229,8 +229,8 @@ export function checkLessonText(text) {
   if (/[\r\n]/.test(t)) throw invalid('a lesson is one sentence on one line');
   if (t.length < TEXT_MIN || t.length > TEXT_MAX) throw invalid(`a lesson is ${TEXT_MIN}..${TEXT_MAX} characters (got ${t.length})`);
   if (/[.!?]\s+\S/.test(t.replace(/\b(e\.g|i\.e|etc|vs|cf)\./gi, '$1'))) throw invalid('a lesson is ONE sentence');
-  const first = t.split(/\s+/)[0].replace(/[^A-Za-z']/g, '');
-  if (!/^[A-Za-z]/.test(t) || !first) throw invalid('a lesson starts with a verb (imperative)');
+  const first = t.split(/\s+/)[0].replace(/[^\p{L}']/gu, '');
+  if (!/^\p{L}/u.test(t) || !first) throw invalid('a lesson starts with a verb (imperative)');
   if (NON_IMPERATIVE_START.test(first) || (/ing$/i.test(first) && !ING_VERBS.has(first.toLowerCase()))) throw invalid(`a lesson is imperative: start with a verb, not "${first}"`);
   return t;
 }
