@@ -40,3 +40,6 @@
 {"key":"packaged_finding-triage-with-fingerprint-dedup-an","value":true,"id":"fd6d5818-3484-4454-910f-ed523576c19e","ts":"2026-10-15T18:10:36.279Z"}
 {"key":"egress_zero_finding-triage-with-fingerprint-dedup-an","value":true,"id":"3241b700-7280-4bfb-a551-f43c58a42c21","ts":"2026-10-15T18:10:36.490Z"}
 {"key":"callers_finding-triage-with-fingerprint-dedup-an","value":0,"id":"8e135e02-d317-4a05-abd3-83d04b0cd066","ts":"2026-10-15T18:10:36.678Z"}
+{"key":"packaged_shared-budget-for-claim-sub-sessions","value":true,"id":"f198349b-5589-4aef-84a4-294725de0a7e","ts":"2026-10-15T18:17:13.058Z"}
+{"key":"egress_zero_shared-budget-for-claim-sub-sessions","value":true,"id":"5ca7610d-062b-43ce-abd0-83a2e921edac","ts":"2026-10-15T18:17:13.294Z"}
+{"key":"callers_shared-budget-for-claim-sub-sessions","value":0,"id":"2a54304e-052c-4394-a757-ff6cbf038acd","ts":"2026-10-15T18:17:13.484Z"}

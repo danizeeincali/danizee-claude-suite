@@ -64,9 +64,9 @@
     },
     {
       "name": "shared-budget-for-claim-sub-sessions",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/shared-budget-for-claim-sub-sessions.md",
-      "next": "builder writes contract, failing tests, verb, packaged test",
+      "next": "done: build gate met",
       "tasks": [],
       "isolation": "/home/claude/danizee-claude-suite-shared-budget-for-claim-sub-sessions",
       "phase": "build",
