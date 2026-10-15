@@ -6,8 +6,19 @@ import ora from 'ora';
 import os from 'os';
 import { DaniZeeSuiteInstaller } from '../src/installer.js';
 import * as bc from '../src/plugins/bc.js';
+import { runDoctor } from '../src/lib/kit/doctor.js';
+import { classify, CLASSES } from '../src/lib/kit/exit-codes.js';
 
 const program = new Command();
+
+/**
+ * Exit status of `check` for a doctor status, through the kit's exit-code contract (src/lib/kit/exit-codes.js):
+ * doctor 0 -> clean (0), doctor 1 -> usage (1), doctor 2 (a fatal prerequisite is missing) -> precondition (4).
+ * Infrastructure (5) and product failure (2) are never produced by a preflight: nothing is judged here.
+ */
+function checkExitCode(doctorExit) {
+  return CLASSES[classify({ code: doctorExit, verb: 'doctor' }).class].code;
+}
 
 /**
  * A ~/.claude/commands/<name>.md silently wins over the project's .claude/commands copy.
@@ -90,8 +101,9 @@ program
 
 program
   .command('check')
-  .description('Verify installation status')
+  .description('Verify installation status, then run the preflight doctor checks (exit 0 ok, 1 usage, 4 a fatal prerequisite is missing)')
   .option('-p, --path <path>', 'Path to check', process.cwd())
+  .option('--profile <profile>', 'Doctor profile: kit, marathon, bbs or review', 'kit')
   .action(async (options) => {
     const spinner = ora('Checking installation...').start();
 
@@ -121,10 +133,23 @@ program
       if (!status.installed) {
         console.log('\n' + chalk.yellow('Run `npx danizee-claude-suite init` to install.'));
       }
+
+      // Preflight doctor: named checks, fatal ones block (exit 4), advisory ones only warn.
+      const doctor = await runDoctor({ profile: options.profile, cwd: options.path, env: process.env });
+      console.log(chalk.bold('\nDoctor checks (' + doctor.profile + ')\n'));
+      for (const c of doctor.checks) {
+        const mark = c.ok ? chalk.green('✓') : (c.fatal ? chalk.red('✗') : chalk.yellow('!'));
+        console.log(`  ${mark} ${c.name}: ${c.found}`);
+        if (!c.ok && c.fix) console.log(chalk.dim(`      fix: ${c.fix}`));
+      }
+      if (doctor.failed.length) {
+        console.log('\n' + chalk.red(`Fatal: ${doctor.failed.join(', ')}`));
+      }
+      process.exitCode = checkExitCode(doctor.exit);
     } catch (error) {
       spinner.fail(chalk.red('Check failed'));
       console.error(chalk.red(error.message));
-      process.exit(1);
+      process.exit(checkExitCode(1));
     }
   });
 
