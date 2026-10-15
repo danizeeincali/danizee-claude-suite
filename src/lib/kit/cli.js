@@ -18,12 +18,17 @@ import { KitExit } from './kit-exit.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
-/** Map of verb → module, from the sibling modules that export a verb. */
+/** Map of verb → module, from the sibling modules that export a verb. A module whose import throws is skipped with a stderr note naming it. */
 export async function loadVerbs(dir = HERE) {
   const verbs = new Map();
   const files = (await fs.readdir(dir)).filter(f => f.endsWith('.js') && f !== 'cli.js' && f !== 'kit-exit.js').sort();
   for (const f of files) {
-    const mod = await import(pathToFileURL(path.join(dir, f)).href);
+    let mod;
+    try { mod = await import(pathToFileURL(path.join(dir, f)).href); } catch (e) {
+      // a module that cannot load (e.g. it needs a newer node) must not take the other verbs down, `doctor` above all
+      process.stderr.write(`kit: skipping ${f}: ${String(e && e.message).split('\n')[0]}\n`);
+      continue;
+    }
     if (typeof mod.verb !== 'string' || typeof mod.run !== 'function') continue;
     if (verbs.has(mod.verb)) throw new Error(`verb "${mod.verb}" is exported by ${verbs.get(mod.verb).file} and ${f}`);
     verbs.set(mod.verb, { file: f, run: mod.run, usage: mod.usage || `cli.js ${mod.verb}` });

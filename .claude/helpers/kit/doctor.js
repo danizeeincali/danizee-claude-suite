@@ -10,7 +10,8 @@
  *   marathon  kit + .claude/helpers/marathon/cli.js, .claude/marathon.json readable and valid JSON, a git work tree,
  *             and (advisory) the claude CLI on PATH
  *   bbs       kit + the bbs helpers (.claude/helpers/bbs/cli.js)
- *   review    kit + (advisory) gh on PATH, presence only
+ *   review    kit + (advisory) gh on PATH, presence only; (advisory) gh-auth: GH_TOKEN or GITHUB_TOKEN set, or gh's hosts.yml
+ *             (GH_CONFIG_DIR, else XDG_CONFIG_HOME/gh, else ~/.config/gh) lists a host with a user
  * A project adds checks in `.claude/kit/doctor.json` (or the file given by --config). Targets of the default
  * doctor.json are relative to the project root; targets of a --config file are relative to the directory of that file:
  *   { "checks": [ { "name": "...", "kind": "file"|"bin"|"json"|"env", "target": "...", "fatal": true|false } ] }
@@ -148,6 +149,29 @@ export function checkEnv(variable, { env, fatal, name = `env:${variable}`, fix }
   return row(name, fatal, ok, ok ? `${variable} is set` : `${variable} is not set`, fix || `Set the ${variable} environment variable.`);
 }
 
+/** Advisory gh login state, read from the environment and gh's hosts.yml only: nothing is spawned, no network, no value printed. */
+export async function checkGhAuth(env = {}) {
+  const fix = 'Optional: log in with gh auth login, or set GH_TOKEN, so pull requests can be read.';
+  for (const v of ['GH_TOKEN', 'GITHUB_TOKEN']) {
+    if (typeof env[v] === 'string' && env[v] !== '') return row('gh-auth', false, true, `${v} is set`, '');
+  }
+  const home = env.HOME || env.USERPROFILE;
+  const dirs = env.GH_CONFIG_DIR ? [env.GH_CONFIG_DIR]
+    : env.XDG_CONFIG_HOME ? [path.join(env.XDG_CONFIG_HOME, 'gh')]
+    : home ? [path.join(home, '.config', 'gh')] : [];
+  for (const d of dirs) {
+    let text;
+    try { text = await fs.readFile(path.join(d, 'hosts.yml'), 'utf-8'); } catch { continue; }
+    let inHost = false;
+    for (const line of stripBom(text).split(/\r?\n/)) {
+      if (/^[^\s#][^:]*:\s*(#.*)?$/.test(line)) inHost = true;
+      else if (/^\S/.test(line)) inHost = false;
+      else if (inHost && /^\s+user:\s*\S/.test(line)) return row('gh-auth', false, true, 'gh hosts.yml lists a logged-in user', '');
+    }
+  }
+  return row('gh-auth', false, false, 'no gh login found (no GH_TOKEN/GITHUB_TOKEN, no user in gh hosts.yml)', fix);
+}
+
 async function checkGitTree(cwd, fatal) {
   const ok = await inGitWorkTree(cwd);
   return row('git-work-tree', fatal, ok, ok ? 'inside a git work tree' : 'not inside a git work tree', 'Run inside a git repository (git init, or cd into the project).');
@@ -174,7 +198,10 @@ export async function profileChecks(profile, { cwd, env, nodeVersion }) {
   } else if (profile === 'bbs') {
     rows.push(await f('.claude/helpers/bbs/cli.js', 'Install the suite in this project: run danizee-claude-suite install.'));
   } else if (profile === 'review') {
-    rows.push(await checkBin('gh', { env, fatal: false, fix: 'Optional: install the GitHub CLI (gh) to read pull requests.' }));
+    rows.push(
+      await checkBin('gh', { env, fatal: false, fix: 'Optional: install the GitHub CLI (gh) to read pull requests.' }),
+      await checkGhAuth(env)
+    );
   }
   return rows;
 }
@@ -184,7 +211,7 @@ export async function profileChecks(profile, { cwd, env, nodeVersion }) {
 /** Every built-in check name of every profile: a project check may not reuse one, so a config valid under one profile is valid under all. */
 export const BUILTIN_NAMES = Object.freeze(['node-version', 'bin:git', 'file:.claude/helpers/kit/cli.js',
   'file:.claude/helpers/marathon/cli.js', 'json:.claude/marathon.json', 'git-work-tree', 'bin:claude',
-  'file:.claude/helpers/bbs/cli.js', 'bin:gh']);
+  'file:.claude/helpers/bbs/cli.js', 'bin:gh', 'gh-auth']);
 
 /** Validate a parsed config; returns the list of checks or throws KitExit 1. */
 export function parseConfig(cfg, where = 'config') {

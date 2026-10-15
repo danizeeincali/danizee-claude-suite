@@ -75,15 +75,51 @@ describe('doctor', () => {
     await kitFiles();
     assert.deepEqual((await run(['--profile', 'bbs'], { cwd: dir, env: env() })).failed, ['file:.claude/helpers/bbs/cli.js']);
     const r = await run(['--profile', 'review'], { cwd: dir, env: env() });
-    assert.equal(r.exit, 0); assert.deepEqual(r.warnings, ['bin:gh']);
+    assert.equal(r.exit, 0); assert.deepEqual(r.warnings, ['bin:gh', 'gh-auth']);
   });
 
   it('gh is presence only: a gh stub that would fail is never run', async () => {
     await kitFiles();
     await write('bin/gh', '#!/bin/sh\ntouch RAN\nexit 1\n', 0o755);
-    const r = await run(['--profile', 'review'], { cwd: dir, env: env() });
+    const r = await run(['--profile', 'review'], { cwd: dir, env: env({ GH_TOKEN: 'x' }) });
     assert.deepEqual(r.warnings, []);
     await assert.rejects(fs.stat(path.join(dir, 'RAN')));
+  });
+
+  it('gh-auth: advisory row; passes on GH_TOKEN or GITHUB_TOKEN, never prints the value', async () => {
+    await kitFiles(); await tool('gh');
+    const none = await run(['--profile', 'review'], { cwd: dir, env: env({ HOME: dir }) });
+    assert.deepEqual(none.warnings, ['gh-auth']); assert.equal(none.exit, 0);
+    const row = none.checks.find(c => c.name === 'gh-auth');
+    assert.equal(row.fatal, false); assert.ok(row.fix.length > 10);
+    for (const k of ['GH_TOKEN', 'GITHUB_TOKEN']) {
+      const r = await run(['--profile', 'review'], { cwd: dir, env: env({ HOME: dir, [k]: 'sekret-value-123' }) });
+      assert.deepEqual(r.warnings, []);
+      assert.ok(!JSON.stringify(r).includes('sekret-value-123'));
+    }
+    const empty = await run(['--profile', 'review'], { cwd: dir, env: env({ HOME: dir, GH_TOKEN: '' }) });
+    assert.deepEqual(empty.warnings, ['gh-auth']);
+  });
+
+  it('gh-auth: hosts.yml with a user passes (GH_CONFIG_DIR, XDG_CONFIG_HOME, ~/.config/gh); without a user fails', async () => {
+    await kitFiles(); await tool('gh');
+    const yes = 'github.com:\n    users:\n        octo:\n    user: octo\n    git_protocol: https\n';
+    const no = 'github.com:\n    git_protocol: https\n';
+    const warn = async (e) => (await run(['--profile', 'review'], { cwd: dir, env: env(e) })).warnings;
+    await write('c1/hosts.yml', yes);
+    assert.deepEqual(await warn({ HOME: dir, GH_CONFIG_DIR: path.join(dir, 'c1') }), []);
+    await write('x/gh/hosts.yml', yes);
+    assert.deepEqual(await warn({ HOME: dir, XDG_CONFIG_HOME: path.join(dir, 'x') }), []);
+    await write('.config/gh/hosts.yml', yes);
+    assert.deepEqual(await warn({ HOME: dir }), []);
+    await write('c2/hosts.yml', no);
+    assert.deepEqual(await warn({ HOME: dir, GH_CONFIG_DIR: path.join(dir, 'c2') }), ['gh-auth']);
+    // GH_CONFIG_DIR wins over the other locations
+    assert.deepEqual(await warn({ HOME: dir, GH_CONFIG_DIR: path.join(dir, 'c2'), XDG_CONFIG_HOME: path.join(dir, 'x') }), ['gh-auth']);
+    await write('c3/hosts.yml', 'github.com:\n    oauth_token: sekret-value-123\n');
+    const r = await run(['--profile', 'review'], { cwd: dir, env: env({ HOME: dir, GH_CONFIG_DIR: path.join(dir, 'c3') }) });
+    assert.deepEqual(r.warnings, ['gh-auth']);
+    assert.ok(!JSON.stringify(r).includes('sekret-value-123'));
   });
 
   it('findOnPath ignores non-executables, directories and empty entries', async () => {

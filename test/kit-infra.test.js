@@ -30,6 +30,37 @@ describe('kit cli — verb discovery', () => {
   });
 });
 
+describe('kit cli — an unloadable sibling module', () => {
+  it('is skipped with a stderr note naming it; the other verbs still load', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kit-verbs-'));
+    const realWrite = process.stderr.write.bind(process.stderr);
+    let err = '';
+    try {
+      await fs.writeFile(path.join(dir, 'a-broken.js'), "import { nope } from 'buffer'; export const verb = 'broken'; export function run() { return nope; }\n");
+      await fs.writeFile(path.join(dir, 'b-syntax.js'), 'export const = ;\n');
+      await fs.writeFile(path.join(dir, 'c.js'), "export const verb = 'doctor'; export function run() { return { ok: 1 }; }\n");
+      process.stderr.write = (c) => { err += c; return true; };
+      const verbs = await loadVerbs(dir);
+      process.stderr.write = realWrite;
+      assert.deepEqual([...verbs.keys()], ['doctor']);
+      assert.match(err, /a-broken\.js/); assert.match(err, /b-syntax\.js/);
+    } finally { process.stderr.write = realWrite; await fs.rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('through the CLI: doctor still answers when a sibling fails to link', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kit-cli-'));
+    try {
+      const kit = path.join(dir, 'kit');
+      await fs.cp(path.join(HERE, '..', 'src', 'lib', 'kit'), kit, { recursive: true });
+      await fs.writeFile(path.join(kit, 'aaa-old.js'), "import { notThere } from 'buffer'; export const verb = 'aaa'; export function run() { return notThere; }\n");
+      const r = spawnSync(process.execPath, [path.join(kit, 'cli.js'), 'doctor'], { cwd: dir, encoding: 'utf-8', env: { PATH: '' } });
+      assert.match(r.stderr, /aaa-old\.js/);
+      assert.doesNotMatch(r.stderr, /SyntaxError/);
+      assert.ok(JSON.parse(r.stdout).checks.some(c => c.name === 'node-version'), r.stdout + r.stderr);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+});
+
 describe('kit — packaged install and the no-egress preload', () => {
   it('installs helpers/kit/cli.js; an unknown verb exits 1', async () => {
     const pkg = await installPackaged();
