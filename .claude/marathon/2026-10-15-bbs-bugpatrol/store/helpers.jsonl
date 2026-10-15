@@ -97,3 +97,11 @@
 {"role":"review","model":"opus","stream":"trouble-log-reflection-into-lesson-memor","budget":150000,"event":"spawn","id":"3ff10907-6389-4ea0-8bf2-33df68ee04b5","ts":"2026-10-15T17:05:46.727Z"}
 {"helper_id":"7527942f","tokens":78828,"outcome":"green","event":"done","id":"ccb8f2e7-73bc-45b2-8c93-433c5628451b","ts":"2026-10-15T17:05:55.394Z"}
 {"role":"fix","model":"sonnet","stream":"change-impact-test-plan","budget":100000,"event":"spawn","id":"d90df1ba-ff1c-41e1-b39d-a902fe659c20","ts":"2026-10-15T17:05:55.735Z"}
+{"helper_id":"4374339d","tokens":85200,"outcome":"green","event":"done","id":"50c6652d-ba81-4c4d-a308-dd958d8654fe","ts":"2026-10-15T17:06:19.972Z"}
+{"role":"fix","model":"sonnet","stream":"exit-code-contract-separating-infrastruc","budget":100000,"event":"spawn","id":"b4bff38b-8916-4ecc-ac29-1d171ab1c67f","ts":"2026-10-15T17:06:20.115Z"}
+{"helper_id":"f7f70068","tokens":73147,"outcome":"green","event":"done","id":"2b9d99dc-427f-4ab8-bc51-1c9fa46e70c3","ts":"2026-10-15T17:06:20.280Z"}
+{"role":"review","model":"opus","stream":"repeated-replay-gate-for-claims","budget":150000,"event":"spawn","id":"62cb5de5-8e5f-487b-a15a-790aaa43897c","ts":"2026-10-15T17:06:25.755Z"}
+{"helper_id":"67085c3e","tokens":86580,"outcome":"green","event":"done","id":"2cf0fb14-a75c-4837-b3b2-8fe488da2490","ts":"2026-10-15T17:06:33.568Z"}
+{"role":"review","model":"opus","stream":"shared-budget-for-claim-sub-sessions","budget":150000,"event":"spawn","id":"060b962d-05c6-4a1a-af10-d2b43b0ab0c4","ts":"2026-10-15T17:06:52.635Z"}
+{"helper_id":"d5252cd7","tokens":82690,"outcome":"green","event":"done","id":"4d144de7-53fe-4ff1-8319-338b8283a5a4","ts":"2026-10-15T17:07:02.378Z"}
+{"helper_id":"c6966623","tokens":90891,"outcome":"green","event":"done","id":"a6f1c925-3b8b-49fa-b383-7f060d59976a","ts":"2026-10-15T17:07:04.101Z"}

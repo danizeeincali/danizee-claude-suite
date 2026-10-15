@@ -1,0 +1,16 @@
+# Review d325e69c-d145-46c8-8245-3e503c6b18b7 — exit-code-contract-separating-infrastruc, round 2
+
+- Commit: 3c0ee0d
+- Angle: failure conditions and error paths
+- Result: pass
+- 4 findings
+
+## Medium (1)
+
+- **Tool-limit refusals (exit 2) of graph, impact and callers still classify as a blocking regression** — `src/lib/kit/exit-codes.js:40` (correctness): The r1 fix added exit-2 overrides only for safe-git and diff-range, but the kit's KitExit contract makes 2 a policy refusal for every verb, and other verbs use it for tool limits that say nothing about the product. Confirmed: a diff over 32 MiB makes \`cli.js graph --diff big.diff\`, \`impact --diff big.diff\` and \`callers --diff big.diff\` exit 2 ('refused: ... is larger than 33554432 bytes', graph.js:1367/1370), and \`cli.js exit-codes blocks 2 --verb graph\` / \`--verb impact\` / \`--verb callers\` all return class regression, blocks true. guarded-fs refusals (symlink, path swapped, file too large; guarded-fs.js:53) and scrub's file-count limits (scrub.js:232,333) take the same path. A large PR or a raced folder turns the gate red, the false red the idea says must never happen. — fix: Invert the default: make exit 2 non-blocking (precondition/refusal) unless the verb is listed as a product judge (e.g. push-gate), or add 2→precondition overrides for graph, impact, callers and every verb that refuses via guarded-fs or a size limit, with tests.
+
+## Low (3)
+
+- **A misspelled --verb silently falls back to the defaults, so a typo can make a refusal block** — `src/lib/kit/exit-codes.js:114` (correctness): toVerb checks only the shape of the name. \`exit-codes blocks 2 --verb safegit\` (typo for safe-git) returns class regression, blocks true with no warning, whereas \`--verb safe-git\` returns precondition, blocks false. A CI step with a typo turns safe-git's argument refusals into blocking regressions and gives no error. — fix: Reject a --verb that is not a registered kit verb (or at least add \`known\_verb: false\` / a warning in the JSON) and test the typo case.
+- **\`exit-codes table --help\` is refused as an unknown option** — `src/lib/kit/exit-codes.js:128` (correctness): run() parses \`table\` arguments before the --help check, so \`cli.js exit-codes table --help\` exits 1 with 'unknown option --help', while \`describe --help\`, \`blocks --help\` and \`classify --help\` print usage. The --help branch lists 'table' but cannot be reached for it. — fix: Move the \`rest.includes('--help')\` check above the \`table\` branch; add a test.
+- **Shell statuses 126/127 (tool not executable / not found) are reported as unknown instead of precondition** — `src/lib/kit/exit-codes.js:77` (facts): \`exit-codes classify --code 127\` returns class unknown, 'not a verified regression. Treat it as an unclassified failure.' When CI runs the kit and the binary or node is missing, the shell returns 127 (126 when not executable): the exact 'missing tool' precondition the contract defines class 4 for. The contract tells CI it cannot tell a broken tool from a broken product in the most common broken-tool case. — fix: Map 126 and 127 to precondition (or infrastructure) with a description naming the shell meaning, and test it.
