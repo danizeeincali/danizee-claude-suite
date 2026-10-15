@@ -34,8 +34,8 @@ jobs:
           import { planStep } from './scripts/ci-step.js';
           planStep(planTests);
           EOF
-      # Blocking, through the exit-code contract (exit-codes classify): only a product failure fails this step.
-      # A timeout, a signal, a crash or a missing tool (infrastructure) is reported as a warning, not failed.
+      # Blocking and fails closed: any nonzero exit of the test command fails this step. exit-codes classify is
+      # called only to label the ::error:: annotation (product failure, infrastructure: rerun, or precondition).
       - name: npm test
         run: |
           node --input-type=module <<'EOF'

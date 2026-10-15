@@ -1,7 +1,7 @@
 // CI helpers for .github/workflows/test.yml (job node-test). The workflow imports the kit modules and passes the entry
 // functions in, so each step names its power and this file holds the logic:
 //   planStep(planTests)        advisory: print which tests the change touches, with a reason per item. Never fails.
-//   runStep(classify)          blocking: run the test command; only a product failure fails the job.
+//   runStep(classify)          blocking, fails closed: any nonzero exit of the test command fails; classify only labels the failure.
 //   reportStep(renderJunit, renderSarif)  advisory: write the results as JUnit (and SARIF when tests failed) files. Never fails.
 // No network, no token, nothing is posted anywhere: files are written locally and their paths printed.
 import fs from 'node:fs';
@@ -55,10 +55,11 @@ export function planStep(planTests, { env = process.env, cwd = process.cwd(), lo
 }
 
 /**
- * Blocking. Runs the test command (env CI_TEST_COMMAND, default `npm test`), tees its output to outputFile, and
- * decides with the exit-code contract. A nonzero exit that the contract calls infrastructure (timeout, signal,
- * crash, status >= 128) or a missing prerequisite (126/127) is reported as a warning and does not fail the job:
- * it says nothing about the product. Any other nonzero exit is the test runner's product verdict and fails it.
+ * Blocking, and fail closed. Runs the test command (env CI_TEST_COMMAND, default `npm test`), tees its output to
+ * outputFile, and fails the step on ANY nonzero exit. The exit-code contract (classify) is called only to label the
+ * failure in the ::error:: annotation, so a reader can tell a product failure from an infrastructure one (timeout,
+ * killed by a signal: rerun) or a precondition one (the test command could not start). `npm test` is not a kit verb,
+ * so no class is trusted to mean "the product is fine": a run that gave no verdict must not turn the job green.
  * Resolves to the exit status the step should end with.
  */
 export function runStep(classify, { env = process.env, log = console.log } = {}) {
@@ -67,16 +68,16 @@ export function runStep(classify, { env = process.env, log = console.log } = {})
   return new Promise((resolve) => {
     const child = spawn('sh', ['-c', command], { stdio: ['ignore', 'pipe', 'pipe'], env });
     for (const s of [child.stdout, child.stderr]) s.on('data', (d) => { process.stdout.write(d); out.write(d); });
-    child.on('error', (e) => { out.end(); log(`::warning::could not start "${command}": ${e.message} (infrastructure, not a product failure)`); resolve(0); });
+    child.on('error', (e) => { out.end(); log(`::error::precondition: the test command could not start: "${command}": ${e.message}. The job fails.`); resolve(1); });
     child.on('close', (code, signal) => {
       out.end();
       if (code === 0) return resolve(0);
       const c = classify({ code, signal });
-      if (c.class === 'infrastructure' || c.class === 'precondition') {
-        log(`::warning::"${command}" ended with ${signal ? `signal ${signal}` : `status ${code}`}: ${c.class}, not a product failure. ${c.description} The tests did not give a verdict; the job is not failed for this.`);
-        return resolve(0);
-      }
-      log(`"${command}" failed with status ${code}: a product failure (${c.class}). The job fails.`);
+      const ended = signal ? `signal ${signal}` : `status ${code}`;
+      const label = c.class === 'infrastructure' ? 'infrastructure: timed out / killed by a signal, rerun'
+        : c.class === 'precondition' ? 'precondition: the test command could not start'
+        : 'product failure: tests failed';
+      log(`::error::"${command}" ended with ${ended}: ${label}. ${c.description || ''} The job fails.`.replace(/ {2,}/g, ' '));
       resolve(code || 1);
     });
   });

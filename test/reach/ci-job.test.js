@@ -1,7 +1,7 @@
 // Reach test: the node-test job of .github/workflows/test.yml. The test parses the workflow, finds the steps, and runs
 // the exact `run:` script of each step (through bash, at the repo root) on a tiny fixture, then checks the effect:
 //   "Test plan for this change"  prints the plan with a reason per item and never fails
-//   "npm test"                   only a product failure fails; an infrastructure exit is reported, not failed
+//   "npm test"                   fails closed: any nonzero exit fails; the ::error:: label tells the classes apart
 //   "Render test results"        writes junit.xml (and results.sarif when a test failed) as local files
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -88,17 +88,19 @@ test('test step: a passing run passes', () => {
 });
 
 for (const [label, command, pattern] of [
-  ['a timeout (124)', 'exit 124', /status 124: infrastructure/],
-  ['a signal death', 'kill -9 $$', /infrastructure/],
-  ['a tool that is not found (127)', 'exit 127', /precondition/],
+  ['a timeout (124)', 'exit 124', /status 124: infrastructure: timed out \/ killed by a signal, rerun/],
+  ['a signal death', 'kill -9 $$', /infrastructure: timed out \/ killed by a signal, rerun/],
+  ['a tool that is not found (127)', 'exit 127', /status 127: precondition: the test command could not start/],
+  ['exit 2', 'exit 2', /status 2: precondition/],
+  ['an OOM kill (137)', 'exit 137', /status 137: infrastructure/],
 ]) {
-  test(`test step: ${label} is reported, not failed`, () => {
+  test(`test step: ${label} fails the step with a label`, () => {
     const { env } = fixture();
     const r = runStepScript(step('npm test'), { ...env, CI_TEST_COMMAND: command });
-    assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /::warning::/);
+    assert.notEqual(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /::error::/);
     assert.match(r.stdout, pattern);
-    assert.match(r.stdout, /not a product failure/);
+    assert.doesNotMatch(r.stdout, /::warning::/);
   });
 }
 
