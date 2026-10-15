@@ -67,6 +67,19 @@ describe('state-lock: parallel processes', () => {
     });
   });
 
+  it('a same-host lock from another pid namespace is not taken by the dead-pid shortcut', async () => {
+    await inTemp(async dir => {
+      const file = path.join(dir, 'counter.json');
+      await fs.writeFile(file + '.lock', lockBody({ pid: deadPid(), host: os.hostname(), pidns: 'pid:[1]-another-container' }));
+      const t0 = performance.now();
+      const r = await worker(file, 1, { staleMs: 1500, waitMs: 8000, pollMs: 5 });
+      const took = performance.now() - t0;
+      assert.equal(r.code, 0, r.stderr);
+      assert.equal(await count(file), 1);
+      assert.ok(took >= 1400, `took ${took} ms: a lock from another pid namespace must wait the full staleMs`);
+    });
+  });
+
   it('a lock from another host whose content never changes is broken after staleMs', async () => {
     await inTemp(async dir => {
       const file = path.join(dir, 'counter.json');
