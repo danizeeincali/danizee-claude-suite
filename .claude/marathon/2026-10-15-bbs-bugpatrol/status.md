@@ -1,9 +1,9 @@
 # Marathon 2026-10-15-bbs-bugpatrol
 
 - State: RUNNING
-- Budget: 8,928,912 / 14,000,000 tokens
+- Budget: 9,040,850 / 14,000,000 tokens
 - Allowance: unknown (ceiling 100%)
-- Gate (run-wide, all streams): 5/2 clean reviews — build gate not met, full gate not met
+- Gate (run-wide, all streams): 6/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
 - Next for you: Continue stream "noise-ledger-with-flake-quarantine" (next: builder writes contract, failing tests, verb, packaged test) — /w-marathon --resume 2026-10-15-bbs-bugpatrol.
 - Last handoff: 2026-10-15T17:35:01.106Z (auto) on claude/project-thread-24nlxj@c0b0de2, 0 uncommitted, tasks: none
@@ -16,7 +16,7 @@
 | two-pass-finding-clustering | /home/claude/danizee-claude-suite-two-pass-finding-clustering | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/two-pass-finding-clustering.md | done | met | /w-tdd-swarm · done | integration stream wires it |  | 0 |
 | asymmetric-threshold-router | /home/claude/danizee-claude-suite-asymmetric-threshold-router | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/asymmetric-threshold-router.md | done | met | /w-tdd-swarm · done | integration stream wires it |  | 0 |
 | change-impact-test-plan | /home/claude/danizee-claude-suite-change-impact-test-plan | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/change-impact-test-plan.md | done | met | /w-tdd-swarm · done | integration stream wires it |  | 0 |
-| finding-triage-with-fingerprint-dedup-an | /home/claude/danizee-claude-suite-finding-triage-with-fingerprint-dedup-an | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/finding-triage-with-fingerprint-dedup-an.md | active | clean 3/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
+| finding-triage-with-fingerprint-dedup-an | /home/claude/danizee-claude-suite-finding-triage-with-fingerprint-dedup-an | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/finding-triage-with-fingerprint-dedup-an.md | active | clean 4/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
 | shared-budget-for-claim-sub-sessions | /home/claude/danizee-claude-suite-shared-budget-for-claim-sub-sessions | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/shared-budget-for-claim-sub-sessions.md | active | clean 2/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
 | trouble-log-reflection-into-lesson-memor | /home/claude/danizee-claude-suite-trouble-log-reflection-into-lesson-memor | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/trouble-log-reflection-into-lesson-memor.md | active | clean 1/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
 | preflight-doctor-checks-before-a-run | /home/claude/danizee-claude-suite-preflight-doctor-checks-before-a-run | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/preflight-doctor-checks-before-a-run.md | done | met | /w-tdd-swarm · done | integration stream wires it |  | 0 |
@@ -51,7 +51,7 @@
 | change-impact-test-plan: packaged check passes | build | met | true | is true |
 | finding-triage-with-fingerprint-dedup-an: green unit runs in a row | build | met | 7 | at_least 1 |
 | finding-triage-with-fingerprint-dedup-an: zero egress in the packaged check | build | failing | — | is true |
-| finding-triage-with-fingerprint-dedup-an: clean reviews in a row | build | met | 3 | at_least 2 |
+| finding-triage-with-fingerprint-dedup-an: clean reviews in a row | build | met | 4 | at_least 2 |
 | finding-triage-with-fingerprint-dedup-an: wired into its target, reached by a user | build | failing | — | at_least 1 |
 | finding-triage-with-fingerprint-dedup-an: packaged check passes | build | failing | — | is true |
 | shared-budget-for-claim-sub-sessions: green unit runs in a row | build | met | 5 | at_least 1 |
@@ -69,7 +69,7 @@
 | preflight-doctor-checks-before-a-run: clean reviews in a row | build | met | 3 | at_least 2 |
 | preflight-doctor-checks-before-a-run: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | preflight-doctor-checks-before-a-run: packaged check passes | build | met | true | is true |
-| exit-code-contract-separating-infrastruc: green unit runs in a row | build | met | 8 | at_least 1 |
+| exit-code-contract-separating-infrastruc: green unit runs in a row | build | met | 9 | at_least 1 |
 | exit-code-contract-separating-infrastruc: zero egress in the packaged check | build | failing | — | is true |
 | exit-code-contract-separating-infrastruc: clean reviews in a row | build | failing | 1 | at_least 2 |
 | exit-code-contract-separating-infrastruc: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
@@ -85,7 +85,7 @@
 | repeated-replay-gate-for-claims: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | repeated-replay-gate-for-claims: packaged check passes | build | met | true | is true |
 | The owner was told what they got: delivered.md lists every power, wired, with its command | build | failing | — | is true |
-| Clean reviews in a row | build | met | 5 | at_least 2 |
+| Clean reviews in a row | build | met | 6 | at_least 2 |
 | High findings in the latest review | build | met | 0 | at_most 0 |
 | Open high findings | build | met | 0 | at_most 0 |
 

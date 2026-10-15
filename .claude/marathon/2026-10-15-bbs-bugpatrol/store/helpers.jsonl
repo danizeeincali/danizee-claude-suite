@@ -208,3 +208,8 @@
 {"helper_id":"f95c715d-293c-4299-b6c9-27f4b50dd49d","tokens":90964,"outcome":"green","event":"done","id":"1d9158b1-4daf-48c4-9958-1c49a98531a0","ts":"2026-10-15T17:55:13.821Z"}
 {"role":"fix","model":"sonnet","stream":"exit-code-contract-separating-infrastruc","budget":150000,"event":"spawn","id":"13833f53-6b7b-489b-bb08-09ed5e802461","ts":"2026-10-15T17:55:15.031Z"}
 {"helper_id":"284bf7b0-3ecf-4e3f-a22d-904c85b7cc72","tokens":84275,"outcome":"green","event":"done","id":"b6274666-bb2c-47cd-a173-62998e4e436c","ts":"2026-10-15T17:55:23.539Z"}
+{"helper_id":"e6457906-3277-434e-adc1-14c007af1fdf","tokens":95232,"outcome":"green","event":"done","id":"35bb616a-f4e2-48d7-849e-2670581e3533","ts":"2026-10-15T17:56:07.894Z"}
+{"helper_id":"13833f53-6b7b-489b-bb08-09ed5e802461","tokens":79178,"outcome":"green","event":"done","id":"2e3a6101-dc0d-43c1-a617-73e0b922cabe","ts":"2026-10-15T17:56:57.081Z"}
+{"role":"review","model":"opus","stream":"exit-code-contract-separating-infrastruc","budget":150000,"event":"spawn","id":"e484fa91-a456-49ad-87c6-ff60beb4e8bb","ts":"2026-10-15T17:57:06.358Z"}
+{"role":"fix","model":"sonnet","stream":"finding-triage-with-fingerprint-dedup-an","budget":150000,"event":"spawn","id":"b31febb0-cfaa-41cc-8e2e-76ea9cfc1cd4","ts":"2026-10-15T17:57:08.272Z"}
+{"helper_id":"5a1da720-c259-4118-9fe9-d789cb0ae354","tokens":87528,"outcome":"green","event":"done","id":"cf80efb3-6265-4623-bcc9-a469fc3eba74","ts":"2026-10-15T17:57:12.939Z"}

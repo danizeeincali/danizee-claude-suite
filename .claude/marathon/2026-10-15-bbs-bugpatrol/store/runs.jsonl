@@ -53,3 +53,4 @@
 {"kind":"unit","status":"green","stream":"noise-ledger-with-flake-quarantine","commit":"4677f43","id":"fe5d2d5a-7133-40e8-82a6-7ccd5d343d1e","ts":"2026-10-15T17:52:28.278Z"}
 {"kind":"unit","status":"green","stream":"shared-budget-for-claim-sub-sessions","commit":"bba263d","id":"192fc445-79ff-426c-bc2c-968adcd5d703","ts":"2026-10-15T17:53:08.723Z"}
 {"kind":"unit","status":"green","stream":"finding-triage-with-fingerprint-dedup-an","commit":"d13d8a5","id":"f217cd2d-d51b-42f8-b8f9-026307522490","ts":"2026-10-15T17:55:05.046Z"}
+{"kind":"unit","status":"green","stream":"exit-code-contract-separating-infrastruc","commit":"7506995","id":"1d89389d-7bbe-4513-8d8f-3acb5e44cd70","ts":"2026-10-15T17:57:02.763Z"}
