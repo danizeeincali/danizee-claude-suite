@@ -10,8 +10,7 @@
  * --result <file|-> is the JSON a product judge printed (a regular file of at most 1 MiB, or piped stdin). A judge exits 2 both when it
  * judged the product and said no and when it could not judge at all, so without --result a judge's 2 is a regression. With it, an exit 2 whose
  * result shows nothing was judged is infrastructure and never blocks: scrub with hit_count 0 and a non-empty not_scanned list
- * where every not_scanned reason is an environment reason (a partial clone with the remote unreachable); push-gate with decision deny and scrub.ran false, a reason
- * that says the check 'could not run' (e.g. git timed out), or a scrub block that is such a zero-hit partial-clone-only scan. Size, total,
+ * where every not_scanned reason is an environment reason (a partial clone with the remote unreachable); push-gate with decision deny whose reason says the check 'could not run' because of an environment cause (git timed out, overflowed, was killed or could not be run; NOT scrub's own refusals such as a tracked private pattern file, which block), or a scrub block that is such a zero-hit partial-clone-only scan. Size, total,
  * not-a-regular-file and other reasons stay blocking (fail closed, described by their reason), as does any hit or a review deny.
  * The library takes the parsed object: classify({ code, verb, result }), blocksMerge(code, verb, signal, result). 124 (timeout(1)) is infrastructure.
  *
@@ -20,8 +19,8 @@
  * timeout, crash, signal, any status >= 128; 126/127 = tool not executable / not found are preconditions). cli.js uses 2 for a
  * policy refusal of ANY kind, and many verbs refuse for tool limits (size caps, guarded-fs symlink and race refusals, argument
  * refusals) that say nothing about the product, so exit 2 is a NON-BLOCKING refusal (precondition) by default and blocks only
- * for verbs on the explicit PRODUCT_JUDGES list, whose 2 is a product verdict by their usage text (push-gate: deny; scrub: hits
- * or an incomplete scan, fail closed). A new verb is not a judge until it is added there. Some verbs document their own
+ * for verbs on the explicit PRODUCT_JUDGES list, whose 2 is a product verdict by their usage text (push-gate: deny; scrub: hits,
+ * an incomplete scan (fail closed), or a refusal such as a tracked private pattern file, which prints nothing on stdout). A new verb is not a judge until it is added there. Some verbs document their own
  * statuses (diff-range 1 = bad input or a git failure, not separable yet; safe-git 3 = git ran and failed or timed
  * out, infrastructure; diff-range 3 = an empty range, clean). A bare 3 without a verb is ambiguous, so it is unknown.
  * Unknown statuses are reported as `unknown`, never as clean, and never block (only a known regression blocks).
@@ -92,17 +91,17 @@ const incompleteNoHits = (o) => o && typeof o === 'object' && o.hit_count === 0
   && Array.isArray(o.not_scanned) && o.not_scanned.length > 0
   && o.not_scanned.every((e) => e && typeof e === 'object' && ENV_REASONS.includes(e.reason));
 
+/** push-gate says 'could not run' for ANY scrub KitExit, including scrub's own refusals (tracked private pattern file, too many files, bad pattern file), which are product refusals and block. Only a cause named right after the prefix by safe-git (timeout, output overflow, killed, cannot run git) is environmental. */
+const ENV_COULD_NOT_RUN = /^the scrub check is configured but could not run: (?:git [\w-]+ (?:took longer than \d+ ms|wrote more than \d+ MiB of output|was killed by)|cannot run git:)/;
+
 /** Why a judge's result shows nothing was judged, or null. Field names are those of scrub.js and push-gate.js. */
 export function unjudgedReason(v, result) {
   if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
   if (v === 'scrub') return incompleteNoHits(result) ? 'scrub found no hits but every file it skipped was skipped for an environment reason (partial clone)' : null;
   if (v === 'push-gate') {
     if (result.decision !== 'deny') return null;
-    if (result.scrub && typeof result.scrub === 'object') {
-      if (result.scrub.ran === false) return 'the scrub check could not run (scrub.ran false)';
-      if (incompleteNoHits(result.scrub)) return 'the scrub check skipped files only for an environment reason and found no hits';
-    }
-    if (typeof result.reason === 'string' && /could not run/i.test(result.reason) && !(result.scrub && result.scrub.hit_count > 0)) return 'the scrub check could not run';
+    if (result.scrub && typeof result.scrub === 'object' && incompleteNoHits(result.scrub)) return 'the scrub check skipped files only for an environment reason and found no hits';
+    if (typeof result.reason === 'string' && ENV_COULD_NOT_RUN.test(result.reason) && !(result.scrub && result.scrub.hit_count > 0)) return 'the scrub check could not run because git timed out, overflowed or failed to run';
   }
   return null;
 }
@@ -113,6 +112,17 @@ function failClosedReasons(v, result) {
   if (!scan || typeof scan !== 'object' || scan.hit_count !== 0 || !Array.isArray(scan.not_scanned) || !scan.not_scanned.length) return null;
   const reasons = [...new Set(scan.not_scanned.map((e) => (e && typeof e === 'object' && typeof e.reason === 'string' ? e.reason : 'unknown reason')))];
   return reasons.slice(0, 5).join('; ') + (reasons.length > 5 ? '; ...' : '');
+}
+
+/** The remedy that fits the not_scanned reasons (size, total, or a file that is missing, not regular or unreadable). */
+function failClosedRemedy(v, result) {
+  const scan = v === 'scrub' ? result : result.scrub;
+  const rs = scan.not_scanned.map((e) => (e && typeof e === 'object' && typeof e.reason === 'string' ? e.reason : ''));
+  const parts = [];
+  if (rs.some((r) => /^larger than /.test(r))) parts.push(v === 'scrub' ? 'Shrink or split the oversized files, or rerun scrub with a higher --max-file-bytes.' : 'Shrink or split the oversized files, or run scrub with a higher --max-file-bytes.');
+  if (rs.some((r) => r === 'total size limit reached')) parts.push('Scan a smaller range (scrub --history <base>), since the total size limit cannot be raised.');
+  if (rs.some((r) => r === 'tracked but missing on disk' || r === 'not a regular file on disk' || r.startsWith('cannot read'))) parts.push('Restore or fix the missing, non-regular or unreadable files, then rerun.');
+  return parts.length ? parts.join(' ') : 'Look at the listed files and reasons, fix the cause, then rerun.';
 }
 
 const AMBIGUOUS = { 3: 'Status 3 means different things per verb (safe-git: git failed, infrastructure; diff-range: empty range, clean); pass the verb to classify it.' };
@@ -132,7 +142,7 @@ export function classify({ code = null, signal = null, verb: v = null, result = 
     const why = unjudgedReason(v, result);
     if (why) return { ...base, class: 'infrastructure', known: true, blocks: false, judged: false, description: NOT_JUDGED.replace('%s', why) };
     const fc = failClosedReasons(v, result);
-    if (fc) return { ...base, class: 'regression', known: true, blocks: true, description: `Fail closed: ${v} found no hits but some files were not scanned for a product reason (${fc}), so it blocks. Shrink or split those files, or scan with a higher limit, then rerun.` };
+    if (fc) return { ...base, class: 'regression', known: true, blocks: true, description: `Fail closed: ${v} found no hits but some files were not scanned for a product reason (${fc}), so it blocks. ${failClosedRemedy(v, result)}` };
   }
   const over = v && Object.hasOwn(VERB_OVERRIDES, v) ? VERB_OVERRIDES[v][code] : undefined;
   if (over) return { ...base, class: over.class, known: true, blocks: CLASSES[over.class].blocks, description: over.description };
@@ -192,7 +202,7 @@ async function readResult(arg, io) {
     text = await fs.readFile(file, 'utf-8');
   }
   if (Buffer.byteLength(text) > MAX_RESULT_BYTES) throw new KitExit(`--result is larger than ${MAX_RESULT_BYTES} bytes`, 1);
-  if (!text.trim()) throw new KitExit('--result is empty (the verb printed nothing; did it crash?)', 1);
+  if (!text.trim()) throw new KitExit('--result is empty (the verb printed nothing on stdout: it crashed or refused; read its stderr)', 1);
   let j;
   try { j = JSON.parse(text); } catch { throw new KitExit('--result is not valid JSON (pass the verb\'s JSON output)', 1); }
   if (!j || typeof j !== 'object' || Array.isArray(j)) throw new KitExit('--result must be a JSON object (the verb\'s output)', 1);

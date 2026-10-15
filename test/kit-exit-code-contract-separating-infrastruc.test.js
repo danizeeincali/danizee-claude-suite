@@ -190,11 +190,37 @@ describe('exit-codes', () => {
     for (const ns of [[], ['x'], undefined]) assert.equal(blocksMerge(2, 'scrub', null, { hit_count: 0, complete: false, not_scanned: ns }), true);
   });
   it('push-gate deny where the scrub check could not run is infrastructure with --result', () => {
-    for (const result of [pgTimeout, { decision: 'deny', reason: 'the scrub check is configured but could not run: x' }, { decision: 'deny', reason: 'r', scrub: { ran: true, hit_count: 0, complete: false, not_scanned: [{ file: 'a', reason: 'object not available locally (partial clone?)' }] } }]) {
+    for (const result of [pgTimeout, { decision: 'deny', reason: 'the scrub check is configured but could not run: git ls-files wrote more than 256 MiB of output; narrow the command' }, { decision: 'deny', reason: 'the scrub check is configured but could not run: cannot run git: spawn ENOENT', scrub: { ran: false } }, { decision: 'deny', reason: 'r', scrub: { ran: true, hit_count: 0, complete: false, not_scanned: [{ file: 'a', reason: 'object not available locally (partial clone?)' }] } }]) {
       const r = classify({ code: 2, verb: 'push-gate', result });
       assert.equal(r.class, 'infrastructure');
       assert.equal(r.blocks, false);
     }
+  });
+  it('push-gate deny for a scrub refusal (not an environment cause) always blocks, even with scrub.ran false', () => {
+    for (const msg of [
+      '.claude/kit/scrub-patterns.local (the private pattern file) is tracked by git and would be published',
+      'more than 200000 tracked files; refusing',
+      'pattern file .claude/kit/scrub-patterns.local is invalid: bad regex',
+      'x',
+      'a note: git ls-files took longer than 5 ms and was stopped'
+    ]) {
+      const result = { decision: 'deny', reason: `the scrub check is configured but could not run: ${msg}`, scrub: { ran: false }, exit: 2 };
+      const r = classify({ code: 2, verb: 'push-gate', result });
+      assert.equal(r.blocks, true, msg);
+      assert.equal(r.class, 'regression', msg);
+      assert.equal(blocksMerge(2, 'push-gate', null, result), true, msg);
+    }
+    assert.equal(classify({ code: 2, verb: 'push-gate', result: { decision: 'deny', reason: 'r', scrub: { ran: false } } }).blocks, true);
+  });
+  it('fail-closed remedy follows the reason, and an empty --result names a refusal too', async () => {
+    const d = (reason) => classify({ code: 2, verb: 'scrub', result: { hit_count: 0, complete: false, not_scanned: [{ file: 'a', reason }] } }).description;
+    assert.doesNotMatch(d('tracked but missing on disk'), /Shrink|higher limit/);
+    assert.doesNotMatch(d('not a regular file on disk'), /Shrink|higher limit/);
+    assert.doesNotMatch(d('cannot read: EACCES'), /Shrink|higher limit/);
+    assert.doesNotMatch(d('total size limit reached'), /higher limit/);
+    assert.match(d('total size limit reached'), /smaller range/);
+    assert.match(d('larger than 1048576 bytes'), /--max-file-bytes/);
+    await assert.rejects(run(['blocks', '2', '--verb', 'scrub', '--result', '-'], { stdin: async () => Buffer.from(''), stdinIsTTY: false }), /crashed or refused.*stderr/);
   });
   it('push-gate review deny and scrub hits stay regressions with --result', () => {
     assert.equal(classify({ code: 2, verb: 'push-gate', result: { decision: 'deny', reason: 'the review of this change did not pass (verdict fail)' } }).blocks, true);
