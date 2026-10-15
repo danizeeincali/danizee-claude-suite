@@ -7,15 +7,19 @@
  *   readJsonState(file, { fallback })                                                      → parsed JSON
  *   writeJsonAtomic(file, value)                                                           → undefined
  *
- * LOCK. The file's folder is created if missing. `<file>.lock` is created with O_EXCL ('wx') and holds {token, pid, host, pidns, beat}. Only EEXIST means "held";
+ * LOCK. The file's folder is created if missing. `<file>.lock` is created with O_EXCL ('wx') and holds {token, pid, host, pidns, boot, beat}. Only EEXIST means "held";
  * any other open error is fatal (KitExit 1 "cannot lock <file>: <code>"). While fn runs, the holder rewrites the lock
  * every staleMs/3 with beat+1 (opened 'r+', so a removed lock is never recreated, and only while it still holds our
  * token). Release removes the lock only if it still holds our token.
  *
  * STALENESS is judged only by what the waiter itself sees on its own monotonic clock: a lock is stale when its exact
  * content has stayed unchanged for staleMs of the waiter's observation. File mtimes and wall clocks are never used, so
- * clock skew on a network filesystem cannot break a live lock. Shortcut: a lock written on this host whose pid no
- * longer exists (kill(pid, 0) → ESRCH) is stale at once, but only when the lock names this pid namespace too.
+ * clock skew on a network filesystem cannot break a live lock. Shortcut: a lock whose pid no longer exists
+ * (kill(pid, 0) → ESRCH) is stale at once, but only when it names this host, this pid namespace and this machine's
+ * per-boot id (Linux /proc/sys/kernel/random/boot_id), and that boot id is known on both sides. Hostnames repeat across
+ * machines and the init pid namespace id is the same kernel constant everywhere, so without a boot id on either side
+ * (non-Linux, unreadable, or a lock without a boot field) the shortcut is never taken and only the unchanged-for-staleMs
+ * rule applies.
  *
  * BREAK. A waiter that judged the lock stale takes `<file>.lock.break` ('wx'; a non-EEXIST error is fatal, never
  * retried), re-reads the lock and removes it only if its content is byte-identical to what was judged stale, then
@@ -23,6 +27,12 @@
  * dead pid on this host) and removed only if its content is still the one judged. Every loop pass — lock fresh,
  * stale, break lost, unreadable — goes through the same deadline check and a jittered backoff sleep; past waitMs it
  * fails with KitExit 1 "<file> is locked by another run (holder pid P on host H)".
+ *
+ * LOST LOCK. fn runs in an AsyncLocalStorage context that records this lock and its token. writeJsonAtomic for a file
+ * whose lock that context holds writes its temp file, then re-reads `<file>.lock` just before the rename; if the lock
+ * no longer holds our token (missing, another token, unreadable) it removes the temp file and fails with KitExit 1
+ * "lost the lock on <file> to another run; nothing saved". This covers a holder whose heartbeat stalled long enough
+ * to be broken. Outside a lock context writeJsonAtomic does not look at any lock.
  *
  * Residual window, by design: between a breaker's re-read and its unlink, only a holder that was itself judged stale
  * (no heartbeat for staleMs) can be affected.
@@ -33,15 +43,23 @@ import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { performance } from 'node:perf_hooks';
 import { setTimeout as delay } from 'node:timers/promises';
 import { KitExit } from './kit-exit.js';
 
 const HOST = os.hostname();
 // The pid namespace (Linux). Containers can share a hostname and a volume but not a pid namespace, so a pid that is
-// invisible here may be alive there; the dead-pid shortcut applies only when both locks name the same namespace
-// (or neither platform has one).
+// invisible here may be alive there; the dead-pid shortcut also requires the lock to name this same namespace.
+// The init namespace id is identical on every Linux machine, so it never stands in for a machine identity (see BOOT).
 const PIDNS = (() => { try { return fsSync.readlinkSync('/proc/self/ns/pid'); } catch { return null; } })();
+// The per-boot machine identity (Linux), read once. null when unreadable: then the dead-pid shortcut is never taken.
+const BOOT = (() => {
+  try { return fsSync.readFileSync('/proc/sys/kernel/random/boot_id', 'utf-8').trim() || null; } catch { return null; }
+})();
+
+// Locks held by the current async context: Map(absolute lock path → token).
+const held = new AsyncLocalStorage();
 
 function holderOf(content) {
   try {
@@ -50,11 +68,13 @@ function holderOf(content) {
   } catch { return null; }
 }
 
-/** True when the content names a process on this host that no longer exists. */
+/** True when the content names a process on this machine (host, boot id and pid namespace) that no longer exists. */
 function deadOnThisHost(content) {
+  if (BOOT === null) return false;
   const h = holderOf(content);
   if (!h || h.host !== HOST || !Number.isInteger(h.pid) || h.pid <= 0) return false;
-  if (h.pidns !== undefined && h.pidns !== PIDNS) return false;
+  if (typeof h.boot !== 'string' || h.boot !== BOOT) return false;
+  if (h.pidns !== PIDNS) return false;
   try { process.kill(h.pid, 0); return false; } catch (err) { return err.code === 'ESRCH'; }
 }
 
@@ -109,7 +129,7 @@ export async function withStateLock(file, fn, opts = {}) {
   const lock = `${file}.lock`;
   const brk = `${lock}.break`;
   const token = randomUUID();
-  const body = beat => JSON.stringify({ token, pid: process.pid, host: HOST, pidns: PIDNS, beat });
+  const body = beat => JSON.stringify({ token, pid: process.pid, host: HOST, pidns: PIDNS, boot: BOOT, beat });
 
   // What this waiter has seen at each path: { content, since } on its own clock.
   const seen = new Map();
@@ -185,7 +205,9 @@ export async function withStateLock(file, fn, opts = {}) {
 
   let failed = false;
   try {
-    return await fn();
+    const mine = new Map(held.getStore() ?? []);
+    mine.set(path.resolve(lock), token);
+    return await held.run(mine, fn);
   } catch (err) {
     failed = true;
     throw err;
@@ -218,11 +240,15 @@ export async function readJsonState(file, { fallback } = {}) {
   }
 }
 
-/** Write `value` as JSON via a temp file and rename; folders are created; the temp file never remains after a failure. */
+/**
+ * Write `value` as JSON via a temp file and rename; folders are created; the temp file never remains after a failure.
+ * Inside withStateLock for this file, the rename happens only if the lock still holds our token (see LOST LOCK).
+ */
 export async function writeJsonAtomic(file, value) {
   try { await fsp.mkdir(path.dirname(file), { recursive: true }); } catch (err) {
     throw new KitExit(`cannot create the folder for ${file}: ${err.code || err.message}`, 1);
   }
+  const token = held.getStore()?.get(path.resolve(`${file}.lock`));
   const tmp = `${file}.${process.pid}.${randomUUID()}.tmp`;
   try {
     const fh = await fsp.open(tmp, 'wx', 0o600);
@@ -230,8 +256,17 @@ export async function writeJsonAtomic(file, value) {
       await fh.writeFile(JSON.stringify(value, null, 2) + '\n');
       await fh.sync();
     } finally { await fh.close(); }
+    if (token !== undefined) {
+      let cur = null;
+      try { cur = holderOf(await fsp.readFile(`${file}.lock`, 'utf-8')); } catch { /* missing or unreadable: lost */ }
+      if (!cur || cur.token !== token) {
+        await fsp.unlink(tmp).catch(() => {});
+        throw new KitExit(`lost the lock on ${file} to another run; nothing saved`, 1);
+      }
+    }
     await fsp.rename(tmp, file);
   } catch (err) {
+    if (err instanceof KitExit) throw err;
     await fsp.unlink(tmp).catch(() => {});
     throw new KitExit(`cannot write ${file}: ${err.code || err.message}`, 1);
   }
