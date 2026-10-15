@@ -12,7 +12,7 @@
  * result shows nothing was judged is infrastructure and never blocks: scrub with hit_count 0 and a non-empty not_scanned list
  * where every not_scanned reason is an environment reason (a partial clone with the remote unreachable); push-gate with decision deny whose reason says the check 'could not run' because of an environment cause (git timed out, overflowed, was killed or could not be run; NOT scrub's own refusals such as a tracked private pattern file, which block), or a scrub block that is such a zero-hit partial-clone-only scan. Size, total,
  * not-a-regular-file and other reasons stay blocking (fail closed, described by their reason), as does any hit or a review deny.
- * The library takes the parsed object: classify({ code, verb, result }), blocksMerge(code, verb, signal, result). 124 (timeout(1)) is infrastructure.
+ * The library takes the parsed object or the judge's stdout string (parsed like --result): classify({ code, verb, result }), blocksMerge(code, verb, signal, result). It fails closed like the CLI: a verb outside the registered kit verbs, a bad code or a bad result throws KitExit 1 (blocksMerge rethrows; an input error never means 'does not block'). 124 (timeout(1)) is infrastructure.
  *
  * Classes: clean (0), regression (2 from a listed product judge only: the ONLY class allowed to block a merge), usage (1, invalid input
  * or broken state), precondition (4, a prerequisite was never met), infrastructure (5; the tool or environment failed:
@@ -28,7 +28,9 @@
  * Built from ideas audited by /w-bbs (run 2026-10-15-bugpatrol); no foreign code.
  */
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { KitExit } from './kit-exit.js';
 
 export const verb = 'exit-codes';
@@ -129,6 +131,26 @@ function failClosedRemedy(v, result) {
   return parts.length ? parts.join(' ') : 'Look at the listed files and reasons, fix the cause, then rerun.';
 }
 
+const KIT_DIR = path.dirname(fileURLToPath(import.meta.url));
+let knownVerbs = null;
+/** The registered kit verbs, the same set cli.js loadVerbs() finds (sibling .js files other than cli.js and kit-exit.js that export a verb), read synchronously from each file's `export const verb = '<name>'`. */
+function registeredVerbs() {
+  if (knownVerbs) return knownVerbs;
+  const names = [];
+  for (const f of fsSync.readdirSync(KIT_DIR).filter((x) => x.endsWith('.js') && x !== 'cli.js' && x !== 'kit-exit.js').sort()) {
+    const m = /^export const verb = '([^']*)';/m.exec(fsSync.readFileSync(path.join(KIT_DIR, f), 'utf-8'));
+    if (m) names.push(m[1]);
+  }
+  return (knownVerbs = names);
+}
+function checkVerb(v) {
+  if (v == null) return null;
+  if (typeof v !== 'string' || !/^[a-z][a-z0-9-]{0,63}$/.test(v)) throw new KitExit(`verb must be a verb name like "safe-git", got ${JSON.stringify(v)}`, 1);
+  const known = registeredVerbs();
+  if (!known.includes(v)) throw new KitExit(`verb "${v}" is not a registered kit verb (known: ${known.join(', ')})`, 1);
+  return v;
+}
+
 const AMBIGUOUS = { 3: 'Status 3 means different things per verb (safe-git: git failed, infrastructure; diff-range: empty range, clean); pass the verb to classify it.' };
 
 /**
@@ -136,6 +158,8 @@ const AMBIGUOUS = { 3: 'Status 3 means different things per verb (safe-git: git 
  * { code, signal, verb, class, known, blocks, description }; class is `unknown` for an unlisted status, which never blocks.
  */
 export function classify({ code = null, signal = null, verb: v = null, result = null } = {}) {
+  v = checkVerb(v);
+  if (typeof result === 'string') result = parseResultText(result);
   if (signal != null && signal !== '') {
     return { code, signal: String(signal), verb: v, class: 'infrastructure', known: true, blocks: false, description: `Killed by signal ${signal}: the tool or environment failed, not the product.` };
   }
@@ -158,9 +182,9 @@ export function classify({ code = null, signal = null, verb: v = null, result = 
   return { ...base, class: 'unknown', known: false, blocks: false, description: AMBIGUOUS[code] || `Status ${code} is not in the contract; it is not clean and not a verified regression. Treat it as an unclassified failure.` };
 }
 
-/** True only when the status is a regression for that verb. Unknown, infrastructure, signals and bad input are false. */
+/** True only when the status is a regression for that verb. Unknown, infrastructure and signals are false. Bad input (verb, code, result) throws KitExit 1: it must never read as 'does not block'. */
 export function blocksMerge(code, v = null, signal = null, result = null) {
-  try { return classify({ code, verb: v, signal, result }).blocks === true; } catch { return false; }
+  return classify({ code, verb: v, signal, result }).blocks === true;
 }
 
 function parse(args, positional, flags) {
@@ -208,6 +232,10 @@ async function readResult(arg, io) {
     if (st.size > MAX_RESULT_BYTES) throw new KitExit(`--result ${arg} is larger than ${MAX_RESULT_BYTES} bytes`, 1);
     text = await fs.readFile(file, 'utf-8');
   }
+  return parseResultText(text);
+}
+/** Parse a judge's stdout the way --result does: size cap, non-empty, valid JSON, an object. Throws KitExit 1. */
+function parseResultText(text) {
   if (Buffer.byteLength(text) > MAX_RESULT_BYTES) throw new KitExit(`--result is larger than ${MAX_RESULT_BYTES} bytes`, 1);
   if (!text.trim()) throw new KitExit('--result is empty (the verb printed nothing on stdout: it crashed or refused; read its stderr)', 1);
   let j;

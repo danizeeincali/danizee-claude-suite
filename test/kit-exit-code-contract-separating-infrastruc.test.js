@@ -61,8 +61,7 @@ describe('exit-codes', () => {
     assert.equal((await run(['blocks', '3', '--verb', 'safe-git'])).blocks, false);
   });
   it('unlisted verb falls back to defaults; __proto__ verb is safe', () => {
-    assert.equal(classify({ code: 2, verb: 'nonesuch' }).class, 'precondition');
-    assert.equal(classify({ code: 3, verb: 'constructor' }).class, 'unknown');
+    for (const v of ['nonesuch', 'constructor', '__proto__']) assert.throws(() => classify({ code: 2, verb: v }), (e) => e.code === 1, v);
   });
   it('bad input is exit 1', async () => {
     await bad(['nope']);
@@ -80,8 +79,8 @@ describe('exit-codes', () => {
     await bad(['classify', '--code', '1', '--code', '2']);
     await bad(['classify', '--bogus', '1']);
     await bad(['table', 'extra']);
-    assert.equal(blocksMerge('2x'), false);
-    assert.equal(blocksMerge(undefined), false);
+    assert.throws(() => blocksMerge('2x'), (e) => e.code === 1);
+    assert.throws(() => blocksMerge(undefined), (e) => e.code === 1);
   });
   it('tool-limit refusals (exit 2) of safe-git and diff-range never block', async () => {
     for (const v of ['safe-git', 'diff-range']) {
@@ -303,5 +302,24 @@ describe('exit-codes', () => {
   });
   it('an empty piped --result says nothing was piped', async () => {
     await assert.rejects(run(['blocks', '2', '--verb', 'scrub', '--result', '-'], { stdin: async () => Buffer.from('  \n'), stdinIsTTY: false }), (e) => e.code === 1 && /empty/.test(e.message) && !/not valid JSON/.test(e.message));
+  });
+  it('library entry fails closed like the CLI: bad verb, bad result and bad code are KitExit 1, never false', async () => {
+    const { loadVerbs } = await import('../src/lib/kit/cli.js');
+    for (const v of (await loadVerbs()).keys()) assert.doesNotThrow(() => classify({ code: 1, verb: v }), v);
+    for (const v of ['Scrub', 'scrub ', 'pushgate', ' scrub', 'SCRUB', 'nonesuch', '', 5, {}]) {
+      assert.throws(() => blocksMerge(2, v), (e) => e.code === 1, JSON.stringify(v));
+      assert.throws(() => classify({ code: 2, verb: v }), (e) => e.code === 1, JSON.stringify(v));
+    }
+    assert.throws(() => blocksMerge(2, 'Scrub', 'SIGKILL'), (e) => e.code === 1);
+    const hit = '{"hit_count":3,"not_scanned":[]}';
+    assert.equal(blocksMerge(2, 'scrub', null, hit), true);
+    assert.equal(blocksMerge(2, 'scrub', null, { hit_count: 3, not_scanned: [] }), true);
+    const partial = { hit_count: 0, not_scanned: [{ file: 'a', reason: 'object not available locally (partial clone?)' }] };
+    assert.equal(blocksMerge(2, 'scrub', null, JSON.stringify(partial)), false);
+    for (const r of ['not json', '', '  \n', '[]', '3', 'null', '"x"', 'x'.repeat(1048577), [], 5]) {
+      assert.throws(() => blocksMerge(2, 'scrub', null, r), (e) => e.code === 1, String(r).slice(0, 20));
+      assert.throws(() => classify({ code: 2, verb: 'scrub', result: r }), (e) => e.code === 1);
+    }
+    assert.throws(() => blocksMerge(300, 'scrub'), (e) => e.code === 1);
   });
 });
