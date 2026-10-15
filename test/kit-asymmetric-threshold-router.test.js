@@ -41,8 +41,9 @@ describe('threshold-route: fixed order', () => {
     const low = route({ answer: ans('not-anomalous', 0.1) });
     assert.equal(low.route, 'ask-human');
   });
-  it('confident not-anomalous is ignored even with high ambiguity (ignore comes first)', () => {
-    assert.equal(route({ answer: ans('not-anomalous', 0.9, { ambiguity: 0.95 }) }).route, 'ignore');
+  it('confident not-anomalous with high ambiguity escalates instead of being silenced', () => {
+    assert.equal(route({ answer: ans('not-anomalous', 0.9, { ambiguity: 0.95 }) }).route, 'escalate');
+    assert.equal(route({ answer: ans('not-anomalous', 0.9, { ambiguity: 0.79 }) }).route, 'ignore');
   });
   it('high ambiguity escalates ahead of low-confidence ask and ahead of suppress/fix', () => {
     assert.equal(route({ answer: ans('anomaly', 0.1, { ambiguity: 0.8 }) }).route, 'escalate');
@@ -99,7 +100,10 @@ describe('threshold-route: fixed order', () => {
     for (const kind of kinds) for (let c = 0; c <= 1.0001; c += 0.05) for (const amb of [undefined, 0.2, 0.9]) {
       const conf = Math.min(1, c);
       const r = route({ answer: ans(kind, conf, amb === undefined ? {} : { ambiguity: amb }) });
-      if (['ignore', 'suppress', 'auto-fix'].includes(r.route)) assert.ok(conf >= 0.8, `${kind} ${conf} -> ${r.route}`);
+      if (['ignore', 'suppress', 'auto-fix'].includes(r.route)) {
+        assert.ok(conf >= 0.8, `${kind} ${conf} -> ${r.route}`);
+        assert.ok(amb === undefined || amb < 0.8, `${kind} ${conf} amb ${amb} -> ${r.route}`);
+      }
     }
   });
 });
@@ -169,23 +173,43 @@ describe('threshold-route: routeAll and input validation', () => {
   it('invalid items throw exit 1', () => {
     const bad = [
       'str', null, 5,
-      { answer: 'x' },
-      { answer: ans('nope', 0.5) },
-      { answer: { kind: 'fix' } },
-      { answer: ans('fix', 1.5) },
-      { answer: ans('fix', -0.1) },
-      { answer: ans('fix', '0.9') },
-      { answer: ans('fix', NaN) },
-      { answer: ans('fix', 0.9, { ambiguity: 2 }) },
-      { answer: ans('fix', 0.9, { ambiguity: 'hi' }) },
       { ledgerMatch: 'yes' },
       { deterministicRegression: 1 }
     ];
     for (const b of bad) assert.throws(() => routeAll([b], T), (e) => e.code === 1, JSON.stringify(b));
     assert.throws(() => routeAll({}, T), (e) => e.code === 1);
   });
-  it('a malformed answer on a ledger or regression item is still rejected', () => {
-    assert.throws(() => routeAll([{ ledgerMatch: true, answer: ans('nope', 0.5) }], T), (e) => e.code === 1);
+  const malformed = [
+    'x', ans('nope', 0.5), { kind: 'fix' }, ans('fix', 1.5), ans('fix', -0.1), ans('fix', '0.9'), ans('fix', 95),
+    ans('fix', NaN), ans('fix', 0.9, { ambiguity: 2 }), ans('fix', 0.9, { ambiguity: 'hi' }), ans('fix', 0.9, { ambiguity: null }), []
+  ];
+  it('a malformed answer is treated as missing: ask-human, rule malformed-answer', () => {
+    for (const a of malformed) {
+      const r = routeAll([{ id: 'm', answer: a }], T).results[0];
+      assert.equal(r.route, 'ask-human', JSON.stringify(a));
+      assert.equal(r.rule, 'malformed-answer');
+      assert.equal(r.autoFixEligible, false);
+    }
+  });
+  it('a malformed answer does not stop a regression block in the same batch', () => {
+    const out = routeAll([{ id: 'reg', deterministicRegression: true }, { id: 'm', answer: ans('anomaly', 95) }], T);
+    assert.equal(out.blocks, true);
+    assert.deepEqual(out.blocking, ['reg']);
+    assert.equal(out.results[1].rule, 'malformed-answer');
+  });
+  it('a malformed answer on a ledger or regression item keeps that item\'s own route', () => {
+    assert.equal(routeAll([{ ledgerMatch: true, answer: ans('nope', 0.5) }], T).results[0].route, 'as-intended');
+    assert.equal(routeAll([{ deterministicRegression: true, answer: ans('nope', 0.5) }], T).results[0].route, 'block');
+  });
+  it('non-object thresholds throw exit 1 in the module API', () => {
+    for (const bad of [0.95, '0.9', true, [], [0.4, 0.8]]) {
+      assert.throws(() => routeAll([], bad), (e) => e.code === 1, JSON.stringify(bad));
+      assert.throws(() => routeItem({}, bad), (e) => e.code === 1);
+      assert.throws(() => autoFixEligible({}, bad), (e) => e.code === 1);
+      assert.throws(() => resolveThresholds(bad), (e) => e.code === 1);
+    }
+    assert.deepEqual(routeAll([], undefined).thresholds, { low: 0.4, high: 0.8 });
+    assert.deepEqual(routeAll([], null).thresholds, { low: 0.4, high: 0.8 });
   });
 });
 

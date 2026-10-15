@@ -15,9 +15,9 @@
  * RULES, evaluated in this FIXED order; the first that applies decides, and the output names it:
  *   1 ledger-match               ledgerMatch                              -> as-intended
  *   2 deterministic-regression   deterministicRegression                  -> block (no model answer can override it)
- *   3 missing-answer             no answer                                -> ask-human
- *   4 confident-not-anomalous    not-anomalous, confidence >= high        -> ignore
- *   5 high-ambiguity             ambiguity >= high                        -> escalate
+ *   3 missing-answer             no answer, or a malformed one            -> ask-human (rule malformed-answer when malformed)
+ *   4 high-ambiguity             ambiguity >= high                        -> escalate
+ *   5 confident-not-anomalous    not-anomalous, confidence >= high        -> ignore
  *   6 low-confidence             confidence < low                         -> ask-human
  *   7 by kind:
  *        suppress   confidence >= high -> suppress,  else ask-human
@@ -26,7 +26,7 @@
  *        ambiguous                     -> escalate
  *        anomaly                       -> issue
  *        check      model-check-downgraded -> issue (a block always means a program saw it)
- * So the only silent routes (ignore, suppress, auto-fix) need confidence >= high, and every uncertain path raises or asks.
+ * So the only silent routes (ignore, suppress, auto-fix) need confidence >= high and ambiguity below high, and every uncertain path raises or asks.
  *
  * `autoFixEligible(item, thresholds)` is the separate predicate with the same confidence floor: true exactly when the
  * item routes to auto-fix. It is also given per item in the output.
@@ -41,7 +41,7 @@ import { KitExit } from './kit-exit.js';
 export const verb = 'threshold-route';
 export const usage = 'cli.js threshold-route [--file <path>] [--low <0..1>] [--high <0..1>]   '
   + '(JSON on stdin or --file: a list of items { id, answer: { kind, confidence, ambiguity? } | none, deterministicRegression?, ledgerMatch? }; '
-  + 'routes each by a fixed order: ledger -> as-intended, program-seen regression -> block, confident not-anomalous -> ignore, high ambiguity -> escalate, '
+  + 'routes each by a fixed order: ledger -> as-intended, program-seen regression -> block, high ambiguity -> escalate, confident not-anomalous -> ignore, '
   + 'missing or low confidence -> ask-human, suppress / fix need confidence >= high else ask-human, a model-only check -> issue; defaults 0.4 / 0.8; exit 0 valid, 1 invalid)';
 
 export const KINDS = Object.freeze(['anomaly', 'not-anomalous', 'ambiguous', 'suppress', 'fix', 'check']);
@@ -53,6 +53,8 @@ const isUnit = (n) => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n
 
 /** `{ low, high }` with defaults filled in; throws exit 1 unless 0 <= low < high <= 1. */
 export function resolveThresholds(t = {}) {
+  if (t === null) t = {};
+  if (typeof t !== 'object' || Array.isArray(t)) throw invalid(`thresholds must be an object { low, high } (got ${JSON.stringify(t)})`);
   const low = t.low === undefined ? DEFAULT_THRESHOLDS.low : t.low;
   const high = t.high === undefined ? DEFAULT_THRESHOLDS.high : t.high;
   if (!isUnit(low)) throw invalid(`low must be a number from 0 to 1 (got ${JSON.stringify(low)})`);
@@ -66,12 +68,13 @@ function checkItem(item, where) {
   for (const flag of ['deterministicRegression', 'ledgerMatch']) {
     if (item[flag] !== undefined && typeof item[flag] !== 'boolean') throw invalid(`${where}.${flag} must be true or false`);
   }
-  const a = item.answer;
-  if (a === undefined || a === null) return;
-  if (typeof a !== 'object' || Array.isArray(a)) throw invalid(`${where}.answer must be an object or null`);
-  if (!KINDS.includes(a.kind)) throw invalid(`${where}.answer.kind must be one of ${KINDS.join(', ')}`);
-  if (!isUnit(a.confidence)) throw invalid(`${where}.answer.confidence must be a number from 0 to 1`);
-  if (a.ambiguity !== undefined && !isUnit(a.ambiguity)) throw invalid(`${where}.answer.ambiguity must be a number from 0 to 1`);
+}
+
+/** True when the answer is absent or well formed; a malformed model answer is data, not a caller error. */
+function answerOk(a) {
+  if (a === undefined || a === null) return true;
+  if (typeof a !== 'object' || Array.isArray(a)) return false;
+  return KINDS.includes(a.kind) && isUnit(a.confidence) && (a.ambiguity === undefined || isUnit(a.ambiguity));
 }
 
 const decide = (route, rule, reason) => ({ route, rule, reason });
@@ -80,10 +83,11 @@ function decideItem(item, { low, high }) {
   if (item.ledgerMatch) return decide('as-intended', 'ledger-match', 'an owner already decided this');
   if (item.deterministicRegression) return decide('block', 'deterministic-regression', 'a program saw a regression; a model answer cannot override it');
   const a = item.answer;
+  if (!answerOk(a)) return decide('ask-human', 'malformed-answer', 'the decider answer is malformed (kind, confidence 0..1 or ambiguity 0..1), so it is treated as missing and a human is asked');
   if (!a) return decide('ask-human', 'missing-answer', 'no decider answer, so a human is asked');
   const c = a.confidence;
-  if (a.kind === 'not-anomalous' && c >= high) return decide('ignore', 'confident-not-anomalous', `not anomalous at confidence ${c} (>= ${high})`);
   if (a.ambiguity !== undefined && a.ambiguity >= high) return decide('escalate', 'high-ambiguity', `ambiguity ${a.ambiguity} (>= ${high})`);
+  if (a.kind === 'not-anomalous' && c >= high) return decide('ignore', 'confident-not-anomalous', `not anomalous at confidence ${c} (>= ${high})`);
   if (c < low) return decide('ask-human', 'low-confidence', `confidence ${c} is below ${low}`);
   switch (a.kind) {
     case 'suppress':
@@ -105,22 +109,22 @@ function decideItem(item, { low, high }) {
 
 /** True exactly when the item routes to auto-fix: a fix answer with confidence >= high and nothing overriding it. */
 export function autoFixEligible(item, thresholds) {
-  const t = resolveThresholds(thresholds || {});
+  const t = resolveThresholds(thresholds);
   checkItem(item, 'item');
   return decideItem(item, t).route === 'auto-fix';
 }
 
 /** One routed item: `{ route, rule, reason, autoFixEligible }`. */
 export function routeItem(item, thresholds) {
-  const t = resolveThresholds(thresholds || {});
+  const t = resolveThresholds(thresholds);
   checkItem(item, 'item');
   const d = decideItem(item, t);
   return { ...d, autoFixEligible: d.route === 'auto-fix' };
 }
 
-/** Route a list. Returns `{ thresholds, results, counts, blocks, blocking }`. Any invalid item throws exit 1 before anything is routed. */
+/** Route a list. Returns `{ thresholds, results, counts, blocks, blocking }`. An item with a non-object shape or non-boolean flag throws exit 1 before anything is routed; a malformed answer routes to ask-human. */
 export function routeAll(items, thresholds) {
-  const t = resolveThresholds(thresholds || {});
+  const t = resolveThresholds(thresholds);
   if (!Array.isArray(items)) throw invalid('items must be a list');
   items.forEach((it, i) => checkItem(it, `items[${i}]`));
   const results = items.map((it, i) => ({ id: it.id ?? i, ...routeItem(it, t) }));
