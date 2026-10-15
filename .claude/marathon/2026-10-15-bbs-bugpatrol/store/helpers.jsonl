@@ -117,3 +117,4 @@
 {"role":"review","model":"opus","stream":"change-impact-test-plan","budget":150000,"event":"spawn","id":"61f19d2e-6c28-4145-abc0-b11700c002f9","ts":"2026-10-15T17:17:51.916Z"}
 {"role":"review","model":"opus","stream":"sarif-junit-and-sticky-pr-comment-render","budget":150000,"event":"spawn","id":"1b2d0ae5-b8aa-4b97-83e0-a84073c52ff5","ts":"2026-10-15T17:17:58.006Z"}
 {"role":"review","model":"opus","stream":"exit-code-contract-separating-infrastruc","budget":150000,"event":"spawn","id":"23967535-4448-4768-ae53-35158ec17538","ts":"2026-10-15T17:18:04.270Z"}
+{"helper_id":"61f19d2e","tokens":72871,"outcome":"green","event":"done","id":"9875acd0-cfa4-4db4-9eb5-01c08ce6e1f4","ts":"2026-10-15T17:19:08.395Z"}

@@ -25,3 +25,6 @@
 {"key":"packaged_repeated-replay-gate-for-claims","value":true,"id":"cf8327d7-2b04-41ff-8a40-9726ab5ba960","ts":"2026-10-15T17:10:19.464Z"}
 {"key":"egress_zero_repeated-replay-gate-for-claims","value":true,"id":"47349c34-52c3-4c89-a526-2cd5823cf393","ts":"2026-10-15T17:10:19.628Z"}
 {"key":"callers_repeated-replay-gate-for-claims","value":0,"id":"36347d89-d56a-4e15-94d1-2c41cb21fe06","ts":"2026-10-15T17:10:19.784Z"}
+{"key":"packaged_change-impact-test-plan","value":true,"id":"2ad24f4a-1144-46fb-bf10-3f094e77c4c2","ts":"2026-10-15T17:19:11.206Z"}
+{"key":"egress_zero_change-impact-test-plan","value":true,"id":"ecb81c81-08bb-4c8d-9788-803ed396a728","ts":"2026-10-15T17:19:11.363Z"}
+{"key":"callers_change-impact-test-plan","value":0,"id":"90f5660f-fca2-4e4b-a3c4-d2b91fd34e71","ts":"2026-10-15T17:19:11.555Z"}

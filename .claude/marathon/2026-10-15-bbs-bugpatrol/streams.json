@@ -42,12 +42,12 @@
     },
     {
       "name": "change-impact-test-plan",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/change-impact-test-plan.md",
-      "next": "builder writes contract, failing tests, verb, packaged test",
+      "next": "integration stream wires it",
       "tasks": [],
       "isolation": "/home/claude/danizee-claude-suite-change-impact-test-plan",
-      "phase": "build",
+      "phase": "done",
       "skill": "w-tdd-swarm",
       "base": "986205078cd7261a2142189f4dd5a24690488ae9"
     },
