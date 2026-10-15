@@ -68,7 +68,14 @@ const rows = [
   ['w-marathon', '⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met', 'shared-budget'],
   ['w-marathon', '⛔ CHECKPOINT 3: Arm', 'doctor'],
   ['w-bbs', '⛔ CHECKPOINT 6: Compound (MANDATORY)', 'reflect'],
-  ['w-debug', '⛔ CHECKPOINT 2: Diagnosis (BLOCKING GATE)', 'replay-gate']
+  ['w-debug', '⛔ CHECKPOINT 2: Diagnosis (BLOCKING GATE)', 'replay-gate'],
+  // /pt and /mt are the owner's daily workflows: the same powers, in their normal flow.
+  ['w-plan-tdd-swarm', '⛔ CHECKPOINT 5: Build', 'test-plan'],
+  ['w-plan-tdd-swarm', '⛔ CHECKPOINT 6: Review', 'cluster'], ['w-plan-tdd-swarm', '⛔ CHECKPOINT 6: Review', 'noise-ledger'], ['w-plan-tdd-swarm', '⛔ CHECKPOINT 6: Review', 'triage'],
+  ['w-plan-tdd-swarm', VER, 'threshold-route'], ['w-plan-tdd-swarm', VER, 'replay-gate'],
+  ['w-plan-tdd-swarm', '⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)', 'reflect'],
+  ['w-marathon', '⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met', 'cluster'], ['w-marathon', '⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met', 'triage'],
+  ['w-marathon', '⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met', 'threshold-route'], ['w-marathon', '⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met', 'replay-gate'], ['w-marathon', '⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met', 'test-plan']
 ];
 
 for (const [wf, heading, verb] of rows) {
@@ -129,7 +136,7 @@ test('w-review replay gate: exit 1 or a missing kit is FAIL, never PASS', () => 
 });
 
 test('reflect steps (w-fix, w-bbs): lessons go in by --text-file / --reason-file, never in a quoted shell argument', () => {
-  for (const [wf, heading] of [['w-fix', '⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)'], ['w-bbs', '⛔ CHECKPOINT 6: Compound (MANDATORY)']]) {
+  for (const [wf, heading] of [['w-fix', '⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)'], ['w-bbs', '⛔ CHECKPOINT 6: Compound (MANDATORY)'], ['w-plan-tdd-swarm', '⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)']]) {
     const sec = stepSection(installed(wf), heading);
     assert.match(sec, /reflect lessons save --role <role> --text-file </, `${wf} saves with --text-file`);
     assert.match(sec, /retire --id <id> --reason-file </, `${wf} retires with --reason-file`);
@@ -154,4 +161,52 @@ test('w-review render step: redact --keep-lines sits before any post, outputs go
   assert.doesNotMatch(sec, /--out reports\//);
   assert.doesNotMatch(sec, /mkdir -p reports/);
   assert.doesNotMatch(sec, /`reports\/review/);
+});
+
+// /w-marathon: cluster and triage only annotate the reviewer's rows; the review steps sit in 4.5 before the rows are
+// recorded, the fix checks in 4.7 territory before the 4.8 gate.
+test('w-marathon 4.5: cluster and triage run before record review, and never lower the recorded counts', () => {
+  const t = installed('w-marathon');
+  const a = t.indexOf('**4.5 Review round');
+  const rec = t.indexOf('Then: `cli.js record review stream=', a);
+  const gate = t.indexOf('**4.8 Gate.**', a);
+  assert.ok(a >= 0 && rec > a && gate > rec);
+  const sec = t.slice(a, rec);
+  for (const v of ['cluster', 'triage']) assert.match(sec, verbCall(v), `4.5 runs ${v} before the rows are recorded`);
+  assert.match(sec, /recorded counts stay the reviewer's real counts/);
+  assert.match(sec, /never removes a row or lowers a count/);
+  assert.match(sec, /mktemp -d/);
+  assert.match(sec, /Shell variables do not persist between Bash calls/);
+  const fix = t.slice(t.indexOf('**4.7 Fix round.**'), gate);
+  for (const v of ['test-plan', 'threshold-route', 'replay-gate']) assert.match(fix, verbCall(v), `4.7 runs ${v} before the 4.8 gate`);
+  assert.ok(fix.indexOf('cli.js test-plan') < fix.indexOf('cli.js threshold-route'), 'tests are picked before claimed fixes are routed');
+  assert.match(fix, /`block` \(a failing regression test\) can never be overridden/);
+});
+
+test('w-plan-tdd-swarm: review inputs go through files written with the Write tool, noise-ledger severities mapped, replay gate fails closed', () => {
+  const t = installed('w-plan-tdd-swarm');
+  const rev = stepSection(t, '⛔ CHECKPOINT 6: Review');
+  assert.match(rev, /critical to high and info to low/);
+  assert.match(rev, /never goes in a shell argument/);
+  assert.match(rev, /P=<printed dir>/);
+  assert.ok(rev.indexOf('cli.js noise-ledger') < rev.indexOf('cli.js triage visit'), 'ledger before triage');
+  const ver = stepSection(t, VER);
+  assert.match(ver, /Exit 1[^\n]*or a missing kit[^\n]*FAIL[^\n]*replay gate could not run: <reason>[^\n]*never PASS/);
+  const build = stepSection(t, '⛔ CHECKPOINT 5: Build');
+  assert.match(build, /test-plan --in "\$P\/test-map\.json" --changed "\$P\/changed\.txt"/);
+});
+
+test('the new /pt and /mt kit blocks parse with bash -n', () => {
+  const blocks = [];
+  const pt = installed('w-plan-tdd-swarm');
+  for (const h of ['⛔ CHECKPOINT 5: Build', '⛔ CHECKPOINT 6: Review', VER, '⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)']) {
+    for (const m of stepSection(pt, h).matchAll(/```(?:bash|sh)\n([\s\S]*?)```/g)) if (/kit\/cli\.js (test-plan|cluster|noise-ledger|triage|threshold-route|replay-gate|reflect)\b/.test(m[1])) blocks.push(m[1]);
+  }
+  const mt = stepSection(installed('w-marathon'), '⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met');
+  for (const m of mt.matchAll(/```bash\n([\s\S]*?)```/g)) if (/kit\/cli\.js (test-plan|cluster|triage|threshold-route|replay-gate)\b/.test(m[1])) blocks.push(m[1]);
+  assert.equal(blocks.length, 12, 'pt: test-plan, cluster, noise-ledger, triage, threshold-route, replay-gate, reflect; mt: cluster, triage, test-plan, threshold-route, replay-gate');
+  for (const b of blocks) {
+    const r = spawnSync('bash', ['-n'], { input: b, encoding: 'utf-8' });
+    assert.equal(r.status, 0, `bash -n failed: ${r.stderr}\n${b}`);
+  }
 });

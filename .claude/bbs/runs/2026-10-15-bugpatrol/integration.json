@@ -1,6 +1,6 @@
 {
   "run": "2026-10-15-bugpatrol",
-  "ts": "2026-10-15T18:48:54.657Z",
+  "ts": "2026-10-15T20:29:27.139Z",
   "powers": {
     "noise ledger with flake quarantine": {
       "verb": "noise-ledger",

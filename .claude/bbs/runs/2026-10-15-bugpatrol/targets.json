@@ -1,6 +1,6 @@
 {
   "run": "2026-10-15-bugpatrol",
-  "ts": "2026-10-15T14:30:55.594Z",
+  "ts": "2026-10-15T20:29:12.495Z",
   "usage_evidence": "transcripts",
   "targets": {
     "noise ledger with flake quarantine": [
@@ -16,6 +16,19 @@
         "mode": "advisory",
         "by": "proposed",
         "unused_reason": "w-review emits findings that become issues, which is where noise caps matter; not yet run on this machine."
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 6: Review",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 6: Review",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 6: Review",
+        "how": "Caps filed findings and quarantines ones that did not reproduce on retry before Ralph candidates are filed.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "The owner runs /pt (w-plan-tdd-swarm) and /mt (w-marathon) daily (stated by the owner on 2026-10-15); the transcripts scanned for usage did not include them."
       }
     ],
     "two pass finding clustering": [
@@ -44,6 +57,32 @@
         "mode": "advisory",
         "by": "proposed",
         "unused_reason": "Background review produces multi-phase overlapping findings; not run on this machine."
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 6: Review",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 6: Review",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 6: Review",
+        "how": "Groups duplicate review findings by rule and file set before the findings table is filled.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "The owner runs /pt (w-plan-tdd-swarm) and /mt (w-marathon) daily (stated by the owner on 2026-10-15); the transcripts scanned for usage did not include them."
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "how": "Groups the reviewer's JSON rows in the 4.5 review round to annotate and order the fix brief; recorded counts are unchanged.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "The owner runs /pt (w-plan-tdd-swarm) and /mt (w-marathon) daily (stated by the owner on 2026-10-15); the transcripts scanned for usage did not include them."
       }
     ],
     "asymmetric threshold router": [
@@ -72,6 +111,32 @@
         "mode": "blocking",
         "by": "proposed",
         "unused_reason": "w-fix applies fixes automatically, which needs the asymmetric gate; not run on this machine."
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "reach": "/w-plan-tdd-swarm › ✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "how": "Routes claim answers in verification: raising a concern is free, accepting a fix needs high confidence, a regression blocks.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "The owner runs /pt (w-plan-tdd-swarm) and /mt (w-marathon) daily (stated by the owner on 2026-10-15); the transcripts scanned for usage did not include them."
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "how": "Gates closing a finding in the 4.7 fix round: a fix closes only on an auto-fix route, a failing regression test is never overridden.",
+        "mode": "blocking",
+        "by": "proposed",
+        "unused_reason": "The owner runs /pt (w-plan-tdd-swarm) and /mt (w-marathon) daily (stated by the owner on 2026-10-15); the transcripts scanned for usage did not include them."
       }
     ],
     "change-impact test plan": [
@@ -97,6 +162,32 @@
         "mode": "advisory",
         "by": "proposed",
         "unused_reason": "Fixes change a few files, so a change-impact plan picks the tests to rerun; not run on this machine."
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 5: Build",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 5: Build",
+        "how": "Plans which tests to run from the changed files each time the build reruns tests.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "The owner runs /pt (w-plan-tdd-swarm) and /mt (w-marathon) daily (stated by the owner on 2026-10-15); the transcripts scanned for usage did not include them."
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "how": "Picks the tests for the fixer brief in the 4.7 fix round from the stream changed files.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "The owner runs /pt (w-plan-tdd-swarm) and /mt (w-marathon) daily (stated by the owner on 2026-10-15); the transcripts scanned for usage did not include them."
       }
     ],
     "finding triage with fingerprint dedup and absence closing": [
@@ -112,6 +203,32 @@
         "mode": "advisory",
         "by": "proposed",
         "unused_reason": "Recurring review runs repeat findings, which fingerprint dedup and absence closing handle; not run on this machine."
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 6: Review",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 6: Review",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 6: Review",
+        "how": "Fingerprints review findings so decided ones are not raised again and ones no longer seen are closed.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "The owner runs /pt (w-plan-tdd-swarm) and /mt (w-marathon) daily (stated by the owner on 2026-10-15); the transcripts scanned for usage did not include them."
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "how": "Fingerprints the reviewer rows per run and stream in 4.5, marking recurred and closed ones; recorded counts are unchanged.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "The owner runs /pt (w-plan-tdd-swarm) and /mt (w-marathon) daily (stated by the owner on 2026-10-15); the transcripts scanned for usage did not include them."
       }
     ],
     "shared budget for claim sub-sessions": [
@@ -167,6 +284,19 @@
         "how": "Turns the audit run's trouble log into saved lessons for future runs.",
         "mode": "advisory",
         "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)",
+        "how": "Turns the session trouble log into saved lessons, written to a file and saved with --text-file.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "The owner runs /pt (w-plan-tdd-swarm) and /mt (w-marathon) daily (stated by the owner on 2026-10-15); the transcripts scanned for usage did not include them."
       }
     ],
     "safe worktree cleanup for fix checkouts": [
@@ -295,6 +425,32 @@
         "mode": "blocking",
         "by": "proposed",
         "unused_reason": "Diagnosis claims need reproducible evidence; not run on this machine."
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "reach": "/w-plan-tdd-swarm › ✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "how": "Only a program-decided failure that reproduces on a second replay fails verification; exit 1 or a missing kit is FAIL.",
+        "mode": "blocking",
+        "by": "proposed",
+        "unused_reason": "The owner runs /pt (w-plan-tdd-swarm) and /mt (w-marathon) daily (stated by the owner on 2026-10-15); the transcripts scanned for usage did not include them."
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "how": "In the 4.7 fix round a fix claim is refused only when a program-decided failure reproduces on a second replay.",
+        "mode": "blocking",
+        "by": "proposed",
+        "unused_reason": "The owner runs /pt (w-plan-tdd-swarm) and /mt (w-marathon) daily (stated by the owner on 2026-10-15); the transcripts scanned for usage did not include them."
       }
     ]
   }
