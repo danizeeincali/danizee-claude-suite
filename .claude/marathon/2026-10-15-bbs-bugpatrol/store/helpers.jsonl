@@ -164,3 +164,11 @@
 {"role":"fix","model":"sonnet","stream":"exit-code-contract-separating-infrastruc","budget":100000,"event":"spawn","id":"3a10b38c-d726-4b4f-9f0e-a970c5f738f2","ts":"2026-10-15T17:34:38.466Z"}
 {"helper_id":"aaf7a209-9843-4fd6-9e30-f670f160a408","tokens":83074,"outcome":"green","event":"done","id":"cbfe25db-43cf-4fc1-9d6f-4c2637fb9da1","ts":"2026-10-15T17:34:47.805Z"}
 {"role":"fix","model":"sonnet","stream":"noise-ledger-with-flake-quarantine","budget":100000,"event":"spawn","id":"c9091ade-a0d7-4710-bd60-4e2a843a27f4","ts":"2026-10-15T17:34:48.004Z"}
+{"helper_id":"8f129ee5-ee4a-49af-a1f8-fd4f534e44b2","tokens":92249,"outcome":"green","event":"done","id":"5f138828-0a0f-4c8d-a693-917e0466f2c2","ts":"2026-10-15T17:36:24.515Z"}
+{"helper_id":"101c4db8-e43e-4131-88c2-dcd51df46455","tokens":91567,"outcome":"green","event":"done","id":"58da9ace-3780-45b4-a914-f1828ded9d10","ts":"2026-10-15T17:36:24.716Z"}
+{"helper_id":"292448a2-a21c-4771-9547-6bbf65050553","tokens":63907,"outcome":"green","event":"done","id":"7129582b-ee93-4d9b-9dd7-0841d79aed56","ts":"2026-10-15T17:36:24.981Z"}
+{"role":"review","model":"opus","stream":"sarif-junit-and-sticky-pr-comment-render","budget":150000,"event":"spawn","id":"c3cd4662-aa39-4bad-8886-175f6369d848","ts":"2026-10-15T17:36:30.861Z"}
+{"helper_id":"3a10b38c-d726-4b4f-9f0e-a970c5f738f2","tokens":72958,"outcome":"green","event":"done","id":"0f6e8cae-ea0c-4242-a1a2-10fde5254415","ts":"2026-10-15T17:36:31.115Z"}
+{"role":"review","model":"opus","stream":"exit-code-contract-separating-infrastruc","budget":150000,"event":"spawn","id":"3dfe6e53-f500-46d2-bfc2-29183a392f05","ts":"2026-10-15T17:36:41.150Z"}
+{"role":"fix","model":"opus","stream":"finding-triage-with-fingerprint-dedup-an","budget":200000,"event":"spawn","id":"1bf59208-2aa9-423e-97e9-616b6f4fb5c6","ts":"2026-10-15T17:36:55.651Z"}
+{"helper_id":"c9091ade-a0d7-4710-bd60-4e2a843a27f4","tokens":69616,"outcome":"green","event":"done","id":"04d3fe56-8589-4df3-a584-6aa2a6e26cec","ts":"2026-10-15T17:36:55.792Z"}
