@@ -42,24 +42,36 @@
     },
     {
       "name": "change-impact-test-plan",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/change-impact-test-plan.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract, failing tests, verb, packaged test",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-change-impact-test-plan",
+      "phase": "build",
+      "skill": "w-tdd-swarm",
+      "base": "986205078cd7261a2142189f4dd5a24690488ae9"
     },
     {
       "name": "finding-triage-with-fingerprint-dedup-an",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/finding-triage-with-fingerprint-dedup-an.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract, failing tests, verb, packaged test",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-finding-triage-with-fingerprint-dedup-an",
+      "phase": "build",
+      "skill": "w-tdd-swarm",
+      "base": "986205078cd7261a2142189f4dd5a24690488ae9"
     },
     {
       "name": "shared-budget-for-claim-sub-sessions",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/shared-budget-for-claim-sub-sessions.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract, failing tests, verb, packaged test",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-shared-budget-for-claim-sub-sessions",
+      "phase": "build",
+      "skill": "w-tdd-swarm",
+      "base": "986205078cd7261a2142189f4dd5a24690488ae9"
     },
     {
       "name": "trouble-log-reflection-into-lesson-memor",

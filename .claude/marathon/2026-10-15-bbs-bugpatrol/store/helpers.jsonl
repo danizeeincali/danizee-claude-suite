@@ -1,3 +1,12 @@
 {"role":"build","model":"sonnet","stream":"noise-ledger-with-flake-quarantine","budget":150000,"event":"spawn","id":"81d6a853-ca5a-4949-a5c2-6beba09a8fa8","ts":"2026-10-15T16:48:37.200Z"}
 {"role":"build","model":"sonnet","stream":"two-pass-finding-clustering","budget":150000,"event":"spawn","id":"48e4250f-6965-47a9-a886-a9d5dfa717d7","ts":"2026-10-15T16:48:37.339Z"}
 {"role":"build","model":"sonnet","stream":"asymmetric-threshold-router","budget":150000,"event":"spawn","id":"63b25f4b-60d3-4d87-a36f-69bf0a2226aa","ts":"2026-10-15T16:48:37.469Z"}
+{"helper_id":"63b25f4b-60d3-4d87-a36f-69bf0a2226aa","tokens":83511,"outcome":"green","event":"done","id":"dec1269a-eeb5-4d15-992f-6b37db6b0b22","ts":"2026-10-15T16:51:10.753Z"}
+{"helper_id":"48e4250f-6965-47a9-a886-a9d5dfa717d7","tokens":86709,"outcome":"green","event":"done","id":"ce37d9d1-f821-46d2-be3b-5551e5342a8a","ts":"2026-10-15T16:51:10.928Z"}
+{"helper_id":"81d6a853-ca5a-4949-a5c2-6beba09a8fa8","tokens":90109,"outcome":"green","event":"done","id":"34c8a471-7f1d-4ab0-8310-c5ae23ea7908","ts":"2026-10-15T16:51:16.868Z"}
+{"role":"review","model":"opus","stream":"asymmetric-threshold-router","budget":150000,"event":"spawn","id":"8aebc2e0-a563-49d2-bc56-6acc986de300","ts":"2026-10-15T16:51:33.044Z"}
+{"role":"review","model":"opus","stream":"two-pass-finding-clustering","budget":150000,"event":"spawn","id":"a600ad2e-9397-497b-91eb-64f501d5b463","ts":"2026-10-15T16:51:33.180Z"}
+{"role":"review","model":"opus","stream":"noise-ledger-with-flake-quarantine","budget":150000,"event":"spawn","id":"d15e6be4-7154-4ddc-a639-3cce1b4ea81f","ts":"2026-10-15T16:51:33.345Z"}
+{"role":"build","model":"sonnet","stream":"change-impact-test-plan","budget":150000,"event":"spawn","id":"bbf4e196-9e45-45d1-b942-077f05246860","ts":"2026-10-15T16:52:04.087Z"}
+{"role":"build","model":"sonnet","stream":"finding-triage-with-fingerprint-dedup-an","budget":150000,"event":"spawn","id":"31471b93-b5d7-4bb0-a44f-3c6b5e678ec4","ts":"2026-10-15T16:52:04.463Z"}
+{"role":"build","model":"sonnet","stream":"shared-budget-for-claim-sub-sessions","budget":150000,"event":"spawn","id":"4d465384-d75a-456b-ae32-e4a91600be64","ts":"2026-10-15T16:52:04.858Z"}

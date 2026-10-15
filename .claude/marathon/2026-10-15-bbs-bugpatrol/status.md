@@ -1,7 +1,7 @@
 # Marathon 2026-10-15-bbs-bugpatrol
 
 - State: RUNNING
-- Budget: 450,000 / 10,000,000 tokens
+- Budget: 1,160,329 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
@@ -14,9 +14,9 @@
 | noise-ledger-with-flake-quarantine | /home/claude/danizee-claude-suite-noise-ledger-with-flake-quarantine | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/noise-ledger-with-flake-quarantine.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
 | two-pass-finding-clustering | /home/claude/danizee-claude-suite-two-pass-finding-clustering | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/two-pass-finding-clustering.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
 | asymmetric-threshold-router | /home/claude/danizee-claude-suite-asymmetric-threshold-router | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/asymmetric-threshold-router.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
-| change-impact-test-plan |  | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/change-impact-test-plan.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
-| finding-triage-with-fingerprint-dedup-an |  | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/finding-triage-with-fingerprint-dedup-an.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
-| shared-budget-for-claim-sub-sessions |  | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/shared-budget-for-claim-sub-sessions.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
+| change-impact-test-plan | /home/claude/danizee-claude-suite-change-impact-test-plan | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/change-impact-test-plan.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
+| finding-triage-with-fingerprint-dedup-an | /home/claude/danizee-claude-suite-finding-triage-with-fingerprint-dedup-an | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/finding-triage-with-fingerprint-dedup-an.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
+| shared-budget-for-claim-sub-sessions | /home/claude/danizee-claude-suite-shared-budget-for-claim-sub-sessions | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/shared-budget-for-claim-sub-sessions.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
 | trouble-log-reflection-into-lesson-memor |  | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/trouble-log-reflection-into-lesson-memor.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | preflight-doctor-checks-before-a-run |  | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/preflight-doctor-checks-before-a-run.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | exit-code-contract-separating-infrastruc |  | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/exit-code-contract-separating-infrastruc.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
@@ -28,17 +28,17 @@
 
 | Line | Owner | Status | Actual | Target |
 |---|---|---|---|---|
-| noise-ledger-with-flake-quarantine: green unit runs in a row | build | failing | 0 | at_least 1 |
+| noise-ledger-with-flake-quarantine: green unit runs in a row | build | met | 1 | at_least 1 |
 | noise-ledger-with-flake-quarantine: zero egress in the packaged check | build | failing | — | is true |
 | noise-ledger-with-flake-quarantine: clean reviews in a row | build | failing | 0 | at_least 2 |
 | noise-ledger-with-flake-quarantine: wired into its target, reached by a user | build | failing | — | at_least 1 |
 | noise-ledger-with-flake-quarantine: packaged check passes | build | failing | — | is true |
-| two-pass-finding-clustering: green unit runs in a row | build | failing | 0 | at_least 1 |
+| two-pass-finding-clustering: green unit runs in a row | build | met | 1 | at_least 1 |
 | two-pass-finding-clustering: zero egress in the packaged check | build | failing | — | is true |
 | two-pass-finding-clustering: clean reviews in a row | build | failing | 0 | at_least 2 |
 | two-pass-finding-clustering: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | two-pass-finding-clustering: packaged check passes | build | failing | — | is true |
-| asymmetric-threshold-router: green unit runs in a row | build | failing | 0 | at_least 1 |
+| asymmetric-threshold-router: green unit runs in a row | build | met | 1 | at_least 1 |
 | asymmetric-threshold-router: zero egress in the packaged check | build | failing | — | is true |
 | asymmetric-threshold-router: clean reviews in a row | build | failing | 0 | at_least 2 |
 | asymmetric-threshold-router: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
