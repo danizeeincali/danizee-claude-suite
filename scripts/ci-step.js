@@ -16,17 +16,21 @@ export const resultsDir = (env = process.env) => env.CI_RESULTS_DIR || path.join
 
 /** Local files each test file imports (relative specifiers only), as repo-relative paths. */
 export function testTargets(cwd = process.cwd()) {
-  const dir = path.join(cwd, 'test');
-  const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.test.js')).sort() : [];
-  return files.map((f) => {
-    const id = `test/${f}`;
-    const text = fs.readFileSync(path.join(dir, f), 'utf-8');
-    const deps = new Set([id]);
-    for (const m of text.matchAll(/(?:from\s+|import\s*\(\s*|require\(\s*)['"](\.{1,2}\/[^'"]+)['"]/g)) {
-      deps.add(posix(path.relative(cwd, path.resolve(dir, m[1]))));
+  const out = [];
+  for (const sub of ['test', 'test/reach']) {
+    const dir = path.join(cwd, sub);
+    const files = fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.test.js')).sort() : [];
+    for (const f of files) {
+      const id = `${sub}/${f}`;
+      const text = fs.readFileSync(path.join(dir, f), 'utf-8');
+      const deps = new Set([id]);
+      for (const m of text.matchAll(/(?:from\s+|import\s*\(\s*|require\(\s*)['"](\.{1,2}\/[^'"]+)['"]/g)) {
+        deps.add(posix(path.relative(cwd, path.resolve(dir, m[1]))));
+      }
+      out.push({ id, files: [...deps] });
     }
-    return { id, files: [...deps] };
-  });
+  }
+  return out;
 }
 
 function changedFiles(env, cwd) {

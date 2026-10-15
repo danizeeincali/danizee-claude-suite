@@ -43,7 +43,9 @@ const calls = {
   'shared-budget': () => {
     const state = path.join(tmp, `budget-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
     ok(run(['shared-budget', 'open', '--state', state, '--steps', '5']));
-    const g = run(['shared-budget', 'grant', '--state', state, '--helper', 'h1']); ok(g);
+    const g = run(['shared-budget', 'grant', '--state', state, '--helper', 'h1', '--steps', '2']); ok(g);
+    ok(run(['shared-budget', 'grant', '--state', state, '--helper', 'h2', '--steps', '2'])); // a second concurrent helper is not skipped
+    ok(run(['shared-budget', 'release', '--state', state, '--helper', 'h2']));
     ok(run(['shared-budget', 'spend', '--state', state, '--helper', 'h1', '--steps', '1', '--outcome', 'ok']));
   },
   reflect: () => ok(run(['reflect', 'trouble-log', '--in', EVENTS])),
@@ -85,3 +87,40 @@ for (const [wf, heading, verb] of rows) {
     calls[verb]();
   });
 }
+
+// Budget and gate wording: what the step text must say, proved on the installed command files.
+const installed = (wf) => fs.readFileSync(`.claude/commands/.shortcuts/${wf}.md`, 'utf-8');
+
+test('w-marathon 4.1a: state per run and stream, opened at 4.2, explicit grant amount, --state on every call, release, wait vs used up', () => {
+  const t = installed('w-marathon');
+  const a = t.indexOf('**4.1a Shared helper allowance');
+  const b = t.indexOf('**4.2 Isolate', a);
+  assert.ok(a >= 0 && b > a);
+  const sec = t.slice(a, b);
+  assert.match(sec, /\.claude\/marathon\/<run-id>\/helper-budget-<stream>\.json/, 'state path carries run id and stream');
+  assert.doesNotMatch(t, /\.claude\/marathon\/helper-budget\.json/, 'no fixed shared state path');
+  assert.match(sec, /shared-budget grant --state "\$S" --helper <id> --steps <[^>]+> --cost <[^>]+>/, 'grant passes an amount');
+  assert.match(sec, /shared-budget spend --state "\$S"/, 'spend line carries --state');
+  assert.match(sec, /shared-budget release --state "\$S" --helper <id>/, 'release for a helper that ends without a spend');
+  assert.match(sec, /fully reserved by other sub-sessions[^\n]*\*\*wait\*\*/, 'a reserved skip means wait');
+  assert.match(sec, /exhausted[^\n]*CHECKPOINT 5/, 'only an exhausted limit goes to CHECKPOINT 5');
+  const s42 = t.slice(b, b + 4000);
+  assert.match(s42, /shared-budget open --state "\$S"/, 'allowance is opened when the stream is activated (4.2)');
+});
+
+test('w-review claim budget: state lives under a fresh mktemp -d, removed at the end of the checkpoint', () => {
+  const sec = stepSection(installed('w-review'), VER);
+  assert.match(sec, /D=\$\(mktemp -d\)/);
+  assert.match(sec, /B="\$D\/review-budget\.json"/);
+  assert.match(sec, /rm -rf "\$D"/);
+  assert.doesNotMatch(sec, /\.claude\/kit\/review-budget\.json/, 'no fixed state file');
+  assert.match(sec, /shared-budget grant --state "\$B" --helper <id> --steps <n>/);
+  assert.match(sec, /shared-budget release --state "\$B"/);
+});
+
+test('w-review replay gate: exit 1 or a missing kit is FAIL, never PASS', () => {
+  const sec = stepSection(installed('w-review'), VER);
+  assert.match(sec, /Exit 1[^\n]*or a missing kit[^\n]*FAIL[^\n]*replay gate could not run: <reason>[^\n]*never PASS/);
+  assert.doesNotMatch(sec, /nothing fails the check on unreplayed evidence/);
+  assert.match(sec, /fails closed \(FAIL, "replay gate could not run: kit not installed"\)/);
+});
