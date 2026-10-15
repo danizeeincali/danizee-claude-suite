@@ -348,7 +348,11 @@ async function loadSecrets(flags, cwd) {
     return parseSecretsFile(t);
   }
   let roots;
-  try { roots = secretsRoots(cwd); } catch { roots = [cwd]; } // outside a git tree: look in the working folder only
+  try { roots = secretsRoots(cwd); } catch (e) {
+    // Only "not a git repository" falls back to the working folder; a missing or failing git must not silently skip redaction.
+    if (e instanceof KitExit && /^not inside a git repository/.test(e.message)) roots = [cwd];
+    else throw e instanceof KitExit ? invalid(`${e.message.replace(/; pass --secrets-file$/, '')}; pass --secrets-file so the text can be redacted`) : e;
+  }
   const all = [];
   for (const r of roots) all.push(...await loadProjectSecrets(r));
   return all;

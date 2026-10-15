@@ -93,6 +93,23 @@ describe('reflect trouble-log', () => {
     const click = [1, 2, 3].map((i) => ({ type: 'tool', name: 'computer', input: { action: 'screenshot', n: i }, ok: true }));
     assert.equal(troubleLog(click).counts.repeated_targets, 0);
   });
+  it('git unavailable or failing is exit 1 (pass --secrets-file), never unredacted output', async () => {
+    const d = await tmp();
+    const savedPath = process.env.PATH;
+    try {
+      await fs.writeFile(path.join(d, 'e.jsonl'), jl([{ type: 'tool', name: 'A', input: { k: 1 }, ok: false, error: 'bad SuperSecretToken123' }]));
+      process.env.PATH = path.join(d, 'no-such-bin');
+      const r = await call(['trouble-log', '--in', 'e.jsonl'], d);
+      assert.equal(r.code, 1);
+      assert.match(r.err, /--secrets-file/);
+      assert.ok(!String(r.err).includes('SuperSecretToken123'));
+      // an explicit secrets file still works without git
+      await fs.writeFile(path.join(d, 's'), 'SuperSecretToken123\n');
+      const ok = await call(['trouble-log', '--in', 'e.jsonl', '--secrets-file', 's'], d);
+      assert.equal(ok.code, 0);
+      assert.ok(!JSON.stringify(ok.out).includes('SuperSecretToken123'));
+    } finally { process.env.PATH = savedPath; await fs.rm(d, { recursive: true, force: true }); }
+  });
   it('CLI reads the secrets file and --in; bad JSON is exit 1', async () => {
     const d = await tmp();
     try {
