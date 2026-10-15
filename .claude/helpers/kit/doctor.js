@@ -52,6 +52,27 @@ async function inGitWorkTree(cwd) {
   }
 }
 
+/**
+ * The project root: the nearest ancestor of `cwd` (itself included) holding .claude/helpers/kit/cli.js, else the nearest
+ * one holding .git, else `cwd`. Built-in file/json checks and the default config are resolved against it, so running
+ * doctor from a subfolder gives the same verdict as running it at the top.
+ */
+export async function findProjectRoot(cwd) {
+  const start = path.resolve(cwd);
+  for (const marker of [path.join('.claude', 'helpers', 'kit', 'cli.js'), '.git']) {
+    let dir = start;
+    for (;;) {
+      try { await fs.stat(path.join(dir, marker)); return dir; } catch { /* keep walking */ }
+      const up = path.dirname(dir);
+      if (up === dir) break;
+      dir = up;
+    }
+  }
+  return start;
+}
+
+const stripBom = (t) => (t.charCodeAt(0) === 0xFEFF ? t.slice(1) : t);
+
 /** Is `name` an executable file in one of the PATH entries of `env`? Searched directly, never through a shell. */
 export async function findOnPath(name, env = {}) {
   const pathVar = env.PATH ?? env.Path ?? '';
@@ -82,7 +103,20 @@ export function checkNode(version, fatal = true) {
   return row('node-version', fatal, ok, `node ${version}`, `Install node ${MIN_NODE_MAJOR} or newer (found ${version}).`);
 }
 
-export async function checkBin(bin, { env, fatal, name = `bin:${bin}`, fix }) {
+/** A target holding a path separator is a path: it is tested directly (relative ones against `cwd`), not searched on PATH. */
+async function executableAt(p) {
+  try {
+    if (!(await fs.stat(p)).isFile()) return false;
+    if (process.platform !== 'win32') await fs.access(p, fs.constants ? fs.constants.X_OK : 1);
+    return true;
+  } catch { return false; }
+}
+
+export async function checkBin(bin, { env, fatal, cwd = process.cwd(), name = `bin:${bin}`, fix }) {
+  if (/[\\/]/.test(bin)) {
+    const ok = await executableAt(path.resolve(cwd, bin));
+    return row(name, fatal, ok, ok ? `${bin} is an executable file` : `${bin} is not an executable file`, fix || `Install ${bin} or fix its path.`);
+  }
   const at = await findOnPath(bin, env);
   return row(name, fatal, !!at, at ? `${bin} found on PATH` : `${bin} not found on PATH`, fix || `Install ${bin} and make sure it is on PATH.`);
 }
@@ -97,8 +131,10 @@ export async function checkJson(rel, { cwd, fatal, name = `json:${rel}`, fix }) 
   try { text = await fs.readFile(path.resolve(cwd, rel), 'utf-8'); } catch {
     return row(name, fatal, false, `${rel} missing or unreadable`, fix || `Create ${rel} as valid JSON.`);
   }
-  try { JSON.parse(text); } catch (e) {
-    return row(name, fatal, false, `${rel} is not valid JSON (${String(e.message).slice(0, 80)})`, fix || `Fix the JSON syntax in ${rel}.`);
+  try { JSON.parse(stripBom(text)); } catch (e) {
+    // never quote e.message: it can echo the text around the error (a secret in a credentials file)
+    const at = /\(line \d+ column \d+\)|position \d+/.exec(String(e.message));
+    return row(name, fatal, false, `${rel} is not valid JSON${at ? ` (${at[0].replace(/^\((.*)\)$/, '$1')})` : ''}`, fix || `Fix the JSON syntax in ${rel}.`);
   }
   return row(name, fatal, true, `${rel} readable and valid JSON`, '');
 }
@@ -116,11 +152,12 @@ async function checkGitTree(cwd, fatal) {
 // ================================================================ profiles
 
 export async function profileChecks(profile, { cwd, env, nodeVersion }) {
+  cwd = await findProjectRoot(cwd);
   if (!PROFILES.includes(profile)) throw invalid(`unknown profile "${profile}" — known: ${PROFILES.join(', ')}`);
   const f = (rel, fix) => checkFile(rel, { cwd, fatal: true, name: `file:${rel}`, fix });
   const rows = [
     checkNode(nodeVersion),
-    await checkBin('git', { env, fatal: true, fix: 'Install git and make sure it is on PATH.' }),
+    await checkBin('git', { env, cwd, fatal: true, fix: 'Install git and make sure it is on PATH.' }),
     await f('.claude/helpers/kit/cli.js', 'Install the suite in this project: run danizee-claude-suite install.')
   ];
   if (profile === 'marathon') {
@@ -159,21 +196,21 @@ export function parseConfig(cfg, where = 'config') {
   });
 }
 
-async function loadConfig(cwd, configArg) {
+async function loadConfig(cwd, root, configArg) {
   const explicit = configArg !== undefined;
-  const file = path.resolve(cwd, explicit ? configArg : DEFAULT_CONFIG);
+  const file = path.resolve(explicit ? cwd : root, explicit ? configArg : DEFAULT_CONFIG);
   let text;
   try { text = await fs.readFile(file, 'utf-8'); } catch (e) {
     if (!explicit && e.code === 'ENOENT') return [];
     throw invalid(`cannot read config ${explicit ? configArg : DEFAULT_CONFIG}: ${e.code || e.message}`);
   }
   let parsed;
-  try { parsed = JSON.parse(text); } catch (e) { throw invalid(`config ${explicit ? configArg : DEFAULT_CONFIG} is not valid JSON: ${e.message}`); }
+  try { parsed = JSON.parse(stripBom(text)); } catch { throw invalid(`config ${explicit ? configArg : DEFAULT_CONFIG} is not valid JSON`); }
   return parseConfig(parsed, explicit ? configArg : DEFAULT_CONFIG);
 }
 
 export async function customCheck(c, { cwd, env }) {
-  const opts = { cwd, env, fatal: c.fatal, name: c.name };
+  const opts = { cwd: await findProjectRoot(cwd), env, fatal: c.fatal, name: c.name };
   if (c.kind === 'file') return checkFile(c.target, opts);
   if (c.kind === 'json') return checkJson(c.target, opts);
   if (c.kind === 'bin') return checkBin(c.target, opts);
@@ -215,6 +252,6 @@ function parse(args) {
 export async function run(args, io) {
   const { profile, config } = parse(args);
   if (!PROFILES.includes(profile)) throw invalid(`unknown profile "${profile}" — known: ${PROFILES.join(', ')}`);
-  const custom = await loadConfig(io.cwd, config);
+  const custom = await loadConfig(io.cwd, await findProjectRoot(io.cwd), config);
   return runDoctor({ profile, cwd: io.cwd, env: io.env || {}, custom });
 }

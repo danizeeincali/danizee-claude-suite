@@ -149,4 +149,58 @@ describe('doctor', () => {
     await write('.claude/kit/doctor.json', JSON.stringify({ checks: [{ name: 'node-version', kind: 'file', target: 'a' }] }));
     assert.equal(await c([]), 1);
   });
+
+  it('a bin check whose target is a path tests that path directly (absolute, or relative to the project root)', async () => {
+    await kitFiles();
+    await tool('mytool');
+    await write('node_modules/.bin/eslint', '#!/bin/sh\n', 0o755);
+    await write('plain.txt', 'x', 0o644);
+    await write('.claude/kit/doctor.json', JSON.stringify({ checks: [
+      { name: 'abs', kind: 'bin', target: path.join(bin, 'mytool'), fatal: true },
+      { name: 'rel', kind: 'bin', target: 'node_modules/.bin/eslint', fatal: true },
+      { name: 'gone', kind: 'bin', target: 'node_modules/.bin/nope', fatal: true },
+      ...(process.platform === 'win32' ? [] : [{ name: 'noexec', kind: 'bin', target: 'plain.txt', fatal: false }])
+    ] }));
+    const r = await run([], { cwd: dir, env: env() });
+    assert.deepEqual(r.failed, ['gone']);
+    assert.equal(r.checks.find(c => c.name === 'abs').ok, true);
+    assert.equal(r.checks.find(c => c.name === 'rel').ok, true);
+  });
+
+  it('a malformed json file never has its contents echoed', async () => {
+    await kitFiles();
+    await write('creds.json', '{"token": ghp_ABCDEFsecretvalue}');
+    await write('.claude/kit/doctor.json', JSON.stringify({ checks: [{ name: 'c', kind: 'json', target: 'creds.json', fatal: true }] }));
+    const r = await run([], { cwd: dir, env: env() });
+    assert.deepEqual(r.failed, ['c']);
+    const c = r.checks.find(x => x.name === 'c');
+    assert.match(c.found, /not valid JSON/);
+    assert.ok(!JSON.stringify(r).includes('ghp_'));
+    assert.ok(!JSON.stringify(r).includes('secretvalue'));
+    assert.ok(!c.found.includes('token'));
+  });
+
+  it('running from a subdirectory anchors built-in checks at the project root', async () => {
+    await kitFiles();
+    await write('.claude/helpers/marathon/cli.js', '');
+    await write('.claude/marathon.json', '{}');
+    await write('.git/HEAD', '');
+    await write('data.json', '[]');
+    await write('.claude/kit/doctor.json', JSON.stringify({ checks: [{ name: 'd', kind: 'json', target: 'data.json', fatal: true }] }));
+    await fs.mkdir(path.join(dir, 'sub/deeper'), { recursive: true });
+    for (const cwd of [path.join(dir, 'sub'), path.join(dir, 'sub/deeper')]) {
+      const r = await run(['--profile', 'marathon'], { cwd, env: env() });
+      assert.deepEqual(r.failed, [], cwd);
+      assert.equal(r.exit, 0);
+    }
+  });
+
+  it('a UTF-8 BOM in doctor.json or a json target is tolerated', async () => {
+    await kitFiles();
+    await write('data.json', '\uFEFF{"a":1}');
+    await write('.claude/kit/doctor.json', '\uFEFF' + JSON.stringify({ checks: [{ name: 'd', kind: 'json', target: 'data.json', fatal: true }] }));
+    const r = await run([], { cwd: dir, env: env() });
+    assert.equal(r.exit, 0);
+    assert.equal(r.checks.find(c => c.name === 'd').ok, true);
+  });
 });
