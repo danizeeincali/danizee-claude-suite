@@ -56,7 +56,7 @@ describe('reflect trouble-log', () => {
     const r = troubleLog(ev, { maxLines: 4, maxLineLength: 50 });
     assert.equal(r.lines.length, 4);
     assert.ok(r.lines.every((l) => [...l].length <= 50));
-    assert.equal(r.omitted, 7);
+    assert.equal(r.omitted, 8); // stop + 10 failures + 1 repeat = 12 lines
   });
   it('never emits a planted secret, even when the cap would cut it', () => {
     const secret = 'sk-live-SUPERSECRET-123456';
@@ -143,7 +143,7 @@ describe('reflect lessons', () => {
       const r = await save(d, ['--role', 'r', '--session', 's1', '--text', texts[3]]);
       assert.equal(r.code, 2);
       assert.equal((await save(d, ['--role', 'r', '--session', 's2', '--text', texts[3]])).code, 0);
-      assert.equal((await save(d, ['--role', 'r', '--session', 's1', '--max-new', '5', '--text', texts[3]])).code, 0);
+      assert.equal((await save(d, ['--role', 'r', '--session', 's1', '--max-new', '5', '--text', 'Prefer small commits when touching the installer module.'])).code, 0);
     } finally { await fs.rm(d, { recursive: true, force: true }); }
   });
   it('invalid input is exit 1', async () => {
