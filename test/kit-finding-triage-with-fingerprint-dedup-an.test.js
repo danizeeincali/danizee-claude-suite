@@ -315,3 +315,67 @@ await run(['visit', '--session', 's' + id, '--state', 'st.json'], { cwd: dir, lo
     }
   });
 });
+
+describe('triage state safety (r4)', () => {
+  it('a raw element string, secret included, never appears in the saved state or in list', () => withDir(async (dir) => {
+    const secret = 'AKIAIOSFODNN7EXAMPLE secret=hunter2pass';
+    await visit(dir, 's1', body([v('p', 'r1', secret)]));
+    const text = await fs.readFile(path.join(dir, 'st.json'), 'utf-8');
+    assert.ok(!text.includes('hunter2pass') && !/akiaiosfodnn7example/i.test(text));
+    const l = await run(['list', '--state', 'st.json'], { cwd: dir });
+    assert.ok(!JSON.stringify(l).includes('hunter2pass'));
+    // dedup still works on the hashed members
+    const r2 = await visit(dir, 's2', body([v('p', 'r1', secret)]));
+    assert.equal(r2.raise[0].status, 'pending');
+  }));
+
+  it('a plain-text ledger from before is migrated to hashes and still matches', () => withDir(async (dir) => {
+    const r1 = await visit(dir, 's1', body([v('p', 'r1', 'a.x')]));
+    const f = path.join(dir, 'st.json');
+    const st = JSON.parse(await fs.readFile(f, 'utf-8'));
+    const rec = Object.values(st.records)[0];
+    rec.members = [normalizeElement({ element: 'a.x' })];
+    await fs.writeFile(f, JSON.stringify(st));
+    const r2 = await visit(dir, 's2', body([v('p', 'r1', 'a.x')]));
+    assert.equal(r2.raise[0].fingerprint, r1.raise[0].fingerprint);
+    assert.ok(!(await fs.readFile(f, 'utf-8')).includes('"a.x"'));
+  }));
+
+  it('the default state path refuses a symlinked .claude/kit that leads outside the root', () => withDir(async (dir) => {
+    const repo = path.join(dir, 'repo');
+    const outside = path.join(dir, 'outside');
+    await fs.mkdir(path.join(repo, '.claude'), { recursive: true });
+    await fs.mkdir(outside);
+    await fs.symlink(outside, path.join(repo, '.claude', 'kit'));
+    const io = { cwd: repo, stdin: async () => JSON.stringify(body([v('p', 'r1', 'a')])) };
+    assert.equal(await code(run(['visit', '--session', 's1'], io)), 2);
+    assert.equal(await code(run(['list'], io)), 2);
+    assert.deepEqual(await fs.readdir(outside), []);
+  }));
+
+  it('the default state path refuses a symlinked state file and a symlinked .claude', () => withDir(async (dir) => {
+    const repo = path.join(dir, 'repo');
+    const outside = path.join(dir, 'outside');
+    await fs.mkdir(path.join(repo, '.claude', 'kit'), { recursive: true });
+    await fs.mkdir(outside);
+    await fs.symlink(path.join(outside, 'x.json'), path.join(repo, '.claude', 'kit', 'triage.json'));
+    const io = { cwd: repo, stdin: async () => JSON.stringify(body([v('p', 'r1', 'a')])) };
+    assert.equal(await code(run(['visit', '--session', 's1'], io)), 2);
+    await fs.rm(path.join(repo, '.claude'), { recursive: true });
+    await fs.symlink(outside, path.join(repo, '.claude'));
+    assert.equal(await code(run(['visit', '--session', 's1'], io)), 2);
+    assert.deepEqual(await fs.readdir(outside), []);
+  }));
+
+  it('the default path works normally when nothing is linked', () => withDir(async (dir) => {
+    const io = { cwd: dir, stdin: async () => JSON.stringify(body([v('p', 'r1', 'a')])) };
+    const r = await run(['visit', '--session', 's1'], io);
+    assert.equal(r.raise.length, 1);
+    await fs.access(path.join(dir, '.claude', 'kit', 'triage.json'));
+  }));
+
+  it('.gitignore covers the triage ledger', async () => {
+    const gi = await fs.readFile(new URL('../.gitignore', import.meta.url), 'utf-8');
+    assert.ok(gi.split('\n').includes('.claude/kit/triage.json*'));
+  });
+});

@@ -51,3 +51,6 @@ ruvector.db
 # Kit: the redact verb's list of secret values is machine-local and never committed
 .claude/kit/secrets
 .claude/kit/cache/
+
+# Kit: triage ledger (finding fingerprints, issue references) is machine-local
+.claude/kit/triage.json*

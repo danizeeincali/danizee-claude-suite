@@ -102,6 +102,10 @@ export function normalizeElement(v) {
   return '*';
 }
 
+/** Members are stored as hashes: matching needs only equality, and element text may carry a secret. */
+const HASH_RE = /^[0-9a-f]{64}$/;
+const sigHash = (sig) => crypto.createHash('sha256').update(String(sig)).digest('hex');
+
 export function fingerprintOf(scope, rule, sigs) {
   const uniq = [...new Set(sigs)].sort();
   return crypto.createHash('sha256').update([scope, rule, ...uniq].join('\n')).digest('hex').slice(0, 16);
@@ -134,7 +138,22 @@ export async function loadState(file) {
     if (e instanceof KitExit) throw invalid(`triage state ${file} is corrupt or unreadable: ${e.message}`);
     throw e;
   }
-  return parsed === null ? emptyState() : validateState(parsed);
+  if (parsed === null) return emptyState();
+  const state = validateState(parsed);
+  // a ledger written before members were hashed: hash its plain-text members so they still match and no longer sit on disk
+  for (const r of Object.values(state.records)) r.members = [...new Set(r.members.map((m) => (typeof m === 'string' && HASH_RE.test(m) ? m : sigHash(m))))].sort();
+  return state;
+}
+
+/** The default state path must not lead out of the working tree through a link: refuse a symlink at .claude, .claude/kit or the file. */
+async function guardDefaultState(cwd) {
+  let cur = path.resolve(cwd);
+  for (const part of ['.claude', 'kit', 'triage.json']) {
+    cur = path.join(cur, part);
+    let st;
+    try { st = await fs.lstat(cur); } catch (e) { if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return; throw invalid(`cannot look at ${cur}: ${e.message}`); }
+    if (st.isSymbolicLink()) throw new KitExit(`refusing the default triage state: ${cur} is a symbolic link (pass --state to choose a file on purpose)`, 2);
+  }
 }
 
 export async function saveState(file, state) {
@@ -183,7 +202,7 @@ function candidatesOf(violations) {
     if (!map.has(key)) map.set(key, { scope, rule, sigs: new Set(), labels: new Set(), details: new Set(), sources: new Set(), count: 0 });
     const c = map.get(key);
     c.count++;
-    c.sigs.add(normalizeElement(x));
+    c.sigs.add(sigHash(normalizeElement(x)));
     const label = typeof x.element === 'string' && x.element.trim() ? x.element.trim()
       : x.location != null ? (typeof x.location === 'string' ? x.location.trim() : `${x.location.file}${x.location.line != null ? `:${x.location.line}` : ''}`) : '(scope)';
     c.labels.add(label);
@@ -355,13 +374,16 @@ export async function run(args, io = {}) {
     if (sub === undefined) throw invalid('give a subcommand: visit, decide or list (see --help)');
     return { usage };
   }
-  const stateFile = (f) => path.resolve(cwd, f.state || DEFAULT_STATE);
+  const stateFile = async (f) => {
+    if (f.state === undefined || f.state === '') await guardDefaultState(cwd);
+    return path.resolve(cwd, f.state || DEFAULT_STATE);
+  };
   if (sub === 'visit') {
     const f = parse(rest, ['session', 'in', 'state'], false);
     if (f.help) return { usage };
     if (!str(f.session)) throw invalid('--session <id> is required');
     const input = validateVisitInput(await readInput(f, io, cwd));
-    const file = stateFile(f);
+    const file = await stateFile(f);
     const report = await withStateLock(file, async () => {
       const state = await loadState(file);
       const rep = visit(state, f.session.trim(), input);
@@ -377,7 +399,7 @@ export async function run(args, io = {}) {
     if (!DECISIONS.includes(f.as)) throw invalid('--as must be filed, dismissed or accepted');
     if (f.issue !== undefined && f.as !== 'filed') throw invalid('--issue only goes with --as filed');
     if (f.issue !== undefined && !str(f.issue)) throw invalid('--issue needs a reference');
-    const file = stateFile(f);
+    const file = await stateFile(f);
     return withStateLock(file, async () => {
       const state = await loadState(file);
       const res = decide(state, f.pos[0], f.as, f.issue && f.issue.trim());
@@ -389,7 +411,7 @@ export async function run(args, io = {}) {
     const f = parse(rest, ['status', 'state'], false);
     if (f.help) return { usage };
     if (f.status !== undefined && !STATUSES.includes(f.status)) throw invalid(`--status must be one of ${STATUSES.join(', ')}`);
-    const state = await loadState(stateFile(f));
+    const state = await loadState(await stateFile(f));
     const records = Object.values(state.records).filter((r) => !f.status || r.status === f.status)
       .map((r) => ({ fingerprint: r.fingerprint, scope: r.scope, rule: r.rule, status: r.status, issue: r.issue, occurrences: r.occurrences, absent_visits: r.absent_visits, agent_sourced: !!r.agent, members: r.members }))
       .sort((a, b) => (a.fingerprint < b.fingerprint ? -1 : 1));
