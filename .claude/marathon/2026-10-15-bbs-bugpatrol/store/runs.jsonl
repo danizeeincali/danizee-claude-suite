@@ -73,3 +73,4 @@
 {"kind":"unit","status":"green","stream":"exit-code-contract-separating-infrastruc","commit":"8b13239","id":"29d9e48e-fd7a-4838-b8b8-6d880f224e81","ts":"2026-10-15T18:24:36.592Z"}
 {"kind":"unit","status":"green","stream":"exit-code-contract-separating-infrastruc","commit":"4596acc","id":"26bd3d5c-5bac-4835-a9ca-015850785afc","ts":"2026-10-15T18:27:16.559Z"}
 {"kind":"unit","status":"green","stream":"exit-code-contract-separating-infrastruc","commit":"4596acc","id":"68df1b91-0804-4fd9-a1d9-99f9ba8a289b","ts":"2026-10-15T18:28:31.234Z"}
+{"kind":"unit","status":"green","stream":"integration","commit":"376b11f","id":"9cadc14b-8f63-44de-8954-2674c535567c","ts":"2026-10-15T18:49:17.351Z"}

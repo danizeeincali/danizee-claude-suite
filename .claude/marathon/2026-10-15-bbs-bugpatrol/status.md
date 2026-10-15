@@ -1,11 +1,11 @@
 # Marathon 2026-10-15-bbs-bugpatrol
 
 - State: RUNNING
-- Budget: 11,167,787 / 14,000,000 tokens
+- Budget: 11,298,379 / 14,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 10/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Continue stream "integration" (next: builders wire workflow and code targets) — /w-marathon --resume 2026-10-15-bbs-bugpatrol.
+- Next for you: Continue stream "integration" (next: integration review r1; then wired/delivered record) — /w-marathon --resume 2026-10-15-bbs-bugpatrol.
 - Last handoff: 2026-10-15T17:35:01.106Z (auto) on claude/project-thread-24nlxj@c0b0de2, 0 uncommitted, tasks: none
 
 ## Streams
@@ -23,7 +23,7 @@
 | exit-code-contract-separating-infrastruc | /home/claude/danizee-claude-suite-exit-code-contract-separating-infrastruc | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/exit-code-contract-separating-infrastruc.md | done | met | /w-tdd-swarm · build | done: build gate met |  | 0 |
 | sarif-junit-and-sticky-pr-comment-render | /home/claude/danizee-claude-suite-sarif-junit-and-sticky-pr-comment-render | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/sarif-junit-and-sticky-pr-comment-render.md | done | met | //w-tdd-swarm · build | done: build gate met |  | 0 |
 | repeated-replay-gate-for-claims | /home/claude/danizee-claude-suite-repeated-replay-gate-for-claims | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/repeated-replay-gate-for-claims.md | done | met | //w-tdd-swarm · done | integration stream wires it |  | 0 |
-| integration | /home/claude/danizee-claude-suite-integration | .claude/bbs/runs/2026-10-15-bugpatrol/integration.md | active | clean 0/2 | build | builders wire workflow and code targets |  | 0 |
+| integration | /home/claude/danizee-claude-suite-integration | .claude/bbs/runs/2026-10-15-bugpatrol/integration.md | active | clean 0/2 | review | integration review r1; then wired/delivered record |  | 0 |
 
 ## Finish line
 

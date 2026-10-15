@@ -132,10 +132,10 @@
       "name": "integration",
       "state": "active",
       "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/integration.md",
-      "next": "builders wire workflow and code targets",
+      "next": "integration review r1; then wired/delivered record",
       "tasks": [],
       "isolation": "/home/claude/danizee-claude-suite-integration",
-      "phase": "build",
+      "phase": "review",
       "base": "5297ea6de9628c7d10d431d5cc42dc45f6ebfcb6"
     }
   ],

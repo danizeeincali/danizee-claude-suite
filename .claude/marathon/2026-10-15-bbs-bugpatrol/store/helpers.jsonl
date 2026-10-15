@@ -269,3 +269,5 @@
 {"helper_id":"4bd48ad4-6eba-4a40-b36d-9c7f7a92a1cd","tokens":70034,"outcome":"green","event":"done","id":"c19d667c-1139-4385-8a2d-6dcd0ecd778c","ts":"2026-10-15T18:28:38.954Z"}
 {"helper_id":"5b9730a5-e1de-4db5-9d4d-5977ed94ce43","tokens":0,"outcome":"green","event":"done","id":"96481a39-cd1f-4a83-b121-b841377a3900","ts":"2026-10-15T18:28:39.194Z"}
 {"helper_id":"75f3dbe8-a67f-4b95-a605-c8e02383aeea","tokens":116819,"outcome":"green","event":"done","id":"d1fcf65b-9e5d-4074-b0bd-28e554c5fd20","ts":"2026-10-15T18:28:54.927Z"}
+{"helper_id":"4636f15f-c7a5-4307-a7c1-7f486aeca836","tokens":130592,"outcome":"green","event":"done","id":"5ee3216a-a522-44fb-a740-136eb36b8e70","ts":"2026-10-15T18:49:15.735Z"}
+{"role":"review","model":"opus","stream":"integration","budget":200000,"event":"spawn","id":"0707fd85-5228-405e-9e5c-6a877c6fc7cb","ts":"2026-10-15T18:49:22.656Z"}
