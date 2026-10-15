@@ -236,22 +236,54 @@ describe('exit-codes', () => {
     // scrub's own result is never truncated, so a long all-environment list still reclassifies there
     assert.equal(classify({ code: 2, verb: 'scrub', result: { hit_count: 0, complete: false, not_scanned: miss(25) } }).blocks, false);
   });
+  it('a zero-hit partial-clone scrub result over 1 MiB is infrastructure on every path (text, file, stdin, library string and object)', async () => {
+    const ns = Array.from({ length: 8000 }, (_, i) => ({ file: `src/generated/module-${i}/some/deeply/nested/path/file-${i}.js`, reason: 'object not available locally (partial clone?)' }));
+    const obj = { exit: 2, ran: true, hit_count: 0, complete: false, hits: [], not_scanned: ns };
+    const text = JSON.stringify(obj, null, 2);
+    assert.ok(Buffer.byteLength(text) > 1048576, 'fixture is over 1 MiB');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'exit-big-'));
+    try {
+      const f = path.join(dir, 'big.json');
+      fs.writeFileSync(f, text);
+      const cli = path.resolve('src/lib/kit/cli.js');
+      const viaFile = spawnSync(process.execPath, [cli, 'exit-codes', 'classify', '--code', '2', '--verb', 'scrub', '--result', f], { encoding: 'utf-8' });
+      assert.equal(JSON.parse(viaFile.stdout).class, 'infrastructure');
+      assert.equal(JSON.parse(viaFile.stdout).blocks, false);
+      const viaStdin = spawnSync(process.execPath, [cli, 'exit-codes', 'classify', '--code', '2', '--verb', 'scrub', '--result', '-'], { input: text, encoding: 'utf-8' });
+      assert.equal(JSON.parse(viaStdin.stdout).class, 'infrastructure');
+      assert.equal((await run(['blocks', '2', '--verb', 'scrub', '--result', f])).blocks, false);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    assert.equal(blocksMerge(2, 'scrub', null, text), false, 'string');
+    assert.equal(blocksMerge(2, 'scrub', null, obj), false, 'object');
+    assert.equal(classify({ code: 2, verb: 'scrub', result: text }).class, 'infrastructure');
+    assert.equal(classify({ code: 2, verb: 'scrub', result: obj }).class, 'infrastructure');
+  });
+  it('the string and object library paths apply the same size rule beyond the cap', () => {
+    const cap = 64 * 1048576;
+    const pad = 'x'.repeat(cap);
+    const obj = { hit_count: 0, complete: false, pad, not_scanned: [{ file: 'a', reason: 'object not available locally (partial clone?)' }] };
+    for (const r of [obj, JSON.stringify(obj)]) {
+      const c = classify({ code: 2, verb: 'scrub', result: r });
+      assert.equal(c.blocks, true);
+      assert.match(c.description, /larger than 67108864 bytes/);
+    }
+  });
   it('--result - stops reading stdin once the cap is passed', async () => {
     let asked = null;
-    const big = { stdin: async (o) => { asked = o; return Buffer.alloc(1048577, 32); }, stdinIsTTY: false };
+    const big = { stdin: async (o) => { asked = o; return Buffer.alloc(67108865, 32); }, stdinIsTTY: false };
     const tooBig = await run(['classify', '--code', '2', '--verb', 'scrub', '--result', '-'], big);
     assert.equal(tooBig.blocks, true, 'a judge 2 whose result cannot be read blocks');
-    assert.match(tooBig.description, /larger than 1048576 bytes/);
-    assert.equal(asked && asked.maxBytes, 1048577, 'the reader is given a bound');
+    assert.match(tooBig.description, /larger than 67108864 bytes/);
+    assert.equal(asked && asked.maxBytes, 67108865, 'the reader is given a bound');
     const ok = { stdin: async (o) => { asked = o; return Buffer.from(JSON.stringify({ hit_count: 1 })); }, stdinIsTTY: false };
     assert.equal((await run(['blocks', '2', '--verb', 'scrub', '--result', '-'], ok)).blocks, true);
   });
   it('cli.js --result - with oversized piped stdin blocks a judge 2 and names the size', () => {
     const cli = path.resolve('src/lib/kit/cli.js');
-    const r = spawnSync(process.execPath, [cli, 'exit-codes', 'classify', '--code', '2', '--verb', 'scrub', '--result', '-'], { input: Buffer.alloc(5 * 1024 * 1024, 32), encoding: 'utf-8' });
+    const r = spawnSync(process.execPath, [cli, 'exit-codes', 'classify', '--code', '2', '--verb', 'scrub', '--result', '-'], { input: Buffer.alloc(65 * 1024 * 1024, 32), encoding: 'utf-8' });
     assert.equal(r.status, 0);
     assert.equal(JSON.parse(r.stdout).blocks, true);
-    assert.match(r.stdout, /larger than 1048576 bytes/);
+    assert.match(r.stdout, /larger than 67108864 bytes/);
   });
   it('push-gate review deny and scrub hits stay regressions with --result', () => {
     assert.equal(classify({ code: 2, verb: 'push-gate', result: { decision: 'deny', reason: 'the review of this change did not pass (verdict fail)' } }).blocks, true);

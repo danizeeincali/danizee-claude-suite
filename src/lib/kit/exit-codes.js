@@ -7,7 +7,7 @@
  *   exit-codes blocks <code> [--verb <v>] [--result <file|->]     { blocks }: true only for the regression class
  *   exit-codes classify --code <n> [--signal <name>] [--verb <v>] [--result <file|->]
  *
- * --result <file|-> is the JSON a product judge printed (a regular file of at most 1 MiB, or piped stdin). A judge exits 2 both when it
+ * --result <file|-> is the JSON a product judge printed (a regular file or piped stdin, each of at most 64 MiB). A judge exits 2 both when it
  * judged the product and said no and when it could not judge at all, so without --result a judge's 2 is a regression. With it, an exit 2 whose
  * result shows nothing was judged is infrastructure and never blocks: scrub with hit_count 0 and a non-empty not_scanned list
  * where every not_scanned reason is an environment reason (a partial clone with the remote unreachable); push-gate with decision deny whose reason says the check 'could not run' because of an environment cause (git timed out, overflowed, was killed or could not be run; NOT scrub's own refusals such as a tracked private pattern file, which block), or a scrub block that is such a zero-hit partial-clone-only scan. Size, total,
@@ -84,7 +84,8 @@ export const TABLE = freeze({
   overrides: VERB_OVERRIDES,
 });
 
-const MAX_RESULT_BYTES = 1048576;
+/** Far above any judge's real output (scrub's not_scanned list has no cap: about 160 bytes per missing file in a partial clone). Only a result beyond this is 'oversize', and it blocks at a judge's 2. The CLI reads incrementally, so memory is bounded by the cap. */
+const MAX_RESULT_BYTES = 64 * 1048576;
 const NOT_JUDGED = 'The judge exited 2 but its result shows it could not judge the product (%s); nothing was decided about the product, so this is infrastructure and never blocks. Fix the environment (network, partial clone, git speed) and rerun.';
 
 /** The only not_scanned reasons that come from the environment, not the product (the exact string scrub.js writes). Size limits, total limit, not-a-regular-file, unreadable and unknown reasons may hide a secret, so they stay blocking. */
@@ -163,12 +164,20 @@ export function classify(opts = {}) { return classifyWith(opts, null); }
 /** Judge a result for a judge's exit 2: { obj } (null when none was given) or { why } when its content is unusable. Never throws on content. */
 function judgeResult(result) {
   if (result == null) return { obj: null };
+  let sized = false;
+  // One rule for text and objects: a result over the cap is oversize (an object is measured by its compact JSON form).
   if (typeof result === 'string') {
     if (Buffer.byteLength(result) > MAX_RESULT_BYTES) return { why: `its result is larger than ${MAX_RESULT_BYTES} bytes` };
     if (!result.trim()) return { why: 'it printed nothing on stdout (it crashed or refused; read its stderr)' };
+    sized = true;
     try { result = JSON.parse(result); } catch { return { why: 'its result is truncated or not valid JSON (it crashed or was cut off; read its stderr)' }; }
   }
   if (!result || typeof result !== 'object' || Array.isArray(result)) return { why: 'its result is not a JSON object' };
+  if (!sized) {
+    let n;
+    try { n = Buffer.byteLength(JSON.stringify(result)); } catch { return { why: 'its result cannot be serialized as JSON' }; }
+    if (n > MAX_RESULT_BYTES) return { why: `its result is larger than ${MAX_RESULT_BYTES} bytes` };
+  }
   return { obj: result };
 }
 
@@ -255,7 +264,22 @@ async function readResult(arg, io) {
     const st = await fs.stat(file).catch((e) => { throw new KitExit(`cannot read --result ${arg}: ${e.code || e.message}`, 1); });
     if (!st.isFile()) throw new KitExit(`--result ${arg} is not a regular file`, 1);
     if (st.size > MAX_RESULT_BYTES) return { unusable: `its result is larger than ${MAX_RESULT_BYTES} bytes` };
-    text = await fs.readFile(file, 'utf-8');
+    // Bounded read: at most cap + 1 bytes, so a file that grows while it is read is never buffered whole.
+    const fh = await fs.open(file, 'r').catch((e) => { throw new KitExit(`cannot read --result ${arg}: ${e.code || e.message}`, 1); });
+    let buf;
+    try {
+      buf = Buffer.alloc(Math.min(st.size, MAX_RESULT_BYTES) + 1);
+      let n = 0;
+      for (;;) {
+        const { bytesRead } = await fh.read(buf, n, buf.length - n, null);
+        if (!bytesRead) break;
+        n += bytesRead;
+        if (n >= buf.length) break;
+      }
+      buf = buf.subarray(0, n);
+    } finally { await fh.close(); }
+    if (buf.length > MAX_RESULT_BYTES) return { unusable: `its result is larger than ${MAX_RESULT_BYTES} bytes` };
+    text = buf.toString('utf-8');
   }
   return { text };
 }
