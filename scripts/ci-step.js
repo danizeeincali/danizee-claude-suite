@@ -72,7 +72,7 @@ export function runStep(classify, { env = process.env, log = console.log } = {})
   return new Promise((resolve) => {
     const child = spawn('sh', ['-c', command], { stdio: ['ignore', 'pipe', 'pipe'], env });
     for (const s of [child.stdout, child.stderr]) s.on('data', (d) => { process.stdout.write(d); out.write(d); });
-    child.on('error', (e) => { out.end(); log(`::error::precondition: the test command could not start: "${command}": ${e.message}. The job fails.`); resolve(1); });
+    child.on('error', (e) => { out.end(); log(`::error::precondition: the test command could not start: "${command}": ${e.message}. The job fails; check the test script and the node install.`); resolve(1); });
     child.on('close', (code, signal) => {
       out.end();
       if (code === 0) return resolve(0);
@@ -81,7 +81,10 @@ export function runStep(classify, { env = process.env, log = console.log } = {})
       const label = c.class === 'infrastructure' ? 'infrastructure: timed out / killed by a signal, rerun'
         : c.class === 'precondition' ? (code === 126 || code === 127 ? 'precondition: the test command could not start' : `precondition: test command failed with status ${code}`)
         : 'product failure: tests failed';
-      log(`::error::"${command}" ended with ${ended}: ${label}. ${c.description || ''} The job fails.`.replace(/ {2,}/g, ' '));
+      const next = c.class === 'infrastructure' ? 'rerun the job'
+        : c.class === 'precondition' ? 'check the test script and the node install'
+        : 'see the failing tests above';
+      log(`::error::"${command}" ended with ${ended}: ${label}. The job fails; ${next}.`);
       resolve(code || 1);
     });
   });

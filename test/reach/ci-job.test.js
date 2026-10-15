@@ -78,6 +78,8 @@ test('test step: a product failure fails the job step and its output is kept', (
   const r = runStepScript(step('npm test'), { ...env, CI_TEST_COMMAND: 'echo "ok 1 - good"; echo "not ok 2 - bad"; exit 1' });
   assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stdout, /product failure/);
+  assert.match(r.stdout, /The job fails; see the failing tests above\./);
+  assert.doesNotMatch(r.stdout, /never block/i);
   assert.match(fs.readFileSync(env.CI_TEST_OUTPUT, 'utf-8'), /not ok 2 - bad/);
 });
 
@@ -87,12 +89,12 @@ test('test step: a passing run passes', () => {
   assert.equal(r.status, 0, r.stdout + r.stderr);
 });
 
-for (const [label, command, pattern] of [
-  ['a timeout (124)', 'exit 124', /status 124: infrastructure: timed out \/ killed by a signal, rerun/],
-  ['a signal death', 'kill -9 $$', /infrastructure: timed out \/ killed by a signal, rerun/],
-  ['a tool that is not found (127)', 'exit 127', /status 127: precondition: the test command could not start/],
-  ['exit 2', 'exit 2', /status 2: precondition: test command failed with status 2/],
-  ['an OOM kill (137)', 'exit 137', /status 137: infrastructure/],
+for (const [label, command, pattern, next] of [
+  ['a timeout (124)', 'exit 124', /status 124: infrastructure: timed out \/ killed by a signal, rerun/, /The job fails; rerun the job\./],
+  ['a signal death', 'kill -9 $$', /infrastructure: timed out \/ killed by a signal, rerun/, /The job fails; rerun the job\./],
+  ['a tool that is not found (127)', 'exit 127', /status 127: precondition: the test command could not start/, /The job fails; check the test script and the node install\./],
+  ['exit 2', 'exit 2', /status 2: precondition: test command failed with status 2/, /The job fails; check the test script and the node install\./],
+  ['an OOM kill (137)', 'exit 137', /status 137: infrastructure/, /The job fails; rerun the job\./],
 ]) {
   test(`test step: ${label} fails the step with a label`, () => {
     const { env } = fixture();
@@ -100,6 +102,8 @@ for (const [label, command, pattern] of [
     assert.notEqual(r.status, 0, r.stdout + r.stderr);
     assert.match(r.stdout, /::error::/);
     assert.match(r.stdout, pattern);
+    assert.match(r.stdout, next);
+    assert.doesNotMatch(r.stdout, /never block/i);
     assert.doesNotMatch(r.stdout, /::warning::/);
   });
 }

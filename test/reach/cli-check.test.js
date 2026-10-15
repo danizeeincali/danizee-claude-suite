@@ -29,7 +29,7 @@ function depsResolve() {
 const preload = depsResolve() ? [] : ['--import', shim]; // --import needs Node 20.6+: only used when the real deps are absent
 
 function check(dir, ...args) {
-  const r = spawnSync(process.execPath, [...preload, cli, 'check', '--path', dir, ...args], { cwd: dir, encoding: 'utf-8', env: { ...process.env, NO_COLOR: '1' } });
+  const r = spawnSync(process.execPath, [...preload, cli, 'check', '--path', dir, ...args], { cwd: fs.existsSync(dir) && fs.statSync(dir).isDirectory() ? dir : os.tmpdir(), encoding: 'utf-8', env: { ...process.env, NO_COLOR: '1' } });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 }
 
@@ -74,4 +74,14 @@ test('check exits with the usage code (1) on an invalid doctor.json', () => {
   const r = check(dir);
   assert.match(r.out, /not valid JSON/);
   assert.equal(r.code, 1, r.out);
+});
+
+test('check --path that is missing or not a directory exits with the usage code (1) and does not suggest init', () => {
+  const dir = project(true);
+  for (const p of [path.join(dir, 'no-such-dir'), path.join(dir, '.claude', 'helpers', 'kit', 'cli.js')]) {
+    const r = check(p);
+    assert.match(r.out, new RegExp(`check: --path .*${path.basename(p).replace(/\./g, '\\.')} does not exist \\(or is not a directory\\)`));
+    assert.doesNotMatch(r.out, /init/);
+    assert.equal(r.code, 1, r.out);
+  }
 });

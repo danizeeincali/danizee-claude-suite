@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import os from 'os';
+import fs from 'fs';
 import { DaniZeeSuiteInstaller } from '../src/installer.js';
 import * as bc from '../src/plugins/bc.js';
 import { runDoctor, loadProjectChecks } from '../src/lib/kit/doctor.js';
@@ -105,6 +106,12 @@ program
   .option('-p, --path <path>', 'Path to check', process.cwd())
   .option('--profile <profile>', 'Doctor profile: kit, marathon, bbs or review', 'kit')
   .action(async (options) => {
+    let isDir = false;
+    try { isDir = fs.statSync(options.path).isDirectory(); } catch { /* missing */ }
+    if (!isDir) {
+      console.error(`check: --path ${options.path} does not exist (or is not a directory)`);
+      process.exit(checkExitCode(1));
+    }
     const spinner = ora('Checking installation...').start();
 
     try {

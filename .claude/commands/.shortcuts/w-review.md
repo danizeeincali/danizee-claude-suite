@@ -147,11 +147,19 @@ List what to check from the result: each symbol in `touched`, then the `impacted
 - Bug fix patterns that recur
 - Feature patterns worth templating
 
-**🔇 NOISE LEDGER AND TRIAGE (advisory):** Before any candidate is filed, put the findings through the ledger and the fingerprint triage. `$F` holds `[{"id","severity","rule","locations":[...],"failures","reproductions"}]` (retry counts from re-running the check), `$V` holds `{"scopes":[...],"enabled":[rules that ran],"violations":[{"scope","rule","source":"auto"|"agent","element"}]}`, `$S` is this review's session id:
+**🔇 NOISE LEDGER AND TRIAGE (advisory):** Before any candidate is filed, put the findings through the ledger and then the fingerprint triage, as two separate commands. `$F` holds `[{"id","severity","rule","locations":[...],"failures","reproductions"}]` (retry counts from re-running the check), `$V` holds `{"scopes":[...],"enabled":[rules that ran],"violations":[{"scope","rule","source":"auto"|"agent","element"}]}`, `$S` is this review's session id. If the kit is not installed (`.claude/helpers/kit/cli.js` missing), say so in one line, skip both commands and file candidates as before.
+
+First the ledger:
 ```bash
-if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): noise-ledger and triage skipped, advisory"; else node .claude/helpers/kit/cli.js noise-ledger apply --in "$F" && node .claude/helpers/kit/cli.js triage visit --session "$S" --in "$V"; fi
+node .claude/helpers/kit/cli.js noise-ledger apply --in "$F"
 ```
-`noise-ledger` exit 0: file the `filed` items as candidates, mention the one `summary` for the folded rest, list `quarantined` ones (did not reproduce on retry) and ledger-`accepted` ones without filing them; exit 1: invalid input, report it. `triage` exit 0: raise only `raise` and `recurred` entries (a decided one is never raised again) and mention `closed` ones (no longer seen); record a decision with `kit/cli.js triage decide <fingerprint> --as filed|dismissed|accepted`; exit 1 invalid input or corrupt state, exit 2 refused (state path is a symbolic link): report it. If the kit is not installed, say so in one line and file candidates as before. The review goes on.
+`noise-ledger` exit 0: file the `filed` items as candidates, mention the one `summary` for the folded rest, list `quarantined` ones (did not reproduce on retry) and ledger-`accepted` ones without filing them; exit 1: invalid input, report it. If `noise-ledger` fails, do not run `triage`: file candidates as before.
+
+Then the triage (only after `noise-ledger` exited 0):
+```bash
+node .claude/helpers/kit/cli.js triage visit --session "$S" --in "$V"
+```
+`triage` exit 0: raise only `raise` and `recurred` entries (a decided one is never raised again) and mention `closed` ones (no longer seen); record a decision with `kit/cli.js triage decide <fingerprint> --as filed|dismissed|accepted`; exit 1 invalid input or corrupt state, exit 2 refused (state path is a symbolic link): report it. The review goes on.
 
 **If candidate identified:**
 1. Generate unique ID: RC-NNN (check .claude/ralph-candidates.md for next available)
