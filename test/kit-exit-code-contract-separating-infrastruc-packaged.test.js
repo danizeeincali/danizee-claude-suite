@@ -12,9 +12,13 @@ describe('exit-codes — packaged end to end', () => {
     const t = pkg.kit(['exit-codes', 'table']);
     assert.equal(t.code, 0);
     assert.equal(t.json.codes['2'], 'regression');
-    const b = pkg.kit(['exit-codes', 'blocks', '2']);
+    const b = pkg.kit(['exit-codes', 'blocks', '2', '--verb', 'push-gate']);
     assert.equal(b.code, 0);
     assert.equal(b.json.blocks, true);
+    assert.equal(pkg.kit(['exit-codes', 'blocks', '2', '--verb', 'graph']).json.blocks, false);
+    assert.equal(pkg.kit(['exit-codes', 'blocks', '2']).json.blocks, false);
+    assert.equal(pkg.kit(['exit-codes', 'blocks', '2', '--verb', 'safegit']).code, 1);
+    assert.equal(pkg.kit(['exit-codes', 'classify', '--code', '127']).json.class, 'precondition');
     assert.equal(pkg.kit(['exit-codes', 'blocks', '3', '--verb', 'safe-git']).json.blocks, false);
     assert.equal(pkg.kit(['exit-codes', 'classify', '--code', '137']).json.class, 'infrastructure');
     assert.equal(pkg.kit(['exit-codes', 'classify', '--code', '9']).json.class, 'unknown');

@@ -7,11 +7,14 @@
  *   exit-codes blocks <code> [--verb <v>]                    { blocks }: true only for the regression class
  *   exit-codes classify --code <n> [--signal <name>] [--verb <v>]
  *
- * Classes: clean (0), regression (2, a verb judging the product said no: the ONLY class allowed to block a merge), usage (1, invalid input
+ * Classes: clean (0), regression (2 from a listed product judge only: the ONLY class allowed to block a merge), usage (1, invalid input
  * or broken state), precondition (4, a prerequisite was never met), infrastructure (5; the tool or environment failed:
- * timeout, crash, signal, any status >= 128). 0/1/2 keep the meaning cli.js gives them. Some verbs document their own
- * statuses (safe-git 2 and diff-range 2 are tool-limit refusals: precondition, never blocking; diff-range 1 = bad input or
- * a git failure, not separable yet); those are per-verb overrides taken from the verbs' usage text (safe-git 3 = git ran and failed or timed
+ * timeout, crash, signal, any status >= 128; 126/127 = tool not executable / not found are preconditions). cli.js uses 2 for a
+ * policy refusal of ANY kind, and many verbs refuse for tool limits (size caps, guarded-fs symlink and race refusals, argument
+ * refusals) that say nothing about the product, so exit 2 is a NON-BLOCKING refusal (precondition) by default and blocks only
+ * for verbs on the explicit PRODUCT_JUDGES list, whose 2 is a product verdict by their usage text (push-gate: deny; scrub: hits
+ * or an incomplete scan, fail closed). A new verb is not a judge until it is added there. Some verbs document their own
+ * statuses (diff-range 1 = bad input or a git failure, not separable yet; safe-git 3 = git ran and failed or timed
  * out, infrastructure; diff-range 3 = an empty range, clean). A bare 3 without a verb is ambiguous, so it is unknown.
  * Unknown statuses are reported as `unknown`, never as clean, and never block (only a known regression blocks).
  * A signal always wins and is infrastructure. All of blocks/describe/classify print JSON and exit 0; bad input is exit 1.
@@ -28,13 +31,22 @@ const freeze = (o) => Object.freeze(o);
 export const CLASSES = freeze({
   clean: freeze({ code: 0, blocks: false, description: 'The verb succeeded; nothing to report.' }),
   usage: freeze({ code: 1, blocks: false, description: 'Invalid input, broken state, or a tool failure (not separable yet): the call was malformed or the data unusable, or the tool crashed or a git child failed, since cli.js reports any crash as 1. Check the message before blaming the caller; never block on it.' }),
-  regression: freeze({ code: 2, blocks: true, description: 'Regression: a verb that judges the product ran and said no. The only outcome allowed to block a merge. Verbs whose 2 is a tool-limit refusal (safe-git, diff-range) override it.' }),
+  regression: freeze({ code: 2, blocks: true, description: 'Regression: a verb that judges the product (see product_judges) ran and said no. The only outcome allowed to block a merge. Exit 2 from any other verb, or with no verb, is a refusal (precondition) and does not block.' }),
   precondition: freeze({ code: 4, blocks: false, description: 'A prerequisite was never met (missing tool, file, credential or setup); nothing was judged.' }),
   infrastructure: freeze({ code: 5, blocks: false, description: 'The tool or environment failed (timeout, crash, signal, git failure); says nothing about the product. Retry or repair, never block on it alone.' }),
 });
 
 /** Statuses at or above this, and any signal death, are infrastructure. */
 export const INFRA_FLOOR = 128;
+
+/** Verbs whose exit 2 is a product verdict (checked against each verb's usage text); every other 2 is a non-blocking refusal. */
+export const PRODUCT_JUDGES = freeze(['push-gate', 'scrub']);
+
+const REFUSAL = freeze({ class: 'precondition', description: 'The verb refused the call (exit 2): an argument, a size or count limit, an unsafe path or repository state. Nothing was judged about the product, so it never blocks; change the call or the environment. Only the product judges (see product_judges) use 2 as a verdict.' });
+const SHELL = freeze({
+  126: freeze({ class: 'precondition', description: 'Status 126: the shell found the tool but it is not executable. A missing prerequisite, not a product failure.' }),
+  127: freeze({ class: 'precondition', description: 'Status 127: command not found (the shell could not find the tool or node). A missing prerequisite, not a product failure.' }),
+});
 
 /** Per-verb statuses, from each verb's own usage text. */
 export const VERB_OVERRIDES = freeze({
@@ -54,6 +66,8 @@ export const TABLE = freeze({
   classes: CLASSES,
   codes: freeze(Object.fromEntries(Object.entries(CLASSES).map(([name, c]) => [c.code, name]))),
   infrastructure_floor: INFRA_FLOOR,
+  product_judges: PRODUCT_JUDGES,
+  shell_statuses: SHELL,
   overrides: VERB_OVERRIDES,
 });
 
@@ -71,6 +85,8 @@ export function classify({ code = null, signal = null, verb: v = null } = {}) {
   const base = { code, signal: null, verb: v };
   const over = v && Object.hasOwn(VERB_OVERRIDES, v) ? VERB_OVERRIDES[v][code] : undefined;
   if (over) return { ...base, class: over.class, known: true, blocks: CLASSES[over.class].blocks, description: over.description };
+  if (code === 2 && !(v && PRODUCT_JUDGES.includes(v))) return { ...base, class: REFUSAL.class, known: true, blocks: false, description: REFUSAL.description };
+  if (SHELL[code]) return { ...base, class: SHELL[code].class, known: true, blocks: false, description: SHELL[code].description };
   if (code >= INFRA_FLOOR) return { ...base, class: 'infrastructure', known: true, blocks: false, description: `Status ${code} (>= ${INFRA_FLOOR}) is a signal death or a crash: the tool or environment failed, not the product.` };
   const name = TABLE.codes[code];
   if (name) return { ...base, class: name, known: true, blocks: CLASSES[name].blocks, description: CLASSES[name].description };
@@ -111,9 +127,12 @@ function toCode(s, what) {
   if (n > 255) throw new KitExit(`${what} must be an integer 0..255, got ${s}`, 1);
   return n;
 }
-function toVerb(s) {
+async function toVerb(s) {
   if (s == null) return null;
   if (!/^[a-z][a-z0-9-]{0,63}$/.test(s)) throw new KitExit(`--verb must be a verb name like "safe-git", got ${JSON.stringify(s)}`, 1);
+  const { loadVerbs } = await import('./cli.js');
+  const known = [...(await loadVerbs()).keys()];
+  if (!known.includes(s)) throw new KitExit(`--verb "${s}" is not a registered kit verb (known: ${known.join(', ')})`, 1);
   return s;
 }
 function toSignal(s) {
@@ -125,19 +144,19 @@ function toSignal(s) {
 export async function run(args) {
   const [sub, ...rest] = args;
   if (!sub || sub === '--help') return { usage };
-  if (sub === 'table') { parse(rest, 0, []); return TABLE; }
   if (rest.includes('--help') && ['table', 'describe', 'blocks', 'classify'].includes(sub)) return { usage };
+  if (sub === 'table') { parse(rest, 0, []); return TABLE; }
   if (sub === 'describe' || sub === 'blocks') {
     const p = parse(rest, 1, ['--verb']);
     if (!p._.length) throw new KitExit(`${sub} needs a <code>; ${usage}`, 1);
-    const r = classify({ code: toCode(p._[0], '<code>'), verb: toVerb(p['--verb']) });
+    const r = classify({ code: toCode(p._[0], '<code>'), verb: await toVerb(p['--verb']) });
     return sub === 'blocks' ? { code: r.code, verb: r.verb, class: r.class, blocks: r.blocks } : r;
   }
   if (sub === 'classify') {
     const p = parse(rest, 0, ['--code', '--signal', '--verb']);
     const signal = toSignal(p['--signal']);
     if (p['--code'] == null && signal == null) throw new KitExit(`classify needs --code <n> or --signal <name>; ${usage}`, 1);
-    return classify({ code: p['--code'] == null ? null : toCode(p['--code'], '--code'), signal, verb: toVerb(p['--verb']) });
+    return classify({ code: p['--code'] == null ? null : toCode(p['--code'], '--code'), signal, verb: await toVerb(p['--verb']) });
   }
   throw new KitExit(`unknown subcommand "${sub}"; ${usage}`, 1);
 }
