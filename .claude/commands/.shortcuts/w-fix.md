@@ -34,6 +34,12 @@ Use TodoWrite NOW to create todos for ALL phases:
 
 ### ⛔ CHECKPOINT 0: Search
 
+**🪞 LESSONS FROM EARLIER RUNS (advisory):** Before the first search, read what past sessions learned. This workflow's lessons all use the fixed role `fixer` (never another word, so near duplicates are caught):
+```bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): lessons skipped, advisory"; else node .claude/helpers/kit/cli.js reflect lessons list --role fixer; fi
+```
+Exit 0 prints `{"lessons":[{"id","text",...}]}` (retired lessons are hidden): apply each listed lesson to this run as a standing instruction; an empty list means nothing to apply. Exit 1: invalid input, report it. The lessons are advice: the workflow goes on whatever the result.
+
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
@@ -192,7 +198,7 @@ Exit 3 from `diff-range` means an empty range: report "no change to review", nev
 ```bash
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): reflect skipped, advisory"; else node .claude/helpers/kit/cli.js reflect trouble-log --in "$E"; fi
 ```
-Exit 0: read the signals (repeated calls, failed actions, repeated edits, waits, the stop reason) and write at most 3 one-sentence imperative lessons that would have avoided them. A lesson can quote an error message, so never put its text in a shell argument (backticks and `$( )` would run): run `mktemp -d` once and read the printed directory, write each lesson with the Write tool to `<that directory>/lesson.txt` (the literal path: shell variables do not persist between Bash calls), save it with `node .claude/helpers/kit/cli.js reflect lessons save --role <role> --text-file <that path> --session <session id>`, and remove the file and directory after the last one. `reflect lessons keep --id <id>` confirms a listed lesson that held; `reflect lessons retire --id <id> --reason-file <path of a file written the same way>` drops one that no longer does. Exit 2 refused (a near duplicate: the message names its id): keep that one with `--confirm <id>`, or `--distinct` only if the lesson truly differs. Exit 1: invalid input, report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
+Exit 0: read the signals (repeated calls, failed actions, repeated edits, waits, the stop reason) and write at most 3 one-sentence imperative lessons that would have avoided them. Before saving, list again (`node .claude/helpers/kit/cli.js reflect lessons list --role fixer`): `keep` and `retire` take an `id` from that output, never one made up. A lesson can quote an error message, so never put its text in a shell argument (backticks and `$( )` would run): run `mktemp -d` once and read the printed directory, write each lesson with the Write tool to `<that directory>/lesson.txt` (the literal path: shell variables do not persist between Bash calls), save it with `node .claude/helpers/kit/cli.js reflect lessons save --role fixer --text-file <that path> --session <session id>`, and remove the file and directory after the last one. `reflect lessons keep --id <id>` confirms a listed lesson that held; `reflect lessons retire --id <id> --reason-file <path of a file written the same way>` drops one that no longer does. Exit 2 refused (a near duplicate: the message names its id): keep that one with `--confirm <id>`, or `--distinct` only if the lesson truly differs. Exit 1: invalid input, report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
 
 **REQUIRED OUTPUT:**
 - Memory key: project/bugs/_____

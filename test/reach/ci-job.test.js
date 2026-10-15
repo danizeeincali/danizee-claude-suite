@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'test.yml'), 'utf-8');
@@ -155,3 +155,22 @@ test('scripts/ci-step.js --print-targets prints the test map CI gives test-plan'
   const t = map.targets.find((x) => x.id === 'test/reach/ci-job.test.js');
   assert.ok(t && t.files.includes('test/reach/ci-job.test.js'));
 });
+
+// Round 8: a test that starts code by path string (spawn, path.join, import) depends on that file.
+test('testTargets: path strings passed to spawn, path.join and import count as dependencies (cli-check -> bin/cli.js, ci-job -> scripts/ci-step.js)', async () => {
+  const { testTargets, spawnedPaths } = await import(pathToFileURL(path.join(root, 'scripts', 'ci-step.js')).href);
+  const map = testTargets(root);
+  const byId = (id) => map.find((x) => x.id === id);
+  assert.ok(byId('test/reach/cli-check.test.js').files.includes('bin/cli.js'), 'cli-check.test.js starts bin/cli.js');
+  assert.ok(byId('test/reach/ci-job.test.js').files.includes('scripts/ci-step.js'), 'ci-job.test.js runs scripts/ci-step.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ci-targets-'));
+  fs.mkdirSync(path.join(dir, 'bin')); fs.mkdirSync(path.join(dir, 'scripts')); fs.mkdirSync(path.join(dir, 'test'));
+  fs.writeFileSync(path.join(dir, 'bin', 'cli.js'), '');
+  fs.writeFileSync(path.join(dir, 'scripts', 'tool.js'), '');
+  fs.writeFileSync(path.join(dir, 'scripts', 'other.js'), '');
+  fs.writeFileSync(path.join(dir, 'test', 'a.test.js'), "spawnSync(process.execPath, ['bin/cli.js', 'x']); await import(path.join(root, 'scripts', 'tool.js')); path.join(root, 'nothing', 'here.js'); log('scripts/other.js');\n");
+  const got = byId2(testTargets(dir), 'test/a.test.js');
+  assert.deepEqual(got.files.sort(), ['bin/cli.js', 'scripts/tool.js', 'test/a.test.js'], 'spawn/join paths that resolve to a repo file count; a missing file and a plain log string do not');
+  assert.deepEqual(spawnedPaths("execFile('../outside.js'); join('/etc', 'passwd')", dir), [], 'nothing outside the repo');
+});
+const byId2 = (map, id) => map.find((x) => x.id === id);

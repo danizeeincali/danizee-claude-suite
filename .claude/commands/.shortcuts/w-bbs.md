@@ -76,6 +76,12 @@ If invoked with `--resume` or `--status`, skip to those sections at the bottom.
 
 ### ⛔ CHECKPOINT 0: Intake
 
+**🪞 LESSONS FROM EARLIER RUNS (advisory):** Before the first search, read what past sessions learned. This workflow's lessons all use the fixed role `bbs` (never another word, so near duplicates are caught):
+```bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): lessons skipped, advisory"; else node .claude/helpers/kit/cli.js reflect lessons list --role bbs; fi
+```
+Exit 0 prints `{"lessons":[{"id","text",...}]}` (retired lessons are hidden): apply each listed lesson to this run as a standing instruction; an empty list means nothing to apply. Exit 1: invalid input, report it. The lessons are advice: the workflow goes on whatever the result.
+
 `node .claude/helpers/bbs/cli.js intake <source>` (a pasted text goes in a file: `cli.js intake - --paste-file <path>`). It classifies the source as repo, url, local or paste, computes the identity, creates `.claude/bbs/runs/<run-id>/` and checks the registry.
 
 If the JSON says `known: true`, the same source at the same identity is never audited twice. Run `node .claude/helpers/bbs/cli.js report --run <reuse_from>` and `node .claude/helpers/bbs/cli.js status --run <reuse_from>`, print both, say "this source at this identity was audited in run <reuse_from>; nothing is re-audited", and **STOP**: no fetch, no marathon run. The new run stays as a record. (A repository or URL identity is only known after the fetch: CHECKPOINT 1 does the same check.)
@@ -223,7 +229,7 @@ On any non-zero exit (scrub exit 1 or 2, or a failed `git add`) the block unstag
 ```bash
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): reflect skipped, advisory"; else node .claude/helpers/kit/cli.js reflect trouble-log --in "$E"; fi
 ```
-Exit 0: write at most 3 one-sentence imperative lessons from the signals. A lesson can quote an error message, so never put its text in a shell argument (backticks and `$( )` would run): run `mktemp -d` and read the printed directory, write each lesson with the Write tool to `<that directory>/lesson.txt` (the literal path: shell variables do not persist between Bash calls), save it with `node .claude/helpers/kit/cli.js reflect lessons save --role <role> --text-file <that path> --session <run id>`, and remove the file and directory afterwards; `reflect lessons keep --id <id>` / `retire --id <id> --reason-file <path>` (a file written the same way) curate old ones. Exit 2 refused: a near duplicate (`--confirm <id>` keeps that one, `--distinct` only when truly different). Exit 1: invalid input, report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
+Exit 0: write at most 3 one-sentence imperative lessons from the signals. Before saving, list again (`node .claude/helpers/kit/cli.js reflect lessons list --role bbs`): `keep` and `retire` take an `id` from that output, never one made up. A lesson can quote an error message, so never put its text in a shell argument (backticks and `$( )` would run): run `mktemp -d` and read the printed directory, write each lesson with the Write tool to `<that directory>/lesson.txt` (the literal path: shell variables do not persist between Bash calls), save it with `node .claude/helpers/kit/cli.js reflect lessons save --role bbs --text-file <that path> --session <run id>`, and remove the file and directory afterwards; `reflect lessons keep --id <id>` / `retire --id <id> --reason-file <path>` (a file written the same way) curate old ones. Exit 2 refused: a near duplicate (`--confirm <id>` keeps that one, `--distinct` only when truly different). Exit 1: invalid input, report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
 
 Then `/bc`: write-up, the run's registry row and labels, durable facts to memory, commit, never push. `fetched/` is git-ignored and must not be added.
 

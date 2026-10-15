@@ -116,6 +116,12 @@ Only after the user approves do you call the Workflow tool. If they decline, pro
 
 ### ⛔ CHECKPOINT 0: Search
 
+**🪞 LESSONS FROM EARLIER RUNS (advisory):** Before the first search, read what past sessions learned. This workflow's lessons all use the fixed role `pt` (never another word, so near duplicates are caught):
+```bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): lessons skipped, advisory"; else node .claude/helpers/kit/cli.js reflect lessons list --role pt; fi
+```
+Exit 0 prints `{"lessons":[{"id","text",...}]}` (retired lessons are hidden): apply each listed lesson to this run as a standing instruction; an empty list means nothing to apply. Exit 1: invalid input, report it. The lessons are advice: the workflow goes on whatever the result.
+
 **🤖 MODEL:** spawn search/Explore subagents with `model: haiku` (read-only sweeps — Explore's
 native tier); use `model: sonnet` only when the search needs real judgment (e.g. tracing a bug's
 data flow). See Model Policy.
@@ -348,11 +354,11 @@ Exit 3 from `diff-range` means an empty range: report "no change to review", nev
 
 **🧩 CLUSTER, NOISE LEDGER AND TRIAGE (advisory):** Before the findings table is filled, put the review findings through three kit verbs, as separate commands, in this order. Shell variables do not persist between Bash calls, and a finding's text is model-written, so it never goes in a shell argument: run `mktemp -d` once and read the printed directory, write each input file below with the Write tool, and put the literal directory in every block as `P=<printed dir>` (`/tmp/tmp.AbC123` below is an example: write the printed one in its place). `cluster` takes severity critical|high|medium|low|info; `noise-ledger` takes only high|medium|low, so in its file map critical to high and info to low. If the kit is not installed (`.claude/helpers/kit/cli.js` missing), say so in one line, skip all three and fill the table as before.
 
-1. Cluster: findings from parallel agents often repeat. `<printed dir>/findings.json` holds `[{"id","rule","severity","files":[...]}]`:
+1. Cluster: findings from parallel agents often repeat. `<printed dir>/findings.json` holds `[{"id","rule","severity","files":[...]}]` (`"id":"<a string, e.g. "f1">"`: findings from parallel agents have no ids, so number them as strings, a number is rejected; `"rule":"<category>: <title>"`, the finding's category and its title, so only findings that match both are bucketed as one defect, never a bare category):
 ```sh
 P=/tmp/tmp.AbC123; if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): cluster skipped, advisory"; else node .claude/helpers/kit/cli.js cluster --file "$P/findings.json"; fi
 ```
-Exit 0: show one entry per cluster (the representative, with its member ids). For each `pending_pairs` entry, judge whether the two clusters are one defect; only when sure, write `[{"a","b","same":true,"p":0.9,"confidence":"high"}]` to `<printed dir>/answers.json` with the Write tool and rerun with `--answers "$P/answers.json"` (an unjudged pair stays apart). Exit 1: invalid input, say so and keep the unclustered list.
+Exit 0: show one entry per cluster (the representative, with its member ids); call a cluster "the same defect" only because its `rule` matches. For each `pending_pairs` entry, judge whether the two clusters are one defect; only when sure, write `[{"a","b","same":true,"p":0.9,"confidence":"high"}]` to `<printed dir>/answers.json` with the Write tool and rerun with `--answers "$P/answers.json"` (an unjudged pair stays apart). Exit 1: invalid input, say so and keep the unclustered list.
 2. Noise ledger: `<printed dir>/ledger.json` holds `[{"id","severity","rule","locations":[...],"failures","reproductions"}]` (retry counts from re-running the check):
 ```sh
 P=/tmp/tmp.AbC123; if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): noise-ledger skipped, advisory"; else node .claude/helpers/kit/cli.js noise-ledger apply --in "$P/ledger.json"; fi
@@ -391,7 +397,7 @@ Remove the directory at the end (`rm -rf -- <printed dir>`, the literal path). N
 ```bash
 P=/tmp/tmp.AbC123; if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): threshold-route skipped, advisory"; else node .claude/helpers/kit/cli.js threshold-route --file "$P/route.json"; fi
 ```
-Exit 0: act on each `route`: raising a concern is free; `suppress`/`auto-fix` happen only when the router says so (high confidence), so a fix is accepted on a model's word only when its route is `auto-fix`; `ask-human` and `escalate` go to the user; `block` (a program saw a regression) can never be overridden. Exit 1: invalid input, treat every item as `ask-human`.
+Exit 0: act on each `route`: raising a concern is free; `suppress`/`auto-fix` happen only when the router says so (high confidence), so a fix is accepted on a model's word only when its route is `auto-fix`; `ask-human` and `escalate` go to the user; `block` (a program saw a regression) can never be overridden; `issue` means raise it as a finding (a "tests pass" claim is never accepted on a model's word: the re-run decides); `ignore` means drop it. Exit 1: invalid input, treat every item as `ask-human`.
 2. Replay gate: a claim may fail this check only when a program, not a model, decided it and a second identical replay agrees. `<printed dir>/gate.json` holds `{"verdicts":[{"id","decided_by":"replay"|"exact-check"|"output-diff"|"model","outcome":"pass"|"fail","runs":[{"steps":[...],"checks":{...},"outputs":{...}}, {...}]}]}` (each run an object `{"steps":[...],"checks":{...},"outputs":{...}}` with at least one of those three keys and no other key, the same keys in both runs):
 ```bash
 P=/tmp/tmp.AbC123; if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed: replay gate fails closed, replay gate could not run" >&2; (exit 1); else node .claude/helpers/kit/cli.js replay-gate --file "$P/gate.json"; fi
@@ -438,7 +444,7 @@ it with `model: sonnet`. Inline compound writing by the main loop is fine as-is.
 ```bash
 E=/tmp/tmp.AbC123/events.jsonl; if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): reflect skipped, advisory"; else node .claude/helpers/kit/cli.js reflect trouble-log --in "$E"; fi
 ```
-Exit 0: read the signals (repeated calls, failed actions, repeated edits, waits, the stop reason) and write at most 3 one-sentence imperative lessons that would have avoided them. A lesson can quote an error message, so never put its text in a shell argument (backticks and `$( )` would run): run `mktemp -d` once and read the printed directory, write each lesson with the Write tool to `<that directory>/lesson.txt` (the literal path: shell variables do not persist between Bash calls), save it with `node .claude/helpers/kit/cli.js reflect lessons save --role <role> --text-file <that path> --session <session id>`, and remove the file and directory after the last one. `reflect lessons keep --id <id>` confirms a listed lesson that held; `reflect lessons retire --id <id> --reason-file <path of a file written the same way>` drops one that no longer does. Exit 2 refused (a near duplicate: the message names its id): keep that one with `--confirm <id>`, or `--distinct` only if the lesson truly differs. Exit 1: invalid input, report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
+Exit 0: read the signals (repeated calls, failed actions, repeated edits, waits, the stop reason) and write at most 3 one-sentence imperative lessons that would have avoided them. Before saving, list again (`node .claude/helpers/kit/cli.js reflect lessons list --role pt`): `keep` and `retire` take an `id` from that output, never one made up. A lesson can quote an error message, so never put its text in a shell argument (backticks and `$( )` would run): run `mktemp -d` once and read the printed directory, write each lesson with the Write tool to `<that directory>/lesson.txt` (the literal path: shell variables do not persist between Bash calls), save it with `node .claude/helpers/kit/cli.js reflect lessons save --role pt --text-file <that path> --session <session id>`, and remove the file and directory after the last one. `reflect lessons keep --id <id>` confirms a listed lesson that held; `reflect lessons retire --id <id> --reason-file <path of a file written the same way>` drops one that no longer does. Exit 2 refused (a near duplicate: the message names its id): keep that one with `--confirm <id>`, or `--distinct` only if the lesson truly differs. Exit 1: invalid input, report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
 
 **REQUIRED OUTPUT:**
 - Memory key: project/ideas/_____

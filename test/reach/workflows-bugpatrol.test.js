@@ -136,9 +136,9 @@ test('w-review replay gate: exit 1 or a missing kit is FAIL, never PASS', () => 
 });
 
 test('reflect steps (w-fix, w-bbs): lessons go in by --text-file / --reason-file, never in a quoted shell argument', () => {
-  for (const [wf, heading] of [['w-fix', '⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)'], ['w-bbs', '⛔ CHECKPOINT 6: Compound (MANDATORY)'], ['w-plan-tdd-swarm', '⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)']]) {
+  for (const [wf, heading, role] of [['w-fix', '⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)', 'fixer'], ['w-bbs', '⛔ CHECKPOINT 6: Compound (MANDATORY)', 'bbs'], ['w-plan-tdd-swarm', '⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)', 'pt']]) {
     const sec = stepSection(installed(wf), heading);
-    assert.match(sec, /reflect lessons save --role <role> --text-file </, `${wf} saves with --text-file`);
+    assert.match(sec, new RegExp(`reflect lessons save --role ${role} --text-file <`), `${wf} saves with its fixed role and --text-file`);
     assert.match(sec, /retire --id <id> --reason-file </, `${wf} retires with --reason-file`);
     assert.match(sec, /mktemp -d/, `${wf} writes the lesson under a mktemp directory`);
     assert.match(sec, /shell variables do not persist/, `${wf} uses the printed path literally`);
@@ -227,8 +227,42 @@ test('r7: triage repeats, replay-gate run shape, router kinds, cluster id, test 
   assert.match(stepSection(pt, VER), /anomaly\|not-anomalous\|ambiguous\|suppress\|fix\|check/);
   assert.match(mt, /"id":"<row index as a string>"/);
   assert.match(stepSection(pt, '⛔ CHECKPOINT 5: Build'), /node scripts\/ci-step\.js --print-targets > /);
-  assert.match(mt, /node scripts\/ci-step\.js --print-targets > \.claude\/marathon\/<run-id>\/test-map\.json/);
+  assert.match(mt, /\(cd <worktree> && node scripts\/ci-step\.js --print-targets\) > \.claude\/marathon\/<run-id>\/test-map-<stream>\.json/);
   assert.match(mt, /test-plan --in "\$T"/);
   assert.match(stepSection(pt, '⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)'), /~\/\.claude\/projects\/<project>\/<session>\.jsonl/);
   assert.match(rv, /map critical to high and info to low/);
+});
+
+// Round 8 review fixes.
+test('r8: per-stream test map, defect-specific cluster rule, fixed lessons roles read back, string id, issue/ignore routes', () => {
+  const pt = installed('w-plan-tdd-swarm');
+  const mtAll = installed('w-marathon');
+  const mt = stepSection(mtAll, '⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met');
+  // 1. the map is built inside the stream's worktree, once per stream
+  assert.match(mt, /generate it inside the stream's worktree, once per stream/);
+  assert.match(mt, /regenerate it whenever the stream adds a test file/);
+  assert.match(mt, /T=\.claude\/marathon\/2026-10-10-myrun\/test-map-api\.json/);
+  assert.doesNotMatch(mt, /generate it once from the main checkout/);
+  // 2. cluster rule names the defect
+  assert.match(mt, /"rule":"<category>: <title>"/);
+  assert.match(stepSection(pt, '⛔ CHECKPOINT 6: Review'), /"rule":"<category>: <title>"/);
+  assert.doesNotMatch(mt, /duplicates of one defect/);
+  // 4. string id in /pt
+  assert.match(stepSection(pt, '⛔ CHECKPOINT 6: Review'), /"id":"<a string, e\.g\. \\?"f1\\?">"/);
+  // 5. router routes
+  const ver = stepSection(pt, VER);
+  assert.match(ver, /`issue` means raise it as a finding[^\n]*the re-run decides/);
+  assert.match(ver, /`ignore` means drop it/);
+  // 3. lessons read back at the start and before the save, with the workflow's fixed role
+  for (const [wf, heading, role] of [['w-plan-tdd-swarm', '⛔ CHECKPOINT 0: Search', 'pt'], ['w-fix', '⛔ CHECKPOINT 0: Search', 'fixer'], ['w-bbs', '⛔ CHECKPOINT 0: Intake', 'bbs']]) {
+    const t = installed(wf);
+    const start = stepSection(t, heading);
+    assert.match(start, new RegExp(`cli\\.js reflect lessons list --role ${role}\\b`), `${wf} lists its ${role} lessons at the start`);
+    assert.match(start, /kit not installed[^\n]*lessons skipped, advisory/);
+    assert.match(start, /the workflow goes on/);
+    const lastList = t.lastIndexOf(`reflect lessons list --role ${role}`);
+    const save = t.indexOf(`reflect lessons save --role ${role}`);
+    assert.ok(lastList > t.indexOf('reflect trouble-log') && lastList < save, `${wf} lists again before the save`);
+    assert.doesNotMatch(t, /--role <role>/, `${wf} leaves no free role`);
+  }
 });
