@@ -86,6 +86,23 @@ describe('reflect trouble-log', () => {
     assert.ok(!out.includes('w0rd'), out);
     assert.ok(r.lines.some((l) => /^repeated: Bash 2 times/.test(l) && l.includes('[REDACTED]')));
   });
+  it('masks credential-shaped strings that are not project secrets (r11)', () => {
+    const gh = 'ghp_abcdefghijklmnopqrstuvwxyz0123456789';
+    const ev = [{ type: 'tool', name: 'Bash', input: { command: 'curl -H "Authorization: Bearer abcdefghijklmnop1234" x' }, ok: false, error: '401 token ' + gh + ' bad' }, { type: 'stop', reason: 'stopped ' + gh }];
+    const out = JSON.stringify(troubleLog(ev));
+    assert.ok(!out.includes(gh), out);
+    assert.ok(!out.includes('abcdefghijklmnop1234'), out);
+    assert.ok(out.includes('[credential]'), out);
+  });
+  it('lessons save refuses a credential-shaped string (r11)', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kit-reflect-cred-'));
+    try {
+      const f = path.join(dir, 'l.txt');
+      await fs.writeFile(f, 'Use token ghp_abcdefghijklmnopqrstuvwxyz0123456789 for auth\n');
+      await assert.rejects(run(['lessons', 'save', '--role', 'pt', '--text-file', f, '--session', 's1', '--store', path.join(dir, 'lessons.json')], { cwd: dir }), /credential-shaped/);
+      assert.ok(!fsSync.existsSync(path.join(dir, 'lessons.json')));
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
   it('typing into the same field fires for MCP and computer-use typing tools', () => {
     const mcp = [1, 2, 3].map((i) => ({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'm' + i, name: 'mcp__playwright__browser_type', input: { element: 'Email', ref: 'e12', text: 'try' + i } }] } }));
     const r = troubleLog(mcp);

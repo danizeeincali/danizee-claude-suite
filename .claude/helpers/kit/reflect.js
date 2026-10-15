@@ -52,6 +52,28 @@ export const TEXT_MIN = 12;
 export const TEXT_MAX = 200;
 
 const invalid = (m) => new KitExit(m, 1);
+
+// Credential-shaped strings that are not project secrets (a session transcript holds tool inputs and outputs, so a
+// token from `gh auth token`, an Authorization header or a cloud key can appear there). Masked in trouble-log output
+// and refused in a saved lesson, on top of the project's own secrets.
+export const CREDENTIAL_PATTERNS = Object.freeze([
+  /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b/g,
+  /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,
+  /\bsk-(?:ant-|proj-)?[A-Za-z0-9_-]{20,}\b/g,
+  /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g,
+  /\bxox[abposr]-[A-Za-z0-9-]{10,}\b/g,
+  /\bglpat-[A-Za-z0-9_-]{20,}\b/g,
+  /\bnpm_[A-Za-z0-9]{36}\b/g,
+  /\bBearer\s+[A-Za-z0-9._~+\/-]{16,}=*/gi,
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/g,
+]);
+export function maskCredentials(text) {
+  let replaced = 0;
+  let out = text;
+  for (const re of CREDENTIAL_PATTERNS) out = out.replace(re, () => { replaced++; return '[credential]'; });
+  return { text: out, replaced };
+}
+const scrub = (v, secrets) => maskCredentials(redactSecrets(v, secrets).text).text;
 // Matched on the last segment of the name, so mcp__<server>__browser_type counts like type.
 const EDIT_TOOL = /^(edit|write|multiedit|notebookedit|(browser_)?(type|fill|fill_form|input|set_?value|type_?text)|computer_?type)$/i;
 const isEditCall = (e) => EDIT_TOOL.test(String(e.name).split('__').pop())
@@ -135,7 +157,7 @@ export function findSignals(events, stop, opts = {}) {
   const waitRun = opts.waitRun ?? DEFAULTS.waitRun;
   // Input and error are redacted value by value BEFORE they are serialised or collapsed: JSON escaping (\" and \\) and
   // whitespace collapsing would otherwise stop a secret matching.
-  const safe = (v) => (typeof v === 'string' ? redactSecrets(v, opts.secrets || []).text
+  const safe = (v) => (typeof v === 'string' ? scrub(v, opts.secrets || [])
     : Array.isArray(v) ? v.map(safe)
       : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [safe(k), safe(x)])) : v);
   const failures = [];
@@ -185,11 +207,11 @@ export function troubleLog(objs, { secrets = [], maxLines = DEFAULTS.maxLines, m
   if (!objs.length) throw invalid('the input has no events; trouble-log needs a JSON Lines event log (a wiring mistake would otherwise read as a clean session)');
   if (!recognised) throw invalid(`none of the ${objs.length} input lines is a known event shape (tool, wait, stop or a transcript message); refusing to report a clean log`);
   const sig = findSignals(events, stop, { ...rest, secrets });
-  const clean = sig.lines.map((l) => cap(redactSecrets(l, secrets).text, maxLineLength));
+  const clean = sig.lines.map((l) => cap(scrub(l, secrets), maxLineLength));
   const lines = clean.slice(0, maxLines);
   return {
     lines,
-    stop: cap(redactSecrets(stop == null ? 'unknown' : String(stop), secrets).text, maxLineLength),
+    stop: cap(scrub(stop == null ? 'unknown' : String(stop), secrets), maxLineLength),
     counts: sig.counts,
     events: events.length,
     omitted: clean.length - lines.length
@@ -429,6 +451,9 @@ export async function run(args, io) {
       for (const k of ['text', 'scope', 'reason', 'session', 'role', 'id', 'confirm']) {
         if (typeof flags[k] === 'string' && redactSecrets(flags[k], secrets).replaced > 0) {
           throw invalid(`--${k} contains a project secret; lessons are saved unredacted, so rewrite it without the secret`);
+        }
+        if (typeof flags[k] === 'string' && maskCredentials(flags[k]).replaced > 0) {
+          throw invalid(`--${k} contains a credential-shaped string (a token, key or Authorization header); rewrite it without the value`);
         }
       }
     }
