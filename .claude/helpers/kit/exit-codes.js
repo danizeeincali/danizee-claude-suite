@@ -7,10 +7,11 @@
  *   exit-codes blocks <code> [--verb <v>]                    { blocks }: true only for the regression class
  *   exit-codes classify --code <n> [--signal <name>] [--verb <v>]
  *
- * Classes: clean (0), regression (2, a verb said no: the ONLY class allowed to block a merge), usage (1, invalid input
+ * Classes: clean (0), regression (2, a verb judging the product said no: the ONLY class allowed to block a merge), usage (1, invalid input
  * or broken state), precondition (4, a prerequisite was never met), infrastructure (5; the tool or environment failed:
  * timeout, crash, signal, any status >= 128). 0/1/2 keep the meaning cli.js gives them. Some verbs document their own
- * statuses; those are per-verb overrides taken from the verbs' usage text (safe-git 3 = git ran and failed or timed
+ * statuses (safe-git 2 and diff-range 2 are tool-limit refusals: precondition, never blocking; diff-range 1 = bad input or
+ * a git failure, not separable yet); those are per-verb overrides taken from the verbs' usage text (safe-git 3 = git ran and failed or timed
  * out, infrastructure; diff-range 3 = an empty range, clean). A bare 3 without a verb is ambiguous, so it is unknown.
  * Unknown statuses are reported as `unknown`, never as clean, and never block (only a known regression blocks).
  * A signal always wins and is infrastructure. All of blocks/describe/classify print JSON and exit 0; bad input is exit 1.
@@ -26,8 +27,8 @@ const freeze = (o) => Object.freeze(o);
 /** The outcome classes. Only `regression` may block a merge. */
 export const CLASSES = freeze({
   clean: freeze({ code: 0, blocks: false, description: 'The verb succeeded; nothing to report.' }),
-  usage: freeze({ code: 1, blocks: false, description: 'Invalid input or broken state: the call was malformed or the data it read is unusable. Fix the caller.' }),
-  regression: freeze({ code: 2, blocks: true, description: 'Policy refusal or regression: the verb ran and said no. The only outcome allowed to block a merge.' }),
+  usage: freeze({ code: 1, blocks: false, description: 'Invalid input, broken state, or a tool failure (not separable yet): the call was malformed or the data unusable, or the tool crashed or a git child failed, since cli.js reports any crash as 1. Check the message before blaming the caller; never block on it.' }),
+  regression: freeze({ code: 2, blocks: true, description: 'Regression: a verb that judges the product ran and said no. The only outcome allowed to block a merge. Verbs whose 2 is a tool-limit refusal (safe-git, diff-range) override it.' }),
   precondition: freeze({ code: 4, blocks: false, description: 'A prerequisite was never met (missing tool, file, credential or setup); nothing was judged.' }),
   infrastructure: freeze({ code: 5, blocks: false, description: 'The tool or environment failed (timeout, crash, signal, git failure); says nothing about the product. Retry or repair, never block on it alone.' }),
 });
@@ -38,9 +39,12 @@ export const INFRA_FLOOR = 128;
 /** Per-verb statuses, from each verb's own usage text. */
 export const VERB_OVERRIDES = freeze({
   'safe-git': freeze({
+    2: freeze({ class: 'precondition', description: 'safe-git refused an argument or option (safe-git exit 2); nothing was judged about the product. Change the call.' }),
     3: freeze({ class: 'infrastructure', description: 'git ran and failed, timed out, or wrote more output than allowed (safe-git exit 3); git\'s own code is in the printed JSON.' }),
   }),
   'diff-range': freeze({
+    1: freeze({ class: 'usage', description: 'Bad input, or git failed or timed out while diff-range ran (diff-range exit 1); not separable from a malformed call yet, so read the message. Never a product verdict.' }),
+    2: freeze({ class: 'precondition', description: 'diff-range refused: the review range is over the size limit, or the repository config has an include.path (diff-range exit 2); nothing was reviewed. Shrink the range or fix the config.' }),
     3: freeze({ class: 'clean', description: 'The range is empty: nothing at all, or only skipped nested repositories (diff-range exit 3); there is nothing to review.' }),
   }),
 });
@@ -81,12 +85,20 @@ export function blocksMerge(code, v = null, signal = null) {
 function parse(args, positional, flags) {
   const out = { _: [] };
   for (let i = 0; i < args.length; i++) {
-    const a = args[i];
+    let a = args[i];
     if (a.startsWith('--')) {
+      let inline = null;
+      const eq = a.indexOf('=');
+      if (eq > 0) { inline = a.slice(eq + 1); a = a.slice(0, eq); }
       if (!flags.includes(a)) throw new KitExit(`unknown option ${a}; ${usage}`, 1);
-      if (i + 1 >= args.length || args[i + 1].startsWith('--')) throw new KitExit(`${a} needs a value`, 1);
       if (Object.hasOwn(out, a)) throw new KitExit(`${a} given twice`, 1);
-      out[a] = args[++i];
+      if (inline !== null) {
+        if (!inline) throw new KitExit(`${a} needs a value`, 1);
+        out[a] = inline;
+      } else {
+        if (i + 1 >= args.length || args[i + 1].startsWith('--')) throw new KitExit(`${a} needs a value`, 1);
+        out[a] = args[++i];
+      }
     } else out._.push(a);
   }
   if (out._.length > positional) throw new KitExit(`unexpected argument "${out._[positional]}"; ${usage}`, 1);
@@ -114,6 +126,7 @@ export async function run(args) {
   const [sub, ...rest] = args;
   if (!sub || sub === '--help') return { usage };
   if (sub === 'table') { parse(rest, 0, []); return TABLE; }
+  if (rest.includes('--help') && ['table', 'describe', 'blocks', 'classify'].includes(sub)) return { usage };
   if (sub === 'describe' || sub === 'blocks') {
     const p = parse(rest, 1, ['--verb']);
     if (!p._.length) throw new KitExit(`${sub} needs a <code>; ${usage}`, 1);

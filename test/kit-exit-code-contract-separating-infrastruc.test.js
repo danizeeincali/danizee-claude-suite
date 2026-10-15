@@ -32,7 +32,8 @@ describe('exit-codes', () => {
     assert.equal(r.class, 'unknown');
     assert.equal(r.known, false);
     assert.equal((await run(['describe', '3', '--verb', 'safe-git'])).class, 'infrastructure');
-    assert.equal(classify({ code: 2, verb: 'safe-git' }).class, 'regression');
+    assert.equal(classify({ code: 2, verb: 'safe-git' }).class, 'precondition');
+    assert.equal(blocksMerge(2, 'safe-git'), false);
   });
   it('signals and codes >= 128 are infrastructure', async () => {
     assert.equal(classify({ code: 137 }).class, 'infrastructure');
@@ -74,5 +75,34 @@ describe('exit-codes', () => {
     await bad(['table', 'extra']);
     assert.equal(blocksMerge('2x'), false);
     assert.equal(blocksMerge(undefined), false);
+  });
+  it('tool-limit refusals (exit 2) of safe-git and diff-range never block', async () => {
+    for (const v of ['safe-git', 'diff-range']) {
+      const r = await run(['blocks', '2', '--verb', v]);
+      assert.equal(r.blocks, false, v);
+      assert.equal(r.class, 'precondition', v);
+      assert.equal(blocksMerge(2, v), false, v);
+    }
+    assert.equal(blocksMerge(2, 'push-gate'), true);
+    assert.equal((await run(['describe', '2', '--verb', 'diff-range'])).class, 'precondition');
+  });
+  it('diff-range 1 and bare 1 admit that a tool failure can surface as 1', async () => {
+    const d = await run(['describe', '1', '--verb', 'diff-range']);
+    assert.equal(d.blocks, false);
+    assert.match(d.description, /timeout|timed out/i);
+    assert.match(d.description, /git/i);
+    assert.match(classify({ code: 1 }).description, /tool failure|crash/i);
+  });
+  it('accepts --name=value like sibling verbs', async () => {
+    assert.equal((await run(['describe', '2', '--verb=safe-git'])).class, 'precondition');
+    assert.equal((await run(['blocks', '3', '--verb=safe-git'])).blocks, false);
+    const c = await run(['classify', '--code=2', '--signal=SIGKILL']);
+    assert.equal(c.class, 'infrastructure');
+    await bad(['describe', '2', '--verb=']);
+    await bad(['describe', '2', '--verb=safe-git', '--verb', 'x']);
+    await bad(['describe', '2', '--bogus=1']);
+  });
+  it('describe --help prints usage', async () => {
+    assert.ok((await run(['describe', '--help'])).usage);
   });
 });
