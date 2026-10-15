@@ -387,6 +387,34 @@ describe('state-lock: readJsonState / writeJsonAtomic', () => {
     });
   });
 
+  it('writeJsonAtomic keeps an existing file\'s mode (0644 stays 0644, 0640 stays 0640)', { skip: process.platform === 'win32' }, async () => {
+    await inTemp(async dir => {
+      for (const mode of [0o644, 0o640]) {
+        const file = path.join(dir, `m${mode.toString(8)}.json`);
+        await fs.writeFile(file, '{}');
+        await fs.chmod(file, mode);
+        await writeJsonAtomic(file, { x: 1 });
+        assert.equal((await fs.stat(file)).mode & 0o7777, mode);
+        assert.deepEqual(await readJsonState(file), { x: 1 });
+      }
+    });
+  });
+
+  it('writeJsonAtomic creates a new file with 0666 masked by the umask', { skip: process.platform === 'win32' }, async () => {
+    await inTemp(async dir => {
+      const old = process.umask(0o027);
+      try {
+        const file = path.join(dir, 'new.json');
+        await writeJsonAtomic(file, { x: 1 });
+        assert.equal((await fs.stat(file)).mode & 0o7777, 0o640);
+        process.umask(0o022);
+        const file2 = path.join(dir, 'new2.json');
+        await writeJsonAtomic(file2, { x: 1 });
+        assert.equal((await fs.stat(file2)).mode & 0o7777, 0o644);
+      } finally { process.umask(old); }
+    });
+  });
+
   it('writeJsonAtomic creates folders, leaves no temp file, and names the file when the folder cannot be made', async () => {
     await inTemp(async dir => {
       const file = path.join(dir, 'a', 'b', 's.json');
