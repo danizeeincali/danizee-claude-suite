@@ -271,3 +271,6 @@
 {"helper_id":"75f3dbe8-a67f-4b95-a605-c8e02383aeea","tokens":116819,"outcome":"green","event":"done","id":"d1fcf65b-9e5d-4074-b0bd-28e554c5fd20","ts":"2026-10-15T18:28:54.927Z"}
 {"helper_id":"4636f15f-c7a5-4307-a7c1-7f486aeca836","tokens":130592,"outcome":"green","event":"done","id":"5ee3216a-a522-44fb-a740-136eb36b8e70","ts":"2026-10-15T18:49:15.735Z"}
 {"role":"review","model":"opus","stream":"integration","budget":200000,"event":"spawn","id":"0707fd85-5228-405e-9e5c-6a877c6fc7cb","ts":"2026-10-15T18:49:22.656Z"}
+{"role":"fix","model":"sonnet","stream":"integration","budget":150000,"event":"spawn","id":"bfeded62-0bb9-438e-84c4-d32dda32f640","ts":"2026-10-15T18:58:03.948Z"}
+{"role":"fix","model":"sonnet","stream":"integration","budget":150000,"event":"spawn","id":"d5542cde-7971-4dd5-bcd4-4fbcfbd9d2d7","ts":"2026-10-15T18:58:04.129Z"}
+{"helper_id":"0707fd85-5228-405e-9e5c-6a877c6fc7cb","tokens":141839,"outcome":"green","event":"done","id":"9f95a0ac-1bd9-41c3-baf3-6e6c475085df","ts":"2026-10-15T18:58:07.180Z"}

@@ -61,3 +61,6 @@ A product judge's exit 2 (scrub, push-gate) always blocks. `--result` may descri
 
 ## Reflect certification note (lead)
 Reflect's gate was met by r6 (2 mediums, inside tolerance, then fixed in fe88c89) and r7 (one low) on fe88c89. A lead-spawned r8 ran with an empty brief (review-brief found no diff past the certified HEAD); it re-read the whole module at fe88c89 and repeated r7's low. It is not recorded as a review row because it had no brief.
+
+## CI step fails closed (lead, integration r1)
+The approved "exit code contract → test.yml (blocking)" row read "only a product failure may fail the job". Built literally, a broken test script (127), an OOM kill (137) or a runner that reports failures as 2 went green with zero tests run. Decision: the CI test step fails on any nonzero exit; exit-codes only labels the failure (product / infrastructure / precondition) so a reader can tell them apart. Tell the owner.
