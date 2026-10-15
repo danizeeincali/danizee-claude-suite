@@ -239,3 +239,6 @@
 {"role":"fix","model":"sonnet","stream":"trouble-log-reflection-into-lesson-memor","budget":150000,"event":"spawn","id":"358b5a31-b335-409e-a0fc-0541a86aa7b3","ts":"2026-10-15T18:11:38.296Z"}
 {"helper_id":"9341b607-33ad-4bbf-bedb-4de5f080442d","tokens":73948,"outcome":"green","event":"done","id":"6eafdde1-796f-4270-bd28-ae1c77e7c9c4","ts":"2026-10-15T18:11:44.214Z"}
 {"role":"fix","model":"sonnet","stream":"exit-code-contract-separating-infrastruc","budget":150000,"event":"spawn","id":"78f4e22c-7963-4791-bfd7-844ee18e98ad","ts":"2026-10-15T18:12:58.532Z"}
+{"helper_id":"fa081630-a730-4b3e-9628-d46a906b0d59","tokens":93190,"outcome":"green","event":"done","id":"a70ca5b2-5867-4096-a20c-6f906c2b0deb","ts":"2026-10-15T18:13:02.112Z"}
+{"helper_id":"358b5a31-b335-409e-a0fc-0541a86aa7b3","tokens":71627,"outcome":"green","event":"done","id":"b147c3dd-5ab6-4854-bc1d-bc002fb759dc","ts":"2026-10-15T18:13:13.519Z"}
+{"role":"review","model":"opus","stream":"trouble-log-reflection-into-lesson-memor","budget":150000,"event":"spawn","id":"945b2af3-332a-40eb-93ba-41beb4dbe864","ts":"2026-10-15T18:13:28.071Z"}

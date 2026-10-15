@@ -1,7 +1,7 @@
 # Marathon 2026-10-15-bbs-bugpatrol
 
 - State: RUNNING
-- Budget: 10,398,659 / 14,000,000 tokens
+- Budget: 10,413,476 / 14,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
@@ -59,7 +59,7 @@
 | shared-budget-for-claim-sub-sessions: clean reviews in a row | build | met | 2 | at_least 2 |
 | shared-budget-for-claim-sub-sessions: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | shared-budget-for-claim-sub-sessions: packaged check passes | build | failing | — | is true |
-| trouble-log-reflection-into-lesson-memor: green unit runs in a row | build | met | 6 | at_least 1 |
+| trouble-log-reflection-into-lesson-memor: green unit runs in a row | build | met | 7 | at_least 1 |
 | trouble-log-reflection-into-lesson-memor: zero egress in the packaged check | build | failing | — | is true |
 | trouble-log-reflection-into-lesson-memor: clean reviews in a row | build | met | 3 | at_least 2 |
 | trouble-log-reflection-into-lesson-memor: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
