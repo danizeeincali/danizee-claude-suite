@@ -1,5 +1,9 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { installPackaged } from './helpers/packaged.js';
 
 describe('exit-codes — packaged end to end', () => {
@@ -26,5 +30,29 @@ describe('exit-codes — packaged end to end', () => {
     const bad = pkg.kit(['exit-codes', 'describe', 'zz']);
     assert.equal(bad.code, 1);
     assert.deepEqual(pkg.egress(), []);
+  });
+
+  it('a real push-gate run that could not run is infrastructure with --result, a regression without', () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'exitcodes-pkg-'));
+    try {
+      const g = (...a) => spawnSync('git', a, { cwd: repo, encoding: 'utf-8' });
+      g('init', '-q'); g('config', 'user.email', 'a@b.c'); g('config', 'user.name', 'a');
+      fs.mkdirSync(path.join(repo, '.claude', 'kit'), { recursive: true });
+      fs.writeFileSync(path.join(repo, '.claude', 'kit', 'scrub-patterns'), 'secretword\n');
+      fs.writeFileSync(path.join(repo, 'a'), 'hi\n');
+      g('add', '-A'); g('commit', '-qm', 'x');
+      const pg = pkg.kit(['push-gate', 'check', '--timeout', '1'], undefined, { cwd: repo });
+      assert.equal(pg.code, 2);
+      assert.equal(pg.json.scrub.ran, false);
+      const without = pkg.kit(['exit-codes', 'classify', '--code', '2', '--verb', 'push-gate']);
+      assert.equal(without.json.class, 'regression');
+      const withR = pkg.kit(['exit-codes', 'classify', '--code', '2', '--verb', 'push-gate', '--result', '-'], pg.out);
+      assert.equal(withR.code, 0);
+      assert.equal(withR.json.class, 'infrastructure');
+      assert.equal(withR.json.blocks, false);
+      assert.equal(pkg.kit(['exit-codes', 'blocks', '2', '--verb', 'push-gate', '--result', '-'], pg.out).json.blocks, false);
+      assert.equal(pkg.kit(['exit-codes', 'classify', '--code', '124']).json.class, 'infrastructure');
+      assert.equal(pkg.kit(['exit-codes', 'blocks', '2', '--result', '-'], 'nope').code, 1);
+    } finally { fs.rmSync(repo, { recursive: true, force: true }); }
   });
 });

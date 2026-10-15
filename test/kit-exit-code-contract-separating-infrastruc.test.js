@@ -1,4 +1,7 @@
 import { describe, it } from 'node:test';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import assert from 'node:assert/strict';
 import { run, classify, blocksMerge, TABLE, CLASSES, PRODUCT_JUDGES, verb } from '../src/lib/kit/exit-codes.js';
 
@@ -140,5 +143,76 @@ describe('exit-codes', () => {
   });
   it('describe --help prints usage', async () => {
     assert.ok((await run(['describe', '--help'])).usage);
+  });
+  it('124 (timeout(1)) is infrastructure', async () => {
+    const r = await run(['classify', '--code', '124']);
+    assert.equal(r.class, 'infrastructure');
+    assert.equal(r.known, true);
+    assert.equal(r.blocks, false);
+    assert.match(r.description, /timeout/i);
+    assert.equal(blocksMerge(124, 'scrub'), false);
+  });
+  const partial = { configured: true, complete: false, clean: false, hit_count: 0, hits: [], not_scanned: [{ file: 'a.bin', reason: 'object not available locally (partial clone?)' }], exit: 2 };
+  const pgTimeout = { decision: 'deny', reason: 'the scrub check is configured but could not run: git config took longer than 1 ms', scrub: { ran: false }, exit: 2 };
+  it('without --result a judge exit 2 stays a regression and the description says to pass --result', async () => {
+    for (const v of ['scrub', 'push-gate']) {
+      const r = await run(['describe', '2', '--verb', v]);
+      assert.equal(r.class, 'regression');
+      assert.equal(r.blocks, true);
+      assert.match(r.description, /--result/);
+    }
+  });
+  it('scrub exit 2 with zero hits and an incomplete scan is infrastructure with --result', () => {
+    for (const result of [partial, { hit_count: 0, complete: false, not_scanned: [] }, { hit_count: 0, not_scanned: ['x'] }]) {
+      const r = classify({ code: 2, verb: 'scrub', result });
+      assert.equal(r.class, 'infrastructure');
+      assert.equal(r.blocks, false);
+      assert.equal(r.judged, false);
+      assert.equal(blocksMerge(2, 'scrub', null, result), false);
+    }
+  });
+  it('a scrub result with hits stays a regression, also when the scan was incomplete', () => {
+    assert.equal(classify({ code: 2, verb: 'scrub', result: { hit_count: 1, complete: true, not_scanned: [] } }).class, 'regression');
+    assert.equal(classify({ code: 2, verb: 'scrub', result: { hit_count: 2, complete: false, not_scanned: ['x'] } }).blocks, true);
+    assert.equal(classify({ code: 2, verb: 'scrub', result: { hit_count: 0, complete: true, not_scanned: [] } }).blocks, true, 'nothing shows it did not judge');
+  });
+  it('push-gate deny where the scrub check could not run is infrastructure with --result', () => {
+    for (const result of [pgTimeout, { decision: 'deny', reason: 'the scrub check is configured but could not run: x' }, { decision: 'deny', reason: 'r', scrub: { ran: true, hit_count: 0, complete: false, not_scanned: ['a'] } }]) {
+      const r = classify({ code: 2, verb: 'push-gate', result });
+      assert.equal(r.class, 'infrastructure');
+      assert.equal(r.blocks, false);
+    }
+  });
+  it('push-gate review deny and scrub hits stay regressions with --result', () => {
+    assert.equal(classify({ code: 2, verb: 'push-gate', result: { decision: 'deny', reason: 'the review of this change did not pass (verdict fail)' } }).blocks, true);
+    assert.equal(classify({ code: 2, verb: 'push-gate', result: { decision: 'deny', reason: 'the scrub check refused this push: 1 hit(s)', scrub: { ran: true, hit_count: 1, complete: true, hits: [{}], not_scanned: [] } } }).blocks, true);
+    assert.equal(classify({ code: 2, verb: 'push-gate', result: { decision: 'deny', reason: 'x', scrub: { ran: true, hit_count: 3, complete: false, not_scanned: ['a'] } } }).blocks, true);
+  });
+  it('result is ignored for other codes and non-judges', () => {
+    assert.equal(classify({ code: 0, verb: 'scrub', result: partial }).class, 'clean');
+    assert.equal(classify({ code: 2, verb: 'graph', result: partial }).class, 'precondition');
+    assert.equal(classify({ code: 2, result: partial }).class, 'precondition');
+    assert.throws(() => classify({ code: 2, verb: 'scrub', result: 'x' }), (e) => e.code === 1);
+  });
+  it('--result reads a file or piped stdin through the verb', async () => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'exitcodes-'));
+    try {
+      const f = path.join(d, 'r.json');
+      fs.writeFileSync(f, JSON.stringify(pgTimeout));
+      assert.equal((await run(['classify', '--code', '2', '--verb', 'push-gate', '--result', f])).class, 'infrastructure');
+      assert.equal((await run(['blocks', '2', '--verb', 'push-gate', '--result', f])).blocks, false);
+      assert.equal((await run(['describe', '2', '--verb', 'scrub', `--result=${f}`])).class, 'regression');
+      const io = { stdin: async () => Buffer.from(JSON.stringify(partial)), stdinIsTTY: false };
+      assert.equal((await run(['blocks', '2', '--verb', 'scrub', '--result', '-'], io)).blocks, false);
+      assert.equal((await run(['blocks', '2', '--verb', 'scrub'], io)).blocks, true);
+      await assert.rejects(run(['blocks', '2', '--verb', 'scrub', '--result', '-'], { stdin: async () => Buffer.from(''), stdinIsTTY: true }), (e) => e.code === 1);
+      await assert.rejects(run(['blocks', '2', '--verb', 'scrub', '--result', '-'], { stdin: async () => Buffer.from('nope'), stdinIsTTY: false }), (e) => e.code === 1);
+      await assert.rejects(run(['blocks', '2', '--verb', 'scrub', '--result', '-'], { stdin: async () => Buffer.from('[1]'), stdinIsTTY: false }), (e) => e.code === 1);
+      await assert.rejects(run(['blocks', '2', '--result', path.join(d, 'missing.json')]), (e) => e.code === 1);
+      await assert.rejects(run(['blocks', '2', '--result', d]), (e) => e.code === 1);
+      await assert.rejects(run(['blocks', '2', '--result', f, '--result', f]), (e) => e.code === 1);
+      fs.writeFileSync(f, ' '.repeat(1048577));
+      await assert.rejects(run(['blocks', '2', '--result', f]), (e) => e.code === 1);
+    } finally { fs.rmSync(d, { recursive: true, force: true }); }
   });
 });
