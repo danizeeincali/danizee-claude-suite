@@ -78,3 +78,4 @@
 {"stream":"integration","counts":{"high":0,"medium":2,"low":4},"angle":"performance and memory","tokens":0,"commit":"fa37d9f","pass":true,"round":7,"id":"056087da-e728-4f9c-8815-e4b52e3e04e6","ts":"2026-10-15T20:35:45.376Z"}
 {"stream":"integration","counts":{"high":0,"medium":3,"low":3},"angle":"one input method at a time","tokens":0,"commit":"361cd83","pass":false,"round":8,"id":"086f6d4e-721e-4d19-a07e-c6bcfac9154e","ts":"2026-10-15T20:45:40.125Z"}
 {"stream":"integration","counts":{"high":0,"medium":2,"low":2},"angle":"failure conditions and error paths","tokens":0,"commit":"21c0945","pass":true,"round":9,"id":"5e5da49b-3b91-4884-a6a3-fe245bc5786b","ts":"2026-10-15T20:53:35.062Z"}
+{"stream":"integration","counts":{"high":0,"medium":3,"low":0},"angle":"older environments and degraded networks","tokens":0,"commit":"29a8eb4","pass":false,"round":10,"id":"cbe7f5be-abe7-4546-ae18-62aa85e06dd1","ts":"2026-10-15T21:08:02.585Z"}
