@@ -31,14 +31,22 @@ export async function loadVerbs(dir = HERE) {
   return verbs;
 }
 
-async function readStdinBytes() {
+// opts.maxBytes bounds the read: it stops (and destroys the stream) as soon as the running byte count passes it, returning what was read so far
+// (longer than maxBytes, so the caller can tell the input was over the cap). Without it the whole of stdin is read.
+async function readStdinBytes(opts = {}) {
   if (process.stdin.isTTY) return Buffer.alloc(0);
+  const max = Number.isFinite(opts && opts.maxBytes) ? opts.maxBytes : Infinity;
   const chunks = [];
-  for await (const c of process.stdin) chunks.push(c);
+  let total = 0;
+  for await (const c of process.stdin) {
+    chunks.push(c);
+    total += c.length;
+    if (total > max) break;
+  }
   return Buffer.concat(chunks);
 }
 
-async function readStdin() { return (await readStdinBytes()).toString('utf-8'); }
+async function readStdin(opts) { return (await readStdinBytes(opts)).toString('utf-8'); }
 
 export async function main(argv = process.argv.slice(2)) {
   const verbs = await loadVerbs();

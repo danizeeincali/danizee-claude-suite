@@ -87,6 +87,9 @@ const NOT_JUDGED = 'The judge exited 2 but its result shows it could not judge t
 /** The only not_scanned reasons that come from the environment, not the product (the exact string scrub.js writes). Size limits, total limit, not-a-regular-file, unreadable and unknown reasons may hide a secret, so they stay blocking. */
 const ENV_REASONS = freeze(['object not available locally (partial clone?)']);
 
+/** push-gate.js keeps only the first 20 not_scanned entries (`r.not_scanned.slice(0, 20)` in its scrub-refusal result), and scrub lists the partial-clone entries first, so a list of this length may hide a later 'larger than' or 'total size limit reached' entry. Fail closed: a push-gate list this long is never reclassified. Keep in step with push-gate.js. */
+export const PUSH_GATE_NOT_SCANNED_CAP = 20;
+
 const incompleteNoHits = (o) => o && typeof o === 'object' && o.hit_count === 0
   && Array.isArray(o.not_scanned) && o.not_scanned.length > 0
   && o.not_scanned.every((e) => e && typeof e === 'object' && ENV_REASONS.includes(e.reason));
@@ -100,7 +103,7 @@ export function unjudgedReason(v, result) {
   if (v === 'scrub') return incompleteNoHits(result) ? 'scrub found no hits but every file it skipped was skipped for an environment reason (partial clone)' : null;
   if (v === 'push-gate') {
     if (result.decision !== 'deny') return null;
-    if (result.scrub && typeof result.scrub === 'object' && incompleteNoHits(result.scrub)) return 'the scrub check skipped files only for an environment reason and found no hits';
+    if (result.scrub && typeof result.scrub === 'object' && incompleteNoHits(result.scrub) && result.scrub.not_scanned.length < PUSH_GATE_NOT_SCANNED_CAP) return 'the scrub check skipped files only for an environment reason and found no hits';
     if (typeof result.reason === 'string' && ENV_COULD_NOT_RUN.test(result.reason) && !(result.scrub && result.scrub.hit_count > 0)) return 'the scrub check could not run because git timed out, overflowed or failed to run';
   }
   return null;
@@ -111,7 +114,8 @@ function failClosedReasons(v, result) {
   const scan = v === 'scrub' ? result : v === 'push-gate' && result && result.decision === 'deny' ? result.scrub : null;
   if (!scan || typeof scan !== 'object' || scan.hit_count !== 0 || !Array.isArray(scan.not_scanned) || !scan.not_scanned.length) return null;
   const reasons = [...new Set(scan.not_scanned.map((e) => (e && typeof e === 'object' && typeof e.reason === 'string' ? e.reason : 'unknown reason')))];
-  return reasons.slice(0, 5).join('; ') + (reasons.length > 5 ? '; ...' : '');
+  const out = reasons.slice(0, 5).join('; ') + (reasons.length > 5 ? '; ...' : '');
+  return v === 'push-gate' && scan.not_scanned.length >= PUSH_GATE_NOT_SCANNED_CAP ? `${out}; push-gate lists at most ${PUSH_GATE_NOT_SCANNED_CAP} files, so more may be hidden, including oversized ones` : out;
 }
 
 /** The remedy that fits the not_scanned reasons (size, total, or a file that is missing, not regular or unreadable). */
@@ -193,7 +197,10 @@ async function readResult(arg, io) {
   let text;
   if (arg === '-') {
     if (!io || typeof io.stdin !== 'function' || io.stdinIsTTY) throw new KitExit('--result - needs piped stdin, not a terminal', 1);
-    text = (await io.stdin()).toString('utf-8');
+    // Bounded read: the reader gets maxBytes (cap + 1) and stops once the running byte count passes it, so a huge pipe is never buffered whole.
+    const buf = await (typeof io.stdinBytes === 'function' ? io.stdinBytes : io.stdin)({ maxBytes: MAX_RESULT_BYTES + 1 });
+    if (Buffer.byteLength(buf) > MAX_RESULT_BYTES) throw new KitExit(`--result is larger than ${MAX_RESULT_BYTES} bytes`, 1);
+    text = buf.toString('utf-8');
   } else {
     const file = path.resolve((io && io.cwd) || process.cwd(), arg);
     const st = await fs.stat(file).catch((e) => { throw new KitExit(`cannot read --result ${arg}: ${e.code || e.message}`, 1); });

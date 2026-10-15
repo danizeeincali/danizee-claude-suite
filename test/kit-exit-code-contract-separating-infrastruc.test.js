@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { run, classify, blocksMerge, TABLE, CLASSES, PRODUCT_JUDGES, verb } from '../src/lib/kit/exit-codes.js';
 
 const bad = (args) => assert.rejects(run(args), (e) => e.code === 1);
@@ -221,6 +222,31 @@ describe('exit-codes', () => {
     assert.match(d('total size limit reached'), /smaller range/);
     assert.match(d('larger than 1048576 bytes'), /--max-file-bytes/);
     await assert.rejects(run(['blocks', '2', '--verb', 'scrub', '--result', '-'], { stdin: async () => Buffer.from(''), stdinIsTTY: false }), /crashed or refused.*stderr/);
+  });
+  it('a push-gate not_scanned list at the cap (20, possibly truncated) is never reclassified', () => {
+    const miss = (n) => Array.from({ length: n }, (_, i) => ({ file: `f${i}`, reason: 'object not available locally (partial clone?)' }));
+    const pg = (n) => ({ decision: 'deny', reason: 'the scrub check refused this push: 0 hit(s)', scrub: { ran: true, hit_count: 0, complete: false, hits: [], not_scanned: miss(n) } });
+    // 20 partial-clone entries may hide a 21st 'larger than' entry that push-gate sliced off: the deny keeps blocking.
+    assert.equal(classify({ code: 2, verb: 'push-gate', result: pg(20) }).blocks, true);
+    assert.equal(classify({ code: 2, verb: 'push-gate', result: pg(25) }).blocks, true);
+    assert.equal(classify({ code: 2, verb: 'push-gate', result: pg(19) }).blocks, false, 'a short list is complete');
+    assert.equal(classify({ code: 2, verb: 'push-gate', result: pg(19) }).class, 'infrastructure');
+    // scrub's own result is never truncated, so a long all-environment list still reclassifies there
+    assert.equal(classify({ code: 2, verb: 'scrub', result: { hit_count: 0, complete: false, not_scanned: miss(25) } }).blocks, false);
+  });
+  it('--result - stops reading stdin once the cap is passed', async () => {
+    let asked = null;
+    const big = { stdin: async (o) => { asked = o; return Buffer.alloc(1048577, 32); }, stdinIsTTY: false };
+    await assert.rejects(run(['blocks', '2', '--verb', 'scrub', '--result', '-'], big), (e) => e.code === 1 && /larger than 1048576 bytes/.test(e.message));
+    assert.equal(asked && asked.maxBytes, 1048577, 'the reader is given a bound');
+    const ok = { stdin: async (o) => { asked = o; return Buffer.from(JSON.stringify({ hit_count: 1 })); }, stdinIsTTY: false };
+    assert.equal((await run(['blocks', '2', '--verb', 'scrub', '--result', '-'], ok)).blocks, true);
+  });
+  it('cli.js --result - with oversized piped stdin fails with the larger-than message', () => {
+    const cli = path.resolve('src/lib/kit/cli.js');
+    const r = spawnSync(process.execPath, [cli, 'exit-codes', 'blocks', '2', '--verb', 'scrub', '--result', '-'], { input: Buffer.alloc(5 * 1024 * 1024, 32), encoding: 'utf-8' });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr + r.stdout, /--result is larger than 1048576 bytes/);
   });
   it('push-gate review deny and scrub hits stay regressions with --result', () => {
     assert.equal(classify({ code: 2, verb: 'push-gate', result: { decision: 'deny', reason: 'the review of this change did not pass (verdict fail)' } }).blocks, true);
