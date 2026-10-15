@@ -101,7 +101,10 @@ const fileUri = file => {
   const p = wellFormed(file).replace(/\\/g, '/');
   const drive = /^([A-Za-z]):\//.exec(p);
   if (drive) return `file:///${drive[1]}:/${p.slice(3).split('/').map(encodeURIComponent).join('/')}`;
-  return p.split('/').map(encodeURIComponent).join('/');
+  // Drop leading empty segments so the result is never a '//host/...' network-path reference.
+  const segs = p.split('/');
+  while (segs.length && segs[0] === '') segs.shift();
+  return segs.length ? segs.map(encodeURIComponent).join('/') : '.';
 };
 
 export function renderSarif(input) {

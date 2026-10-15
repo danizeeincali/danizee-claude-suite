@@ -283,4 +283,12 @@ describe('r2 fixes', () => {
     const uris = s.runs[0].results.map(r => r.locations[0].physicalLocation.artifactLocation.uri);
     assert.deepEqual(uris, ['file:///C:/repo/src/x%20y.js', 'file:///d:/a/b.js']);
   });
+  it('never emits a network-path uri (UNC or // input) in SARIF', () => {
+    const files = ['\\\\attacker.example\\share\\x.js', '//evil.example/x.js', '///x.js', '/etc/x.js', '\\\\', '//'];
+    const s = renderSarif({ findings: files.map(file => ({ message: 'm', file })) });
+    const uris = s.runs[0].results.map(r => r.locations[0].physicalLocation.artifactLocation.uri);
+    for (const u of uris) assert.ok(!u.startsWith('/'), u);
+    assert.deepEqual(uris, ['attacker.example/share/x.js', 'evil.example/x.js', 'x.js', 'etc/x.js', '.', '.']);
+    assert.equal(new URL(uris[0], 'file:///C:/repo/').href, 'file:///C:/repo/attacker.example/share/x.js');
+  });
 });
