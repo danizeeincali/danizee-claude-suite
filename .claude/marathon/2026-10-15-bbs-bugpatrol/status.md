@@ -1,7 +1,7 @@
 # Marathon 2026-10-15-bbs-bugpatrol
 
 - State: RUNNING
-- Budget: 4,317,460 / 10,000,000 tokens
+- Budget: 4,617,460 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 4/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
@@ -21,8 +21,8 @@
 | trouble-log-reflection-into-lesson-memor | /home/claude/danizee-claude-suite-trouble-log-reflection-into-lesson-memor | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/trouble-log-reflection-into-lesson-memor.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
 | preflight-doctor-checks-before-a-run | /home/claude/danizee-claude-suite-preflight-doctor-checks-before-a-run | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/preflight-doctor-checks-before-a-run.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
 | exit-code-contract-separating-infrastruc | /home/claude/danizee-claude-suite-exit-code-contract-separating-infrastruc | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/exit-code-contract-separating-infrastruc.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
-| sarif-junit-and-sticky-pr-comment-render |  | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/sarif-junit-and-sticky-pr-comment-render.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
-| repeated-replay-gate-for-claims |  | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/repeated-replay-gate-for-claims.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
+| sarif-junit-and-sticky-pr-comment-render | /home/claude/danizee-claude-suite-sarif-junit-and-sticky-pr-comment-render | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/sarif-junit-and-sticky-pr-comment-render.md | active | clean 0/2 | //w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
+| repeated-replay-gate-for-claims | /home/claude/danizee-claude-suite-repeated-replay-gate-for-claims | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/repeated-replay-gate-for-claims.md | active | clean 0/2 | //w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
 | integration |  | .claude/bbs/runs/2026-10-15-bugpatrol/integration.md | queued | clean 0/2 |  | after every build stream is done: wire each power into its approved steps |  | 0 |
 
 ## Finish line

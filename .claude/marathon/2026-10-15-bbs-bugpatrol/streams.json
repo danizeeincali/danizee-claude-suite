@@ -108,17 +108,25 @@
     },
     {
       "name": "sarif-junit-and-sticky-pr-comment-render",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/sarif-junit-and-sticky-pr-comment-render.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract, failing tests, verb, packaged test",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-sarif-junit-and-sticky-pr-comment-render",
+      "phase": "build",
+      "skill": "/w-tdd-swarm",
+      "base": "ecce4339c671c607fbdbe4d2c61f5dd9f1407b91"
     },
     {
       "name": "repeated-replay-gate-for-claims",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/repeated-replay-gate-for-claims.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract, failing tests, verb, packaged test",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-repeated-replay-gate-for-claims",
+      "phase": "build",
+      "skill": "/w-tdd-swarm",
+      "base": "ecce4339c671c607fbdbe4d2c61f5dd9f1407b91"
     },
     {
       "name": "integration",

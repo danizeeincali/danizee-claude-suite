@@ -57,3 +57,5 @@
 {"role":"review","model":"opus","stream":"preflight-doctor-checks-before-a-run","budget":150000,"event":"spawn","id":"ca202f0a-8ba6-45e0-bdd0-595b686b703a","ts":"2026-10-15T16:59:50.481Z"}
 {"role":"review","model":"opus","stream":"exit-code-contract-separating-infrastruc","budget":150000,"event":"spawn","id":"b3dc8a4f-7f10-419e-b2be-d783e3feb573","ts":"2026-10-15T16:59:50.648Z"}
 {"role":"review","model":"opus","stream":"trouble-log-reflection-into-lesson-memor","budget":150000,"event":"spawn","id":"5b7ee7dd-ad36-47bf-87a9-5df428b75ce5","ts":"2026-10-15T16:59:50.815Z"}
+{"role":"build","model":"sonnet","stream":"sarif-junit-and-sticky-pr-comment-render","budget":150000,"event":"spawn","id":"dbf4294d-a545-4968-950a-8f1b56586e20","ts":"2026-10-15T17:00:22.463Z"}
+{"role":"build","model":"sonnet","stream":"repeated-replay-gate-for-claims","budget":150000,"event":"spawn","id":"7cc970b6-06d8-47a4-a996-70879c1743ab","ts":"2026-10-15T17:00:22.866Z"}
