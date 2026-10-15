@@ -48,3 +48,6 @@ Locks, refined (review r3): a stale lock is broken atomically, by renaming it to
 
 ## Convergence
 A stream with 2 passing reviews in a row on its current code is done reviewing. Its low findings stay open within the tolerance and are listed for the owner. Medium or high findings always get a fix round and a fresh review.
+
+## Stale-lock breaking, final form (2026-10-15)
+Stale-lock breaking, final form (shared-budget r2 showed that a plain rename still lets a late waiter steal a fresh lock): each lock file holds a random token. A waiter that judges the lock stale reads its token T, then takes a second lock <file>.lock.break with wx. While it holds that, it re-reads <file>.lock and removes it only if the token is still T, then releases the break lock (a break lock older than 2x the stale age may itself be removed). The total wait before giving up must be longer than the stale age, so a waiter always reaches the break path. Test: pre-age a lock, run N parallel writers as separate processes, expect all N writes kept, repeated 10 times.

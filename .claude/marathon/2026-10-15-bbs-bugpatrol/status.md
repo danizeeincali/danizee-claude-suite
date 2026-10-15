@@ -1,9 +1,9 @@
 # Marathon 2026-10-15-bbs-bugpatrol
 
 - State: RUNNING
-- Budget: 5,687,756 / 10,000,000 tokens
+- Budget: 6,532,110 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
-- Gate (run-wide, all streams): 2/2 clean reviews — build gate not met, full gate not met
+- Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
 - Next for you: Continue stream "noise-ledger-with-flake-quarantine" (next: builder writes contract, failing tests, verb, packaged test) — /w-marathon --resume 2026-10-15-bbs-bugpatrol.
 - Last handoff: 2026-10-15T16:57:27.562Z (auto) on claude/project-thread-24nlxj@9c50362, 10 uncommitted, tasks: none
@@ -17,7 +17,7 @@
 | asymmetric-threshold-router | /home/claude/danizee-claude-suite-asymmetric-threshold-router | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/asymmetric-threshold-router.md | active | clean 3/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
 | change-impact-test-plan | /home/claude/danizee-claude-suite-change-impact-test-plan | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/change-impact-test-plan.md | active | clean 2/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
 | finding-triage-with-fingerprint-dedup-an | /home/claude/danizee-claude-suite-finding-triage-with-fingerprint-dedup-an | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/finding-triage-with-fingerprint-dedup-an.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
-| shared-budget-for-claim-sub-sessions | /home/claude/danizee-claude-suite-shared-budget-for-claim-sub-sessions | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/shared-budget-for-claim-sub-sessions.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
+| shared-budget-for-claim-sub-sessions | /home/claude/danizee-claude-suite-shared-budget-for-claim-sub-sessions | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/shared-budget-for-claim-sub-sessions.md | active | clean 1/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
 | trouble-log-reflection-into-lesson-memor | /home/claude/danizee-claude-suite-trouble-log-reflection-into-lesson-memor | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/trouble-log-reflection-into-lesson-memor.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
 | preflight-doctor-checks-before-a-run | /home/claude/danizee-claude-suite-preflight-doctor-checks-before-a-run | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/preflight-doctor-checks-before-a-run.md | active | clean 0/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
 | exit-code-contract-separating-infrastruc | /home/claude/danizee-claude-suite-exit-code-contract-separating-infrastruc | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/exit-code-contract-separating-infrastruc.md | active | clean 1/2 | /w-tdd-swarm · build | builder writes contract, failing tests, verb, packaged test |  | 0 |
@@ -56,7 +56,7 @@
 | finding-triage-with-fingerprint-dedup-an: packaged check passes | build | failing | — | is true |
 | shared-budget-for-claim-sub-sessions: green unit runs in a row | build | met | 2 | at_least 1 |
 | shared-budget-for-claim-sub-sessions: zero egress in the packaged check | build | failing | — | is true |
-| shared-budget-for-claim-sub-sessions: clean reviews in a row | build | failing | 0 | at_least 2 |
+| shared-budget-for-claim-sub-sessions: clean reviews in a row | build | failing | 1 | at_least 2 |
 | shared-budget-for-claim-sub-sessions: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | shared-budget-for-claim-sub-sessions: packaged check passes | build | failing | — | is true |
 | trouble-log-reflection-into-lesson-memor: green unit runs in a row | build | met | 1 | at_least 1 |
@@ -74,20 +74,20 @@
 | exit-code-contract-separating-infrastruc: clean reviews in a row | build | failing | 1 | at_least 2 |
 | exit-code-contract-separating-infrastruc: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | exit-code-contract-separating-infrastruc: packaged check passes | build | failing | — | is true |
-| sarif-junit-and-sticky-pr-comment-render: green unit runs in a row | build | failing | 0 | at_least 1 |
+| sarif-junit-and-sticky-pr-comment-render: green unit runs in a row | build | met | 1 | at_least 1 |
 | sarif-junit-and-sticky-pr-comment-render: zero egress in the packaged check | build | failing | — | is true |
 | sarif-junit-and-sticky-pr-comment-render: clean reviews in a row | build | failing | 0 | at_least 2 |
 | sarif-junit-and-sticky-pr-comment-render: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | sarif-junit-and-sticky-pr-comment-render: packaged check passes | build | failing | — | is true |
-| repeated-replay-gate-for-claims: green unit runs in a row | build | failing | 0 | at_least 1 |
+| repeated-replay-gate-for-claims: green unit runs in a row | build | met | 1 | at_least 1 |
 | repeated-replay-gate-for-claims: zero egress in the packaged check | build | failing | — | is true |
 | repeated-replay-gate-for-claims: clean reviews in a row | build | failing | 0 | at_least 2 |
 | repeated-replay-gate-for-claims: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | repeated-replay-gate-for-claims: packaged check passes | build | failing | — | is true |
 | The owner was told what they got: delivered.md lists every power, wired, with its command | build | failing | — | is true |
-| Clean reviews in a row | build | met | 2 | at_least 2 |
-| High findings in the latest review | build | met | 0 | at_most 0 |
-| Open high findings | build | failing | 1 | at_most 0 |
+| Clean reviews in a row | build | failing | 0 | at_least 2 |
+| High findings in the latest review | build | failing | 1 | at_most 0 |
+| Open high findings | build | failing | 2 | at_most 0 |
 
 ## Waiting on human
 

@@ -15,3 +15,5 @@
 {"kind":"unit","status":"green","stream":"exit-code-contract-separating-infrastruc","commit":"4dbe3b4","id":"73e4eccd-dfdb-41eb-b316-d8a22986fe28","ts":"2026-10-15T16:59:18.763Z"}
 {"kind":"unit","status":"green","stream":"shared-budget-for-claim-sub-sessions","commit":"0c77385","id":"68e1c8ab-ba40-4518-8b0d-4d82f8c93410","ts":"2026-10-15T16:59:34.657Z"}
 {"kind":"unit","status":"green","stream":"trouble-log-reflection-into-lesson-memor","commit":"cc02796","id":"5fe5078d-3fb9-4eef-bd99-bd2daa6c42b6","ts":"2026-10-15T16:59:39.692Z"}
+{"kind":"unit","status":"green","stream":"sarif-junit-and-sticky-pr-comment-render","commit":"41545c9","id":"54a7f9a5-d0bb-4f6b-9397-2e5e8803badf","ts":"2026-10-15T17:02:54.446Z"}
+{"kind":"unit","status":"green","stream":"repeated-replay-gate-for-claims","commit":"6a026ae","id":"7782ecea-1141-4d32-944e-68001ee888ba","ts":"2026-10-15T17:02:59.241Z"}
