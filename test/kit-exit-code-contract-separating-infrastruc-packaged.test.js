@@ -52,7 +52,10 @@ describe('exit-codes — packaged end to end', () => {
       assert.equal(withR.json.blocks, false);
       assert.equal(pkg.kit(['exit-codes', 'blocks', '2', '--verb', 'push-gate', '--result', '-'], pg.out).json.blocks, false);
       assert.equal(pkg.kit(['exit-codes', 'classify', '--code', '124']).json.class, 'infrastructure');
-      assert.equal(pkg.kit(['exit-codes', 'blocks', '2', '--result', '-'], 'nope').code, 1);
+      const nope = pkg.kit(['exit-codes', 'blocks', '2', '--verb', 'scrub', '--result', '-'], 'nope');
+      assert.equal(nope.code, 0, 'a judge 2 with unusable output blocks, it does not error');
+      assert.equal(nope.json.blocks, true);
+      assert.equal(pkg.kit(['exit-codes', 'blocks', '2', '--result', '-'], 'nope').json.blocks, false, 'no judge verb: the result is not read');
       fs.writeFileSync(path.join(repo, 'creds.txt'), 'AKIAABCDEFGHIJKLMNOP\n' + 'x'.repeat(300) + '\n');
       fs.writeFileSync(path.join(repo, '.claude', 'kit', 'scrub-patterns'), 'AKIA[0-9A-Z]{16}\n');
       g('add', '-A'); g('commit', '-qm', 'y');

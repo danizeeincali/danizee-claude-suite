@@ -220,7 +220,10 @@ describe('exit-codes', () => {
     assert.doesNotMatch(d('total size limit reached'), /higher limit/);
     assert.match(d('total size limit reached'), /smaller range/);
     assert.match(d('larger than 1048576 bytes'), /--max-file-bytes/);
-    await assert.rejects(run(['blocks', '2', '--verb', 'scrub', '--result', '-'], { stdin: async () => Buffer.from(''), stdinIsTTY: false }), /crashed or refused.*stderr/);
+    const empty = await run(['classify', '--code', '2', '--verb', 'scrub', '--result', '-'], { stdin: async () => Buffer.from(''), stdinIsTTY: false });
+    assert.equal(empty.class, 'regression');
+    assert.equal(empty.blocks, true);
+    assert.match(empty.description, /printed nothing.*crashed or refused.*stderr/);
   });
   it('a push-gate not_scanned list at the cap (20, possibly truncated) is never reclassified', () => {
     const miss = (n) => Array.from({ length: n }, (_, i) => ({ file: `f${i}`, reason: 'object not available locally (partial clone?)' }));
@@ -236,16 +239,19 @@ describe('exit-codes', () => {
   it('--result - stops reading stdin once the cap is passed', async () => {
     let asked = null;
     const big = { stdin: async (o) => { asked = o; return Buffer.alloc(1048577, 32); }, stdinIsTTY: false };
-    await assert.rejects(run(['blocks', '2', '--verb', 'scrub', '--result', '-'], big), (e) => e.code === 1 && /larger than 1048576 bytes/.test(e.message));
+    const tooBig = await run(['classify', '--code', '2', '--verb', 'scrub', '--result', '-'], big);
+    assert.equal(tooBig.blocks, true, 'a judge 2 whose result cannot be read blocks');
+    assert.match(tooBig.description, /larger than 1048576 bytes/);
     assert.equal(asked && asked.maxBytes, 1048577, 'the reader is given a bound');
     const ok = { stdin: async (o) => { asked = o; return Buffer.from(JSON.stringify({ hit_count: 1 })); }, stdinIsTTY: false };
     assert.equal((await run(['blocks', '2', '--verb', 'scrub', '--result', '-'], ok)).blocks, true);
   });
-  it('cli.js --result - with oversized piped stdin fails with the larger-than message', () => {
+  it('cli.js --result - with oversized piped stdin blocks a judge 2 and names the size', () => {
     const cli = path.resolve('src/lib/kit/cli.js');
-    const r = spawnSync(process.execPath, [cli, 'exit-codes', 'blocks', '2', '--verb', 'scrub', '--result', '-'], { input: Buffer.alloc(5 * 1024 * 1024, 32), encoding: 'utf-8' });
-    assert.equal(r.status, 1);
-    assert.match(r.stderr + r.stdout, /--result is larger than 1048576 bytes/);
+    const r = spawnSync(process.execPath, [cli, 'exit-codes', 'classify', '--code', '2', '--verb', 'scrub', '--result', '-'], { input: Buffer.alloc(5 * 1024 * 1024, 32), encoding: 'utf-8' });
+    assert.equal(r.status, 0);
+    assert.equal(JSON.parse(r.stdout).blocks, true);
+    assert.match(r.stdout, /larger than 1048576 bytes/);
   });
   it('push-gate review deny and scrub hits stay regressions with --result', () => {
     assert.equal(classify({ code: 2, verb: 'push-gate', result: { decision: 'deny', reason: 'the review of this change did not pass (verdict fail)' } }).blocks, true);
@@ -256,7 +262,7 @@ describe('exit-codes', () => {
     assert.equal(classify({ code: 0, verb: 'scrub', result: partial }).class, 'clean');
     assert.equal(classify({ code: 2, verb: 'graph', result: partial }).class, 'precondition');
     assert.equal(classify({ code: 2, result: partial }).class, 'precondition');
-    assert.throws(() => classify({ code: 2, verb: 'scrub', result: 'x' }), (e) => e.code === 1);
+    assert.equal(classify({ code: 2, verb: 'scrub', result: 'x' }).blocks, true, 'a judge 2 with an unusable result blocks, it does not throw');
   });
   it('--result reads a file or piped stdin through the verb', async () => {
     const d = fs.mkdtempSync(path.join(os.tmpdir(), 'exitcodes-'));
@@ -270,13 +276,13 @@ describe('exit-codes', () => {
       assert.equal((await run(['blocks', '2', '--verb', 'scrub', '--result', '-'], io)).blocks, false);
       assert.equal((await run(['blocks', '2', '--verb', 'scrub'], io)).blocks, true);
       await assert.rejects(run(['blocks', '2', '--verb', 'scrub', '--result', '-'], { stdin: async () => Buffer.from(''), stdinIsTTY: true }), (e) => e.code === 1);
-      await assert.rejects(run(['blocks', '2', '--verb', 'scrub', '--result', '-'], { stdin: async () => Buffer.from('nope'), stdinIsTTY: false }), (e) => e.code === 1);
-      await assert.rejects(run(['blocks', '2', '--verb', 'scrub', '--result', '-'], { stdin: async () => Buffer.from('[1]'), stdinIsTTY: false }), (e) => e.code === 1);
-      await assert.rejects(run(['blocks', '2', '--result', path.join(d, 'missing.json')]), (e) => e.code === 1);
-      await assert.rejects(run(['blocks', '2', '--result', d]), (e) => e.code === 1);
+      assert.equal((await run(['blocks', '2', '--verb', 'scrub', '--result', '-'], { stdin: async () => Buffer.from('nope'), stdinIsTTY: false })).blocks, true);
+      assert.equal((await run(['blocks', '2', '--verb', 'scrub', '--result', '-'], { stdin: async () => Buffer.from('[1]'), stdinIsTTY: false })).blocks, true);
+      await assert.rejects(run(['blocks', '2', '--verb', 'scrub', '--result', path.join(d, 'missing.json')]), (e) => e.code === 1);
+      await assert.rejects(run(['blocks', '2', '--verb', 'scrub', '--result', d]), (e) => e.code === 1);
       await assert.rejects(run(['blocks', '2', '--result', f, '--result', f]), (e) => e.code === 1);
       fs.writeFileSync(f, ' '.repeat(1048577));
-      await assert.rejects(run(['blocks', '2', '--result', f]), (e) => e.code === 1);
+      assert.equal((await run(['blocks', '2', '--verb', 'scrub', '--result', f])).blocks, true);
     } finally { fs.rmSync(d, { recursive: true, force: true }); }
   });
 
@@ -301,7 +307,10 @@ describe('exit-codes', () => {
     assert.match(src.split('*/')[0], /every not_scanned reason/);
   });
   it('an empty piped --result says nothing was piped', async () => {
-    await assert.rejects(run(['blocks', '2', '--verb', 'scrub', '--result', '-'], { stdin: async () => Buffer.from('  \n'), stdinIsTTY: false }), (e) => e.code === 1 && /empty/.test(e.message) && !/not valid JSON/.test(e.message));
+    const r = await run(['classify', '--code', '2', '--verb', 'scrub', '--result', '-'], { stdin: async () => Buffer.from('  \n'), stdinIsTTY: false });
+    assert.equal(r.blocks, true);
+    assert.match(r.description, /printed nothing/);
+    assert.doesNotMatch(r.description, /not valid JSON/);
   });
   it('library entry fails closed like the CLI: bad verb, bad result and bad code are KitExit 1, never false', async () => {
     const { loadVerbs } = await import('../src/lib/kit/cli.js');
@@ -317,9 +326,123 @@ describe('exit-codes', () => {
     const partial = { hit_count: 0, not_scanned: [{ file: 'a', reason: 'object not available locally (partial clone?)' }] };
     assert.equal(blocksMerge(2, 'scrub', null, JSON.stringify(partial)), false);
     for (const r of ['not json', '', '  \n', '[]', '3', 'null', '"x"', 'x'.repeat(1048577), [], 5]) {
-      assert.throws(() => blocksMerge(2, 'scrub', null, r), (e) => e.code === 1, String(r).slice(0, 20));
-      assert.throws(() => classify({ code: 2, verb: 'scrub', result: r }), (e) => e.code === 1);
+      assert.equal(blocksMerge(2, 'scrub', null, r), true, String(r).slice(0, 20));
+      assert.equal(classify({ code: 2, verb: 'scrub', result: r }).class, 'regression');
     }
     assert.throws(() => blocksMerge(300, 'scrub'), (e) => e.code === 1);
+  });
+
+  describe('whole input space: code x signal x verb x result', () => {
+    // Rule: the result is read only for a judge's exit 2 with no signal. There, empty, truncated or unusable output is a blocking
+    // regression (fail closed), a result whose numeric exit field differs from the code is KitExit 1, and anything uncertain blocks.
+    // No other combination reads the result, so nothing else throws on result content and the class comes from code, signal and verb alone.
+    const CODES = [0, 1, 2, 124, 126, 127, 137, null];
+    const SIGNALS = [null, 'SIGKILL'];
+    const VERBS = ['scrub', 'push-gate', 'graph'];
+    const JUDGES = ['scrub', 'push-gate'];
+    const exitOf = (code) => (code === 2 ? 0 : 2);
+    const results = (v, code) => ({
+      none: null,
+      empty: '',
+      truncated: '{"hit_count":3,"not_scanned":[{"file":"a","rea',
+      clean: v === 'push-gate' ? '{"decision":"allow"}' : '{"hit_count":0,"complete":true,"not_scanned":[]}',
+      hits: v === 'push-gate' ? '{"decision":"deny","reason":"x","scrub":{"ran":true,"hit_count":3,"complete":true,"not_scanned":[]},"exit":2}' : '{"hit_count":3,"complete":true,"not_scanned":[],"exit":2}',
+      mismatch: v === 'push-gate' ? `{"decision":"deny","reason":"x","exit":${exitOf(code)}}` : `{"hit_count":3,"complete":true,"not_scanned":[],"exit":${exitOf(code)}}`,
+    });
+    const BASE = { 0: 'clean', 1: 'usage', 124: 'infrastructure', 126: 'precondition', 127: 'precondition', 137: 'infrastructure' };
+    // The oracle: { throws: true } or { cls, blocks }, from the rule alone.
+    const expected = (code, signal, v, rname) => {
+      if (signal) return { cls: 'infrastructure', blocks: false };
+      if (code === null) return { throws: true };
+      if (code === 2 && JUDGES.includes(v)) {
+        if (rname === 'mismatch') return { throws: true };
+        return { cls: 'regression', blocks: true };
+      }
+      if (code === 2) return { cls: 'precondition', blocks: false };
+      return { cls: BASE[code], blocks: false };
+    };
+    const io = (text) => ({ stdin: async () => Buffer.from(text), stdinIsTTY: false });
+    const label = (code, signal, v, rname) => `code=${code} signal=${signal} verb=${v} result=${rname}`;
+
+    it('CLI classify and blocks, and blocksMerge/classify, agree with the rule on every combination', async () => {
+      let n = 0;
+      for (const code of CODES) for (const signal of SIGNALS) for (const v of VERBS) {
+        const rs = results(v, code);
+        for (const [rname, text] of Object.entries(rs)) {
+          n++;
+          const want = expected(code, signal, v, rname);
+          const L = label(code, signal, v, rname);
+          const cls = ['classify'];
+          if (code !== null) cls.push('--code', String(code));
+          if (signal) cls.push('--signal', signal);
+          if (code === null && !signal) cls.push('--code', 'x'); // no code and no signal is not a call at all
+          cls.push('--verb', v);
+          if (text !== null) cls.push('--result', '-');
+          const cli = run(cls, io(text ?? ''));
+          const lib = () => classify({ code, signal, verb: v, result: text });
+          const merge = () => blocksMerge(code, v, signal, text);
+          if (want.throws) {
+            await assert.rejects(cli, (e) => e.code === 1, `cli ${L}`);
+            assert.throws(lib, (e) => e.code === 1, `lib ${L}`);
+            assert.throws(merge, (e) => e.code === 1, `merge ${L}`);
+          } else {
+            const r = await cli;
+            assert.equal(r.class, want.cls, `cli class ${L}`);
+            assert.equal(r.blocks, want.blocks, `cli blocks ${L}`);
+            assert.equal(lib().class, want.cls, `lib class ${L}`);
+            assert.equal(merge(), want.blocks, `merge ${L}`);
+            if (code !== null && !signal) {
+              const b = ['blocks', String(code), '--verb', v];
+              if (text !== null) b.push('--result', '-');
+              assert.equal((await run(b, io(text ?? ''))).blocks, want.blocks, `cli blocks verb ${L}`);
+              const d = ['describe', String(code), '--verb', v];
+              if (text !== null) d.push('--result', '-');
+              assert.equal((await run(d, io(text ?? ''))).class, want.cls, `cli describe ${L}`);
+            }
+          }
+        }
+      }
+      assert.equal(n, 8 * 2 * 3 * 6);
+    });
+
+    it('a result is not even read unless it is a judge exit 2 with no signal', async () => {
+      for (const code of CODES.filter((c) => c !== null)) for (const signal of SIGNALS) for (const v of VERBS) {
+        if (code === 2 && !signal && JUDGES.includes(v)) continue;
+        let asked = 0;
+        const args = ['classify', '--code', String(code), '--verb', v, '--result', '-'];
+        if (signal) args.push('--signal', signal);
+        await run(args, { stdin: async () => { asked++; return Buffer.from(''); }, stdinIsTTY: true });
+        assert.equal(asked, 0, label(code, signal, v, 'stdin'));
+      }
+    });
+
+    it('real cli.js: crashed, killed and timed-out judges with an empty or truncated result never exit 1', () => {
+      const cli = path.resolve('src/lib/kit/cli.js');
+      const d = fs.mkdtempSync(path.join(os.tmpdir(), 'exitcodes-table-'));
+      try {
+        for (const [name, text] of [['empty', ''], ['truncated', '{"decision":"deny","rea']]) {
+          const f = path.join(d, `${name}.json`);
+          fs.writeFileSync(f, text);
+          const go = (args) => spawnSync(process.execPath, [cli, 'exit-codes', ...args, '--result', f], { encoding: 'utf-8' });
+          for (const [args, cls, blocks] of [
+            [['classify', '--signal', 'SIGKILL', '--verb', 'scrub'], 'infrastructure', false],
+            [['classify', '--code', '137', '--verb', 'scrub'], 'infrastructure', false],
+            [['blocks', '124', '--verb', 'scrub'], 'infrastructure', false],
+            [['blocks', '127', '--verb', 'push-gate'], 'precondition', false],
+            [['blocks', '1', '--verb', 'push-gate'], 'usage', false],
+            [['blocks', '2', '--verb', 'push-gate'], 'regression', true],
+          ]) {
+            const r = go(args);
+            assert.equal(r.status, 0, `${name} ${args.join(' ')}: ${r.stderr}`);
+            const j = JSON.parse(r.stdout);
+            assert.equal(j.class, cls, `${name} ${args.join(' ')}`);
+            assert.equal(j.blocks, blocks, `${name} ${args.join(' ')}`);
+          }
+        }
+        const lie = spawnSync(process.execPath, [cli, 'exit-codes', 'blocks', '2', '--verb', 'scrub', '--result', '-'], { input: '{"hit_count":0,"exit":0}', encoding: 'utf-8' });
+        assert.equal(lie.status, 1);
+        assert.match(lie.stderr + lie.stdout, /exited 0 but the status given is 2/);
+      } finally { fs.rmSync(d, { recursive: true, force: true }); }
+    });
   });
 });

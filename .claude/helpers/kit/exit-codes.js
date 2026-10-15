@@ -12,6 +12,7 @@
  * result shows nothing was judged is infrastructure and never blocks: scrub with hit_count 0 and a non-empty not_scanned list
  * where every not_scanned reason is an environment reason (a partial clone with the remote unreachable); push-gate with decision deny whose reason says the check 'could not run' because of an environment cause (git timed out, overflowed, was killed or could not be run; NOT scrub's own refusals such as a tracked private pattern file, which block), or a scrub block that is such a zero-hit partial-clone-only scan. Size, total,
  * not-a-regular-file and other reasons stay blocking (fail closed, described by their reason), as does any hit or a review deny.
+ * The result is read only for a judge's exit 2 with no signal; every other status ignores it. There, empty, truncated, oversized or non-object output is a blocking regression (fail closed: the judge crashed or refused), and a result whose numeric `exit` field differs from the code is KitExit 1. Nothing else throws on result content.
  * The library takes the parsed object or the judge's stdout string (parsed like --result): classify({ code, verb, result }), blocksMerge(code, verb, signal, result). It fails closed like the CLI: a verb outside the registered kit verbs, a bad code or a bad result throws KitExit 1 (blocksMerge rethrows; an input error never means 'does not block'). 124 (timeout(1)) is infrastructure.
  *
  * Classes: clean (0), regression (2 from a listed product judge only: the ONLY class allowed to block a merge), usage (1, invalid input
@@ -157,16 +158,35 @@ const AMBIGUOUS = { 3: 'Status 3 means different things per verb (safe-git: git 
  * Classify a status. `signal` (a non-empty string) wins over the code. Returns
  * { code, signal, verb, class, known, blocks, description }; class is `unknown` for an unlisted status, which never blocks.
  */
-export function classify({ code = null, signal = null, verb: v = null, result = null } = {}) {
+export function classify(opts = {}) { return classifyWith(opts, null); }
+
+/** Judge a result for a judge's exit 2: { obj } (null when none was given) or { why } when its content is unusable. Never throws on content. */
+function judgeResult(result) {
+  if (result == null) return { obj: null };
+  if (typeof result === 'string') {
+    if (Buffer.byteLength(result) > MAX_RESULT_BYTES) return { why: `its result is larger than ${MAX_RESULT_BYTES} bytes` };
+    if (!result.trim()) return { why: 'it printed nothing on stdout (it crashed or refused; read its stderr)' };
+    try { result = JSON.parse(result); } catch { return { why: 'its result is truncated or not valid JSON (it crashed or was cut off; read its stderr)' }; }
+  }
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return { why: 'its result is not a JSON object' };
+  return { obj: result };
+}
+
+/** `unusable` (CLI only): why the result could not be used (too large to read), already decided by the reader. */
+function classifyWith({ code = null, signal = null, verb: v = null, result = null } = {}, unusable = null) {
   v = checkVerb(v);
-  if (typeof result === 'string') result = parseResultText(result);
   if (signal != null && signal !== '') {
     return { code, signal: String(signal), verb: v, class: 'infrastructure', known: true, blocks: false, description: `Killed by signal ${signal}: the tool or environment failed, not the product.` };
   }
   if (!Number.isInteger(code) || code < 0 || code > 255) throw new KitExit(`exit status must be an integer 0..255, got ${JSON.stringify(code)}`, 1);
-  if (result != null && (typeof result !== 'object' || Array.isArray(result))) throw new KitExit('result must be the JSON object a verb printed', 1);
   const base = { code, signal: null, verb: v };
+  // The result is read only for a judge's exit 2 with no signal; every other status ignores it, whatever it holds.
   if (code === 2 && v && PRODUCT_JUDGES.includes(v)) {
+    const j = unusable ? { why: unusable } : judgeResult(result);
+    if (j.why) return { ...base, class: 'regression', known: true, blocks: true, description: `Fail closed: ${v} exited 2 but ${j.why}, so nothing shows it did not judge the product; it blocks. Read the judge's stderr and rerun it.` };
+    const result2 = j.obj;
+    if (result2 && typeof result2.exit === 'number' && result2.exit !== code) throw new KitExit(`the result says the judge exited ${result2.exit} but the status given is ${code}; pass the judge's real exit status (not a stale $?)`, 1);
+    result = result2;
     const why = unjudgedReason(v, result);
     if (why) return { ...base, class: 'infrastructure', known: true, blocks: false, judged: false, description: NOT_JUDGED.replace('%s', why) };
     const fc = failClosedReasons(v, result);
@@ -216,32 +236,28 @@ function toCode(s, what) {
   if (n > 255) throw new KitExit(`${what} must be an integer 0..255, got ${s}`, 1);
   return n;
 }
+/** Read the --result text. Returns { text } or { unusable } (too large; never read whole). Call-level errors (no piped stdin, unreadable file) still throw KitExit 1. */
 async function readResult(arg, io) {
-  if (arg == null) return null;
   let text;
   if (arg === '-') {
     if (!io || typeof io.stdin !== 'function' || io.stdinIsTTY) throw new KitExit('--result - needs piped stdin, not a terminal', 1);
     // Bounded read: the reader gets maxBytes (cap + 1) and stops once the running byte count passes it, so a huge pipe is never buffered whole.
     const buf = await (typeof io.stdinBytes === 'function' ? io.stdinBytes : io.stdin)({ maxBytes: MAX_RESULT_BYTES + 1 });
-    if (Buffer.byteLength(buf) > MAX_RESULT_BYTES) throw new KitExit(`--result is larger than ${MAX_RESULT_BYTES} bytes`, 1);
+    if (Buffer.byteLength(buf) > MAX_RESULT_BYTES) return { unusable: `its result is larger than ${MAX_RESULT_BYTES} bytes` };
     text = buf.toString('utf-8');
   } else {
     const file = path.resolve((io && io.cwd) || process.cwd(), arg);
     const st = await fs.stat(file).catch((e) => { throw new KitExit(`cannot read --result ${arg}: ${e.code || e.message}`, 1); });
     if (!st.isFile()) throw new KitExit(`--result ${arg} is not a regular file`, 1);
-    if (st.size > MAX_RESULT_BYTES) throw new KitExit(`--result ${arg} is larger than ${MAX_RESULT_BYTES} bytes`, 1);
+    if (st.size > MAX_RESULT_BYTES) return { unusable: `its result is larger than ${MAX_RESULT_BYTES} bytes` };
     text = await fs.readFile(file, 'utf-8');
   }
-  return parseResultText(text);
+  return { text };
 }
-/** Parse a judge's stdout the way --result does: size cap, non-empty, valid JSON, an object. Throws KitExit 1. */
-function parseResultText(text) {
-  if (Buffer.byteLength(text) > MAX_RESULT_BYTES) throw new KitExit(`--result is larger than ${MAX_RESULT_BYTES} bytes`, 1);
-  if (!text.trim()) throw new KitExit('--result is empty (the verb printed nothing on stdout: it crashed or refused; read its stderr)', 1);
-  let j;
-  try { j = JSON.parse(text); } catch { throw new KitExit('--result is not valid JSON (pass the verb\'s JSON output)', 1); }
-  if (!j || typeof j !== 'object' || Array.isArray(j)) throw new KitExit('--result must be a JSON object (the verb\'s output)', 1);
-  return j;
+/** Read --result only when it can matter: a judge's exit 2 with no signal. */
+async function resultFor(arg, code, v, signal, io) {
+  if (arg == null || signal != null || code !== 2 || !v || !PRODUCT_JUDGES.includes(v)) return {};
+  return readResult(arg, io);
 }
 async function toVerb(s) {
   if (s == null) return null;
@@ -265,14 +281,20 @@ export async function run(args, io = {}) {
   if (sub === 'describe' || sub === 'blocks') {
     const p = parse(rest, 1, ['--verb', '--result']);
     if (!p._.length) throw new KitExit(`${sub} needs a <code>; ${usage}`, 1);
-    const r = classify({ code: toCode(p._[0], '<code>'), verb: await toVerb(p['--verb']), result: await readResult(p['--result'], io) });
+    const code = toCode(p._[0], '<code>');
+    const v = await toVerb(p['--verb']);
+    const rr = await resultFor(p['--result'], code, v, null, io);
+    const r = classifyWith({ code, verb: v, result: rr.text }, rr.unusable);
     return sub === 'blocks' ? { code: r.code, verb: r.verb, class: r.class, blocks: r.blocks } : r;
   }
   if (sub === 'classify') {
     const p = parse(rest, 0, ['--code', '--signal', '--verb', '--result']);
     const signal = toSignal(p['--signal']);
     if (p['--code'] == null && signal == null) throw new KitExit(`classify needs --code <n> or --signal <name>; ${usage}`, 1);
-    return classify({ code: p['--code'] == null ? null : toCode(p['--code'], '--code'), signal, verb: await toVerb(p['--verb']), result: await readResult(p['--result'], io) });
+    const code = p['--code'] == null ? null : toCode(p['--code'], '--code');
+    const v = await toVerb(p['--verb']);
+    const rr = await resultFor(p['--result'], code, v, signal, io);
+    return classifyWith({ code, signal, verb: v, result: rr.text }, rr.unusable);
   }
   throw new KitExit(`unknown subcommand "${sub}"; ${usage}`, 1);
 }
