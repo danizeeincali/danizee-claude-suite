@@ -6,7 +6,7 @@ import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
-import { run, troubleLog, overlap, checkLessonText, saveLesson } from '../src/lib/kit/reflect.js';
+import { run, troubleLog, overlap, words, checkLessonText, saveLesson } from '../src/lib/kit/reflect.js';
 import { withStateLock as withLock } from '../src/lib/kit/state-lock.js';
 
 const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '../src/lib/kit/cli.js');
@@ -407,5 +407,35 @@ describe('reflect lessons', () => {
     }
     assert.ok(overlap('Vérifiez la configuration avant le déploiement', 'Vérifiez la configuration avant le déploiement') === 1);
     assert.ok(overlap('Vérifiez le cache', 'Rifiez le cache') < 0.7);
+  });
+  it('text handling table: normalisation, combining marks, unspaced scripts, full-width ends, English-only imperative', () => {
+    const fr = 'Vérifiez la configuration avant le déploiement';
+    const rows = [
+      { name: 'English duplicate', a: 'Check logs before restarting the daemon.', b: 'Check logs before restarting daemon.', min: 0.5 },
+      { name: 'French NFD vs NFC is an exact match', a: fr.normalize('NFD'), b: fr.normalize('NFC'), eq: 1 },
+      { name: 'Devanagari words stay whole', a: 'परीक्षण से पहले कैश जाँचें', b: 'परीक्षण से पहले कैश जाँचें', eq: 1, size: 5 },
+      { name: 'Devanagari different words differ', a: 'परीक्षण से पहले कैश जाँचें', b: 'तैनाती से पहले लॉग देखें', max: 0.3 },
+      { name: 'Japanese near-duplicates trip the guard', a: '設定を確認してからデプロイする。', b: '設定を確認してからデプロイしてください。', min: 0.5 },
+      { name: 'Japanese unrelated stay apart', a: '設定を確認してからデプロイする。', b: 'ログを消さずに再起動してください。', max: 0.3 }
+    ];
+    for (const r of rows) {
+      const o = overlap(r.a, r.b);
+      if (r.eq !== undefined) assert.equal(o, r.eq, r.name);
+      if (r.min !== undefined) assert.ok(o >= r.min, `${r.name}: ${o}`);
+      if (r.max !== undefined) assert.ok(o <= r.max, `${r.name}: ${o}`);
+      if (r.size !== undefined) assert.equal(words(r.a).size, r.size, r.name);
+    }
+    const refused = (t) => assert.throws(() => checkLessonText(t), (e) => e.code === 1, t);
+    refused('設定を確認する。デプロイしてからログを見る。');
+    refused('設定を確認する！デプロイしてからログを見る');
+    refused('Проверьте конфиг! Потом деплой.');
+    assert.equal(checkLessonText('設定を確認してからデプロイする。'), '設定を確認してからデプロイする。');
+    // the imperative check is English-only (documented): a German statement passes, an English one is refused
+    assert.equal(checkLessonText('Die Konfiguration ist kaputt.'), 'Die Konfiguration ist kaputt.');
+    assert.throws(() => checkLessonText('The configuration is broken.'), (e) => e.code === 1 && /English/.test(e.message));
+    // the near-match guard works end to end for a saved Japanese lesson
+    const data = { version: 1, lessons: [] };
+    saveLesson(data, { role: 'r', session: 's', text: '設定を確認してからデプロイする。' });
+    assert.throws(() => saveLesson(data, { role: 'r', session: 's', text: '設定を確認してからデプロイしてください。' }), (e) => e.code === 2 && e.match.id === 'L1');
   });
 });

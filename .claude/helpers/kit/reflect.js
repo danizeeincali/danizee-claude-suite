@@ -21,11 +21,12 @@
  * count (most important signals first: stop, failures, waits, repeats, targets).
  *
  * LESSONS. A store (default .claude/kit/lessons.json) of { id, role, text, scope, session, status, kept, ... }.
- * Guards: one sentence, imperative-looking, 12..200 characters; at most --max-new (default 3) new lessons per
+ * Guards: one sentence (full-width 。！？ count as sentence ends), imperative-looking (English text only; other languages
+ * are checked for one sentence and length), 12..200 characters; at most --max-new (default 3) new lessons per
  * --session (REQUIRED on save, exit 1 without it); a near match against ACTIVE lessons of the SAME role is refused (exit 2, with the matching id) unless
  * the caller passes --confirm <existing id> (keeps that lesson instead of adding a duplicate) or --distinct (saves it
  * as deliberately different). Near match = Jaccard overlap >= --threshold (default 0.5) of the normalised word sets
- * (lower-cased, punctuation dropped, stop words dropped, a trailing plural "s" dropped). A lesson may be saved for
+ * (NFC-normalised, lower-cased, punctuation dropped but combining marks kept, runs of Han/Kana/Thai/Lao/Khmer/Myanmar as character bigrams, stop words dropped, a trailing plural "s" dropped). A lesson may be saved for
  * another role. Retired lessons stay in the file with their reason and are hidden from `list` unless --all.
  * Every change holds the shared state lock (./state-lock.js: `<store>.lock`, heartbeat, stale-lock break) from load to
  * save and writes atomically through it, so parallel saves are all kept; `list` only reads and takes no lock. A leading
@@ -41,7 +42,7 @@ import { redactSecrets, parseSecretsFile, secretsRoots, loadProjectSecrets } fro
 
 export const verb = 'reflect';
 export const usage = 'cli.js reflect trouble-log [--in <events.jsonl>] [--max-lines <n>] [--max-line-length <n>] [--repeat-min <n>] [--target-min <n>] [--secrets-file <f>] | '
-  + 'reflect lessons save --role <r> --text "<one sentence>" [--scope <s>] --session <id> [--max-new <n>] [--threshold <0..1>] [--confirm <id> | --distinct] [--store <f>] | '
+  + 'reflect lessons save --role <r> --text "<one sentence; the imperative check applies to English only>" [--scope <s>] --session <id> [--max-new <n>] [--threshold <0..1>] [--confirm <id> | --distinct] [--store <f>] | '
   + 'reflect lessons keep --id <id> | reflect lessons retire --id <id> --reason "<why>" | reflect lessons list [--role <r>] [--all]   '
   + '(no model call: trouble-log is the reviewer\'s input, lessons are the guarded memory; exit 0 done, 1 invalid, 2 refused save)';
 
@@ -199,13 +200,29 @@ export function troubleLog(objs, { secrets = [], maxLines = DEFAULTS.maxLines, m
 
 const STOP_WORDS = new Set(['the', 'a', 'an', 'to', 'of', 'in', 'on', 'and', 'or', 'for', 'is', 'be', 'it', 'with', 'at', 'by', 'this', 'that', 'you', 'your']);
 
-/** Normalised word set used for the overlap measure. */
+// Scripts written without spaces between words: their runs are scored as character bigrams (a lone character stays alone).
+const UNSPACED_RUN = /[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}\p{scx=Thai}\p{scx=Lao}\p{scx=Khmer}\p{scx=Myanmar}]+/gu;
+
+/** Normalised word set used for the overlap measure (NFC, marks kept, unspaced scripts as bigrams). */
 export function words(text) {
   const out = new Set();
-  for (let w of String(text).toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/)) {
-    if (!w || STOP_WORDS.has(w)) continue;
-    if (w.length > 3 && w.endsWith('s')) w = w.slice(0, -1);
-    out.add(w);
+  const norm = String(text).normalize('NFC').toLowerCase().replace(/[^\p{L}\p{M}\p{N}\s]/gu, ' ');
+  for (const tok of norm.split(/\s+/)) {
+    if (!tok) continue;
+    let last = 0;
+    const spaced = (w) => {
+      if (!w || STOP_WORDS.has(w)) return;
+      if (w.length > 3 && w.endsWith('s')) w = w.slice(0, -1);
+      out.add(w);
+    };
+    for (const m of tok.matchAll(UNSPACED_RUN)) {
+      spaced(tok.slice(last, m.index));
+      const cs = [...m[0]];
+      if (cs.length === 1) out.add(cs[0]);
+      else for (let i = 0; i + 1 < cs.length; i++) out.add(cs[i] + cs[i + 1]);
+      last = m.index + m[0].length;
+    }
+    spaced(tok.slice(last));
   }
   return out;
 }
@@ -228,10 +245,10 @@ export function checkLessonText(text) {
   const t = text.trim();
   if (/[\r\n]/.test(t)) throw invalid('a lesson is one sentence on one line');
   if (t.length < TEXT_MIN || t.length > TEXT_MAX) throw invalid(`a lesson is ${TEXT_MIN}..${TEXT_MAX} characters (got ${t.length})`);
-  if (/[.!?]\s+\S/.test(t.replace(/\b(e\.g|i\.e|etc|vs|cf)\./gi, '$1'))) throw invalid('a lesson is ONE sentence');
+  if (/[.!?]\s+\S|[。！？｡]\s*\S/u.test(t.replace(/\b(e\.g|i\.e|etc|vs|cf)\./gi, '$1'))) throw invalid('a lesson is ONE sentence');
   const first = t.split(/\s+/)[0].replace(/[^\p{L}']/gu, '');
   if (!/^\p{L}/u.test(t) || !first) throw invalid('a lesson starts with a verb (imperative)');
-  if (NON_IMPERATIVE_START.test(first) || (/ing$/i.test(first) && !ING_VERBS.has(first.toLowerCase()))) throw invalid(`a lesson is imperative: start with a verb, not "${first}"`);
+  if (NON_IMPERATIVE_START.test(first) || (/ing$/i.test(first) && !ING_VERBS.has(first.toLowerCase()))) throw invalid(`a lesson is imperative: start with a verb, not "${first}" (the imperative check applies to English text only; other languages are checked for one sentence and length)`);
   return t;
 }
 
