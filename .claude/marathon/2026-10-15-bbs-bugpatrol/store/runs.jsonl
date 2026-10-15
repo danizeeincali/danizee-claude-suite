@@ -17,3 +17,8 @@
 {"kind":"unit","status":"green","stream":"trouble-log-reflection-into-lesson-memor","commit":"cc02796","id":"5fe5078d-3fb9-4eef-bd99-bd2daa6c42b6","ts":"2026-10-15T16:59:39.692Z"}
 {"kind":"unit","status":"green","stream":"sarif-junit-and-sticky-pr-comment-render","commit":"41545c9","id":"54a7f9a5-d0bb-4f6b-9397-2e5e8803badf","ts":"2026-10-15T17:02:54.446Z"}
 {"kind":"unit","status":"green","stream":"repeated-replay-gate-for-claims","commit":"6a026ae","id":"7782ecea-1141-4d32-944e-68001ee888ba","ts":"2026-10-15T17:02:59.241Z"}
+{"kind":"unit","status":"green","stream":"change-impact-test-plan","commit":"d25f8d6","id":"ac719325-db6e-46da-97f4-145b53d058e7","ts":"2026-10-15T17:03:32.798Z"}
+{"kind":"unit","status":"green","stream":"preflight-doctor-checks-before-a-run","commit":"52c1f2b","id":"99c49938-eacf-4fbf-8797-05bc4fed56ee","ts":"2026-10-15T17:03:40.191Z"}
+{"kind":"unit","status":"green","stream":"exit-code-contract-separating-infrastruc","commit":"3c0ee0d","id":"0a4b8b55-5117-4c58-91cd-5e47382380eb","ts":"2026-10-15T17:03:50.117Z"}
+{"kind":"unit","status":"green","stream":"noise-ledger-with-flake-quarantine","commit":"6ffb2c2","id":"e451017a-d5f4-4dd9-ac87-c07057a0593b","ts":"2026-10-15T17:04:03.112Z"}
+{"kind":"unit","status":"green","stream":"finding-triage-with-fingerprint-dedup-an","commit":"82823e2","id":"affe5776-a6d8-4068-bcd0-8e80c51abd27","ts":"2026-10-15T17:04:19.138Z"}
