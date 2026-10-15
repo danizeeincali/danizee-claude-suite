@@ -1,0 +1,15 @@
+# Review a4626b2e-5ce5-4285-be47-d47defd7fd0d — integration, round 12
+
+- Commit: dd364b5
+- Angle: accessibility
+- Result: pass
+- 3 findings
+
+## Medium (1)
+
+- **Private-key mask hides only the BEGIN line; the key body still reaches trouble-log output** — `src/lib/kit/reflect.js:68` (security): The PEM pattern matches only the '-----BEGIN ... PRIVATE KEY-----' header. Confirmed: a failed Bash event whose error holds a PEM key comes out of \`reflect trouble-log\` as 'failed: Bash - bad key: \[credential\]\nMIIEowIBAAKCAQEAu1SU1Lf...\n-----END RSA PRIVATE KEY-----', exit 0. The base64 key material and the END line are printed unmasked. The model is told it may quote these lines in a lesson. A lesson that quotes only the body passes the save guard, because the guard uses the same pattern, and is then written to the git-tracked .claude/kit/lessons.json. So the round-11 credential fix is incomplete for keys. — fix: Match the whole block, e.g. /-----BEGIN \[A-Z \]\*PRIVATE KEY-----\[\s\S\]\*?(?:-----END \[A-Z \]\*PRIVATE KEY-----|$)/g, so the body is masked too (also when it is cut off). Add a test that the body text is absent from the output.
+
+## Low (2)
+
+- **Credential refusal names a flag the caller did not pass and not what matched, and the workflow just drops the lesson** — `src/lib/kit/reflect.js:456` (accessibility): The workflows always save with --text-file, but the error says '--text contains a credential-shaped string ... rewrite it without the value' and does not say which substring or pattern matched. The Bearer pattern also matches prose. Confirmed: 'Always pass bearer authentication-header-values from env' is refused with exit 1, although it holds no value to remove. The /pt, /w-fix and /w-bbs reflection steps (dot-shortcuts.js 1085, 1787, 5316) say only 'Exit 1: invalid input, report it'. So the model neither knows what to rewrite nor is told to retry, and the lesson is lost. — fix: Name the flag actually given (--text-file \<path\>) and quote the matched span masked (e.g. 'Bearer auth…', 'ghp\_…'). In the reflection steps, say that an exit 1 naming a secret or credential means: rewrite the lesson without it and save again.
+- **Unsubstituted example path makes the fallback message blame the scan** — `src/plugins/dot-shortcuts.js:924` (accessibility): Still open from r11, now as a messaging problem. If a test-plan block runs with the example P=/tmp/tmp.AbC123 (/pt line 924, /w-fix 1726), the redirect fails with 'No such file or directory'. The block then prints 'test map not built (scan failed or no test files): test-plan skipped, run the full suite'. That message points at the project's tests, not at the missing directory, so the person or model is never told to substitute the printed mktemp path. The step is silently skipped every run. The reflection blocks' E= default fails the same way, with 'cannot read events ...: ENOENT'. — fix: Use a non-runnable placeholder with a guard, e.g. P='\<printed dir\>'; \[ -d "$P" \] || { echo "P is not the mktemp -d directory: substitute it" \>&2; exit 1; }, so the failure names its real cause.
