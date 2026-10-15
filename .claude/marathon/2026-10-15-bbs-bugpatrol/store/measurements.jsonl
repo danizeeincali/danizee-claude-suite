@@ -43,3 +43,6 @@
 {"key":"packaged_shared-budget-for-claim-sub-sessions","value":true,"id":"f198349b-5589-4aef-84a4-294725de0a7e","ts":"2026-10-15T18:17:13.058Z"}
 {"key":"egress_zero_shared-budget-for-claim-sub-sessions","value":true,"id":"5ca7610d-062b-43ce-abd0-83a2e921edac","ts":"2026-10-15T18:17:13.294Z"}
 {"key":"callers_shared-budget-for-claim-sub-sessions","value":0,"id":"2a54304e-052c-4394-a757-ff6cbf038acd","ts":"2026-10-15T18:17:13.484Z"}
+{"key":"packaged_trouble-log-reflection-into-lesson-memor","value":true,"id":"31922a53-4b98-45b8-a55d-4ea9e3d6d260","ts":"2026-10-15T18:18:18.609Z"}
+{"key":"egress_zero_trouble-log-reflection-into-lesson-memor","value":true,"id":"e74b4e32-a12e-42c4-9197-ae897dc061ea","ts":"2026-10-15T18:18:18.832Z"}
+{"key":"callers_trouble-log-reflection-into-lesson-memor","value":0,"id":"7a4b02b6-6e21-4ccf-983f-7ff94350c2e4","ts":"2026-10-15T18:18:19.093Z"}

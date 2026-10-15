@@ -58,3 +58,6 @@ Dani chose "Raise to 14M" on the decision card; run_token_budget in .claude/mara
 
 ## Judges fail closed (lead, exit-codes r11)
 A product judge's exit 2 (scrub, push-gate) always blocks. `--result` may describe why (hits, unscanned files and their reasons, a remedy) and may reject a result whose own exit field contradicts the code, but no not_scanned reason turns a judge's 2 into infrastructure: scrub never fetches (GIT_NO_LAZY_FETCH=1), so "object not available locally" is deterministic in sparse/blobless clones, not a network fault. Eleven review rounds found a new fail-open path in the reclassification each time.
+
+## Reflect certification note (lead)
+Reflect's gate was met by r6 (2 mediums, inside tolerance, then fixed in fe88c89) and r7 (one low) on fe88c89. A lead-spawned r8 ran with an empty brief (review-brief found no diff past the certified HEAD); it re-read the whole module at fe88c89 and repeated r7's low. It is not recorded as a review row because it had no brief.
