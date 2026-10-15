@@ -162,13 +162,15 @@ describe('exit-codes', () => {
       assert.match(r.description, /--result/);
     }
   });
-  it('scrub exit 2 with zero hits and an incomplete scan is infrastructure with --result', () => {
+  it('scrub exit 2 with zero hits and a partial-clone scan blocks with --result (judges fail closed)', () => {
     for (const result of [partial, { hit_count: 0, complete: false, not_scanned: [{ file: 'a', reason: 'object not available locally (partial clone?)' }, { file: 'b', reason: 'object not available locally (partial clone?)' }] }]) {
       const r = classify({ code: 2, verb: 'scrub', result });
-      assert.equal(r.class, 'infrastructure');
-      assert.equal(r.blocks, false);
-      assert.equal(r.judged, false);
-      assert.equal(blocksMerge(2, 'scrub', null, result), false);
+      assert.equal(r.class, 'regression');
+      assert.equal(r.blocks, true);
+      assert.equal(blocksMerge(2, 'scrub', null, result), true);
+      assert.match(r.description, /full clone/);
+      assert.match(r.description, /fetch the missing blobs/i);
+      assert.doesNotMatch(r.description, /network/i);
     }
   });
   it('a scrub result with hits stays a regression, also when the scan was incomplete', () => {
@@ -189,11 +191,11 @@ describe('exit-codes', () => {
     }
     for (const ns of [[], ['x'], undefined]) assert.equal(blocksMerge(2, 'scrub', null, { hit_count: 0, complete: false, not_scanned: ns }), true);
   });
-  it('push-gate deny where the scrub check could not run is infrastructure with --result', () => {
+  it('push-gate deny where the scrub check could not run still blocks with --result (judges fail closed)', () => {
     for (const result of [pgTimeout, { decision: 'deny', reason: 'the scrub check is configured but could not run: git ls-files wrote more than 256 MiB of output; narrow the command' }, { decision: 'deny', reason: 'the scrub check is configured but could not run: cannot run git: spawn ENOENT', scrub: { ran: false } }, { decision: 'deny', reason: 'r', scrub: { ran: true, hit_count: 0, complete: false, not_scanned: [{ file: 'a', reason: 'object not available locally (partial clone?)' }] } }]) {
       const r = classify({ code: 2, verb: 'push-gate', result });
-      assert.equal(r.class, 'infrastructure');
-      assert.equal(r.blocks, false);
+      assert.equal(r.class, 'regression');
+      assert.equal(r.blocks, true);
     }
   });
   it('push-gate deny for a scrub refusal (not an environment cause) always blocks, even with scrub.ran false', () => {
@@ -225,18 +227,19 @@ describe('exit-codes', () => {
     assert.equal(empty.blocks, true);
     assert.match(empty.description, /printed nothing.*crashed or refused.*stderr/);
   });
-  it('a push-gate not_scanned list at the cap (20, possibly truncated) is never reclassified', () => {
+  it('a push-gate not_scanned list always blocks, and at the cap (20) the description says it may be truncated', () => {
     const miss = (n) => Array.from({ length: n }, (_, i) => ({ file: `f${i}`, reason: 'object not available locally (partial clone?)' }));
     const pg = (n) => ({ decision: 'deny', reason: 'the scrub check refused this push: 0 hit(s)', scrub: { ran: true, hit_count: 0, complete: false, hits: [], not_scanned: miss(n) } });
     // 20 partial-clone entries may hide a 21st 'larger than' entry that push-gate sliced off: the deny keeps blocking.
     assert.equal(classify({ code: 2, verb: 'push-gate', result: pg(20) }).blocks, true);
     assert.equal(classify({ code: 2, verb: 'push-gate', result: pg(25) }).blocks, true);
-    assert.equal(classify({ code: 2, verb: 'push-gate', result: pg(19) }).blocks, false, 'a short list is complete');
-    assert.equal(classify({ code: 2, verb: 'push-gate', result: pg(19) }).class, 'infrastructure');
-    // scrub's own result is never truncated, so a long all-environment list still reclassifies there
-    assert.equal(classify({ code: 2, verb: 'scrub', result: { hit_count: 0, complete: false, not_scanned: miss(25) } }).blocks, false);
+    assert.equal(classify({ code: 2, verb: 'push-gate', result: pg(19) }).blocks, true);
+    assert.equal(classify({ code: 2, verb: 'push-gate', result: pg(19) }).class, 'regression');
+    assert.match(classify({ code: 2, verb: 'push-gate', result: pg(20) }).description, /at most 20 files/);
+    assert.doesNotMatch(classify({ code: 2, verb: 'push-gate', result: pg(19) }).description, /at most 20 files/);
+    assert.equal(classify({ code: 2, verb: 'scrub', result: { hit_count: 0, complete: false, not_scanned: miss(25) } }).blocks, true);
   });
-  it('a zero-hit partial-clone scrub result over 1 MiB is infrastructure on every path (text, file, stdin, library string and object)', async () => {
+  it('a zero-hit partial-clone scrub result over 1 MiB blocks on every path (text, file, stdin, library string and object)', async () => {
     const ns = Array.from({ length: 8000 }, (_, i) => ({ file: `src/generated/module-${i}/some/deeply/nested/path/file-${i}.js`, reason: 'object not available locally (partial clone?)' }));
     const obj = { exit: 2, ran: true, hit_count: 0, complete: false, hits: [], not_scanned: ns };
     const text = JSON.stringify(obj, null, 2);
@@ -247,16 +250,16 @@ describe('exit-codes', () => {
       fs.writeFileSync(f, text);
       const cli = path.resolve('src/lib/kit/cli.js');
       const viaFile = spawnSync(process.execPath, [cli, 'exit-codes', 'classify', '--code', '2', '--verb', 'scrub', '--result', f], { encoding: 'utf-8' });
-      assert.equal(JSON.parse(viaFile.stdout).class, 'infrastructure');
-      assert.equal(JSON.parse(viaFile.stdout).blocks, false);
+      assert.equal(JSON.parse(viaFile.stdout).class, 'regression');
+      assert.equal(JSON.parse(viaFile.stdout).blocks, true);
       const viaStdin = spawnSync(process.execPath, [cli, 'exit-codes', 'classify', '--code', '2', '--verb', 'scrub', '--result', '-'], { input: text, encoding: 'utf-8' });
-      assert.equal(JSON.parse(viaStdin.stdout).class, 'infrastructure');
-      assert.equal((await run(['blocks', '2', '--verb', 'scrub', '--result', f])).blocks, false);
+      assert.equal(JSON.parse(viaStdin.stdout).class, 'regression');
+      assert.equal((await run(['blocks', '2', '--verb', 'scrub', '--result', f])).blocks, true);
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
-    assert.equal(blocksMerge(2, 'scrub', null, text), false, 'string');
-    assert.equal(blocksMerge(2, 'scrub', null, obj), false, 'object');
-    assert.equal(classify({ code: 2, verb: 'scrub', result: text }).class, 'infrastructure');
-    assert.equal(classify({ code: 2, verb: 'scrub', result: obj }).class, 'infrastructure');
+    assert.equal(blocksMerge(2, 'scrub', null, text), true, 'string');
+    assert.equal(blocksMerge(2, 'scrub', null, obj), true, 'object');
+    assert.equal(classify({ code: 2, verb: 'scrub', result: text }).class, 'regression');
+    assert.equal(classify({ code: 2, verb: 'scrub', result: obj }).class, 'regression');
   });
   it('the string and object library paths apply the same size rule beyond the cap', () => {
     const cap = 64 * 1048576;
@@ -304,11 +307,11 @@ describe('exit-codes', () => {
     try {
       const f = path.join(d, 'r.json');
       fs.writeFileSync(f, JSON.stringify(pgTimeout));
-      assert.equal((await run(['classify', '--code', '2', '--verb', 'push-gate', '--result', f])).class, 'infrastructure');
-      assert.equal((await run(['blocks', '2', '--verb', 'push-gate', '--result', f])).blocks, false);
+      assert.equal((await run(['classify', '--code', '2', '--verb', 'push-gate', '--result', f])).class, 'regression');
+      assert.equal((await run(['blocks', '2', '--verb', 'push-gate', '--result', f])).blocks, true);
       assert.equal((await run(['describe', '2', '--verb', 'scrub', `--result=${f}`])).class, 'regression');
       const io = { stdin: async () => Buffer.from(JSON.stringify(partial)), stdinIsTTY: false };
-      assert.equal((await run(['blocks', '2', '--verb', 'scrub', '--result', '-'], io)).blocks, false);
+      assert.equal((await run(['blocks', '2', '--verb', 'scrub', '--result', '-'], io)).blocks, true);
       assert.equal((await run(['blocks', '2', '--verb', 'scrub'], io)).blocks, true);
       await assert.rejects(run(['blocks', '2', '--verb', 'scrub', '--result', '-'], { stdin: async () => Buffer.from(''), stdinIsTTY: true }), (e) => e.code === 1);
       assert.equal((await run(['blocks', '2', '--verb', 'scrub', '--result', '-'], { stdin: async () => Buffer.from('nope'), stdinIsTTY: false })).blocks, true);
@@ -336,10 +339,45 @@ describe('exit-codes', () => {
     // real hits keep the generic text
     assert.match(classify({ code: 2, verb: 'scrub', result: { hit_count: 1, not_scanned: ns } }).description, /ran and said no/);
   });
-  it('the header describes the partial-clone-only rule', () => {
+  it('the header and usage describe the fail-closed rule and no reclassification path is left', () => {
     const src = fs.readFileSync(new URL('../src/lib/kit/exit-codes.js', import.meta.url), 'utf-8');
-    assert.doesNotMatch(src, /or complete false/);
-    assert.match(src.split('*/')[0], /every not_scanned reason/);
+    assert.match(src.split('*/')[0], /ALWAYS\s+\* blocks/);
+    assert.match(src.split('*/')[0], /GIT_NO_LAZY_FETCH/);
+    assert.doesNotMatch(src, /ENV_REASONS|ENV_COULD_NOT_RUN|unjudgedReason|NOT_JUDGED|incompleteNoHits|judged: false|every not_scanned reason/);
+  });
+  it('a sparse blobless clone (file://, no network): a secret outside the cone is unscanned and the gate blocks', () => {
+    const cli = path.resolve('src/lib/kit/cli.js');
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'exit-sparse-'));
+    try {
+      const sh = (cwd, ...a) => { const r = spawnSync('git', a, { cwd, encoding: 'utf-8' }); assert.equal(r.status, 0, `git ${a.join(' ')}: ${r.stderr}`); return r; };
+      const src = path.join(d, 'src');
+      fs.mkdirSync(path.join(src, '.claude', 'kit'), { recursive: true });
+      fs.mkdirSync(path.join(src, 'other'), { recursive: true });
+      fs.mkdirSync(path.join(src, 'keep'), { recursive: true });
+      fs.writeFileSync(path.join(src, '.claude', 'kit', 'scrub-patterns'), 'AKIA[0-9A-Z]{16}\n');
+      fs.writeFileSync(path.join(src, 'keep', 'ok.txt'), 'fine\n');
+      fs.writeFileSync(path.join(src, 'other', 'leak.txt'), 'AKIAABCDEFGHIJKLMNOP\n');
+      sh(src, 'init', '-q'); sh(src, 'config', 'user.email', 'a@b.c'); sh(src, 'config', 'user.name', 'a');
+      sh(src, 'config', 'uploadpack.allowFilter', 'true'); sh(src, 'config', 'uploadpack.allowAnySHA1InWant', 'true');
+      sh(src, 'add', '-A'); sh(src, 'commit', '-qm', 'x');
+      const clone = path.join(d, 'clone');
+      sh(d, '-c', 'protocol.file.allow=always', 'clone', '-q', '--filter=blob:none', '--sparse', '--no-checkout', `file://${src}`, clone);
+      sh(clone, 'sparse-checkout', 'set', '.claude', 'keep');
+      sh(clone, 'checkout', '-q');
+      const sc = spawnSync(process.execPath, [cli, 'scrub'], { cwd: clone, encoding: 'utf-8' });
+      assert.equal(sc.status, 2, sc.stderr);
+      const out = JSON.parse(sc.stdout);
+      assert.equal(out.hit_count, 0);
+      assert.ok(out.not_scanned.some((e) => e.reason === 'object not available locally (partial clone?)'), sc.stdout);
+      const f = path.join(d, 'r.json');
+      fs.writeFileSync(f, sc.stdout);
+      const b = JSON.parse(spawnSync(process.execPath, [cli, 'exit-codes', 'blocks', '2', '--verb', 'scrub', '--result', f], { encoding: 'utf-8' }).stdout);
+      assert.equal(b.blocks, true);
+      assert.equal(b.class, 'regression');
+      const c = JSON.parse(spawnSync(process.execPath, [cli, 'exit-codes', 'describe', '2', '--verb', 'scrub', '--result', f], { encoding: 'utf-8' }).stdout);
+      assert.match(c.description, /full clone/);
+      assert.equal(blocksMerge(2, 'scrub', null, sc.stdout), true);
+    } finally { fs.rmSync(d, { recursive: true, force: true }); }
   });
   it('an empty piped --result says nothing was piped', async () => {
     const r = await run(['classify', '--code', '2', '--verb', 'scrub', '--result', '-'], { stdin: async () => Buffer.from('  \n'), stdinIsTTY: false });
@@ -359,7 +397,7 @@ describe('exit-codes', () => {
     assert.equal(blocksMerge(2, 'scrub', null, hit), true);
     assert.equal(blocksMerge(2, 'scrub', null, { hit_count: 3, not_scanned: [] }), true);
     const partial = { hit_count: 0, not_scanned: [{ file: 'a', reason: 'object not available locally (partial clone?)' }] };
-    assert.equal(blocksMerge(2, 'scrub', null, JSON.stringify(partial)), false);
+    assert.equal(blocksMerge(2, 'scrub', null, JSON.stringify(partial)), true);
     for (const r of ['not json', '', '  \n', '[]', '3', 'null', '"x"', 'x'.repeat(1048577), [], 5]) {
       assert.equal(blocksMerge(2, 'scrub', null, r), true, String(r).slice(0, 20));
       assert.equal(classify({ code: 2, verb: 'scrub', result: r }).class, 'regression');
@@ -368,8 +406,8 @@ describe('exit-codes', () => {
   });
 
   describe('whole input space: code x signal x verb x result', () => {
-    // Rule: the result is read only for a judge verb with no signal. At exit 2, empty, truncated or unusable output is a blocking
-    // regression (fail closed) and anything uncertain blocks. At ANY code, a result that parses as an object whose numeric exit field
+    // Rule: a judge's exit 2 ALWAYS blocks (regression), whatever the result says; the result is read only for a judge verb with no
+    // signal, to describe the 2 and to reject an exit field that contradicts the code. Empty, truncated or unusable output blocks too. At ANY code, a result that parses as an object whose numeric exit field
     // differs from the code is KitExit 1. At a code other than 2, empty or unparseable content is ignored. Nothing else throws on result
     // content, so otherwise the class comes from code, signal and verb alone (a non-judge verb or a signal never reads the result).
     const CODES = [0, 1, 2, 124, 126, 127, 137, null];
@@ -382,6 +420,8 @@ describe('exit-codes', () => {
       empty: '',
       truncated: '{"hit_count":3,"not_scanned":[{"file":"a","rea',
       clean: v === 'push-gate' ? '{"decision":"allow"}' : '{"hit_count":0,"complete":true,"not_scanned":[]}',
+      partial: v === 'push-gate' ? '{"decision":"deny","reason":"x","scrub":{"ran":true,"hit_count":0,"complete":false,"not_scanned":[{"file":"a","reason":"object not available locally (partial clone?)"}]}}' : '{"hit_count":0,"complete":false,"not_scanned":[{"file":"a","reason":"object not available locally (partial clone?)"}]}',
+      unrun: v === 'push-gate' ? '{"decision":"deny","reason":"the scrub check is configured but could not run: git config took longer than 1 ms","scrub":{"ran":false}}' : '{"hit_count":0,"complete":false,"not_scanned":[]}',
       hits: v === 'push-gate' ? '{"decision":"deny","reason":"x","scrub":{"ran":true,"hit_count":3,"complete":true,"not_scanned":[]},"exit":2}' : '{"hit_count":3,"complete":true,"not_scanned":[],"exit":2}',
       mismatch: v === 'push-gate' ? `{"decision":"deny","reason":"x","exit":${exitOf(code)}}` : `{"hit_count":3,"complete":true,"not_scanned":[],"exit":${exitOf(code)}}`,
     });
@@ -438,7 +478,7 @@ describe('exit-codes', () => {
           }
         }
       }
-      assert.equal(n, 8 * 2 * 3 * 6);
+      assert.equal(n, 8 * 2 * 3 * 8);
     });
 
     it('a result is not even read unless the verb is a judge and there is no signal', async () => {

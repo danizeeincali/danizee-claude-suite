@@ -32,7 +32,7 @@ describe('exit-codes — packaged end to end', () => {
     assert.deepEqual(pkg.egress(), []);
   });
 
-  it('a real push-gate run that could not run is infrastructure with --result, a regression without', () => {
+  it('a real push-gate run that could not run is a regression with or without --result', () => {
     const repo = fs.mkdtempSync(path.join(os.tmpdir(), 'exitcodes-pkg-'));
     try {
       const g = (...a) => spawnSync('git', a, { cwd: repo, encoding: 'utf-8' });
@@ -48,9 +48,9 @@ describe('exit-codes — packaged end to end', () => {
       assert.equal(without.json.class, 'regression');
       const withR = pkg.kit(['exit-codes', 'classify', '--code', '2', '--verb', 'push-gate', '--result', '-'], pg.out);
       assert.equal(withR.code, 0);
-      assert.equal(withR.json.class, 'infrastructure');
-      assert.equal(withR.json.blocks, false);
-      assert.equal(pkg.kit(['exit-codes', 'blocks', '2', '--verb', 'push-gate', '--result', '-'], pg.out).json.blocks, false);
+      assert.equal(withR.json.class, 'regression');
+      assert.equal(withR.json.blocks, true);
+      assert.equal(pkg.kit(['exit-codes', 'blocks', '2', '--verb', 'push-gate', '--result', '-'], pg.out).json.blocks, true);
       assert.equal(pkg.kit(['exit-codes', 'classify', '--code', '124']).json.class, 'infrastructure');
       const nope = pkg.kit(['exit-codes', 'blocks', '2', '--verb', 'scrub', '--result', '-'], 'nope');
       assert.equal(nope.code, 0, 'a judge 2 with unusable output blocks, it does not error');

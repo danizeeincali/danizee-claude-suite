@@ -7,12 +7,13 @@
  *   exit-codes blocks <code> [--verb <v>] [--result <file|->]     { blocks }: true only for the regression class
  *   exit-codes classify --code <n> [--signal <name>] [--verb <v>] [--result <file|->]
  *
- * --result <file|-> is the JSON a product judge printed (a regular file or piped stdin, each of at most 64 MiB). A judge exits 2 both when it
- * judged the product and said no and when it could not judge at all, so without --result a judge's 2 is a regression. With it, an exit 2 whose
- * result shows nothing was judged is infrastructure and never blocks: scrub with hit_count 0 and a non-empty not_scanned list
- * where every not_scanned reason is an environment reason (a partial clone with the remote unreachable); push-gate with decision deny whose reason says the check 'could not run' because of an environment cause (git timed out, overflowed, was killed or could not be run; NOT scrub's own refusals such as a tracked private pattern file, which block), or a scrub block that is such a zero-hit partial-clone-only scan. Size, total,
- * not-a-regular-file and other reasons stay blocking (fail closed, described by their reason), as does any hit or a review deny.
- * The result is read only for a judge verb with no signal. At exit 2, empty, truncated, oversized or non-object output is a blocking regression (fail closed: the judge crashed or refused). At any code, a result that parses as an object whose numeric `exit` field differs from the code is KitExit 1 (a stale $? must not turn a hit into clean); at a code other than 2, empty or unparseable content is ignored. Nothing else throws on result content.
+ * --result <file|-> is the JSON a product judge printed (a regular file or piped stdin, each of at most 64 MiB). A judge's exit 2 ALWAYS
+ * blocks (class regression), whatever the result says: judges fail closed. scrub never fetches (GIT_NO_LAZY_FETCH=1), so a file whose
+ * object is missing locally is skipped deterministically in a sparse or blobless clone; that is not a network fault and never infrastructure.
+ * --result only does two things: (1) it rejects a result whose numeric `exit` field differs from the code (KitExit 1: a stale $? must not turn
+ * a hit into clean; checked at any code), and (2) it describes the 2 better: the hit count, the unscanned files with their reasons, and a
+ * remedy that fits each reason (e.g. 'fetch the missing blobs or run in a full clone'). Empty, truncated, oversized or non-object output at
+ * exit 2 also blocks. The result is read only for a judge verb with no signal; at a code other than 2, empty or unparseable content is ignored.
  * The library takes the parsed object or the judge's stdout string (parsed like --result): classify({ code, verb, result }), blocksMerge(code, verb, signal, result). It fails closed like the CLI: a verb outside the registered kit verbs, a bad code or a bad result throws KitExit 1 (blocksMerge rethrows; an input error never means 'does not block'). 124 (timeout(1)) is infrastructure.
  *
  * Classes: clean (0), regression (2 from a listed product judge only: the ONLY class allowed to block a merge), usage (1, invalid input
@@ -35,7 +36,7 @@ import { fileURLToPath } from 'node:url';
 import { KitExit } from './kit-exit.js';
 
 export const verb = 'exit-codes';
-export const usage = 'cli.js exit-codes table | describe <code> [--verb <v>] [--result <file|->] | blocks <code> [--verb <v>] [--result <file|->] | classify --code <n> [--signal <name>] [--verb <v>] [--result <file|->]  (JSON out, exit 0; exit 1 on bad input)';
+export const usage = 'cli.js exit-codes table | describe <code> [--verb <v>] [--result <file|->] | blocks <code> [--verb <v>] [--result <file|->] | classify --code <n> [--signal <name>] [--verb <v>] [--result <file|->]  (JSON out, exit 0; exit 1 on bad input; a judge 2 always blocks: --result only describes it and rejects an exit field that contradicts the code)';
 
 const freeze = (o) => Object.freeze(o);
 
@@ -43,7 +44,7 @@ const freeze = (o) => Object.freeze(o);
 export const CLASSES = freeze({
   clean: freeze({ code: 0, blocks: false, description: 'The verb succeeded; nothing to report.' }),
   usage: freeze({ code: 1, blocks: false, description: 'Invalid input, broken state, or a tool failure (not separable yet): the call was malformed or the data unusable, or the tool crashed or a git child failed, since cli.js reports any crash as 1. Check the message before blaming the caller; never block on it.' }),
-  regression: freeze({ code: 2, blocks: true, description: 'Regression: a verb that judges the product (see product_judges) ran and said no. The only outcome allowed to block a merge. Exit 2 from any other verb, or with no verb, is a refusal (precondition) and does not block. A judge also exits 2 when it could not judge (scrub on an incomplete scan, push-gate whose scrub check could not run); pass --result <file|-> (the verb\'s JSON output) to tell an unrun check (infrastructure) from a real verdict.' }),
+  regression: freeze({ code: 2, blocks: true, description: 'Regression: a verb that judges the product (see product_judges) ran and said no. The only outcome allowed to block a merge. Exit 2 from any other verb, or with no verb, is a refusal (precondition) and does not block. A judge also exits 2 when it could not judge (scrub on an incomplete scan, push-gate whose scrub check could not run); that still blocks (fail closed). Pass --result <file|-> (the verb\'s JSON output) for the hit count, the unscanned files with reasons and a remedy.' }),
   precondition: freeze({ code: 4, blocks: false, description: 'A prerequisite was never met (missing tool, file, credential or setup); nothing was judged.' }),
   infrastructure: freeze({ code: 5, blocks: false, description: 'The tool or environment failed (timeout, crash, signal, git failure); says nothing about the product. Retry or repair, never block on it alone.' }),
 });
@@ -86,51 +87,42 @@ export const TABLE = freeze({
 
 /** Far above any judge's real output (scrub's not_scanned list has no cap: about 160 bytes per missing file in a partial clone). Only a result beyond this is 'oversize', and it blocks at a judge's 2. The CLI reads incrementally, so memory is bounded by the cap. */
 const MAX_RESULT_BYTES = 64 * 1048576;
-const NOT_JUDGED = 'The judge exited 2 but its result shows it could not judge the product (%s); nothing was decided about the product, so this is infrastructure and never blocks. Fix the environment (network, partial clone, git speed) and rerun.';
+/** The exact not_scanned reason scrub.js writes for a blob that is not in the object store. scrub never fetches, so this is deterministic in a sparse or blobless clone. */
+const MISSING_OBJECT = 'object not available locally (partial clone?)';
 
-/** The only not_scanned reasons that come from the environment, not the product (the exact string scrub.js writes). Size limits, total limit, not-a-regular-file, unreadable and unknown reasons may hide a secret, so they stay blocking. */
-const ENV_REASONS = freeze(['object not available locally (partial clone?)']);
-
-/** push-gate.js keeps only the first 20 not_scanned entries (`r.not_scanned.slice(0, 20)` in its scrub-refusal result), and scrub lists the partial-clone entries first, so a list of this length may hide a later 'larger than' or 'total size limit reached' entry. Fail closed: a push-gate list this long is never reclassified. Keep in step with push-gate.js. */
+/** push-gate.js keeps only the first 20 not_scanned entries (`r.not_scanned.slice(0, 20)` in its scrub-refusal result), and scrub lists the partial-clone entries first, so a list of this length may be truncated; the description says so. Keep in step with push-gate.js. */
 export const PUSH_GATE_NOT_SCANNED_CAP = 20;
 
-const incompleteNoHits = (o) => o && typeof o === 'object' && o.hit_count === 0
-  && Array.isArray(o.not_scanned) && o.not_scanned.length > 0
-  && o.not_scanned.every((e) => e && typeof e === 'object' && ENV_REASONS.includes(e.reason));
-
-/** push-gate says 'could not run' for ANY scrub KitExit, including scrub's own refusals (tracked private pattern file, too many files, bad pattern file), which are product refusals and block. Only a cause named right after the prefix by safe-git (timeout, output overflow, killed, cannot run git) is environmental. */
-const ENV_COULD_NOT_RUN = /^the scrub check is configured but could not run: (?:git [\w-]+ (?:took longer than \d+ ms|wrote more than \d+ MiB of output|was killed by)|cannot run git:)/;
-
-/** Why a judge's result shows nothing was judged, or null. Field names are those of scrub.js and push-gate.js. */
-export function unjudgedReason(v, result) {
-  if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
-  if (v === 'scrub') return incompleteNoHits(result) ? 'scrub found no hits but every file it skipped was skipped for an environment reason (partial clone)' : null;
-  if (v === 'push-gate') {
-    if (result.decision !== 'deny') return null;
-    if (result.scrub && typeof result.scrub === 'object' && incompleteNoHits(result.scrub) && result.scrub.not_scanned.length < PUSH_GATE_NOT_SCANNED_CAP) return 'the scrub check skipped files only for an environment reason and found no hits';
-    if (typeof result.reason === 'string' && ENV_COULD_NOT_RUN.test(result.reason) && !(result.scrub && result.scrub.hit_count > 0)) return 'the scrub check could not run because git timed out, overflowed or failed to run';
-  }
-  return null;
-}
-
-/** The not_scanned reasons of a zero-hit judge result that stayed blocking, or null (fail closed: unscanned files, no verdict on them). */
-function failClosedReasons(v, result) {
+/** The scan part of a judge result: scrub's own object, or push-gate's `scrub` on a deny. Null when there is none. */
+function scanOf(v, result) {
   const scan = v === 'scrub' ? result : v === 'push-gate' && result && result.decision === 'deny' ? result.scrub : null;
-  if (!scan || typeof scan !== 'object' || scan.hit_count !== 0 || !Array.isArray(scan.not_scanned) || !scan.not_scanned.length) return null;
-  const reasons = [...new Set(scan.not_scanned.map((e) => (e && typeof e === 'object' && typeof e.reason === 'string' ? e.reason : 'unknown reason')))];
-  const out = reasons.slice(0, 5).join('; ') + (reasons.length > 5 ? '; ...' : '');
-  return v === 'push-gate' && scan.not_scanned.length >= PUSH_GATE_NOT_SCANNED_CAP ? `${out}; push-gate lists at most ${PUSH_GATE_NOT_SCANNED_CAP} files, so more may be hidden, including oversized ones` : out;
+  return scan && typeof scan === 'object' && !Array.isArray(scan) ? scan : null;
 }
+const reasonOf = (e) => (e && typeof e === 'object' && typeof e.reason === 'string' ? e.reason : 'unknown reason');
 
-/** The remedy that fits the not_scanned reasons (size, total, or a file that is missing, not regular or unreadable). */
-function failClosedRemedy(v, result) {
-  const scan = v === 'scrub' ? result : result.scrub;
-  const rs = scan.not_scanned.map((e) => (e && typeof e === 'object' && typeof e.reason === 'string' ? e.reason : ''));
+/** The remedy that fits the not_scanned reasons (missing object, size, total, or a file that is missing, not regular or unreadable). */
+function remedy(v, rs) {
   const parts = [];
+  if (rs.some((r) => r === MISSING_OBJECT)) parts.push('Fetch the missing blobs (git fetch, or unsparse the checkout) or run in a full clone; scrub never fetches by itself, so a rerun in the same clone gives the same result.');
   if (rs.some((r) => /^larger than /.test(r))) parts.push(v === 'scrub' ? 'Shrink or split the oversized files, or rerun scrub with a higher --max-file-bytes.' : 'Shrink or split the oversized files, or run scrub with a higher --max-file-bytes.');
   if (rs.some((r) => r === 'total size limit reached')) parts.push('Scan a smaller range (scrub --history <base>), since the total size limit cannot be raised.');
   if (rs.some((r) => r === 'tracked but missing on disk' || r === 'not a regular file on disk' || r.startsWith('cannot read'))) parts.push('Restore or fix the missing, non-regular or unreadable files, then rerun.');
   return parts.length ? parts.join(' ') : 'Look at the listed files and reasons, fix the cause, then rerun.';
+}
+
+/** A better description of a judge's exit 2 from its result (hit count, unscanned files and reasons, remedy), or null to keep the generic one. It never changes the class: a judge's 2 blocks. */
+function describeJudge(v, result) {
+  const scan = scanOf(v, result);
+  if (!scan) return null;
+  const hits = typeof scan.hit_count === 'number' ? scan.hit_count : 0;
+  const ns = Array.isArray(scan.not_scanned) ? scan.not_scanned : [];
+  const rs = ns.map(reasonOf);
+  const reasons = [...new Set(rs)];
+  const list = reasons.slice(0, 5).join('; ') + (reasons.length > 5 ? '; ...' : '');
+  const hidden = v === 'push-gate' && ns.length >= PUSH_GATE_NOT_SCANNED_CAP ? `; push-gate lists at most ${PUSH_GATE_NOT_SCANNED_CAP} files, so more may be hidden, including oversized ones` : '';
+  if (hits > 0) return `${CLASSES.regression.description.split(' A judge also')[0]} ${v} found ${hits} hit(s)${ns.length ? ` and did not scan ${ns.length} file(s) (${list}${hidden})` : ''}.`;
+  if (ns.length) return `Fail closed: ${v} found no hits but ${ns.length} file(s) were not scanned (${list}${hidden}), so nothing shows they are clean and it blocks. ${remedy(v, rs)}`;
+  return null;
 }
 
 const KIT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -200,11 +192,9 @@ function classifyWith({ code = null, signal = null, verb: v = null, result = nul
     if (j.why) return { ...base, class: 'regression', known: true, blocks: true, description: `Fail closed: ${v} exited 2 but ${j.why}, so nothing shows it did not judge the product; it blocks. Read the judge's stderr and rerun it.` };
     const result2 = j.obj;
     if (result2 && typeof result2.exit === 'number' && result2.exit !== code) throw new KitExit(`the result says the judge exited ${result2.exit} but the status given is ${code}; pass the judge's real exit status (not a stale $?)`, 1);
-    result = result2;
-    const why = unjudgedReason(v, result);
-    if (why) return { ...base, class: 'infrastructure', known: true, blocks: false, judged: false, description: NOT_JUDGED.replace('%s', why) };
-    const fc = failClosedReasons(v, result);
-    if (fc) return { ...base, class: 'regression', known: true, blocks: true, description: `Fail closed: ${v} found no hits but some files were not scanned for a product reason (${fc}), so it blocks. ${failClosedRemedy(v, result)}` };
+    // A judge's 2 always blocks. The result only describes it better.
+    const better = describeJudge(v, result2);
+    return { ...base, class: 'regression', known: true, blocks: true, description: better || CLASSES.regression.description };
   }
   const over = v && Object.hasOwn(VERB_OVERRIDES, v) ? VERB_OVERRIDES[v][code] : undefined;
   if (over) return { ...base, class: over.class, known: true, blocks: CLASSES[over.class].blocks, description: over.description };
