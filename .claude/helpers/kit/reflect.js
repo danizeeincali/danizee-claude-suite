@@ -65,13 +65,14 @@ export const CREDENTIAL_PATTERNS = Object.freeze([
   /\bglpat-[A-Za-z0-9_-]{20,}\b/g,
   /\bnpm_[A-Za-z0-9]{36}\b/g,
   /\bBearer\s+[A-Za-z0-9._~+\/-]{16,}=*/gi,
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----/g,
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g,
 ]);
 export function maskCredentials(text) {
   let replaced = 0;
   let out = text;
-  for (const re of CREDENTIAL_PATTERNS) out = out.replace(re, () => { replaced++; return '[credential]'; });
-  return { text: out, replaced };
+  const found = [];
+  for (const re of CREDENTIAL_PATTERNS) out = out.replace(re, (m) => { replaced++; found.push(m.slice(0, 6) + '…'); return '[credential]'; });
+  return { text: out, replaced, found };
 }
 const scrub = (v, secrets) => maskCredentials(redactSecrets(v, secrets).text).text;
 // Matched on the last segment of the name, so mcp__<server>__browser_type counts like type.
@@ -452,8 +453,10 @@ export async function run(args, io) {
         if (typeof flags[k] === 'string' && redactSecrets(flags[k], secrets).replaced > 0) {
           throw invalid(`--${k} contains a project secret; lessons are saved unredacted, so rewrite it without the secret`);
         }
-        if (typeof flags[k] === 'string' && maskCredentials(flags[k]).replaced > 0) {
-          throw invalid(`--${k} contains a credential-shaped string (a token, key or Authorization header); rewrite it without the value`);
+        const cred = typeof flags[k] === 'string' ? maskCredentials(flags[k]) : null;
+        if (cred && cred.replaced > 0) {
+          const given = flags[`${k}-file`] !== undefined ? `--${k}-file ${flags[`${k}-file`]}` : `--${k}`;
+          throw invalid(`${given} contains a credential-shaped string (${cred.found.join(', ')}); rewrite it without the value and save again`);
         }
       }
     }

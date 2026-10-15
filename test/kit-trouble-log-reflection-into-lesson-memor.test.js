@@ -94,12 +94,20 @@ describe('reflect trouble-log', () => {
     assert.ok(!out.includes('abcdefghijklmnop1234'), out);
     assert.ok(out.includes('[credential]'), out);
   });
+  it('masks the whole private key block, not just its header (r12)', () => {
+    const pem = '-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEAu1SU1LfVLPHCozMxH2Mo4lgOEePzNm0tRgeLezV6ffAt0gunVTLw7onLRnrq0\n-----END RSA PRIVATE KEY-----';
+    const out = JSON.stringify(troubleLog([{ type: 'tool', name: 'Bash', input: { command: 'ssh' }, ok: false, error: 'bad key: ' + pem }, { type: 'stop', reason: 'done' }], { maxLineLength: 1000 }));
+    assert.ok(!out.includes('MIIEowIBAAKCAQEA'), out);
+    assert.ok(!out.includes('END RSA PRIVATE KEY'), out);
+    const cut = JSON.stringify(troubleLog([{ type: 'tool', name: 'Bash', input: { command: 'ssh' }, ok: false, error: '-----BEGIN PRIVATE KEY-----\nMIIEowIBAAKCAQEAu1SU1Lf' }, { type: 'stop', reason: 'done' }]));
+    assert.ok(!cut.includes('MIIEowIBAAKCAQEA'), cut);
+  });
   it('lessons save refuses a credential-shaped string (r11)', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kit-reflect-cred-'));
     try {
       const f = path.join(dir, 'l.txt');
       await fs.writeFile(f, 'Use token ghp_abcdefghijklmnopqrstuvwxyz0123456789 for auth\n');
-      await assert.rejects(run(['lessons', 'save', '--role', 'pt', '--text-file', f, '--session', 's1', '--store', path.join(dir, 'lessons.json')], { cwd: dir }), /credential-shaped/);
+      await assert.rejects(run(['lessons', 'save', '--role', 'pt', '--text-file', f, '--session', 's1', '--store', path.join(dir, 'lessons.json')], { cwd: dir }), /--text-file .* contains a credential-shaped string \(ghp_ab…\); rewrite it without the value and save again/);
       assert.ok(!fsSync.existsSync(path.join(dir, 'lessons.json')));
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
