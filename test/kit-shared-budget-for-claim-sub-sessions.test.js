@@ -303,3 +303,133 @@ describe('shared-budget concurrent writers keep every write', () => {
     assert.deepEqual((await fs.readdir(dir)).filter((f) => f !== 'b.json'), []);
   }));
 });
+
+describe('shared-budget bounded grants and release', () => {
+  it('a grant with --steps/--cost reserves only that share, capped at what is available', () => {
+    let s = sb.openBudget({ steps: 10, cost: 5 }, 0);
+    const a = sb.grantFor(s, { helper: 'a', steps: 4, cost: 2 }, 0);
+    assert.deepEqual(a.remaining, { steps: 4, cost: 2, timeMs: null });
+    s = sb.recordGrant(s, 'a', a);
+    const b = sb.grantFor(s, { helper: 'b', steps: 100, cost: 100 }, 0);
+    assert.equal(b.skip, false);
+    assert.deepEqual(b.remaining, { steps: 6, cost: 3, timeMs: null });
+    s = sb.recordGrant(s, 'b', b);
+    assert.equal(sb.grantFor(s, { helper: 'c', steps: 1 }, 0).skip, true);
+  });
+
+  it('a share on one dimension leaves the other at its default', () => {
+    const s = sb.openBudget({ steps: 10, cost: 5 }, 0);
+    assert.deepEqual(sb.grantFor(s, { helper: 'a', steps: 3 }, 0).remaining, { steps: 3, cost: 5, timeMs: null });
+  });
+
+  it('--parts N splits what is available evenly, grant after grant', () => {
+    let s = sb.openBudget({ steps: 9, cost: 6 }, 0);
+    for (const h of ['a', 'b', 'c']) {
+      const g = sb.grantFor(s, { helper: h, parts: 3 }, 0);
+      assert.deepEqual(g.remaining, { steps: 3, cost: 2, timeMs: null }, h);
+      s = sb.recordGrant(s, h, g);
+    }
+    assert.equal(sb.grantFor(s, { helper: 'd', parts: 3 }, 0).skip, true);
+  });
+
+  it('an explicit share beats --parts', () => {
+    const s = sb.openBudget({ steps: 9 }, 0);
+    assert.equal(sb.grantFor(s, { helper: 'a', steps: 2, parts: 3 }, 0).remaining.steps, 2);
+  });
+
+  it('rejects bad shares and parts, and shares on a check grant', () => {
+    const s = sb.openBudget({ steps: 9 }, 0);
+    for (const bad of [{ steps: 0 }, { steps: -1 }, { steps: 1.5 }, { cost: 0 }, { parts: 0 }, { parts: 1.5 }]) {
+      assert.throws(() => sb.grantFor(s, { helper: 'a', ...bad }, 0), (e) => e instanceof KitExit && e.code === 1, JSON.stringify(bad));
+    }
+    assert.throws(() => sb.grantFor(s, { helper: 'a', kind: 'check', steps: 1 }, 0), (e) => e instanceof KitExit && e.code === 1);
+  });
+
+  it('release frees a dead helper reservation so later grants work again', () => {
+    let s = sb.openBudget({ steps: 10, cost: 5 }, 0);
+    s = sb.recordGrant(s, 'dead', sb.grantFor(s, { helper: 'dead' }, 0));
+    assert.equal(sb.grantFor(s, { helper: 'b' }, 0).skip, true);
+    const r = sb.releaseHelper(s, 'dead');
+    assert.deepEqual(r.freed, { steps: 10, cost: 5 });
+    assert.equal(r.state.spent.steps, 0);
+    assert.equal(sb.grantFor(r.state, { helper: 'b' }, 0).remaining.steps, 10);
+  });
+
+  it('release of an unknown helper is invalid input', () => {
+    assert.throws(() => sb.releaseHelper(sb.openBudget({}, 0), 'nobody'), (e) => e instanceof KitExit && e.code === 1);
+  });
+
+  it('usage text names release and the grant share flags', () => {
+    assert.match(sb.usage, /release/);
+    assert.match(sb.usage, /--parts/);
+    assert.match(sb.usage, /release --helper|release:.*--helper/);
+  });
+
+  it('CLI: grant --steps/--cost/--parts and release', () => withDir(async (dir) => {
+    await call(dir, ['open', '--steps', '10', '--cost', '4', '--now', '0']);
+    const a = await call(dir, ['grant', '--helper', 'a', '--steps', '3', '--cost', '1', '--now', '1']);
+    assert.deepEqual(a.remaining, { steps: 3, cost: 1, timeMs: null });
+    const b = await call(dir, ['grant', '--helper', 'b', '--parts', '2', '--now', '1']);
+    assert.equal(b.skip, false);
+    assert.equal(b.remaining.steps, 7);
+    const rel = await call(dir, ['release', '--helper', 'a', '--now', '2']);
+    assert.deepEqual(rel, { released: true, helper: 'a', freed: { steps: 3, cost: 1 } });
+    assert.equal((await call(dir, ['status', '--now', '2'])).reserved.steps, 7);
+    assert.equal(await code(call(dir, ['release', '--helper', 'ghost'])), 1);
+    assert.equal(await code(call(dir, ['release'])), 1);
+    assert.equal(await code(call(dir, ['spend', '--helper', 'a', '--steps', '1', '--parts', '2', '--outcome', 'ok'])), 1);
+    assert.equal(await code(call(dir, ['grant', '--helper', 'z', '--parts', '0'])), 1);
+  }));
+
+  it('parallel processes with --parts 4 never over-reserve', () => withDir(async (dir) => {
+    await call(dir, ['open', '--steps', '8', '--now', '0']);
+    const rs = await Promise.all(['a', 'b', 'c', 'd'].map((h) => proc(dir, ['grant', '--helper', h, '--parts', '4', '--now', '1'])));
+    const gs = rs.map((r) => JSON.parse(r.stdout));
+    assert.deepEqual(gs.map((g) => g.remaining.steps), [2, 2, 2, 2]);
+  }));
+});
+
+describe('shared-budget stale-lock breaking, final form', () => {
+  it('the lock wait is longer than the stale age', () => {
+    assert.ok(sb.LOCK_WAIT_MS > sb.LOCK_STALE_MS);
+  });
+
+  for (let round = 0; round < 10; round++) {
+    it(`pre-aged lock then 20 parallel writer processes keep every write (round ${round + 1}/10)`, () => withDir(async (dir) => {
+      await call(dir, ['open', '--now', '0']);
+      const lock = path.join(dir, 'b.json.lock');
+      await fs.writeFile(lock, 'crashed-holder');
+      const old = new Date(Date.now() - 2 * 60 * 1000);
+      await fs.utimes(lock, old, old);
+      const rs = await Promise.all(Array.from({ length: 20 }, (_, i) => proc(dir, ['spend', '--helper', `h${i}`, '--steps', '1', '--outcome', 'ok', '--now', '1'])));
+      for (const r of rs) assert.equal(r.code, 0, r.stderr);
+      assert.equal((await readState(dir)).spent.steps, 20);
+      assert.deepEqual((await fs.readdir(dir)).filter((f) => f !== 'b.json'), []);
+    }));
+  }
+
+  it('a leftover break lock older than twice the stale age is removed', () => withDir(async (dir) => {
+    await call(dir, ['open', '--now', '0']);
+    const old = new Date(Date.now() - 5 * 60 * 1000);
+    for (const f of ['b.json.lock', 'b.json.lock.break']) {
+      await fs.writeFile(path.join(dir, f), 'dead');
+      await fs.utimes(path.join(dir, f), old, old);
+    }
+    await call(dir, ['spend', '--helper', 'a', '--steps', '1', '--outcome', 'ok', '--now', '1']);
+    assert.equal((await readState(dir)).spent.steps, 1);
+    assert.deepEqual((await fs.readdir(dir)).filter((f) => f !== 'b.json'), []);
+  }));
+
+  it('a fresh lock is never broken by a waiter that judged an older one stale', () => withDir(async (dir) => {
+    await call(dir, ['open', '--now', '0']);
+    const lock = path.join(dir, 'b.json.lock');
+    await fs.writeFile(lock, 'live-holder'); // fresh mtime: not stale
+    const p = call(dir, ['spend', '--helper', 'a', '--steps', '1', '--outcome', 'ok', '--now', '1']);
+    await new Promise((r) => setTimeout(r, 200));
+    assert.equal(await fs.readFile(lock, 'utf8'), 'live-holder');
+    assert.equal((await readState(dir)).spent.steps, 0);
+    await fs.rm(lock);
+    await p;
+    assert.equal((await readState(dir)).spent.steps, 1);
+  }));
+});

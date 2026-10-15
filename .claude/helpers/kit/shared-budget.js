@@ -2,7 +2,8 @@
  * shared-budget — one per-job allowance (steps, cost, wall-clock time) that every sub-agent of that job draws from.
  *
  *   shared-budget open   --state <f> [--steps N] [--cost C] [--time-ms T]
- *   shared-budget grant  --state <f> --helper <id> [--kind model|check]
+ *   shared-budget grant  --state <f> --helper <id> [--kind model|check] [--steps N] [--cost C] [--parts N]
+ *   shared-budget release --state <f> --helper <id>
  *   shared-budget start  --state <f>
  *   shared-budget stop   --state <f>
  *   shared-budget spend  --state <f> --helper <id> [--steps n] [--cost c] --outcome ok|failed
@@ -16,12 +17,19 @@
  * The clock runs only between `start` and the matching `stop`; a depth counter makes nested starts count once, so
  * time is never double-counted. `spend` records immediately, failures included; a spend that overruns a limit is
  * recorded truthfully and reported in `overrun` (still exit 0). Cost is in whatever unit the caller chooses.
- * GRANTS RESERVE. A model grant holds the amount it hands out (steps, cost) on the helper's row as `reserved`; later
- * grants get the remainder minus every other helper's outstanding reservation, so parallel sub-sessions can never be
- * licensed for more than a limit together. A helper's `spend` releases its reservation; re-granting a helper replaces its
- * reservation. Time is not reserved (one shared clock) and check grants reserve nothing.
- * Every mutating command holds an exclusive lock file (<state>.lock, O_EXCL, bounded retry, stale after 30 s) from load
- * to save, so concurrent callers (processes or Promise.all in one process) never lose a write. State writes are atomic
+ * GRANTS RESERVE A SHARE. A model grant holds the amount it hands out (steps, cost) on the helper's row as `reserved`;
+ * later grants get what is available (remainder minus every other helper's outstanding reservation), so parallel
+ * sub-sessions can never be licensed for more than a limit together. The share is chosen per grant: `--steps N` /
+ * `--cost C` ask for that much, capped at what is available; `--parts N` splits what is available evenly among N
+ * sub-sessions (each grant takes available / (N - other live reservations)); with neither, the grant takes the whole
+ * available remainder. A helper's `spend` releases its reservation; re-granting a helper replaces its reservation.
+ * `release --helper <id>` frees the reservation of a helper that died before it could spend (nothing is spent).
+ * Time is not reserved (one shared clock) and check grants reserve nothing.
+ * Every mutating command holds an exclusive lock file (<state>.lock, O_EXCL, bounded retry) from load to save, so
+ * concurrent callers (processes or Promise.all in one process) never lose a write. Each lock holds a random token and is
+ * removed only by its owner. A waiter that judges a lock stale (30 s) takes a second lock <state>.lock.break, re-reads the
+ * lock and removes it only if the token is still the one it judged stale, so a fresh lock is never stolen; the total
+ * wait (45 s) is longer than the stale age, so a waiter always reaches the break path. State writes are atomic
  * (uniquely named temp file + rename). Time never goes backwards: a clock that jumps back adds nothing.
  * This is a per-job allowance and sits beside, not inside, the marathon token budget in src/lib/marathon/budget.js.
  *
@@ -34,10 +42,12 @@ import { randomUUID } from 'crypto';
 import { KitExit } from './kit-exit.js';
 
 export const verb = 'shared-budget';
-export const usage = 'cli.js shared-budget open|grant|start|stop|spend|status --state <file> '
-  + '[open: --steps N --cost C --time-ms T] [grant: --helper <id> --kind model|check] '
+export const usage = 'cli.js shared-budget open|grant|release|start|stop|spend|status --state <file> '
+  + '[open: --steps N --cost C --time-ms T] [grant: --helper <id> --kind model|check --steps N --cost C --parts N] '
+  + '[release: --helper <id>] '
   + '[spend: --helper <id> --steps n --cost c --outcome ok|failed] [--now <ms>]   '
-  + '(a per-job allowance shared by sub-agents; grant returns the remainder or {skip:true,reason}, an exhausted limit is a skip with exit 0; '
+  + '(a per-job allowance shared by sub-agents; grant returns a share (--steps/--cost, capped at what is available; --parts N splits evenly; default the whole remainder) or {skip:true,reason}, an exhausted limit is a skip with exit 0; '
+  + 'release frees a dead helper\'s reservation; '
   + 'start/stop run the clock with a nesting depth; spend is recorded at once, failures too, overruns reported; exit 0 done, 1 invalid or corrupt)';
 
 export const KINDS = Object.freeze(['model', 'check']);
@@ -157,9 +167,13 @@ function availableOf(s, now, except) {
 }
 
 /** What the next sub-session may use, or `{skip: true, reason}`. A check grant looks at time only. */
-export function grantFor(s, { helper, kind = 'model' }, now) {
+export function grantFor(s, { helper, kind = 'model', steps, cost, parts }, now) {
   helperId(helper);
   if (!KINDS.includes(kind)) throw bad(`--kind must be one of ${KINDS.join(', ')}`);
+  const wantSteps = limitOf('steps', steps, true);
+  const wantCost = limitOf('cost', cost, false);
+  const nParts = limitOf('parts', parts, true);
+  if (kind === 'check' && (wantSteps !== null || wantCost !== null || nParts !== null)) throw bad('--steps, --cost and --parts do not apply to a check grant');
   nowOf(now);
   const remaining = remainingOf(s, now);
   const available = availableOf(s, now, helper);
@@ -173,8 +187,28 @@ export function grantFor(s, { helper, kind = 'model' }, now) {
     if (held.length) parts.push(`${held.join(' and ')} limit fully reserved by other sub-sessions`);
     return { skip: true, helper, kind, reason: parts.join('; ') };
   }
-  const out = kind === 'check' ? { steps: null, cost: null, timeMs: available.timeMs } : available;
+  if (kind === 'check') return { skip: false, helper, kind, remaining: { steps: null, cost: null, timeMs: available.timeMs } };
+  // Divisor for an even split: parts not yet taken by other live reservations.
+  const live = Object.entries(s.helpers).filter(([id, h]) => id !== helper && h.reserved && (h.reserved.steps > 0 || h.reserved.cost > 0)).length;
+  const divisor = nParts === null ? 1 : Math.max(1, nParts - live);
+  const share = (want, avail, integer) => {
+    if (want !== null) return avail === null ? want : Math.min(want, avail);
+    if (avail === null) return null;
+    if (divisor === 1) return avail;
+    return integer ? Math.max(1, Math.floor(avail / divisor)) : round(avail / divisor);
+  };
+  const out = { steps: share(wantSteps, available.steps, true), cost: share(wantCost, available.cost, false), timeMs: available.timeMs };
   return { skip: false, helper, kind, remaining: out };
+}
+
+/** Free a helper's reservation without spending (for a sub-session that died). Returns `{state, freed}`. */
+export function releaseHelper(s, helper) {
+  helperId(helper);
+  if (!s.helpers[helper]) throw bad(`no such helper: ${helper}`);
+  const n = clone(s);
+  const freed = n.helpers[helper].reserved || ZERO();
+  n.helpers[helper].reserved = ZERO();
+  return { state: n, freed: { steps: freed.steps, cost: freed.cost } };
 }
 
 function row(s, id) {
@@ -236,7 +270,7 @@ export function statusOf(s, now) {
 
 // ================================================================ CLI
 
-const VALUE_FLAGS = new Set(['state', 'steps', 'cost', 'time-ms', 'helper', 'kind', 'outcome', 'now']);
+const VALUE_FLAGS = new Set(['state', 'steps', 'cost', 'time-ms', 'helper', 'kind', 'outcome', 'parts', 'now']);
 
 function parse(args) {
   let cmd;
@@ -285,10 +319,39 @@ async function save(file, state) {
   }
 }
 
-const LOCK_STALE_MS = 30000;
-const LOCK_WAIT_MS = 10000;
+export const LOCK_STALE_MS = 30000;
+export const LOCK_WAIT_MS = 45000; // longer than the stale age, so a waiter always reaches the break path
 
-/** Exclusive lock file around a read-modify-write: O_EXCL create, bounded retry, stale after LOCK_STALE_MS, removed only if still ours. */
+async function writeToken(fh, token) {
+  try { await fh.writeFile(token); } finally { await fh.close(); }
+}
+const tokenOf = (f) => fs.readFile(f, 'utf-8').catch(() => null);
+const ageOf = async (f) => { const st = await fs.stat(f).catch(() => null); return st ? Date.now() - st.mtimeMs : null; };
+
+/** Remove `lock` only if it still holds the token we judged stale, under the <lock>.break lock. Returns once tried. */
+async function breakStale(lock, judged) {
+  const brk = `${lock}.break`;
+  const mine = `${process.pid}.${randomUUID()}`;
+  let fh;
+  try { fh = await fs.open(brk, 'wx'); } catch (e) {
+    if (e.code === 'EEXIST') {
+      const age = await ageOf(brk);
+      if (age !== null && age > 2 * LOCK_STALE_MS) await fs.rm(brk, { force: true }); // a dead breaker
+      return;
+    }
+    return;
+  }
+  try {
+    await writeToken(fh, mine);
+    const now = await tokenOf(lock);
+    const age = await ageOf(lock);
+    if (now === judged && age !== null && age > LOCK_STALE_MS) await fs.rm(lock, { force: true });
+  } finally {
+    if ((await tokenOf(brk)) === mine) await fs.rm(brk, { force: true });
+  }
+}
+
+/** Exclusive lock file around a read-modify-write: O_EXCL create with a random token, bounded retry (longer than the stale age), stale lock broken under a second lock, removed only if still ours. */
 async function withLock(file, fn, missing) {
   const lock = `${file}.lock`;
   const token = `${process.pid}.${randomUUID()}`;
@@ -297,16 +360,15 @@ async function withLock(file, fn, missing) {
   for (;;) {
     try {
       const fh = await fs.open(lock, 'wx');
-      try { await fh.writeFile(token); } finally { await fh.close(); }
+      await writeToken(fh, token);
       break;
     } catch (e) {
       if (e.code === 'ENOENT' && missing) throw bad(missing);
       if (e.code !== 'EEXIST') throw bad(`cannot lock ${file}: ${e.code || e.message}`);
-      const st = await fs.stat(lock).catch(() => null);
-      if (st && Date.now() - st.mtimeMs > LOCK_STALE_MS) {
-        const gone = `${lock}.${randomUUID()}.stale`;
-        try { await fs.rename(lock, gone); await fs.rm(gone, { force: true }); } catch { /* another waiter broke it first */ }
-        continue;
+      const age = await ageOf(lock);
+      if (age !== null && age > LOCK_STALE_MS) {
+        const judged = await tokenOf(lock);
+        if (judged !== null) { await breakStale(lock, judged); continue; }
       }
       if (Date.now() - started > LOCK_WAIT_MS) throw bad(`budget state is locked (${lock}); delete it if no other sub-session is using the budget`);
       await new Promise((r) => setTimeout(r, delay));
@@ -314,21 +376,26 @@ async function withLock(file, fn, missing) {
     }
   }
   try { return await fn(); } finally {
-    const mine = await fs.readFile(lock, 'utf-8').then((c) => c === token, () => false);
-    if (mine) await fs.rm(lock, { force: true });
+    if ((await tokenOf(lock)) === token) await fs.rm(lock, { force: true });
   }
 }
 
 export async function run(args, io) {
   const { cmd, flags } = parse(args);
-  const cmds = ['open', 'grant', 'start', 'stop', 'spend', 'status'];
+  const cmds = ['open', 'grant', 'release', 'start', 'stop', 'spend', 'status'];
   if (!cmds.includes(cmd)) throw bad(`expected one of ${cmds.join(', ')}`);
   if (!flags.state) throw bad('--state <file> is required');
   const file = path.resolve(io.cwd || process.cwd(), flags.state);
   const now = nowOf(flags.now === undefined ? Date.now() : num('--now', flags.now));
 
+  const only = (allowed) => { for (const k of Object.keys(flags)) if (k !== 'state' && k !== 'now' && !allowed.includes(k)) throw bad(`--${k} does not apply to ${cmd}`); };
+  if (cmd === 'grant') only(['helper', 'kind', 'steps', 'cost', 'parts']);
+  else if (cmd === 'release') only(['helper']);
+  else if (cmd === 'spend') only(['helper', 'steps', 'cost', 'outcome']);
+  else if (cmd === 'start' || cmd === 'stop' || cmd === 'status') only([]);
+
   if (cmd === 'open') {
-    for (const k of ['helper', 'kind', 'outcome']) if (flags[k] !== undefined) throw bad(`--${k} does not apply to open`);
+    for (const k of ['helper', 'kind', 'outcome', 'parts']) if (flags[k] !== undefined) throw bad(`--${k} does not apply to open`);
     const s = openBudget({ steps: num('--steps', flags.steps), cost: num('--cost', flags.cost), timeMs: num('--time-ms', flags['time-ms']) }, now);
     return withLock(file, async () => {
       try { await fs.access(file); throw bad(`${file} already exists`); } catch (e) { if (e instanceof KitExit) throw e; }
@@ -353,9 +420,14 @@ export async function run(args, io) {
       return { depth: n.clock.depth, clockRunning: n.clock.depth > 0, elapsedMs: elapsed(n, now) };
     }
     if (cmd === 'grant') {
-      const g = grantFor(state, { helper: flags.helper, kind: flags.kind }, now);
+      const g = grantFor(state, { helper: flags.helper, kind: flags.kind, steps: num('--steps', flags.steps), cost: num('--cost', flags.cost), parts: num('--parts', flags.parts) }, now);
       await save(file, recordGrant(state, flags.helper, g));
       return g;
+    }
+    if (cmd === 'release') {
+      const r = releaseHelper(state, flags.helper);
+      await save(file, r.state);
+      return { released: true, helper: flags.helper, freed: r.freed };
     }
     const r = recordSpend(state, spendIn);
     await save(file, r.state);
