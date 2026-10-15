@@ -105,3 +105,5 @@
 {"role":"review","model":"opus","stream":"shared-budget-for-claim-sub-sessions","budget":150000,"event":"spawn","id":"060b962d-05c6-4a1a-af10-d2b43b0ab0c4","ts":"2026-10-15T17:06:52.635Z"}
 {"helper_id":"d5252cd7","tokens":82690,"outcome":"green","event":"done","id":"4d144de7-53fe-4ff1-8319-338b8283a5a4","ts":"2026-10-15T17:07:02.378Z"}
 {"helper_id":"c6966623","tokens":90891,"outcome":"green","event":"done","id":"a6f1c925-3b8b-49fa-b383-7f060d59976a","ts":"2026-10-15T17:07:04.101Z"}
+{"helper_id":"d90df1ba","tokens":72128,"outcome":"green","event":"done","id":"01fb9a6a-2a90-43f6-8513-639dca6c2f53","ts":"2026-10-15T17:07:20.295Z"}
+{"helper_id":"fee1ee03","tokens":86864,"outcome":"green","event":"done","id":"f4cac795-b81f-45da-90ce-fed483083b3d","ts":"2026-10-15T17:08:21.099Z"}
