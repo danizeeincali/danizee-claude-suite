@@ -314,3 +314,4 @@
 {"helper_id":"a5d96d52-b357-45b1-9a63-78689d17d889","tokens":112721,"outcome":"green","event":"done","id":"1a939cb2-1db1-4d3d-94a6-42280404b791","ts":"2026-10-15T21:13:47.925Z"}
 {"role":"review","model":"opus","stream":"integration","budget":150000,"event":"spawn","id":"b013908d-1f64-4b99-95f7-5d90bdd1745d","ts":"2026-10-15T21:13:54.620Z"}
 {"helper_id":"b013908d-1f64-4b99-95f7-5d90bdd1745d","tokens":100424,"outcome":"green","event":"done","id":"c67443ca-37e1-42be-a9e5-6478ffbf5097","ts":"2026-10-15T21:16:27.107Z"}
+{"role":"review","model":"opus","stream":"integration","budget":120000,"event":"spawn","id":"7f4946e6-75a8-4fe8-8d59-a88e0fa4a70a","ts":"2026-10-15T21:17:51.339Z"}
