@@ -223,3 +223,11 @@
 {"role":"review","model":"opus","stream":"noise-ledger-with-flake-quarantine","budget":150000,"event":"spawn","id":"80c7ef31-282b-4070-bd31-2ae08c6a484e","ts":"2026-10-15T18:04:40.420Z"}
 {"role":"review","model":"opus","stream":"shared-budget-for-claim-sub-sessions","budget":150000,"event":"spawn","id":"874c1e9b-f9f2-4baf-abea-68b970a9764e","ts":"2026-10-15T18:05:19.631Z"}
 {"role":"review","model":"opus","stream":"finding-triage-with-fingerprint-dedup-an","budget":150000,"event":"spawn","id":"35b609f4-cca0-4a3e-b928-d64db3329067","ts":"2026-10-15T18:05:34.206Z"}
+{"role":"review","model":"opus","stream":"finding-triage-with-fingerprint-dedup-an","budget":150000,"event":"spawn","id":"e56ec67e-68c4-49d5-95f4-0ba6106d4291","ts":"2026-10-15T18:07:17.994Z"}
+{"helper_id":"35b609f4-cca0-4a3e-b928-d64db3329067","tokens":77863,"outcome":"green","event":"done","id":"737dd13c-44cc-4d74-8ebd-9c4a03643873","ts":"2026-10-15T18:07:26.548Z"}
+{"helper_id":"80c7ef31-282b-4070-bd31-2ae08c6a484e","tokens":70958,"outcome":"green","event":"done","id":"b5b371fa-9a06-412f-8f2c-3cc88c2ae69a","ts":"2026-10-15T18:07:26.704Z"}
+{"helper_id":"feb3c846-096c-4034-97ff-d0c42949dd7b","tokens":84641,"outcome":"green","event":"done","id":"7fff0ff8-b9c4-4c0d-8964-6c2b2c818002","ts":"2026-10-15T18:07:26.955Z"}
+{"role":"review","model":"opus","stream":"noise-ledger-with-flake-quarantine","budget":150000,"event":"spawn","id":"b6426e37-215d-4cb0-9071-7d5cc7e9e36e","ts":"2026-10-15T18:08:05.183Z"}
+{"role":"fix","model":"sonnet","stream":"trouble-log-reflection-into-lesson-memor","budget":150000,"event":"spawn","id":"14a8b9ed-98d7-45a7-9e33-856f6ebe2535","ts":"2026-10-15T18:08:06.439Z"}
+{"helper_id":"d5d36f17-41a1-419d-8372-c0726a4dea3c","tokens":96794,"outcome":"green","event":"done","id":"0a69a290-fe87-4d17-969d-808bd32cc02e","ts":"2026-10-15T18:08:13.906Z"}
+{"role":"fix","model":"sonnet","stream":"exit-code-contract-separating-infrastruc","budget":150000,"event":"spawn","id":"3dd9b52c-dbb0-47f1-976f-2804a2c316d5","ts":"2026-10-15T18:08:14.931Z"}

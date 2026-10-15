@@ -59,3 +59,5 @@
 {"kind":"unit","status":"green","stream":"noise-ledger-with-flake-quarantine","commit":"e8b42b8","id":"bba9c29f-81e8-42e3-a141-22467c969688","ts":"2026-10-15T18:04:37.744Z"}
 {"kind":"unit","status":"green","stream":"shared-budget-for-claim-sub-sessions","commit":"d30393a","id":"20bc6618-288c-4a41-a2fe-3bd1c363d653","ts":"2026-10-15T18:05:16.986Z"}
 {"kind":"unit","status":"green","stream":"finding-triage-with-fingerprint-dedup-an","commit":"faeadc5","id":"cb1703a6-3202-43eb-bdeb-6af2b2836e0c","ts":"2026-10-15T18:05:31.491Z"}
+{"kind":"unit","status":"green","stream":"finding-triage-with-fingerprint-dedup-an","commit":"faeadc5","id":"58e384ef-da10-4172-adc6-d7ac0b32b7c0","ts":"2026-10-15T18:07:14.446Z"}
+{"kind":"unit","status":"green","stream":"noise-ledger-with-flake-quarantine","commit":"e8b42b8","id":"7e0fc757-0a7d-401d-a5c0-68c27ae5185c","ts":"2026-10-15T18:08:02.083Z"}
