@@ -1,9 +1,9 @@
 # Marathon 2026-10-15-bbs-bugpatrol
 
 - State: RUNNING
-- Budget: 9,427,792 / 10,000,000 tokens
+- Budget: 9,518,485 / 10,000,000 tokens
 - Allowance: unknown (ceiling 100%)
-- Gate (run-wide, all streams): 6/2 clean reviews — build gate not met, full gate not met
+- Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
 - Next for you: Continue stream "noise-ledger-with-flake-quarantine" (next: builder writes contract, failing tests, verb, packaged test) — /w-marathon --resume 2026-10-15-bbs-bugpatrol.
 - Last handoff: 2026-10-15T16:57:27.562Z (auto) on claude/project-thread-24nlxj@9c50362, 10 uncommitted, tasks: none
@@ -85,9 +85,9 @@
 | repeated-replay-gate-for-claims: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | repeated-replay-gate-for-claims: packaged check passes | build | failing | — | is true |
 | The owner was told what they got: delivered.md lists every power, wired, with its command | build | failing | — | is true |
-| Clean reviews in a row | build | met | 6 | at_least 2 |
-| High findings in the latest review | build | met | 0 | at_most 0 |
-| Open high findings | build | met | 0 | at_most 0 |
+| Clean reviews in a row | build | failing | 0 | at_least 2 |
+| High findings in the latest review | build | failing | 1 | at_most 0 |
+| Open high findings | build | failing | 1 | at_most 0 |
 
 ## Waiting on human
 
