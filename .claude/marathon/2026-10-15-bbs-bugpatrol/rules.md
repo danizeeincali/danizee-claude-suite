@@ -55,3 +55,6 @@ Addition (triage fix): under the break lock, re-check staleness (mtime) as well 
 
 ## Budget raised (2026-10-15T17:16Z)
 Dani chose "Raise to 14M" on the decision card; run_token_budget in .claude/marathon.json set to 14000000.
+
+## Judges fail closed (lead, exit-codes r11)
+A product judge's exit 2 (scrub, push-gate) always blocks. `--result` may describe why (hits, unscanned files and their reasons, a remedy) and may reject a result whose own exit field contradicts the code, but no not_scanned reason turns a judge's 2 into infrastructure: scrub never fetches (GIT_NO_LAZY_FETCH=1), so "object not available locally" is deterministic in sparse/blobless clones, not a network fault. Eleven review rounds found a new fail-open path in the reclassification each time.
