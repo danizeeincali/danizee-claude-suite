@@ -172,3 +172,7 @@
 {"role":"review","model":"opus","stream":"exit-code-contract-separating-infrastruc","budget":150000,"event":"spawn","id":"3dfe6e53-f500-46d2-bfc2-29183a392f05","ts":"2026-10-15T17:36:41.150Z"}
 {"role":"fix","model":"opus","stream":"finding-triage-with-fingerprint-dedup-an","budget":200000,"event":"spawn","id":"1bf59208-2aa9-423e-97e9-616b6f4fb5c6","ts":"2026-10-15T17:36:55.651Z"}
 {"helper_id":"c9091ade-a0d7-4710-bd60-4e2a843a27f4","tokens":69616,"outcome":"green","event":"done","id":"04d3fe56-8589-4df3-a584-6aa2a6e26cec","ts":"2026-10-15T17:36:55.792Z"}
+{"role":"fix","model":"sonnet","stream":"trouble-log-reflection-into-lesson-memor","budget":150000,"event":"spawn","id":"e540db01-690f-4e50-9a2b-e501dfffabfc","ts":"2026-10-15T17:38:04.187Z"}
+{"helper_id":"1714b693-5380-41dd-b50b-b1965c67b109","tokens":94728,"outcome":"green","event":"done","id":"cc8bf49e-b243-4e35-859c-a6d992438b90","ts":"2026-10-15T17:38:11.163Z"}
+{"helper_id":"c3cd4662-aa39-4bad-8886-175f6369d848","tokens":69767,"outcome":"green","event":"done","id":"1a959ec5-f457-4537-af79-a7993f9d0e42","ts":"2026-10-15T17:38:11.317Z"}
+{"role":"fix","model":"sonnet","stream":"sarif-junit-and-sticky-pr-comment-render","budget":150000,"event":"spawn","id":"e9a0ac48-d7c9-4758-9273-2299d0a91ac8","ts":"2026-10-15T17:38:12.396Z"}
