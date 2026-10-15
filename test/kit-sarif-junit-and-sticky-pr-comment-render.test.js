@@ -6,7 +6,7 @@ import path from 'path';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
 import * as render from '../src/lib/kit/render.js';
 
-const { renderSarif, renderJunit, renderComment, findMarker, marker, normalize, xmlEscape, run } = render;
+const { countFindings, renderSarif, renderJunit, renderComment, findMarker, marker, normalize, xmlEscape, run } = render;
 
 const input = () => ({
   findings: [
@@ -42,7 +42,9 @@ describe('SARIF', () => {
     const r = s.runs[0].results[0];
     assert.equal(r.locations[0].physicalLocation.artifactLocation.uri, 'src/db.js');
     assert.equal(r.locations[0].physicalLocation.region.startLine, 12);
-    assert.equal(s.runs[0].results[2].locations, undefined);
+    const orphan = s.runs[0].results[2];
+    assert.equal(orphan.locations[0].physicalLocation.artifactLocation.uri, '.');
+    assert.equal(orphan.locations[0].logicalLocations[0].name, 'hint');
     assert.equal(s.runs[0].invocations[0].executionSuccessful, true);
   });
   it('records an incomplete run as an unsuccessful invocation', () => {
@@ -55,6 +57,61 @@ describe('SARIF', () => {
   it('survives lone surrogates as well-formed JSON', () => {
     const s = JSON.stringify(renderSarif({ findings: [{ message: 'a\ud800b', severity: 'note' }] }));
     assert.doesNotThrow(() => JSON.parse(s));
+  });
+});
+
+describe('SARIF code-scanning validity', () => {
+  it('every result has a location and a ruleId, even with no file and no id', () => {
+    const s = renderSarif({ findings: [{ message: 'no file no id', severity: 'blocking' }, { id: 'a', message: 'x', severity: 'note' }, { message: 'y', severity: 'advisory', file: 'f.js' }] });
+    for (const r of s.runs[0].results) {
+      assert.ok(r.ruleId, 'ruleId');
+      assert.ok(r.locations[0].physicalLocation.artifactLocation.uri, 'location');
+    }
+    const ids = s.runs[0].tool.driver.rules.map(r => r.id);
+    for (const r of s.runs[0].results) assert.ok(ids.includes(r.ruleId));
+  });
+});
+
+describe('verdict consistency across formats', () => {
+  const filed = { findings: [{ id: 'x', message: 'sql inj', severity: 'blocking', disposition: 'filed' }] };
+  const decide = { findings: [{ id: 'y', message: 'which?', severity: 'blocking', disposition: 'needs-decision' }] };
+  it('a filed blocking finding stays blocking in all three and the comment says so', () => {
+    const s = renderSarif(filed).runs[0].results[0];
+    assert.equal(s.level, 'error');
+    const j = renderJunit(filed);
+    assert.match(j, /failures="1"/);
+    const c = renderComment(filed);
+    assert.match(c.split('\n')[1], /no open blocking findings \(.*1 blocking filed\)/);
+    assert.ok(!/\*\*Clear\*\* - no blocking findings/.test(c));
+    const counts = countFindings(normalize(filed));
+    assert.equal(counts.blocking, 1);
+    assert.equal(counts.blockingFiled, 1);
+    assert.equal(counts.blockingOpen, 0);
+  });
+  it('a needs-decision blocking finding says it is blocking and stays failing', () => {
+    assert.equal(renderSarif(decide).runs[0].results[0].level, 'error');
+    assert.match(renderJunit(decide), /failures="1"/);
+    const v = renderComment(decide).split('\n')[1];
+    assert.match(v, /decision/i);
+    assert.match(v, /1 blocking/);
+    assert.equal(countFindings(normalize(decide)).blockingNeedsDecision, 1);
+  });
+  it('an open blocking finding counts the same everywhere', () => {
+    const o = { findings: [{ message: 'b', severity: 'blocking' }, { message: 'c', severity: 'blocking', disposition: 'filed' }] };
+    assert.match(renderComment(o).split('\n')[1], /Blocked.*1 blocking/);
+    assert.equal(countFindings(normalize(o)).blocking, 2);
+    assert.match(renderJunit(o), /failures="2"/);
+  });
+});
+
+describe('JUnit reserved suites', () => {
+  it('user tests named like orphan findings or the run error do not absorb them', () => {
+    const x = renderJunit({ tests: [{ name: 'x', suite: 'unattributed' }, { name: 'run-completed', suite: 'run' }], findings: [{ id: 'x', message: 'orphan', severity: 'blocking' }], incomplete: true });
+    assert.match(x, /errors="1"/);
+    assert.match(x, /failures="1"/);
+    assert.equal((x.match(/<testcase /g) || []).length, 4);
+    assert.match(x, /<testcase name="x" classname="unattributed">\s*</testcase>/);
+    assert.match(x, /<testcase name="run-completed" classname="run">\s*</testcase>/);
   });
 });
 
@@ -130,6 +187,24 @@ describe('run', () => {
       await fs.writeFile(path.join(d, 'f.json'), '﻿' + JSON.stringify(input()));
       const r = await run(['sarif', '--file', 'f.json'], io('', d));
       assert.equal(r.content.runs[0].results.length, 5);
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+  it('--out writes the raw content to a file; the envelope is kept without content', async () => {
+    const d = await fs.mkdtemp(path.join(os.tmpdir(), 'render-out-'));
+    try {
+      const stdin = JSON.stringify(input());
+      const r = await run(['junit', '--out', 'junit.xml'], io(stdin, d));
+      assert.equal(r.content, undefined);
+      assert.equal(r.out, path.join(d, 'junit.xml'));
+      assert.match(await fs.readFile(path.join(d, 'junit.xml'), 'utf-8'), /^<\?xml/);
+      await run(['sarif', '--out', 'sub/r.sarif'], io(stdin, d)).catch(() => {});
+      await fs.mkdir(path.join(d, 'sub'));
+      await run(['sarif', '--out', 'sub/r.sarif'], io(stdin, d));
+      assert.equal(JSON.parse(await fs.readFile(path.join(d, 'sub/r.sarif'), 'utf-8')).version, '2.1.0');
+      await run(['comment', '--out', 'c.md'], io(stdin, d));
+      assert.match(await fs.readFile(path.join(d, 'c.md'), 'utf-8'), /^<!-- kit-render:review -->/);
+      assert.deepEqual((await fs.readdir(d)).filter(f => f.includes('.tmp')), []);
+      await assert.rejects(run(['sarif', '--out'], io(stdin, d)), e => e.code === 1);
     } finally { await fs.rm(d, { recursive: true, force: true }); }
   });
   it('exit 1 on bad input', async () => {

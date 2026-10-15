@@ -31,6 +31,10 @@ describe('render — packaged end to end', () => {
     assert.ok(c.json.content.startsWith('<!-- kit-render:ci -->\n'));
     assert.equal(pkg.kit(['render', 'comment'], '{"findings":[],"x":1}').code, 1);
     assert.equal(pkg.kit(['render', 'pdf'], body).code, 1);
+    const f = pkg.kit(['render', 'sarif'], JSON.stringify({ findings: [{ message: 'no file', severity: 'blocking', disposition: 'filed' }] }));
+    assert.ok(f.json.content.runs[0].results[0].locations[0]);
+    assert.ok(f.json.content.runs[0].results[0].ruleId);
+    assert.match(pkg.kit(['render', 'comment'], JSON.stringify({ findings: [{ message: 'no file', severity: 'blocking', disposition: 'filed' }] })).json.content, /no open blocking findings/);
     assert.deepEqual(pkg.egress(), []);
   });
 });

@@ -2,7 +2,8 @@
  * render — turn a findings list into SARIF 2.1.0, JUnit XML, or a sticky PR comment. Pure: it reads JSON
  * (stdin or --file) and prints the rendering; it never posts anything, the calling workflow or CI step does.
  *
- *   render sarif|junit|comment [--file <f>] [--key <k>]      → { format, content, counts }
+ *   render sarif|junit|comment [--file <f>] [--key <k>] [--out <f>]   → { format, content, counts }
+ *   --out <f> writes the raw content (SARIF JSON, JUnit XML or comment markdown) to f and returns { format, incomplete, counts, out } without content.
  *
  * Input: { findings: [...], tests?: [{ name, suite? }], incomplete?: bool, reason?: string, tool?: string }
  *   finding: { message (required), severity: blocking|advisory|note (default advisory), id?, file?, line?,
@@ -19,12 +20,13 @@
  * never forge a marker.
  * Built from ideas audited by /w-bbs (run 2026-10-15-bugpatrol); no foreign code.
  */
+import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
 
 export const verb = 'render';
-export const usage = 'cli.js render sarif|junit|comment [--file <f>] [--key <k>]  (findings JSON on stdin or --file)';
+export const usage = 'cli.js render sarif|junit|comment [--file <f>] [--key <k>] [--out <f>]  (findings JSON on stdin or --file)';
 
 export const FORMATS = ['sarif', 'junit', 'comment'];
 export const DEFAULT_KEY = 'review';
@@ -35,6 +37,8 @@ const FINDING_KEYS = ['message', 'severity', 'id', 'file', 'line', 'testCase', '
 const TEST_KEYS = ['name', 'suite'];
 const SARIF_LEVEL = { blocking: 'error', advisory: 'warning', note: 'note' };
 const ORPHAN_SUITE = 'unattributed';
+const RUN_SUITE = 'run';
+const FALLBACK_RULE = 'finding';
 
 const bad = m => new KitExit(m, 1);
 const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
@@ -77,9 +81,10 @@ export function normalize(input) {
 }
 
 export function countFindings(n) {
-  const c = { total: n.findings.length, blocking: 0, advisory: 0, note: 0, filed: 0, needsDecision: 0 };
+  const c = { total: n.findings.length, blocking: 0, blockingOpen: 0, blockingFiled: 0, blockingNeedsDecision: 0, advisory: 0, note: 0, filed: 0, needsDecision: 0 };
   for (const f of n.findings) {
     c[f.severity]++;
+    if (f.severity === 'blocking') c[{ open: 'blockingOpen', filed: 'blockingFiled', 'needs-decision': 'blockingNeedsDecision' }[f.disposition]]++;
     if (f.disposition === 'filed') c.filed++;
     if (f.disposition === 'needs-decision') c.needsDecision++;
   }
@@ -92,17 +97,18 @@ const incompleteText = n => `Run did not finish${n.reason ? `: ${n.reason}` : ''
 
 export function renderSarif(input) {
   const n = normalize(input);
-  const ruleIds = [...new Set(n.findings.map(f => f.id).filter(Boolean))];
+  const ruleIds = [...new Set(n.findings.map(f => f.id || FALLBACK_RULE))];
   const results = n.findings.map(f => {
     const r = { level: SARIF_LEVEL[f.severity], message: { text: f.message }, properties: { severity: f.severity, disposition: f.disposition } };
-    if (f.id) r.ruleId = f.id;
+    r.ruleId = f.id || FALLBACK_RULE;
     if (f.url) r.properties.url = f.url;
     if (f.testCase) r.properties.testCase = f.testCase;
-    if (f.file) {
-      const physicalLocation = { artifactLocation: { uri: f.file } };
-      if (f.line) physicalLocation.region = { startLine: f.line };
-      r.locations = [{ physicalLocation }];
-    }
+    // GitHub code scanning refuses a result with no location, so a finding with no file points at the repo root
+    // and names itself as a logical location.
+    const physicalLocation = { artifactLocation: { uri: f.file || '.' } };
+    if (f.file && f.line) physicalLocation.region = { startLine: f.line };
+    r.locations = [{ physicalLocation }];
+    if (!f.file) r.locations[0].logicalLocations = [{ name: f.id || f.message.slice(0, 80) }];
     return r;
   });
   const invocation = { executionSuccessful: !n.incomplete };
@@ -142,20 +148,21 @@ const text = f => `${f.id ? `[${f.id}] ` : ''}${where(f)}${f.message}`;
 export function renderJunit(input) {
   const n = normalize(input);
   // suite name -> Map(test name -> { findings })
-  const suites = new Map();
-  const slot = (suite, name) => {
+  // User suites, orphan findings and the run error live in separate maps so a listed test can never absorb them.
+  const userSuites = new Map(), orphanSuite = new Map(), runSuite = new Map();
+  const slot = (suites, suite, name) => {
     if (!suites.has(suite)) suites.set(suite, new Map());
     const m = suites.get(suite);
     if (!m.has(name)) m.set(name, { findings: [], error: null });
     return m.get(name);
   };
-  for (const t of n.tests) slot(t.suite || 'findings', t.name);
+  for (const t of n.tests) slot(userSuites, t.suite || 'findings', t.name);
   for (const f of n.findings) {
-    if (f.testCase) slot(f.suite || 'findings', f.testCase).findings.push(f);
-    else slot(ORPHAN_SUITE, f.id || f.message.slice(0, 80)).findings.push(f);
+    if (f.testCase) slot(userSuites, f.suite || 'findings', f.testCase).findings.push(f);
+    else slot(orphanSuite, ORPHAN_SUITE, f.id || f.message.slice(0, 80)).findings.push(f);
   }
-  if (n.incomplete) slot('run', 'run-completed').error = incompleteText(n);
-
+  if (n.incomplete) slot(runSuite, RUN_SUITE, 'run-completed').error = incompleteText(n);
+  const suites = [...userSuites, ...orphanSuite, ...runSuite];
   let tTests = 0, tFail = 0, tErr = 0;
   const body = [];
   for (const [suite, cases] of suites) {
@@ -200,35 +207,39 @@ export function findMarker(body, key = DEFAULT_KEY) {
 }
 
 const md = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\s*[\r\n]+\s*/g, ' ');
-const bullet = f => {
+const bullet = (f, tagBlocking = false) => {
   const loc = f.file ? ` (\`${md(f.file).replace(/`/g, "'")}${f.line ? `:${f.line}` : ''}\`)` : '';
   const link = f.url ? ` - ${md(f.url)}` : '';
-  return `- ${f.id ? `**${md(f.id)}** ` : ''}${md(f.message)}${loc}${link}`;
+  return `- ${tagBlocking && f.severity === 'blocking' ? '[blocking] ' : ''}${f.id ? `**${md(f.id)}** ` : ''}${md(f.message)}${loc}${link}`;
 };
 
 export function renderComment(input, { key = DEFAULT_KEY } = {}) {
   const n = normalize(input);
   const m = marker(key);
+  const counts = countFindings(n);
   const blocking = n.findings.filter(f => f.severity === 'blocking' && f.disposition === 'open');
   const filed = n.findings.filter(f => f.disposition === 'filed');
   const decide = n.findings.filter(f => f.disposition === 'needs-decision');
   const advisory = n.findings.filter(f => f.severity !== 'blocking' && f.disposition === 'open');
   let verdict;
   if (n.incomplete) verdict = `**Review incomplete** - the run did not finish${n.reason ? ` (${md(n.reason)})` : ''}`;
-  else if (blocking.length) verdict = `**Blocked** - ${blocking.length} blocking finding${blocking.length === 1 ? '' : 's'}`;
-  else if (decide.length) verdict = `**Needs a decision** - ${decide.length} item${decide.length === 1 ? '' : 's'} waiting on you`;
+  else if (blocking.length) {
+    const other = counts.blockingFiled + counts.blockingNeedsDecision;
+    verdict = `**Blocked** - ${blocking.length} blocking finding${blocking.length === 1 ? '' : 's'}${other ? ` (${other} more blocking filed or awaiting a decision)` : ''}`;
+  } else if (decide.length) verdict = `**Needs a decision** - ${decide.length} item${decide.length === 1 ? '' : 's'} waiting on you${counts.blockingNeedsDecision ? ` (${counts.blockingNeedsDecision} blocking)` : ''}`;
+  else if (counts.blockingFiled) verdict = `**Clear** - no open blocking findings (${advisory.length} advisory, ${filed.length} filed, ${counts.blockingFiled} blocking filed)`;
   else verdict = `**Clear** - no blocking findings (${advisory.length} advisory, ${filed.length} filed)`;
   const out = [m, verdict, ''];
   for (const [title, list] of [['Blocking', blocking], ['Filed', filed], ['Needs decision', decide], ['Advisory', advisory]]) {
     if (!list.length) continue;
-    out.push(`### ${title} (${list.length})`, ...list.map(bullet), '');
+    out.push(`### ${title} (${list.length})`, ...list.map(f => bullet(f, title === 'Filed' || title === 'Needs decision')), '');
   }
   return out.join('\n');
 }
 
 // ---- CLI ----
 
-const VALUE = ['file', 'key'];
+const VALUE = ['file', 'key', 'out'];
 
 function parse(args) {
   const [format, ...rest] = args;
@@ -264,5 +275,18 @@ export async function run(args, io) {
   if (format === 'sarif') content = renderSarif(data);
   else if (format === 'junit') content = renderJunit(data);
   else content = renderComment(data, { key: flags.key === undefined ? DEFAULT_KEY : flags.key });
+  if (flags.out !== undefined) {
+    const out = path.resolve(cwd, flags.out);
+    const data = typeof content === 'string' ? content : JSON.stringify(content, null, 2) + '\n';
+    const tmp = `${out}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+    try {
+      await fs.writeFile(tmp, data, { flag: 'wx' });
+      await fs.rename(tmp, out);
+    } catch (e) {
+      await fs.rm(tmp, { force: true }).catch(() => {});
+      throw bad(`cannot write ${out}: ${e.code || e.message}`);
+    }
+    return { format, incomplete: n.incomplete, counts, out };
+  }
   return { format, incomplete: n.incomplete, counts, content };
 }
