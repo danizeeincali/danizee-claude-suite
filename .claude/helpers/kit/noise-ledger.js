@@ -27,6 +27,7 @@
  */
 import fs from 'fs/promises';
 import path from 'path';
+import { randomBytes } from 'crypto';
 import { KitExit } from './kit-exit.js';
 
 export const verb = 'noise-ledger';
@@ -114,7 +115,9 @@ export function normalizeLedger(l) {
     if (seen.has(e.id)) throw invalid(`ledger has a duplicate id ${JSON.stringify(e.id).slice(0, 80)}`);
     seen.add(e.id);
     if (e.expires != null && (typeof e.expires !== 'string' || parseDate(e.expires) !== e.expires)) throw invalid(`ledger entry ${e.id}: expires must be a real YYYY-MM-DD date`);
-    return { ...e, id: e.id, reason: typeof e.reason === 'string' ? e.reason : '', added: typeof e.added === 'string' ? e.added : undefined, ...(e.expires != null ? { expires: e.expires } : {}) };
+    if (e.reason != null && typeof e.reason !== 'string') throw invalid(`ledger entry ${e.id}: reason must be a string`);
+    if (e.added != null && typeof e.added !== 'string') throw invalid(`ledger entry ${e.id}: added must be a string`);
+    return { ...e, id: e.id, reason: e.reason ?? '', ...(e.added != null ? { added: e.added } : {}), ...(e.expires != null ? { expires: e.expires } : {}) };
   });
   entries.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   return { ...l, version: LEDGER_VERSION, entries };
@@ -203,15 +206,39 @@ async function readLedger(file, { mustExist }) {
     throw invalid(`cannot read ledger ${file}: ${e.code || e.message}`);
   }
   let parsed;
-  try { parsed = JSON.parse(text); } catch { throw invalid(`ledger ${file} is not valid JSON`); }
+  try { parsed = JSON.parse(text.replace(/^\uFEFF/, '')); } catch { throw invalid(`ledger ${file} is not valid JSON`); }
   return normalizeLedger(parsed);
 }
 
 async function writeLedger(file, ledger) {
   await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.${process.pid}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(ledger, null, 2) + '\n');
-  await fs.rename(tmp, file);
+  const tmp = `${file}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`;
+  try {
+    await fs.writeFile(tmp, JSON.stringify(ledger, null, 2) + '\n');
+    await fs.rename(tmp, file);
+  } catch (e) { await fs.rm(tmp, { force: true }); throw e; }
+}
+
+const LOCK_WAIT_MS = 10000;
+const LOCK_STALE_MS = 30000;
+
+/** Hold an exclusive `<file>.lock` (created with 'wx') while fn runs: bounded retry, stale lock broken. */
+async function withLock(file, fn) {
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const lock = `${file}.lock`;
+  const start = Date.now();
+  for (;;) {
+    try { (await fs.open(lock, 'wx')).close(); break; } catch (e) {
+      if (e.code !== 'EEXIST') throw invalid(`cannot lock ledger ${file}: ${e.code || e.message}`);
+      try {
+        const st = await fs.stat(lock);
+        if (Date.now() - st.mtimeMs > LOCK_STALE_MS) { await fs.rm(lock, { force: true }); continue; }
+      } catch { continue; }
+      if (Date.now() - start > LOCK_WAIT_MS) throw invalid(`ledger ${file} is locked by another run (${lock}); try again`);
+      await new Promise((r) => setTimeout(r, 10 + Math.random() * 30));
+    }
+  }
+  try { return await fn(); } finally { await fs.rm(lock, { force: true }); }
 }
 
 export async function run(args, io = {}) {
@@ -253,17 +280,21 @@ export async function run(args, io = {}) {
       if (f.expires < day) throw invalid(`--expires ${f.expires} is already in the past`);
       expires = f.expires;
     }
-    const ledger = await readLedger(ledgerFile, { mustExist: false });
-    const entry = { id: f.id, reason: f.reason, added: day, ...(expires ? { expires } : {}) };
-    const replaced = ledger.entries.some((e) => e.id === f.id);
-    ledger.entries = [...ledger.entries.filter((e) => e.id !== f.id), entry];
-    const out = normalizeLedger(ledger);
-    await writeLedger(ledgerFile, out);
-    return { ledger: path.relative(cwd, ledgerFile) || ledgerFile, entry, replaced, entries: out.entries.length };
+    return withLock(ledgerFile, async () => {
+      const ledger = await readLedger(ledgerFile, { mustExist: false });
+      const entry = { id: f.id, reason: f.reason, added: day, ...(expires ? { expires } : {}) };
+      const replaced = ledger.entries.some((e) => e.id === f.id);
+      ledger.entries = [...ledger.entries.filter((e) => e.id !== f.id), entry];
+      const out = normalizeLedger(ledger);
+      await writeLedger(ledgerFile, out);
+      return { ledger: path.relative(cwd, ledgerFile) || ledgerFile, entry, replaced, entries: out.entries.length };
+    });
   }
 
-  const ledger = await readLedger(ledgerFile, { mustExist: false });
-  const pruned = ledger.entries.filter((e) => isExpired(e, day));
-  if (pruned.length) await writeLedger(ledgerFile, { ...ledger, entries: ledger.entries.filter((e) => !isExpired(e, day)) });
-  return { ledger: path.relative(cwd, ledgerFile) || ledgerFile, date: day, pruned, remaining: ledger.entries.length - pruned.length };
+  return withLock(ledgerFile, async () => {
+    const ledger = await readLedger(ledgerFile, { mustExist: false });
+    const pruned = ledger.entries.filter((e) => isExpired(e, day));
+    if (pruned.length) await writeLedger(ledgerFile, { ...ledger, entries: ledger.entries.filter((e) => !isExpired(e, day)) });
+    return { ledger: path.relative(cwd, ledgerFile) || ledgerFile, date: day, pruned, remaining: ledger.entries.length - pruned.length };
+  });
 }

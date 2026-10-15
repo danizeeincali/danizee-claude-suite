@@ -203,3 +203,39 @@ describe('noise-ledger: CLI', () => {
     assert.equal(await code(nl.run(['apply', '--in', '-', '--now', NOW], { cwd: dir, stdinIsTTY: true, env: {} })), 1);
   }));
 });
+
+describe('noise-ledger: ledger lifecycle (r2)', () => {
+  it('parallel accepts all keep their entry', () => tmp(async (dir) => {
+    const p = path.join(dir, 'ledger.json');
+    await Promise.all(Array.from({ length: 8 }, (_, i) => nl.run(['accept', '--ledger', p, '--id', `id${i}`, '--reason', 'r', '--now', NOW], io(dir))));
+    const l = JSON.parse(await fs.readFile(p, 'utf-8'));
+    assert.deepEqual(l.entries.map(e => e.id), Array.from({ length: 8 }, (_, i) => `id${i}`));
+    assert.deepEqual((await fs.readdir(dir)).sort(), ['ledger.json']);
+  }));
+  it('a stale lock file is broken and the lock is released', () => tmp(async (dir) => {
+    const p = path.join(dir, 'ledger.json');
+    await fs.writeFile(`${p}.lock`, '');
+    const old = new Date(Date.now() - 600000);
+    await fs.utimes(`${p}.lock`, old, old);
+    await nl.run(['accept', '--ledger', p, '--id', 'a', '--reason', 'r', '--now', NOW], io(dir));
+    assert.equal(JSON.parse(await fs.readFile(p, 'utf-8')).entries.length, 1);
+    await assert.rejects(fs.stat(`${p}.lock`));
+  }));
+  it('refuses an entry whose reason or added is present but not a string', () => tmp(async (dir) => {
+    const p = path.join(dir, 'ledger.json');
+    const bad = (e) => JSON.stringify({ version: 1, entries: [e] });
+    await fs.writeFile(p, bad({ id: 'a', reason: ['x', 'y'], added: '2026-10-01' }));
+    assert.equal(await code(nl.run(['accept', '--ledger', p, '--id', 'b', '--reason', 'r', '--now', NOW], io(dir))), 1);
+    await fs.writeFile(p, bad({ id: 'a', reason: 'ok', added: 20261001 }));
+    assert.equal(await code(nl.run(['prune', '--ledger', p, '--now', NOW], io(dir))), 1);
+    assert.equal(await code(nl.run(['accept', '--ledger', p, '--id', 'b', '--reason', 'r', '--now', NOW], io(dir))), 1);
+    assert.match(await fs.readFile(p, 'utf-8'), /20261001/);
+  }));
+  it('reads a ledger saved with a UTF-8 BOM', () => tmp(async (dir) => {
+    const p = path.join(dir, 'ledger.json');
+    await fs.writeFile(p, '﻿' + JSON.stringify({ version: 1, entries: [{ id: 'a', reason: 'r', added: '2026-10-01' }] }));
+    const r = await nl.run(['accept', '--ledger', p, '--id', 'b', '--reason', 'r', '--now', NOW], io(dir));
+    assert.equal(r.entries, 2);
+    assert.equal((await nl.run(['prune', '--ledger', p, '--now', NOW], io(dir))).remaining, 2);
+  }));
+});
