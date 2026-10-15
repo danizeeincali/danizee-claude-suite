@@ -49,3 +49,6 @@
 {"key":"packaged_noise-ledger-with-flake-quarantine","value":true,"id":"8700087d-3d7e-475f-a5b8-4f14e21c9894","ts":"2026-10-15T18:19:29.076Z"}
 {"key":"egress_zero_noise-ledger-with-flake-quarantine","value":true,"id":"31755c9b-b707-4e13-8c46-acf04c603f1b","ts":"2026-10-15T18:19:29.230Z"}
 {"key":"callers_noise-ledger-with-flake-quarantine","value":0,"id":"ac2ae96f-6861-48c5-990a-0d9b8743c75c","ts":"2026-10-15T18:19:29.415Z"}
+{"key":"packaged_exit-code-contract-separating-infrastruc","value":true,"id":"f6e9041e-22f5-4f52-93d0-c23c103a0223","ts":"2026-10-15T18:28:45.055Z"}
+{"key":"egress_zero_exit-code-contract-separating-infrastruc","value":true,"id":"4d2ed54f-2331-4903-83f6-22ead17c9a0a","ts":"2026-10-15T18:28:45.240Z"}
+{"key":"callers_exit-code-contract-separating-infrastruc","value":0,"id":"8beb51c2-163d-4e54-8039-6cfb94c492e8","ts":"2026-10-15T18:28:45.414Z"}
