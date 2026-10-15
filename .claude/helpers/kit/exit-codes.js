@@ -1,0 +1,130 @@
+/**
+ * exit-codes — one explicit, machine-readable contract for kit exit statuses, so CI and workflows can tell a
+ * broken TOOL (infrastructure) from a broken PRODUCT (a regression or refusal).
+ *
+ *   exit-codes table                                         the contract (classes, codes, descriptions, overrides)
+ *   exit-codes describe <code> [--verb <v>]                  class + description of a status
+ *   exit-codes blocks <code> [--verb <v>]                    { blocks }: true only for the regression class
+ *   exit-codes classify --code <n> [--signal <name>] [--verb <v>]
+ *
+ * Classes: clean (0), regression (2, a verb said no: the ONLY class allowed to block a merge), usage (1, invalid input
+ * or broken state), precondition (4, a prerequisite was never met), infrastructure (5; the tool or environment failed:
+ * timeout, crash, signal, any status >= 128). 0/1/2 keep the meaning cli.js gives them. Some verbs document their own
+ * statuses; those are per-verb overrides taken from the verbs' usage text (safe-git 3 = git ran and failed or timed
+ * out, infrastructure; diff-range 3 = an empty range, clean). A bare 3 without a verb is ambiguous, so it is unknown.
+ * Unknown statuses are reported as `unknown`, never as clean, and never block (only a known regression blocks).
+ * A signal always wins and is infrastructure. All of blocks/describe/classify print JSON and exit 0; bad input is exit 1.
+ * Built from ideas audited by /w-bbs (run 2026-10-15-bugpatrol); no foreign code.
+ */
+import { KitExit } from './kit-exit.js';
+
+export const verb = 'exit-codes';
+export const usage = 'cli.js exit-codes table | describe <code> [--verb <v>] | blocks <code> [--verb <v>] | classify --code <n> [--signal <name>] [--verb <v>]  (JSON out, exit 0; exit 1 on bad input)';
+
+const freeze = (o) => Object.freeze(o);
+
+/** The outcome classes. Only `regression` may block a merge. */
+export const CLASSES = freeze({
+  clean: freeze({ code: 0, blocks: false, description: 'The verb succeeded; nothing to report.' }),
+  usage: freeze({ code: 1, blocks: false, description: 'Invalid input or broken state: the call was malformed or the data it read is unusable. Fix the caller.' }),
+  regression: freeze({ code: 2, blocks: true, description: 'Policy refusal or regression: the verb ran and said no. The only outcome allowed to block a merge.' }),
+  precondition: freeze({ code: 4, blocks: false, description: 'A prerequisite was never met (missing tool, file, credential or setup); nothing was judged.' }),
+  infrastructure: freeze({ code: 5, blocks: false, description: 'The tool or environment failed (timeout, crash, signal, git failure); says nothing about the product. Retry or repair, never block on it alone.' }),
+});
+
+/** Statuses at or above this, and any signal death, are infrastructure. */
+export const INFRA_FLOOR = 128;
+
+/** Per-verb statuses, from each verb's own usage text. */
+export const VERB_OVERRIDES = freeze({
+  'safe-git': freeze({
+    3: freeze({ class: 'infrastructure', description: 'git ran and failed, timed out, or wrote more output than allowed (safe-git exit 3); git\'s own code is in the printed JSON.' }),
+  }),
+  'diff-range': freeze({
+    3: freeze({ class: 'clean', description: 'The range is empty: nothing at all, or only skipped nested repositories (diff-range exit 3); there is nothing to review.' }),
+  }),
+});
+
+/** The frozen table: default code → class, plus the overrides. */
+export const TABLE = freeze({
+  classes: CLASSES,
+  codes: freeze(Object.fromEntries(Object.entries(CLASSES).map(([name, c]) => [c.code, name]))),
+  infrastructure_floor: INFRA_FLOOR,
+  overrides: VERB_OVERRIDES,
+});
+
+const AMBIGUOUS = { 3: 'Status 3 means different things per verb (safe-git: git failed, infrastructure; diff-range: empty range, clean); pass the verb to classify it.' };
+
+/**
+ * Classify a status. `signal` (a non-empty string) wins over the code. Returns
+ * { code, signal, verb, class, known, blocks, description }; class is `unknown` for an unlisted status, which never blocks.
+ */
+export function classify({ code = null, signal = null, verb: v = null } = {}) {
+  if (signal != null && signal !== '') {
+    return { code, signal: String(signal), verb: v, class: 'infrastructure', known: true, blocks: false, description: `Killed by signal ${signal}: the tool or environment failed, not the product.` };
+  }
+  if (!Number.isInteger(code) || code < 0 || code > 255) throw new KitExit(`exit status must be an integer 0..255, got ${JSON.stringify(code)}`, 1);
+  const base = { code, signal: null, verb: v };
+  const over = v && Object.hasOwn(VERB_OVERRIDES, v) ? VERB_OVERRIDES[v][code] : undefined;
+  if (over) return { ...base, class: over.class, known: true, blocks: CLASSES[over.class].blocks, description: over.description };
+  if (code >= INFRA_FLOOR) return { ...base, class: 'infrastructure', known: true, blocks: false, description: `Status ${code} (>= ${INFRA_FLOOR}) is a signal death or a crash: the tool or environment failed, not the product.` };
+  const name = TABLE.codes[code];
+  if (name) return { ...base, class: name, known: true, blocks: CLASSES[name].blocks, description: CLASSES[name].description };
+  return { ...base, class: 'unknown', known: false, blocks: false, description: AMBIGUOUS[code] || `Status ${code} is not in the contract; it is not clean and not a verified regression. Treat it as an unclassified failure.` };
+}
+
+/** True only when the status is a regression for that verb. Unknown, infrastructure, signals and bad input are false. */
+export function blocksMerge(code, v = null, signal = null) {
+  try { return classify({ code, verb: v, signal }).blocks === true; } catch { return false; }
+}
+
+function parse(args, positional, flags) {
+  const out = { _: [] };
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a.startsWith('--')) {
+      if (!flags.includes(a)) throw new KitExit(`unknown option ${a}; ${usage}`, 1);
+      if (i + 1 >= args.length || args[i + 1].startsWith('--')) throw new KitExit(`${a} needs a value`, 1);
+      if (Object.hasOwn(out, a)) throw new KitExit(`${a} given twice`, 1);
+      out[a] = args[++i];
+    } else out._.push(a);
+  }
+  if (out._.length > positional) throw new KitExit(`unexpected argument "${out._[positional]}"; ${usage}`, 1);
+  return out;
+}
+
+function toCode(s, what) {
+  if (typeof s !== 'string' || !/^\d{1,3}$/.test(s)) throw new KitExit(`${what} must be an integer 0..255, got ${JSON.stringify(s)}`, 1);
+  const n = Number(s);
+  if (n > 255) throw new KitExit(`${what} must be an integer 0..255, got ${s}`, 1);
+  return n;
+}
+function toVerb(s) {
+  if (s == null) return null;
+  if (!/^[a-z][a-z0-9-]{0,63}$/.test(s)) throw new KitExit(`--verb must be a verb name like "safe-git", got ${JSON.stringify(s)}`, 1);
+  return s;
+}
+function toSignal(s) {
+  if (s == null) return null;
+  if (!/^[A-Za-z][A-Za-z0-9_]{0,31}$/.test(s)) throw new KitExit(`--signal must be a signal name like SIGKILL, got ${JSON.stringify(s)}`, 1);
+  return s;
+}
+
+export async function run(args) {
+  const [sub, ...rest] = args;
+  if (!sub || sub === '--help') return { usage };
+  if (sub === 'table') { parse(rest, 0, []); return TABLE; }
+  if (sub === 'describe' || sub === 'blocks') {
+    const p = parse(rest, 1, ['--verb']);
+    if (!p._.length) throw new KitExit(`${sub} needs a <code>; ${usage}`, 1);
+    const r = classify({ code: toCode(p._[0], '<code>'), verb: toVerb(p['--verb']) });
+    return sub === 'blocks' ? { code: r.code, verb: r.verb, class: r.class, blocks: r.blocks } : r;
+  }
+  if (sub === 'classify') {
+    const p = parse(rest, 0, ['--code', '--signal', '--verb']);
+    const signal = toSignal(p['--signal']);
+    if (p['--code'] == null && signal == null) throw new KitExit(`classify needs --code <n> or --signal <name>; ${usage}`, 1);
+    return classify({ code: p['--code'] == null ? null : toCode(p['--code'], '--code'), signal, verb: toVerb(p['--verb']) });
+  }
+  throw new KitExit(`unknown subcommand "${sub}"; ${usage}`, 1);
+}
