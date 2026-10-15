@@ -36,6 +36,8 @@ export const usage = 'cli.js test-plan [--in <file>] [--changed <file>] [--diff 
 export const STRENGTH = Object.freeze(['direct-change', 'shared-component', 'flow', 'smoke', 'always']);
 const rank = (r) => STRENGTH.indexOf(r);
 const bad = (m) => new KitExit(`${m} (see --help)`, 1);
+const INPUT_KEYS = Object.freeze(['targets', 'flows', 'edges', 'always', 'changed']);
+const stripBom = (s) => (s.charCodeAt(0) === 0xFEFF ? s.slice(1) : s);
 const MAX_BYTES = 8 * 1024 * 1024;
 
 export function normPath(p) {
@@ -51,6 +53,7 @@ const strList = (v, what) => {
 
 export function validateInput(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw bad('input must be a JSON object');
+  for (const k of Object.keys(input)) if (!INPUT_KEYS.includes(k)) throw bad(`unknown key "${k}" in the input (allowed: ${INPUT_KEYS.join(', ')})`);
   if (!Array.isArray(input.targets) || !input.targets.length) throw bad('"targets" must be a non-empty list');
   const ids = new Set();
   for (const t of input.targets) {
@@ -140,14 +143,16 @@ export function planTests(input, changed, opts = {}) {
   const mappedPct = files.length ? pct(mapped, files.length) : 100;
   let low = false;
   let lowReason;
-  if (files.length && mappedPct < minMappedPct) {
+  if (files.length && mapped * 100 < minMappedPct * files.length) {
     low = true;
-    lowReason = `only ${mapped} of ${files.length} changed files (${mappedPct}%) map to a target, below ${minMappedPct}%; a smoke set was added`;
     const degree = new Map(targets.map(t => [t.id, 0]));
     for (const [a, b] of input.edges ?? []) { degree.set(a, degree.get(a) + 1); degree.set(b, degree.get(b) + 1); }
     for (const t of targets) if (t.entry) add(t.id, 'smoke');
     const ranked = [...targets].sort((x, y) => degree.get(y.id) - degree.get(x.id) || (x.id < y.id ? -1 : 1));
     for (const t of ranked.slice(0, Math.max(0, smoke))) add(t.id, 'smoke');
+    const smoked = [...seen.entries()].filter(([, s]) => s.reasons.has('smoke')).length;
+    const note = smoked ? `smoke set: ${smoked} target${smoked === 1 ? '' : 's'}` : 'no smoke targets available';
+    lowReason = `only ${mapped} of ${files.length} changed files (${mappedPct}%) map to a target, below ${minMappedPct}%; ${note}`;
   }
   for (const id of input.always ?? []) add(id, 'always');
 
@@ -213,7 +218,7 @@ async function readText(cwd, p, what) {
   const st = await fs.stat(file).catch((e) => { throw bad(`cannot read ${what} ${p}: ${e.code || e.message}`); });
   if (!st.isFile()) throw bad(`${what} ${p} is not a regular file`);
   if (st.size > MAX_BYTES) throw bad(`${what} ${p} is larger than ${MAX_BYTES} bytes`);
-  return fs.readFile(file, 'utf-8');
+  return stripBom(await fs.readFile(file, 'utf-8'));
 }
 
 export async function run(args, io = {}) {
@@ -227,7 +232,7 @@ export async function run(args, io = {}) {
     raw = await io.stdin();
   }
   let input;
-  try { input = JSON.parse(raw); } catch { throw bad('input is not valid JSON'); }
+  try { input = JSON.parse(stripBom(raw)); } catch { throw bad('input is not valid JSON'); }
   validateInput(input);
   let changed = [...(input.changed ?? [])];
   if (flags.changed) {

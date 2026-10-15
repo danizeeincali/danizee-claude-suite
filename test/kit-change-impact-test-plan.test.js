@@ -72,7 +72,7 @@ describe('test-plan', () => {
   });
 
   it('low mapped share adds smoke (entries + most connected) and flags low confidence', () => {
-    const r = planTests(base(), ['src/cart.js', 'docs/a.md', 'docs/b.md'], { smoke: 1 });
+    const r = planTests(base(), ['src/cart.js', 'docs/a.md', 'docs/b.md'], { smoke: 2 });
     assert.equal(r.low_confidence, true);
     assert.match(r.low_confidence_reason, /1 of 3/);
     assert.equal(reasonOf(r, 'home'), 'smoke'); // entry
@@ -83,7 +83,7 @@ describe('test-plan', () => {
   });
 
   it('smoke ranks by edge degree then id, and respects --smoke', () => {
-    const r = planTests({ targets: [{ id: 'a', files: [] }, { id: 'b', files: [] }, { id: 'c', files: [] }], edges: [['c', 'a'], ['c', 'b']] }, ['z.js'], { smoke: 1 });
+    const r = planTests({ targets: [{ id: 'a', files: [] }, { id: 'b', files: [] }, { id: 'c', files: [] }], edges: [['c', 'a'], ['c', 'b']] }, ['z.js'], { smoke: 2 });
     assert.deepEqual(r.plan.map(i => i.id), ['c']);
     const r0 = planTests({ targets: [{ id: 'a', files: [] }] }, ['z.js'], { smoke: 0 });
     assert.deepEqual(r0.plan, []);
@@ -140,6 +140,46 @@ describe('test-plan', () => {
       assert.equal(r2.coverage.changed_total, 2);
       await fs.writeFile(path.join(dir, 'bad.diff'), 'hello');
       await assert.rejects(run(['--in', 'in.json', '--diff', 'bad.diff'], { cwd: dir }), (e) => e.code === 1);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+  it('low-confidence compares the raw share, not the rounded one (241 of 402 is 59.95, below 60)', () => {
+    const targets = [{ id: 'a', files: Array.from({ length: 241 }, (_, i) => `m${i}.js`), entry: true }];
+    const changed = [...targets[0].files, ...Array.from({ length: 161 }, (_, i) => `u${i}.js`)];
+    const r = planTests({ targets }, changed);
+    assert.equal(r.low_confidence, true);
+    assert.ok(r.low_confidence_reason);
+    assert.equal(r.plan[0].reason, 'direct-change');
+    // exactly at the threshold is not low
+    assert.equal(planTests({ targets: [{ id: 'a', files: ['x', 'y', 'z'] }] }, ['x', 'y', 'z', 'u', 'v']).low_confidence, false);
+  });
+
+  it('low_confidence_reason tells the truth about the smoke set', () => {
+    const none = planTests({ targets: [{ id: 'a', files: [] }] }, ['z.js'], { smoke: 0 });
+    assert.deepEqual(none.plan, []);
+    assert.equal(none.low_confidence, true);
+    assert.ok(!/smoke set was added/.test(none.low_confidence_reason));
+    assert.match(none.low_confidence_reason, /no smoke targets/);
+    const some = planTests({ targets: [{ id: 'a', files: [], entry: true }, { id: 'b', files: [] }] }, ['z.js'], { smoke: 2 });
+    assert.equal(some.plan.length, 2);
+    assert.match(some.low_confidence_reason, /smoke set: 2 targets/);
+  });
+
+  it('rejects unknown keys in the input object', async () => {
+    assert.throws(() => planTests({ targets: [{ id: 'a' }], flow: [] }, []), (e) => e.code === 1 && /flow/.test(e.message));
+    const io = (s) => ({ cwd: '/', stdin: async () => s, stdinIsTTY: false });
+    await assert.rejects(run([], io('{"targets":[{"id":"a"}],"extra":1}')), (e) => e.code === 1);
+  });
+
+  it('strips a leading BOM from JSON input, --in and --changed', async () => {
+    const io = (s) => ({ cwd: '/', stdin: async () => s, stdinIsTTY: false });
+    const r = await run([], io('\uFEFF' + JSON.stringify({ targets: [{ id: 'a', files: ['x.js'] }], changed: ['x.js'] })));
+    assert.equal(r.plan[0].id, 'a');
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'tp-'));
+    try {
+      await fs.writeFile(path.join(dir, 'in.json'), '\uFEFF' + JSON.stringify({ targets: [{ id: 'a', files: ['x.js'] }] }));
+      await fs.writeFile(path.join(dir, 'c.json'), '\uFEFF["x.js"]');
+      const r2 = await run(['--in', 'in.json', '--changed', 'c.json'], { cwd: dir });
+      assert.equal(r2.plan[0].id, 'a');
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
 });
