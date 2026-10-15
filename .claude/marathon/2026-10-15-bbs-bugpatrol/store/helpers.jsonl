@@ -162,3 +162,5 @@
 {"role":"fix","model":"sonnet","stream":"sarif-junit-and-sticky-pr-comment-render","budget":100000,"event":"spawn","id":"292448a2-a21c-4771-9547-6bbf65050553","ts":"2026-10-15T17:34:30.448Z"}
 {"helper_id":"b65b3df3-9245-4109-bf5d-50beb5d70339","tokens":81179,"outcome":"green","event":"done","id":"7c89b1a7-ec76-4c27-bd54-96322aa4cfe4","ts":"2026-10-15T17:34:38.275Z"}
 {"role":"fix","model":"sonnet","stream":"exit-code-contract-separating-infrastruc","budget":100000,"event":"spawn","id":"3a10b38c-d726-4b4f-9f0e-a970c5f738f2","ts":"2026-10-15T17:34:38.466Z"}
+{"helper_id":"aaf7a209-9843-4fd6-9e30-f670f160a408","tokens":83074,"outcome":"green","event":"done","id":"cbfe25db-43cf-4fc1-9d6f-4c2637fb9da1","ts":"2026-10-15T17:34:47.805Z"}
+{"role":"fix","model":"sonnet","stream":"noise-ledger-with-flake-quarantine","budget":100000,"event":"spawn","id":"c9091ade-a0d7-4710-bd60-4e2a843a27f4","ts":"2026-10-15T17:34:48.004Z"}
