@@ -36,7 +36,7 @@ describe('noise-ledger — packaged end to end', () => {
     const first = pkg.kit(['noise-ledger', 'apply', '--first-run', '--now', '2026-10-15'], input);
     assert.equal(first.code, 0);
     assert.equal(first.json.blocking, false);
-    assert.equal(first.json.filed.length, 3);
+    assert.equal(first.json.filed.length, 4);
 
     const lapsed = pkg.kit(['noise-ledger', 'apply', '--now', '2027-01-01'], input);
     assert.ok(lapsed.json.filed.some(x => x.id === 'known'), 'expired entry no longer matches');
