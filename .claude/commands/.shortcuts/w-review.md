@@ -147,7 +147,7 @@ List what to check from the result: each symbol in `touched`, then the `impacted
 - Bug fix patterns that recur
 - Feature patterns worth templating
 
-**🔇 NOISE LEDGER AND TRIAGE (advisory):** Before any candidate is filed, put the findings through the ledger and then the fingerprint triage, as two separate commands. `$F` holds `[{"id","severity","rule","locations":[...],"failures","reproductions"}]` (retry counts from re-running the check), `$V` holds `{"scopes":[...],"enabled":[rules that ran],"violations":[{"scope","rule","source":"auto"|"agent","element"}]}`, `$S` is this review's session id. If the kit is not installed (`.claude/helpers/kit/cli.js` missing), say so in one line, skip both commands and file candidates as before.
+**🔇 NOISE LEDGER AND TRIAGE (advisory):** Before any candidate is filed, put the findings through the ledger and then the fingerprint triage, as two separate commands. `$F` holds `[{"id","severity","rule","locations":[...],"failures","reproductions"}]` (`severity` high|medium|low only: map critical to high and info to low; retry counts from re-running the check), `$V` holds `{"scopes":[...],"enabled":[rules that ran],"violations":[{"scope","rule","source":"auto"|"agent","element"}]}`, `$S` is this review's session id. If the kit is not installed (`.claude/helpers/kit/cli.js` missing), say so in one line, skip both commands and file candidates as before.
 
 First the ledger:
 ```bash
@@ -159,7 +159,7 @@ Then the triage (only after `noise-ledger` exited 0):
 ```bash
 node .claude/helpers/kit/cli.js triage visit --session "$S" --in "$V"
 ```
-`triage` exit 0: raise only `raise` and `recurred` entries (a decided one is never raised again) and mention `closed` ones (no longer seen); record a decision with `kit/cli.js triage decide <fingerprint> --as filed|dismissed|accepted`; exit 1 invalid input or corrupt state, exit 2 refused (state path is a symbolic link): report it. The review goes on.
+`triage` exit 0: raise only `raise` and `recurred` entries (a decided one is never raised again; a repeat of a record nobody has decided yet comes back as a `raise` entry with status `pending` or `reopened`, not as `recurred`, which holds only filed records). Mention `closed` ones (no longer seen) only for rows with source `auto`: a record with an `agent` row never closes on absence (it is listed in `skipped`), so `closed` stays empty for agent-sourced rows. Record a decision with `node .claude/helpers/kit/cli.js triage decide <fingerprint> --as filed|dismissed|accepted`; exit 1 invalid input or corrupt state, exit 2 refused (state path is a symbolic link): report it. The review goes on.
 
 **If candidate identified:**
 1. Generate unique ID: RC-NNN (check .claude/ralph-candidates.md for next available)

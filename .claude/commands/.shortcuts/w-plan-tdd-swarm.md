@@ -275,7 +275,7 @@ cross-cutting/architectural changes, migrations, security-sensitive work. On a D
 (tests still red, regressions, agent stuck/died), the retry escalates ONE tier: sonnet → opus →
 your session model — never the same tier twice.
 
-**🧪 TEST PLAN (advisory):** Each time the build's tests run (after the build, and again whenever a fix makes you rerun them), first plan which tests to run from what changed. Shell variables do not persist between Bash calls: run `mktemp -d` once and read the printed directory, then write `<printed dir>/test-map.json` with the Write tool (the test map `{"targets":[{"id":"<test file>","files":["<source files it covers>"]}]}`) and the changed paths, one per line, to `<printed dir>/changed.txt` (`git diff --name-only HEAD > <printed dir>/changed.txt`, then add each new untracked file), and put the literal directory in the block (`/tmp/tmp.AbC123` is an example: write the printed one in its place):
+**🧪 TEST PLAN (advisory):** Each time the build's tests run (after the build, and again whenever a fix makes you rerun them), first plan which tests to run from what changed. Shell variables do not persist between Bash calls: run `mktemp -d` once and read the printed directory, then generate `<printed dir>/test-map.json` (the test map `{"targets":[{"id":"<test file>","files":["<source files it covers>"]}]}`) mechanically with the helper CI uses, never by hand: `node scripts/ci-step.js --print-targets > <printed dir>/test-map.json` (it maps each test file under `test/` and `test/reach/` to the local files it imports). Only when the repository has no `scripts/ci-step.js`, write that file with the Write tool instead. Write the changed paths, one per line, to `<printed dir>/changed.txt` (`git diff --name-only HEAD > <printed dir>/changed.txt`, then add each new untracked file), and put the literal directory in the block (`/tmp/tmp.AbC123` is an example: write the printed one in its place):
 ```bash
 P=/tmp/tmp.AbC123; if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): test-plan skipped, advisory"; else node .claude/helpers/kit/cli.js test-plan --in "$P/test-map.json" --changed "$P/changed.txt"; fi
 ```
@@ -362,7 +362,7 @@ P=/tmp/tmp.AbC123; if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not in
 ```sh
 P=/tmp/tmp.AbC123; if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): triage skipped, advisory"; else node .claude/helpers/kit/cli.js triage visit --session pt-2026-10-15-auth --in "$P/visit.json"; fi
 ```
-`triage` exit 0: raise only `raise` and `recurred` entries (a decided one is never raised again) and mention `closed` ones (no longer seen); record a decision with `kit/cli.js triage decide <fingerprint> --as filed|dismissed|accepted`; exit 1 invalid input or corrupt state, exit 2 refused (state path is a symbolic link): report it.
+`triage` exit 0: raise only `raise` and `recurred` entries (a decided one is never raised again; a repeat of a record nobody has decided yet comes back as a `raise` entry with status `pending` or `reopened`, not as `recurred`, which holds only filed records). Mention `closed` ones (no longer seen) only for rows with source `auto`: a record with an `agent` row never closes on absence (it is listed in `skipped`), so `closed` stays empty for agent-sourced rows. Record a decision with `node .claude/helpers/kit/cli.js triage decide <fingerprint> --as filed|dismissed|accepted`; exit 1 invalid input or corrupt state, exit 2 refused (state path is a symbolic link): report it.
 Remove the directory at the end (`rm -rf -- <printed dir>`, the literal path). None of the three stops the review; it goes on.
 
 **REQUIRED OUTPUT:**
@@ -387,12 +387,12 @@ Remove the directory at the end (`rm -rf -- <printed dir>`, the literal path). N
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
 **🧭 CLAIM CHECKS (router advisory, replay gate blocking):** When a model or helper session judges a claim (a fix, a suppression, "tests pass"), route its answer instead of trusting it. Shell variables do not persist between Bash calls: run `mktemp -d` once, read the printed directory, write each JSON file with the Write tool and put the literal directory in each block as `P=<printed dir>` (`/tmp/tmp.AbC123` below is an example: write the printed one in its place); remove it at the end of the checkpoint (`rm -rf -- <printed dir>`).
-1. Router (how hard to verify): `<printed dir>/route.json` holds `[{"id","answer":{"kind","confidence"},"deterministicRegression"}]` (`deterministicRegression` is true when a failing regression test from the re-run above exists):
+1. Router (how hard to verify): `<printed dir>/route.json` holds `[{"id","answer":{"kind","confidence"},"deterministicRegression"}]`; `kind` must be one of `anomaly|not-anomalous|ambiguous|suppress|fix|check` (any other word routes the claim to `ask-human`): `fix` for a fix claim, `suppress` for a suppression, `check` for "tests pass", the others for a concern raised; `confidence` is a number from 0 to 1 (`deterministicRegression` is true when a failing regression test from the re-run above exists):
 ```bash
 P=/tmp/tmp.AbC123; if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): threshold-route skipped, advisory"; else node .claude/helpers/kit/cli.js threshold-route --file "$P/route.json"; fi
 ```
 Exit 0: act on each `route`: raising a concern is free; `suppress`/`auto-fix` happen only when the router says so (high confidence), so a fix is accepted on a model's word only when its route is `auto-fix`; `ask-human` and `escalate` go to the user; `block` (a program saw a regression) can never be overridden. Exit 1: invalid input, treat every item as `ask-human`.
-2. Replay gate: a claim may fail this check only when a program, not a model, decided it and a second identical replay agrees. `<printed dir>/gate.json` holds `{"verdicts":[{"id","decided_by":"replay"|"exact-check"|"output-diff"|"model","outcome":"pass"|"fail","runs":[run1,run2]}]}`:
+2. Replay gate: a claim may fail this check only when a program, not a model, decided it and a second identical replay agrees. `<printed dir>/gate.json` holds `{"verdicts":[{"id","decided_by":"replay"|"exact-check"|"output-diff"|"model","outcome":"pass"|"fail","runs":[{"steps":[...],"checks":{...},"outputs":{...}}, {...}]}]}` (each run an object `{"steps":[...],"checks":{...},"outputs":{...}}` with at least one of those three keys and no other key, the same keys in both runs):
 ```bash
 P=/tmp/tmp.AbC123; if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed: replay gate fails closed, replay gate could not run" >&2; (exit 1); else node .claude/helpers/kit/cli.js replay-gate --file "$P/gate.json"; fi
 ```
@@ -434,7 +434,7 @@ Exit 0 means the receipt was written; exit 1 is wrong input or a broken state an
 **🤖 MODEL:** if compound work is delegated to a subagent (doc writing, memory distillation), spawn
 it with `model: sonnet`. Inline compound writing by the main loop is fine as-is.
 
-**🪞 REFLECTION (advisory):** Turn this session's trouble into short lessons. Put the literal path of the session's event log (JSON Lines) in place of the example path:
+**🪞 REFLECTION (advisory):** Turn this session's trouble into short lessons. Put the literal path of the session's event log in place of the example path: it is the Claude Code transcript of this session, a JSON Lines file at `~/.claude/projects/<project>/<session>.jsonl` (`reflect trouble-log` reads that transcript format directly; take the newest file of this project's folder, whose name is the project path with `/` and `.` turned into `-`):
 ```bash
 E=/tmp/tmp.AbC123/events.jsonl; if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): reflect skipped, advisory"; else node .claude/helpers/kit/cli.js reflect trouble-log --in "$E"; fi
 ```

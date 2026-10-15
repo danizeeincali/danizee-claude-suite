@@ -135,3 +135,23 @@ test('render step with no test output exits 0 and writes nothing', () => {
   assert.match(r.stdout, /no test output/);
   assert.ok(!fs.existsSync(path.join(dir, 'results')));
 });
+
+test('test step: a status that is not a timeout, a signal or >= 128 never gets the "timed out / killed by a signal" label, and the job still fails', async () => {
+  const { runStep } = await import(path.join(root, 'scripts', 'ci-step.js'));
+  const { env } = fixture();
+  const lines = [];
+  const code = await runStep(() => ({ class: 'infrastructure' }), { env: { ...env, CI_TEST_COMMAND: 'exit 3' }, log: (l) => lines.push(l) });
+  assert.equal(code, 3);
+  const out = lines.join('\n');
+  assert.match(out, /status 3: infrastructure: test command failed with status 3/);
+  assert.doesNotMatch(out, /timed out \/ killed by a signal/);
+});
+
+test('scripts/ci-step.js --print-targets prints the test map CI gives test-plan', () => {
+  const r = spawnSync(process.execPath, ['scripts/ci-step.js', '--print-targets'], { cwd: root, encoding: 'utf-8' });
+  assert.equal(r.status, 0, r.stderr);
+  const map = JSON.parse(r.stdout);
+  assert.ok(map.targets.length > 10);
+  const t = map.targets.find((x) => x.id === 'test/reach/ci-job.test.js');
+  assert.ok(t && t.files.includes('test/reach/ci-job.test.js'));
+});

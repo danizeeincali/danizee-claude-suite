@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 
 const posix = (p) => p.split(path.sep).join('/');
@@ -31,6 +32,12 @@ export function testTargets(cwd = process.cwd()) {
     }
   }
   return out;
+}
+
+// `node scripts/ci-step.js --print-targets` prints the test map {"targets":[...]} that CI passes to test-plan, so a workflow can
+// generate it mechanically instead of writing it by hand.
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url) && process.argv[2] === '--print-targets') {
+  process.stdout.write(`${JSON.stringify({ targets: testTargets() }, null, 2)}\n`);
 }
 
 function changedFiles(env, cwd) {
@@ -78,7 +85,10 @@ export function runStep(classify, { env = process.env, log = console.log } = {})
       if (code === 0) return resolve(0);
       const c = classify({ code, signal });
       const ended = signal ? `signal ${signal}` : `status ${code}`;
-      const label = c.class === 'infrastructure' ? 'infrastructure: timed out / killed by a signal, rerun'
+      // Only a timeout (124), a signal death or a status >= 128 is labelled "timed out / killed by a signal"; any other status gets the neutral label.
+      const killed = Boolean(signal) || code === 124 || code >= 128;
+      const label = c.class === 'infrastructure' && !killed ? `infrastructure: test command failed with status ${code}`
+        : c.class === 'infrastructure' ? 'infrastructure: timed out / killed by a signal, rerun'
         : c.class === 'precondition' ? (code === 126 || code === 127 ? 'precondition: the test command could not start' : `precondition: test command failed with status ${code}`)
         : 'product failure: tests failed';
       const next = c.class === 'infrastructure' ? 'rerun the job'

@@ -210,3 +210,25 @@ test('the new /pt and /mt kit blocks parse with bash -n', () => {
     assert.equal(r.status, 0, `bash -n failed: ${r.stderr}\n${b}`);
   }
 });
+
+// Round 7 review fixes: the steps spell out the shapes the verbs accept.
+test('r7: triage repeats, replay-gate run shape, router kinds, cluster id, test map, event log and ledger severity are spelled out', () => {
+  const pt = installed('w-plan-tdd-swarm');
+  const mt = stepSection(installed('w-marathon'), '⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met');
+  const rv = installed('w-review');
+  for (const [name, t] of [['pt', pt], ['mt', mt], ['review', rv]]) {
+    if (name !== 'review') assert.match(t, /\\?`raise\\?` entr(y|ies) with status \\?`pending\\?` or \\?`reopened\\?`|\\?`raise\\?` with status \\?`pending\\?`/, `${name} reads repeats from raise/pending`);
+    assert.match(t, /\\?`closed\\?` stays empty for agent-sourced rows|`closed` stays empty for agent-sourced rows/, `${name} says closed stays empty`);
+  }
+  assert.match(rv, /node \.claude\/helpers\/kit\/cli\.js triage decide/);
+  assert.doesNotMatch(rv, /[^.\/]kit\/cli\.js triage decide/);
+  assert.doesNotMatch(pt, /[^.\/]kit\/cli\.js triage decide/);
+  for (const [name, t] of [['pt', stepSection(pt, VER)], ['mt', mt]]) assert.match(t, /"runs":\[\{"steps":\[\.\.\.\],"checks":\{\.\.\.\},"outputs":\{\.\.\.\}\}/, `${name} gives the run shape`);
+  assert.match(stepSection(pt, VER), /anomaly\|not-anomalous\|ambiguous\|suppress\|fix\|check/);
+  assert.match(mt, /"id":"<row index as a string>"/);
+  assert.match(stepSection(pt, '⛔ CHECKPOINT 5: Build'), /node scripts\/ci-step\.js --print-targets > /);
+  assert.match(mt, /node scripts\/ci-step\.js --print-targets > \.claude\/marathon\/<run-id>\/test-map\.json/);
+  assert.match(mt, /test-plan --in "\$T"/);
+  assert.match(stepSection(pt, '⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)'), /~\/\.claude\/projects\/<project>\/<session>\.jsonl/);
+  assert.match(rv, /map critical to high and info to low/);
+});
