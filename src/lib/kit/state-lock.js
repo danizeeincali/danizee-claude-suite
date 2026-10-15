@@ -242,6 +242,7 @@ export async function readJsonState(file, { fallback } = {}) {
 
 /**
  * Write `value` as JSON via a temp file and rename; folders are created; the temp file never remains after a failure.
+ * An existing file keeps its mode; a new one gets 0666 & ~umask.
  * Inside withStateLock for this file, the rename happens only if the lock still holds our token (see LOST LOCK).
  */
 export async function writeJsonAtomic(file, value) {
@@ -250,15 +251,23 @@ export async function writeJsonAtomic(file, value) {
   }
   const token = held.getStore()?.get(path.resolve(`${file}.lock`));
   const tmp = `${file}.${process.pid}.${randomUUID()}.tmp`;
+  // Keep an existing file's mode; a new file gets 0666 masked by the umask (the kernel applies it at open), as
+  // fs.writeFile would. The temp file starts at 0600 and takes the target's mode before any content is written.
+  let keepMode = null;
+  try { keepMode = (await fsp.stat(file)).mode & 0o7777; } catch (err) {
+    if (err.code !== 'ENOENT') throw new KitExit(`cannot write ${file}: ${err.code || err.message}`, 1);
+  }
   try {
-    const fh = await fsp.open(tmp, 'wx', 0o600);
+    const fh = await fsp.open(tmp, 'wx', keepMode === null ? 0o666 : 0o600);
     try {
+      if (keepMode !== null) await fh.chmod(keepMode);
       await fh.writeFile(JSON.stringify(value, null, 2) + '\n');
       await fh.sync();
     } finally { await fh.close(); }
     if (token !== undefined) {
       let cur = null;
-      try { cur = holderOf(await fsp.readFile(`${file}.lock`, 'utf-8')); } catch { /* missing or unreadable: lost */ }
+      // Synchronous: the lock file is tiny, and nothing else runs between this check and the rename's start.
+      try { cur = holderOf(fsSync.readFileSync(`${file}.lock`, 'utf-8')); } catch { /* missing or unreadable: lost */ }
       if (!cur || cur.token !== token) {
         await fsp.unlink(tmp).catch(() => {});
         throw new KitExit(`lost the lock on ${file} to another run; nothing saved`, 1);
