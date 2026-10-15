@@ -45,7 +45,12 @@ describe('threshold-route — packaged end to end', () => {
   it('exit 1 on invalid input and thresholds', () => {
     assert.equal(pkg.kit(['threshold-route'], 'nope').code, 1);
     assert.equal(pkg.kit(['threshold-route', '--low', '0.9', '--high', '0.1'], '[]').code, 1);
-    assert.equal(pkg.kit(['threshold-route'], JSON.stringify([{ answer: { kind: 'fix', confidence: 3 } }])).code, 1);
+    assert.equal(pkg.kit(['threshold-route'], JSON.stringify([{ ledgerMatch: 'yes' }])).code, 1);
+  });
+  it('a malformed model answer exits 0 and still blocks a regression in the batch', () => {
+    const r = pkg.kit(['threshold-route'], JSON.stringify([{ id: 'r', deterministicRegression: true }, { id: 'm', answer: { kind: 'fix', confidence: 3 } }]));
+    assert.equal(r.code, 0);
+    assert.match(JSON.stringify(r), /malformed-answer/);
   });
 
   it('makes no network call', () => assert.deepEqual(pkg.egress(), []));

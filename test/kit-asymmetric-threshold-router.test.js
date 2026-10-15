@@ -242,6 +242,14 @@ describe('threshold-route: run', () => {
       assert.deepEqual((await run(['--high', '0.9'], io(dir, body))).thresholds, { low: 0.1, high: 0.9 });
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
+  it('a malformed answer from stdin routes to ask-human and does not stop a block', async () => {
+    const dir = await mk();
+    try {
+      const r = await run([], io(dir, JSON.stringify([{ id: 'r', deterministicRegression: true }, { id: 'm', answer: ans('fix', 5) }])));
+      assert.equal(r.blocks, true);
+      assert.equal(r.results[1].rule, 'malformed-answer');
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
   it('exit 1 on bad json, bad flags, bad thresholds, missing file, nothing to read', async () => {
     const dir = await mk();
     try {
@@ -255,7 +263,7 @@ describe('threshold-route: run', () => {
         [['--high', '2'], '[]'],
         [['--file', 'missing.json'], ''],
         [[], JSON.stringify({ items: 'x' })],
-        [[], JSON.stringify([{ answer: ans('fix', 5) }])]
+        [[], JSON.stringify([{ ledgerMatch: 'yes' }])]
       ];
       for (const [args, stdin] of cases) await assert.rejects(run(args, io(dir, stdin)), (e) => e.code === 1, JSON.stringify(args));
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
