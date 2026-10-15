@@ -283,12 +283,16 @@ describe('r2 fixes', () => {
     const uris = s.runs[0].results.map(r => r.locations[0].physicalLocation.artifactLocation.uri);
     assert.deepEqual(uris, ['file:///C:/repo/src/x%20y.js', 'file:///d:/a/b.js']);
   });
+  it('keeps a POSIX absolute path as a file URI', () => {
+    const s = renderSarif({ findings: [{ message: 'm', file: '/home/runner/work/app/app/src/x y.js' }] });
+    assert.equal(s.runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri, 'file:///home/runner/work/app/app/src/x%20y.js');
+  });
   it('never emits a network-path uri (UNC or // input) in SARIF', () => {
     const files = ['\\\\attacker.example\\share\\x.js', '//evil.example/x.js', '///x.js', '/etc/x.js', '\\\\', '//'];
     const s = renderSarif({ findings: files.map(file => ({ message: 'm', file })) });
     const uris = s.runs[0].results.map(r => r.locations[0].physicalLocation.artifactLocation.uri);
     for (const u of uris) assert.ok(!u.startsWith('/'), u);
-    assert.deepEqual(uris, ['attacker.example/share/x.js', 'evil.example/x.js', 'x.js', 'etc/x.js', '.', '.']);
+    assert.deepEqual(uris, ['attacker.example/share/x.js', 'evil.example/x.js', 'x.js', 'file:///etc/x.js', '.', '.']);
     assert.equal(new URL(uris[0], 'file:///C:/repo/').href, 'file:///C:/repo/attacker.example/share/x.js');
   });
 });

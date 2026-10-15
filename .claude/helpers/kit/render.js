@@ -101,6 +101,8 @@ const fileUri = file => {
   const p = wellFormed(file).replace(/\\/g, '/');
   const drive = /^([A-Za-z]):\//.exec(p);
   if (drive) return `file:///${drive[1]}:/${p.slice(3).split('/').map(encodeURIComponent).join('/')}`;
+  // A single leading '/' is a POSIX absolute path: keep it as a file URI.
+  if (p.startsWith('/') && !p.startsWith('//')) return `file://${p.split('/').map(encodeURIComponent).join('/')}`;
   // Drop leading empty segments so the result is never a '//host/...' network-path reference.
   const segs = p.split('/');
   while (segs.length && segs[0] === '') segs.shift();
