@@ -219,6 +219,12 @@ Exit 0 clean for the tracked files; if the JSON says `configured: false` no patt
 
 On any non-zero exit (scrub exit 1 or 2, or a failed `git add`) the block unstages this run's paths with `git reset -q -- .claude/bbs/runs/<id> .claude/bbs/registry.jsonl` and checks that exit, as `/bc` does after a refused scrub: `scrub --worktree` reads files on disk, so after a hit is edited out a re-scan is clean while the index would still hold the staged blob with the secret. If the unstage fails the block prints "unstage failed (exit N): still staged: <paths>": report it and say the owner must unstage those paths before any commit. The paths are re-added by the rerun of this block after the hits are removed, and that rerun's scrub is the one that counts.
 
+**Reflection (advisory):** Turn this run's trouble into lessons for future runs. `$E` is the session's event log (JSON Lines):
+```bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): reflect skipped, advisory"; else node .claude/helpers/kit/cli.js reflect trouble-log --in "$E"; fi
+```
+Exit 0: write at most 3 one-sentence imperative lessons from the signals and save each with `node .claude/helpers/kit/cli.js reflect lessons save --role <role> --text "<lesson>" --session <run id>`; `reflect lessons keep --id <id>` / `retire --id <id> --reason "<why>"` curate old ones. Exit 2 refused: a near duplicate (`--confirm <id>` keeps that one, `--distinct` only when truly different). Exit 1: invalid input, report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
+
 Then `/bc`: write-up, the run's registry row and labels, durable facts to memory, commit, never push. `fetched/` is git-ignored and must not be added.
 
 ---

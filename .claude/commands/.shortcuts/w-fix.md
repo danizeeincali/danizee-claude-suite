@@ -136,6 +136,13 @@ Skip this block for non-UI tasks.
 
 **AUTO-PROCEED:** Continue to Verification phase.
 
+
+**🧪 TEST PLAN (advisory):** Plan which tests to run from what changed. `$M` is the test map `{"targets":[{"id":"<test file>","files":["<source files it covers>"]}]}`, `$C` lists the changed paths one per line (`git diff --name-only`):
+```bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): test-plan skipped, advisory"; else node .claude/helpers/kit/cli.js test-plan --in "$M" --changed "$C"; fi
+```
+Exit 0: run every `plan` item, with its `reason` (direct-change, shared-component, flow, smoke); when `low_confidence` is true the plan already holds a smoke set, say why. Exit 1: invalid input, run the full suite instead. If the kit is not installed, say so in one line and run the tests you would have run. The workflow goes on.
+
 ---
 
 ### ✅ VERIFICATION CHECKPOINT — Cross-Method Validation
@@ -176,6 +183,13 @@ Exit 3 from `diff-range` means an empty range: report "no change to review", nev
 ---
 
 
+
+**🧭 AUTO-FIX GATE (blocking):** Before a fix is accepted, route the model's confidence. Write one item per fix to `$R` (`[{"id","answer":{"kind":"fix","confidence":0.0-1.0},"deterministicRegression":true|false}]`; `deterministicRegression` is true when a failing regression test from the re-run above exists), then:
+```bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed: auto-fix gate fails closed, ask the user before accepting any fix" >&2; (exit 1); else node .claude/helpers/kit/cli.js threshold-route --file "$R"; fi
+```
+Exit 0: accept a fix only when its `route` is `auto-fix` (high confidence); `ask-human` or `escalate` go to AskUserQuestion; **`block` (a failing regression test) can never be overridden by any confidence: the fix is not accepted.** Exit 1, or kit missing: invalid input, the gate fails closed; no fix is accepted without the user's explicit yes.
+
 ---
 
 ### ⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)
@@ -213,6 +227,13 @@ Scan the work just completed for measurable optimization targets:
 
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
+
+
+**🪞 REFLECTION (advisory):** Turn this session's trouble into short lessons. `$E` is the session's event log (JSON Lines):
+```bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): reflect skipped, advisory"; else node .claude/helpers/kit/cli.js reflect trouble-log --in "$E"; fi
+```
+Exit 0: read the signals (repeated calls, failed actions, repeated edits, waits, the stop reason) and write at most 3 one-sentence imperative lessons that would have avoided them. Save each with `node .claude/helpers/kit/cli.js reflect lessons save --role <role> --text "<lesson>" --session <session id>`; `reflect lessons keep --id <id>` confirms a listed lesson that held, `reflect lessons retire --id <id> --reason "<why>"` drops one that no longer does. Exit 2 refused (a near duplicate: the message names its id): keep that one with `--confirm <id>`, or `--distinct` only if the lesson truly differs. Exit 1: invalid input, report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
 
 ---
 

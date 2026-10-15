@@ -1672,6 +1672,13 @@ Skip this block for non-UI tasks.
 
 **AUTO-PROCEED:** Continue to Verification phase.
 
+
+**🧪 TEST PLAN (advisory):** Plan which tests to run from what changed. \`$M\` is the test map \`{"targets":[{"id":"<test file>","files":["<source files it covers>"]}]}\`, \`$C\` lists the changed paths one per line (\`git diff --name-only\`):
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): test-plan skipped, advisory"; else node .claude/helpers/kit/cli.js test-plan --in "$M" --changed "$C"; fi
+\`\`\`
+Exit 0: run every \`plan\` item, with its \`reason\` (direct-change, shared-component, flow, smoke); when \`low_confidence\` is true the plan already holds a smoke set, say why. Exit 1: invalid input, run the full suite instead. If the kit is not installed, say so in one line and run the tests you would have run. The workflow goes on.
+
 ---
 
 ### ✅ VERIFICATION CHECKPOINT — Cross-Method Validation
@@ -1712,6 +1719,13 @@ Exit 3 from \`diff-range\` means an empty range: report "no change to review", n
 ---
 
 
+
+**🧭 AUTO-FIX GATE (blocking):** Before a fix is accepted, route the model's confidence. Write one item per fix to \`$R\` (\`[{"id","answer":{"kind":"fix","confidence":0.0-1.0},"deterministicRegression":true|false}]\`; \`deterministicRegression\` is true when a failing regression test from the re-run above exists), then:
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed: auto-fix gate fails closed, ask the user before accepting any fix" >&2; (exit 1); else node .claude/helpers/kit/cli.js threshold-route --file "$R"; fi
+\`\`\`
+Exit 0: accept a fix only when its \`route\` is \`auto-fix\` (high confidence); \`ask-human\` or \`escalate\` go to AskUserQuestion; **\`block\` (a failing regression test) can never be overridden by any confidence: the fix is not accepted.** Exit 1, or kit missing: invalid input, the gate fails closed; no fix is accepted without the user's explicit yes.
+
 ---
 
 ### ⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)
@@ -1749,6 +1763,13 @@ Scan the work just completed for measurable optimization targets:
 
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
+
+
+**🪞 REFLECTION (advisory):** Turn this session's trouble into short lessons. \`$E\` is the session's event log (JSON Lines):
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): reflect skipped, advisory"; else node .claude/helpers/kit/cli.js reflect trouble-log --in "$E"; fi
+\`\`\`
+Exit 0: read the signals (repeated calls, failed actions, repeated edits, waits, the stop reason) and write at most 3 one-sentence imperative lessons that would have avoided them. Save each with \`node .claude/helpers/kit/cli.js reflect lessons save --role <role> --text "<lesson>" --session <session id>\`; \`reflect lessons keep --id <id>\` confirms a listed lesson that held, \`reflect lessons retire --id <id> --reason "<why>"\` drops one that no longer does. Exit 2 refused (a near duplicate: the message names its id): keep that one with \`--confirm <id>\`, or \`--distinct\` only if the lesson truly differs. Exit 1: invalid input, report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
 
 ---
 
@@ -1895,6 +1916,12 @@ NEVER proceed to Plan until:
 - [ ] Root cause identified with high confidence
 - [ ] Evidence documented
 - [ ] User confirms diagnosis
+
+**REPLAY GATE (blocking):** The diagnosis must reproduce on a second replay before it counts. Run the reproduction twice and write \`{"verdicts":[{"id":"diagnosis","decided_by":"replay","outcome":"fail","runs":[{"steps":[...],"outputs":{...}},{"steps":[...],"outputs":{...}}]}]}\` (outcome \`fail\` = the bug reproduced) to \`$G\`:
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed: replay gate fails closed, the diagnosis is unconfirmed" >&2; (exit 1); else node .claude/helpers/kit/cli.js replay-gate --file "$G"; fi
+\`\`\`
+**Exit 2: a \`blocking\` verdict, the two runs agree: the diagnosis is confirmed, go on to the user gate.** Exit 0: the verdict is \`untested\` (the runs differ or there was one) or \`comment\`: the diagnosis is NOT confirmed, do not proceed to Plan; replay again or choose "Investigate more". Exit 1, or kit missing: invalid input, the gate fails closed; the diagnosis is unconfirmed until the user explicitly accepts it unreplayed at the gate below.
 
 **USER GATE:** Use AskUserQuestion
 - Question: "Root cause confirmed: [X]. Proceed to Plan fix?"
@@ -2517,6 +2544,13 @@ List what to check from the result: each symbol in \`touched\`, then the \`impac
 
 **AUTO-PROCEED:** Continue to Security Scan phase.
 
+
+**🧩 CLUSTER (advisory):** Findings from parallel agents often repeat. Write them as JSON (\`[{"id","rule","severity","files":[...]}]\`) to a temp file \`$F\`, then group them before the list is shown:
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): cluster skipped, advisory"; else node .claude/helpers/kit/cli.js cluster --file "$F"; fi
+\`\`\`
+Exit 0: show one entry per cluster (the representative, with its member ids). For each \`pending_pairs\` entry, judge whether the two clusters are one defect; only when sure, write \`[{"a","b","same":true,"p":0.9,"confidence":"high"}]\` to a file and rerun with \`--answers <file>\` (an unjudged pair stays apart). Exit 1: invalid input, say so and keep the unclustered list. If the kit is not installed, say so in one line and keep the list as is. Either way the review goes on.
+
 ---
 
 ### ⛔ CHECKPOINT 2: Security Scan
@@ -2565,6 +2599,13 @@ List what to check from the result: each symbol in \`touched\`, then the \`impac
 
 **AUTO-PROCEED:** Continue to Verification phase.
 
+
+**🔇 NOISE LEDGER AND TRIAGE (advisory):** Before any candidate is filed, put the findings through the ledger and the fingerprint triage. \`$F\` holds \`[{"id","severity","rule","locations":[...],"failures","reproductions"}]\` (retry counts from re-running the check), \`$V\` holds \`{"scopes":[...],"enabled":[rules that ran],"violations":[{"scope","rule","source":"auto"|"agent","element"}]}\`, \`$S\` is this review's session id:
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): noise-ledger and triage skipped, advisory"; else node .claude/helpers/kit/cli.js noise-ledger apply --in "$F" && node .claude/helpers/kit/cli.js triage visit --session "$S" --in "$V"; fi
+\`\`\`
+\`noise-ledger\` exit 0: file the \`filed\` items as candidates, mention the one \`summary\` for the folded rest, list \`quarantined\` ones (did not reproduce on retry) and ledger-\`accepted\` ones without filing them; exit 1: invalid input, report it. \`triage\` exit 0: raise only \`raise\` and \`recurred\` entries (a decided one is never raised again) and mention \`closed\` ones (no longer seen); record a decision with \`kit/cli.js triage decide <fingerprint> --as filed|dismissed|accepted\`; exit 1 invalid input or corrupt state, exit 2 refused (state path is a symbolic link): report it. If the kit is not installed, say so in one line and file candidates as before. The review goes on.
+
 ---
 
 ### ✅ VERIFICATION CHECKPOINT — Cross-Method Validation
@@ -2589,9 +2630,22 @@ List what to check from the result: each symbol in \`touched\`, then the \`impac
 - FAIL + retries remaining → log failure reason, fix the issue, re-verify
 - FAIL + max retries exceeded → escalate to user with AskUserQuestion
 
+
+**🧭 CLAIM CHECKS (router and budget advisory, replay gate blocking):** When a model or helper session judges a claim (a suppression, a fix, an anomaly), route its answer instead of trusting it:
+1. Budget: all claim-checking sub-sessions share one allowance. \`node .claude/helpers/kit/cli.js shared-budget open --state .claude/kit/review-budget.json --steps 30\` once per review, then \`shared-budget grant --state <same> --helper <id>\` before each sub-session and \`shared-budget spend --state <same> --helper <id> --steps <n> --outcome ok|failed\` after. A grant with \`skip: true\` is normal (exit 0): do not start that sub-session and say the claim was not checked. Exit 1: broken state, report it and start no more sub-sessions.
+2. Router: write the answers as JSON (\`[{"id","answer":{"kind","confidence"},"deterministicRegression"}]\`) to \`$R\`, then \`node .claude/helpers/kit/cli.js threshold-route --file "$R"\`. Exit 0: act on each \`route\`: raising a concern is free; \`suppress\`/\`auto-fix\` happen only when the router says so (high confidence); \`ask-human\` and \`escalate\` go to the user; \`block\` (a program saw a regression) can never be overridden. Exit 1: invalid input, treat every item as \`ask-human\`.
+3. Replay gate: a claim may fail this check only when a program, not a model, decided it and a second identical replay agrees. Write \`{"verdicts":[{"id","decided_by":"replay"|"exact-check"|"output-diff"|"model","outcome":"pass"|"fail","runs":[run1,run2]}]}\` to \`$G\`, then \`node .claude/helpers/kit/cli.js replay-gate --file "$G"\`. **Exit 2 = at least one \`blocking\` verdict: this check FAILS; list those ids.** Exit 0: nothing may fail the check; \`untested\` (the replays disagreed) and \`comment\` (model- or human-judged) verdicts are reported as comments only. Exit 1: invalid input, report it; nothing fails the check on unreplayed evidence.
+If the kit is not installed (\`.claude/helpers/kit/cli.js\` missing), say so in one line: steps 1 and 2 are skipped (advisory) and the replay gate fails closed, so every claim stays a comment and nothing fails the check on a model's word. Steps 1 and 2 never stop the review.
+
 ---
 
 ### ⛔ CHECKPOINT 5: Compound (MANDATORY - NEVER SKIP)
+
+**📄 RENDER REPORTS (advisory):** Render the findings for CI and the PR. \`$F\` holds \`{"findings":[{"message","severity":"blocking"|"advisory"|"note","file","line","disposition"}]}\`:
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): render skipped, advisory"; else mkdir -p reports && node .claude/helpers/kit/cli.js render sarif --file "$F" --out reports/review.sarif && node .claude/helpers/kit/cli.js render junit --file "$F" --out reports/review.junit.xml && node .claude/helpers/kit/cli.js render comment --file "$F" --key review --out reports/review-comment.md; fi
+\`\`\`
+Exit 0: \`reports/review.sarif\`, \`reports/review.junit.xml\` and \`reports/review-comment.md\` are written; post the comment yourself (the verb never posts), editing the earlier comment that starts with its \`<!-- kit-render:review -->\` marker instead of adding a new one. Exit 1: invalid input, report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
 **REQUIRED OUTPUT:**
 - Memory key: project/reviews/_____
 - Doc path: docs/solutions/reviews/_____.md
@@ -2667,6 +2721,233 @@ Doc: docs/solutions/reviews/[pr-number].md
 `
     },
 
+    'w-bg-review': {
+      name: 'w-bg-review',
+      description: 'Background Review - Full auto-proceed code review with no user gates.',
+      content: `# /w-bg-review
+
+Background Review - Full auto-proceed code review with no user gates.
+
+**Philosophy:** Scan, analyze, document - all autonomous. No gates, full review coverage.
+
+## Usage
+\`\`\`
+/w-bg-review [PR number or description]
+\`\`\`
+
+---
+
+## ⚠️ MANDATORY FIRST ACTION
+
+Use TodoWrite NOW to create todos for ALL phases:
+1. Search for past review patterns
+2. Run code analysis
+3. Run security scan
+4. Run performance check
+5. Run architecture review
+6. Ralph candidates scan
+7. Compound review findings
+8. Git commit
+
+⚠️ VIOLATION: Any action before TodoWrite = restart workflow
+
+---
+
+## Rules
+
+- All checkpoints auto-proceed - NO user gates
+- NEVER skip any review category
+- NEVER skip compound phase at the end
+- NEVER skip git commit phase at the end
+- VIOLATION: Completing review without all categories = incomplete
+
+---
+
+## Agents Deployed
+- code-simplicity-reviewer
+- security-sentinel
+- performance-oracle
+- architecture-strategist
+- pattern-recognition-specialist
+
+---
+
+## Execution Protocol
+
+### Phase 0: Search
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Use agent-browser to screenshot the current state before changes
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\`
+3. Note current UI state for comparison after build
+
+If agent-browser is not available, prompt: \`npx playwright install\`
+Skip this block for non-UI tasks.
+
+**REQUIRED OUTPUT:**
+- List of past reviews (0+ items with memory keys)
+- Relevance assessment for each
+
+**AUTO-PROCEED:** Continue to Code Analysis phase.
+
+---
+
+### Phase 1: Code Analysis
+
+**🌐 BROWSER CHECK (conditional):**
+If this task involves UI, frontend, or visual changes:
+1. Final visual verification with agent-browser
+2. \`agent-browser open <url>\` → \`agent-browser screenshot\` → compare before/after
+3. Verify responsive layout, dark mode, accessibility
+
+If agent-browser is not available, prompt: \`npx playwright install\`
+Skip this block for non-UI tasks.
+
+**REQUIRED OUTPUT:**
+| Category | Finding | Severity |
+|----------|---------|----------|
+| Style | _____ | _____ |
+| Patterns | _____ | _____ |
+| Quality | _____ | _____ |
+| Simplicity | _____ | _____ |
+
+**AUTO-PROCEED:** Continue to Security Scan phase.
+
+---
+
+### Phase 2: Security Scan
+**REQUIRED OUTPUT:**
+| Vulnerability | Risk | Location |
+|---------------|------|----------|
+| _____ | _____ | _____ |
+
+**AUTO-PROCEED:** Continue to Performance Check phase.
+
+---
+
+### Phase 3: Performance Check
+**REQUIRED OUTPUT:**
+| Opportunity | Impact | Location |
+|-------------|--------|----------|
+| _____ | _____ | _____ |
+
+**AUTO-PROCEED:** Continue to Ralph Candidates phase.
+
+---
+
+### Phase 4: Ralph Candidates
+**Scan for dev patterns that could become future Ralph loops:**
+- Repeating code patterns in this PR
+- Bug fix patterns that recur
+- Feature patterns worth templating
+
+**If candidate identified:**
+1. Generate unique ID: RC-NNN (check .claude/ralph-candidates.md for next available)
+2. Assign priority: P1 (critical) / P2 (important) / P3 (nice-to-have)
+3. Define AI-verifiable completion tests
+4. Add entry to .claude/ralph-candidates.md
+5. Set initial status: draft
+
+**REQUIRED OUTPUT:**
+- Candidates identified: 0/1/2+
+- If any: ID(s) added, priority, completion tests defined
+
+**AUTO-PROCEED:** Continue to Verification phase.
+
+
+**🧩 CLUSTER (advisory):** Phases 1-3 may report the same finding twice. Write them as JSON (\`[{"id","rule","severity","files":[...]}]\`) to a temp file \`$F\`, then group them before candidates are listed:
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): cluster skipped, advisory"; else node .claude/helpers/kit/cli.js cluster --file "$F"; fi
+\`\`\`
+Exit 0: show one entry per cluster (the representative, with its member ids). For each \`pending_pairs\` entry, judge whether the two clusters are one defect; only when sure, write \`[{"a","b","same":true,"p":0.9,"confidence":"high"}]\` to a file and rerun with \`--answers <file>\` (an unjudged pair stays apart). Exit 1: invalid input, say so and keep the unclustered list. If the kit is not installed, say so in one line and keep the list as is. Either way the review goes on (no gates).
+
+---
+
+### ✅ VERIFICATION CHECKPOINT — Cross-Method Validation
+**Independent verification of deliverables. Do NOT trust self-reported results.**
+
+**Verification Checks:**
+1. **Files Exist** — Verify all claimed implementation file paths actually exist on disk
+2. **Tests Re-run** — Independent re-run of ALL tests (not trusting earlier output)
+3. **Git Diff Matches Plan** — Compare \`git diff --stat\` against planned files-to-modify list
+4. **Build Compiles** — Run build command if applicable, verify zero errors
+5. **No Regressions** — Run full test suite to catch regressions beyond new tests
+
+**REQUIRED OUTPUT:**
+- Files verified: _____ / _____ exist
+- Tests re-run: _____ pass / _____ total
+- Git diff matches plan: yes/no
+- Build status: pass/fail/n-a
+- Regressions: none / [list]
+
+**RETRY LOGIC (max 3 retries):**
+- PASS → proceed to next phase
+- FAIL + retries remaining → log failure reason, fix the issue, re-verify
+- FAIL + max retries exceeded → log error and mark workflow as FAILED
+
+---
+
+### Phase 5: Compound (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Memory key: project/reviews/_____
+- Doc path: docs/solutions/reviews/_____.md
+- All findings documented: yes/no
+
+**RALPH CANDIDATE CHECK (MANDATORY):**
+- Dev pattern identified for future Ralph loop: yes/no
+- If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
+
+NEVER skip this phase. Workflow is INCOMPLETE without compound.
+
+**AUTO-PROCEED:** Continue to Git Commit phase.
+
+---
+
+### Phase 6: Git Commit (MANDATORY - NEVER SKIP)
+**REQUIRED OUTPUT:**
+- Commit hash: _____
+- Files committed: _____
+- Branch: _____
+
+Commit all changes with a descriptive message including:
+- Review summary
+- Workflow: /w-bg-review
+- Co-author attribution
+
+NEVER skip this phase. Workflow is INCOMPLETE without commit.
+
+---
+
+## Completion Checklist
+
+Before marking workflow complete, verify ALL boxes:
+- [ ] TodoWrite used at start with all 8 phases
+- [ ] All phases completed (auto-proceed, no user gates)
+- [ ] Code analysis completed
+- [ ] Security scan completed
+- [ ] Performance check completed
+- [ ] Ralph candidates scanned
+- [ ] Compound phase executed
+- [ ] Git commit executed
+- [ ] Memory key stored: _____
+- [ ] Review doc created: _____
+- [ ] Ralph candidate check completed
+
+⚠️ Workflow INCOMPLETE until all boxes checked
+
+## Compounds
+\`\`\`
+Memory: project/reviews/[pr-topic]
+Doc: docs/solutions/reviews/[pr-number].md
+\`\`\`
+
+## Example
+\`\`\`
+/w-bg-review PR 47
+\`\`\`
+`
+    },
     'w-security': {
       name: 'w-security',
       description: 'Security Audit - OWASP top 10, auth/authz, data exposure',
@@ -4483,6 +4764,13 @@ On "Nothing, go.": commit the run dir (\`git add .claude/marathon && git commit 
 
 ### ⛔ CHECKPOINT 3: Arm
 
+**Doctor (blocking, before anything is armed):**
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): doctor cannot run, do not arm" >&2; (exit 2); else node .claude/helpers/kit/cli.js doctor --profile marathon; fi
+\`\`\`
+Exit 0: no fatal failure; print any \`warnings\` and continue. **Exit 2: a fatal prerequisite is missing: print every failing check with its \`fix\`, do not arm, and stop until it is fixed and the doctor passes.** Exit 1: unknown profile or broken config: fix it, rerun, do not arm. Kit missing: fails closed the same way, the run is not armed.
+
+
 - \`cli.js wake --cron\` → JSON \`{schedule, prompt}\`. Create the in-session recurring check with **CronCreate** using exactly that schedule and prompt. Say that it lasts for this session and expires after seven days.
 - \`cli.js wake --fallback\` → print the crontab line and the launchd plist. The owner installs one if the run must survive a restart; **do not install it yourself.** Each fallback wake is a fresh \`claude -p\` session that starts from \`cli.js resume --plain\`.
 - The suite's hooks are already registered: \`PreCompact\` stamps \`status.md\` before any compaction; \`SessionStart(compact)\` prints \`cli.js resume\` afterwards. Say so in one line.
@@ -4500,6 +4788,11 @@ In the desktop app, read the allowance with \`get_usage\` and pass the **weekly*
 - exit 0 → continue.
 - **exit 2 → the run is now PAUSED (it stays paused until a fresh reading below the ceiling or \`cli.js unpause\`). Go to CHECKPOINT 5. Do not spawn.**
 - **exit 1 → the state is broken; fix it, rerun. Do not spawn.**
+
+**4.1a Shared helper allowance (blocking) — before every helper session** (builder or reviewer), in addition to 4.1. One allowance of steps, cost and time covers all helper sessions of the stream: \`node .claude/helpers/kit/cli.js shared-budget open --state .claude/marathon/helper-budget.json --steps <n> --cost <c> --time-ms <t>\` once per stream (skip when the file exists), then \`shared-budget grant --state .claude/marathon/helper-budget.json --helper <id>\` before each spawn (put the granted steps and cost in its brief), \`shared-budget start\`/\`stop\` around the helper's run and \`shared-budget spend --helper <id> --steps <n> --cost <c> --outcome ok|failed\` when it ends.
+- exit 0 with a grant → spawn within it. Exit 0 with \`skip: true\` (or an \`overrun\`) → the allowance is used up: **do not spawn**, go to CHECKPOINT 5.
+- **exit 1 → the budget state is broken or locked: fix it, rerun. Do not spawn.** Kit missing: fails closed the same way, no helper is spawned.
+
 
 **4.2 Isolate — whenever the stream has no \`isolation\` yet** (every stream, once; skip on later rounds of the same stream). \`git worktree add ../<repo>-<stream> -b marathon/<run-id>/<stream>\`. In folder mode (\`streams.isolation: folder\`) skip 4.2 entirely: activate with \`cli.js stream <name> state=active --no-isolation\` and use \`W=.\` in every later block. Set \`W\` to the path you gave \`git worktree add\`. Then copy the private scrub patterns into it when the main checkout has them. The kit install git-ignores \`.claude/kit/scrub-patterns.local\` (its \`.gitignore\` rule), so a new worktree never has the file and it is never committed from there; without the copy, the scrub at 4.8 and the push-gate check at CHECKPOINT 6 run in the worktree with no private pattern and pass a secret they should stop. From the main checkout:
 \`\`\`bash
@@ -4913,6 +5206,12 @@ if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/he
 Exit 0 clean for the tracked files; if the JSON says \`configured: false\` no pattern file is present and nothing was scanned: say so and continue. Exit 2 means hits or an incomplete scan: print the hits as printed, read this run's path hits from the JSON \`hits\` list (every collected hit, never only the first 50), and do **not** run \`/bc\` until the hits in this run's paths are removed (hits elsewhere are reported to the user and left alone). Exit 2 also blocks \`/bc\` when \`complete\` is \`false\` and any of this run's paths is listed in \`not_scanned\` (that file was not read), or when \`truncated\` is \`true\` (the hit list was capped, so a hit in this run's paths may be missing from it): an empty list of run-path hits then does not mean the run is clean; clear the cause (or the hits elsewhere that filled the cap) and rerun the block. With \`--json\`, \`hits_not_shown\` must be 0 if it ever appears: a value above 0 means the \`hits\` list was cut short, so block \`/bc\` exactly as for \`truncated: true\` (an empty list of run-path hits is not clean) and rerun the block with \`--json\`. Exit 2 with no JSON and a \`kit: refused:\` line on stderr (object alternates from a \`--shared\` or \`--reference\` clone, over 100000 loose objects, \`.git\` on a network path, over 200000 tracked files) means nothing was scanned: report the reason verbatim; it is not clean and is never read as "no hits in this run's paths", and the lead is not told to remove hits (removing them cannot clear it). Treat it as advisory like exit 1: the lead sees the reason before \`/bc\`, and the block still unstages as for any non-zero exit. Exit 1 is wrong input, git failed or timed out (raise with \`--timeout <ms>\`), or a broken state: report it (advisory, continue to \`/bc\` only after the lead has seen the error); never read a non-zero exit as clean. Any other non-zero exit (including a failed \`git add\`) is a failure of the step: the same.
 
 On any non-zero exit (scrub exit 1 or 2, or a failed \`git add\`) the block unstages this run's paths with \`git reset -q -- .claude/bbs/runs/<id> .claude/bbs/registry.jsonl\` and checks that exit, as \`/bc\` does after a refused scrub: \`scrub --worktree\` reads files on disk, so after a hit is edited out a re-scan is clean while the index would still hold the staged blob with the secret. If the unstage fails the block prints "unstage failed (exit N): still staged: <paths>": report it and say the owner must unstage those paths before any commit. The paths are re-added by the rerun of this block after the hits are removed, and that rerun's scrub is the one that counts.
+
+**Reflection (advisory):** Turn this run's trouble into lessons for future runs. \`$E\` is the session's event log (JSON Lines):
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): reflect skipped, advisory"; else node .claude/helpers/kit/cli.js reflect trouble-log --in "$E"; fi
+\`\`\`
+Exit 0: write at most 3 one-sentence imperative lessons from the signals and save each with \`node .claude/helpers/kit/cli.js reflect lessons save --role <role> --text "<lesson>" --session <run id>\`; \`reflect lessons keep --id <id>\` / \`retire --id <id> --reason "<why>"\` curate old ones. Exit 2 refused: a near duplicate (\`--confirm <id>\` keeps that one, \`--distinct\` only when truly different). Exit 1: invalid input, report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
 
 Then \`/bc\`: write-up, the run's registry row and labels, durable facts to memory, commit, never push. \`fetched/\` is git-ignored and must not be added.
 

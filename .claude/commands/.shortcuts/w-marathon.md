@@ -139,6 +139,13 @@ On "Nothing, go.": commit the run dir (`git add .claude/marathon && git commit -
 
 ### ⛔ CHECKPOINT 3: Arm
 
+**Doctor (blocking, before anything is armed):**
+```bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): doctor cannot run, do not arm" >&2; (exit 2); else node .claude/helpers/kit/cli.js doctor --profile marathon; fi
+```
+Exit 0: no fatal failure; print any `warnings` and continue. **Exit 2: a fatal prerequisite is missing: print every failing check with its `fix`, do not arm, and stop until it is fixed and the doctor passes.** Exit 1: unknown profile or broken config: fix it, rerun, do not arm. Kit missing: fails closed the same way, the run is not armed.
+
+
 - `cli.js wake --cron` → JSON `{schedule, prompt}`. Create the in-session recurring check with **CronCreate** using exactly that schedule and prompt. Say that it lasts for this session and expires after seven days.
 - `cli.js wake --fallback` → print the crontab line and the launchd plist. The owner installs one if the run must survive a restart; **do not install it yourself.** Each fallback wake is a fresh `claude -p` session that starts from `cli.js resume --plain`.
 - The suite's hooks are already registered: `PreCompact` stamps `status.md` before any compaction; `SessionStart(compact)` prints `cli.js resume` afterwards. Say so in one line.
@@ -156,6 +163,11 @@ In the desktop app, read the allowance with `get_usage` and pass the **weekly** 
 - exit 0 → continue.
 - **exit 2 → the run is now PAUSED (it stays paused until a fresh reading below the ceiling or `cli.js unpause`). Go to CHECKPOINT 5. Do not spawn.**
 - **exit 1 → the state is broken; fix it, rerun. Do not spawn.**
+
+**4.1a Shared helper allowance (blocking) — before every helper session** (builder or reviewer), in addition to 4.1. One allowance of steps, cost and time covers all helper sessions of the stream: `node .claude/helpers/kit/cli.js shared-budget open --state .claude/marathon/helper-budget.json --steps <n> --cost <c> --time-ms <t>` once per stream (skip when the file exists), then `shared-budget grant --state .claude/marathon/helper-budget.json --helper <id>` before each spawn (put the granted steps and cost in its brief), `shared-budget start`/`stop` around the helper's run and `shared-budget spend --helper <id> --steps <n> --cost <c> --outcome ok|failed` when it ends.
+- exit 0 with a grant → spawn within it. Exit 0 with `skip: true` (or an `overrun`) → the allowance is used up: **do not spawn**, go to CHECKPOINT 5.
+- **exit 1 → the budget state is broken or locked: fix it, rerun. Do not spawn.** Kit missing: fails closed the same way, no helper is spawned.
+
 
 **4.2 Isolate — whenever the stream has no `isolation` yet** (every stream, once; skip on later rounds of the same stream). `git worktree add ../<repo>-<stream> -b marathon/<run-id>/<stream>`. In folder mode (`streams.isolation: folder`) skip 4.2 entirely: activate with `cli.js stream <name> state=active --no-isolation` and use `W=.` in every later block. Set `W` to the path you gave `git worktree add`. Then copy the private scrub patterns into it when the main checkout has them. The kit install git-ignores `.claude/kit/scrub-patterns.local` (its `.gitignore` rule), so a new worktree never has the file and it is never committed from there; without the copy, the scrub at 4.8 and the push-gate check at CHECKPOINT 6 run in the worktree with no private pattern and pass a secret they should stop. From the main checkout:
 ```bash

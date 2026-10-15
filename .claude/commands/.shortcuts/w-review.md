@@ -113,6 +113,13 @@ List what to check from the result: each symbol in `touched`, then the `impacted
 
 **AUTO-PROCEED:** Continue to Security Scan phase.
 
+
+**🧩 CLUSTER (advisory):** Findings from parallel agents often repeat. Write them as JSON (`[{"id","rule","severity","files":[...]}]`) to a temp file `$F`, then group them before the list is shown:
+```bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): cluster skipped, advisory"; else node .claude/helpers/kit/cli.js cluster --file "$F"; fi
+```
+Exit 0: show one entry per cluster (the representative, with its member ids). For each `pending_pairs` entry, judge whether the two clusters are one defect; only when sure, write `[{"a","b","same":true,"p":0.9,"confidence":"high"}]` to a file and rerun with `--answers <file>` (an unjudged pair stays apart). Exit 1: invalid input, say so and keep the unclustered list. If the kit is not installed, say so in one line and keep the list as is. Either way the review goes on.
+
 ---
 
 ### ⛔ CHECKPOINT 2: Security Scan
@@ -161,6 +168,13 @@ List what to check from the result: each symbol in `touched`, then the `impacted
 
 **AUTO-PROCEED:** Continue to Verification phase.
 
+
+**🔇 NOISE LEDGER AND TRIAGE (advisory):** Before any candidate is filed, put the findings through the ledger and the fingerprint triage. `$F` holds `[{"id","severity","rule","locations":[...],"failures","reproductions"}]` (retry counts from re-running the check), `$V` holds `{"scopes":[...],"enabled":[rules that ran],"violations":[{"scope","rule","source":"auto"|"agent","element"}]}`, `$S` is this review's session id:
+```bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): noise-ledger and triage skipped, advisory"; else node .claude/helpers/kit/cli.js noise-ledger apply --in "$F" && node .claude/helpers/kit/cli.js triage visit --session "$S" --in "$V"; fi
+```
+`noise-ledger` exit 0: file the `filed` items as candidates, mention the one `summary` for the folded rest, list `quarantined` ones (did not reproduce on retry) and ledger-`accepted` ones without filing them; exit 1: invalid input, report it. `triage` exit 0: raise only `raise` and `recurred` entries (a decided one is never raised again) and mention `closed` ones (no longer seen); record a decision with `kit/cli.js triage decide <fingerprint> --as filed|dismissed|accepted`; exit 1 invalid input or corrupt state, exit 2 refused (state path is a symbolic link): report it. If the kit is not installed, say so in one line and file candidates as before. The review goes on.
+
 ---
 
 ### ✅ VERIFICATION CHECKPOINT — Cross-Method Validation
@@ -185,9 +199,22 @@ List what to check from the result: each symbol in `touched`, then the `impacted
 - FAIL + retries remaining → log failure reason, fix the issue, re-verify
 - FAIL + max retries exceeded → escalate to user with AskUserQuestion
 
+
+**🧭 CLAIM CHECKS (router and budget advisory, replay gate blocking):** When a model or helper session judges a claim (a suppression, a fix, an anomaly), route its answer instead of trusting it:
+1. Budget: all claim-checking sub-sessions share one allowance. `node .claude/helpers/kit/cli.js shared-budget open --state .claude/kit/review-budget.json --steps 30` once per review, then `shared-budget grant --state <same> --helper <id>` before each sub-session and `shared-budget spend --state <same> --helper <id> --steps <n> --outcome ok|failed` after. A grant with `skip: true` is normal (exit 0): do not start that sub-session and say the claim was not checked. Exit 1: broken state, report it and start no more sub-sessions.
+2. Router: write the answers as JSON (`[{"id","answer":{"kind","confidence"},"deterministicRegression"}]`) to `$R`, then `node .claude/helpers/kit/cli.js threshold-route --file "$R"`. Exit 0: act on each `route`: raising a concern is free; `suppress`/`auto-fix` happen only when the router says so (high confidence); `ask-human` and `escalate` go to the user; `block` (a program saw a regression) can never be overridden. Exit 1: invalid input, treat every item as `ask-human`.
+3. Replay gate: a claim may fail this check only when a program, not a model, decided it and a second identical replay agrees. Write `{"verdicts":[{"id","decided_by":"replay"|"exact-check"|"output-diff"|"model","outcome":"pass"|"fail","runs":[run1,run2]}]}` to `$G`, then `node .claude/helpers/kit/cli.js replay-gate --file "$G"`. **Exit 2 = at least one `blocking` verdict: this check FAILS; list those ids.** Exit 0: nothing may fail the check; `untested` (the replays disagreed) and `comment` (model- or human-judged) verdicts are reported as comments only. Exit 1: invalid input, report it; nothing fails the check on unreplayed evidence.
+If the kit is not installed (`.claude/helpers/kit/cli.js` missing), say so in one line: steps 1 and 2 are skipped (advisory) and the replay gate fails closed, so every claim stays a comment and nothing fails the check on a model's word. Steps 1 and 2 never stop the review.
+
 ---
 
 ### ⛔ CHECKPOINT 5: Compound (MANDATORY - NEVER SKIP)
+
+**📄 RENDER REPORTS (advisory):** Render the findings for CI and the PR. `$F` holds `{"findings":[{"message","severity":"blocking"|"advisory"|"note","file","line","disposition"}]}`:
+```bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): render skipped, advisory"; else mkdir -p reports && node .claude/helpers/kit/cli.js render sarif --file "$F" --out reports/review.sarif && node .claude/helpers/kit/cli.js render junit --file "$F" --out reports/review.junit.xml && node .claude/helpers/kit/cli.js render comment --file "$F" --key review --out reports/review-comment.md; fi
+```
+Exit 0: `reports/review.sarif`, `reports/review.junit.xml` and `reports/review-comment.md` are written; post the comment yourself (the verb never posts), editing the earlier comment that starts with its `<!-- kit-render:review -->` marker instead of adding a new one. Exit 1: invalid input, report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
 **REQUIRED OUTPUT:**
 - Memory key: project/reviews/_____
 - Doc path: docs/solutions/reviews/_____.md
