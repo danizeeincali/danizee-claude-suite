@@ -98,9 +98,12 @@ describe('replay-gate — injected replay', () => {
     const replay = () => assert.fail('must not replay');
     await gate([V(), V({ id: 'b', decided_by: 'model', runs: [R()] }), V({ id: 'c', outcome: 'pass', runs: [R()] })], { replay });
   });
-  it('an invalid replay result is exit 1; bad options are exit 1', async () => {
-    await bad(() => gate([V({ runs: [R()] })], { replay: () => ({}) }));
-    await bad(() => gate([V({ runs: [R()] })], { replay: () => 'x' }));
+  it('an invalid replay result makes that verdict untested; bad options are exit 1', async () => {
+    for (const badRun of [{}, 'x']) {
+      const r = await gate([V({ runs: [R()] })], { replay: () => badRun });
+      assert.equal(r.results[0].class, 'untested');
+      assert.equal(r.exit, 0);
+    }
     await bad(() => gate([V()], { replay: 'nope' }));
     await bad(() => gate([V()], { replay: null, extra: 1 }));
   });
@@ -160,5 +163,48 @@ describe('replay-gate — CLI run', () => {
     await bad(() => run(['--bogus'], io('/', '{}')));
     await bad(() => run(['--file'], io('/', '{}')));
     await bad(() => run([], { ...io('/'), stdinIsTTY: true }));
+  });
+});
+
+describe('replay-gate — round 1 findings', () => {
+  const io2 = (cwd, stdin = '', tty = false) => ({ cwd, stdin: async () => stdin, stdinBytes: async () => Buffer.from(stdin), stdinIsTTY: tty, env: {} });
+  it('library: non-JSON values in a run are refused with KitExit 1, never compared as equal', async () => {
+    const odd = [
+      { at: new Date(0) }, { m: new Map([[1, 2]]) }, { s: new Set([1]) }, { n: 10n }, { u: undefined }, { f: () => 1 },
+      { sym: Symbol('x') }, { nan: NaN }, { inf: Infinity }, { list: [undefined] }, { list: [new Date(0)] }, { c: new (class X { constructor() { this.a = 1; } })() },
+    ];
+    for (const o of odd) {
+      await bad(() => gate([V({ runs: [R({ outputs: o }), R({ outputs: o })] })]));
+      await bad(() => gate([V({ runs: [R({ checks: o }), R()] })]));
+    }
+    await bad(() => gate([V({ runs: [R({ steps: [new Date(0)] }), R()] })]));
+    await bad(() => gate([V({ runs: [R({ steps: [undefined] }), R()] })]));
+  });
+  it('library: Date outputs that differ do not block as equal', async () => {
+    await bad(() => gate([V({ runs: [R({ outputs: { at: new Date(0) } }), R({ outputs: { at: new Date(9e12) } })] })]));
+    await bad(() => gate([V({ runs: [R({ outputs: { m: new Map([[1, 2]]) } }), R({ outputs: { m: new Map([[1, 3]]) } })] })]));
+  });
+  it('plain JSON values and null-prototype objects still work', async () => {
+    const o = Object.assign(Object.create(null), { a: 1 });
+    assert.equal((await cls(V({ runs: [R({ outputs: o }), R({ outputs: { a: 1 } })] }))).class, 'blocking');
+    assert.equal((await cls(V({ runs: [R({ outputs: { a: [1, 'x', null, true, { b: 2.5 }] } }), R({ outputs: { a: [1, 'x', null, true, { b: 2.5 }] } })] }))).class, 'blocking');
+  });
+  it('a malformed run from replay downgrades only that verdict to untested', async () => {
+    const one = id => V({ id, runs: [R()] });
+    const blocked = V({ id: 'b' });
+    for (const badRun of [{}, { steps: ['a'], extra: 1 }, null, 'x', { outputs: { at: new Date(0) } }]) {
+      const r = await gate([one('a'), blocked, one('c')], { replay: async () => badRun });
+      assert.equal(r.exit, 2);
+      assert.deepEqual(r.results.map(x => x.class), ['untested', 'blocking', 'untested']);
+      assert.match(r.results[0].reason, /replay/);
+    }
+  });
+  it('--file - reads stdin; a repeated --file is refused', async () => {
+    const text = JSON.stringify({ verdicts: [V({ outcome: 'pass' })] });
+    const r = await run(['--file', '-'], io2('/', text));
+    assert.equal(r.results[0].class, 'pass');
+    await bad(() => run(['--file', '-'], io2('/', text, true)));
+    await bad(() => run(['--file', 'a.json', '--file', 'b.json'], io2('/', text)));
+    await bad(() => run(['--file', '-', '--file', '-'], io2('/', text)));
   });
 });

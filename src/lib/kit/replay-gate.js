@@ -2,12 +2,13 @@
  * replay-gate — only a program-decided failure that a second identical run agrees on may block; everything
  * else is downgraded or kept as a comment.
  *
- *   replay-gate [--file <path>]     JSON on stdin (or the file): { "verdicts": [ ... ] }  ->  { results, counts, exit }
+ *   replay-gate [--file <path>|-]   JSON on stdin (or the file; `-` means stdin; --file may be given once): { "verdicts": [ ... ] }  ->  { results, counts, exit }
  *
  * The verb never runs a replay and never calls a model. It judges verdicts the caller already has.
  * A verdict is { id, decided_by, outcome: "pass"|"fail", runs?: [run, ...] }; a run is the record of one
  * execution: { steps?: [..steps reached..], checks?: <check answers>, outputs?: <normalised outputs> }
- * (at least one of the three; any other key is refused).
+ * (at least one of the three; any other key is refused). Run values must be plain JSON: library callers passing a
+ * Date, Map, Set, class instance, bigint, undefined, function, symbol or non-finite number get KitExit 1.
  *   - decided_by "replay", "exact-check" or "output-diff" is a program decision. Anything else (model, human, ...)
  *     is judgement and is classified `comment`, however confident and whatever its outcome or runs.
  *   - program pass -> `pass`.
@@ -18,7 +19,7 @@
  * Library: gate(verdicts, { replay }) where `replay(verdict)` is an optional injected function (sync or async)
  * that the caller supplies to produce the second run when a program failure carries only one. It is called
  * at most once per verdict, and never for judgements, passes, or verdicts that already have two runs. If it
- * throws, the verdict is untested with that reason. In the CLI the caller passes both runs as data.
+ * throws, or returns a malformed run, that verdict alone is untested with that reason. In the CLI the caller passes both runs as data.
  * Unknown keys are rejected everywhere; a leading BOM on the input is stripped.
  * Built from ideas audited by /w-bbs (run 2026-10-15-bugpatrol); no foreign code.
  */
@@ -27,7 +28,7 @@ import path from 'path';
 import { KitExit } from './kit-exit.js';
 
 export const verb = 'replay-gate';
-export const usage = 'cli.js replay-gate [--file <path>]   (JSON on stdin: { verdicts: [{ id, decided_by, outcome, runs }] }; only a program-decided failure that two identical runs agree on blocks, exit 2; see the header of replay-gate.js)';
+export const usage = 'cli.js replay-gate [--file <path>|-]   (JSON on stdin: { verdicts: [{ id, decided_by, outcome, runs }] }; only a program-decided failure that two identical runs agree on blocks, exit 2; see the header of replay-gate.js)';
 
 export const PROGRAM_KINDS = ['replay', 'exact-check', 'output-diff'];
 const OUTCOMES = ['pass', 'fail'];
@@ -50,6 +51,23 @@ function canon(v) {
   return JSON.stringify(v) ?? 'null';
 }
 
+/** Refuse anything JSON.parse could not have produced (Date, Map, bigint, undefined, NaN, functions, cycles ...). */
+function requirePlainJson(v, where, seen = []) {
+  if (v === null || typeof v === 'string' || typeof v === 'boolean') return;
+  if (typeof v === 'number') { if (!Number.isFinite(v)) fail(`${where} must be plain JSON (non-finite number)`); return; }
+  if (typeof v !== 'object') fail(`${where} must be plain JSON (${typeof v} is not allowed)`);
+  if (seen.includes(v)) fail(`${where} must be plain JSON (circular reference)`);
+  seen.push(v);
+  if (Array.isArray(v)) {
+    for (let i = 0; i < v.length; i++) requirePlainJson(v[i], `${where}[${i}]`, seen);
+  } else {
+    const proto = Object.getPrototypeOf(v);
+    if (proto !== Object.prototype && proto !== null) fail(`${where} must be plain JSON (not a ${proto && proto.constructor && proto.constructor.name || 'custom'} object)`);
+    for (const k of Object.keys(v)) requirePlainJson(v[k], `${where}.${k}`, seen);
+  }
+  seen.pop();
+}
+
 function checkRun(run, where) {
   if (!isObj(run)) fail(`${where} must be an object`);
   rejectUnknown(run, RUN_FIELDS, where);
@@ -57,6 +75,7 @@ function checkRun(run, where) {
   if (present.length === 0) fail(`${where} records nothing (needs at least one of ${RUN_FIELDS.join(', ')})`);
   if (run.steps !== undefined && !Array.isArray(run.steps)) fail(`${where}.steps must be an array`);
   for (const f of ['checks', 'outputs']) if (run[f] === null) fail(`${where}.${f} must not be null`);
+  for (const f of present) requirePlainJson(run[f], `${where}.${f}`);
   return run;
 }
 
@@ -129,11 +148,15 @@ export async function gate(verdicts, options = {}) {
     let runs = (v.runs || []).slice();
     if (runs.length === 1 && typeof replay === 'function') {
       let second;
-      try { second = await replay(structuredClone(v)); } catch (e) {
-        results.push({ ...base, class: 'untested', reason: `no second run: the replay failed (${e && e.message ? e.message : String(e)})` });
+      try {
+        second = await replay(structuredClone(v));
+        checkRun(second, `the run returned by replay for "${v.id}"`);
+      } catch (e) {
+        const why = e instanceof KitExit ? 'it returned an invalid run' : 'the replay failed';
+        results.push({ ...base, class: 'untested', reason: `no second run: ${why} (${e && e.message ? e.message : String(e)})` });
         continue;
       }
-      runs.push(checkRun(second, `the run returned by replay for "${v.id}"`));
+      runs.push(second);
     }
     if (runs.length < 2) {
       results.push({ ...base, class: 'untested', reason: `a failure needs a second run that agrees; ${runs.length === 0 ? 'no run was recorded' : 'only one run is present'}` });
@@ -156,7 +179,8 @@ function parseArgs(args) {
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a !== '--file') fail(`unknown argument "${a}"\n${usage}`);
-    if (i + 1 >= args.length || args[i + 1].startsWith('--')) fail('--file needs a path');
+    if (flags.file !== undefined) fail('--file may be given only once');
+    if (i + 1 >= args.length || (args[i + 1] !== '-' && args[i + 1].startsWith('--'))) fail('--file needs a path (or - for stdin)');
     flags.file = args[++i];
   }
   return flags;
@@ -165,10 +189,10 @@ function parseArgs(args) {
 export async function run(args, io) {
   const flags = parseArgs(args);
   let text;
-  if (flags.file !== undefined) {
+  if (flags.file !== undefined && flags.file !== '-') {
     try { text = await fs.readFile(path.resolve(io.cwd || process.cwd(), flags.file), 'utf-8'); } catch (e) { fail(`cannot read ${flags.file}: ${e.message}`); }
   } else {
-    if (io.stdinIsTTY) fail(`no input: pass JSON on stdin or --file <path>\n${usage}`);
+    if (io.stdinIsTTY) fail(`no input: pass JSON on stdin (or --file -) or --file <path>\n${usage}`);
     text = await io.stdin();
   }
   if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
