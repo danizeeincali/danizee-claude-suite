@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import os from 'os';
 import path from 'path';
 import { spawn } from 'child_process';
@@ -10,10 +11,13 @@ import { withStateLock as withLock } from '../src/lib/kit/state-lock.js';
 
 const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), '../src/lib/kit/cli.js');
 const jl = (arr) => arr.map((o) => JSON.stringify(o)).join('\n');
-// A lock left by a process that no longer exists on this host: the shared lock breaks it at once.
+// A lock left by a process that no longer exists on this machine: the shared lock breaks it at once, but only when the
+// lock names this host, this pid namespace and this boot id (as a lock written here by the shared lock does).
+const PIDNS = (() => { try { return fsSync.readlinkSync('/proc/self/ns/pid'); } catch { return null; } })();
+const BOOT = (() => { try { return fsSync.readFileSync('/proc/sys/kernel/random/boot_id', 'utf-8').trim() || null; } catch { return null; } })();
 async function deadHolder() {
   const pid = await new Promise((res) => { const p = spawn(process.execPath, ['-e', '0'], { stdio: 'ignore' }); p.on('close', () => res(p.pid)); });
-  return JSON.stringify({ token: 'dead-token', pid, host: os.hostname(), beat: 0 });
+  return JSON.stringify({ token: 'dead-token', pid, host: os.hostname(), pidns: PIDNS, boot: BOOT, beat: 0 });
 }
 async function tmp() { return fs.mkdtemp(path.join(os.tmpdir(), 'reflect-')); }
 async function call(args, cwd, stdin = '') {
