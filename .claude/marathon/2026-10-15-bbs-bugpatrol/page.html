@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marathon 2026-10-15-bbs-bugpatrol</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --fg: #1b1f24;
+  --muted: #5f6b76;
+  --line: #d8dee4;
+  --ok: #1a7f37;
+  --warn: #9a6700;
+  --bad: #cf222e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --fg: #e6edf3;
+    --muted: #8b98a5;
+    --line: #30363d;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --bad: #f85149;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 64rem; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 1.5rem; margin: 0 0 4px; }
+h2 { font-size: 1.1rem; margin: 32px 0 8px; }
+p { margin: 4px 0; }
+.muted { color: var(--muted); }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+.ok { color: var(--ok); font-weight: 600; }
+.warn { color: var(--warn); font-weight: 600; }
+.bad { color: var(--bad); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+<h1>Marathon 2026-10-15-bbs-bugpatrol</h1>
+<p class="muted">Snapshot of the run: finish line, streams, review ledger and helper spend.</p>
+
+<h2>Gate</h2>
+<p>Build gate: <span class="ok">met</span> · Full gate: <span class="ok">met</span></p>
+<p class="muted">Failing: none · Waiting on human: none</p>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Line</th><th scope="col">Owner</th><th scope="col">Target</th><th scope="col">Actual</th><th scope="col">Status</th></tr></thead>
+<tbody>
+<tr><td>noise-ledger-with-flake-quarantine: green unit runs in a row</td><td>build</td><td>at least 1</td><td>9</td><td class="ok">met</td></tr>
+<tr><td>noise-ledger-with-flake-quarantine: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>noise-ledger-with-flake-quarantine: clean reviews in a row</td><td>build</td><td>at least 2</td><td>8</td><td class="ok">met</td></tr>
+<tr><td>noise-ledger-with-flake-quarantine: wired into its target, reached by a user</td><td>build</td><td>at least 1</td><td>1</td><td class="ok">met</td></tr>
+<tr><td>noise-ledger-with-flake-quarantine: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>two-pass-finding-clustering: green unit runs in a row</td><td>build</td><td>at least 1</td><td>3</td><td class="ok">met</td></tr>
+<tr><td>two-pass-finding-clustering: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>two-pass-finding-clustering: clean reviews in a row</td><td>build</td><td>at least 2</td><td>3</td><td class="ok">met</td></tr>
+<tr><td>two-pass-finding-clustering: wired into all 2 targets, reached by a user</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>two-pass-finding-clustering: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>asymmetric-threshold-router: green unit runs in a row</td><td>build</td><td>at least 1</td><td>3</td><td class="ok">met</td></tr>
+<tr><td>asymmetric-threshold-router: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>asymmetric-threshold-router: clean reviews in a row</td><td>build</td><td>at least 2</td><td>3</td><td class="ok">met</td></tr>
+<tr><td>asymmetric-threshold-router: wired into all 2 targets, reached by a user</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>asymmetric-threshold-router: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>change-impact-test-plan: green unit runs in a row</td><td>build</td><td>at least 1</td><td>4</td><td class="ok">met</td></tr>
+<tr><td>change-impact-test-plan: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>change-impact-test-plan: clean reviews in a row</td><td>build</td><td>at least 2</td><td>4</td><td class="ok">met</td></tr>
+<tr><td>change-impact-test-plan: wired into all 2 targets, reached by a user</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>change-impact-test-plan: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>finding-triage-with-fingerprint-dedup-an: green unit runs in a row</td><td>build</td><td>at least 1</td><td>9</td><td class="ok">met</td></tr>
+<tr><td>finding-triage-with-fingerprint-dedup-an: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>finding-triage-with-fingerprint-dedup-an: clean reviews in a row</td><td>build</td><td>at least 2</td><td>6</td><td class="ok">met</td></tr>
+<tr><td>finding-triage-with-fingerprint-dedup-an: wired into its target, reached by a user</td><td>build</td><td>at least 1</td><td>1</td><td class="ok">met</td></tr>
+<tr><td>finding-triage-with-fingerprint-dedup-an: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>shared-budget-for-claim-sub-sessions: green unit runs in a row</td><td>build</td><td>at least 1</td><td>7</td><td class="ok">met</td></tr>
+<tr><td>shared-budget-for-claim-sub-sessions: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>shared-budget-for-claim-sub-sessions: clean reviews in a row</td><td>build</td><td>at least 2</td><td>4</td><td class="ok">met</td></tr>
+<tr><td>shared-budget-for-claim-sub-sessions: wired into all 2 targets, reached by a user</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>shared-budget-for-claim-sub-sessions: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>trouble-log-reflection-into-lesson-memor: green unit runs in a row</td><td>build</td><td>at least 1</td><td>8</td><td class="ok">met</td></tr>
+<tr><td>trouble-log-reflection-into-lesson-memor: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>trouble-log-reflection-into-lesson-memor: clean reviews in a row</td><td>build</td><td>at least 2</td><td>4</td><td class="ok">met</td></tr>
+<tr><td>trouble-log-reflection-into-lesson-memor: wired into all 2 targets, reached by a user</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>trouble-log-reflection-into-lesson-memor: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>preflight-doctor-checks-before-a-run: green unit runs in a row</td><td>build</td><td>at least 1</td><td>4</td><td class="ok">met</td></tr>
+<tr><td>preflight-doctor-checks-before-a-run: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>preflight-doctor-checks-before-a-run: clean reviews in a row</td><td>build</td><td>at least 2</td><td>3</td><td class="ok">met</td></tr>
+<tr><td>preflight-doctor-checks-before-a-run: wired into all 2 targets, reached by a user</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>preflight-doctor-checks-before-a-run: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>exit-code-contract-separating-infrastruc: green unit runs in a row</td><td>build</td><td>at least 1</td><td>18</td><td class="ok">met</td></tr>
+<tr><td>exit-code-contract-separating-infrastruc: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>exit-code-contract-separating-infrastruc: clean reviews in a row</td><td>build</td><td>at least 2</td><td>6</td><td class="ok">met</td></tr>
+<tr><td>exit-code-contract-separating-infrastruc: wired into all 2 targets, reached by a user</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>exit-code-contract-separating-infrastruc: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>sarif-junit-and-sticky-pr-comment-render: green unit runs in a row</td><td>build</td><td>at least 1</td><td>8</td><td class="ok">met</td></tr>
+<tr><td>sarif-junit-and-sticky-pr-comment-render: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>sarif-junit-and-sticky-pr-comment-render: clean reviews in a row</td><td>build</td><td>at least 2</td><td>8</td><td class="ok">met</td></tr>
+<tr><td>sarif-junit-and-sticky-pr-comment-render: wired into all 2 targets, reached by a user</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>sarif-junit-and-sticky-pr-comment-render: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>repeated-replay-gate-for-claims: green unit runs in a row</td><td>build</td><td>at least 1</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>repeated-replay-gate-for-claims: zero egress in the packaged check</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>repeated-replay-gate-for-claims: clean reviews in a row</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>repeated-replay-gate-for-claims: wired into all 2 targets, reached by a user</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>repeated-replay-gate-for-claims: packaged check passes</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>The owner was told what they got: delivered.md lists every power, wired, with its command</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>Clean reviews in a row</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>High findings in the latest review</td><td>build</td><td>at most 0</td><td>0</td><td class="ok">met</td></tr>
+<tr><td>Open high findings</td><td>build</td><td>at most 0</td><td>0</td><td class="ok">met</td></tr>
+</tbody>
+</table></div>
+
+<h2>Streams</h2>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Stream</th><th scope="col">State</th><th scope="col">Phase</th><th scope="col">Next</th><th scope="col">Tasks</th></tr></thead>
+<tbody>
+<tr><td>noise-ledger-with-flake-quarantine</td><td>done</td><td>/w-tdd-swarm · build</td><td>done: build gate met</td><td></td></tr>
+<tr><td>two-pass-finding-clustering</td><td>done</td><td>/w-tdd-swarm · done</td><td>integration stream wires it</td><td></td></tr>
+<tr><td>asymmetric-threshold-router</td><td>done</td><td>/w-tdd-swarm · done</td><td>integration stream wires it</td><td></td></tr>
+<tr><td>change-impact-test-plan</td><td>done</td><td>/w-tdd-swarm · done</td><td>integration stream wires it</td><td></td></tr>
+<tr><td>finding-triage-with-fingerprint-dedup-an</td><td>done</td><td>/w-tdd-swarm · build</td><td>done: build gate met</td><td></td></tr>
+<tr><td>shared-budget-for-claim-sub-sessions</td><td>done</td><td>/w-tdd-swarm · build</td><td>done: build gate met</td><td></td></tr>
+<tr><td>trouble-log-reflection-into-lesson-memor</td><td>done</td><td>/w-tdd-swarm · build</td><td>done: build gate met</td><td></td></tr>
+<tr><td>preflight-doctor-checks-before-a-run</td><td>done</td><td>/w-tdd-swarm · done</td><td>integration stream wires it</td><td></td></tr>
+<tr><td>exit-code-contract-separating-infrastruc</td><td>done</td><td>/w-tdd-swarm · build</td><td>done: build gate met</td><td></td></tr>
+<tr><td>sarif-junit-and-sticky-pr-comment-render</td><td>done</td><td>//w-tdd-swarm · build</td><td>done: build gate met</td><td></td></tr>
+<tr><td>repeated-replay-gate-for-claims</td><td>done</td><td>//w-tdd-swarm · done</td><td>integration stream wires it</td><td></td></tr>
+<tr><td>integration</td><td>done</td><td>done</td><td>owner&#39;s go to push</td><td></td></tr>
+</tbody>
+</table></div>
+
+<h2>Review ledger</h2>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Review</th><th scope="col">Stream</th><th scope="col">Round</th><th scope="col">Result</th><th scope="col">High / medium / low</th><th scope="col">Time</th></tr></thead>
+<tbody>
+<tr><td>06839914-09f8-44ac-b9d7-fdfa3f03feca</td><td>asymmetric-threshold-router</td><td>1</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-10-15T16:53:19.462Z</td></tr>
+<tr><td>fbdbe4c3-0dea-4863-a918-1e34ffabc558</td><td>noise-ledger-with-flake-quarantine</td><td>1</td><td class="ok">pass</td><td>0 / 2 / 2</td><td>2026-10-15T16:53:28.786Z</td></tr>
+<tr><td>4af0abd5-8788-4bd0-b3f9-a7b29c59d7d5</td><td>two-pass-finding-clustering</td><td>1</td><td class="ok">pass</td><td>0 / 2 / 3</td><td>2026-10-15T16:53:48.558Z</td></tr>
+<tr><td>7251c33f-1a56-4253-a82f-33699d4499ae</td><td>shared-budget-for-claim-sub-sessions</td><td>1</td><td class="bad">over</td><td>1 / 2 / 0</td><td>2026-10-15T16:56:27.885Z</td></tr>
+<tr><td>869eeee5-e957-46cf-9ee4-47a1390f25ea</td><td>noise-ledger-with-flake-quarantine</td><td>2</td><td class="ok">pass</td><td>0 / 1 / 2</td><td>2026-10-15T16:56:45.271Z</td></tr>
+<tr><td>5464c87f-07b2-4ed0-b85d-b0813ba815e4</td><td>change-impact-test-plan</td><td>1</td><td class="ok">pass</td><td>0 / 0 / 2</td><td>2026-10-15T16:56:46.430Z</td></tr>
+<tr><td>db4c7035-c75a-40ef-ba67-f170c6f8c7c1</td><td>asymmetric-threshold-router</td><td>2</td><td class="ok">pass</td><td>0 / 1 / 1</td><td>2026-10-15T16:57:01.487Z</td></tr>
+<tr><td>fcb48e58-760e-4789-b0ff-b65ef5238136</td><td>two-pass-finding-clustering</td><td>2</td><td class="ok">pass</td><td>0 / 1 / 1</td><td>2026-10-15T16:57:10.711Z</td></tr>
+<tr><td>86cb21b7-04ef-440d-9d60-2b06930ca009</td><td>two-pass-finding-clustering</td><td>3</td><td class="ok">pass</td><td>0 / 0 / 1</td><td>2026-10-15T17:01:30.464Z</td></tr>
+<tr><td>a039f355-50b2-4000-94c2-3dfdb3bae7cf</td><td>asymmetric-threshold-router</td><td>3</td><td class="ok">pass</td><td>0 / 0 / 1</td><td>2026-10-15T17:01:31.108Z</td></tr>
+<tr><td>1303b9bc-be82-402f-ba80-160d73b77745</td><td>noise-ledger-with-flake-quarantine</td><td>3</td><td class="ok">pass</td><td>0 / 1 / 2</td><td>2026-10-15T17:01:43.168Z</td></tr>
+<tr><td>dba328f6-571f-4540-8284-8a2aabe0c5f2</td><td>preflight-doctor-checks-before-a-run</td><td>1</td><td class="bad">over</td><td>0 / 3 / 1</td><td>2026-10-15T17:01:50.915Z</td></tr>
+<tr><td>52937df1-7784-4109-acc1-f30cc9818e96</td><td>finding-triage-with-fingerprint-dedup-an</td><td>1</td><td class="bad">over</td><td>1 / 1 / 1</td><td>2026-10-15T17:01:52.631Z</td></tr>
+<tr><td>76e67b7b-07b0-4bcb-8426-8b03e7f075ba</td><td>exit-code-contract-separating-infrastruc</td><td>1</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-10-15T17:01:53.999Z</td></tr>
+<tr><td>c60948da-9b17-4e23-b8ff-dd6ee4995e27</td><td>change-impact-test-plan</td><td>2</td><td class="ok">pass</td><td>0 / 1 / 2</td><td>2026-10-15T17:02:02.857Z</td></tr>
+<tr><td>2d0ceb1c-381f-4f30-a704-90db6cd074d9</td><td>shared-budget-for-claim-sub-sessions</td><td>2</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-10-15T17:02:49.199Z</td></tr>
+<tr><td>bffe899b-44dd-46fc-9911-dcc81f301a44</td><td>trouble-log-reflection-into-lesson-memor</td><td>1</td><td class="bad">over</td><td>1 / 3 / 2</td><td>2026-10-15T17:02:50.573Z</td></tr>
+<tr><td>77ae0b26-7c6f-49ce-8d3e-d3131c55bdb0</td><td>repeated-replay-gate-for-claims</td><td>1</td><td class="ok">pass</td><td>0 / 1 / 2</td><td>2026-10-15T17:04:50.070Z</td></tr>
+<tr><td>43a19a18-4b78-4a04-b09d-06c854aac64a</td><td>sarif-junit-and-sticky-pr-comment-render</td><td>1</td><td class="ok">pass</td><td>0 / 2 / 2</td><td>2026-10-15T17:05:28.995Z</td></tr>
+<tr><td>c9e7fbad-5176-43cc-9623-ea8d56749900</td><td>change-impact-test-plan</td><td>3</td><td class="ok">pass</td><td>0 / 1 / 1</td><td>2026-10-15T17:05:54.082Z</td></tr>
+<tr><td>d325e69c-d145-46c8-8245-3e503c6b18b7</td><td>exit-code-contract-separating-infrastruc</td><td>2</td><td class="ok">pass</td><td>0 / 1 / 3</td><td>2026-10-15T17:06:18.667Z</td></tr>
+<tr><td>23e6278e-31d3-4bae-8ebb-a955fe7986b3</td><td>noise-ledger-with-flake-quarantine</td><td>4</td><td class="ok">pass</td><td>0 / 1 / 0</td><td>2026-10-15T17:07:01.761Z</td></tr>
+<tr><td>c6e279b1-d4f3-4564-b4b2-5708c9d35858</td><td>preflight-doctor-checks-before-a-run</td><td>2</td><td class="ok">pass</td><td>0 / 1 / 4</td><td>2026-10-15T17:07:02.641Z</td></tr>
+<tr><td>e0b42b42-45e8-48d0-ad20-8e7abc9da25a</td><td>trouble-log-reflection-into-lesson-memor</td><td>2</td><td class="bad">over</td><td>1 / 1 / 0</td><td>2026-10-15T17:08:28.639Z</td></tr>
+<tr><td>0b049849-77d9-4844-87f9-99ec9cc2febf</td><td>repeated-replay-gate-for-claims</td><td>2</td><td class="ok">pass</td><td>0 / 0 / 2</td><td>2026-10-15T17:09:16.886Z</td></tr>
+<tr><td>fe3c245a-0cfa-4de3-951c-e9050e687bff</td><td>finding-triage-with-fingerprint-dedup-an</td><td>2</td><td class="bad">over</td><td>0 / 3 / 1</td><td>2026-10-15T17:09:25.282Z</td></tr>
+<tr><td>c89c5688-a375-45c3-8e92-39c98ec84c3d</td><td>shared-budget-for-claim-sub-sessions</td><td>3</td><td class="bad">over</td><td>1 / 1 / 0</td><td>2026-10-15T17:17:00.727Z</td></tr>
+<tr><td>da338ac8-92cb-4179-b73a-49364ef60c4e</td><td>change-impact-test-plan</td><td>4</td><td class="ok">pass</td><td>0 / 0 / 0</td><td>2026-10-15T17:19:07.948Z</td></tr>
+<tr><td>2a957315-e5e6-4cab-8662-aae810b7e09b</td><td>exit-code-contract-separating-infrastruc</td><td>3</td><td class="ok">pass</td><td>0 / 1 / 1</td><td>2026-10-15T17:19:57.047Z</td></tr>
+<tr><td>3c9c2767-6f80-4559-94cc-f7681b2738fe</td><td>sarif-junit-and-sticky-pr-comment-render</td><td>2</td><td class="ok">pass</td><td>0 / 2 / 3</td><td>2026-10-15T17:20:04.190Z</td></tr>
+<tr><td>0141181b-0311-4eed-b7f9-11254a91f25d</td><td>preflight-doctor-checks-before-a-run</td><td>3</td><td class="ok">pass</td><td>0 / 2 / 0</td><td>2026-10-15T17:21:35.380Z</td></tr>
+<tr><td>87c302a4-dce0-482d-919a-b1cd67cc0bdc</td><td>sarif-junit-and-sticky-pr-comment-render</td><td>3</td><td class="ok">pass</td><td>0 / 2 / 3</td><td>2026-10-15T17:23:36.989Z</td></tr>
+<tr><td>feedb464-8b6d-4754-8a99-41e538a34a1d</td><td>preflight-doctor-checks-before-a-run</td><td>4</td><td class="ok">pass</td><td>0 / 0 / 1</td><td>2026-10-15T17:25:54.303Z</td></tr>
+<tr><td>fa4a7263-d5e7-46b1-82e4-55ad26d6d572</td><td>exit-code-contract-separating-infrastruc</td><td>4</td><td class="bad">over</td><td>1 / 0 / 1</td><td>2026-10-15T17:25:55.249Z</td></tr>
+<tr><td>89c77b5e-c01f-4c66-8474-1173ca84a979</td><td>trouble-log-reflection-into-lesson-memor</td><td>3</td><td class="bad">over</td><td>1 / 1 / 0</td><td>2026-10-15T17:31:19.105Z</td></tr>
+<tr><td>1fe28a6d-eef3-4348-b68f-1f538f953327</td><td>sarif-junit-and-sticky-pr-comment-render</td><td>4</td><td class="ok">pass</td><td>0 / 1 / 0</td><td>2026-10-15T17:34:29.632Z</td></tr>
+<tr><td>b0a0a9ea-cf76-4faf-94bc-00bc96c70bc0</td><td>exit-code-contract-separating-infrastruc</td><td>5</td><td class="ok">pass</td><td>0 / 1 / 2</td><td>2026-10-15T17:34:37.072Z</td></tr>
+<tr><td>aa509797-3b28-4123-98fc-4f9cf0a8206b</td><td>noise-ledger-with-flake-quarantine</td><td>5</td><td class="ok">pass</td><td>0 / 1 / 1</td><td>2026-10-15T17:34:46.884Z</td></tr>
+<tr><td>b50f3cb1-8d63-485b-b3a3-eaf8d7cf7f99</td><td>finding-triage-with-fingerprint-dedup-an</td><td>3</td><td class="ok">pass</td><td>0 / 2 / 0</td><td>2026-10-15T17:36:22.630Z</td></tr>
+<tr><td>0c87e300-075b-4415-b778-2bdb01047e81</td><td>shared-budget-for-claim-sub-sessions</td><td>4</td><td class="ok">pass</td><td>0 / 1 / 0</td><td>2026-10-15T17:36:23.745Z</td></tr>
+<tr><td>bba6ce41-4a5a-463a-8d14-78d3e5b6d271</td><td>trouble-log-reflection-into-lesson-memor</td><td>4</td><td class="ok">pass</td><td>0 / 1 / 0</td><td>2026-10-15T17:38:03.585Z</td></tr>
+<tr><td>e0c0ba34-df71-473f-8045-4c609d7be446</td><td>sarif-junit-and-sticky-pr-comment-render</td><td>5</td><td class="ok">pass</td><td>0 / 1 / 0</td><td>2026-10-15T17:38:11.562Z</td></tr>
+<tr><td>a6711639-37c6-4dae-b9f4-048363d8d39f</td><td>exit-code-contract-separating-infrastruc</td><td>6</td><td class="bad">over</td><td>1 / 0 / 2</td><td>2026-10-15T17:39:14.123Z</td></tr>
+<tr><td>775a8ca3-8c8a-439b-9822-ea11aed27311</td><td>sarif-junit-and-sticky-pr-comment-render</td><td>6</td><td class="ok">pass</td><td>0 / 1 / 1</td><td>2026-10-15T17:40:24.057Z</td></tr>
+<tr><td>b8197bf9-630e-41b5-ae83-30266b83d274</td><td>sarif-junit-and-sticky-pr-comment-render</td><td>7</td><td class="ok">pass</td><td>0 / 0 / 0</td><td>2026-10-15T17:44:01.426Z</td></tr>
+<tr><td>4adb2d6f-1a89-4e46-b36a-5f38cafef0bb</td><td>sarif-junit-and-sticky-pr-comment-render</td><td>8</td><td class="ok">pass</td><td>0 / 0 / 0</td><td>2026-10-15T17:45:01.574Z</td></tr>
+<tr><td>1f661b1a-c286-4f79-8c7b-d33c98ac945e</td><td>exit-code-contract-separating-infrastruc</td><td>7</td><td class="bad">over</td><td>1 / 1 / 0</td><td>2026-10-15T17:45:21.055Z</td></tr>
+<tr><td>051f443f-16ea-47f9-a4d9-6a322cb407c1</td><td>finding-triage-with-fingerprint-dedup-an</td><td>4</td><td class="ok">pass</td><td>0 / 2 / 0</td><td>2026-10-15T17:45:39.479Z</td></tr>
+<tr><td>12b93dda-48b2-4364-913f-8a53c5e30d84</td><td>finding-triage-with-fingerprint-dedup-an</td><td>5</td><td class="ok">pass</td><td>0 / 0 / 2</td><td>2026-10-15T17:54:49.016Z</td></tr>
+<tr><td>34e2e890-ead0-483b-adeb-d7f3f7a67375</td><td>exit-code-contract-separating-infrastruc</td><td>8</td><td class="ok">pass</td><td>0 / 1 / 0</td><td>2026-10-15T17:55:14.118Z</td></tr>
+<tr><td>5cf97d51-1475-4847-8994-838680e5f31f</td><td>shared-budget-for-claim-sub-sessions</td><td>5</td><td class="ok">pass</td><td>0 / 0 / 3</td><td>2026-10-15T17:55:23.923Z</td></tr>
+<tr><td>227a7b4b-23c2-4be6-80c2-7f2841a39396</td><td>noise-ledger-with-flake-quarantine</td><td>6</td><td class="ok">pass</td><td>0 / 1 / 1</td><td>2026-10-15T17:56:01.937Z</td></tr>
+<tr><td>1b612e25-c4e8-4992-a4fa-b4261dea6b86</td><td>finding-triage-with-fingerprint-dedup-an</td><td>6</td><td class="ok">pass</td><td>0 / 2 / 3</td><td>2026-10-15T17:57:06.652Z</td></tr>
+<tr><td>3c81bd61-2b85-4abb-82d6-878e61386c6d</td><td>exit-code-contract-separating-infrastruc</td><td>9</td><td class="ok">pass</td><td>0 / 2 / 0</td><td>2026-10-15T18:00:26.019Z</td></tr>
+<tr><td>719d691c-e525-40ec-8a41-977fe9ed142f</td><td>finding-triage-with-fingerprint-dedup-an</td><td>7</td><td class="ok">pass</td><td>0 / 0 / 0</td><td>2026-10-15T18:07:01.582Z</td></tr>
+<tr><td>10cfd713-e1a0-4d2a-825a-9a347f5249d0</td><td>noise-ledger-with-flake-quarantine</td><td>7</td><td class="ok">pass</td><td>0 / 0 / 0</td><td>2026-10-15T18:07:27.323Z</td></tr>
+<tr><td>e266d984-c342-4e3d-900a-4077d333a940</td><td>trouble-log-reflection-into-lesson-memor</td><td>5</td><td class="ok">pass</td><td>0 / 1 / 0</td><td>2026-10-15T18:08:05.484Z</td></tr>
+<tr><td>fe230e47-568b-436c-a166-063addfc5290</td><td>exit-code-contract-separating-infrastruc</td><td>10</td><td class="ok">pass</td><td>0 / 1 / 0</td><td>2026-10-15T18:08:14.155Z</td></tr>
+<tr><td>35671b25-d36a-4aee-92fb-0e1085ff3070</td><td>finding-triage-with-fingerprint-dedup-an</td><td>8</td><td class="ok">pass</td><td>0 / 0 / 0</td><td>2026-10-15T18:10:31.492Z</td></tr>
+<tr><td>ed14dc3a-df83-46e5-af49-1d2895ba73a8</td><td>trouble-log-reflection-into-lesson-memor</td><td>6</td><td class="ok">pass</td><td>0 / 2 / 2</td><td>2026-10-15T18:11:36.374Z</td></tr>
+<tr><td>c5d9d4f8-f6ae-4f03-a1a1-76fdff13373c</td><td>exit-code-contract-separating-infrastruc</td><td>11</td><td class="bad">over</td><td>1 / 0 / 0</td><td>2026-10-15T18:12:57.311Z</td></tr>
+<tr><td>e231c653-a21c-4b5c-8ce1-a21f95c7d51d</td><td>shared-budget-for-claim-sub-sessions</td><td>6</td><td class="ok">pass</td><td>0 / 0 / 1</td><td>2026-10-15T18:14:13.047Z</td></tr>
+<tr><td>5443f14b-d8f6-4abd-8f8d-f932663cfce4</td><td>trouble-log-reflection-into-lesson-memor</td><td>7</td><td class="ok">pass</td><td>0 / 0 / 1</td><td>2026-10-15T18:15:05.586Z</td></tr>
+<tr><td>8c887643-811f-4ab8-b1ad-29752d5416bc</td><td>exit-code-contract-separating-infrastruc</td><td>12</td><td class="ok">pass</td><td>0 / 1 / 1</td><td>2026-10-15T18:16:50.904Z</td></tr>
+<tr><td>ef05f7e7-03d8-4689-974d-a1cf4d6281d7</td><td>shared-budget-for-claim-sub-sessions</td><td>7</td><td class="ok">pass</td><td>0 / 0 / 0</td><td>2026-10-15T18:17:07.199Z</td></tr>
+<tr><td>c0bb87bd-db4a-44b5-b2bf-c67c31c35def</td><td>noise-ledger-with-flake-quarantine</td><td>8</td><td class="ok">pass</td><td>0 / 0 / 0</td><td>2026-10-15T18:19:25.687Z</td></tr>
+<tr><td>02dcbf60-4b18-4a22-a56d-da2d84fb3de3</td><td>exit-code-contract-separating-infrastruc</td><td>13</td><td class="ok">pass</td><td>0 / 1 / 1</td><td>2026-10-15T18:20:54.361Z</td></tr>
+<tr><td>4ac4ff9b-494c-4def-8948-106714ce8d9b</td><td>exit-code-contract-separating-infrastruc</td><td>14</td><td class="ok">pass</td><td>0 / 0 / 0</td><td>2026-10-15T18:22:35.416Z</td></tr>
+<tr><td>c8661f5e-d52a-41f4-96f1-5aee0ca9e2c2</td><td>exit-code-contract-separating-infrastruc</td><td>15</td><td class="ok">pass</td><td>0 / 1 / 0</td><td>2026-10-15T18:24:14.506Z</td></tr>
+<tr><td>3d07c1d6-6400-4ac7-bfd9-c340575bc574</td><td>exit-code-contract-separating-infrastruc</td><td>16</td><td class="ok">pass</td><td>0 / 1 / 0</td><td>2026-10-15T18:26:57.879Z</td></tr>
+<tr><td>e0f203d8-0b19-4c9f-80ac-26b965974df1</td><td>exit-code-contract-separating-infrastruc</td><td>17</td><td class="ok">pass</td><td>0 / 0 / 1</td><td>2026-10-15T18:28:22.975Z</td></tr>
+<tr><td>4f7f4b92-6dca-4235-ba3e-05131341f2ae</td><td>integration</td><td>1</td><td class="bad">over</td><td>1 / 2 / 2</td><td>2026-10-15T18:58:02.462Z</td></tr>
+<tr><td>5b9e1978-c079-4db3-a917-bbe0aa0f77b0</td><td>integration</td><td>2</td><td class="bad">over</td><td>1 / 4 / 0</td><td>2026-10-15T19:14:33.784Z</td></tr>
+<tr><td>4e7e7462-5549-4664-8459-a8c26059b1e7</td><td>integration</td><td>3</td><td class="bad">over</td><td>0 / 3 / 2</td><td>2026-10-15T19:28:00.526Z</td></tr>
+<tr><td>6aa96dd2-4348-4479-af3a-99fa82514398</td><td>integration</td><td>4</td><td class="bad">over</td><td>1 / 1 / 0</td><td>2026-10-15T19:34:18.841Z</td></tr>
+<tr><td>b3c63aeb-d9b0-418f-b352-778ce77c2431</td><td>integration</td><td>5</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-10-15T19:45:42.752Z</td></tr>
+<tr><td>a650afff-70b7-4af8-857e-708a1ec88543</td><td>integration</td><td>6</td><td class="ok">pass</td><td>0 / 1 / 3</td><td>2026-10-15T19:52:02.461Z</td></tr>
+</tbody>
+</table></div>
+
+<h2>Helper spend by model</h2>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Model</th><th scope="col">Helpers</th><th scope="col">Done</th><th scope="col">Tokens used</th><th scope="col">Tokens budgeted in flight</th></tr></thead>
+<tbody>
+<tr><td>sonnet</td><td>66</td><td>66</td><td>5,374,137</td><td>0</td></tr>
+<tr><td>opus</td><td>82</td><td>82</td><td>7,085,660</td><td>0</td></tr>
+</tbody>
+</table></div>
+</main>
+</body>
+</html>

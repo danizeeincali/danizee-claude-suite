@@ -52,3 +52,15 @@
 {"key":"packaged_exit-code-contract-separating-infrastruc","value":true,"id":"f6e9041e-22f5-4f52-93d0-c23c103a0223","ts":"2026-10-15T18:28:45.055Z"}
 {"key":"egress_zero_exit-code-contract-separating-infrastruc","value":true,"id":"4d2ed54f-2331-4903-83f6-22ead17c9a0a","ts":"2026-10-15T18:28:45.240Z"}
 {"key":"callers_exit-code-contract-separating-infrastruc","value":0,"id":"8beb51c2-163d-4e54-8039-6cfb94c492e8","ts":"2026-10-15T18:28:45.414Z"}
+{"key":"wired_noise-ledger-with-flake-quarantine","value":1,"id":"a4aab947-0427-4ef8-bc79-ca0c18f96f8a","ts":"2026-10-15T19:52:45.043Z"}
+{"key":"wired_two-pass-finding-clustering","value":2,"id":"e93ec48e-72e6-435a-a5d0-5ccc680ae6ad","ts":"2026-10-15T19:52:45.209Z"}
+{"key":"wired_asymmetric-threshold-router","value":2,"id":"06805638-7d8d-4b17-9dfe-b81afb99a13c","ts":"2026-10-15T19:52:45.366Z"}
+{"key":"wired_finding-triage-with-fingerprint-dedup-an","value":1,"id":"b64e7229-d6a7-4231-b26a-cdc6a6714c12","ts":"2026-10-15T19:52:45.531Z"}
+{"key":"wired_shared-budget-for-claim-sub-sessions","value":2,"id":"a5003bdd-acc2-40d3-967d-f439e8e633b9","ts":"2026-10-15T19:52:45.679Z"}
+{"key":"wired_trouble-log-reflection-into-lesson-memor","value":2,"id":"475a6cf4-909c-460c-9641-31de4348b59f","ts":"2026-10-15T19:52:45.829Z"}
+{"key":"wired_repeated-replay-gate-for-claims","value":2,"id":"14990090-3d32-4c76-ad4d-2f98b2216e52","ts":"2026-10-15T19:52:45.990Z"}
+{"key":"wired_change-impact-test-plan","value":2,"id":"17dc8283-2bae-4e54-a519-c6bba22430ca","ts":"2026-10-15T19:52:46.155Z"}
+{"key":"wired_preflight-doctor-checks-before-a-run","value":2,"id":"98210b55-634d-4dad-b9b9-d996eafbf956","ts":"2026-10-15T19:52:46.314Z"}
+{"key":"wired_exit-code-contract-separating-infrastruc","value":2,"id":"47522d27-52d2-42f3-ab5c-1c6bedcdab3f","ts":"2026-10-15T19:52:46.482Z"}
+{"key":"wired_sarif-junit-and-sticky-pr-comment-render","value":2,"id":"33e8c115-6e58-43be-81ca-ba8529cda241","ts":"2026-10-15T19:52:46.648Z"}
+{"key":"delivered","value":true,"id":"d22ade50-e4ed-4437-8a9b-3b8b6e584940","ts":"2026-10-15T19:53:01.964Z"}
