@@ -329,15 +329,26 @@ describe('triage state safety (r4)', () => {
     assert.equal(r2.raise[0].status, 'pending');
   }));
 
-  it('a plain-text ledger from before is migrated to hashes and still matches', () => withDir(async (dir) => {
+  it('a plain-text ledger from before is migrated to hashes and keeps its decision and issue', () => withDir(async (dir) => {
     const r1 = await visit(dir, 's1', body([v('p', 'r1', 'a.x')]));
+    await run(['decide', r1.raise[0].fingerprint, '--as', 'filed', '--issue', '#12', '--state', 'st.json'], { cwd: dir });
     const f = path.join(dir, 'st.json');
     const st = JSON.parse(await fs.readFile(f, 'utf-8'));
+    // rebuild the record the way the old code stored it: plain members, fingerprint over plain signatures
+    const plain = normalizeElement({ element: 'a.x' });
     const rec = Object.values(st.records)[0];
-    rec.members = [normalizeElement({ element: 'a.x' })];
+    rec.members = [plain];
+    rec.fingerprint = fingerprintOf('p', 'r1', [plain]);
+    st.records = { [rec.fingerprint]: rec };
     await fs.writeFile(f, JSON.stringify(st));
     const r2 = await visit(dir, 's2', body([v('p', 'r1', 'a.x')]));
-    assert.equal(r2.raise[0].fingerprint, r1.raise[0].fingerprint);
+    assert.equal(r2.raise.length, 0);
+    assert.equal(r2.recurred.length, 1);
+    assert.equal(r2.recurred[0].issue, '#12');
+    assert.equal(r2.recurred[0].fingerprint, rec.fingerprint);
+    const after = JSON.parse(await fs.readFile(f, 'utf-8'));
+    assert.equal(Object.keys(after.records).length, 1);
+    assert.equal(Object.values(after.records)[0].status, 'filed');
     assert.ok(!(await fs.readFile(f, 'utf-8')).includes('"a.x"'));
   }));
 

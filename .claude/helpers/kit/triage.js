@@ -17,8 +17,11 @@
  *   the rules whose check ran this visit (a rule that fired counts as enabled).
  *
  * IDENTITY. All violations of one rule on one scope merge into ONE candidate listing the affected elements. A
- * candidate has a fingerprint: first 16 hex of sha256 over scope, rule and the sorted unique element signatures,
- * joined by newlines. It is stored with the set of element signatures (its members). Later sightings of the same
+ * candidate has a fingerprint: first 16 hex of sha256 over scope, rule and the sorted unique sha256 hex of each
+ * element signature, joined by newlines. It is stored with the set of those hashes (its members): members are 64-hex
+ * sha256 values, never readable signatures; readable `elements` appear only in the visit report (list shows hashes
+ * only). Fingerprints from ledgers written before members were hashed (commit d13d8a5) differ from the same finding
+ * now; matching after migration still goes by member overlap, so decisions and issue refs carry over. Later sightings of the same
  * scope+rule that share at least one member are the SAME record, so fixing or adding one element of eleven does not
  * change identity; members are unioned. Preferred over a fixed record when both match.
  * NORMALISATION of an element signature (detail never takes part):
@@ -43,7 +46,7 @@
  * STATE  default `.claude/kit/triage.json`, `--state` overrides (relative to cwd). Written by temp file + rename; a
  * visit validates all input before changing anything. visit and decide hold the shared state lock (./state-lock.js: `<state>.lock`, heartbeat while
  * the work runs, bounded wait) across load..save, so parallel writers all keep their writes; list reads without a lock. A leading UTF-8 BOM in input and state is ignored.
- * Exit codes: 0 done, 1 invalid input or corrupt state.
+ * Exit codes: 0 done, 1 invalid input or corrupt state, 2 refused: the default state path goes through a symbolic link.
  * Built from ideas audited by /w-bbs (run 2026-10-15-bugpatrol); no foreign code.
  */
 import crypto from 'crypto';
@@ -56,7 +59,7 @@ export const verb = 'triage';
 export const usage = 'cli.js triage visit --session <id> [--in <file>] [--state <path>]  |  triage decide <fingerprint> --as filed|dismissed|accepted [--issue <ref>]  |  triage list [--status <s>]   '
   + '(findings keep one identity across runs: violations of one rule on one scope merge into a candidate with a fingerprint; decided ones are not raised again, filed ones count one occurrence per session, '
   + 'issues raised only by automatic checks close after 3 consecutive visits with no sighting; stdin/--in JSON {scopes?,enabled,violations:[{scope,rule,source:"auto"|"agent",element?,location?,detail?}]}; '
-  + 'state default .claude/kit/triage.json; output raise/recurred/closed/skipped for the caller to sync; exit 0 done, 1 invalid input or corrupt state)';
+  + 'state default .claude/kit/triage.json; fingerprint and members are sha256 hashes of the element signatures, readable elements appear only in the visit report; output raise/recurred/closed/skipped for the caller to sync; exit 0 done, 1 invalid input or corrupt state, 2 refused: the default state path goes through a symbolic link)';
 
 export const LINE_BUCKET = 20;
 export const CLOSE_AFTER = 3;
@@ -140,7 +143,7 @@ export async function loadState(file) {
   }
   if (parsed === null) return emptyState();
   const state = validateState(parsed);
-  // a ledger written before members were hashed: hash its plain-text members so they still match and no longer sit on disk
+  // a ledger written before members were hashed: hash its plain-text members so they still match; the plain-text members are replaced on disk at the next visit or decide (list only reads)
   for (const r of Object.values(state.records)) r.members = [...new Set(r.members.map((m) => (typeof m === 'string' && HASH_RE.test(m) ? m : sigHash(m))))].sort();
   return state;
 }
