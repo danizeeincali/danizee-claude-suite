@@ -31,3 +31,9 @@
 {"key":"packaged_preflight-doctor-checks-before-a-run","value":true,"id":"8590cc89-168f-4f1e-8ada-63fe70679ab5","ts":"2026-10-15T17:26:00.174Z"}
 {"key":"egress_zero_preflight-doctor-checks-before-a-run","value":true,"id":"f66d094b-4fb6-41d0-9de2-197b2bc381b9","ts":"2026-10-15T17:26:00.355Z"}
 {"key":"callers_preflight-doctor-checks-before-a-run","value":0,"id":"3e4853d7-5276-40fd-8a80-a8f9e3cb3895","ts":"2026-10-15T17:26:00.506Z"}
+{"key":"packaged_sarif-junit-and-sticky-pr-comment-render","value":true,"id":"65e08653-2fa5-4278-b123-a97f43a05979","ts":"2026-10-15T17:45:04.300Z"}
+{"key":"egress_zero_sarif-junit-and-sticky-pr-comment-render","value":true,"id":"fc385f62-5ece-43a1-b28c-7b9eb916ee59","ts":"2026-10-15T17:45:04.428Z"}
+{"key":"callers_sarif-junit-and-sticky-pr-comment-render","value":0,"id":"d29776e7-16a4-4fec-bfdd-d7563a47a1a7","ts":"2026-10-15T17:45:04.590Z"}
+{"key":"packaged_sarif-junit-and-sticky-pr-comment-render","value":true,"id":"ffd36077-8f77-4faf-90ab-afd50e40fbd1","ts":"2026-10-15T17:45:29.617Z"}
+{"key":"egress_zero_sarif-junit-and-sticky-pr-comment-render","value":true,"id":"9eeea8e3-ee61-44ed-a160-8a27ceb34486","ts":"2026-10-15T17:45:29.757Z"}
+{"key":"callers_sarif-junit-and-sticky-pr-comment-render","value":0,"id":"91fcd574-5989-4ae4-8e10-e3012661a893","ts":"2026-10-15T17:45:29.904Z"}

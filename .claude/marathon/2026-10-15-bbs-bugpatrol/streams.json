@@ -108,9 +108,9 @@
     },
     {
       "name": "sarif-junit-and-sticky-pr-comment-render",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/sarif-junit-and-sticky-pr-comment-render.md",
-      "next": "builder writes contract, failing tests, verb, packaged test",
+      "next": "done: build gate met",
       "tasks": [],
       "isolation": "/home/claude/danizee-claude-suite-sarif-junit-and-sticky-pr-comment-render",
       "phase": "build",

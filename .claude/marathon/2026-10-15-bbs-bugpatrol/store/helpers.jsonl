@@ -191,3 +191,8 @@
 {"role":"review","model":"opus","stream":"sarif-junit-and-sticky-pr-comment-render","budget":150000,"event":"spawn","id":"6d6a94f0-3597-4a5b-91cc-3b4a25e48f96","ts":"2026-10-15T17:43:12.601Z"}
 {"role":"review","model":"opus","stream":"sarif-junit-and-sticky-pr-comment-render","budget":150000,"event":"spawn","id":"fba99c53-a575-4357-9298-29611055676d","ts":"2026-10-15T17:44:06.498Z"}
 {"helper_id":"6d6a94f0-3597-4a5b-91cc-3b4a25e48f96","tokens":67887,"outcome":"green","event":"done","id":"3dbbbc01-2a60-4d8f-bbc7-2bae9a0945d5","ts":"2026-10-15T17:44:11.132Z"}
+{"helper_id":"fba99c53-a575-4357-9298-29611055676d","tokens":67769,"outcome":"green","event":"done","id":"0cfc8b97-6c0a-445e-9acb-a1f0239fe75f","ts":"2026-10-15T17:45:08.995Z"}
+{"helper_id":"63cab043-eeaf-458f-88bb-ad5bc81f3cb2","tokens":87216,"outcome":"green","event":"done","id":"fc60c30d-d697-4c71-88e3-0cd3ffc57cb5","ts":"2026-10-15T17:45:20.732Z"}
+{"role":"fix","model":"sonnet","stream":"exit-code-contract-separating-infrastruc","budget":150000,"event":"spawn","id":"6940ccfa-ea87-477b-8f81-df3d6b2b172f","ts":"2026-10-15T17:45:22.071Z"}
+{"helper_id":"22c34e7c-c66a-473e-921e-6a70307b3ab8","tokens":95303,"outcome":"green","event":"done","id":"154dde58-056f-4a1b-9fbc-29ded7806173","ts":"2026-10-15T17:45:39.081Z"}
+{"role":"fix","model":"sonnet","stream":"finding-triage-with-fingerprint-dedup-an","budget":150000,"event":"spawn","id":"f7ec2f11-024c-4c52-8cbc-af0e54694b10","ts":"2026-10-15T17:45:40.595Z"}

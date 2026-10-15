@@ -1,0 +1,14 @@
+# Review 1f661b1a-c286-4f79-8c7b-d33c98ac945e — exit-code-contract-separating-infrastruc, round 7
+
+- Commit: 962b2ed
+- Angle: performance and memory
+- Result: over tolerance
+- 2 findings
+
+## High (1)
+
+- **push-gate's truncated not\_scanned list hides an oversized unscanned file, so a fail-closed deny is reclassified as infrastructure** — `src/lib/kit/exit-codes.js:103` (security): unjudgedReason calls incompleteNoHits(result.scrub) on push-gate's result, but push-gate keeps only the first 20 not\_scanned entries (push-gate.js:263, r.not\_scanned.slice(0, 20)) and scrub lists the partial-clone 'object not available locally' entries first (scrub.js:335), before any 'larger than' or 'total size limit reached' entries. With more than 20 missing objects plus one oversized file, push-gate's list shows only partial-clone reasons. Confirmed: blob:none clone of a repo with 25 small files and a 34 MB big.bin containing AKIAABCDEFGHIJKLMNOP (pattern AKIA\[0-9A-Z\]{16}), big.bin fetched, remote then made unreachable. \`scrub\` exits 2 with 26 not\_scanned (last: big.bin 'larger than 33554432 bytes') and \`exit-codes blocks 2 --verb scrub --result scrub.json\` gives blocks true; but \`push-gate check\` exits 2 with scrub.not\_scanned of 20 partial-clone entries, and \`exit-codes classify --code 2 --verb push-gate --result pg.json\` returns class infrastructure, blocks false, 'skipped files only for an environment reason'. CI wired to --result lets a push carrying an unscanned secret-bearing file through. — fix: Have push-gate record the full not\_scanned count (or the set of distinct reasons) in its result and reclassify only when that count equals the listed length and every reason is environmental; or treat a push-gate not\_scanned list of 20 (possibly truncated) as not reclassifiable. Add a test with 21+ partial-clone entries followed by a 'larger than' entry asserting blocks true.
+
+## Medium (1)
+
+- **--result - buffers all of stdin before applying the 1 MiB cap** — `src/lib/kit/exit-codes.js:196` (performance): readResult reads the whole of stdin via io.stdin() (cli.js readStdinBytes concatenates every chunk, then toString copies it) and only then checks Buffer.byteLength against MAX\_RESULT\_BYTES. The documented 1 MiB limit therefore bounds nothing in memory. Confirmed: piping 400 MB into \`cli.js exit-codes blocks 2 --verb scrub --result -\` reaches maxRSS of about 1218 MB before failing with '--result is larger than 1048576 bytes' (about 56 MB for a normal input). Piping the wrong command's output (a diff, a log, a binary) into a CI step can exhaust a runner's memory instead of failing fast with the clear error. — fix: Read stdin incrementally (for await over the stream, or a bounded reader passed in io) and throw the 'larger than' error as soon as the running byte total passes MAX\_RESULT\_BYTES; add a test with a stdin larger than the cap that asserts the error without buffering it all.
