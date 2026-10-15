@@ -87,6 +87,12 @@ case $RC in 0) node .claude/helpers/kit/cli.js lenses --diff "$D"; RC=$?;; 3) ec
 Exit 3 from `diff-range` means an empty range: report "no change to review", never a failure and never "no lens applies". Any other non-zero exit is wrong input or a broken state: report it, never skip the step. Exit 2 means `diff-range` refused the repository (for example an include in its own config): report the refusal as printed. (Wrong input includes not a repository, an unknown base or a git failure.)
 Each entry in `fired` has a `name`, the `files` it matched and a `body`: apply the body as an extra check on those files and add its findings to the table below. A non-empty `capped` list means more lenses applied than the cap (4); mention them in the table. If a deterministic check already ran for the same rule, say so with `--covered` (for example `--covered no-floating-promises`) and that lens stands down. The block keeps the exit status after removing the temp file. A non-zero exit from `lenses` itself means wrong input or a broken lens file: report it, do not skip the step.
 
+**🧩 CLUSTER (advisory):** Findings from parallel agents often repeat. Write them as JSON (`[{"id","rule","severity","files":[...]}]`) to a temp file `$F`, then group them before the list is shown:
+```bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): cluster skipped, advisory"; else node .claude/helpers/kit/cli.js cluster --file "$F"; fi
+```
+Exit 0: show one entry per cluster (the representative, with its member ids). For each `pending_pairs` entry, judge whether the two clusters are one defect; only when sure, write `[{"a","b","same":true,"p":0.9,"confidence":"high"}]` to a file and rerun with `--answers <file>` (an unjudged pair stays apart). Exit 1: invalid input, say so and keep the unclustered list. If the kit is not installed, say so in one line and keep the list as is. Either way the review goes on.
+
 **🕸️ SYMBOL GRAPH AND BLAST RADIUS (calls around the changed files, and what depends on them):**
 Build the call graph for the files this change touches. It reads JS/TS source only, scans each file once and caches the facts by content hash (so a second run is quick), scans the changed files first, and stops at a time budget instead of stalling. It never runs the code it reads. Same range as above, written to its own temp file:
 ```bash
@@ -112,13 +118,6 @@ List what to check from the result: each symbol in `touched`, then the `impacted
 | Simplicity | _____ | _____ |
 
 **AUTO-PROCEED:** Continue to Security Scan phase.
-
-
-**🧩 CLUSTER (advisory):** Findings from parallel agents often repeat. Write them as JSON (`[{"id","rule","severity","files":[...]}]`) to a temp file `$F`, then group them before the list is shown:
-```bash
-if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): cluster skipped, advisory"; else node .claude/helpers/kit/cli.js cluster --file "$F"; fi
-```
-Exit 0: show one entry per cluster (the representative, with its member ids). For each `pending_pairs` entry, judge whether the two clusters are one defect; only when sure, write `[{"a","b","same":true,"p":0.9,"confidence":"high"}]` to a file and rerun with `--answers <file>` (an unjudged pair stays apart). Exit 1: invalid input, say so and keep the unclustered list. If the kit is not installed, say so in one line and keep the list as is. Either way the review goes on.
 
 ---
 
@@ -148,6 +147,12 @@ Exit 0: show one entry per cluster (the representative, with its member ids). Fo
 - Bug fix patterns that recur
 - Feature patterns worth templating
 
+**🔇 NOISE LEDGER AND TRIAGE (advisory):** Before any candidate is filed, put the findings through the ledger and the fingerprint triage. `$F` holds `[{"id","severity","rule","locations":[...],"failures","reproductions"}]` (retry counts from re-running the check), `$V` holds `{"scopes":[...],"enabled":[rules that ran],"violations":[{"scope","rule","source":"auto"|"agent","element"}]}`, `$S` is this review's session id:
+```bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): noise-ledger and triage skipped, advisory"; else node .claude/helpers/kit/cli.js noise-ledger apply --in "$F" && node .claude/helpers/kit/cli.js triage visit --session "$S" --in "$V"; fi
+```
+`noise-ledger` exit 0: file the `filed` items as candidates, mention the one `summary` for the folded rest, list `quarantined` ones (did not reproduce on retry) and ledger-`accepted` ones without filing them; exit 1: invalid input, report it. `triage` exit 0: raise only `raise` and `recurred` entries (a decided one is never raised again) and mention `closed` ones (no longer seen); record a decision with `kit/cli.js triage decide <fingerprint> --as filed|dismissed|accepted`; exit 1 invalid input or corrupt state, exit 2 refused (state path is a symbolic link): report it. If the kit is not installed, say so in one line and file candidates as before. The review goes on.
+
 **If candidate identified:**
 1. Generate unique ID: RC-NNN (check .claude/ralph-candidates.md for next available)
 2. Assign priority: P1 (critical) / P2 (important) / P3 (nice-to-have)
@@ -168,13 +173,6 @@ Exit 0: show one entry per cluster (the representative, with its member ids). Fo
 
 **AUTO-PROCEED:** Continue to Verification phase.
 
-
-**🔇 NOISE LEDGER AND TRIAGE (advisory):** Before any candidate is filed, put the findings through the ledger and the fingerprint triage. `$F` holds `[{"id","severity","rule","locations":[...],"failures","reproductions"}]` (retry counts from re-running the check), `$V` holds `{"scopes":[...],"enabled":[rules that ran],"violations":[{"scope","rule","source":"auto"|"agent","element"}]}`, `$S` is this review's session id:
-```bash
-if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): noise-ledger and triage skipped, advisory"; else node .claude/helpers/kit/cli.js noise-ledger apply --in "$F" && node .claude/helpers/kit/cli.js triage visit --session "$S" --in "$V"; fi
-```
-`noise-ledger` exit 0: file the `filed` items as candidates, mention the one `summary` for the folded rest, list `quarantined` ones (did not reproduce on retry) and ledger-`accepted` ones without filing them; exit 1: invalid input, report it. `triage` exit 0: raise only `raise` and `recurred` entries (a decided one is never raised again) and mention `closed` ones (no longer seen); record a decision with `kit/cli.js triage decide <fingerprint> --as filed|dismissed|accepted`; exit 1 invalid input or corrupt state, exit 2 refused (state path is a symbolic link): report it. If the kit is not installed, say so in one line and file candidates as before. The review goes on.
-
 ---
 
 ### ✅ VERIFICATION CHECKPOINT — Cross-Method Validation
@@ -187,6 +185,12 @@ if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/he
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
 
+**🧭 CLAIM CHECKS (router and budget advisory, replay gate blocking):** When a model or helper session judges a claim (a suppression, a fix, an anomaly), route its answer instead of trusting it:
+1. Budget: all claim-checking sub-sessions share one allowance. `node .claude/helpers/kit/cli.js shared-budget open --state .claude/kit/review-budget.json --steps 30` once per review, then `shared-budget grant --state <same> --helper <id>` before each sub-session and `shared-budget spend --state <same> --helper <id> --steps <n> --outcome ok|failed` after. A grant with `skip: true` is normal (exit 0): do not start that sub-session and say the claim was not checked. Exit 1: broken state, report it and start no more sub-sessions.
+2. Router: write the answers as JSON (`[{"id","answer":{"kind","confidence"},"deterministicRegression"}]`) to `$R`, then `node .claude/helpers/kit/cli.js threshold-route --file "$R"`. Exit 0: act on each `route`: raising a concern is free; `suppress`/`auto-fix` happen only when the router says so (high confidence); `ask-human` and `escalate` go to the user; `block` (a program saw a regression) can never be overridden. Exit 1: invalid input, treat every item as `ask-human`.
+3. Replay gate: a claim may fail this check only when a program, not a model, decided it and a second identical replay agrees. Write `{"verdicts":[{"id","decided_by":"replay"|"exact-check"|"output-diff"|"model","outcome":"pass"|"fail","runs":[run1,run2]}]}` to `$G`, then `node .claude/helpers/kit/cli.js replay-gate --file "$G"`. **Exit 2 = at least one `blocking` verdict: this check FAILS; list those ids.** Exit 0: nothing may fail the check; `untested` (the replays disagreed) and `comment` (model- or human-judged) verdicts are reported as comments only. Exit 1: invalid input, report it; nothing fails the check on unreplayed evidence.
+If the kit is not installed (`.claude/helpers/kit/cli.js` missing), say so in one line: steps 1 and 2 are skipped (advisory) and the replay gate fails closed, so every claim stays a comment and nothing fails the check on a model's word. Steps 1 and 2 never stop the review.
+
 **REQUIRED OUTPUT:**
 - Files verified: _____ / _____ exist
 - Tests re-run: _____ pass / _____ total
@@ -198,13 +202,6 @@ if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/he
 - PASS → proceed to next phase
 - FAIL + retries remaining → log failure reason, fix the issue, re-verify
 - FAIL + max retries exceeded → escalate to user with AskUserQuestion
-
-
-**🧭 CLAIM CHECKS (router and budget advisory, replay gate blocking):** When a model or helper session judges a claim (a suppression, a fix, an anomaly), route its answer instead of trusting it:
-1. Budget: all claim-checking sub-sessions share one allowance. `node .claude/helpers/kit/cli.js shared-budget open --state .claude/kit/review-budget.json --steps 30` once per review, then `shared-budget grant --state <same> --helper <id>` before each sub-session and `shared-budget spend --state <same> --helper <id> --steps <n> --outcome ok|failed` after. A grant with `skip: true` is normal (exit 0): do not start that sub-session and say the claim was not checked. Exit 1: broken state, report it and start no more sub-sessions.
-2. Router: write the answers as JSON (`[{"id","answer":{"kind","confidence"},"deterministicRegression"}]`) to `$R`, then `node .claude/helpers/kit/cli.js threshold-route --file "$R"`. Exit 0: act on each `route`: raising a concern is free; `suppress`/`auto-fix` happen only when the router says so (high confidence); `ask-human` and `escalate` go to the user; `block` (a program saw a regression) can never be overridden. Exit 1: invalid input, treat every item as `ask-human`.
-3. Replay gate: a claim may fail this check only when a program, not a model, decided it and a second identical replay agrees. Write `{"verdicts":[{"id","decided_by":"replay"|"exact-check"|"output-diff"|"model","outcome":"pass"|"fail","runs":[run1,run2]}]}` to `$G`, then `node .claude/helpers/kit/cli.js replay-gate --file "$G"`. **Exit 2 = at least one `blocking` verdict: this check FAILS; list those ids.** Exit 0: nothing may fail the check; `untested` (the replays disagreed) and `comment` (model- or human-judged) verdicts are reported as comments only. Exit 1: invalid input, report it; nothing fails the check on unreplayed evidence.
-If the kit is not installed (`.claude/helpers/kit/cli.js` missing), say so in one line: steps 1 and 2 are skipped (advisory) and the replay gate fails closed, so every claim stays a comment and nothing fails the check on a model's word. Steps 1 and 2 never stop the review.
 
 ---
 

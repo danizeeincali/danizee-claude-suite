@@ -29,7 +29,13 @@ const GATE = put('gate.json', { verdicts: [{ id: 'diagnosis', decided_by: 'repla
 
 // What each step runs: the verb's own call, with the flags the step text uses.
 const calls = {
-  'noise-ledger': () => ok(run(['noise-ledger', 'apply', '--in', FINDINGS, '--ledger', path.join(tmp, 'ledger.json')].filter(Boolean)), [0, 1]),
+  'noise-ledger': () => {
+    // The step passes no --ledger: the default ledger is used and a missing one is fine.
+    const r = run(['noise-ledger', 'apply', '--in', FINDINGS]); ok(r);
+    const out = JSON.parse(r.stdout);
+    assert.ok(out.filed.some(f => f.id === 'a'), 'finding a is filed');
+    assert.ok(out.quarantined.some(f => f.id === 'b'), 'finding b never reproduced on retry: quarantined');
+  },
   cluster: () => { const r = run(['cluster', '--file', FINDINGS]); ok(r); assert.ok(JSON.parse(r.stdout).clusters); },
   'threshold-route': () => { const r = run(['threshold-route', '--file', ROUTE]); ok(r); assert.match(r.stdout, /auto-fix/); },
   'test-plan': () => { const r = run(['test-plan', '--in', MAP, '--changed', CHANGED]); ok(r); assert.equal(JSON.parse(r.stdout).plan[0].id, 't1'); },
@@ -69,6 +75,13 @@ for (const [wf, heading, verb] of rows) {
     const section = stepSection(text, heading);
     assert.notEqual(section, null, `heading "${heading}" is missing from ${wf}.md`);
     assert.match(section, verbCall(verb), `"${heading}" in ${wf}.md never runs kit/cli.js ${verb}`);
+    // The step must be reached top-down before the section hands off: before its first AUTO-PROCEED / REQUIRED OUTPUT / "proceed" line.
+    const lines = section.split(/\r?\n/);
+    const call = verbCall(verb);
+    const at = lines.findIndex(l => call.test(l));
+    const stop = lines.findIndex((l, i) => i > 0 && /AUTO-PROCEED|REQUIRED OUTPUT|\bproceed\b/i.test(l));
+    assert.ok(at >= 0, `no line of "${heading}" runs kit/cli.js ${verb}`);
+    if (stop >= 0) assert.ok(at < stop, `"${heading}" in ${wf}.md runs ${verb} at line ${at + 1}, after its handoff line ${stop + 1}: ${lines[stop].slice(0, 70)}`);
     calls[verb]();
   });
 }
