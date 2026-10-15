@@ -11,7 +11,8 @@
  *             and (advisory) the claude CLI on PATH
  *   bbs       kit + the bbs helpers (.claude/helpers/bbs/cli.js)
  *   review    kit + (advisory) gh on PATH, presence only
- * A project adds checks in `.claude/kit/doctor.json` (or the file given by --config):
+ * A project adds checks in `.claude/kit/doctor.json` (or the file given by --config). Targets of the default
+ * doctor.json are relative to the project root; targets of a --config file are relative to the directory of that file:
  *   { "checks": [ { "name": "...", "kind": "file"|"bin"|"json"|"env", "target": "...", "fatal": true|false } ] }
  * `fatal` defaults to false. An env check only tests that the variable is set and non-empty; its value is never printed.
  *
@@ -30,7 +31,8 @@ import { KitExit } from './kit-exit.js';
 export const verb = 'doctor';
 export const usage = 'cli.js doctor [--profile <kit|marathon|bbs|review>] [--config <file>]   '
   + '(local preflight: node version, binaries on PATH, helper files, valid JSON; each check reports name/ok/fatal/found/fix; '
-  + 'project checks in .claude/kit/doctor.json; no network, no spawned process, env values never printed; '
+  + 'project checks in .claude/kit/doctor.json, whose file/json/bin targets are relative to the project root '
+  + '(targets of a --config file are relative to the directory of that file; a failing path check names the directory it searched); no network, no spawned process, env values never printed; '
   + 'exit 0 ok (advisory failures are warnings), 1 invalid input or config, 2 a fatal prerequisite is missing)';
 
 export const PROFILES = Object.freeze(['kit', 'marathon', 'bbs', 'review']);
@@ -38,8 +40,6 @@ export const KINDS = Object.freeze(['file', 'bin', 'json', 'env']);
 export const DEFAULT_CONFIG = '.claude/kit/doctor.json';
 export const MIN_NODE_MAJOR = 20;
 const invalid = (m) => new KitExit(m, 1);
-
-const isFile = async (p) => { try { return (await fs.stat(p)).isFile(); } catch { return false; } };
 
 /** Directory-walk for a git work tree marker (a `.git` folder or file) from `cwd` upward. No process is spawned. */
 async function inGitWorkTree(cwd) {
@@ -53,22 +53,21 @@ async function inGitWorkTree(cwd) {
 }
 
 /**
- * The project root: the nearest ancestor of `cwd` (itself included) holding .claude/helpers/kit/cli.js, else the nearest
- * one holding .git, else `cwd`. Built-in file/json checks and the default config are resolved against it, so running
+ * The project root: the nearest ancestor of `cwd` (itself included) holding .claude/helpers/kit/cli.js or .git (one upward
+ * walk, so a nested repo without the kit does not inherit an outer project's kit), else `cwd`. Built-in file/json checks and the default config are resolved against it, so running
  * doctor from a subfolder gives the same verdict as running it at the top.
  */
 export async function findProjectRoot(cwd) {
   const start = path.resolve(cwd);
-  for (const marker of [path.join('.claude', 'helpers', 'kit', 'cli.js'), '.git']) {
-    let dir = start;
-    for (;;) {
+  let dir = start;
+  for (;;) {
+    for (const marker of [path.join('.claude', 'helpers', 'kit', 'cli.js'), '.git']) {
       try { await fs.stat(path.join(dir, marker)); return dir; } catch { /* keep walking */ }
-      const up = path.dirname(dir);
-      if (up === dir) break;
-      dir = up;
     }
+    const up = path.dirname(dir);
+    if (up === dir) return start;
+    dir = up;
   }
-  return start;
 }
 
 const stripBom = (t) => (t.charCodeAt(0) === 0xFEFF ? t.slice(1) : t);
@@ -115,21 +114,26 @@ async function executableAt(p) {
 export async function checkBin(bin, { env, fatal, cwd = process.cwd(), name = `bin:${bin}`, fix }) {
   if (/[\\/]/.test(bin)) {
     const ok = await executableAt(path.resolve(cwd, bin));
-    return row(name, fatal, ok, ok ? `${bin} is an executable file` : `${bin} is not an executable file`, fix || `Install ${bin} or fix its path.`);
+    return row(name, fatal, ok, ok ? `${bin} is an executable file` : `${bin} is not an executable file (looked in ${path.resolve(cwd)})`, fix || `Install ${bin} or fix its path.`);
   }
   const at = await findOnPath(bin, env);
   return row(name, fatal, !!at, at ? `${bin} found on PATH` : `${bin} not found on PATH`, fix || `Install ${bin} and make sure it is on PATH.`);
 }
 
 export async function checkFile(rel, { cwd, fatal, name = `file:${rel}`, fix }) {
-  const ok = await isFile(path.resolve(cwd, rel));
-  return row(name, fatal, ok, ok ? `${rel} present` : `${rel} not found`, fix || `Create ${rel}.`);
+  const dir = path.resolve(cwd);
+  let st = null;
+  try { st = await fs.stat(path.resolve(dir, rel)); } catch { /* not there */ }
+  if (st && st.isFile()) return row(name, fatal, true, `${rel} present`, '');
+  if (st) return row(name, fatal, false, `${rel} is a directory, not a file (in ${dir})`, fix || `Replace ${rel} with a file.`);
+  return row(name, fatal, false, `${rel} not found (looked in ${dir})`, fix || `Create ${rel}.`);
 }
 
 export async function checkJson(rel, { cwd, fatal, name = `json:${rel}`, fix }) {
+  const dir = path.resolve(cwd);
   let text;
-  try { text = await fs.readFile(path.resolve(cwd, rel), 'utf-8'); } catch {
-    return row(name, fatal, false, `${rel} missing or unreadable`, fix || `Create ${rel} as valid JSON.`);
+  try { text = await fs.readFile(path.resolve(dir, rel), 'utf-8'); } catch {
+    return row(name, fatal, false, `${rel} missing or unreadable (looked in ${dir})`, fix || `Create ${rel} as valid JSON.`);
   }
   try { JSON.parse(stripBom(text)); } catch (e) {
     // never quote e.message: it can echo the text around the error (a secret in a credentials file)
@@ -177,6 +181,11 @@ export async function profileChecks(profile, { cwd, env, nodeVersion }) {
 
 // ================================================================ project config
 
+/** Every built-in check name of every profile: a project check may not reuse one, so a config valid under one profile is valid under all. */
+export const BUILTIN_NAMES = Object.freeze(['node-version', 'bin:git', 'file:.claude/helpers/kit/cli.js',
+  'file:.claude/helpers/marathon/cli.js', 'json:.claude/marathon.json', 'git-work-tree', 'bin:claude',
+  'file:.claude/helpers/bbs/cli.js', 'bin:gh']);
+
 /** Validate a parsed config; returns the list of checks or throws KitExit 1. */
 export function parseConfig(cfg, where = 'config') {
   if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) throw invalid(`${where}: must be an object with a "checks" array`);
@@ -190,27 +199,31 @@ export function parseConfig(cfg, where = 'config') {
     if (!KINDS.includes(c.kind)) throw invalid(`${at}.kind must be one of ${KINDS.join(', ')}`);
     if (typeof c.target !== 'string' || !c.target.trim()) throw invalid(`${at}.target must be a non-empty string`);
     if (c.fatal !== undefined && typeof c.fatal !== 'boolean') throw invalid(`${at}.fatal must be true or false`);
+    if (BUILTIN_NAMES.includes(c.name)) throw invalid(`${at}.name "${c.name}" collides with a built-in check`);
     if (seen.has(c.name)) throw invalid(`${at}.name "${c.name}" is used twice`);
     seen.add(c.name);
     return { name: c.name, kind: c.kind, target: c.target, fatal: c.fatal === true };
   });
 }
 
+/** Returns `{ checks, base }`: `base` is the directory the targets resolve against (the project root for the default
+ *  doctor.json, the directory of the config file for --config). */
 async function loadConfig(cwd, root, configArg) {
   const explicit = configArg !== undefined;
   const file = path.resolve(explicit ? cwd : root, explicit ? configArg : DEFAULT_CONFIG);
+  const base = explicit ? path.dirname(file) : root;
   let text;
   try { text = await fs.readFile(file, 'utf-8'); } catch (e) {
-    if (!explicit && e.code === 'ENOENT') return [];
+    if (!explicit && e.code === 'ENOENT') return { checks: [], base };
     throw invalid(`cannot read config ${explicit ? configArg : DEFAULT_CONFIG}: ${e.code || e.message}`);
   }
   let parsed;
   try { parsed = JSON.parse(stripBom(text)); } catch { throw invalid(`config ${explicit ? configArg : DEFAULT_CONFIG} is not valid JSON`); }
-  return parseConfig(parsed, explicit ? configArg : DEFAULT_CONFIG);
+  return { checks: parseConfig(parsed, explicit ? configArg : DEFAULT_CONFIG), base };
 }
 
-export async function customCheck(c, { cwd, env }) {
-  const opts = { cwd: await findProjectRoot(cwd), env, fatal: c.fatal, name: c.name };
+export async function customCheck(c, { cwd, env, base }) {
+  const opts = { cwd: base ?? await findProjectRoot(cwd), env, fatal: c.fatal, name: c.name };
   if (c.kind === 'file') return checkFile(c.target, opts);
   if (c.kind === 'json') return checkJson(c.target, opts);
   if (c.kind === 'bin') return checkBin(c.target, opts);
@@ -223,13 +236,13 @@ export async function customCheck(c, { cwd, env }) {
  * Run a profile plus any project checks. `{ cwd, env, nodeVersion }` are injectable (tests pass a temp dir, a controlled
  * PATH/env and a version). Returns `{ profile, ok, exit, checks, failed, warnings }`.
  */
-export async function runDoctor({ profile = 'kit', cwd, env = {}, nodeVersion = process.version, custom = [] } = {}) {
+export async function runDoctor({ profile = 'kit', cwd, env = {}, nodeVersion = process.version, custom = [], customBase } = {}) {
   const checks = await profileChecks(profile, { cwd, env, nodeVersion });
   const names = new Set(checks.map((c) => c.name));
   for (const c of custom) {
     if (names.has(c.name)) throw invalid(`project check name "${c.name}" collides with a built-in check`);
     names.add(c.name);
-    checks.push(await customCheck(c, { cwd, env }));
+    checks.push(await customCheck(c, { cwd, env, base: customBase }));
   }
   const failed = checks.filter((c) => !c.ok && c.fatal).map((c) => c.name);
   const warnings = checks.filter((c) => !c.ok && !c.fatal).map((c) => c.name);
@@ -252,6 +265,6 @@ function parse(args) {
 export async function run(args, io) {
   const { profile, config } = parse(args);
   if (!PROFILES.includes(profile)) throw invalid(`unknown profile "${profile}" — known: ${PROFILES.join(', ')}`);
-  const custom = await loadConfig(io.cwd, await findProjectRoot(io.cwd), config);
-  return runDoctor({ profile, cwd: io.cwd, env: io.env || {}, custom });
+  const { checks, base } = await loadConfig(io.cwd, await findProjectRoot(io.cwd), config);
+  return runDoctor({ profile, cwd: io.cwd, env: io.env || {}, custom: checks, customBase: base });
 }

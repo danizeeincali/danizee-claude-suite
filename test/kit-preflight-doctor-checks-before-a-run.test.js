@@ -203,4 +203,64 @@ describe('doctor', () => {
     assert.equal(r.exit, 0);
     assert.equal(r.checks.find(c => c.name === 'd').ok, true);
   });
+
+  it('--config targets resolve against the config file directory; the found text names the searched directory', async () => {
+    await kitFiles();
+    await write('sub/here.txt', '');
+    await write('sub/my.json', JSON.stringify({ checks: [
+      { name: 'x', kind: 'file', target: 'here.txt', fatal: true },
+      { name: 'y', kind: 'file', target: 'absent.txt', fatal: false }
+    ] }));
+    const sub = path.join(dir, 'sub');
+    const r = await run(['--config', 'my.json'], { cwd: sub, env: env() });
+    assert.equal(r.exit, 0);
+    assert.equal(r.checks.find(c => c.name === 'x').ok, true);
+    const y = r.checks.find(c => c.name === 'y');
+    assert.ok(y.found.includes(sub), y.found);
+    // a config given as a path from the root: targets are relative to that config's directory
+    const r2 = await run(['--config', 'sub/my.json'], { cwd: dir, env: env() });
+    assert.equal(r2.checks.find(c => c.name === 'x').ok, true);
+    // default doctor.json stays root-relative, even from a subfolder
+    await write('root.txt', '');
+    await write('.claude/kit/doctor.json', JSON.stringify({ checks: [{ name: 'r', kind: 'file', target: 'root.txt', fatal: true }] }));
+    const r3 = await run([], { cwd: sub, env: env() });
+    assert.equal(r3.checks.find(c => c.name === 'r').ok, true);
+    const r4 = await run([], { cwd: dir, env: env() });
+    await fs.rm(path.join(dir, 'root.txt'));
+    const r5 = await run([], { cwd: dir, env: env() });
+    assert.ok(r5.checks.find(c => c.name === 'r').found.includes(dir));
+    assert.equal(r4.exit, 0);
+  });
+
+  it('usage says where targets are resolved', async () => {
+    const { usage } = await import('../src/lib/kit/doctor.js');
+    assert.match(usage, /relative to the project root/);
+    assert.match(usage, /--config.*directory of that (config )?file/);
+  });
+
+  it('a project check name used by any profile is rejected on the first run', async () => {
+    await kitFiles();
+    await write('.claude/kit/doctor.json', JSON.stringify({ checks: [{ name: 'bin:claude', kind: 'file', target: 'a' }] }));
+    assert.equal(await code(run([], { cwd: dir, env: env() })), 1);
+    assert.equal(await code(run(['--profile', 'marathon'], { cwd: dir, env: env() })), 1);
+    assert.throws(() => parseConfig({ checks: [{ name: 'bin:gh', kind: 'file', target: 'a' }] }), KitExit);
+  });
+
+  it('a nested repo without the kit does not inherit the outer project', async () => {
+    await kitFiles();
+    await write('inner/.git/HEAD', '');
+    const r = await run([], { cwd: path.join(dir, 'inner'), env: env() });
+    assert.equal(r.exit, 2);
+    assert.deepEqual(r.failed, ['file:.claude/helpers/kit/cli.js']);
+  });
+
+  it('a file check whose target is a directory says so', async () => {
+    await kitFiles();
+    await fs.mkdir(path.join(dir, 'adir'));
+    await write('.claude/kit/doctor.json', JSON.stringify({ checks: [{ name: 'd', kind: 'file', target: 'adir', fatal: true }] }));
+    const c = (await run([], { cwd: dir, env: env() })).checks.find(x => x.name === 'd');
+    assert.equal(c.ok, false);
+    assert.match(c.found, /is a directory, not a file/);
+    assert.ok(!/Create/.test(c.fix));
+  });
 });
