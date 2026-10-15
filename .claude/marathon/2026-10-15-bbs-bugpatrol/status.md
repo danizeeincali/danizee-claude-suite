@@ -1,9 +1,9 @@
 # Marathon 2026-10-15-bbs-bugpatrol
 
 - State: FINISHED
-- Budget: 12,785,106 / 14,000,000 tokens
+- Budget: 12,916,385 / 14,000,000 tokens
 - Allowance: unknown (ceiling 100%)
-- Gate (run-wide, all streams): 2/2 clean reviews — build gate met, full gate met
+- Gate (run-wide, all streams): 3/2 clean reviews — build gate met, full gate met
 - Escapes: 0
 - Next for you: Run is finished. Start a new one with /w-marathon <finish line>.
 - Last handoff: 2026-10-15T19:27:07.894Z (auto) on claude/project-thread-24nlxj@ddea5fc, 0 uncommitted, tasks: none
@@ -85,7 +85,7 @@
 | repeated-replay-gate-for-claims: wired into all 2 targets, reached by a user | build | met | 2 | at_least 2 |
 | repeated-replay-gate-for-claims: packaged check passes | build | met | true | is true |
 | The owner was told what they got: delivered.md lists every power, wired, with its command | build | met | true | is true |
-| Clean reviews in a row | build | met | 2 | at_least 2 |
+| Clean reviews in a row | build | met | 3 | at_least 2 |
 | High findings in the latest review | build | met | 0 | at_most 0 |
 | Open high findings | build | met | 0 | at_most 0 |
 
