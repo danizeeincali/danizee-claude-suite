@@ -259,7 +259,10 @@ describe('exit-codes', () => {
     assert.equal(classify({ code: 2, verb: 'push-gate', result: { decision: 'deny', reason: 'x', scrub: { ran: true, hit_count: 3, complete: false, not_scanned: ['a'] } } }).blocks, true);
   });
   it('result is ignored for other codes and non-judges', () => {
-    assert.equal(classify({ code: 0, verb: 'scrub', result: partial }).class, 'clean');
+    assert.throws(() => classify({ code: 0, verb: 'scrub', result: partial }), (e) => e.code === 1, 'a judge result saying exit 2 given with code 0 is a stale status');
+    assert.equal(classify({ code: 0, verb: 'scrub', result: { ...partial, exit: 0 } }).class, 'clean');
+    assert.equal(classify({ code: 0, verb: 'scrub', result: 'not json' }).class, 'clean');
+    assert.equal(classify({ code: 0, verb: 'graph', result: partial }).class, 'clean');
     assert.equal(classify({ code: 2, verb: 'graph', result: partial }).class, 'precondition');
     assert.equal(classify({ code: 2, result: partial }).class, 'precondition');
     assert.equal(classify({ code: 2, verb: 'scrub', result: 'x' }).blocks, true, 'a judge 2 with an unusable result blocks, it does not throw');
@@ -333,9 +336,10 @@ describe('exit-codes', () => {
   });
 
   describe('whole input space: code x signal x verb x result', () => {
-    // Rule: the result is read only for a judge's exit 2 with no signal. There, empty, truncated or unusable output is a blocking
-    // regression (fail closed), a result whose numeric exit field differs from the code is KitExit 1, and anything uncertain blocks.
-    // No other combination reads the result, so nothing else throws on result content and the class comes from code, signal and verb alone.
+    // Rule: the result is read only for a judge verb with no signal. At exit 2, empty, truncated or unusable output is a blocking
+    // regression (fail closed) and anything uncertain blocks. At ANY code, a result that parses as an object whose numeric exit field
+    // differs from the code is KitExit 1. At a code other than 2, empty or unparseable content is ignored. Nothing else throws on result
+    // content, so otherwise the class comes from code, signal and verb alone (a non-judge verb or a signal never reads the result).
     const CODES = [0, 1, 2, 124, 126, 127, 137, null];
     const SIGNALS = [null, 'SIGKILL'];
     const VERBS = ['scrub', 'push-gate', 'graph'];
@@ -351,13 +355,13 @@ describe('exit-codes', () => {
     });
     const BASE = { 0: 'clean', 1: 'usage', 124: 'infrastructure', 126: 'precondition', 127: 'precondition', 137: 'infrastructure' };
     // The oracle: { throws: true } or { cls, blocks }, from the rule alone.
-    const expected = (code, signal, v, rname) => {
+    const expected = (code, signal, v, rname, text) => {
       if (signal) return { cls: 'infrastructure', blocks: false };
       if (code === null) return { throws: true };
-      if (code === 2 && JUDGES.includes(v)) {
-        if (rname === 'mismatch') return { throws: true };
-        return { cls: 'regression', blocks: true };
-      }
+      let exitField;
+      try { exitField = JSON.parse(text).exit; } catch { /* empty, truncated or absent */ }
+      if (JUDGES.includes(v) && typeof exitField === 'number' && exitField !== code) return { throws: true };
+      if (code === 2 && JUDGES.includes(v)) return { cls: 'regression', blocks: true };
       if (code === 2) return { cls: 'precondition', blocks: false };
       return { cls: BASE[code], blocks: false };
     };
@@ -370,7 +374,7 @@ describe('exit-codes', () => {
         const rs = results(v, code);
         for (const [rname, text] of Object.entries(rs)) {
           n++;
-          const want = expected(code, signal, v, rname);
+          const want = expected(code, signal, v, rname, text);
           const L = label(code, signal, v, rname);
           const cls = ['classify'];
           if (code !== null) cls.push('--code', String(code));
@@ -405,9 +409,9 @@ describe('exit-codes', () => {
       assert.equal(n, 8 * 2 * 3 * 6);
     });
 
-    it('a result is not even read unless it is a judge exit 2 with no signal', async () => {
+    it('a result is not even read unless the verb is a judge and there is no signal', async () => {
       for (const code of CODES.filter((c) => c !== null)) for (const signal of SIGNALS) for (const v of VERBS) {
-        if (code === 2 && !signal && JUDGES.includes(v)) continue;
+        if (!signal && JUDGES.includes(v)) continue;
         let asked = 0;
         const args = ['classify', '--code', String(code), '--verb', v, '--result', '-'];
         if (signal) args.push('--signal', signal);
@@ -441,6 +445,12 @@ describe('exit-codes', () => {
         }
         const lie = spawnSync(process.execPath, [cli, 'exit-codes', 'blocks', '2', '--verb', 'scrub', '--result', '-'], { input: '{"hit_count":0,"exit":0}', encoding: 'utf-8' });
         assert.equal(lie.status, 1);
+        for (const c of ['0', '1', '124']) {
+          const stale = spawnSync(process.execPath, [cli, 'exit-codes', 'blocks', c, '--verb', 'scrub', '--result', '-'], { input: '{"hit_count":3,"exit":2}', encoding: 'utf-8' });
+          assert.equal(stale.status, 1, `stale ${c}`);
+        }
+        const junk = spawnSync(process.execPath, [cli, 'exit-codes', 'blocks', '0', '--verb', 'scrub', '--result', '-'], { input: '{"hit_', encoding: 'utf-8' });
+        assert.equal(junk.status, 0);
         assert.match(lie.stderr + lie.stdout, /exited 0 but the status given is 2/);
       } finally { fs.rmSync(d, { recursive: true, force: true }); }
     });

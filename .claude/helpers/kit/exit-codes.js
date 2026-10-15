@@ -12,7 +12,7 @@
  * result shows nothing was judged is infrastructure and never blocks: scrub with hit_count 0 and a non-empty not_scanned list
  * where every not_scanned reason is an environment reason (a partial clone with the remote unreachable); push-gate with decision deny whose reason says the check 'could not run' because of an environment cause (git timed out, overflowed, was killed or could not be run; NOT scrub's own refusals such as a tracked private pattern file, which block), or a scrub block that is such a zero-hit partial-clone-only scan. Size, total,
  * not-a-regular-file and other reasons stay blocking (fail closed, described by their reason), as does any hit or a review deny.
- * The result is read only for a judge's exit 2 with no signal; every other status ignores it. There, empty, truncated, oversized or non-object output is a blocking regression (fail closed: the judge crashed or refused), and a result whose numeric `exit` field differs from the code is KitExit 1. Nothing else throws on result content.
+ * The result is read only for a judge verb with no signal. At exit 2, empty, truncated, oversized or non-object output is a blocking regression (fail closed: the judge crashed or refused). At any code, a result that parses as an object whose numeric `exit` field differs from the code is KitExit 1 (a stale $? must not turn a hit into clean); at a code other than 2, empty or unparseable content is ignored. Nothing else throws on result content.
  * The library takes the parsed object or the judge's stdout string (parsed like --result): classify({ code, verb, result }), blocksMerge(code, verb, signal, result). It fails closed like the CLI: a verb outside the registered kit verbs, a bad code or a bad result throws KitExit 1 (blocksMerge rethrows; an input error never means 'does not block'). 124 (timeout(1)) is infrastructure.
  *
  * Classes: clean (0), regression (2 from a listed product judge only: the ONLY class allowed to block a merge), usage (1, invalid input
@@ -180,7 +180,12 @@ function classifyWith({ code = null, signal = null, verb: v = null, result = nul
   }
   if (!Number.isInteger(code) || code < 0 || code > 255) throw new KitExit(`exit status must be an integer 0..255, got ${JSON.stringify(code)}`, 1);
   const base = { code, signal: null, verb: v };
-  // The result is read only for a judge's exit 2 with no signal; every other status ignores it, whatever it holds.
+  // The result is read only for a judge verb with no signal. At exit 2 it decides the class; at any other code it is only checked
+  // against its own exit field (a mismatch is KitExit 1), and empty or unparseable content is ignored.
+  if (code !== 2 && v && PRODUCT_JUDGES.includes(v) && !unusable && result != null) {
+    const o = judgeResult(result).obj;
+    if (o && typeof o.exit === 'number' && o.exit !== code) throw new KitExit(`the result says the judge exited ${o.exit} but the status given is ${code}; pass the judge's real exit status (not a stale $?)`, 1);
+  }
   if (code === 2 && v && PRODUCT_JUDGES.includes(v)) {
     const j = unusable ? { why: unusable } : judgeResult(result);
     if (j.why) return { ...base, class: 'regression', known: true, blocks: true, description: `Fail closed: ${v} exited 2 but ${j.why}, so nothing shows it did not judge the product; it blocks. Read the judge's stderr and rerun it.` };
@@ -254,9 +259,9 @@ async function readResult(arg, io) {
   }
   return { text };
 }
-/** Read --result only when it can matter: a judge's exit 2 with no signal. */
+/** Read --result only when it can matter: a judge verb with no signal (at exit 2 it decides the class; at other codes only its exit field is checked). */
 async function resultFor(arg, code, v, signal, io) {
-  if (arg == null || signal != null || code !== 2 || !v || !PRODUCT_JUDGES.includes(v)) return {};
+  if (arg == null || signal != null || !v || !PRODUCT_JUDGES.includes(v)) return {};
   return readResult(arg, io);
 }
 async function toVerb(s) {
