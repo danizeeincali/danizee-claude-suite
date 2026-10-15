@@ -560,6 +560,12 @@ async function verbRecord(projectDir, flags, positional) {
     if (!row.helper_id) fail('record helper-done needs helper_id=<id> tokens=<n> [outcome=green|red|escalated]');
     if (!isInt(row.tokens) || row.tokens < 0) fail('record helper-done: tokens must be a non-negative integer (the task notification reports it)');
     if (row.outcome !== undefined && !['green', 'red', 'escalated'].includes(row.outcome)) fail('outcome must be green, red or escalated');
+    const spawnIds = g.store.helpers.filter(h => h?.event === 'spawn').map(h => h.id);
+    if (!spawnIds.includes(row.helper_id)) {
+      const owners = spawnIds.filter(id => typeof id === 'string' && id.startsWith(String(row.helper_id)));
+      if (owners.length !== 1) fail(`record helper-done: helper_id "${row.helper_id}" ${owners.length ? 'matches several helpers' : 'matches no recorded helper'}: give the id that record helper printed`);
+      row.helper_id = owners[0];
+    }
     row = { ...row, event: 'done' };
   } else if (kind === 'review') {
     if (!row.stream) fail('record review needs stream=<name> counts=\'{"high":0,"medium":0,"low":0}\'');

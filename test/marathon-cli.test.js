@@ -213,6 +213,17 @@ describe('cli — a run with streams, reviews, findings and the gate', () => {
     assert.equal(run(dir, ['record', 'helper-done', `helper_id=${h.json.id}`, 'tokens=1200', 'outcome=red']).code, 0);
   });
 
+  it('helper-done resolves a unique id prefix to the spawn and refuses an id that matches no helper', () => {
+    const h = run(dir, ['record', 'helper', 'stream=intake', 'role=fix', 'model=sonnet', 'budget=1000']);
+    assert.equal(h.code, 0, h.err);
+    const done = run(dir, ['record', 'helper-done', `helper_id=${h.json.id.slice(0, 8)}`, 'tokens=900']);
+    assert.equal(done.code, 0, done.err);
+    assert.equal(done.json.helper_id, h.json.id);
+    const stray = run(dir, ['record', 'helper-done', 'helper_id=zzzzzzzz', 'tokens=5']);
+    assert.equal(stray.code, 1);
+    assert.match(stray.err, /matches no recorded helper/);
+  });
+
   it('usage readings come from timestamped measurements, not a stale handoff (m3)', () => {
     const none = run(dir, ['budget']);
     assert.equal(none.json.usage_pct, null);
