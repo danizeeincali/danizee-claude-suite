@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
+import { spawn } from 'child_process';
+import { fileURLToPath } from 'url';
 import { verb, run, normalizeElement, normalizeScope, fingerprintOf, LINE_BUCKET } from '../src/lib/kit/triage.js';
 
 async function withDir(fn) {
@@ -210,4 +212,71 @@ describe('triage invalid input exits 1 and leaves state untouched', () => {
     const pre = await run(['decide', fp.slice(0, 8), '--as', 'filed', '--issue', 'I', '--state', 'st.json'], { cwd: dir });
     assert.equal(pre.fingerprint, fp);
   }));
+});
+
+describe('triage review round 1 fixes', () => {
+  it('a record whose element still fires is not closed when a candidate overlaps two live records', () => withDir(async (dir) => {
+    await visit(dir, 's1', body([v('p', 'r1', 'a')]));
+    await visit(dir, 's2', body([v('p', 'r1', 'b')]));
+    for (const s of ['s3', 's4', 's5']) {
+      const r = await visit(dir, s, body([v('p', 'r1', 'a'), v('p', 'r1', 'b')]));
+      assert.deepEqual(r.closed, []);
+    }
+    const list = await run(['list', '--state', 'st.json'], { cwd: dir });
+    assert.ok(list.records.every((x) => x.status !== 'fixed' && x.absent_visits === 0));
+  }));
+
+  it('a reopened filed issue stays filed: later sightings recur with the issue ref', () => withDir(async (dir) => {
+    const r = await visit(dir, 's1', body([v('p', 'r1', 'a')]));
+    await run(['decide', r.raise[0].fingerprint, '--as', 'filed', '--issue', 'GH-1', '--state', 'st.json'], { cwd: dir });
+    for (const s of ['s2', 's3', 's4']) await visit(dir, s, body([], ['p']));
+    const back = await visit(dir, 's5', body([v('p', 'r1', 'a')]));
+    assert.equal(back.raise[0].status, 'reopened');
+    assert.equal(back.raise[0].issue, 'GH-1');
+    const next = await visit(dir, 's6', body([v('p', 'r1', 'a')]));
+    assert.deepEqual(next.raise, []);
+    assert.equal(next.recurred[0].issue, 'GH-1');
+    assert.equal(next.recurred[0].counted, true);
+  }));
+
+  it('a UTF-8 BOM on --in, stdin and the state file is accepted', () => withDir(async (dir) => {
+    const bom = '\uFEFF';
+    await fs.writeFile(path.join(dir, 'in.json'), bom + JSON.stringify(body([v('p', 'r1', 'a')])));
+    assert.equal((await run(['visit', '--session', 's', '--in', 'in.json', '--state', 'st.json'], { cwd: dir })).raise.length, 1);
+    const r = await run(['visit', '--session', 't', '--state', 'st.json'], { cwd: dir, stdin: async () => bom + JSON.stringify(body([v('p', 'r1', 'a')])) });
+    assert.equal(r.raise.length, 1);
+    await fs.writeFile(path.join(dir, 'st.json'), bom + await fs.readFile(path.join(dir, 'st.json'), 'utf-8'));
+    assert.equal((await run(['list', '--state', 'st.json'], { cwd: dir })).records.length, 1);
+  }));
+
+  it('list reads a read-only state without taking a lock', () => withDir(async (dir) => {
+    await visit(dir, 's1', body([v('p', 'r1', 'a')]));
+    await fs.chmod(dir, 0o555);
+    try { assert.equal((await run(['list', '--state', 'st.json'], { cwd: dir })).records.length, 1); } finally { await fs.chmod(dir, 0o755); }
+  }));
+
+  it('parallel writer processes keep every write, with a pre-aged stale lock, repeated 10 times', { timeout: 280000 }, async () => {
+    const mod = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/lib/kit/triage.js');
+    const child = `import { run } from ${JSON.stringify('file://' + mod)};
+const [dir, id] = process.argv.slice(1);
+await run(['visit', '--session', 's' + id, '--state', 'st.json'], { cwd: dir, stdin: async () => JSON.stringify({ enabled: ['r1'], violations: [{ scope: 'p' + id, rule: 'r1', source: 'auto', element: 'e' }] }) });`;
+    for (let round = 0; round < 10; round++) {
+      await withDir(async (dir) => {
+        const lock = path.join(dir, 'st.json.lock');
+        await fs.writeFile(lock, 'dead-token');
+        const old = new Date(Date.now() - 3600 * 1000);
+        await fs.utimes(lock, old, old);
+        const N = 6;
+        await Promise.all(Array.from({ length: N }, (_, i) => new Promise((resolve, reject) => {
+          const c = spawn(process.execPath, ['--input-type=module', '-e', child, dir, String(i)], { stdio: ['ignore', 'ignore', 'pipe'] });
+          let err = '';
+          c.stderr.on('data', (d) => { err += d; });
+          c.on('exit', (k) => (k === 0 ? resolve() : reject(new Error(`writer ${i} exit ${k}: ${err}`))));
+        })));
+        const st = JSON.parse(await fs.readFile(path.join(dir, 'st.json'), 'utf-8'));
+        assert.equal(Object.keys(st.records).length, N);
+        assert.deepEqual((await fs.readdir(dir)).sort(), ['st.json']);
+      });
+    }
+  });
 });

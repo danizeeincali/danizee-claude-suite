@@ -41,7 +41,9 @@
  *   visiting the same scope again does not advance absence.
  *
  * STATE  default `.claude/kit/triage.json`, `--state` overrides (relative to cwd). Written by temp file + rename; a
- * visit validates all input before changing anything. Concurrent visits are not merged (last writer wins).
+ * visit validates all input before changing anything. visit and decide hold an exclusive `<state>.lock` (random token, wx,
+ * bounded retry; a stale lock is broken under `<state>.lock.break`, only if its token is unchanged) across load..save, so
+ * parallel writers all keep their writes; list reads without a lock. A leading UTF-8 BOM in input and state is ignored.
  * Exit codes: 0 done, 1 invalid input or corrupt state.
  * Built from ideas audited by /w-bbs (run 2026-10-15-bugpatrol); no foreign code.
  */
@@ -65,6 +67,64 @@ const MAX_VIOLATIONS = 20000;
 const MAX_LISTED = 100;
 const MAX_SESSIONS = 50;
 const invalid = (m) => new KitExit(m, 1);
+const stripBom = (t) => (t.charCodeAt(0) === 0xFEFF ? t.slice(1) : t);
+
+// ================================================================ lock
+
+const LOCK_STALE_MS = 30000;
+const LOCK_WAIT_MS = LOCK_STALE_MS + 30000; // longer than the stale age: a waiter always reaches the break path
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function readToken(file) {
+  try { return await fs.readFile(file, 'utf-8'); } catch { return null; }
+}
+
+/** Break a stale `lock` (token T): take `<lock>.break` with wx, re-read, remove only if the token is still T. */
+async function breakStale(lock, token) {
+  const brk = `${lock}.break`;
+  let h;
+  try { h = await fs.open(brk, 'wx'); } catch (e) {
+    if (e.code === 'EEXIST') {
+      try { const st = await fs.stat(brk); if (Date.now() - st.mtimeMs > 2 * LOCK_STALE_MS) await fs.rm(brk, { force: true }); } catch { /* gone */ }
+    }
+    return;
+  }
+  try {
+    await h.close();
+    const st = await fs.stat(lock).catch(() => null);
+    if (st && Date.now() - st.mtimeMs > LOCK_STALE_MS && (await readToken(lock)) === token) await fs.rm(lock, { force: true });
+  } finally { await fs.rm(brk, { force: true }).catch(() => {}); }
+}
+
+/** Hold an exclusive `<file>.lock` while fn runs. */
+async function withLock(file, fn) {
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const lock = `${file}.lock`;
+  const mine = crypto.randomBytes(16).toString('hex');
+  const start = Date.now();
+  for (;;) {
+    let h;
+    try { h = await fs.open(lock, 'wx'); } catch (e) {
+      if (e.code !== 'EEXIST') throw invalid(`cannot lock triage state ${file}: ${e.code || e.message}`);
+      try {
+        const st = await fs.stat(lock);
+        if (Date.now() - st.mtimeMs > LOCK_STALE_MS) {
+          const t = await readToken(lock);
+          if (t !== null) await breakStale(lock, t);
+          continue;
+        }
+      } catch { continue; /* vanished: retry at once */ }
+      if (Date.now() - start > LOCK_WAIT_MS) throw invalid(`triage state ${file} is locked by another run (${lock}); try again`);
+      await sleep(15 + Math.floor(Math.random() * 35));
+      continue;
+    }
+    try { await h.writeFile(mine); } finally { await h.close(); }
+    break;
+  }
+  try { return await fn(); } finally {
+    if ((await readToken(lock)) === mine) await fs.rm(lock, { force: true }).catch(() => {});
+  }
+}
 
 // ================================================================ identity
 
@@ -132,7 +192,7 @@ export async function loadState(file) {
     throw invalid(`cannot read triage state ${file}: ${e.message}`);
   }
   let parsed;
-  try { parsed = JSON.parse(text); } catch { throw invalid(`triage state ${file} is corrupt: not JSON`); }
+  try { parsed = JSON.parse(stripBom(text)); } catch { throw invalid(`triage state ${file} is corrupt: not JSON`); }
   return validateState(parsed);
 }
 
@@ -220,10 +280,12 @@ export function visit(state, session, { scopes, enabled, violations }) {
     // find the record: same scope+rule, sharing a member; a live one before a fixed one, then most overlap, then oldest
     let best = null;
     let bestScore = null;
+    const others = [];
     for (const r of Object.values(state.records)) {
       if (r.scope !== c.scope || r.rule !== c.rule) continue;
       const overlap = r.members.filter((m) => c.sigs.has(m)).length;
       if (!overlap) continue;
+      others.push(r);
       const score = [r.status === 'fixed' ? 0 : 1, overlap];
       if (!bestScore || score[0] > bestScore[0] || (score[0] === bestScore[0] && score[1] > bestScore[1])) { best = r; bestScore = score; }
     }
@@ -231,6 +293,8 @@ export function visit(state, session, { scopes, enabled, violations }) {
     const base = { scope: c.scope, rule: c.rule, count: c.count, elements: els.list, elements_omitted: els.omitted, sources: [...c.sources].sort(), details: capped(c.details).list.slice(0, 5) };
     let rec = best;
     let status;
+    // every other live record that shares a member also fired: it is sighted, not absent
+    const secondary = others.filter((r) => r !== best && r.status !== 'fixed');
     if (!rec) {
       const fp = fingerprintOf(c.scope, c.rule, [...c.sigs]);
       rec = { fingerprint: fp, scope: c.scope, rule: c.rule, status: 'new', issue: null, members: [], agent: false, absent_visits: 0, occurrences: 0, sessions: [], first_session: session };
@@ -238,22 +302,32 @@ export function visit(state, session, { scopes, enabled, violations }) {
       status = 'new';
     } else if (rec.status === 'fixed') {
       status = 'reopened';
-      rec.status = 'new';
+      rec.status = rec.issue ? 'filed' : 'new';
     } else status = rec.status === 'new' ? 'pending' : rec.status;
     rec.members = [...new Set([...rec.members, ...c.sigs])].sort();
     if (c.sources.has('agent')) rec.agent = true;
     rec.absent_visits = 0;
     rec.last_session = session;
     touched.add(rec.fingerprint);
-    const counted = !rec.sessions.includes(session);
-    if (counted) { rec.occurrences++; pushSession(rec.sessions, session); }
+    report(rec, status);
+    for (const o of secondary) {
+      if (c.sources.has('agent')) o.agent = true;
+      o.absent_visits = 0;
+      o.last_session = session;
+      touched.add(o.fingerprint);
+      report(o, o.status === 'new' ? 'pending' : o.status);
+    }
 
-    if (rec.status === 'dismissed' || rec.status === 'accepted') {
-      out.skipped.push({ ...info(rec), reason: `decided:${rec.status}` });
-    } else if (rec.status === 'filed') {
-      out.recurred.push({ ...info(rec), issue: rec.issue, occurrences: rec.occurrences, counted, ...base });
-    } else {
-      out.raise.push({ fingerprint: rec.fingerprint, status, ...(status === 'reopened' && rec.issue ? { issue: rec.issue } : {}), occurrences: rec.occurrences, ...base });
+    function report(rec, status) {
+      const counted = !rec.sessions.includes(session);
+      if (counted) { rec.occurrences++; pushSession(rec.sessions, session); }
+      if (rec.status === 'dismissed' || rec.status === 'accepted') {
+        out.skipped.push({ ...info(rec), reason: `decided:${rec.status}` });
+      } else if (rec.status === 'filed' && status !== 'reopened') {
+        out.recurred.push({ ...info(rec), issue: rec.issue, occurrences: rec.occurrences, counted, ...base });
+      } else {
+        out.raise.push({ fingerprint: rec.fingerprint, status, ...(status === 'reopened' && rec.issue ? { issue: rec.issue } : {}), occurrences: rec.occurrences, ...base });
+      }
     }
   }
 
@@ -322,7 +396,7 @@ async function readInput(f, io, cwd) {
     if (io.stdinIsTTY) throw invalid('give the visit as JSON on stdin or with --in <file>');
     text = await io.stdin();
   }
-  try { return JSON.parse(text); } catch { throw invalid('visit input is not valid JSON'); }
+  try { return JSON.parse(stripBom(text)); } catch { throw invalid('visit input is not valid JSON'); }
 }
 
 export async function run(args, io = {}) {
@@ -339,9 +413,12 @@ export async function run(args, io = {}) {
     if (!str(f.session)) throw invalid('--session <id> is required');
     const input = validateVisitInput(await readInput(f, io, cwd));
     const file = stateFile(f);
-    const state = await loadState(file);
-    const report = visit(state, f.session.trim(), input);
-    await saveState(file, state);
+    const report = await withLock(file, async () => {
+      const state = await loadState(file);
+      const rep = visit(state, f.session.trim(), input);
+      await saveState(file, state);
+      return rep;
+    });
     return { session: f.session.trim(), scopes_visited: [...new Set([...input.scopes, ...input.violations.map((x) => normalizeScope(x.scope))])].sort(), ...report, state: file };
   }
   if (sub === 'decide') {
@@ -352,10 +429,12 @@ export async function run(args, io = {}) {
     if (f.issue !== undefined && f.as !== 'filed') throw invalid('--issue only goes with --as filed');
     if (f.issue !== undefined && !str(f.issue)) throw invalid('--issue needs a reference');
     const file = stateFile(f);
-    const state = await loadState(file);
-    const res = decide(state, f.pos[0], f.as, f.issue && f.issue.trim());
-    await saveState(file, state);
-    return res;
+    return withLock(file, async () => {
+      const state = await loadState(file);
+      const res = decide(state, f.pos[0], f.as, f.issue && f.issue.trim());
+      await saveState(file, state);
+      return res;
+    });
   }
   if (sub === 'list') {
     const f = parse(rest, ['status', 'state'], false);
