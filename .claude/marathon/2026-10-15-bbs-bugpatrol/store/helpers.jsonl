@@ -290,3 +290,4 @@
 {"helper_id":"13a554c0-3fb8-4b7f-bebc-da3799dc275e","tokens":96477,"outcome":"green","event":"done","id":"a811b24c-eb93-4bd2-9301-a7d857082fdb","ts":"2026-10-15T19:43:02.469Z"}
 {"role":"review","model":"opus","stream":"integration","budget":150000,"event":"spawn","id":"bdd69a43-ad2a-4b52-90cc-455fcce181f9","ts":"2026-10-15T19:43:09.000Z"}
 {"helper_id":"bdd69a43-ad2a-4b52-90cc-455fcce181f9","tokens":112805,"outcome":"green","event":"done","id":"d51ebd79-de52-41f2-a8ac-73b36455604a","ts":"2026-10-15T19:45:43.863Z"}
+{"role":"fix","model":"sonnet","stream":"integration","budget":120000,"event":"spawn","id":"39406ea0-bf1f-4c97-b782-dff3ed091d0b","ts":"2026-10-15T19:45:53.895Z"}

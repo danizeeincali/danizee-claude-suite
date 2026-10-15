@@ -132,7 +132,7 @@
       "name": "integration",
       "state": "active",
       "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/integration.md",
-      "next": "integration review r1; then wired/delivered record",
+      "next": "fix r5 findings; review until 2 clean passes; then wired/delivered record",
       "tasks": [],
       "isolation": "/home/claude/danizee-claude-suite-integration",
       "phase": "review",
