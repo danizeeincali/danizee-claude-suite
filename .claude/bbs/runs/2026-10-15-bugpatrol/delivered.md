@@ -1,6 +1,6 @@
 # What you got — bbs run 2026-10-15-bugpatrol
 
-Written 2026-10-15T19:52:54.488Z. The powers below were built from ideas found in the source this run audited (a rebuild is written from the idea, never from its code). All 11 are wired into the places you approved at the verdict.
+Written 2026-10-15T21:20:58.531Z. The powers below were built from ideas found in the source this run audited (a rebuild is written from the idea, never from its code). All 11 are wired into the places you approved at the verdict.
 
 ## noise ledger with flake quarantine
 
@@ -8,6 +8,7 @@ Caps new issues per run, holds back blocking on a first run, and quarantines fin
 
 Where it runs now:
 - ✓ `/w-review` · ⛔ CHECKPOINT 4: Ralph Candidates (AUTO-PROCEED) · advisory
+- ✓ `/w-plan-tdd-swarm` · ⛔ CHECKPOINT 6: Review · advisory
 
 Run it by hand: `node .claude/helpers/kit/cli.js noise-ledger …` (its flags: `node .claude/helpers/kit/cli.js help`)
 
@@ -18,6 +19,8 @@ Groups duplicate findings deterministically by rule and affected-file set, then 
 Where it runs now:
 - ✓ `/w-review` · ⛔ CHECKPOINT 1: Code Analysis · advisory
 - ✓ `/w-bg-review` · Phase 4: Ralph Candidates · advisory
+- ✓ `/w-plan-tdd-swarm` · ⛔ CHECKPOINT 6: Review · advisory
+- ✓ `/w-marathon` · ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met · advisory
 
 Run it by hand: `node .claude/helpers/kit/cli.js cluster …` (its flags: `node .claude/helpers/kit/cli.js help`)
 
@@ -28,6 +31,8 @@ Routes a decider's answers so that raising a question needs no confidence, while
 Where it runs now:
 - ✓ `/w-review` · ✅ VERIFICATION CHECKPOINT — Cross-Method Validation · advisory
 - ✓ `/w-fix` · ✅ VERIFICATION CHECKPOINT — Cross-Method Validation · blocking
+- ✓ `/w-plan-tdd-swarm` · ✅ VERIFICATION CHECKPOINT — Cross-Method Validation · advisory
+- ✓ `/w-marathon` · ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met · blocking
 
 Run it by hand: `node .claude/helpers/kit/cli.js threshold-route …` (its flags: `node .claude/helpers/kit/cli.js help`)
 
@@ -38,6 +43,8 @@ Maps changed files to affected screens through an inverse index, widens to flows
 Where it runs now:
 - ✓ Runs on every push to main and every pull request. (`job:.github/workflows/test.yml` · node-test) · advisory — proved by `test/reach/ci-job.test.js`
 - ✓ `/w-fix` · ⛔ CHECKPOINT 2: Fix Applied · advisory
+- ✓ `/w-plan-tdd-swarm` · ⛔ CHECKPOINT 5: Build · advisory
+- ✓ `/w-marathon` · ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met · advisory
 
 Run it by hand: `node .claude/helpers/kit/cli.js test-plan …` (its flags: `node .claude/helpers/kit/cli.js help`)
 
@@ -47,6 +54,8 @@ Collapses one screen's raw check results into the few candidates a judge needs, 
 
 Where it runs now:
 - ✓ `/w-review` · ⛔ CHECKPOINT 4: Ralph Candidates (AUTO-PROCEED) · advisory
+- ✓ `/w-plan-tdd-swarm` · ⛔ CHECKPOINT 6: Review · advisory
+- ✓ `/w-marathon` · ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met · advisory
 
 Run it by hand: `node .claude/helpers/kit/cli.js triage …` (its flags: `node .claude/helpers/kit/cli.js help`)
 
@@ -67,6 +76,7 @@ Builds a mechanical trouble log from a finished session and has a reviewer model
 Where it runs now:
 - ✓ `/w-fix` · ⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP) · advisory
 - ✓ `/w-bbs` · ⛔ CHECKPOINT 6: Compound (MANDATORY) · advisory
+- ✓ `/w-plan-tdd-swarm` · ⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP) · advisory
 
 Run it by hand: `node .claude/helpers/kit/cli.js reflect …` (its flags: `node .claude/helpers/kit/cli.js help`)
 
@@ -107,5 +117,7 @@ Only a disproof that code reproduces on a second replay may fail a check; anythi
 Where it runs now:
 - ✓ `/w-review` · ✅ VERIFICATION CHECKPOINT — Cross-Method Validation · blocking
 - ✓ `/w-debug` · ⛔ CHECKPOINT 2: Diagnosis (BLOCKING GATE) · blocking
+- ✓ `/w-plan-tdd-swarm` · ✅ VERIFICATION CHECKPOINT — Cross-Method Validation · blocking
+- ✓ `/w-marathon` · ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met · blocking
 
 Run it by hand: `node .claude/helpers/kit/cli.js replay-gate …` (its flags: `node .claude/helpers/kit/cli.js help`)
