@@ -558,8 +558,8 @@ describe('exit-codes', () => {
 it('r13: missing-blob remedy does not promise a plain git fetch; diff-range 1 names the cap case', async () => {
   const m = await import('../src/lib/kit/exit-codes.js');
   const d = m.classify({ code: 2, verb: 'scrub', result: { exit: 2, hit_count: 0, not_scanned: [{ file: 'a.txt', reason: 'object not available locally (partial clone?)' }] } }).description;
-  assert.match(d, /\(git sparse-checkout disable;/);
-  assert.doesNotMatch(d, /or git backfill on/);
+  assert.match(d, /the command depends on how the clone was made: sparse, --no-checkout or blobless; a plain git fetch does not fill them in\) or run in a full clone/);
+  assert.doesNotMatch(d, /sparse-checkout disable|git backfill/);
   assert.doesNotMatch(d, /\(git fetch,/);
   assert.match(m.classify({ code: 1, verb: 'diff-range' }).description, /max-file-bytes/);
 });
