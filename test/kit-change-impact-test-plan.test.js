@@ -182,4 +182,34 @@ describe('test-plan', () => {
       assert.equal(r2.plan[0].id, 'a');
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
+
+  it('planTests reads input.changed (module entry) and merges it with the argument', () => {
+    const t = [{ id: 'a', files: ['x.js'] }, { id: 'b', files: ['y.js'] }];
+    const r = planTests({ targets: t, changed: ['x.js'] });
+    assert.deepEqual(r.plan.map(i => i.id), ['a']);
+    assert.equal(r.coverage.changed_total, 1);
+    const r2 = planTests({ targets: t, changed: ['x.js'] }, ['y.js']);
+    assert.deepEqual(r2.plan.map(i => i.id), ['a', 'b']);
+    assert.equal(r2.coverage.changed_total, 2);
+  });
+
+  it('a non-list flows or changed gives a clear message, not a raw TypeError', () => {
+    const msg = (fn) => { try { fn(); } catch (e) { return { code: e.code, m: e.message }; } return null; };
+    for (const flows of [{}, 'ab', 5]) {
+      const r = msg(() => planTests({ targets: [{ id: 'a' }], flows }, []));
+      assert.equal(r.code, 1);
+      assert.match(r.m, /"flows" must be a list/);
+    }
+    const c = msg(() => planTests({ targets: [{ id: 'a' }] }, 'x.js'));
+    assert.equal(c.code, 1);
+    assert.match(c.m, /changed.*list/);
+  });
+
+  it('no change source at all exits 1; an explicit empty source is still a source', async () => {
+    const io = (s) => ({ cwd: '/', stdin: async () => s, stdinIsTTY: false });
+    const input = { targets: [{ id: 'a', files: ['x.js'] }] };
+    await assert.rejects(run([], io(JSON.stringify(input))), (e) => e.code === 1 && /no change/i.test(e.message));
+    const r = await run([], io(JSON.stringify({ ...input, changed: [] })));
+    assert.equal(r.coverage.changed_total, 0);
+  });
 });

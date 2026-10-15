@@ -8,7 +8,7 @@
  *   edges?:[[from,to]], always?:[ids], changed?:[paths] }. A target is whatever the caller maps: a test, a page, a command.
  * CHANGED FILES come from `changed` in the input, --changed <file> (one path per line, or a JSON array), and --diff <file>
  * (a unified diff, read with lenses.parseDiff; a deleted file counts under its old path, a rename under both paths). The
- * sources are merged. Paths are normalised (backslashes, "./") and compared exactly; sorted and de-duplicated.
+ * sources are merged (planTests merges input.changed with its second argument too). Paths are normalised (backslashes, "./") and compared exactly; sorted and de-duplicated.
  * RULES.
  *   1. An inverse index maps file -> targets. A changed file mapped to a target is a direct hit.
  *   2. A changed file mapped to at least --shared-pct percent (default 30) of ALL targets, and to at least 2 targets, is a
@@ -16,7 +16,7 @@
  *   3. Any flow holding a targeted item pulls in every target of that flow: reason "flow".
  *   4. If the share of changed files that map to any target is below --min-mapped-pct (default 60), a smoke set is added
  *      (all entry targets plus the --smoke N, default 3, most connected targets by edge degree, ties by id) with reason
- *      "smoke", and the plan says low_confidence: true with a reason. Never silent. No changed files: no smoke, no flag.
+ *      "smoke", and the plan says low_confidence: true with a reason. Never silent. No changed files: no smoke, no flag; but run() exits 1 when no change source was given at all.
  *   5. Items dedupe by target id, keeping the strongest reason. STRENGTH: direct-change > shared-component > flow >
  *      smoke > always. All reasons seen stay in `reasons`. Items from `always` are appended last.
  * OUTPUT: { plan:[{id, reason, reasons, via?, flows?, critical?}], low_confidence, low_confidence_reason?,
@@ -63,6 +63,7 @@ export function validateInput(input) {
     strList(t.files ?? [], `target ${t.id} "files"`);
     if (t.entry !== undefined && typeof t.entry !== 'boolean') throw bad(`target ${t.id} "entry" must be true or false`);
   }
+  if (input.flows !== undefined && !Array.isArray(input.flows)) throw bad('"flows" must be a list');
   const fids = new Set();
   for (const f of input.flows ?? []) {
     if (!f || typeof f.id !== 'string' || !f.id) throw bad('every flow needs a string "id"');
@@ -70,7 +71,6 @@ export function validateInput(input) {
     fids.add(f.id);
     for (const t of strList(f.targets, `flow ${f.id} "targets"`)) if (!ids.has(t)) throw bad(`flow ${f.id} names unknown target "${t}"`);
   }
-  if (input.flows !== undefined && !Array.isArray(input.flows)) throw bad('"flows" must be a list');
   if (input.edges !== undefined && !Array.isArray(input.edges)) throw bad('"edges" must be a list');
   for (const e of input.edges ?? []) {
     if (!Array.isArray(e) || e.length !== 2 || !e.every(x => ids.has(x))) throw bad('every edge must be [from, to] of known target ids');
@@ -99,7 +99,8 @@ export function planTests(input, changed, opts = {}) {
   const { sharedPct = 30, minMappedPct = 60, smoke = 3 } = opts;
   const targets = input.targets;
   const total = targets.length;
-  const files = [...new Set((changed ?? []).map(normPath).filter(Boolean))].sort();
+  if (changed !== undefined && changed !== null) strList(changed, 'the changed argument');
+  const files = [...new Set([...(input.changed ?? []), ...(changed ?? [])].map(normPath).filter(Boolean))].sort();
 
   const index = new Map(); // file -> Set(target ids)
   for (const t of targets) for (const f of t.files ?? []) {
@@ -234,6 +235,9 @@ export async function run(args, io = {}) {
   let input;
   try { input = JSON.parse(stripBom(raw)); } catch { throw bad('input is not valid JSON'); }
   validateInput(input);
+  if (input.changed === undefined && !flags.changed && !flags.diff) {
+    throw bad('no change source given: pass "changed" in the input, --changed <file> or --diff <file> (an empty list is allowed when nothing changed)');
+  }
   let changed = [...(input.changed ?? [])];
   if (flags.changed) {
     const text = await readText(cwd, flags.changed, 'changed list');
