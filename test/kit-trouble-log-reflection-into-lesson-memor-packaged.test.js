@@ -30,8 +30,9 @@ describe('reflect — packaged end to end', () => {
     const dup = pkg.kit(['reflect', 'lessons', 'save', '--role', 'fixer', '--session', 's', '--text', 'Retry deploy only after refreshing the access token.']);
     assert.equal(dup.code, 2);
     assert.match(dup.err, /L1/);
-    assert.equal(pkg.kit(['reflect', 'lessons', 'save', '--role', 'fixer', '--text', 'Retry deploy only after refreshing the access token.', '--confirm', 'L1']).json.lesson.kept, 1);
+    assert.equal(pkg.kit(['reflect', 'lessons', 'save', '--role', 'fixer', '--session', 's', '--text', 'Retry deploy only after refreshing the access token.', '--confirm', 'L1']).json.lesson.kept, 1);
     assert.equal(pkg.kit(['reflect', 'lessons', 'retire', '--id', 'L1', '--reason', 'token was not the cause']).code, 0);
+    assert.equal(pkg.kit(['reflect', 'lessons', 'save', '--role', 'fixer', '--text', 'Retry the deploy only after refreshing the access token.']).code, 1, 'no --session');
     assert.equal(pkg.kit(['reflect', 'lessons', 'list']).json.lessons.length, 0);
     assert.equal(pkg.kit(['reflect', 'lessons', 'list', '--all']).json.lessons[0].status, 'retired');
     assert.equal(pkg.kit(['reflect', 'lessons', 'bogus']).code, 1);
