@@ -1,7 +1,7 @@
 /**
  * noise-ledger — keep the first encounter with a new checker survivable. Advisory: it never fails because findings exist.
  *
- *   noise-ledger apply  [--in <file>] [--cap N] [--first-run] [--ledger <path>] [--now <date>]   (findings JSON on stdin or --in)
+ *   noise-ledger apply  [--in <file>] [--cap N] [--first-run] [--ledger <path>] [--now <date>]   (findings JSON on stdin, or --in <file>; --in - means stdin)
  *   noise-ledger accept --id <id> --reason <text> [--expires YYYY-MM-DD] [--ledger <path>] [--now <date>]
  *   noise-ledger prune  [--ledger <path>] [--now <date>]
  *
@@ -10,7 +10,7 @@
  * (retries run) and `reproductions` (of those, how many showed the finding again), both default 0.
  *
  * WHAT apply DOES. Findings matching a non-expired entry of the committed ledger are `accepted` (reported, not filed).
- * A finding that failed to reproduce on two or more retries (failures - reproductions >= 2) is `quarantined`: listed, never
+ * A finding that never reproduced on its retries (reproductions === 0 and failures >= 2) is `quarantined`: listed, never
  * blocking, and raised as `needs_attention` (a sign the baseline or determinism setup needs a look), never dropped.
  * The rest are ranked by severity, then by how many places they touch, then by id; the top `--cap` (default 5) are `filed`
  * individually and the others are folded into one `summary`. `blocking` is true only when something is left to file or
@@ -19,8 +19,8 @@
  *
  * LEDGER. `.claude/kit/noise-ledger.json` by default: `{ "version": 1, "entries": [{ id, reason, added, expires? }] }`.
  * An entry is valid through its `expires` day (UTC, inclusive); after that it never matches and `prune` removes it.
- * Dates must be real YYYY-MM-DD days. Time comes from `--now` (a date or ISO time) or the clock. `accept` refuses a
- * past expiry. A missing default ledger is empty; a missing `--ledger` is an error for apply, empty for accept.
+ * Dates must be real YYYY-MM-DD days. Time comes from `--now` (a date, or an ISO time: with Z or an offset the UTC day is used) or the clock. `accept` refuses a
+ * past expiry. Unknown entry and top-level fields are preserved on rewrite; a ledger whose `version` is newer than 1 is refused (exit 1). A missing default ledger is empty; a missing `--ledger` is an error for apply, empty for accept.
  *
  * Exit codes: 0 done (findings or not), 1 invalid input or broken ledger.
  * Built from ideas audited by /w-bbs (run 2026-10-15-bugpatrol); no foreign code.
@@ -31,12 +31,13 @@ import { KitExit } from './kit-exit.js';
 
 export const verb = 'noise-ledger';
 export const usage = 'cli.js noise-ledger apply [--in <file>] [--cap N] [--first-run] [--ledger <path>] [--now <date>] | accept --id <id> --reason <text> [--expires YYYY-MM-DD] | prune   '
-  + '(findings JSON on stdin: ranks by severity then places touched, files the top N and folds the rest, quarantines findings that failed to reproduce on 2+ retries, '
+  + '(findings JSON on stdin: ranks by severity then places touched, files the top N and folds the rest, quarantines findings that never reproduced on 2+ retries, '
   + 'reports ledger-accepted ones, --first-run never blocks; advisory: exit 0 even with findings, 1 for invalid input)';
 
 export const DEFAULT_LEDGER = '.claude/kit/noise-ledger.json';
 export const DEFAULT_CAP = 5;
 export const QUARANTINE_AFTER = 2;
+export const LEDGER_VERSION = 1;
 const SEVERITY_RANK = { high: 0, medium: 1, low: 2 };
 const invalid = (m) => new KitExit(m, 1);
 
@@ -50,7 +51,11 @@ export function parseDate(v) {
   const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
   const t = new Date(Date.UTC(y, mo - 1, d));
   if (t.getUTCFullYear() !== y || t.getUTCMonth() !== mo - 1 || t.getUTCDate() !== d) return null;
-  if (m[0].length > 10 && Number.isNaN(Date.parse(v.trim().replace(' ', 'T')))) return null;
+  if (m[0].length > 10) {
+    const ms = Date.parse(v.trim().replace(' ', 'T'));
+    if (Number.isNaN(ms)) return null;
+    if (/(?:Z|[+-]\d{2}:?\d{2})$/.test(v.trim())) return new Date(ms).toISOString().slice(0, 10);
+  }
   return `${m[1]}-${m[2]}-${m[3]}`;
 }
 
@@ -101,16 +106,18 @@ export function normalizeFindings(list) {
 /** Check a ledger object; returns it with sorted entries. */
 export function normalizeLedger(l) {
   if (!l || typeof l !== 'object' || Array.isArray(l) || !Array.isArray(l.entries)) throw invalid('ledger must be { "entries": [...] }');
+  if (l.version !== undefined && (!Number.isInteger(l.version) || l.version < 1)) throw invalid('ledger version must be a whole number >= 1');
+  if (l.version > LEDGER_VERSION) throw invalid(`ledger version ${l.version} is newer than this verb understands (${LEDGER_VERSION}); upgrade the kit`);
   const seen = new Set();
   const entries = l.entries.map((e, i) => {
     if (!e || typeof e !== 'object' || !str(e.id)) throw invalid(`ledger entry #${i + 1} needs an id`);
     if (seen.has(e.id)) throw invalid(`ledger has a duplicate id ${JSON.stringify(e.id).slice(0, 80)}`);
     seen.add(e.id);
     if (e.expires != null && (typeof e.expires !== 'string' || parseDate(e.expires) !== e.expires)) throw invalid(`ledger entry ${e.id}: expires must be a real YYYY-MM-DD date`);
-    return { id: e.id, reason: typeof e.reason === 'string' ? e.reason : '', added: typeof e.added === 'string' ? e.added : undefined, ...(e.expires != null ? { expires: e.expires } : {}) };
+    return { ...e, id: e.id, reason: typeof e.reason === 'string' ? e.reason : '', added: typeof e.added === 'string' ? e.added : undefined, ...(e.expires != null ? { expires: e.expires } : {}) };
   });
   entries.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  return { version: 1, entries };
+  return { ...l, version: LEDGER_VERSION, entries };
 }
 
 // ================================================================ logic
@@ -139,7 +146,7 @@ export function plan(findings, { cap = DEFAULT_CAP, firstRun = false, ledger = n
     const e = byEntry.get(x.id);
     if (e && !isExpired(e, day)) { accepted.push({ ...x, reason: e.reason, expires: e.expires ?? null }); continue; }
     if (e) expiredLedger.push({ id: e.id, expires: e.expires, reason: e.reason });
-    if (x.failures - x.reproductions >= QUARANTINE_AFTER) { quarantined.push({ ...x, not_reproduced: x.failures - x.reproductions }); continue; }
+    if (x.reproductions === 0 && x.failures >= QUARANTINE_AFTER) { quarantined.push({ ...x, not_reproduced: x.failures }); continue; }
     open.push(x);
   }
   open.sort(byRank);
@@ -161,7 +168,7 @@ export function plan(findings, { cap = DEFAULT_CAP, firstRun = false, ledger = n
     quarantined: quarantined.sort(byId),
     expired_ledger: expiredLedger.sort(byId),
     needs_attention: needs,
-    attention: needs ? `${quarantined.length} finding(s) failed to reproduce on ${QUARANTINE_AFTER}+ retries: they are listed and never block, but they suggest the baseline or determinism setup needs attention.` : null,
+    attention: needs ? `${quarantined.length} finding(s) never reproduced on ${QUARANTINE_AFTER}+ retries: they are listed and never block, but they suggest the baseline or determinism setup needs attention.` : null,
     flake_rate: flakeRate(all),
     totals: { input: all.length, filed: filed.length, folded: folded.length, accepted: accepted.length, quarantined: quarantined.length }
   };
@@ -223,7 +230,7 @@ export async function run(args, io = {}) {
       cap = Number(f.cap);
     }
     let text;
-    if (f.in !== undefined) {
+    if (f.in !== undefined && f.in !== '-') {
       try { text = await fs.readFile(path.resolve(cwd, f.in), 'utf-8'); } catch (e) { throw invalid(`cannot read ${f.in}: ${e.code || e.message}`); }
     } else {
       if (io.stdinIsTTY) throw invalid('give findings on stdin or --in <file>');
@@ -257,6 +264,6 @@ export async function run(args, io = {}) {
 
   const ledger = await readLedger(ledgerFile, { mustExist: false });
   const pruned = ledger.entries.filter((e) => isExpired(e, day));
-  if (pruned.length) await writeLedger(ledgerFile, { version: 1, entries: ledger.entries.filter((e) => !isExpired(e, day)) });
+  if (pruned.length) await writeLedger(ledgerFile, { ...ledger, entries: ledger.entries.filter((e) => !isExpired(e, day)) });
   return { ledger: path.relative(cwd, ledgerFile) || ledgerFile, date: day, pruned, remaining: ledger.entries.length - pruned.length };
 }

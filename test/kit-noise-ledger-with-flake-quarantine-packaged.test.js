@@ -14,7 +14,7 @@ describe('noise-ledger — packaged end to end', () => {
     const fd = (id, severity, locations, extra = {}) => ({ id, severity, rule: 'r', locations, ...extra });
     const input = JSON.stringify({ findings: [
       fd('a', 'high', ['s1', 's2']), fd('b', 'high', ['s1']), fd('c', 'medium', ['s1']),
-      fd('d', 'low', ['s1']), fd('flaky', 'high', ['s1'], { failures: 3, reproductions: 1 }), fd('known', 'high', ['s9'])
+      fd('d', 'low', ['s1']), fd('flaky', 'high', ['s1'], { failures: 3, reproductions: 0 }), fd('known', 'high', ['s9'])
     ] });
 
     const acc = pkg.kit(['noise-ledger', 'accept', '--id', 'known', '--reason', 'tracked elsewhere', '--expires', '2026-12-31', '--now', '2026-10-15']);
@@ -30,7 +30,7 @@ describe('noise-ledger — packaged end to end', () => {
     assert.deepEqual(r.json.accepted.map(x => x.id), ['known']);
     assert.equal(r.json.blocking, true);
     assert.equal(r.json.needs_attention, true);
-    assert.equal(r.json.flake_rate, 2 / 3);
+    assert.equal(r.json.flake_rate, 1);
     assert.equal(pkg.kit(['noise-ledger', 'apply', '--cap', '2', '--now', '2026-10-15'], input).out, r.out, 'deterministic');
 
     const first = pkg.kit(['noise-ledger', 'apply', '--first-run', '--now', '2026-10-15'], input);
