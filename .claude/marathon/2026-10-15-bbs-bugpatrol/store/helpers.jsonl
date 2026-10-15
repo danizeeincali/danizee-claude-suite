@@ -142,3 +142,5 @@
 {"helper_id":"7cafe9fe-1aa5-4977-b971-d6f4fc8cb8e7","tokens":91870,"outcome":"green","event":"done","id":"536e7205-d4dd-4fb6-95a1-70670d1b28bf","ts":"2026-10-15T17:25:54.907Z"}
 {"helper_id":"99269c85-b873-425d-993c-1d68de802cb7","tokens":90014,"outcome":"green","event":"done","id":"25f06284-07de-4d31-8bf6-5b72d739bfcd","ts":"2026-10-15T17:25:56.183Z"}
 {"role":"fix","model":"sonnet","stream":"exit-code-contract-separating-infrastruc","budget":100000,"event":"spawn","id":"dd925a9e-d3f4-4684-8068-818ec7f4faff","ts":"2026-10-15T17:25:56.380Z"}
+{"helper_id":"fef84b49-67e5-4cac-9936-682120ae6195","tokens":95398,"outcome":"green","event":"done","id":"1736bd55-ca16-4a8a-b6f3-617d3f118c56","ts":"2026-10-15T17:26:04.902Z"}
+{"role":"review","model":"opus","stream":"trouble-log-reflection-into-lesson-memor","budget":150000,"event":"spawn","id":"1682f441-ae2f-4331-b32f-a94eab954c06","ts":"2026-10-15T17:26:19.843Z"}
