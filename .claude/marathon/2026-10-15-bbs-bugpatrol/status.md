@@ -1,9 +1,9 @@
 # Marathon 2026-10-15-bbs-bugpatrol
 
 - State: RUNNING
-- Budget: 12,271,650 / 14,000,000 tokens
+- Budget: 12,234,455 / 14,000,000 tokens
 - Allowance: unknown (ceiling 100%)
-- Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
+- Gate (run-wide, all streams): 1/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
 - Next for you: Continue stream "integration" (next: integration review r1; then wired/delivered record) — /w-marathon --resume 2026-10-15-bbs-bugpatrol.
 - Last handoff: 2026-10-15T19:27:07.894Z (auto) on claude/project-thread-24nlxj@ddea5fc, 0 uncommitted, tasks: none
@@ -23,7 +23,7 @@
 | exit-code-contract-separating-infrastruc | /home/claude/danizee-claude-suite-exit-code-contract-separating-infrastruc | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/exit-code-contract-separating-infrastruc.md | done | met | /w-tdd-swarm · build | done: build gate met |  | 0 |
 | sarif-junit-and-sticky-pr-comment-render | /home/claude/danizee-claude-suite-sarif-junit-and-sticky-pr-comment-render | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/sarif-junit-and-sticky-pr-comment-render.md | done | met | //w-tdd-swarm · build | done: build gate met |  | 0 |
 | repeated-replay-gate-for-claims | /home/claude/danizee-claude-suite-repeated-replay-gate-for-claims | .claude/bbs/runs/2026-10-15-bugpatrol/briefs/repeated-replay-gate-for-claims.md | done | met | //w-tdd-swarm · done | integration stream wires it |  | 0 |
-| integration | /home/claude/danizee-claude-suite-integration | .claude/bbs/runs/2026-10-15-bugpatrol/integration.md | active | clean 0/2 | review | integration review r1; then wired/delivered record |  | 0 |
+| integration | /home/claude/danizee-claude-suite-integration | .claude/bbs/runs/2026-10-15-bugpatrol/integration.md | active | clean 1/2 | review | integration review r1; then wired/delivered record |  | 0 |
 
 ## Finish line
 
@@ -85,8 +85,8 @@
 | repeated-replay-gate-for-claims: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | repeated-replay-gate-for-claims: packaged check passes | build | met | true | is true |
 | The owner was told what they got: delivered.md lists every power, wired, with its command | build | failing | — | is true |
-| Clean reviews in a row | build | failing | 0 | at_least 2 |
-| High findings in the latest review | build | failing | 1 | at_most 0 |
+| Clean reviews in a row | build | failing | 1 | at_least 2 |
+| High findings in the latest review | build | met | 0 | at_most 0 |
 | Open high findings | build | met | 0 | at_most 0 |
 
 ## Waiting on human
