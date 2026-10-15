@@ -1,0 +1,597 @@
+{
+  "tolerance": {
+    "high": 0,
+    "medium": 2,
+    "low": 5,
+    "passes_in_a_row": 2
+  },
+  "lines": [
+    {
+      "id": "tests_green_noise-ledger-with-flake-quarantine",
+      "label": "noise-ledger-with-flake-quarantine: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "noise-ledger-with-flake-quarantine"
+    },
+    {
+      "id": "egress_zero_noise-ledger-with-flake-quarantine",
+      "label": "noise-ledger-with-flake-quarantine: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_noise-ledger-with-flake-quarantine",
+      "stream": "noise-ledger-with-flake-quarantine"
+    },
+    {
+      "id": "six_sigma_noise-ledger-with-flake-quarantine",
+      "label": "noise-ledger-with-flake-quarantine: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "noise-ledger-with-flake-quarantine"
+    },
+    {
+      "id": "wired_noise-ledger-with-flake-quarantine",
+      "label": "noise-ledger-with-flake-quarantine: wired into its target, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "measure:wired_noise-ledger-with-flake-quarantine",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_noise-ledger-with-flake-quarantine",
+      "label": "noise-ledger-with-flake-quarantine: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_noise-ledger-with-flake-quarantine",
+      "stream": "noise-ledger-with-flake-quarantine"
+    },
+    {
+      "id": "tests_green_two-pass-finding-clustering",
+      "label": "two-pass-finding-clustering: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "two-pass-finding-clustering"
+    },
+    {
+      "id": "egress_zero_two-pass-finding-clustering",
+      "label": "two-pass-finding-clustering: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_two-pass-finding-clustering",
+      "stream": "two-pass-finding-clustering"
+    },
+    {
+      "id": "six_sigma_two-pass-finding-clustering",
+      "label": "two-pass-finding-clustering: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "two-pass-finding-clustering"
+    },
+    {
+      "id": "wired_two-pass-finding-clustering",
+      "label": "two-pass-finding-clustering: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_two-pass-finding-clustering",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_two-pass-finding-clustering",
+      "label": "two-pass-finding-clustering: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_two-pass-finding-clustering",
+      "stream": "two-pass-finding-clustering"
+    },
+    {
+      "id": "tests_green_asymmetric-threshold-router",
+      "label": "asymmetric-threshold-router: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "asymmetric-threshold-router"
+    },
+    {
+      "id": "egress_zero_asymmetric-threshold-router",
+      "label": "asymmetric-threshold-router: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_asymmetric-threshold-router",
+      "stream": "asymmetric-threshold-router"
+    },
+    {
+      "id": "six_sigma_asymmetric-threshold-router",
+      "label": "asymmetric-threshold-router: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "asymmetric-threshold-router"
+    },
+    {
+      "id": "wired_asymmetric-threshold-router",
+      "label": "asymmetric-threshold-router: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_asymmetric-threshold-router",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_asymmetric-threshold-router",
+      "label": "asymmetric-threshold-router: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_asymmetric-threshold-router",
+      "stream": "asymmetric-threshold-router"
+    },
+    {
+      "id": "tests_green_change-impact-test-plan",
+      "label": "change-impact-test-plan: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "change-impact-test-plan"
+    },
+    {
+      "id": "egress_zero_change-impact-test-plan",
+      "label": "change-impact-test-plan: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_change-impact-test-plan",
+      "stream": "change-impact-test-plan"
+    },
+    {
+      "id": "six_sigma_change-impact-test-plan",
+      "label": "change-impact-test-plan: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "change-impact-test-plan"
+    },
+    {
+      "id": "wired_change-impact-test-plan",
+      "label": "change-impact-test-plan: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_change-impact-test-plan",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_change-impact-test-plan",
+      "label": "change-impact-test-plan: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_change-impact-test-plan",
+      "stream": "change-impact-test-plan"
+    },
+    {
+      "id": "tests_green_finding-triage-with-fingerprint-dedup-an",
+      "label": "finding-triage-with-fingerprint-dedup-an: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "finding-triage-with-fingerprint-dedup-an"
+    },
+    {
+      "id": "egress_zero_finding-triage-with-fingerprint-dedup-an",
+      "label": "finding-triage-with-fingerprint-dedup-an: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_finding-triage-with-fingerprint-dedup-an",
+      "stream": "finding-triage-with-fingerprint-dedup-an"
+    },
+    {
+      "id": "six_sigma_finding-triage-with-fingerprint-dedup-an",
+      "label": "finding-triage-with-fingerprint-dedup-an: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "finding-triage-with-fingerprint-dedup-an"
+    },
+    {
+      "id": "wired_finding-triage-with-fingerprint-dedup-an",
+      "label": "finding-triage-with-fingerprint-dedup-an: wired into its target, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "measure:wired_finding-triage-with-fingerprint-dedup-an",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_finding-triage-with-fingerprint-dedup-an",
+      "label": "finding-triage-with-fingerprint-dedup-an: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_finding-triage-with-fingerprint-dedup-an",
+      "stream": "finding-triage-with-fingerprint-dedup-an"
+    },
+    {
+      "id": "tests_green_shared-budget-for-claim-sub-sessions",
+      "label": "shared-budget-for-claim-sub-sessions: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "shared-budget-for-claim-sub-sessions"
+    },
+    {
+      "id": "egress_zero_shared-budget-for-claim-sub-sessions",
+      "label": "shared-budget-for-claim-sub-sessions: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_shared-budget-for-claim-sub-sessions",
+      "stream": "shared-budget-for-claim-sub-sessions"
+    },
+    {
+      "id": "six_sigma_shared-budget-for-claim-sub-sessions",
+      "label": "shared-budget-for-claim-sub-sessions: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "shared-budget-for-claim-sub-sessions"
+    },
+    {
+      "id": "wired_shared-budget-for-claim-sub-sessions",
+      "label": "shared-budget-for-claim-sub-sessions: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_shared-budget-for-claim-sub-sessions",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_shared-budget-for-claim-sub-sessions",
+      "label": "shared-budget-for-claim-sub-sessions: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_shared-budget-for-claim-sub-sessions",
+      "stream": "shared-budget-for-claim-sub-sessions"
+    },
+    {
+      "id": "tests_green_trouble-log-reflection-into-lesson-memor",
+      "label": "trouble-log-reflection-into-lesson-memor: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "trouble-log-reflection-into-lesson-memor"
+    },
+    {
+      "id": "egress_zero_trouble-log-reflection-into-lesson-memor",
+      "label": "trouble-log-reflection-into-lesson-memor: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_trouble-log-reflection-into-lesson-memor",
+      "stream": "trouble-log-reflection-into-lesson-memor"
+    },
+    {
+      "id": "six_sigma_trouble-log-reflection-into-lesson-memor",
+      "label": "trouble-log-reflection-into-lesson-memor: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "trouble-log-reflection-into-lesson-memor"
+    },
+    {
+      "id": "wired_trouble-log-reflection-into-lesson-memor",
+      "label": "trouble-log-reflection-into-lesson-memor: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_trouble-log-reflection-into-lesson-memor",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_trouble-log-reflection-into-lesson-memor",
+      "label": "trouble-log-reflection-into-lesson-memor: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_trouble-log-reflection-into-lesson-memor",
+      "stream": "trouble-log-reflection-into-lesson-memor"
+    },
+    {
+      "id": "tests_green_preflight-doctor-checks-before-a-run",
+      "label": "preflight-doctor-checks-before-a-run: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "preflight-doctor-checks-before-a-run"
+    },
+    {
+      "id": "egress_zero_preflight-doctor-checks-before-a-run",
+      "label": "preflight-doctor-checks-before-a-run: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_preflight-doctor-checks-before-a-run",
+      "stream": "preflight-doctor-checks-before-a-run"
+    },
+    {
+      "id": "six_sigma_preflight-doctor-checks-before-a-run",
+      "label": "preflight-doctor-checks-before-a-run: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "preflight-doctor-checks-before-a-run"
+    },
+    {
+      "id": "wired_preflight-doctor-checks-before-a-run",
+      "label": "preflight-doctor-checks-before-a-run: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_preflight-doctor-checks-before-a-run",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_preflight-doctor-checks-before-a-run",
+      "label": "preflight-doctor-checks-before-a-run: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_preflight-doctor-checks-before-a-run",
+      "stream": "preflight-doctor-checks-before-a-run"
+    },
+    {
+      "id": "tests_green_exit-code-contract-separating-infrastruc",
+      "label": "exit-code-contract-separating-infrastruc: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "exit-code-contract-separating-infrastruc"
+    },
+    {
+      "id": "egress_zero_exit-code-contract-separating-infrastruc",
+      "label": "exit-code-contract-separating-infrastruc: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_exit-code-contract-separating-infrastruc",
+      "stream": "exit-code-contract-separating-infrastruc"
+    },
+    {
+      "id": "six_sigma_exit-code-contract-separating-infrastruc",
+      "label": "exit-code-contract-separating-infrastruc: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "exit-code-contract-separating-infrastruc"
+    },
+    {
+      "id": "wired_exit-code-contract-separating-infrastruc",
+      "label": "exit-code-contract-separating-infrastruc: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_exit-code-contract-separating-infrastruc",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_exit-code-contract-separating-infrastruc",
+      "label": "exit-code-contract-separating-infrastruc: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_exit-code-contract-separating-infrastruc",
+      "stream": "exit-code-contract-separating-infrastruc"
+    },
+    {
+      "id": "tests_green_sarif-junit-and-sticky-pr-comment-render",
+      "label": "sarif-junit-and-sticky-pr-comment-render: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "sarif-junit-and-sticky-pr-comment-render"
+    },
+    {
+      "id": "egress_zero_sarif-junit-and-sticky-pr-comment-render",
+      "label": "sarif-junit-and-sticky-pr-comment-render: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_sarif-junit-and-sticky-pr-comment-render",
+      "stream": "sarif-junit-and-sticky-pr-comment-render"
+    },
+    {
+      "id": "six_sigma_sarif-junit-and-sticky-pr-comment-render",
+      "label": "sarif-junit-and-sticky-pr-comment-render: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "sarif-junit-and-sticky-pr-comment-render"
+    },
+    {
+      "id": "wired_sarif-junit-and-sticky-pr-comment-render",
+      "label": "sarif-junit-and-sticky-pr-comment-render: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_sarif-junit-and-sticky-pr-comment-render",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_sarif-junit-and-sticky-pr-comment-render",
+      "label": "sarif-junit-and-sticky-pr-comment-render: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_sarif-junit-and-sticky-pr-comment-render",
+      "stream": "sarif-junit-and-sticky-pr-comment-render"
+    },
+    {
+      "id": "tests_green_repeated-replay-gate-for-claims",
+      "label": "repeated-replay-gate-for-claims: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "repeated-replay-gate-for-claims"
+    },
+    {
+      "id": "egress_zero_repeated-replay-gate-for-claims",
+      "label": "repeated-replay-gate-for-claims: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_repeated-replay-gate-for-claims",
+      "stream": "repeated-replay-gate-for-claims"
+    },
+    {
+      "id": "six_sigma_repeated-replay-gate-for-claims",
+      "label": "repeated-replay-gate-for-claims: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "repeated-replay-gate-for-claims"
+    },
+    {
+      "id": "wired_repeated-replay-gate-for-claims",
+      "label": "repeated-replay-gate-for-claims: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_repeated-replay-gate-for-claims",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_repeated-replay-gate-for-claims",
+      "label": "repeated-replay-gate-for-claims: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_repeated-replay-gate-for-claims",
+      "stream": "repeated-replay-gate-for-claims"
+    },
+    {
+      "id": "delivered",
+      "label": "The owner was told what they got: delivered.md lists every power, wired, with its command",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:delivered",
+      "stream": "integration"
+    },
+    {
+      "id": "clean_reviews",
+      "label": "Clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak"
+    },
+    {
+      "id": "latest_high",
+      "label": "High findings in the latest review",
+      "type": "number",
+      "op": "at_most",
+      "value": 0,
+      "owner": "build",
+      "source": "reviews.latest.high"
+    },
+    {
+      "id": "open_high",
+      "label": "Open high findings",
+      "type": "number",
+      "op": "at_most",
+      "value": 0,
+      "owner": "build",
+      "source": "findings.open:high"
+    }
+  ]
+}

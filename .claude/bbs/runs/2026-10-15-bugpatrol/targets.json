@@ -1,0 +1,301 @@
+{
+  "run": "2026-10-15-bugpatrol",
+  "ts": "2026-10-15T14:30:55.594Z",
+  "usage_evidence": "transcripts",
+  "targets": {
+    "noise ledger with flake quarantine": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-review.md",
+        "file": ".claude/commands/.shortcuts/w-review.md",
+        "at": "⛔ CHECKPOINT 4: Ralph Candidates (AUTO-PROCEED)",
+        "reach": "/w-review › ⛔ CHECKPOINT 4: Ralph Candidates (AUTO-PROCEED)",
+        "workflow": "w-review",
+        "step": "⛔ CHECKPOINT 4: Ralph Candidates (AUTO-PROCEED)",
+        "how": "Caps new candidate issues per run and quarantines findings that do not reproduce on retry before they become Ralph work.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "w-review emits findings that become issues, which is where noise caps matter; not yet run on this machine."
+      }
+    ],
+    "two pass finding clustering": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-review.md",
+        "file": ".claude/commands/.shortcuts/w-review.md",
+        "at": "⛔ CHECKPOINT 1: Code Analysis",
+        "reach": "/w-review › ⛔ CHECKPOINT 1: Code Analysis",
+        "workflow": "w-review",
+        "step": "⛔ CHECKPOINT 1: Code Analysis",
+        "how": "Groups duplicate findings from parallel agents by rule and file set, asking a model only about unresolved pairs.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "w-review merges findings from several agents, so duplicates arise here; not yet run on this machine."
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-bg-review.md",
+        "file": ".claude/commands/.shortcuts/w-bg-review.md",
+        "at": "Phase 4: Ralph Candidates",
+        "reach": "/w-bg-review › Phase 4: Ralph Candidates",
+        "workflow": "w-bg-review",
+        "step": "Phase 4: Ralph Candidates",
+        "how": "Deduplicates findings across phases before candidates are listed.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "Background review produces multi-phase overlapping findings; not run on this machine."
+      }
+    ],
+    "asymmetric threshold router": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-review.md",
+        "file": ".claude/commands/.shortcuts/w-review.md",
+        "at": "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "reach": "/w-review › ✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "workflow": "w-review",
+        "step": "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "how": "Routes validator answers: raising a concern is free, suppressing or auto-fixing needs high confidence, deterministic failures never overridden.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "The cross-method validation step is where a decider suppresses or confirms findings; not run on this machine."
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-fix.md",
+        "file": ".claude/commands/.shortcuts/w-fix.md",
+        "at": "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "reach": "/w-fix › ✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "workflow": "w-fix",
+        "step": "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "how": "Gates auto-fix acceptance on high confidence while a failing regression test can never be overridden.",
+        "mode": "blocking",
+        "by": "proposed",
+        "unused_reason": "w-fix applies fixes automatically, which needs the asymmetric gate; not run on this machine."
+      }
+    ],
+    "change-impact test plan": [
+      {
+        "kind": "job",
+        "surface": "job:.github/workflows/test.yml",
+        "file": ".github/workflows/test.yml",
+        "at": "node-test",
+        "reach": "Runs on every push to main and every pull request.",
+        "how": "Maps changed files to affected tests and falls back to a smoke set, printing a reason per item.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-fix.md",
+        "file": ".claude/commands/.shortcuts/w-fix.md",
+        "at": "⛔ CHECKPOINT 2: Fix Applied",
+        "reach": "/w-fix › ⛔ CHECKPOINT 2: Fix Applied",
+        "workflow": "w-fix",
+        "step": "⛔ CHECKPOINT 2: Fix Applied",
+        "how": "After a fix, plans which tests to run from the changed files, with reasons.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "Fixes change a few files, so a change-impact plan picks the tests to rerun; not run on this machine."
+      }
+    ],
+    "finding triage with fingerprint dedup and absence closing": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-review.md",
+        "file": ".claude/commands/.shortcuts/w-review.md",
+        "at": "⛔ CHECKPOINT 4: Ralph Candidates (AUTO-PROCEED)",
+        "reach": "/w-review › ⛔ CHECKPOINT 4: Ralph Candidates (AUTO-PROCEED)",
+        "workflow": "w-review",
+        "step": "⛔ CHECKPOINT 4: Ralph Candidates (AUTO-PROCEED)",
+        "how": "Fingerprints findings, collapses repeats into few candidates, and closes candidates that checks no longer see.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "Recurring review runs repeat findings, which fingerprint dedup and absence closing handle; not run on this machine."
+      }
+    ],
+    "shared budget for claim sub-sessions": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "how": "All helper model sessions in the loop draw from one allowance of steps, cost and wall-clock time.",
+        "mode": "blocking",
+        "by": "proposed",
+        "unused_reason": "The marathon loop spawns many model sessions and needs a shared cap; not run on this machine."
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-review.md",
+        "file": ".claude/commands/.shortcuts/w-review.md",
+        "at": "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "reach": "/w-review › ✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "workflow": "w-review",
+        "step": "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "how": "Claim-checking sub-sessions share a single review budget.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "Validation spawns several model sessions per review; not run on this machine."
+      }
+    ],
+    "trouble-log reflection into lesson memory": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-fix.md",
+        "file": ".claude/commands/.shortcuts/w-fix.md",
+        "at": "⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)",
+        "reach": "/w-fix › ⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)",
+        "workflow": "w-fix",
+        "step": "⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)",
+        "how": "Builds a trouble log from the session and has a reviewer save, keep or retire short lessons.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "The compound step already records learnings; reflection feeds it; not run on this machine."
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-bbs.md",
+        "file": ".claude/commands/.shortcuts/w-bbs.md",
+        "at": "⛔ CHECKPOINT 6: Compound (MANDATORY)",
+        "reach": "/w-bbs › ⛔ CHECKPOINT 6: Compound (MANDATORY)",
+        "workflow": "w-bbs",
+        "step": "⛔ CHECKPOINT 6: Compound (MANDATORY)",
+        "how": "Turns the audit run's trouble log into saved lessons for future runs.",
+        "mode": "advisory",
+        "by": "proposed"
+      }
+    ],
+    "safe worktree cleanup for fix checkouts": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-fix.md",
+        "file": ".claude/commands/.shortcuts/w-fix.md",
+        "at": "⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)",
+        "reach": "/w-fix › ⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)",
+        "workflow": "w-fix",
+        "step": "⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)",
+        "how": "At the end, sweeps finished fix checkouts and branches, keeping any with unpublished work.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "w-fix leaves fix checkouts and branches behind; not run on this machine."
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-hotfix.md",
+        "file": ".claude/commands/.shortcuts/w-hotfix.md",
+        "at": "🔒 CLOSING STEP: Scrub and receipt",
+        "reach": "/w-hotfix › 🔒 CLOSING STEP: Scrub and receipt",
+        "workflow": "w-hotfix",
+        "step": "🔒 CLOSING STEP: Scrub and receipt",
+        "how": "Cleans up finished hotfix checkouts while keeping unpublished ones.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "w-hotfix creates a branch checkout that needs cleaning at close; not run on this machine."
+      }
+    ],
+    "Preflight doctor checks before a run": [
+      {
+        "kind": "cli",
+        "surface": "cli:bin/cli.js",
+        "file": "bin/cli.js",
+        "at": "check",
+        "reach": "Run `danizee-claude-suite check` in a project.",
+        "how": "Adds named doctor checks (config, node version, binaries, agent runtimes, optional gh login) separating fatal from advisory, mapped to a usage exit code.",
+        "mode": "blocking",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 3: Arm",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 3: Arm",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 3: Arm",
+        "how": "Runs doctor checks before the long loop is armed.",
+        "mode": "blocking",
+        "by": "proposed",
+        "unused_reason": "A long unattended run should fail early on missing prerequisites; not run on this machine."
+      }
+    ],
+    "Exit code contract separating infrastructure from product failure": [
+      {
+        "kind": "cli",
+        "surface": "cli:bin/cli.js",
+        "file": "bin/cli.js",
+        "at": "check",
+        "reach": "Run `danizee-claude-suite check`; the exit code is read by scripts and CI.",
+        "how": "Exit codes keep usage, missing prerequisite, infrastructure and product failures distinct.",
+        "mode": "blocking",
+        "by": "proposed"
+      },
+      {
+        "kind": "job",
+        "surface": "job:.github/workflows/test.yml",
+        "file": ".github/workflows/test.yml",
+        "at": "node-test",
+        "reach": "Runs on every push and pull request.",
+        "how": "Only the predicate's product-failure outcome may fail the job, not infrastructure errors.",
+        "mode": "blocking",
+        "by": "proposed"
+      }
+    ],
+    "SARIF JUnit and sticky PR comment renderers": [
+      {
+        "kind": "job",
+        "surface": "job:.github/workflows/test.yml",
+        "file": ".github/workflows/test.yml",
+        "at": "test.yml",
+        "reach": "Runs on pull requests; the report is uploaded and commented there.",
+        "how": "Renders findings to SARIF, JUnit XML and one sticky PR comment edited in place.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-review.md",
+        "file": ".claude/commands/.shortcuts/w-review.md",
+        "at": "⛔ CHECKPOINT 5: Compound (MANDATORY - NEVER SKIP)",
+        "reach": "/w-review › ⛔ CHECKPOINT 5: Compound (MANDATORY - NEVER SKIP)",
+        "workflow": "w-review",
+        "step": "⛔ CHECKPOINT 5: Compound (MANDATORY - NEVER SKIP)",
+        "how": "Renders the review's findings as SARIF, JUnit and a PR comment.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "w-review produces the findings list these renderers consume; not run on this machine."
+      }
+    ],
+    "repeated replay gate for claims": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-review.md",
+        "file": ".claude/commands/.shortcuts/w-review.md",
+        "at": "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "reach": "/w-review › ✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "workflow": "w-review",
+        "step": "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "how": "Only a disproof that reproduces on a second replay may fail a check; model-judged or flaky ones stay comments.",
+        "mode": "blocking",
+        "by": "proposed",
+        "unused_reason": "This is the claim-verification step of review; not run on this machine."
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-debug.md",
+        "file": ".claude/commands/.shortcuts/w-debug.md",
+        "at": "⛔ CHECKPOINT 2: Diagnosis (BLOCKING GATE)",
+        "reach": "/w-debug › ⛔ CHECKPOINT 2: Diagnosis (BLOCKING GATE)",
+        "workflow": "w-debug",
+        "step": "⛔ CHECKPOINT 2: Diagnosis (BLOCKING GATE)",
+        "how": "Requires the diagnosis to reproduce on a second replay before it gates the fix.",
+        "mode": "blocking",
+        "by": "proposed",
+        "unused_reason": "Diagnosis claims need reproducible evidence; not run on this machine."
+      }
+    ]
+  }
+}

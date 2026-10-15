@@ -1,0 +1,1543 @@
+{
+  "run": "2026-10-15-bugpatrol",
+  "source": {
+    "run": "2026-10-15-bugpatrol",
+    "type": "repo",
+    "ref": "https://github.com/agent-labs-dev/bugpatrol",
+    "identity": "git:960cd19d1a533567d40945a6b3a60057a2a87f55",
+    "fetched": true,
+    "reuse_from": null,
+    "cited": [],
+    "ts": "2026-10-15T14:25:44.050Z",
+    "fetched_at": "2026-10-15T14:25:50.563Z"
+  },
+  "marathonRun": "2026-10-15-bbs-bugpatrol",
+  "powers": [
+    {
+      "name": "noise ledger with flake quarantine",
+      "slug": "noise-ledger-with-flake-quarantine",
+      "verdict": "rebuild",
+      "brief": "briefs/noise-ledger-with-flake-quarantine.md",
+      "brief_path": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/noise-ledger-with-flake-quarantine.md",
+      "lines": [
+        {
+          "id": "tests_green_noise-ledger-with-flake-quarantine",
+          "label": "noise-ledger-with-flake-quarantine: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "noise-ledger-with-flake-quarantine"
+        },
+        {
+          "id": "egress_zero_noise-ledger-with-flake-quarantine",
+          "label": "noise-ledger-with-flake-quarantine: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_noise-ledger-with-flake-quarantine",
+          "stream": "noise-ledger-with-flake-quarantine"
+        },
+        {
+          "id": "six_sigma_noise-ledger-with-flake-quarantine",
+          "label": "noise-ledger-with-flake-quarantine: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "noise-ledger-with-flake-quarantine"
+        },
+        {
+          "id": "wired_noise-ledger-with-flake-quarantine",
+          "label": "noise-ledger-with-flake-quarantine: wired into its target, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "measure:wired_noise-ledger-with-flake-quarantine",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_noise-ledger-with-flake-quarantine",
+          "label": "noise-ledger-with-flake-quarantine: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_noise-ledger-with-flake-quarantine",
+          "stream": "noise-ledger-with-flake-quarantine"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-review.md",
+          "file": ".claude/commands/.shortcuts/w-review.md",
+          "at": "⛔ CHECKPOINT 4: Ralph Candidates (AUTO-PROCEED)",
+          "reach": "/w-review › ⛔ CHECKPOINT 4: Ralph Candidates (AUTO-PROCEED)",
+          "workflow": "w-review",
+          "step": "⛔ CHECKPOINT 4: Ralph Candidates (AUTO-PROCEED)",
+          "how": "Caps new candidate issues per run and quarantines findings that do not reproduce on retry before they become Ralph work.",
+          "mode": "advisory",
+          "by": "proposed",
+          "unused_reason": "w-review emits findings that become issues, which is where noise caps matter; not yet run on this machine."
+        }
+      ]
+    },
+    {
+      "name": "two pass finding clustering",
+      "slug": "two-pass-finding-clustering",
+      "verdict": "rebuild",
+      "brief": "briefs/two-pass-finding-clustering.md",
+      "brief_path": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/two-pass-finding-clustering.md",
+      "lines": [
+        {
+          "id": "tests_green_two-pass-finding-clustering",
+          "label": "two-pass-finding-clustering: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "two-pass-finding-clustering"
+        },
+        {
+          "id": "egress_zero_two-pass-finding-clustering",
+          "label": "two-pass-finding-clustering: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_two-pass-finding-clustering",
+          "stream": "two-pass-finding-clustering"
+        },
+        {
+          "id": "six_sigma_two-pass-finding-clustering",
+          "label": "two-pass-finding-clustering: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "two-pass-finding-clustering"
+        },
+        {
+          "id": "wired_two-pass-finding-clustering",
+          "label": "two-pass-finding-clustering: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_two-pass-finding-clustering",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_two-pass-finding-clustering",
+          "label": "two-pass-finding-clustering: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_two-pass-finding-clustering",
+          "stream": "two-pass-finding-clustering"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-review.md",
+          "file": ".claude/commands/.shortcuts/w-review.md",
+          "at": "⛔ CHECKPOINT 1: Code Analysis",
+          "reach": "/w-review › ⛔ CHECKPOINT 1: Code Analysis",
+          "workflow": "w-review",
+          "step": "⛔ CHECKPOINT 1: Code Analysis",
+          "how": "Groups duplicate findings from parallel agents by rule and file set, asking a model only about unresolved pairs.",
+          "mode": "advisory",
+          "by": "proposed",
+          "unused_reason": "w-review merges findings from several agents, so duplicates arise here; not yet run on this machine."
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-bg-review.md",
+          "file": ".claude/commands/.shortcuts/w-bg-review.md",
+          "at": "Phase 4: Ralph Candidates",
+          "reach": "/w-bg-review › Phase 4: Ralph Candidates",
+          "workflow": "w-bg-review",
+          "step": "Phase 4: Ralph Candidates",
+          "how": "Deduplicates findings across phases before candidates are listed.",
+          "mode": "advisory",
+          "by": "proposed",
+          "unused_reason": "Background review produces multi-phase overlapping findings; not run on this machine."
+        }
+      ]
+    },
+    {
+      "name": "asymmetric threshold router",
+      "slug": "asymmetric-threshold-router",
+      "verdict": "rebuild",
+      "brief": "briefs/asymmetric-threshold-router.md",
+      "brief_path": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/asymmetric-threshold-router.md",
+      "lines": [
+        {
+          "id": "tests_green_asymmetric-threshold-router",
+          "label": "asymmetric-threshold-router: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "asymmetric-threshold-router"
+        },
+        {
+          "id": "egress_zero_asymmetric-threshold-router",
+          "label": "asymmetric-threshold-router: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_asymmetric-threshold-router",
+          "stream": "asymmetric-threshold-router"
+        },
+        {
+          "id": "six_sigma_asymmetric-threshold-router",
+          "label": "asymmetric-threshold-router: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "asymmetric-threshold-router"
+        },
+        {
+          "id": "wired_asymmetric-threshold-router",
+          "label": "asymmetric-threshold-router: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_asymmetric-threshold-router",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_asymmetric-threshold-router",
+          "label": "asymmetric-threshold-router: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_asymmetric-threshold-router",
+          "stream": "asymmetric-threshold-router"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-review.md",
+          "file": ".claude/commands/.shortcuts/w-review.md",
+          "at": "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+          "reach": "/w-review › ✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+          "workflow": "w-review",
+          "step": "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+          "how": "Routes validator answers: raising a concern is free, suppressing or auto-fixing needs high confidence, deterministic failures never overridden.",
+          "mode": "advisory",
+          "by": "proposed",
+          "unused_reason": "The cross-method validation step is where a decider suppresses or confirms findings; not run on this machine."
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-fix.md",
+          "file": ".claude/commands/.shortcuts/w-fix.md",
+          "at": "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+          "reach": "/w-fix › ✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+          "workflow": "w-fix",
+          "step": "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+          "how": "Gates auto-fix acceptance on high confidence while a failing regression test can never be overridden.",
+          "mode": "blocking",
+          "by": "proposed",
+          "unused_reason": "w-fix applies fixes automatically, which needs the asymmetric gate; not run on this machine."
+        }
+      ]
+    },
+    {
+      "name": "change-impact test plan",
+      "slug": "change-impact-test-plan",
+      "verdict": "rebuild",
+      "brief": "briefs/change-impact-test-plan.md",
+      "brief_path": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/change-impact-test-plan.md",
+      "lines": [
+        {
+          "id": "tests_green_change-impact-test-plan",
+          "label": "change-impact-test-plan: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "change-impact-test-plan"
+        },
+        {
+          "id": "egress_zero_change-impact-test-plan",
+          "label": "change-impact-test-plan: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_change-impact-test-plan",
+          "stream": "change-impact-test-plan"
+        },
+        {
+          "id": "six_sigma_change-impact-test-plan",
+          "label": "change-impact-test-plan: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "change-impact-test-plan"
+        },
+        {
+          "id": "wired_change-impact-test-plan",
+          "label": "change-impact-test-plan: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_change-impact-test-plan",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_change-impact-test-plan",
+          "label": "change-impact-test-plan: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_change-impact-test-plan",
+          "stream": "change-impact-test-plan"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "job",
+          "surface": "job:.github/workflows/test.yml",
+          "file": ".github/workflows/test.yml",
+          "at": "node-test",
+          "reach": "Runs on every push to main and every pull request.",
+          "how": "Maps changed files to affected tests and falls back to a smoke set, printing a reason per item.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-fix.md",
+          "file": ".claude/commands/.shortcuts/w-fix.md",
+          "at": "⛔ CHECKPOINT 2: Fix Applied",
+          "reach": "/w-fix › ⛔ CHECKPOINT 2: Fix Applied",
+          "workflow": "w-fix",
+          "step": "⛔ CHECKPOINT 2: Fix Applied",
+          "how": "After a fix, plans which tests to run from the changed files, with reasons.",
+          "mode": "advisory",
+          "by": "proposed",
+          "unused_reason": "Fixes change a few files, so a change-impact plan picks the tests to rerun; not run on this machine."
+        }
+      ]
+    },
+    {
+      "name": "finding triage with fingerprint dedup and absence closing",
+      "slug": "finding-triage-with-fingerprint-dedup-an",
+      "verdict": "rebuild",
+      "brief": "briefs/finding-triage-with-fingerprint-dedup-an.md",
+      "brief_path": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/finding-triage-with-fingerprint-dedup-an.md",
+      "lines": [
+        {
+          "id": "tests_green_finding-triage-with-fingerprint-dedup-an",
+          "label": "finding-triage-with-fingerprint-dedup-an: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "finding-triage-with-fingerprint-dedup-an"
+        },
+        {
+          "id": "egress_zero_finding-triage-with-fingerprint-dedup-an",
+          "label": "finding-triage-with-fingerprint-dedup-an: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_finding-triage-with-fingerprint-dedup-an",
+          "stream": "finding-triage-with-fingerprint-dedup-an"
+        },
+        {
+          "id": "six_sigma_finding-triage-with-fingerprint-dedup-an",
+          "label": "finding-triage-with-fingerprint-dedup-an: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "finding-triage-with-fingerprint-dedup-an"
+        },
+        {
+          "id": "wired_finding-triage-with-fingerprint-dedup-an",
+          "label": "finding-triage-with-fingerprint-dedup-an: wired into its target, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "measure:wired_finding-triage-with-fingerprint-dedup-an",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_finding-triage-with-fingerprint-dedup-an",
+          "label": "finding-triage-with-fingerprint-dedup-an: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_finding-triage-with-fingerprint-dedup-an",
+          "stream": "finding-triage-with-fingerprint-dedup-an"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-review.md",
+          "file": ".claude/commands/.shortcuts/w-review.md",
+          "at": "⛔ CHECKPOINT 4: Ralph Candidates (AUTO-PROCEED)",
+          "reach": "/w-review › ⛔ CHECKPOINT 4: Ralph Candidates (AUTO-PROCEED)",
+          "workflow": "w-review",
+          "step": "⛔ CHECKPOINT 4: Ralph Candidates (AUTO-PROCEED)",
+          "how": "Fingerprints findings, collapses repeats into few candidates, and closes candidates that checks no longer see.",
+          "mode": "advisory",
+          "by": "proposed",
+          "unused_reason": "Recurring review runs repeat findings, which fingerprint dedup and absence closing handle; not run on this machine."
+        }
+      ]
+    },
+    {
+      "name": "shared budget for claim sub-sessions",
+      "slug": "shared-budget-for-claim-sub-sessions",
+      "verdict": "rebuild",
+      "brief": "briefs/shared-budget-for-claim-sub-sessions.md",
+      "brief_path": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/shared-budget-for-claim-sub-sessions.md",
+      "lines": [
+        {
+          "id": "tests_green_shared-budget-for-claim-sub-sessions",
+          "label": "shared-budget-for-claim-sub-sessions: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "shared-budget-for-claim-sub-sessions"
+        },
+        {
+          "id": "egress_zero_shared-budget-for-claim-sub-sessions",
+          "label": "shared-budget-for-claim-sub-sessions: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_shared-budget-for-claim-sub-sessions",
+          "stream": "shared-budget-for-claim-sub-sessions"
+        },
+        {
+          "id": "six_sigma_shared-budget-for-claim-sub-sessions",
+          "label": "shared-budget-for-claim-sub-sessions: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "shared-budget-for-claim-sub-sessions"
+        },
+        {
+          "id": "wired_shared-budget-for-claim-sub-sessions",
+          "label": "shared-budget-for-claim-sub-sessions: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_shared-budget-for-claim-sub-sessions",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_shared-budget-for-claim-sub-sessions",
+          "label": "shared-budget-for-claim-sub-sessions: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_shared-budget-for-claim-sub-sessions",
+          "stream": "shared-budget-for-claim-sub-sessions"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "workflow": "w-marathon",
+          "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "how": "All helper model sessions in the loop draw from one allowance of steps, cost and wall-clock time.",
+          "mode": "blocking",
+          "by": "proposed",
+          "unused_reason": "The marathon loop spawns many model sessions and needs a shared cap; not run on this machine."
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-review.md",
+          "file": ".claude/commands/.shortcuts/w-review.md",
+          "at": "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+          "reach": "/w-review › ✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+          "workflow": "w-review",
+          "step": "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+          "how": "Claim-checking sub-sessions share a single review budget.",
+          "mode": "advisory",
+          "by": "proposed",
+          "unused_reason": "Validation spawns several model sessions per review; not run on this machine."
+        }
+      ]
+    },
+    {
+      "name": "trouble-log reflection into lesson memory",
+      "slug": "trouble-log-reflection-into-lesson-memor",
+      "verdict": "rebuild",
+      "brief": "briefs/trouble-log-reflection-into-lesson-memor.md",
+      "brief_path": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/trouble-log-reflection-into-lesson-memor.md",
+      "lines": [
+        {
+          "id": "tests_green_trouble-log-reflection-into-lesson-memor",
+          "label": "trouble-log-reflection-into-lesson-memor: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "trouble-log-reflection-into-lesson-memor"
+        },
+        {
+          "id": "egress_zero_trouble-log-reflection-into-lesson-memor",
+          "label": "trouble-log-reflection-into-lesson-memor: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_trouble-log-reflection-into-lesson-memor",
+          "stream": "trouble-log-reflection-into-lesson-memor"
+        },
+        {
+          "id": "six_sigma_trouble-log-reflection-into-lesson-memor",
+          "label": "trouble-log-reflection-into-lesson-memor: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "trouble-log-reflection-into-lesson-memor"
+        },
+        {
+          "id": "wired_trouble-log-reflection-into-lesson-memor",
+          "label": "trouble-log-reflection-into-lesson-memor: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_trouble-log-reflection-into-lesson-memor",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_trouble-log-reflection-into-lesson-memor",
+          "label": "trouble-log-reflection-into-lesson-memor: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_trouble-log-reflection-into-lesson-memor",
+          "stream": "trouble-log-reflection-into-lesson-memor"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-fix.md",
+          "file": ".claude/commands/.shortcuts/w-fix.md",
+          "at": "⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)",
+          "reach": "/w-fix › ⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)",
+          "workflow": "w-fix",
+          "step": "⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)",
+          "how": "Builds a trouble log from the session and has a reviewer save, keep or retire short lessons.",
+          "mode": "advisory",
+          "by": "proposed",
+          "unused_reason": "The compound step already records learnings; reflection feeds it; not run on this machine."
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-bbs.md",
+          "file": ".claude/commands/.shortcuts/w-bbs.md",
+          "at": "⛔ CHECKPOINT 6: Compound (MANDATORY)",
+          "reach": "/w-bbs › ⛔ CHECKPOINT 6: Compound (MANDATORY)",
+          "workflow": "w-bbs",
+          "step": "⛔ CHECKPOINT 6: Compound (MANDATORY)",
+          "how": "Turns the audit run's trouble log into saved lessons for future runs.",
+          "mode": "advisory",
+          "by": "proposed"
+        }
+      ]
+    },
+    {
+      "name": "Preflight doctor checks before a run",
+      "slug": "preflight-doctor-checks-before-a-run",
+      "verdict": "rebuild",
+      "brief": "briefs/preflight-doctor-checks-before-a-run.md",
+      "brief_path": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/preflight-doctor-checks-before-a-run.md",
+      "lines": [
+        {
+          "id": "tests_green_preflight-doctor-checks-before-a-run",
+          "label": "preflight-doctor-checks-before-a-run: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "preflight-doctor-checks-before-a-run"
+        },
+        {
+          "id": "egress_zero_preflight-doctor-checks-before-a-run",
+          "label": "preflight-doctor-checks-before-a-run: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_preflight-doctor-checks-before-a-run",
+          "stream": "preflight-doctor-checks-before-a-run"
+        },
+        {
+          "id": "six_sigma_preflight-doctor-checks-before-a-run",
+          "label": "preflight-doctor-checks-before-a-run: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "preflight-doctor-checks-before-a-run"
+        },
+        {
+          "id": "wired_preflight-doctor-checks-before-a-run",
+          "label": "preflight-doctor-checks-before-a-run: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_preflight-doctor-checks-before-a-run",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_preflight-doctor-checks-before-a-run",
+          "label": "preflight-doctor-checks-before-a-run: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_preflight-doctor-checks-before-a-run",
+          "stream": "preflight-doctor-checks-before-a-run"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "cli",
+          "surface": "cli:bin/cli.js",
+          "file": "bin/cli.js",
+          "at": "check",
+          "reach": "Run `danizee-claude-suite check` in a project.",
+          "how": "Adds named doctor checks (config, node version, binaries, agent runtimes, optional gh login) separating fatal from advisory, mapped to a usage exit code.",
+          "mode": "blocking",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "⛔ CHECKPOINT 3: Arm",
+          "reach": "/w-marathon › ⛔ CHECKPOINT 3: Arm",
+          "workflow": "w-marathon",
+          "step": "⛔ CHECKPOINT 3: Arm",
+          "how": "Runs doctor checks before the long loop is armed.",
+          "mode": "blocking",
+          "by": "proposed",
+          "unused_reason": "A long unattended run should fail early on missing prerequisites; not run on this machine."
+        }
+      ]
+    },
+    {
+      "name": "Exit code contract separating infrastructure from product failure",
+      "slug": "exit-code-contract-separating-infrastruc",
+      "verdict": "rebuild",
+      "brief": "briefs/exit-code-contract-separating-infrastruc.md",
+      "brief_path": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/exit-code-contract-separating-infrastruc.md",
+      "lines": [
+        {
+          "id": "tests_green_exit-code-contract-separating-infrastruc",
+          "label": "exit-code-contract-separating-infrastruc: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "exit-code-contract-separating-infrastruc"
+        },
+        {
+          "id": "egress_zero_exit-code-contract-separating-infrastruc",
+          "label": "exit-code-contract-separating-infrastruc: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_exit-code-contract-separating-infrastruc",
+          "stream": "exit-code-contract-separating-infrastruc"
+        },
+        {
+          "id": "six_sigma_exit-code-contract-separating-infrastruc",
+          "label": "exit-code-contract-separating-infrastruc: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "exit-code-contract-separating-infrastruc"
+        },
+        {
+          "id": "wired_exit-code-contract-separating-infrastruc",
+          "label": "exit-code-contract-separating-infrastruc: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_exit-code-contract-separating-infrastruc",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_exit-code-contract-separating-infrastruc",
+          "label": "exit-code-contract-separating-infrastruc: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_exit-code-contract-separating-infrastruc",
+          "stream": "exit-code-contract-separating-infrastruc"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "cli",
+          "surface": "cli:bin/cli.js",
+          "file": "bin/cli.js",
+          "at": "check",
+          "reach": "Run `danizee-claude-suite check`; the exit code is read by scripts and CI.",
+          "how": "Exit codes keep usage, missing prerequisite, infrastructure and product failures distinct.",
+          "mode": "blocking",
+          "by": "proposed"
+        },
+        {
+          "kind": "job",
+          "surface": "job:.github/workflows/test.yml",
+          "file": ".github/workflows/test.yml",
+          "at": "node-test",
+          "reach": "Runs on every push and pull request.",
+          "how": "Only the predicate's product-failure outcome may fail the job, not infrastructure errors.",
+          "mode": "blocking",
+          "by": "proposed"
+        }
+      ]
+    },
+    {
+      "name": "SARIF JUnit and sticky PR comment renderers",
+      "slug": "sarif-junit-and-sticky-pr-comment-render",
+      "verdict": "rebuild",
+      "brief": "briefs/sarif-junit-and-sticky-pr-comment-render.md",
+      "brief_path": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/sarif-junit-and-sticky-pr-comment-render.md",
+      "lines": [
+        {
+          "id": "tests_green_sarif-junit-and-sticky-pr-comment-render",
+          "label": "sarif-junit-and-sticky-pr-comment-render: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "sarif-junit-and-sticky-pr-comment-render"
+        },
+        {
+          "id": "egress_zero_sarif-junit-and-sticky-pr-comment-render",
+          "label": "sarif-junit-and-sticky-pr-comment-render: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_sarif-junit-and-sticky-pr-comment-render",
+          "stream": "sarif-junit-and-sticky-pr-comment-render"
+        },
+        {
+          "id": "six_sigma_sarif-junit-and-sticky-pr-comment-render",
+          "label": "sarif-junit-and-sticky-pr-comment-render: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "sarif-junit-and-sticky-pr-comment-render"
+        },
+        {
+          "id": "wired_sarif-junit-and-sticky-pr-comment-render",
+          "label": "sarif-junit-and-sticky-pr-comment-render: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_sarif-junit-and-sticky-pr-comment-render",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_sarif-junit-and-sticky-pr-comment-render",
+          "label": "sarif-junit-and-sticky-pr-comment-render: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_sarif-junit-and-sticky-pr-comment-render",
+          "stream": "sarif-junit-and-sticky-pr-comment-render"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "job",
+          "surface": "job:.github/workflows/test.yml",
+          "file": ".github/workflows/test.yml",
+          "at": "test.yml",
+          "reach": "Runs on pull requests; the report is uploaded and commented there.",
+          "how": "Renders findings to SARIF, JUnit XML and one sticky PR comment edited in place.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-review.md",
+          "file": ".claude/commands/.shortcuts/w-review.md",
+          "at": "⛔ CHECKPOINT 5: Compound (MANDATORY - NEVER SKIP)",
+          "reach": "/w-review › ⛔ CHECKPOINT 5: Compound (MANDATORY - NEVER SKIP)",
+          "workflow": "w-review",
+          "step": "⛔ CHECKPOINT 5: Compound (MANDATORY - NEVER SKIP)",
+          "how": "Renders the review's findings as SARIF, JUnit and a PR comment.",
+          "mode": "advisory",
+          "by": "proposed",
+          "unused_reason": "w-review produces the findings list these renderers consume; not run on this machine."
+        }
+      ]
+    },
+    {
+      "name": "repeated replay gate for claims",
+      "slug": "repeated-replay-gate-for-claims",
+      "verdict": "rebuild",
+      "brief": "briefs/repeated-replay-gate-for-claims.md",
+      "brief_path": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/repeated-replay-gate-for-claims.md",
+      "lines": [
+        {
+          "id": "tests_green_repeated-replay-gate-for-claims",
+          "label": "repeated-replay-gate-for-claims: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "repeated-replay-gate-for-claims"
+        },
+        {
+          "id": "egress_zero_repeated-replay-gate-for-claims",
+          "label": "repeated-replay-gate-for-claims: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_repeated-replay-gate-for-claims",
+          "stream": "repeated-replay-gate-for-claims"
+        },
+        {
+          "id": "six_sigma_repeated-replay-gate-for-claims",
+          "label": "repeated-replay-gate-for-claims: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "repeated-replay-gate-for-claims"
+        },
+        {
+          "id": "wired_repeated-replay-gate-for-claims",
+          "label": "repeated-replay-gate-for-claims: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_repeated-replay-gate-for-claims",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_repeated-replay-gate-for-claims",
+          "label": "repeated-replay-gate-for-claims: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_repeated-replay-gate-for-claims",
+          "stream": "repeated-replay-gate-for-claims"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-review.md",
+          "file": ".claude/commands/.shortcuts/w-review.md",
+          "at": "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+          "reach": "/w-review › ✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+          "workflow": "w-review",
+          "step": "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+          "how": "Only a disproof that reproduces on a second replay may fail a check; model-judged or flaky ones stay comments.",
+          "mode": "blocking",
+          "by": "proposed",
+          "unused_reason": "This is the claim-verification step of review; not run on this machine."
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-debug.md",
+          "file": ".claude/commands/.shortcuts/w-debug.md",
+          "at": "⛔ CHECKPOINT 2: Diagnosis (BLOCKING GATE)",
+          "reach": "/w-debug › ⛔ CHECKPOINT 2: Diagnosis (BLOCKING GATE)",
+          "workflow": "w-debug",
+          "step": "⛔ CHECKPOINT 2: Diagnosis (BLOCKING GATE)",
+          "how": "Requires the diagnosis to reproduce on a second replay before it gates the fix.",
+          "mode": "blocking",
+          "by": "proposed",
+          "unused_reason": "Diagnosis claims need reproducible evidence; not run on this machine."
+        }
+      ]
+    }
+  ],
+  "memos": [
+    {
+      "name": "safe worktree cleanup for fix checkouts",
+      "slug": "safe-worktree-cleanup-for-fix-checkouts",
+      "memo": "memos/safe-worktree-cleanup-for-fix-checkouts.md"
+    }
+  ],
+  "skipped": [],
+  "integration": {
+    "stream": "integration",
+    "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/integration.md"
+  },
+  "finish_line": {
+    "tolerance": {
+      "high": 0,
+      "medium": 2,
+      "low": 5,
+      "passes_in_a_row": 2
+    },
+    "lines": [
+      {
+        "id": "tests_green_noise-ledger-with-flake-quarantine",
+        "label": "noise-ledger-with-flake-quarantine: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "noise-ledger-with-flake-quarantine"
+      },
+      {
+        "id": "egress_zero_noise-ledger-with-flake-quarantine",
+        "label": "noise-ledger-with-flake-quarantine: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_noise-ledger-with-flake-quarantine",
+        "stream": "noise-ledger-with-flake-quarantine"
+      },
+      {
+        "id": "six_sigma_noise-ledger-with-flake-quarantine",
+        "label": "noise-ledger-with-flake-quarantine: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "noise-ledger-with-flake-quarantine"
+      },
+      {
+        "id": "wired_noise-ledger-with-flake-quarantine",
+        "label": "noise-ledger-with-flake-quarantine: wired into its target, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "measure:wired_noise-ledger-with-flake-quarantine",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_noise-ledger-with-flake-quarantine",
+        "label": "noise-ledger-with-flake-quarantine: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_noise-ledger-with-flake-quarantine",
+        "stream": "noise-ledger-with-flake-quarantine"
+      },
+      {
+        "id": "tests_green_two-pass-finding-clustering",
+        "label": "two-pass-finding-clustering: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "two-pass-finding-clustering"
+      },
+      {
+        "id": "egress_zero_two-pass-finding-clustering",
+        "label": "two-pass-finding-clustering: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_two-pass-finding-clustering",
+        "stream": "two-pass-finding-clustering"
+      },
+      {
+        "id": "six_sigma_two-pass-finding-clustering",
+        "label": "two-pass-finding-clustering: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "two-pass-finding-clustering"
+      },
+      {
+        "id": "wired_two-pass-finding-clustering",
+        "label": "two-pass-finding-clustering: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_two-pass-finding-clustering",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_two-pass-finding-clustering",
+        "label": "two-pass-finding-clustering: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_two-pass-finding-clustering",
+        "stream": "two-pass-finding-clustering"
+      },
+      {
+        "id": "tests_green_asymmetric-threshold-router",
+        "label": "asymmetric-threshold-router: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "asymmetric-threshold-router"
+      },
+      {
+        "id": "egress_zero_asymmetric-threshold-router",
+        "label": "asymmetric-threshold-router: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_asymmetric-threshold-router",
+        "stream": "asymmetric-threshold-router"
+      },
+      {
+        "id": "six_sigma_asymmetric-threshold-router",
+        "label": "asymmetric-threshold-router: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "asymmetric-threshold-router"
+      },
+      {
+        "id": "wired_asymmetric-threshold-router",
+        "label": "asymmetric-threshold-router: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_asymmetric-threshold-router",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_asymmetric-threshold-router",
+        "label": "asymmetric-threshold-router: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_asymmetric-threshold-router",
+        "stream": "asymmetric-threshold-router"
+      },
+      {
+        "id": "tests_green_change-impact-test-plan",
+        "label": "change-impact-test-plan: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "change-impact-test-plan"
+      },
+      {
+        "id": "egress_zero_change-impact-test-plan",
+        "label": "change-impact-test-plan: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_change-impact-test-plan",
+        "stream": "change-impact-test-plan"
+      },
+      {
+        "id": "six_sigma_change-impact-test-plan",
+        "label": "change-impact-test-plan: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "change-impact-test-plan"
+      },
+      {
+        "id": "wired_change-impact-test-plan",
+        "label": "change-impact-test-plan: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_change-impact-test-plan",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_change-impact-test-plan",
+        "label": "change-impact-test-plan: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_change-impact-test-plan",
+        "stream": "change-impact-test-plan"
+      },
+      {
+        "id": "tests_green_finding-triage-with-fingerprint-dedup-an",
+        "label": "finding-triage-with-fingerprint-dedup-an: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "finding-triage-with-fingerprint-dedup-an"
+      },
+      {
+        "id": "egress_zero_finding-triage-with-fingerprint-dedup-an",
+        "label": "finding-triage-with-fingerprint-dedup-an: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_finding-triage-with-fingerprint-dedup-an",
+        "stream": "finding-triage-with-fingerprint-dedup-an"
+      },
+      {
+        "id": "six_sigma_finding-triage-with-fingerprint-dedup-an",
+        "label": "finding-triage-with-fingerprint-dedup-an: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "finding-triage-with-fingerprint-dedup-an"
+      },
+      {
+        "id": "wired_finding-triage-with-fingerprint-dedup-an",
+        "label": "finding-triage-with-fingerprint-dedup-an: wired into its target, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "measure:wired_finding-triage-with-fingerprint-dedup-an",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_finding-triage-with-fingerprint-dedup-an",
+        "label": "finding-triage-with-fingerprint-dedup-an: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_finding-triage-with-fingerprint-dedup-an",
+        "stream": "finding-triage-with-fingerprint-dedup-an"
+      },
+      {
+        "id": "tests_green_shared-budget-for-claim-sub-sessions",
+        "label": "shared-budget-for-claim-sub-sessions: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "shared-budget-for-claim-sub-sessions"
+      },
+      {
+        "id": "egress_zero_shared-budget-for-claim-sub-sessions",
+        "label": "shared-budget-for-claim-sub-sessions: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_shared-budget-for-claim-sub-sessions",
+        "stream": "shared-budget-for-claim-sub-sessions"
+      },
+      {
+        "id": "six_sigma_shared-budget-for-claim-sub-sessions",
+        "label": "shared-budget-for-claim-sub-sessions: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "shared-budget-for-claim-sub-sessions"
+      },
+      {
+        "id": "wired_shared-budget-for-claim-sub-sessions",
+        "label": "shared-budget-for-claim-sub-sessions: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_shared-budget-for-claim-sub-sessions",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_shared-budget-for-claim-sub-sessions",
+        "label": "shared-budget-for-claim-sub-sessions: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_shared-budget-for-claim-sub-sessions",
+        "stream": "shared-budget-for-claim-sub-sessions"
+      },
+      {
+        "id": "tests_green_trouble-log-reflection-into-lesson-memor",
+        "label": "trouble-log-reflection-into-lesson-memor: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "trouble-log-reflection-into-lesson-memor"
+      },
+      {
+        "id": "egress_zero_trouble-log-reflection-into-lesson-memor",
+        "label": "trouble-log-reflection-into-lesson-memor: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_trouble-log-reflection-into-lesson-memor",
+        "stream": "trouble-log-reflection-into-lesson-memor"
+      },
+      {
+        "id": "six_sigma_trouble-log-reflection-into-lesson-memor",
+        "label": "trouble-log-reflection-into-lesson-memor: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "trouble-log-reflection-into-lesson-memor"
+      },
+      {
+        "id": "wired_trouble-log-reflection-into-lesson-memor",
+        "label": "trouble-log-reflection-into-lesson-memor: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_trouble-log-reflection-into-lesson-memor",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_trouble-log-reflection-into-lesson-memor",
+        "label": "trouble-log-reflection-into-lesson-memor: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_trouble-log-reflection-into-lesson-memor",
+        "stream": "trouble-log-reflection-into-lesson-memor"
+      },
+      {
+        "id": "tests_green_preflight-doctor-checks-before-a-run",
+        "label": "preflight-doctor-checks-before-a-run: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "preflight-doctor-checks-before-a-run"
+      },
+      {
+        "id": "egress_zero_preflight-doctor-checks-before-a-run",
+        "label": "preflight-doctor-checks-before-a-run: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_preflight-doctor-checks-before-a-run",
+        "stream": "preflight-doctor-checks-before-a-run"
+      },
+      {
+        "id": "six_sigma_preflight-doctor-checks-before-a-run",
+        "label": "preflight-doctor-checks-before-a-run: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "preflight-doctor-checks-before-a-run"
+      },
+      {
+        "id": "wired_preflight-doctor-checks-before-a-run",
+        "label": "preflight-doctor-checks-before-a-run: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_preflight-doctor-checks-before-a-run",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_preflight-doctor-checks-before-a-run",
+        "label": "preflight-doctor-checks-before-a-run: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_preflight-doctor-checks-before-a-run",
+        "stream": "preflight-doctor-checks-before-a-run"
+      },
+      {
+        "id": "tests_green_exit-code-contract-separating-infrastruc",
+        "label": "exit-code-contract-separating-infrastruc: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "exit-code-contract-separating-infrastruc"
+      },
+      {
+        "id": "egress_zero_exit-code-contract-separating-infrastruc",
+        "label": "exit-code-contract-separating-infrastruc: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_exit-code-contract-separating-infrastruc",
+        "stream": "exit-code-contract-separating-infrastruc"
+      },
+      {
+        "id": "six_sigma_exit-code-contract-separating-infrastruc",
+        "label": "exit-code-contract-separating-infrastruc: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "exit-code-contract-separating-infrastruc"
+      },
+      {
+        "id": "wired_exit-code-contract-separating-infrastruc",
+        "label": "exit-code-contract-separating-infrastruc: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_exit-code-contract-separating-infrastruc",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_exit-code-contract-separating-infrastruc",
+        "label": "exit-code-contract-separating-infrastruc: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_exit-code-contract-separating-infrastruc",
+        "stream": "exit-code-contract-separating-infrastruc"
+      },
+      {
+        "id": "tests_green_sarif-junit-and-sticky-pr-comment-render",
+        "label": "sarif-junit-and-sticky-pr-comment-render: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "sarif-junit-and-sticky-pr-comment-render"
+      },
+      {
+        "id": "egress_zero_sarif-junit-and-sticky-pr-comment-render",
+        "label": "sarif-junit-and-sticky-pr-comment-render: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_sarif-junit-and-sticky-pr-comment-render",
+        "stream": "sarif-junit-and-sticky-pr-comment-render"
+      },
+      {
+        "id": "six_sigma_sarif-junit-and-sticky-pr-comment-render",
+        "label": "sarif-junit-and-sticky-pr-comment-render: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "sarif-junit-and-sticky-pr-comment-render"
+      },
+      {
+        "id": "wired_sarif-junit-and-sticky-pr-comment-render",
+        "label": "sarif-junit-and-sticky-pr-comment-render: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_sarif-junit-and-sticky-pr-comment-render",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_sarif-junit-and-sticky-pr-comment-render",
+        "label": "sarif-junit-and-sticky-pr-comment-render: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_sarif-junit-and-sticky-pr-comment-render",
+        "stream": "sarif-junit-and-sticky-pr-comment-render"
+      },
+      {
+        "id": "tests_green_repeated-replay-gate-for-claims",
+        "label": "repeated-replay-gate-for-claims: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "repeated-replay-gate-for-claims"
+      },
+      {
+        "id": "egress_zero_repeated-replay-gate-for-claims",
+        "label": "repeated-replay-gate-for-claims: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_repeated-replay-gate-for-claims",
+        "stream": "repeated-replay-gate-for-claims"
+      },
+      {
+        "id": "six_sigma_repeated-replay-gate-for-claims",
+        "label": "repeated-replay-gate-for-claims: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "repeated-replay-gate-for-claims"
+      },
+      {
+        "id": "wired_repeated-replay-gate-for-claims",
+        "label": "repeated-replay-gate-for-claims: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_repeated-replay-gate-for-claims",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_repeated-replay-gate-for-claims",
+        "label": "repeated-replay-gate-for-claims: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_repeated-replay-gate-for-claims",
+        "stream": "repeated-replay-gate-for-claims"
+      },
+      {
+        "id": "delivered",
+        "label": "The owner was told what they got: delivered.md lists every power, wired, with its command",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:delivered",
+        "stream": "integration"
+      },
+      {
+        "id": "clean_reviews",
+        "label": "Clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak"
+      },
+      {
+        "id": "latest_high",
+        "label": "High findings in the latest review",
+        "type": "number",
+        "op": "at_most",
+        "value": 0,
+        "owner": "build",
+        "source": "reviews.latest.high"
+      },
+      {
+        "id": "open_high",
+        "label": "Open high findings",
+        "type": "number",
+        "op": "at_most",
+        "value": 0,
+        "owner": "build",
+        "source": "findings.open:high"
+      }
+    ]
+  },
+  "note": null,
+  "ts": "2026-10-15T14:36:48.226Z"
+}

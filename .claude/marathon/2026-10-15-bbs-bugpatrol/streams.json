@@ -1,0 +1,96 @@
+{
+  "streams": [
+    {
+      "name": "_meta",
+      "state": "meta",
+      "isolation": "worktree",
+      "created": "2026-10-15T14:36:46.599Z",
+      "tasks": []
+    },
+    {
+      "name": "noise-ledger-with-flake-quarantine",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/noise-ledger-with-flake-quarantine.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "two-pass-finding-clustering",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/two-pass-finding-clustering.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "asymmetric-threshold-router",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/asymmetric-threshold-router.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "change-impact-test-plan",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/change-impact-test-plan.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "finding-triage-with-fingerprint-dedup-an",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/finding-triage-with-fingerprint-dedup-an.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "shared-budget-for-claim-sub-sessions",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/shared-budget-for-claim-sub-sessions.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "trouble-log-reflection-into-lesson-memor",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/trouble-log-reflection-into-lesson-memor.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "preflight-doctor-checks-before-a-run",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/preflight-doctor-checks-before-a-run.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "exit-code-contract-separating-infrastruc",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/exit-code-contract-separating-infrastruc.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "sarif-junit-and-sticky-pr-comment-render",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/sarif-junit-and-sticky-pr-comment-render.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "repeated-replay-gate-for-claims",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/repeated-replay-gate-for-claims.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "integration",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/integration.md",
+      "next": "after every build stream is done: wire each power into its approved steps",
+      "tasks": []
+    }
+  ],
+  "handoff": null
+}
