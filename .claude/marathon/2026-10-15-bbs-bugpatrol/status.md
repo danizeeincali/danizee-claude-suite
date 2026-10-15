@@ -1,7 +1,7 @@
 # Marathon 2026-10-15-bbs-bugpatrol
 
 - State: RUNNING
-- Budget: 12,175,173 / 14,000,000 tokens
+- Budget: 12,271,650 / 14,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
@@ -87,7 +87,7 @@
 | The owner was told what they got: delivered.md lists every power, wired, with its command | build | failing | — | is true |
 | Clean reviews in a row | build | failing | 0 | at_least 2 |
 | High findings in the latest review | build | failing | 1 | at_most 0 |
-| Open high findings | build | failing | 1 | at_most 0 |
+| Open high findings | build | met | 0 | at_most 0 |
 
 ## Waiting on human
 
