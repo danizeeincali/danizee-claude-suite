@@ -255,6 +255,12 @@ export function checkLessonText(text) {
 async function loadStore(file) {
   const data = await readJsonState(file, { fallback: { version: 1, lessons: [] } });
   if (!data || !Array.isArray(data.lessons)) throw invalid(`lessons store ${file} has no lessons list`);
+  const seen = new Set();
+  for (const [i, l] of data.lessons.entries()) {
+    if (!l || typeof l !== 'object' || Array.isArray(l)) throw invalid(`lessons store ${file} entry ${i + 1} is not a lesson (null or not an object): repair or move the file`);
+    if (seen.has(l.id)) throw invalid(`lessons store ${file} has duplicate id ${l.id}: repair or move the file`);
+    seen.add(l.id);
+  }
   return data;
 }
 

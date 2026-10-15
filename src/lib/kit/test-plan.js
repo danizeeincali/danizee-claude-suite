@@ -2,6 +2,11 @@
  * test-plan — from a change set, plan WHAT TO TEST, with a reason per item and honest coverage counts.
  *
  *   test-plan [--in <file>] [--changed <file>] [--diff <file>] [--shared-pct N] [--min-mapped-pct N] [--smoke N]
+ *   test-plan --scan
+ *
+ *   --scan builds the test map instead of planning: it prints {"targets":[{id, files}]} for the test files of the current directory
+ *   (test/*.test.js and test/reach/*.test.js, each with the local files it imports or starts by path), reads no stdin and takes no other
+ *   flag. Exit 0 printed (targets can be empty when there are no test files: callers check), 1 bad arguments. Pipe it to a file for --in.
  *
  * (`impact` answers "which code does this change touch"; this verb answers "which tests, pages or commands do I run".)
  * INPUT (JSON on stdin, or --in): { targets:[{id, files:[...], entry?}], flows?:[{id, targets:[ids], critical?}],
@@ -28,10 +33,11 @@ import fs from 'fs/promises';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
 import { parseDiff } from './lenses.js';
+import { testTargets } from './test-map.js';
 
 export const verb = 'test-plan';
-export const usage = 'cli.js test-plan [--in <file>] [--changed <file>] [--diff <file>] [--shared-pct 30] [--min-mapped-pct 60] [--smoke 3]   '
-  + '(plan what to test from changed files; JSON {targets,flows?,edges?,always?,changed?} on stdin or --in; exit 0 done, 1 invalid)';
+export const usage = 'cli.js test-plan [--in <file>] [--changed <file>] [--diff <file>] [--shared-pct 30] [--min-mapped-pct 60] [--smoke 3] | cli.js test-plan --scan   '
+  + '(--scan prints the test map {targets} of the cwd, exit 0 printed, 1 bad arguments; plan what to test from changed files; JSON {targets,flows?,edges?,always?,changed?} on stdin or --in; exit 0 done, 1 invalid)';
 
 export const STRENGTH = Object.freeze(['direct-change', 'shared-component', 'flow', 'smoke', 'always']);
 const rank = (r) => STRENGTH.indexOf(r);
@@ -199,6 +205,7 @@ export function planTests(input, changed, opts = {}) {
 
 // ---------------------------------------------------------------- CLI
 
+const BOOL = ['scan'];
 const VALUE = ['in', 'changed', 'diff', 'shared-pct', 'min-mapped-pct', 'smoke'];
 
 function parse(args) {
@@ -208,7 +215,8 @@ function parse(args) {
     const a = rest.shift();
     if (!a.startsWith('--')) throw bad(`unexpected argument "${a}"`);
     const k = a.slice(2);
-    if (!VALUE.includes(k)) throw bad(`unknown flag --${k} (allowed: ${VALUE.map(f => `--${f}`).join(', ')})`);
+    if (BOOL.includes(k)) { flags[k] = true; continue; }
+    if (!VALUE.includes(k)) throw bad(`unknown flag --${k} (allowed: ${[...BOOL, ...VALUE].map(f => `--${f}`).join(', ')})`);
     if (!rest.length || rest[0].startsWith('--')) throw bad(`--${k} needs a value`);
     flags[k] = rest.shift();
   }
@@ -232,6 +240,10 @@ async function readText(cwd, p, what) {
 export async function run(args, io = {}) {
   const flags = parse(args);
   const cwd = io.cwd || process.cwd();
+  if (flags.scan) {
+    if (Object.keys(flags).length > 1) throw bad('--scan takes no other flag');
+    return { targets: testTargets(cwd) };
+  }
   const opts = { sharedPct: num(flags, 'shared-pct', 30, 100), minMappedPct: num(flags, 'min-mapped-pct', 60, 100), smoke: num(flags, 'smoke', 3, 1000) };
   let raw;
   if (flags.in) raw = await readText(cwd, flags.in, 'input');

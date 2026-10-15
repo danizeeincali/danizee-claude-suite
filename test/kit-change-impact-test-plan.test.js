@@ -245,3 +245,49 @@ describe('test-plan', () => {
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
 });
+
+describe('test-plan --scan', () => {
+  const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'tp-scan-'));
+  it('prints the test map of the cwd: test/ and test/reach/, imports and spawned paths', async () => {
+    const d = await tmp();
+    try {
+      await fs.mkdir(path.join(d, 'test', 'reach'), { recursive: true });
+      await fs.mkdir(path.join(d, 'src'));
+      await fs.writeFile(path.join(d, 'src', 'a.js'), '');
+      await fs.writeFile(path.join(d, 'test', 'a.test.js'), "import x from '../src/a.js';\n");
+      await fs.writeFile(path.join(d, 'test', 'reach', 'b.test.js'), "spawnSync('node', ['src/a.js']);\n");
+      await fs.writeFile(path.join(d, 'test', 'notes.js'), '');
+      const r = await run(['--scan'], { cwd: d });
+      assert.deepEqual(r, { targets: [
+        { id: 'test/a.test.js', files: ['test/a.test.js', 'src/a.js'] },
+        { id: 'test/reach/b.test.js', files: ['test/reach/b.test.js', 'src/a.js'] }
+      ] });
+      // the map is accepted by the planner
+      const plan = await planTests(r, ['src/a.js']);
+      assert.deepEqual(plan.plan.map(i => i.id), ['test/a.test.js', 'test/reach/b.test.js']);
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+  it('no test files: targets is an empty list and exit stays 0 (callers check for empty)', async () => {
+    const d = await tmp();
+    try { assert.deepEqual(await run(['--scan'], { cwd: d }), { targets: [] }); } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+  it('takes no other flag and reads no stdin; usage names it', async () => {
+    await assert.rejects(run(['--scan', '--in', 'x.json'], { cwd: '.' }), (e) => e.code === 1 && /--scan takes no other flag/.test(e.message));
+    await assert.rejects(run(['--scan', '--smoke', '2'], { cwd: '.' }), (e) => e.code === 1);
+    await assert.rejects(run(['--nope'], { cwd: '.' }), (e) => e.code === 1 && /--scan/.test(e.message));
+    const { usage } = await import('../src/lib/kit/test-plan.js');
+    assert.match(usage, /test-plan --scan/);
+  });
+  it('the packaged cli prints the map as JSON with exit 0', async () => {
+    const { spawnSync } = await import('child_process');
+    const cli = path.resolve('src/lib/kit/cli.js');
+    const d = await tmp();
+    try {
+      await fs.mkdir(path.join(d, 'test'));
+      await fs.writeFile(path.join(d, 'test', 'a.test.js'), '');
+      const r = spawnSync(process.execPath, [cli, 'test-plan', '--scan'], { cwd: d, encoding: 'utf-8' });
+      assert.equal(r.status, 0, r.stderr);
+      assert.deepEqual(JSON.parse(r.stdout), { targets: [{ id: 'test/a.test.js', files: ['test/a.test.js'] }] });
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
+});

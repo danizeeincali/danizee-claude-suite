@@ -186,6 +186,30 @@ describe('reflect lessons', () => {
     assert.equal(overlap('Wait for the spinner', 'wait for spinner!'), 1);
     assert.ok(overlap('Retry the login form', 'Clear cache before build') < 0.1);
   });
+  it('a store with a duplicate id or a null entry is refused with exit 1 naming the problem, never a crash', async () => {
+    const d = await tmp();
+    try {
+      await fs.mkdir(path.join(d, '.claude/kit'), { recursive: true });
+      const put = (lessons) => fs.writeFile(path.join(d, '.claude/kit/lessons.json'), JSON.stringify({ version: 1, lessons }));
+      const mk = (id) => ({ id, role: 'fixer', text: 'Wait for the spinner before clicking save.', scope: '', session: 's', status: 'active', kept: 0 });
+      await put([mk('L1'), mk('L1')]);
+      for (const args of [['lessons', 'list'], ['lessons', 'retire', '--id', 'L1', '--reason', 'r'], ['lessons', 'keep', '--id', 'L1'], ['lessons', 'save', '--role', 'fixer', '--session', 'q', '--text', 'Bring the server up before running e2e tests.']]) {
+        const r = await call(args, d);
+        assert.equal(r.code, 1, args.join(' '));
+        assert.match(r.err, /duplicate id L1/);
+        assert.match(r.err, /lessons\.json/);
+      }
+      await put([null]);
+      const n = await call(['lessons', 'list'], d);
+      assert.equal(n.code, 1);
+      assert.match(n.err, /entry 1 is not a lesson/);
+      assert.doesNotMatch(n.err, /Cannot read properties/);
+      await put([mk('L1'), 'oops']);
+      assert.equal((await call(['lessons', 'list'], d)).code, 1);
+      await put([mk('L1'), mk('L2')]);
+      assert.equal((await call(['lessons', 'list'], d)).code, 0);
+    } finally { await fs.rm(d, { recursive: true, force: true }); }
+  });
   it('--text-file stores a lesson with backticks and $( ) verbatim and runs nothing; --reason-file likewise', async () => {
     const d = await tmp();
     try {
