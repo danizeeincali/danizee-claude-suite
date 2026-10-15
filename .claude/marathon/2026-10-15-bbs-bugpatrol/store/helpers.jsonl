@@ -160,3 +160,5 @@
 {"role":"review","model":"opus","stream":"trouble-log-reflection-into-lesson-memor","budget":150000,"event":"spawn","id":"1714b693-5380-41dd-b50b-b1965c67b109","ts":"2026-10-15T17:34:22.150Z"}
 {"helper_id":"57016f1f-8e7b-475f-8922-075ccdf68d12","tokens":81248,"outcome":"green","event":"done","id":"642c55d7-74e7-4a4d-b772-c59dc0431977","ts":"2026-10-15T17:34:30.266Z"}
 {"role":"fix","model":"sonnet","stream":"sarif-junit-and-sticky-pr-comment-render","budget":100000,"event":"spawn","id":"292448a2-a21c-4771-9547-6bbf65050553","ts":"2026-10-15T17:34:30.448Z"}
+{"helper_id":"b65b3df3-9245-4109-bf5d-50beb5d70339","tokens":81179,"outcome":"green","event":"done","id":"7c89b1a7-ec76-4c27-bd54-96322aa4cfe4","ts":"2026-10-15T17:34:38.275Z"}
+{"role":"fix","model":"sonnet","stream":"exit-code-contract-separating-infrastruc","budget":100000,"event":"spawn","id":"3a10b38c-d726-4b4f-9f0e-a970c5f738f2","ts":"2026-10-15T17:34:38.466Z"}
