@@ -10,8 +10,10 @@
  * and copied to the local file (a "sqlite" there counts only on a machine that has suite.db).
  *
  * ENGINE. `better-sqlite3` when it is installed (resolved from the kit folder; from the project folder too, but only for
- * a project configured for sqlite or an explicit `db init`), else Node's built-in `node:sqlite` (`DatabaseSync`,
- * Node 22.5+). Both are loaded lazily, on first use. A project on the JSON files never runs code from its own folder:
+ * a project configured for sqlite or an explicit `db init`, and never when the project's node_modules/better-sqlite3 is
+ * committed to git: a committed node_modules is the repository's code, an npm-installed one the user's choice), else
+ * Node's built-in `node:sqlite` (`DatabaseSync`, unflagged from Node 22.13 / 23.4; older Node counts as having none).
+ * Both are loaded lazily, on first use. A project on the JSON files never runs code from its own folder:
  * `check` and `db status` only probe there (probeEngine: a module resolve and a built-in check, nothing loaded). A project configured for sqlite
  * whose engine cannot load is an error (exit 1) that names the fix; it NEVER falls back to the JSON files (that would
  * split the state in two). `KIT_SQLITE_ENGINE=better-sqlite3|node:sqlite|none` pins the engine (tests, diagnosis).
@@ -35,6 +37,17 @@
  * removed after COMMIT lets the next database open put the files back when a crash stopped the run in between (see
  * recoverFilesJournal).
  *
+ * UNTRUSTED FILES. A cloned repository is untrusted: suite.db, its -wal/-shm, the files journal and store.local.json
+ * may be crafted. Before any suite.db is used (every open, read-only status and json-side journal recovery included),
+ * (a) it is refused (exit 1) when git tracks any of those files (assertNotCommitted: `git ls-files`, no shell), and
+ * (b) its sqlite_master must hold only objects the kit's own migrations create, with exactly their SQL (checkSchema:
+ * no trigger, view, virtual table or unknown object; exit 1 naming it), checked before `db init` migrates an existing
+ * file; `PRAGMA trusted_schema = OFF` is set where the engine supports it. A row never chooses a path to write: a
+ * document's file comes only from the kit's own mapping (scopeFile: the store's default file, a per-stream triage
+ * file `.claude/marathon/<run>/triage*.json`, a scope this machine's verbs wrote (registered in the git-ignored
+ * store.local.json) or the path named on the command line), inside the project, through no symbolic link. Export,
+ * off, sync and journal recovery skip and report any other document, never writing it.
+ *
  * DRIFT. Shared JSON files (lessons.json, noise-ledger.json) can change under the database (a git pull). Each stored
  * document keeps the sha256 of its file as last imported, exported or synced (`store_docs.file_sha256`, 'absent' when
  * there was no file) and that document itself, the BASE of the next merge (`store_docs.synced_doc`, 'absent' when there
@@ -51,8 +64,10 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { createRequire, isBuiltin } from 'node:module';
+import { spawnSync } from 'node:child_process';
 import { KitExit } from './kit-exit.js';
 import { withStateLock, readJsonState, writeJsonAtomic } from './state-lock.js';
+import { resolveGit } from './safe-git.js';
 
 /** The machine-local store choice (git-ignored). */
 export const CONFIG_FILE = path.join('.claude', 'kit', 'store.local.json');
@@ -71,7 +86,9 @@ export const FILES_JOURNAL = path.join('.claude', 'kit', 'suite.db-files-journal
 export const JOURNAL_GITIGNORE_RULE = '.claude/kit/suite.db-files-journal';
 export const ENGINES = Object.freeze(['better-sqlite3', 'node:sqlite']);
 export const BUSY_TIMEOUT_MS = 15000;
-export const ENGINE_FIX = 'install an engine: `npm install better-sqlite3` in the project, or run Node 22.5+ (built-in node:sqlite); or go back to the JSON files with `db off` on a machine that has one';
+export const ENGINE_FIX = 'install an engine: `npm install better-sqlite3` in the project, or run Node 22.13+ (built-in node:sqlite; on Node 22.5+ before 22.13 only with --experimental-sqlite); or go back to the JSON files with `db off` on a machine that has one';
+/** The kit's git-ignore rules for the SQLite store (the installer adds them with the others; `db init` adds them too). */
+export const STORE_GITIGNORE_RULES = Object.freeze([...GITIGNORE_RULES, JOURNAL_GITIGNORE_RULE, CONFIG_GITIGNORE_RULE]);
 
 const invalid = (m) => new KitExit(m, 1);
 
@@ -250,6 +267,20 @@ async function importNodeSqlite() {
 
 const engineCache = new Map();
 
+/**
+ * Whether this Node has node:sqlite without a flag: from 22.13 on the 22 line, from 23.4 on, and any later major.
+ * 22.5 to 22.12 (and 23.0 to 23.3) have it only behind --experimental-sqlite: usable when that flag is given.
+ * { ok, why } (why: the message when not ok).
+ */
+export function nodeSqliteSupport(version = process.versions.node, flags = [...process.execArgv, ...String(process.env.NODE_OPTIONS || '').split(/\s+/)]) {
+  const [maj, min] = String(version).split('.').map((x) => Number(x) || 0);
+  const unflagged = maj > 23 || (maj === 23 && min >= 4) || (maj === 22 && min >= 13);
+  if (unflagged) return { ok: true };
+  const flagged = (maj === 22 && min >= 5) || maj === 23;
+  if (flagged && flags.includes('--experimental-sqlite')) return { ok: true };
+  return { ok: false, why: `node:sqlite: not available on Node ${version} (built in without a flag from Node 22.13+ / 23.4+; on 22.5 to 22.12 only with --experimental-sqlite)` };
+}
+
 /** The engines to try for a KIT_SQLITE_ENGINE pin, plus the error a bad pin gives. */
 function wantedEngines(env) {
   const pin = env && env.KIT_SQLITE_ENGINE ? String(env.KIT_SQLITE_ENGINE) : '';
@@ -268,8 +299,12 @@ export function probeEngine({ env = process.env } = {}) {
   for (const name of want) {
     if (name === 'better-sqlite3') {
       try { createRequire(import.meta.url).resolve('better-sqlite3'); return { name, errors }; } catch (e) { errors.push(`better-sqlite3: ${String(e && e.message).split('\n')[0]}`); }
-    } else if (isBuiltin('node:sqlite')) return { name, errors };
-    else errors.push(`node:sqlite: not built in (Node ${process.versions.node}; needs 22.5+)`);
+    } else {
+      const sup = nodeSqliteSupport();
+      if (!sup.ok) errors.push(sup.why);
+      else if (isBuiltin('node:sqlite')) return { name, errors };
+      else errors.push(`node:sqlite: not built in (Node ${process.versions.node}; needs 22.13+)`);
+    }
   }
   return { name: null, errors };
 }
@@ -288,6 +323,12 @@ export async function loadEngine({ cwd = process.cwd(), env = process.env, proje
     if (found) break;
     if (name === 'better-sqlite3') {
       for (const base of project ? [import.meta.url, path.join(cwd, 'package.json')] : [import.meta.url]) {
+        // the project's own copy only when git does not track it: a committed node_modules is the repository's code
+        if (base !== import.meta.url) {
+          let tracked;
+          try { tracked = gitTracked(cwd, ['node_modules/better-sqlite3'], env).length > 0; } catch (e) { errors.push(`better-sqlite3 (project): ${e.message}`); continue; }
+          if (tracked) { errors.push('better-sqlite3 in the project\'s node_modules is committed to git: not loaded (a committed node_modules is the repository\'s code; an npm-installed one is loaded)'); continue; }
+        }
         try {
           const Database = createRequire(base)('better-sqlite3');
           // a native module built for another Node fails only when a database is opened: try one in memory
@@ -297,11 +338,13 @@ export async function loadEngine({ cwd = process.cwd(), env = process.env, proje
         } catch (e) { if (base === import.meta.url) errors.push(`better-sqlite3: ${String(e && e.message).split('\n')[0]}`); }
       }
     } else {
+      const sup = nodeSqliteSupport();
+      if (!sup.ok) { errors.push(sup.why); continue; }
       try {
         const { DatabaseSync } = await importNodeSqlite();
         if (typeof DatabaseSync !== 'function') throw new Error('no DatabaseSync');
         found = { name, open: (file, o = {}) => wrap(o.readOnly ? new DatabaseSync(file, { readOnly: true }) : new DatabaseSync(file)) };
-      } catch (e) { errors.push(`node:sqlite: ${String(e && e.message).split('\n')[0]} (Node ${process.versions.node}; needs 22.5+)`); }
+      } catch (e) { errors.push(`node:sqlite: ${String(e && e.message).split('\n')[0]} (Node ${process.versions.node}; needs 22.13+)`); }
     }
   }
   const res = found || { name: null, errors };
@@ -322,6 +365,90 @@ function wrap(raw) {
   };
 }
 
+// ================================================================ untrusted files
+
+/** The machine-local files of the store: refused when git tracks any of them (a cloned repository carried them). */
+export const LOCAL_ONLY_FILES = STORE_GITIGNORE_RULES;
+/** A refusal of an untrusted database or journal (never swallowed as passing trouble). */
+const untrusted = (m) => Object.assign(invalid(m), { untrusted: true });
+
+/**
+ * The paths among `paths` (relative to cwd, `/` separators) that git tracks in the repository around cwd: [] when cwd
+ * is not in a git repository or git is not installed. git is spawned by its absolute path, without a shell, with no
+ * inherited GIT_* variable and the file system monitor off. Any other git failure is exit 1 (it cannot be told).
+ */
+export function gitTracked(cwd, paths, env = process.env) {
+  let git;
+  try { git = resolveGit(env); } catch { return []; }
+  const clean = {};
+  for (const [k, v] of Object.entries(env || {})) if (!/^GIT_/i.test(k)) clean[k] = v;
+  Object.assign(clean, { GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1' });
+  const r = spawnSync(git, ['-c', 'core.fsmonitor=', 'ls-files', '-z', '--', ...paths], { cwd, env: clean, shell: false, encoding: 'utf-8', timeout: 20000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+  if (r.status === 0) return r.stdout.split('\0').filter(Boolean);
+  if (r.status === 128 && /not a git repository/i.test(String(r.stderr))) return [];
+  throw invalid(`cannot tell whether git tracks ${paths.join(', ')} (git ls-files ${r.error ? (r.error.code || r.error.message) : `exited ${r.status ?? r.signal}`}): fix the repository, then run the command again`);
+}
+
+/**
+ * Refuse a suite.db that came with the repository: exit 1 when git tracks suite.db, its -wal/-shm, the files journal
+ * or store.local.json (they are machine-local and git-ignored; a tracked one was committed by someone else).
+ */
+export function assertNotCommitted(cwd, env = process.env) {
+  const tracked = gitTracked(cwd, LOCAL_ONLY_FILES, env);
+  if (!tracked.length) return;
+  const list = [...new Set(tracked)].map((p) => p.split(path.sep).join('/')).join(', ');
+  throw untrusted(`${list} ${tracked.length > 1 ? 'are' : 'is'} committed to this git repository, so the database is not this machine's: `
+    + `refusing it (nothing was read from it). Remove it from git (\`git rm --cached ${list}\`; the kit's .gitignore rules keep it out) and run \`db init\``);
+}
+
+/** sqlite_master of a database the kit made, per object: `${type}\0${name}` -> { tbl, sqls }. Cached per engine open. */
+const referenceCache = new WeakMap();
+function referenceSchema(open) {
+  if (referenceCache.has(open)) return referenceCache.get(open);
+  const known = new Map();
+  const db = open(':memory:');
+  try {
+    const snap = () => {
+      for (const r of db.all('SELECT type, name, tbl_name, sql FROM sqlite_master')) {
+        const k = `${r.type}\0${r.name}`;
+        if (!known.has(k)) known.set(k, { tbl: r.tbl_name, sqls: new Set() });
+        known.get(k).sqls.add(r.sql ?? null);
+      }
+    };
+    // every version's schema (an older database is read, then migrated): the SQL of an altered table changes per version
+    db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)');
+    snap();
+    for (const m of MIGRATIONS) { db.exec(m.sql); snap(); }
+  } finally { db.close(); }
+  referenceCache.set(open, known);
+  return known;
+}
+
+/**
+ * Check a database's sqlite_master against the kit's own schema before anything else reads it: every object must be
+ * one the migrations create (or ANALYZE's sqlite_stat tables), with exactly the kit's SQL for it. A trigger (it runs
+ * on the kit's own writes), a view (a query that may never end), a virtual table or any unknown object is exit 1
+ * naming it. Reading sqlite_master evaluates nothing.
+ */
+export function checkSchema(db, open, file) {
+  const known = referenceSchema(open);
+  for (const r of db.all('SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY rowid')) {
+    if (r.type === 'table' && /^sqlite_stat[1-4]$/.test(r.name)) continue;
+    const ref = known.get(`${r.type}\0${r.name}`);
+    const what = `${r.type} ${JSON.stringify(String(r.name).slice(0, 80))}`;
+    if (!ref || ref.tbl !== r.tbl_name || !ref.sqls.has(r.sql ?? null)) {
+      throw untrusted(`${file} holds ${ref ? `a ${what} that differs from` : `a ${what} that is not in`} the kit's own schema, so the kit did not make it: `
+        + 'refusing it (nothing was read from it). Remove it and run `db init` (the JSON files are imported again)');
+    }
+  }
+}
+
+/** Set up a freshly opened connection to a database that may be untrusted: trusted_schema off, then the schema check. */
+export function guardDb(db, open, file) {
+  try { db.exec('PRAGMA trusted_schema = OFF'); } catch { /* an engine without the pragma: the schema check still runs */ }
+  checkSchema(db, open, file);
+}
+
 // ================================================================ context
 
 /**
@@ -332,22 +459,26 @@ export async function resolveStore({ cwd = process.cwd(), env = process.env } = 
   let cfg = readConfig(cwd);
   if (cfg.store !== 'sqlite' && await recoverJsonSide(cwd, env)) cfg = readConfig(cwd);
   if (cfg.store !== 'sqlite') return { kind: 'json', cwd };
+  // a store choice, database or journal that came with the repository is refused before any engine loads
+  assertNotCommitted(cwd, env);
   const engine = await loadEngine({ cwd, env, project: true });
   if (!engine.name) throw invalid(`this project keeps its kit state in SQLite (${cfg.file}) but no SQLite engine loads here (${engine.errors.join('; ') || 'none tried'}): ${ENGINE_FIX}`);
   const dbFile = path.join(cwd, DB_FILE);
   if (!fs.existsSync(dbFile)) throw invalid(`${cfg.file} says "store": "sqlite" but ${dbFile} is missing: restore it, or run \`db init\` to create it again from the JSON files`);
-  return { kind: 'sqlite', engine: engine.name, open: engine.open, dbFile, cwd };
+  return { kind: 'sqlite', engine: engine.name, open: engine.open, dbFile, cwd, env };
 }
 
 /**
  * A project on the JSON files with a files journal left beside a leftover suite.db (a `db off` stopped between its
  * file renames, the store choice among them, and its COMMIT): recover it with the kit's own engine (never code from
  * the project folder), then read the store choice again. Trouble here never stops a JSON verb: it is reported on
- * stderr and the journal is kept for the next database open.
+ * stderr and the journal is kept for the next database open. Except an untrusted database or journal (committed to
+ * git, or a schema the kit did not make): exit 1 naming it, nothing read or restored.
  */
 export async function recoverJsonSide(cwd, env = process.env) {
   const dbFile = path.join(cwd, DB_FILE);
   if (!fs.existsSync(journalOf(dbFile)) || !fs.existsSync(dbFile)) return false;
+  assertNotCommitted(cwd, env);
   return serial(dbFile, () => recoverJsonSideNow(cwd, env, dbFile));
 }
 
@@ -358,9 +489,11 @@ async function recoverJsonSideNow(cwd, env, dbFile) {
     if (!own.name) throw new Error(own.errors.join('; ') || 'no SQLite engine');
     db = own.open(dbFile);
     db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
+    guardDb(db, own.open, dbFile);
     recoverFilesJournal(db, cwd, dbFile);
     return true;
   } catch (e) {
+    if (e instanceof KitExit && e.untrusted) throw e;
     process.stderr.write(`kit db: cannot recover ${journalOf(dbFile)} yet (${String(e && e.message).split('\n')[0].slice(0, 200)}); it is kept for the next database open\n`);
     return false;
   } finally { try { db?.close(); } catch { /* not open */ } }
@@ -387,10 +520,14 @@ function serial(dbFile, fn) {
 
 /** Open the database, set it up (WAL, busy timeout, foreign keys) and bring the schema up to date. */
 export function openDb(ctx) {
+  // a database, journal or store choice that came with the repository is never opened
+  if (ctx.cwd) assertNotCommitted(ctx.cwd, ctx.env || process.env);
   let db;
   try { db = ctx.open(ctx.dbFile); } catch (e) { throw invalid(`cannot open ${ctx.dbFile}: ${String(e && e.message).split('\n')[0]}`); }
   try {
     db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
+    // before anything else reads it, and before migrations run on an existing file: only the kit's own schema
+    guardDb(db, ctx.open, ctx.dbFile);
     db.exec('PRAGMA journal_mode = WAL');
     db.exec('PRAGMA foreign_keys = ON');
     migrate(db, ctx.dbFile);
@@ -485,11 +622,78 @@ const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$
 const TRIAGE_STREAM_FILE = /^\.claude\/marathon\/[^/]+\/triage[^/]*\.json$/;
 const posixPath = (p) => p.split(path.sep).join('/');
 
-/** A store file the kit itself maps for `store` (its default file, or a per-stream triage file), relative with `/`. */
+/** A store file the kit maps for `store` by itself (its default file, or a per-stream triage file), relative with `/`. */
 function kitMappedFile(store, rel) {
   const spec = SPECS[store];
   if (!spec) return false;
   return rel === spec.defaultFile || (store === 'triage' && TRIAGE_STREAM_FILE.test(rel));
+}
+
+/** Why `p` is not a plain project-relative `.json` path (no absolute path, no `.`/`..`/empty or `.git` segment), or null. */
+function plainPathProblem(p) {
+  if (typeof p !== 'string' || !p || p.length > 4096 || p.includes('\0') || p.includes('\\')) return 'has no usable path';
+  const segs = p.split('/');
+  if (path.posix.isAbsolute(p) || path.win32.isAbsolute(p) || segs.some((x) => !x || x === '.' || x === '..')) return `path ${JSON.stringify(p.slice(0, 200))} is not a plain path inside the project`;
+  if (segs.some((x) => x.toLowerCase() === '.git') || !p.endsWith('.json')) return `path ${JSON.stringify(p.slice(0, 200))} is not a kit state file`;
+  return null;
+}
+
+/** Why the way from the project folder to `rel` goes through a symbolic link (or cannot be checked), or null. */
+function linkProblem(cwd, rel) {
+  let cur = cwd;
+  for (const seg of rel.split('/')) {
+    cur = path.join(cur, seg);
+    let st;
+    try { st = fs.lstatSync(cur); } catch (e) { if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return null; return `cannot be checked: ${e.code || e.message}`; }
+    if (st.isSymbolicLink()) return `goes through a symbolic link (${posixPath(path.relative(cwd, cur))})`;
+  }
+  return null;
+}
+
+/**
+ * The scopes this machine's verbs wrote outside the kit's own files (a --store, --ledger or --state path inside the
+ * project), per store: { store: [scope] }, kept in the git-ignored store.local.json ("scopes"). Never from the database.
+ */
+export function registeredScopes(cwd) {
+  let v = null;
+  try { v = readConfigObject(path.join(cwd, CONFIG_FILE)); } catch { return {}; }
+  const out = {};
+  const sc = v && v.scopes;
+  if (!sc || typeof sc !== 'object' || Array.isArray(sc)) return out;
+  for (const [store, list] of Object.entries(sc)) if (SPECS[store] && Array.isArray(list)) out[store] = list.filter((x) => typeof x === 'string' && !plainPathProblem(x));
+  return out;
+}
+
+/**
+ * Remember that a verb on this machine wrote `scope` of `store` (a path named on its command line), so export, off and
+ * sync may write its file. Only a plain project-relative `.json` path the kit does not map by itself; a no-op otherwise.
+ */
+export function registerScope(cwd, store, scope) {
+  if (!SPECS[store] || plainPathProblem(scope) || kitMappedFile(store, scope)) return;
+  const file = path.join(cwd, CONFIG_FILE);
+  let cur = {};
+  try { cur = readConfigObject(file) || {}; } catch { return; }
+  const reg = registeredScopes(cwd);
+  if ((reg[store] || []).includes(scope)) return;
+  const scopes = { ...reg, [store]: [...(reg[store] || []), scope].sort() };
+  writeFileAtomicSync(file, `${JSON.stringify({ ...cur, scopes }, null, 2)}\n`);
+}
+
+/**
+ * The file of a document, only through the kit's own mapping, never from a row: { file } or { reason }. A plain
+ * project-relative `.json` path (scopeKey form) that is the store's default file, a per-stream triage file
+ * (`.claude/marathon/<run>/triage*.json`), a scope this machine registered (registerScope), or one of `allow` (paths
+ * named on this command line); and nothing on the way to it, from the project folder down, a symbolic link.
+ */
+export function scopeFile(cwd, store, scope, { allow = [], registered = null } = {}) {
+  if (!SPECS[store]) return { reason: 'names no kit store' };
+  const bad = plainPathProblem(scope);
+  if (bad) return { reason: bad };
+  const reg = registered || registeredScopes(cwd);
+  if (!kitMappedFile(store, scope) && !(reg[store] || []).includes(scope) && !allow.includes(scope)) return { reason: `path ${scope} is not a file the kit writes for ${store}` };
+  const link = linkProblem(cwd, scope);
+  if (link) return { reason: `path ${scope} ${link}` };
+  return { file: path.join(cwd, ...scope.split('/')) };
 }
 
 /**
@@ -497,24 +701,23 @@ function kitMappedFile(store, rel) {
  * suite.db and a journal). Returns null when every entry is one the kit itself writes in a batch, else the problem.
  * An entry is accepted only when its path is a plain project-relative path (no absolute path, no `.` / `..` / empty
  * segment, no `.git` segment, a `.json` file) that is either the store choice (CONFIG_FILE, no store) or the file of
- * a document (`store` a kit store, `scope` the same path, and either a store_docs row for it or a file the kit maps:
- * the store's default file or a per-stream triage file); nothing on the way to it, from the project folder down, is a
- * symbolic link; its new hash is a sha256 (a batch never writes absence); its original is 'absent' or base64 bytes
+ * a document (`store` a kit store, `scope` the same path, and a file the kit maps: the store's default file, a
+ * per-stream triage file or a scope this machine registered; a database row never widens this); nothing on the way to
+ * it, from the project folder down, is a symbolic link; its new hash is a sha256 (a batch never writes absence); its original is 'absent' or base64 bytes
  * with an optional integer mode. No path twice.
  */
-function checkFilesJournal(db, cwd, j) {
+function checkFilesJournal(cwd, j) {
   if (!j || typeof j !== 'object' || Array.isArray(j) || j.version !== 1 || !Array.isArray(j.files)) return 'not a kit files journal (version 1 with a files list)';
   if (j.files.length > JOURNAL_MAX_FILES) return `lists ${j.files.length} files, more than ${JOURNAL_MAX_FILES}`;
   const config = posixPath(CONFIG_FILE);
+  const registered = registeredScopes(cwd);
   const seen = new Set();
   for (const [i, f] of j.files.entries()) {
     const at = `entry ${i + 1}`;
     if (!f || typeof f !== 'object' || Array.isArray(f)) return `${at} is not an object`;
     const p = f.path;
-    if (typeof p !== 'string' || !p || p.length > 4096 || p.includes('\0') || p.includes('\\')) return `${at} has no usable path`;
-    const segs = p.split('/');
-    if (path.posix.isAbsolute(p) || path.win32.isAbsolute(p) || segs.some((x) => !x || x === '.' || x === '..')) return `${at} path ${JSON.stringify(p.slice(0, 200))} is not a plain path inside the project`;
-    if (segs.some((x) => x.toLowerCase() === '.git') || !p.endsWith('.json')) return `${at} path ${JSON.stringify(p.slice(0, 200))} is not a kit state file`;
+    const bad = plainPathProblem(p);
+    if (bad) return `${at} ${bad}`;
     if (seen.has(p)) return `${at} lists ${p} twice`;
     seen.add(p);
     if (f.store === undefined) {
@@ -522,8 +725,7 @@ function checkFilesJournal(db, cwd, j) {
     } else {
       if (typeof f.store !== 'string' || !SPECS[f.store]) return `${at} names no kit store`;
       if (f.scope !== p) return `${at} scope is not its path ${p}`;
-      const row = db.get('SELECT 1 AS x FROM store_docs WHERE store = ? AND scope = ?', f.store, f.scope);
-      if (!row && !kitMappedFile(f.store, p)) return `${at} path ${p} is not a file the kit writes for ${f.store} (no such document in the database)`;
+      if (!kitMappedFile(f.store, p) && !(registered[f.store] || []).includes(p)) return `${at} path ${p} is not a file the kit writes for ${f.store} (not its default file, a per-stream triage file or a path a verb on this machine wrote)`;
     }
     if (typeof f.new_sha256 !== 'string' || !HEX64.test(f.new_sha256)) return `${at} (${p}) has no sha256 for its new bytes`;
     const o = f.original;
@@ -531,13 +733,8 @@ function checkFilesJournal(db, cwd, j) {
       if (!o || typeof o !== 'object' || Array.isArray(o) || typeof o.base64 !== 'string' || !BASE64.test(o.base64)) return `${at} (${p}) original is neither 'absent' nor base64 bytes`;
       if (o.mode !== undefined && o.mode !== null && !(Number.isInteger(o.mode) && o.mode >= 0 && o.mode <= 0o7777)) return `${at} (${p}) original mode is not a file mode`;
     }
-    let cur = cwd;
-    for (const seg of segs) {
-      cur = path.join(cur, seg);
-      let st;
-      try { st = fs.lstatSync(cur); } catch (e) { if (e.code === 'ENOENT') break; return `${at} (${p}) cannot be checked: ${e.code || e.message}`; }
-      if (st.isSymbolicLink()) return `${at} (${p}) goes through a symbolic link (${posixPath(path.relative(cwd, cur))})`;
-    }
+    const link = linkProblem(cwd, p);
+    if (link) return `${at} (${p}) ${link}`;
   }
   return null;
 }
@@ -574,7 +771,7 @@ export function recoverFilesJournal(db, cwd, dbFile) {
       if (e.code === 'ENOENT') { db.exec('COMMIT'); return null; } // that run finished and removed it meanwhile
       problem = `it cannot be read (${e.code || e.message})`;
     }
-    if (!problem) problem = checkFilesJournal(db, cwd, j);
+    if (!problem) problem = checkFilesJournal(cwd, j);
     if (problem) {
       db.exec('ROLLBACK');
       process.stderr.write(`kit db: refusing the files journal ${jf}: ${String(problem).slice(0, 300)}; nothing was restored and it is kept (check the JSON files against the database, then remove it)\n`);
@@ -1051,13 +1248,21 @@ const SWITCH_RETRIES = 5;
  * not exist, else "<file> does not exist") or the database row set for its scope.
  */
 export async function readDoc(io, name, file, opts = {}) {
-  const ctx = await resolveStore(ioCtx(io));
-  if (ctx.kind === 'json') return readJsonState(file, opts);
-  const scope = scopeKey(ctx.cwd, file);
-  return withDb(ctx, (db) => {
-    assertNoDrift(db, name, scope, file);
-    return loadFromDb(db, name, file, scope, opts);
-  }, { write: false });
+  // an error of the store itself (no engine, no suite.db, drift, an untrusted database) carries `store: true`, so a
+  // verb that labels its own file's errors ("corrupt or unreadable") passes it on as it is; the file's own do not
+  const fromFile = (e) => { if (e instanceof KitExit) e.stateFile = true; throw e; };
+  try {
+    const ctx = await resolveStore(ioCtx(io));
+    if (ctx.kind === 'json') return await readJsonState(file, opts).catch(fromFile);
+    const scope = scopeKey(ctx.cwd, file);
+    return await withDb(ctx, (db) => {
+      assertNoDrift(db, name, scope, file);
+      return loadFromDb(db, name, file, scope, opts).catch(fromFile);
+    }, { write: false });
+  } catch (e) {
+    if (e instanceof KitExit && !e.stateFile) e.store = true;
+    throw e;
+  }
 }
 
 /**
@@ -1083,6 +1288,8 @@ export async function updateDoc(io, name, file, fn, lockOpts) {
         return fn({
           load: (opts = {}) => loadFromDb(db, name, file, scope, opts),
           save: async (doc) => {
+            // a path named on this command line (--store, --ledger, --state): export / off / sync may write its file
+            registerScope(ctx.cwd, name, scope);
             const known = db.get('SELECT 1 AS x FROM store_docs WHERE store = ? AND scope = ?', name, scope);
             // the first write of a scope read from its file: remember the file it came from (its hash and document)
             if (known) putDoc(db, name, scope, doc);
@@ -1134,6 +1341,30 @@ export function installedKitProblem(cwd) {
     + 'Reinstall / update the kit first (`npx danizee-claude-suite update`), then run `db init` again; nothing was changed';
 }
 
+/**
+ * Add the `rules` a project's .gitignore lacks, under one `# comment` line; returns the rules added. Used by the kit
+ * installer and by `db init`. `noFollow`: a .gitignore that is a symbolic link (or not a regular file) is left alone
+ * and the rules are returned in `refused` instead (`db init` runs in a repository it did not write).
+ */
+export async function addGitignoreRules(dir, rules, comment, { noFollow = false } = {}) {
+  const gi = path.join(dir, '.gitignore');
+  if (noFollow) {
+    try {
+      const st = await fsp.lstat(gi);
+      if (!st.isFile()) return Object.assign([], { refused: [...rules] });
+    } catch (e) { if (e.code !== 'ENOENT') throw e; }
+  }
+  let current = '';
+  try { current = await fsp.readFile(gi, 'utf-8'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+  const have = new Set(current.split('\n').map((l) => l.trim()));
+  const missing = rules.filter((r) => !have.has(r));
+  if (missing.length) {
+    const sep = current.length && !current.endsWith('\n') ? '\n' : '';
+    await fsp.writeFile(gi, `${current}${sep}\n# ${comment}\n${missing.join('\n')}\n`, 'utf-8');
+  }
+  return missing;
+}
+
 /** The one line `danizee-claude-suite check` prints: { store, engine, ok, fatal, line, fix }. */
 export async function storeCheck({ cwd = process.cwd(), env = process.env } = {}) {
   let cfg;
@@ -1144,6 +1375,10 @@ export async function storeCheck({ cwd = process.cwd(), env = process.env } = {}
     // probed, not loaded: a project on the JSON files never runs code from its own folder here
     const probe = probeEngine({ env });
     return { store: 'json', engine: probe.name, ok: true, fatal: false, line: `kit store: json files${probe.name ? ` (sqlite engine ${probe.name} available, not loaded; \`db init\` to switch)` : ' (no sqlite engine available; json needs none)'}` };
+  }
+  // a store choice or database committed to the repository: refused before any engine (or project code) loads
+  try { assertNotCommitted(cwd, env); } catch (e) {
+    return { store: 'sqlite', engine: null, ok: false, fatal: true, line: `kit store: sqlite, refused: ${e.message}`, fix: `remove the committed files from git (\`git rm --cached\`) and run \`db init\`` };
   }
   const engine = await loadEngine({ cwd, env, project: true });
   if (!engine.name) return { store: 'sqlite', engine: null, ok: false, fatal: true, line: `kit store: sqlite, but no engine loads (${engine.errors.join('; ')})`, fix: ENGINE_FIX };

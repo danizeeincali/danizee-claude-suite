@@ -11,7 +11,10 @@
  *                             predefined ones and character references, size, depth and count caps)
  *   importReports(io, opts)   `db import-reports`: the newest CI test-results artifacts of a branch, through the user's own
  *                             `gh` login (spawned without a shell), each imported once (key: workflow run id / artifact name, kept in
- *                             imported_reports after `db prune` deletes the run)
+ *                             imported_reports after `db prune` deletes the run). Before a run's artifacts are downloaded,
+ *                             their sizes are read (`gh api repos/{owner}/{repo}/actions/runs/<id>/artifacts`) and an artifact
+ *                             over ARTIFACT_MAX_BYTES is skipped, never downloaded (gh extracts a whole artifact before
+ *                             any per-file cap applies)
  *
  * Every stored string (case names, files, messages) is redacted with the project's secrets and credential-masked
  * (reflect.js scrub/loadSecrets); a failure message is capped at MESSAGE_MAX bytes. Downloaded files are untrusted
@@ -35,6 +38,12 @@ export const DEFAULT_LIMIT = 10;
 export const MAX_LIMIT = 100;
 export const ARTIFACT_PATTERN = 'test-results-*';
 const ARTIFACT_NAME = /^test-results-[A-Za-z0-9._-]{1,80}$/;
+/** What ARTIFACT_PATTERN matches (gh's glob), for the size check before a download. */
+const PATTERN_MATCH = /^test-results-/;
+/** Largest artifact (its zip, as GitHub reports it) import-reports downloads; a bigger one is skipped, not fetched. */
+export const ARTIFACT_MAX_BYTES = 50 * 1024 * 1024;
+/** Most artifacts one run may list: the size check reads one page of the listing, so a run with more is skipped. */
+export const ARTIFACTS_PER_PAGE = 100;
 const GH_FIX = 'install the GitHub CLI (https://cli.github.com) and run `gh auth login`';
 
 const invalid = (m) => new KitExit(m, 1);
@@ -386,6 +395,23 @@ function readUntrusted(file, max) {
 }
 
 /**
+ * A run's artifact listing from `gh api .../actions/runs/<id>/artifacts`, validated: [{ name, size, expired }].
+ * Throws (KitExit) when it is not that shape, or when the run has more artifacts than one page shows (their sizes
+ * cannot all be checked).
+ */
+export function parseArtifactList(text) {
+  let v;
+  try { v = JSON.parse(text); } catch { throw invalid('its artifact list is not JSON'); }
+  if (!v || typeof v !== 'object' || !Array.isArray(v.artifacts)) throw invalid('its artifact list has no artifacts field');
+  const arts = v.artifacts.map((a) => {
+    if (!a || typeof a !== 'object' || typeof a.name !== 'string' || !Number.isSafeInteger(a.size_in_bytes) || a.size_in_bytes < 0) throw invalid('its artifact list has an entry without a name and size');
+    return { name: a.name, size: a.size_in_bytes, expired: a.expired === true };
+  });
+  if (Number.isSafeInteger(v.total_count) && v.total_count > arts.length) throw invalid(`it lists ${v.total_count} artifacts, more than the ${arts.length} whose sizes can be checked`);
+  return arts;
+}
+
+/**
  * The run list from `gh run list --json`, validated. Only push runs of `branch` are kept: a pull_request run whose
  * head branch has the same name can come from a fork, and its artifacts are someone else's (gh run list has no
  * head-repository field, so same-repository pull requests are left out too). The others come back in `foreign`.
@@ -439,12 +465,31 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) 
   for (const r of runs) {
     if (!r.conclusion) { skipped.push({ run_id: r.id, reason: 'not finished' }); continue; }
     if ([...known].some((k) => k.startsWith(`${r.id}/`))) { skipped.push({ run_id: r.id, reason: 'already imported' }); continue; }
+    // sizes first: gh extracts a whole artifact before any cap here applies, so a big one is never downloaded
+    if (!Number.isSafeInteger(r.id) || r.id <= 0) continue;
+    const listing = gh(['api', `repos/{owner}/{repo}/actions/runs/${r.id}/artifacts?per_page=${ARTIFACTS_PER_PAGE}`], { cwd, env });
+    if (listing.status !== 0) { skipped.push({ run_id: r.id, reason: `cannot list its artifacts: ${firstLine(listing.stderr, secrets) || `exit ${listing.status}`}` }); continue; }
+    let arts;
+    try { arts = parseArtifactList(listing.stdout); } catch (e) { skipped.push({ run_id: r.id, reason: capBytes(e.message, 200) }); continue; }
+    const matching = arts.filter((a) => PATTERN_MATCH.test(a.name));
+    const big = matching.filter((a) => a.size > ARTIFACT_MAX_BYTES);
+    for (const a of big) skipped.push({ run_id: r.id, ...(ARTIFACT_NAME.test(a.name) ? { artifact: a.name } : {}), reason: `artifact is ${a.size} bytes, more than ${ARTIFACT_MAX_BYTES}: not downloaded` });
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-import-reports-'));
     try {
-      const dl = gh(['run', 'download', String(r.id), '-p', ARTIFACT_PATTERN, '-D', dir], { cwd, env, maxBuffer: RUN_LIST_MAX_BYTES });
-      if (dl.status !== 0) {
-        const why = firstLine(dl.stderr, secrets);
-        skipped.push({ run_id: r.id, reason: /no (valid )?artifact|no artifacts? match/i.test(why) ? 'no test-results artifact' : `download failed: ${why || `exit ${dl.status}`}` });
+      // every matching artifact is small enough: one download by pattern; else each small one by its own name
+      const small = big.length ? matching.filter((a) => a.size <= ARTIFACT_MAX_BYTES && !a.expired && ARTIFACT_NAME.test(a.name)) : null;
+      const downloads = small === null
+        ? [['run', 'download', String(r.id), '-p', ARTIFACT_PATTERN, '-D', dir]]
+        : small.map((a) => ['run', 'download', String(r.id), '-n', a.name, '-D', path.join(dir, a.name)]);
+      let failed = null;
+      for (const args of downloads) {
+        const dl = gh(args, { cwd, env, maxBuffer: RUN_LIST_MAX_BYTES });
+        if (dl.status !== 0) { failed = { why: firstLine(dl.stderr, secrets), status: dl.status }; break; }
+      }
+      if (small !== null && !small.length) continue; // every test-results artifact was too big (listed above)
+      if (failed) {
+        const { why } = failed;
+        skipped.push({ run_id: r.id, reason: /no (valid )?artifact|no artifacts? match/i.test(why) ? 'no test-results artifact' : `download failed: ${why || `exit ${failed.status}`}` });
         continue;
       }
       const entries = fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));

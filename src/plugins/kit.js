@@ -8,7 +8,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GITIGNORE_RULES as DB_GITIGNORE_RULES, CONFIG_GITIGNORE_RULE, JOURNAL_GITIGNORE_RULE } from '../lib/kit/store.js';
+import { GITIGNORE_RULES as DB_GITIGNORE_RULES, CONFIG_GITIGNORE_RULE, JOURNAL_GITIGNORE_RULE, addGitignoreRules } from '../lib/kit/store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // The optional SQLite store (.claude/kit/suite.db and its -wal/-shm, see lib/kit/store.js) is machine-local state too,
@@ -48,15 +48,8 @@ export async function install(claudeDir, options = {}) {
   // The redact verb reads .claude/kit/secrets: real secret values, never committed. The graph verb caches
   // per-file facts under .claude/kit/cache/: machine-local and rebuilt on demand.
   if (!dry && options.targetDir) {
-    const gi = path.join(options.targetDir, '.gitignore');
-    const current = (await exists(gi)) ? await fs.readFile(gi, 'utf-8') : '';
-    const have = new Set(current.split('\n').map(l => l.trim()));
-    const missing = GITIGNORE_RULES.filter(r => !have.has(r));
-    if (missing.length) {
-      const sep = current.length && !current.endsWith('\n') ? '\n' : '';
-      await fs.writeFile(gi, `${current}${sep}\n# Kit: the redact verb's secret values, the scrub verb's private patterns, the graph verb's fact cache and the optional SQLite store are machine-local and never committed\n${missing.join('\n')}\n`, 'utf-8');
-      files.push(`.gitignore (+ ${missing.length} kit rule)`);
-    }
+    const missing = await addGitignoreRules(options.targetDir, GITIGNORE_RULES, "Kit: the redact verb's secret values, the scrub verb's private patterns, the graph verb's fact cache and the optional SQLite store are machine-local and never committed");
+    if (missing.length) files.push(`.gitignore (+ ${missing.length} kit rule)`);
   }
   return { plugin: 'kit', namespace: getNamespace(), files };
 }

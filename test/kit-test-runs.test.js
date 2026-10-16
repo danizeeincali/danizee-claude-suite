@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { run as db } from '../src/lib/kit/db.js';
 import { resolveStore, withDb } from '../src/lib/kit/store.js';
-import { parseJunit, parseTap, parseTapSummary, MESSAGE_MAX, MAX_DEPTH, capBytes } from '../src/lib/kit/test-runs.js';
+import { parseJunit, parseTap, parseTapSummary, MESSAGE_MAX, MAX_DEPTH, capBytes, ARTIFACT_MAX_BYTES, parseArtifactList } from '../src/lib/kit/test-runs.js';
 import { renderJunit } from '../src/lib/kit/render.js';
 import { runStep } from '../scripts/ci-step.js';
 
@@ -210,12 +210,23 @@ describe('local runs: scripts/ci-step.js runStep records into the sqlite store',
 const FAKE_GH = `#!/usr/bin/env node
 const fs = require('fs'); const path = require('path');
 const root = process.env.FAKE_GH_ROOT; const a = process.argv.slice(2);
-fs.appendFileSync(path.join(root, 'calls.jsonl'), JSON.stringify(a) + '\\n');
+// the artifact size listing (gh api) is logged apart from the other calls
+fs.appendFileSync(path.join(root, a[0] === 'api' ? 'api-calls.jsonl' : 'calls.jsonl'), JSON.stringify(a) + '\\n');
+if (a[0] === 'api') {
+  const m = /^repos\\/\\{owner\\}\\/\\{repo\\}\\/actions\\/runs\\/(\\d+)\\/artifacts\\?per_page=100$/.exec(a[1] || '');
+  if (!m || a.length !== 2) { process.stderr.write('fake gh: bad api call\\n'); process.exit(2); }
+  const src = path.join(root, 'artifacts', m[1]);
+  const sizes = fs.existsSync(path.join(root, 'sizes.json')) ? JSON.parse(fs.readFileSync(path.join(root, 'sizes.json'), 'utf-8')) : {};
+  const du = (p) => { const st = fs.lstatSync(p); return st.isDirectory() ? fs.readdirSync(p).reduce((n, x) => n + du(path.join(p, x)), 0) : st.size; };
+  const artifacts = fs.existsSync(src) ? fs.readdirSync(src).sort().map((n) => ({ name: n, size_in_bytes: sizes[m[1] + '/' + n] ?? du(path.join(src, n)), expired: false })) : [];
+  process.stdout.write(JSON.stringify({ total_count: artifacts.length, artifacts })); process.exit(0);
+}
 if (a[0] === 'auth' && a[1] === 'status') { if (fs.existsSync(path.join(root, 'logged-out'))) { process.stderr.write('You are not logged into any GitHub hosts.\\n'); process.exit(1); } process.exit(0); }
 if (a[0] === 'run' && a[1] === 'list') { process.stdout.write(fs.readFileSync(path.join(root, 'runs.json'))); process.exit(0); }
 if (a[0] === 'run' && a[1] === 'download') {
   const id = a[2]; const dest = a[a.indexOf('-D') + 1]; const src = path.join(root, 'artifacts', id);
   if (!fs.existsSync(src)) { process.stderr.write('no valid artifacts found to download\\n'); process.exit(1); }
+  if (a.includes('-n')) { fs.cpSync(path.join(src, a[a.indexOf('-n') + 1]), dest, { recursive: true, verbatimSymlinks: true }); process.exit(0); }
   for (const n of fs.readdirSync(src)) fs.cpSync(path.join(src, n), path.join(dest, n), { recursive: true, verbatimSymlinks: true });
   process.exit(0);
 }
@@ -297,6 +308,31 @@ describe('db import-reports', () => {
       assert.deepEqual(st.out.test_runs_by_branch, { 'feat/x': 2 });
       const ex = await call(['export'], dir, ENGINE);
       assert.deepEqual(ex.out.not_exported, { test_runs: 2, test_cases: 3 });
+    } finally { rm(dir); rm(gh.root); }
+  });
+
+  it('an artifact over the size cap is skipped before any download: its size is read with gh api first (review round 9)', { skip: !NODE_SQLITE }, async () => {
+    const dir = await project();
+    const gh = fakeGh();
+    try {
+      fs.writeFileSync(path.join(gh.root, 'sizes.json'), JSON.stringify({ '302/test-results-node-20': ARTIFACT_MAX_BYTES + 1 }));
+      const r = await call(['import-reports', '--limit', '5'], dir, gh.env);
+      assert.equal(r.code, 0, r.err);
+      assert.deepEqual(r.out.imported.map((x) => [x.run_id, x.artifact]), [[301, 'test-results-node-20']]);
+      const big = r.out.skipped.find((s) => s.run_id === 302 && s.artifact === 'test-results-node-20');
+      assert.equal(big.reason, `artifact is ${ARTIFACT_MAX_BYTES + 1} bytes, more than ${ARTIFACT_MAX_BYTES}: not downloaded`);
+      const api = fs.readFileSync(path.join(gh.root, 'api-calls.jsonl'), 'utf-8').trim().split('\n').map((l) => JSON.parse(l));
+      assert.deepEqual(api, ['302', '301', '300'].map((id) => ['api', `repos/{owner}/{repo}/actions/runs/${id}/artifacts?per_page=100`]));
+      const downloads = gh.calls().filter((c) => c[1] === 'download');
+      // run 302: only the small test-results artifacts, each by name; never the big one, never by pattern
+      const of302 = downloads.filter((c) => c[2] === '302');
+      assert.deepEqual(of302.map((c) => c.slice(0, 5)), [['run', 'download', '302', '-n', 'test-results-node-22'], ['run', 'download', '302', '-n', 'test-results-node-24']]);
+      assert.ok(!downloads.some((c) => c.includes('test-results-node-20') && c[2] === '302'));
+      assert.deepEqual(downloads.filter((c) => c[2] === '301').map((c) => c.slice(0, 5)), [['run', 'download', '301', '-p', 'test-results-*']]);
+      // a listing gh cannot give, or one with more artifacts than one page: the run is skipped, nothing downloaded
+      assert.throws(() => parseArtifactList('{"total_count": 150, "artifacts": []}'), /150 artifacts/);
+      assert.throws(() => parseArtifactList('{"artifacts": [{"name": "test-results-x"}]}'), /without a name and size/);
+      assert.throws(() => parseArtifactList('nope'), /not JSON/);
     } finally { rm(dir); rm(gh.root); }
   });
 
