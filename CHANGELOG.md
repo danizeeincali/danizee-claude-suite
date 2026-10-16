@@ -1,18 +1,48 @@
 # Changelog
 
-Versions 4.2.0 and 4.3.0 were set in `package.json` but never published to npm,
-so 4.4.0 is the first release after 4.1.0 and carries all three.
+Versions 4.2.0, 4.3.0 and 4.4.0 were set in `package.json` but never published to npm,
+so 4.5.0 is the first release after 4.1.0 and carries all four.
 
-## Unreleased
+## 4.5.0 — 2026-10-16
+
+### Added
+- **Most-used commands** at the top of the README: `/mt`, `/pt`, `/bbs`, `/bcp` and `/bc`
+  with their long forms and what each does.
+- **Review kit** (`node .claude/helpers/kit/cli.js <verb>`): 24 zero-dependency verbs
+  rebuilt from two `/w-bbs` runs (OpenQodex and bugpatrol). Among them: `scrub` (tracked-file
+  secret gate), `redact` (by value and fingerprint), `safe-git` (read-only git on an untrusted
+  repository), `guarded-write`, `graph`, `callers` and `impact` (a cached symbol graph and a
+  change's blast radius, reported as a floor when it cannot see everything), `test-plan`,
+  `lenses`, `review-score` and the optional sealed `wording-judge`, `push-gate`,
+  `replay-gate`, `threshold-route`, `noise-ledger`, `triage`, `cluster`, `reflect`,
+  `shared-budget`, `render` (SARIF, JUnit, PR comment), `exit-codes`, `doctor` and
+  `diff-range`.
+- The kit is wired into `/pt`, `/mt`, `/bc`, `/bcp`, `/w-bbs`, `/w-review`, `/w-bg-review`,
+  `/w-fix`, `/w-debug` and 14 more workflows, and into `danizee-claude-suite check`, which
+  now runs the doctor preflight (`--profile kit|marathon|bbs|review`).
+- **Optional SQLite index** (`kit db init|off|status|rebuild|prune|import-reports`): a
+  per-user, rebuildable write-through index of the kit's JSON state, kept outside the project
+  in `~/.claude/kit-db/`. The JSON files stay the only source of truth. Uses better-sqlite3
+  from the suite package, else `node:sqlite` (Node 22.13+).
+- **`/w-bbs` integration**: a power can land on any surface a user meets (UI, API, job,
+  model, CLI, feature flag, library or workflow). The verdict records where each power lands
+  and the hand-off adds a gated `integration` stream; a target counts as wired only when the
+  surface uses the power and a reach test through that surface passes.
+- CI uploads JUnit and SARIF test results as artifacts and prints failing tests at the end
+  of the job log.
 
 ### Changed
+- `/w-marathon` scopes the helper allowance per run and stream with a per-review claim
+  budget; `/w-review` has a fail-closed replay gate. `npm test` and CI run the reach tests.
+- Workflow shortcut copies are regenerated from the generator (`src/plugins/dot-shortcuts.js`),
+  so `.claude/commands/.shortcuts/` equals its output.
 - `/w-bbs` fetch clones source files only: commit and trees first, then just the blobs of
   code and prose files. Media, fonts, archives, binaries, minified bundles and lockfiles
   stay on the server, so a large repository fits the 20 MB egress cap (a 278 MB repository
   came down as 4.7 MB). HEAD is read through the hardened reader before anything is
   written; the egress row records `files_kept` and `files_skipped`.
 
-## 4.4.0 — 2026-10-10
+## 4.4.0 — 2026-10-10 (unpublished)
 
 ### Added
 - `init` and `update` set `subagentPromptCacheTtl: "1h"` in `.claude/settings.json`,
