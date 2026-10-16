@@ -374,6 +374,24 @@ describe('kit store: npx danizee-claude-suite db and check', () => {
     assert.match(src, /process\.argv\[2\] === 'db'/);
     assert.match(src, /storeCheck\(/);
   });
+
+  it('npx db init refuses a project whose installed kit has no store.js (names the update), allows a current or absent one', async () => {
+    const { installedKitProblem } = await import('../src/lib/kit/store.js');
+    const dir = await tmp();
+    try {
+      assert.equal(installedKitProblem(dir), null, 'no installed kit: nothing writes behind the database');
+      await fs.mkdir(path.join(dir, '.claude/helpers/kit'), { recursive: true });
+      await fs.writeFile(path.join(dir, '.claude/helpers/kit/cli.js'), '');
+      assert.match(installedKitProblem(dir), /has no store\.js.*`npx danizee-claude-suite update`/);
+      await fs.writeFile(path.join(dir, '.claude/helpers/kit/store.js'), '');
+      assert.equal(installedKitProblem(dir), null);
+      const src = await fs.readFile(BIN, 'utf-8');
+      assert.match(src, /process\.argv\[3\] === 'init' \? installedKitProblem\(process\.cwd\(\)\)/);
+      assert.match(src, /sync --from-files/);
+      assert.match(src, /import-reports/);
+      assert.match(src, /--overwrite/);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
 });
 
 // ================================================================ step 2: noise-ledger and triage on the adapter

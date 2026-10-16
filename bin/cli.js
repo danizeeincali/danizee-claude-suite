@@ -241,13 +241,22 @@ program
 // Listed for --help only: the call itself is routed to the kit verb below, before commander parses.
 program
   .command('db <sub>')
-  .description('Kit state store: db init | export | off | status | prune [--keep <n>] (optional SQLite .claude/kit/suite.db; JSON files stay the default)');
+  .description('Kit state store: db init | export [--overwrite] | off [--overwrite] | sync --from-files [--scope <file>] | status | prune [--keep <n>] | import-reports [--branch <b>] [--limit <n>] '
+    + '(optional SQLite .claude/kit/suite.db; JSON files stay the default; after a git pull changed a JSON file, sync --from-files merges it by row id, export --overwrite replaces the file)');
 
 // `danizee-claude-suite db <sub> [args]` is the kit's `db` verb (same flags, JSON output and exit codes as
 // `node .claude/helpers/kit/cli.js db <sub>`), run in the current folder.
 if (process.argv[2] === 'db') {
-  const { main } = await import('../src/lib/kit/cli.js');
-  process.exitCode = await main(process.argv.slice(2));
+  // the project's installed kit must know the store before init switches it (an older kit would write the JSON files)
+  const { installedKitProblem } = await import('../src/lib/kit/store.js');
+  const problem = process.argv[3] === 'init' ? installedKitProblem(process.cwd()) : null;
+  if (problem) {
+    process.stderr.write(`kit: ${problem}\n`);
+    process.exitCode = 1;
+  } else {
+    const { main } = await import('../src/lib/kit/cli.js');
+    process.exitCode = await main(process.argv.slice(2));
+  }
 } else {
   program.parse();
 }

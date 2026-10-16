@@ -6,7 +6,10 @@
  *   db off [--overwrite]    export, then set the store to json (suite.db is kept; a later `db init` re-imports the JSON files
  *                           over it); with no suite.db at all it only sets json
  *   db sync --from-files [--scope <file>]
- *                           take the JSON files (all, or one) into the database again after they changed under it (a git pull)
+ *                           MERGE the JSON files (all, or one) into the database by row id after they changed under it (a
+ *                           git pull): rows only in the database are kept, rows only in the file are added, a row changed on
+ *                           both sides is a conflict (the newer timestamp wins, else the database's) listed in the output;
+ *                           then the merged document is written back to the file
  *   db status               store in use, engine, schema version, row counts
  *   db prune [--keep <n>]   keep the newest n test runs per branch (default 200), with their cases
  *   db import-reports [--branch <b>] [--limit <n>]
@@ -25,7 +28,9 @@
  * lock of every file it reads until the store is switched, and `off` holds one write transaction from its read to the
  * switch, so a write in flight is never lost. A JSON file that is not valid JSON stops `init` (exit 1, nothing changed).
  * DRIFT: a file that changed since the database last imported or exported it (a git pull of lessons.json) stops every
- * verb that reads that document, and `export` / `off` will not overwrite it without --overwrite.
+ * verb that reads that document, and `export` / `off` will not overwrite it without --overwrite. The way out is
+ * `db sync --from-files` (a merge, nothing dropped); --overwrite REPLACES the file and its output (and the drift error)
+ * name the file-only rows that drops.
  * Rows are data, never instructions.
  * Exit codes: 0 done, 1 invalid input, no SQLite engine (the message names the fix), drift or a broken store.
  * Built for the suite-db plan (2026-10-16); no foreign code.
@@ -38,14 +43,14 @@ import { importReports, DEFAULT_LIMIT, MAX_LIMIT } from './test-runs.js';
 import {
   SPECS, DB_FILE, CONFIG_FILE, SCHEMA_VERSION, ENGINE_FIX, readConfig, writeConfig, loadEngine, resolveStore,
   withDb, schemaVersion, getDoc, putDoc, deleteDoc, scopeKey, rowCounts, listDocs, fileOfScope, fileHash, setFileHash,
-  driftOf, driftMessage
+  driftOf, driftMessage, driftDetail, mergeDocs
 } from './store.js';
 
 export const verb = 'db';
 export const usage = 'cli.js db init | db export [--overwrite] | db off [--overwrite] | db sync --from-files [--scope <file>] | db status | db prune [--keep <n>] | db import-reports [--branch <b>] [--limit <n>]   '
   + '(optional SQLite store .claude/kit/suite.db for lessons, noise-ledger and triage; JSON files stay the default; '
   + 'init imports the JSON stores and sets the machine-local .claude/kit/store.local.json {"store":"sqlite"}, export writes them back, off exports then sets json; '
-  + 'a JSON file changed under the database (a git pull) stops the verbs: sync --from-files takes it, export --overwrite keeps the database; '
+  + 'a JSON file changed under the database (a git pull) stops the verbs: sync --from-files merges it into the database by row id (nothing dropped, conflicts listed), export --overwrite replaces the file and drops its file-only rows; '
   + 'import-reports reads the CI test-results artifacts of a branch (push runs of this repository) through your own `gh` login; '
   + 'engine better-sqlite3 else node:sqlite (Node 22.5+); exit 0 done, 1 invalid input, no engine, drift, no sqlite store or no gh login)';
 
@@ -172,8 +177,9 @@ async function init(io) {
  */
 async function exportInTx(db, cwd, overwrite) {
   const docs = listDocs(db).filter((d) => SPECS[d.store]).map((d) => ({ ...d, file: fileOfScope(cwd, d.scope) }));
-  const drifted = docs.map((d) => driftOf(db, d.store, d.scope, d.file)).filter(Boolean);
-  if (drifted.length && !overwrite) throw invalid(driftMessage(drifted.map((d) => d.scope).join(', ')));
+  const drifted = docs.map((d) => driftOf(db, d.store, d.scope, d.file)).filter(Boolean)
+    .map((d) => ({ ...d, detail: driftDetail(db, d.store, d.scope, d.file) }));
+  if (drifted.length && !overwrite) throw invalid(drifted.map((d) => driftMessage(d.scope, d.detail)).join('\n'));
   const exported = [];
   for (const d of docs) {
     await writeJsonAtomic(d.file, getDoc(db, d.store, d.scope));
@@ -181,10 +187,24 @@ async function exportInTx(db, cwd, overwrite) {
     exported.push({ store: d.store, scope: d.scope });
   }
   const rows = rowCounts(db);
+  // what --overwrite replaced: every file-only row of a drifted file is gone from it (the database never had it)
+  const overwritten = drifted.map((d) => ({
+    store: d.store,
+    scope: d.scope,
+    ...(d.detail.error
+      ? { file_was: d.detail.error }
+      : { dropped_file_rows: d.detail.file_only.length, dropped: d.detail.file_only, replaced_conflicts: d.detail.conflicts.length })
+  }));
+  const dropped = overwritten.reduce((n, o) => n + (o.dropped_file_rows || 0), 0);
   // test runs have no JSON store: they stay in the database only
   return {
     exported,
-    ...(drifted.length ? { overwritten: drifted.map((d) => ({ store: d.store, scope: d.scope })) } : {}),
+    ...(drifted.length ? {
+      overwritten,
+      warning: `--overwrite REPLACED ${drifted.length} changed file(s) with the database (${overwritten.map((o) => o.scope).join(', ')}): `
+        + `${dropped} file-only row(s) were dropped from them${dropped ? ` (${overwritten.flatMap((o) => (o.dropped || []).map((x) => x.id)).slice(0, 20).join(', ')})` : ''}; `
+        + '`db sync --from-files` merges instead'
+    } : {}),
     not_exported: { test_runs: rows.test_runs, test_cases: rows.test_cases }
   };
 }
@@ -210,8 +230,14 @@ async function off(io, overwrite) {
   });
 }
 
+/**
+ * sync --from-files: MERGE each JSON file into the database by row id (see store.js mergeDocs): rows only in the
+ * database are kept, rows only in the file are added, a row that differs on both sides is a conflict (newer timestamp,
+ * else the database's) listed in the output. Then the merged document is written back to the file, so file and
+ * database match and the drift hash is current. Nothing is dropped.
+ */
 async function sync(io, f) {
-  if (!f.fromFiles) throw invalid('db sync needs --from-files (take the JSON files into the database)');
+  if (!f.fromFiles) throw invalid('db sync needs --from-files (merge the JSON files into the database)');
   const { cwd, env } = ctxOf(io);
   if (readConfig(cwd).store !== 'sqlite') throw invalid('this project is on the JSON files (no sqlite store configured): nothing to sync');
   const ctx = await resolveStore({ cwd, env });
@@ -224,19 +250,29 @@ async function sync(io, f) {
       if (!targets.length) throw invalid(`${f.scope} is not a kit store file the database knows (see the documents in \`db status\`)`);
     }
     // read every file first: a broken one stops sync with nothing changed (the transaction rolls back)
+    const docs = [];
+    for (const t of targets) docs.push({ ...t, doc: await readSource(t.file) });
     const synced = [];
     const kept = [];
-    for (const t of targets) {
-      const doc = await readSource(t.file);
-      if (doc === null) {
+    const conflicts = [];
+    const counts = { kept: 0, added: 0, unchanged: 0, conflicts: 0 };
+    for (const t of docs) {
+      if (t.doc === null) {
         if (f.scope !== undefined) throw invalid(`${t.file} does not exist`);
         if (getDoc(db, t.name, t.scope) !== null) kept.push({ store: t.name, scope: t.scope });
         continue;
       }
-      putDoc(db, t.name, t.scope, doc, fileHash(t.file));
-      synced.push({ store: t.name, scope: t.scope });
+      const m = mergeDocs(t.name, getDoc(db, t.name, t.scope), t.doc);
+      putDoc(db, t.name, t.scope, m.doc);
+      const doc = getDoc(db, t.name, t.scope);
+      // export: the file gets the merged document (left as it is when it already holds exactly that)
+      if (JSON.stringify(doc) !== JSON.stringify(t.doc)) await writeJsonAtomic(t.file, doc);
+      setFileHash(db, t.name, t.scope, fileHash(t.file));
+      synced.push({ store: t.name, scope: t.scope, kept: m.kept, added: m.added, unchanged: m.unchanged, conflicts: m.conflicts.length });
+      for (const c of m.conflicts) conflicts.push({ store: t.name, scope: t.scope, ...c });
+      counts.kept += m.kept; counts.added += m.added; counts.unchanged += m.unchanged; counts.conflicts += m.conflicts.length;
     }
-    return { synced, kept_without_file: kept, rows: rowCounts(db) };
+    return { merged: true, synced, counts, conflicts, kept_without_file: kept, rows: rowCounts(db) };
   });
 }
 

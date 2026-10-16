@@ -4,7 +4,9 @@
  *
  *   recordRun(io, run)        a local test run (scripts/ci-step.js runStep): stored when the project is on sqlite,
  *                             nothing at all on the JSON files (there is no JSON store for test runs)
- *   parseTap(text, cwd)       the top-level cases of node's TAP output (spec lines too): name, file, status, duration, message
+ *   parseTap(text, cwd)       every test of node's TAP output (spec lines too): suite path, name, file, status, duration,
+ *                             message; a list in output order (same-named tests of two files stay two cases)
+ *   parseTapSummary(text)     the runner's `# tests` / `# pass` / ... summary; a local run's counts are taken from it
  *   parseJunit(text)          a small strict JUnit XML parser for downloaded reports (no DOCTYPE, no entities but the five
  *                             predefined ones and character references, size, depth and count caps)
  *   importReports(io, opts)   `db import-reports`: the newest CI test-results artifacts of a branch, through the user's own
@@ -67,41 +69,92 @@ function fileOfLocation(loc, cwd) {
   return f.split(path.sep).join('/');
 }
 
-/** Top-level cases of node's test runner output: [{ name, file, status: pass|fail|skip, duration_ms, message }]. */
+const unescapeTap = (s) => s.replace(/\\(.)/g, '$1');
+
+/**
+ * Every test of node's test runner output, in output order: [{ suite, name, file, status: pass|fail|skip, duration_ms,
+ * message }]. TAP: each `ok` / `not ok` line at any nesting depth whose YAML block does not say `type: 'suite'` (so the
+ * counts match the runner's `# tests` summary: a test with subtests counts, a describe() does not); `suite` is the path of
+ * the enclosing subtests (`a > b`), `file` comes from the `location` node gives (it does on a failure). Cases are a list,
+ * never keyed by name: two files' tests of the same name (node --test a.js b.js) stay two cases, so a failing one is never
+ * replaced by a passing one. A TODO case counts as skip (the runner's `# todo`). The spec reporter's top-level lines are
+ * read only when there is no TAP, and its closing "failing tests" recap is not counted twice.
+ */
 export function parseTap(text, cwd) {
-  const cases = new Map();
+  const cases = [];
   const lines = String(text).split('\n');
+  const stack = []; // open `# Subtest:` markers: { indent, name }
+  let tap = false;
   for (let i = 0; i < lines.length; i++) {
-    let m = /^(not ok|ok) \d+ - (.+?)(?: # (SKIP|TODO)\b.*)?$/.exec(lines[i]);
+    let m = /^( *)# Subtest: (.*)$/.exec(lines[i]);
     if (m) {
-      const c = { name: m[2].trim(), file: null, status: m[1] === 'ok' ? (m[3] === 'SKIP' ? 'skip' : 'pass') : (m[3] === 'TODO' ? 'skip' : 'fail'), duration_ms: null, message: null };
-      if (lines[i + 1] === '  ---') {
+      const ind = m[1].length;
+      while (stack.length && stack[stack.length - 1].indent >= ind) stack.pop();
+      stack.push({ indent: ind, name: unescapeTap(m[2].trim()) });
+      continue;
+    }
+    m = /^( *)(not ok|ok) \d+(?: - (.*?))?(?: # (SKIP|TODO)\b.*)?$/.exec(lines[i]);
+    if (m) {
+      tap = true;
+      const pad = m[1];
+      const ind = pad.length;
+      while (stack.length && stack[stack.length - 1].indent > ind) stack.pop();
+      if (stack.length && stack[stack.length - 1].indent === ind) stack.pop();
+      const c = {
+        suite: stack.map((x) => x.name).join(' > ') || null,
+        name: unescapeTap((m[3] || '').trim()) || '(unnamed)',
+        file: null,
+        status: m[4] ? 'skip' : m[2] === 'ok' ? 'pass' : 'fail',
+        duration_ms: null,
+        message: null
+      };
+      let type = null;
+      if (lines[i + 1] === `${pad}  ---`) {
+        const key = new RegExp(`^${pad} {2}([A-Za-z_]+): ?(.*)$`);
         let j = i + 2;
-        for (; j < lines.length && lines[j] !== '  ...'; j++) {
-          const y = /^ {2}([A-Za-z_]+): ?(.*)$/.exec(lines[j]);
+        for (; j < lines.length && lines[j] !== `${pad}  ...`; j++) {
+          const y = key.exec(lines[j]);
           if (!y) continue;
-          const [, key, raw] = y;
-          if (key === 'duration_ms') c.duration_ms = Math.round(Number(raw)) || 0;
-          else if (key === 'location') c.file = fileOfLocation(unquoteYaml(raw), cwd);
-          else if (key === 'error') {
+          const [, k, raw] = y;
+          if (k === 'duration_ms') c.duration_ms = Math.round(Number(raw)) || 0;
+          else if (k === 'type') type = unquoteYaml(raw);
+          else if (k === 'location') c.file = fileOfLocation(unquoteYaml(raw), cwd);
+          else if (k === 'error') {
             if (/^\|-?$/.test(raw.trim())) {
               const body = [];
-              while (j + 1 < lines.length && /^ {4}/.test(lines[j + 1])) body.push(lines[++j].slice(4));
+              while (j + 1 < lines.length && lines[j + 1].startsWith(`${pad}    `)) body.push(lines[++j].slice(ind + 4));
               c.message = body.join('\n');
             } else c.message = unquoteYaml(raw);
           }
         }
         i = j;
       }
-      cases.set(c.name, c);
+      if (type !== 'suite') cases.push(c);
       continue;
     }
-    m = /^(✔|✖|﹣) (.+?)(?: \(([\d.]+)ms\))?(?: # .*)?$/.exec(lines[i]);
-    if (m && !/^failing tests:?$/.test(m[2]) && !cases.has(m[2].trim())) {
-      cases.set(m[2].trim(), { name: m[2].trim(), file: null, status: m[1] === '✔' ? 'pass' : m[1] === '✖' ? 'fail' : 'skip', duration_ms: m[3] ? Math.round(Number(m[3])) : null, message: null });
-    }
   }
-  return [...cases.values()];
+  if (tap) return cases;
+  for (const line of lines) {
+    if (/^✖ failing tests:?$/.test(line)) break; // the recap repeats the failures already listed
+    const m = /^(✔|✖|﹣) (.+?)(?: \(([\d.]+)ms\))?(?: # .*)?$/.exec(line);
+    if (m) cases.push({ suite: null, name: m[2].trim(), file: null, status: m[1] === '✔' ? 'pass' : m[1] === '✖' ? 'fail' : 'skip', duration_ms: m[3] ? Math.round(Number(m[3])) : null, message: null });
+  }
+  return cases;
+}
+
+/**
+ * The runner's closing summary (`# tests 5`, `# pass 3`, ...): { tests, pass, fail, cancelled, skipped, todo }, or null.
+ * A command that ran the runner more than once printed several summaries: they are added up.
+ */
+export function parseTapSummary(text) {
+  const out = {};
+  for (const line of String(text).split('\n')) {
+    const m = /^(?:# |ℹ )(tests|pass|fail|cancelled|skipped|todo) (\d+)$/.exec(line);
+    if (m) out[m[1]] = (out[m[1]] || 0) + Number(m[2]);
+  }
+  if (out.tests === undefined) return null;
+  for (const k of ['pass', 'fail', 'cancelled', 'skipped', 'todo']) out[k] = out[k] ?? 0;
+  return out;
 }
 
 // ================================================================ JUnit (downloaded reports)
@@ -230,9 +283,14 @@ function finishMsg(c, el) {
 /** Insert one run and its cases (strings already cleaned). Returns the run id. */
 export function insertRun(db, run, cases) {
   const count = (s) => cases.filter((c) => c.status === s).length;
+  // the runner's own summary when there is one (run.summary, see parseTapSummary), else the cases
+  const sum = run.summary;
+  const totals = sum
+    ? [sum.tests, sum.pass, sum.fail + sum.cancelled, sum.skipped + sum.todo]
+    : [cases.length, count('pass'), count('fail'), count('skip')];
   const id = Number(db.run(
     'INSERT INTO test_runs (branch, commit_sha, source, started_at, finished_at, total, passed, failed, skipped, duration_ms, data, status, run_key) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    run.branch, run.commit ?? null, run.source ?? null, run.started_at, run.finished_at ?? null, cases.length, count('pass'), count('fail'), count('skip'),
+    run.branch, run.commit ?? null, run.source ?? null, run.started_at, run.finished_at ?? null, ...totals,
     run.duration_ms ?? null, run.data ? JSON.stringify(run.data) : null, run.status, run.run_key ?? null
   ).lastInsertRowid);
   for (const c of cases) {
@@ -284,6 +342,7 @@ export async function recordRun(io, run) {
       if (readConfig(cwd).store !== 'sqlite') throw new StoreSwitched();
       return insertRun(db, {
         branch: head.branch || '(no branch)', commit: head.commit, source: 'local', started_at: run.started_at, finished_at: run.finished_at,
+        summary: parseTapSummary(run.output || ''),
         duration_ms: Date.parse(run.finished_at) - Date.parse(run.started_at), status,
         data: { exit_code: run.code ?? null, signal: run.signal ?? null, command: run.command ? capBytes(scrub(String(run.command), secrets), 200) : undefined }
       }, cases);

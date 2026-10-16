@@ -32,7 +32,9 @@
  * DRIFT. Shared JSON files (lessons.json, noise-ledger.json) can change under the database (a git pull). Each stored
  * document keeps the sha256 of its file as last imported or exported (`store_docs.file_sha256`, 'absent' when there
  * was no file); a read or write of a scope whose file exists with another hash is exit 1 naming the file and the two
- * ways out (`db sync --from-files`, `db export --overwrite`).
+ * ways out: `db sync --from-files` MERGES the file into the database by row id (see mergeDocs: nothing is dropped, a
+ * row changed on both sides is a listed conflict), `db export --overwrite` replaces the file (the message says how many
+ * file-only rows that drops).
  */
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -445,11 +447,117 @@ export function driftOf(db, name, scope, file) {
   return { store: name, scope, file };
 }
 
-export const driftMessage = (scope) => `${scope} changed since the database last synced (a git pull?): run \`db sync --from-files\` to take the file, or \`db export --overwrite\` to keep the database`;
+/** A file's document for a drift report: the parsed object, or { error } when it is not a JSON object. */
+export function readFileDoc(file) {
+  let text;
+  try { text = fs.readFileSync(file, 'utf-8'); } catch (e) { return { error: e.code === 'ENOENT' ? 'does not exist' : (e.code || e.message) }; }
+  let v;
+  try { v = JSON.parse(text.replace(/^﻿/, '')); } catch { return { error: 'is not valid JSON' }; }
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return { error: 'is not a JSON object' };
+  return { doc: v };
+}
+
+// ---------------------------------------------------------------- merge (drift recovery)
+
+/** Timestamp fields a row may carry; the newest one dates the row. */
+const STAMP_FIELDS = Object.freeze(['updated_at', 'retired_at', 'decided_at', 'closed_at', 'created_at', 'added']);
+function stampOf(item) {
+  if (!item || typeof item !== 'object') return null;
+  let best = null;
+  for (const k of STAMP_FIELDS) {
+    const v = item[k];
+    if (typeof v !== 'string') continue;
+    const ms = Date.parse(v);
+    if (Number.isFinite(ms) && (best === null || ms > best)) best = ms;
+  }
+  return best;
+}
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/** The rows of one collection as [[key, item]]: a map by its keys, a list by `id` (+ occurrence), else by content. */
+function keyedRows(kind, v) {
+  if (kind === 'map') return v && typeof v === 'object' && !Array.isArray(v) ? Object.entries(v) : [];
+  if (!Array.isArray(v)) return [];
+  const seen = new Map();
+  return v.map((item) => {
+    const base = item && typeof item === 'object' && (typeof item.id === 'string' || typeof item.id === 'number') ? `id:${item.id}` : `json:${JSON.stringify(item)}`;
+    const n = seen.get(base) || 0;
+    seen.set(base, n + 1);
+    return [n ? `${base}#${n}` : base, item];
+  });
+}
+const rowId = (kind, key, item) => (kind === 'map' ? key : (item && typeof item === 'object' && item.id != null ? String(item.id) : key.replace(/^json:/, '').slice(0, 80)));
+
+/**
+ * Merge a scope's file document into its database document, row by row (by `id` in a list, by key in a map):
+ * a row only in the database is kept, a row only in the file is added, an identical row is unchanged, and a row that
+ * differs on both sides is a conflict: the side with the newer timestamp field wins (updated_at, retired_at, ...),
+ * else the database's. Top-level fields keep the database's value; one only the file has is added.
+ * Returns { doc, kept, added, unchanged, conflicts: [{ part, id, kept: 'database'|'file', reason }], file_only: [{ part, id }] }.
+ */
+export function mergeDocs(name, dbDoc, fileDoc) {
+  const spec = SPECS[name];
+  const out = { kept: 0, added: 0, unchanged: 0, conflicts: [], file_only: [] };
+  if (!dbDoc) {
+    for (const p of spec.parts) for (const [key, item] of keyedRows(p.kind, fileDoc[p.field])) { out.added++; out.file_only.push({ part: p.field, id: rowId(p.kind, key, item) }); }
+    return { doc: JSON.parse(JSON.stringify(fileDoc)), ...out };
+  }
+  const doc = JSON.parse(JSON.stringify(dbDoc));
+  for (const k of Object.keys(fileDoc)) if (!Object.hasOwn(doc, k)) doc[k] = JSON.parse(JSON.stringify(fileDoc[k]));
+  for (const p of spec.parts) {
+    const fileRows = keyedRows(p.kind, fileDoc[p.field]);
+    if (!fileRows.length && doc[p.field] === undefined) continue;
+    const dbRows = keyedRows(p.kind, doc[p.field]);
+    const fileByKey = new Map(fileRows);
+    const dbKeys = new Set(dbRows.map(([k]) => k));
+    const merged = [];
+    for (const [key, item] of dbRows) {
+      if (!fileByKey.has(key)) { out.kept++; merged.push([key, item]); continue; }
+      const other = fileByKey.get(key);
+      if (same(item, other)) { out.unchanged++; merged.push([key, item]); continue; }
+      const a = stampOf(item);
+      const b = stampOf(other);
+      const fileWins = a !== null && b !== null && b > a;
+      out.conflicts.push({ part: p.field, id: rowId(p.kind, key, item), kept: fileWins ? 'file' : 'database', reason: a !== null && b !== null ? (fileWins ? 'the file row is newer' : (b < a ? 'the database row is newer' : 'same timestamp: the database row')) : 'no timestamp on both sides: the database row' });
+      merged.push([key, fileWins ? other : item]);
+    }
+    for (const [key, item] of fileRows) {
+      if (dbKeys.has(key)) continue;
+      out.added++;
+      out.file_only.push({ part: p.field, id: rowId(p.kind, key, item) });
+      merged.push([key, item]);
+    }
+    doc[p.field] = p.kind === 'map' ? Object.fromEntries(merged) : merged.map(([, item]) => item);
+  }
+  return { doc, ...out };
+}
+
+/** The drift message for one scope: what `db sync --from-files` (merge) and `db export --overwrite` (replace) do to it. */
+export function driftMessage(scope, detail = {}) {
+  if (detail.error) {
+    return `${scope} changed since the database last synced (a git pull?) and ${detail.error}: repair the file (or move it away: the database keeps its copy), `
+      + 'then run `db sync --from-files` to merge it into the database by row id';
+  }
+  const n = detail.file_only ? detail.file_only.length : null;
+  const ids = detail.file_only && detail.file_only.length ? ` (${detail.file_only.slice(0, 10).map((x) => x.id).join(', ')}${detail.file_only.length > 10 ? ', ...' : ''})` : '';
+  const c = detail.conflicts ? detail.conflicts.length : 0;
+  return `${scope} changed since the database last synced (a git pull?): run \`db sync --from-files\` to MERGE the file into the database by row id `
+    + '(rows from both sides are kept; a row changed on both sides keeps the newer one, else the database\'s, and is listed). '
+    + `\`db export --overwrite\` instead REPLACES the file with the database and drops ${n === null ? 'every' : n} file-only row(s)${ids}`
+    + `${c ? ` and the file's side of ${c} conflicting row(s)` : ''}`;
+}
+
+/** The drift detail of a drifted scope: { error } or { file_only, conflicts } (what merge would add / what overwrite drops). */
+export function driftDetail(db, name, scope, file) {
+  const f = readFileDoc(file);
+  if (f.error) return { error: f.error };
+  const m = mergeDocs(name, getDoc(db, name, scope), f.doc);
+  return { file_only: m.file_only, conflicts: m.conflicts };
+}
 
 function assertNoDrift(db, name, scope, file) {
   const d = driftOf(db, name, scope, file);
-  if (d) throw invalid(driftMessage(scope));
+  if (d) throw invalid(driftMessage(scope, driftDetail(db, name, scope, file)));
 }
 
 /** Load for the sqlite store: the database's document, else the JSON file still on disk, else fallback / error. */
@@ -534,6 +642,18 @@ export function listDocs(db) {
 
 /** The file a scope key stands for. */
 export const fileOfScope = (cwd, scope) => (path.isAbsolute(scope) ? scope : path.join(cwd, ...scope.split('/')));
+
+/**
+ * `npx danizee-claude-suite db init` runs the package's kit, but the project's workflows run its installed copy,
+ * `.claude/helpers/kit`. An installed kit with no store.js predates the store: it would keep writing the JSON files
+ * behind a database (split state). Returns null when switching is safe, else the reason and the fix.
+ */
+export function installedKitProblem(cwd) {
+  const kitDir = path.join(cwd, '.claude', 'helpers', 'kit');
+  if (!fs.existsSync(kitDir) || fs.existsSync(path.join(kitDir, 'store.js'))) return null;
+  return `this project's installed kit (.claude/helpers/kit) has no store.js: it predates the SQLite store and would keep writing the JSON files behind the database. `
+    + 'Reinstall / update the kit first (`npx danizee-claude-suite update`), then run `db init` again; nothing was changed';
+}
 
 /** The one line `danizee-claude-suite check` prints: { store, engine, ok, fatal, line, fix }. */
 export async function storeCheck({ cwd = process.cwd(), env = process.env } = {}) {

@@ -10,7 +10,7 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { run as db } from '../src/lib/kit/db.js';
 import { resolveStore, withDb } from '../src/lib/kit/store.js';
-import { parseJunit, parseTap, MESSAGE_MAX, MAX_DEPTH, capBytes } from '../src/lib/kit/test-runs.js';
+import { parseJunit, parseTap, parseTapSummary, MESSAGE_MAX, MAX_DEPTH, capBytes } from '../src/lib/kit/test-runs.js';
 import { renderJunit } from '../src/lib/kit/render.js';
 import { runStep } from '../scripts/ci-step.js';
 
@@ -36,6 +36,8 @@ async function project({ sqlite = true } = {}) {
 }
 const rows = async (dir, sql, ...ps) => withDb(await resolveStore({ cwd: dir, env: { ...process.env, ...ENGINE } }), (d) => d.all(sql, ...ps), { write: false });
 const rm = (d) => fs.rmSync(d, { recursive: true, force: true });
+/** The environment without this runner's NODE_TEST_CONTEXT, so a nested `node --test` prints its own report. */
+const freshEnv = () => { const e = { ...process.env }; delete e.NODE_TEST_CONTEXT; return e; };
 
 describe('the JUnit parser is small and strict', () => {
   it('reads cases, suites, times, failures, skips and the five entities', () => {
@@ -77,13 +79,44 @@ describe('parseTap', () => {
     const tap = ['TAP version 13', '# Subtest: good', 'ok 1 - good', '  ---', '  duration_ms: 1.6', "  type: 'test'", '  ...',
       'not ok 2 - bad', '  ---', '  duration_ms: 2.4', "  location: '/w/proj/test/a.test.js:2:27'", "  error: 'it''s broken'", '  ...',
       'not ok 3 - multi', '  ---', '  error: |-', '    line one', '    line two', '  ...',
-      'ok 4 - skipped # SKIP nah', '    ok 1 - nested is not top level', '1..4'].join('\n');
+      'ok 4 - skipped # SKIP nah', '# Subtest: grp', '    # Subtest: inner', '    ok 1 - inner', '    1..1', 'ok 5 - grp', '  ---', "  type: 'suite'", '  ...', '1..5'].join('\n');
     assert.deepEqual(parseTap(tap, '/w/proj'), [
-      { name: 'good', file: null, status: 'pass', duration_ms: 2, message: null },
-      { name: 'bad', file: 'test/a.test.js', status: 'fail', duration_ms: 2, message: "it's broken" },
-      { name: 'multi', file: null, status: 'fail', duration_ms: null, message: 'line one\nline two' },
-      { name: 'skipped', file: null, status: 'skip', duration_ms: null, message: null }
+      { suite: null, name: 'good', file: null, status: 'pass', duration_ms: 2, message: null },
+      { suite: null, name: 'bad', file: 'test/a.test.js', status: 'fail', duration_ms: 2, message: "it's broken" },
+      { suite: null, name: 'multi', file: null, status: 'fail', duration_ms: null, message: 'line one\nline two' },
+      { suite: null, name: 'skipped', file: null, status: 'skip', duration_ms: null, message: null },
+      // a nested test is a case under its suite path; the describe() itself is not a case
+      { suite: 'grp', name: 'inner', file: null, status: 'pass', duration_ms: null, message: null }
     ]);
+  });
+
+  it('two files with a same-named test, one failing: two cases, the failure kept, counts equal the summary', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-tap-'));
+    try {
+      const head = "const { test, describe, it } = require('node:test');\n";
+      fs.writeFileSync(path.join(dir, 'a.test.js'), `${head}test('usage errors', () => { throw new Error('a broke'); });\ndescribe('grp', () => { it('x', () => {}); it('y', { skip: true }, () => {}); });\ntest('parent', async (t) => { await t.test('child', () => {}); });\ntest('later', { todo: true }, () => {});\n`);
+      fs.writeFileSync(path.join(dir, 'b.test.js'), `${head}test('usage errors', () => {});\ndescribe('grp', () => { it('x', () => {}); });\n`);
+      const r = spawnSync(process.execPath, ['--test', '--test-reporter=tap', 'a.test.js', 'b.test.js'], { cwd: dir, encoding: 'utf-8', env: freshEnv() });
+      assert.equal(r.status, 1, r.stderr);
+      const cases = parseTap(r.stdout, dir);
+      const usage = cases.filter((c) => c.name === 'usage errors');
+      assert.deepEqual(usage.map((c) => [c.status, c.file]), [['fail', 'a.test.js'], ['pass', null]]);
+      assert.equal(usage[0].message, 'a broke');
+      assert.deepEqual(cases.filter((c) => c.name === 'x').map((c) => c.suite), ['grp', 'grp']);
+      const sum = parseTapSummary(r.stdout);
+      const n = (st) => cases.filter((c) => c.status === st).length;
+      assert.equal(cases.length, sum.tests);
+      assert.equal(n('pass'), sum.pass);
+      assert.equal(n('fail'), sum.fail + sum.cancelled);
+      assert.equal(n('skip'), sum.skipped + sum.todo);
+    } finally { rm(dir); }
+  });
+
+  it('the spec reporter fallback does not count the failing-tests recap twice', () => {
+    const spec = ['✖ usage errors (1.2ms)', '✔ usage errors (0.4ms)', 'ℹ tests 2', 'ℹ pass 1', 'ℹ fail 1', '', '✖ failing tests:', '', '✖ usage errors (1.2ms)'].join('\n');
+    assert.deepEqual(parseTap(spec).map((c) => [c.name, c.status]), [['usage errors', 'fail'], ['usage errors', 'pass']]);
+    assert.deepEqual(parseTapSummary(spec), { tests: 2, pass: 1, fail: 1, cancelled: 0, skipped: 0, todo: 0 });
+    assert.equal(parseTapSummary('ok 1 - x'), null);
   });
   it('capBytes never splits a character', () => assert.equal(capBytes('aé', 2), 'a'));
 });
@@ -116,6 +149,22 @@ describe('local runs: scripts/ci-step.js runStep records into the sqlite store',
       assert.match(msg, /\[credential\]/);
       assert.ok(Buffer.byteLength(msg) <= MESSAGE_MAX && Buffer.byteLength(msg) > 4000);
       assert.ok(!JSON.stringify(run).includes(SECRET));
+    } finally { rm(dir); }
+  });
+
+  it('a real two-file run with a same-named failing test: the run counts equal the TAP summary', { skip: !NODE_SQLITE }, async () => {
+    const dir = await project();
+    try {
+      const head = "const { test } = require('node:test');\n";
+      fs.writeFileSync(path.join(dir, 'a.test.js'), `${head}test('usage errors', () => { throw new Error('a broke'); });\n`);
+      fs.writeFileSync(path.join(dir, 'b.test.js'), `${head}test('usage errors', () => {});\ntest('other', () => {});\n`);
+      const cmd = `cd ${JSON.stringify(dir)} && ${JSON.stringify(process.execPath)} --test --test-reporter=tap a.test.js b.test.js`;
+      const code = await runStep(() => ({}), { cwd: dir, env: { ...freshEnv(), ...ENGINE, CI_TEST_OUTPUT: path.join(dir, 'o.txt'), CI_TEST_COMMAND: cmd }, log: () => {} });
+      assert.equal(code, 1);
+      const [run] = await rows(dir, 'SELECT status, total, passed, failed, skipped FROM test_runs');
+      assert.deepEqual([run.status, run.total, run.passed, run.failed, run.skipped], ['failed', 3, 2, 1, 0]);
+      const cases = await rows(dir, "SELECT name, status, file FROM test_cases WHERE name = 'usage errors' ORDER BY id");
+      assert.deepEqual(cases.map((c) => [c.status, c.file]), [['fail', 'a.test.js'], ['pass', null]]);
     } finally { rm(dir); }
   });
 

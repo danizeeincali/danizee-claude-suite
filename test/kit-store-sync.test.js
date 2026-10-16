@@ -112,7 +112,7 @@ describe('drift: a shared JSON file changed under the database (a git pull)', ()
     await fs.writeFile(path.join(dir, '.claude/kit/lessons.json'), `${JSON.stringify(L9, null, 2)}\n`);
     return dir;
   }
-  const DRIFT = /\.claude\/kit\/lessons\.json changed since the database last synced \(a git pull\?\): run `db sync --from-files` to take the file, or `db export --overwrite` to keep the database/;
+  const DRIFT = /\.claude\/kit\/lessons\.json changed since the database last synced \(a git pull\?\): run `db sync --from-files` to MERGE the file into the database by row id .*`db export --overwrite` instead REPLACES the file with the database and drops 1 file-only row\(s\) \(L9\)/;
 
   it('every read, write, export and off stops (exit 1 naming the file); the file keeps the teammate lesson', { skip }, async () => {
     const dir = await teammateScenario();
@@ -135,7 +135,7 @@ describe('drift: a shared JSON file changed under the database (a git pull)', ()
     } finally { await rm(dir); }
   });
 
-  it('db sync --from-files takes the file; then the verbs and off work again', { skip }, async () => {
+  it('db sync --from-files merges the file by row id (L1, L2 and L9 all kept); then the verbs and off work again', { skip }, async () => {
     const dir = await teammateScenario();
     try {
       const bad = await call(db, ['sync', '--from-files', '--scope', 'nope.json'], dir, ENV);
@@ -143,30 +143,121 @@ describe('drift: a shared JSON file changed under the database (a git pull)', ()
       assert.equal((await call(db, ['sync'], dir, ENV)).code, 1, '--from-files is required');
       const s = await call(db, ['sync', '--from-files', '--scope', '.claude/kit/lessons.json'], dir, ENV);
       assert.equal(s.code, 0, s.err);
-      assert.deepEqual(s.out.synced, [{ store: 'lessons', scope: '.claude/kit/lessons.json' }]);
-      assert.deepEqual(await lessonTexts(dir), ['Merge the teammate lesson from their machine.']);
+      assert.deepEqual(s.out.synced, [{ store: 'lessons', scope: '.claude/kit/lessons.json', kept: 2, added: 1, unchanged: 0, conflicts: 0 }]);
+      assert.deepEqual(s.out.counts, { kept: 2, added: 1, unchanged: 0, conflicts: 0 });
+      assert.deepEqual(s.out.conflicts, []);
+      assert.deepEqual(await lessonTexts(dir), ['Save the first own lesson on sqlite.', 'Save the second own lesson after the export.', 'Merge the teammate lesson from their machine.']);
+      // exported: the file and the database match, the hash is current (no drift left)
+      assert.deepEqual((await readJson(dir, '.claude/kit/lessons.json')).lessons.map((l) => l.id), ['L1', 'L2', 'L9']);
+      assert.equal((await call(db, ['status'], dir, ENV)).out.drifted, undefined);
       assert.equal((await save(dir, 'Save another lesson after the sync.')).code, 0);
       const off = await call(db, ['off'], dir, ENV);
       assert.equal(off.code, 0, off.err);
-      assert.deepEqual((await readJson(dir, '.claude/kit/lessons.json')).lessons.map((l) => l.id), ['L9', 'L10']);
-      // sync with no --scope takes every file
+      assert.deepEqual((await readJson(dir, '.claude/kit/lessons.json')).lessons.map((l) => l.id), ['L1', 'L2', 'L9', 'L10']);
+      // sync with no --scope merges every file; a second sync changes nothing
       assert.equal((await call(db, ['init'], dir, ENV)).code, 0);
       await fs.writeFile(path.join(dir, '.claude/kit/lessons.json'), `${JSON.stringify(L9, null, 2)}\n`);
       const all = await call(db, ['sync', '--from-files'], dir, ENV);
       assert.equal(all.code, 0, all.err);
-      assert.deepEqual(await lessonTexts(dir), ['Merge the teammate lesson from their machine.']);
+      assert.equal(all.out.counts.kept, 3);
+      assert.equal(all.out.counts.unchanged, 1);
+      assert.equal((await lessonTexts(dir)).length, 4);
+      const again = await call(db, ['sync', '--from-files'], dir, ENV);
+      assert.equal(again.code, 0, again.err);
+      assert.deepEqual(again.out.counts, { kept: 0, added: 0, unchanged: 4, conflicts: 0 });
     } finally { await rm(dir); }
   });
 
-  it('db export --overwrite keeps the database (the teammate lesson is replaced on purpose)', { skip }, async () => {
+  it('a lesson changed on both sides is a listed conflict: the newer timestamp wins, else the database row', { skip }, async () => {
+    const dir = await teammateScenario();
+    try {
+      const pulled = await readJson(dir, '.claude/kit/lessons.json'); // the teammate file (L9)
+      const conn = await rawDb(dir);
+      let dbDoc;
+      try { dbDoc = getDoc(conn, 'lessons', '.claude/kit/lessons.json'); } finally { conn.close(); }
+      const [l1, l2] = dbDoc.lessons;
+      // the teammate retired L1 (a newer retired_at) and rewrote L2 (same created_at: the database keeps its L2)
+      const theirs = {
+        ...pulled,
+        lessons: [
+          { ...l1, status: 'retired', retire_reason: 'obsolete', retired_at: '2999-01-01T00:00:00.000Z' },
+          { ...l2, text: 'A teammate rewrote the second lesson.' },
+          ...pulled.lessons
+        ]
+      };
+      await fs.writeFile(path.join(dir, '.claude/kit/lessons.json'), `${JSON.stringify(theirs, null, 2)}\n`);
+      const drift = await call(db, ['export'], dir, ENV);
+      assert.equal(drift.code, 1);
+      assert.match(drift.err, /drops 1 file-only row\(s\) \(L9\) and the file's side of 2 conflicting row\(s\)/);
+      const s = await call(db, ['sync', '--from-files'], dir, ENV);
+      assert.equal(s.code, 0, s.err);
+      assert.deepEqual(s.out.counts, { kept: 0, added: 1, unchanged: 0, conflicts: 2 });
+      assert.deepEqual(s.out.conflicts, [
+        { store: 'lessons', scope: '.claude/kit/lessons.json', part: 'lessons', id: 'L1', kept: 'file', reason: 'the file row is newer' },
+        { store: 'lessons', scope: '.claude/kit/lessons.json', part: 'lessons', id: 'L2', kept: 'database', reason: 'same timestamp: the database row' }
+      ]);
+      const byId = Object.fromEntries((await readJson(dir, '.claude/kit/lessons.json')).lessons.map((l) => [l.id, l]));
+      assert.equal(byId.L1.status, 'retired');
+      assert.equal(byId.L2.text, 'Save the second own lesson after the export.');
+      assert.ok(byId.L9);
+      assert.deepEqual(await lessonTexts(dir), ['Save the second own lesson after the export.', 'Merge the teammate lesson from their machine.']);
+    } finally { await rm(dir); }
+  });
+
+  it('noise-ledger and triage drift merge the same way (by entry id, by record key)', { skip }, async () => {
+    const dir = await tmp();
+    try {
+      assert.equal((await call(db, ['init'], dir, ENV)).code, 0);
+      assert.equal((await call(noise, ['accept', '--id', 'A', '--reason', 'r'], dir, ENV)).code, 0);
+      assert.equal((await call(triage, ['visit', '--session', 's1'], dir, ENV, VISIT('a.js'))).code, 0);
+      assert.equal((await call(db, ['export'], dir, ENV)).code, 0);
+      assert.equal((await call(noise, ['accept', '--id', 'B', '--reason', 'r'], dir, ENV)).code, 0);
+      assert.equal((await call(triage, ['visit', '--session', 's2'], dir, ENV, VISIT('b.js'))).code, 0);
+      // a pull brings a teammate's ledger entry T and a triage record of theirs
+      const ledger = await readJson(dir, '.claude/kit/noise-ledger.json');
+      ledger.entries.push({ id: 'T', reason: 'teammate', added: '2026-10-15' });
+      await fs.writeFile(path.join(dir, '.claude/kit/noise-ledger.json'), `${JSON.stringify(ledger, null, 2)}\n`);
+      const tri = await readJson(dir, '.claude/kit/triage.json');
+      tri.records.teammatefp = { fingerprint: 'teammatefp', scope: 't.js', rule: 'r', status: 'new', issue: null, members: [], agent: false, absent_visits: 0, occurrences: 1, sessions: ['tm'], first_session: 'tm' };
+      await fs.writeFile(path.join(dir, '.claude/kit/triage.json'), `${JSON.stringify(tri, null, 2)}\n`);
+      assert.equal((await call(noise, ['accept', '--id', 'C', '--reason', 'r'], dir, ENV)).code, 1, 'ledger drift stops the write');
+      assert.equal((await call(triage, ['list'], dir, ENV)).code, 1, 'triage drift stops the read');
+      const s = await call(db, ['sync', '--from-files'], dir, ENV);
+      assert.equal(s.code, 0, s.err);
+      assert.equal(s.out.counts.conflicts, 0);
+      assert.deepEqual(await ledgerIds(dir, '.claude/kit/noise-ledger.json'), ['A', 'B', 'T']);
+      const recs = (await readJson(dir, '.claude/kit/triage.json')).records;
+      assert.ok(recs.teammatefp);
+      assert.equal(Object.values(recs).filter((r) => r.scope === 'a.js' || r.scope === 'b.js').length, 2, 'both own records kept');
+      assert.equal((await call(noise, ['accept', '--id', 'C', '--reason', 'r'], dir, ENV)).code, 0);
+    } finally { await rm(dir); }
+  });
+
+  it('db export --overwrite replaces the file and says how many file-only rows it dropped', { skip }, async () => {
     const dir = await teammateScenario();
     try {
       const ex = await call(db, ['export', '--overwrite'], dir, ENV);
       assert.equal(ex.code, 0, ex.err);
-      assert.deepEqual(ex.out.overwritten, [{ store: 'lessons', scope: '.claude/kit/lessons.json' }]);
+      assert.deepEqual(ex.out.overwritten, [{ store: 'lessons', scope: '.claude/kit/lessons.json', dropped_file_rows: 1, dropped: [{ part: 'lessons', id: 'L9' }], replaced_conflicts: 0 }]);
+      assert.match(ex.out.warning, /REPLACED 1 changed file\(s\) .*1 file-only row\(s\) were dropped from them \(L9\); `db sync --from-files` merges instead/);
       assert.equal((await readJson(dir, '.claude/kit/lessons.json')).lessons.length, 2);
       assert.equal((await lessonTexts(dir)).length, 2);
       assert.equal((await call(db, ['off'], dir, ENV)).code, 0, 'no drift left after the export');
+    } finally { await rm(dir); }
+  });
+
+  it('db off --overwrite warns the same way; a corrupt file is named as such', { skip }, async () => {
+    const dir = await teammateScenario();
+    try {
+      await fs.writeFile(path.join(dir, '.claude/kit/lessons.json'), '{ not json');
+      const r = await call(reflect, ['lessons', 'list'], dir, ENV);
+      assert.equal(r.code, 1);
+      assert.match(r.err, /lessons\.json changed since the database last synced \(a git pull\?\) and is not valid JSON: repair the file/);
+      await fs.writeFile(path.join(dir, '.claude/kit/lessons.json'), `${JSON.stringify(L9, null, 2)}\n`);
+      const off = await call(db, ['off', '--overwrite'], dir, ENV);
+      assert.equal(off.code, 0, off.err);
+      assert.equal(off.out.overwritten[0].dropped_file_rows, 1);
+      assert.match(off.out.warning, /dropped/);
     } finally { await rm(dir); }
   });
 
