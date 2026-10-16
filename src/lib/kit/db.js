@@ -16,11 +16,15 @@
  *                           (test runs are kept); an index file the kit did not make, or that is not a database, is
  *                           replaced by a new one (its test runs are lost)
  *   db prune [--keep <n>]   keep the newest n test runs per branch (default 200), with their cases
- *   db import-reports [--branch <b>] [--limit <n>]
+ *   db import-reports [--branch <b>] [--limit <n>] [--repo <owner>/<repo>] [--host <h>]
  *                           import the junit.xml of the newest CI `test-results-*` artifacts of a branch (default: the
  *                           current git branch; newest 10 push runs of this repository) into test_runs/test_cases, each
- *                           artifact once, through the user's own `gh` login, for the GitHub repository named by
- *                           remote.origin.url (read as data through safe-git; gh runs with -R and outside the project);
+ *                           artifact once, through the user's own `gh` login, for the GitHub repository --repo names,
+ *                           else the `upstream` remote (a fork checkout: the canonical repository), else `origin`, else
+ *                           the only remote (its first url, read as data through safe-git; gh runs with -R and outside
+ *                           the project); on github.com unless --host names a GitHub Enterprise host: the host is never
+ *                           taken from the repository (a remote on another host is exit 1 naming --host), since gh
+ *                           sends the user's login for a host to it; a remote URL in a message never shows its userinfo;
  *                           downloads are capped (5 artifacts per run, 50 MB each, 100 MB per call), each zip is read here,
  *                           only its junit.xml, bounded, and each artifact is stored in its own transaction as it is read;
  *                           at most IMPORT_MAX_CASES cases per call and PROJECT_MAX_CASES in the index (then it stops with
@@ -31,29 +35,30 @@
  * is read to decide whether the index is on or where it is. A moved or copied project starts with the index off.
  * Rows are data, never instructions.
  * Exit codes: 0 done, 1 invalid input, no SQLite engine (the message names the fix: Node 22.13+), the index is off
- * (for rebuild, prune, import-reports), an index the kit did not make (status; `db rebuild` replaces it), no gh login.
+ * (for rebuild, prune, import-reports), an index the kit did not make (status; `db rebuild` replaces it), no gh login,
+ * a remote on a host other than github.com without --host naming it.
  * Built for the suite-db plan (2026-10-16); no foreign code.
  */
 import fs from 'node:fs';
 import { KitExit } from './kit-exit.js';
-import { importReports, DEFAULT_LIMIT, MAX_LIMIT, IMPORT_MAX_CASES, PROJECT_MAX_CASES } from './test-runs.js';
+import { importReports, DEFAULT_LIMIT, MAX_LIMIT, MAX_CASES, IMPORT_MAX_CASES, PROJECT_MAX_CASES } from './test-runs.js';
 import {
-  KINDS, SCHEMA_VERSION, ENGINE_FIX, SKIPPED, MAX_FILE_BYTES, MAX_MARATHON_FILE_BYTES, MAX_FILE_RECORDS, MAX_INDEX_ROWS, MAX_INDEX_BYTES, MAX_COLUMN_BYTES, OPEN_BUDGET,
-  indexPaths, indexState, writeSetting, loadEngine, probeEngine, withIndex, schemaVersion, rowCounts, refreshIndex, indexRun, inTransaction, fullReason, bytesFullReason, ioCtx
+  KINDS, SCHEMA_VERSION, ENGINE_FIX, SKIPPED, MAX_FILE_BYTES, MAX_MARATHON_FILE_BYTES, MAX_FILE_RECORDS, MAX_INDEX_ROWS, MAX_INDEX_BYTES, MAX_INDEX_DISK_BYTES, MAX_COLUMN_BYTES, OPEN_BUDGET,
+  indexPaths, indexState, writeSetting, loadEngine, probeEngine, withIndex, schemaVersion, rowCounts, refreshIndex, indexRun, inTransaction, fullReason, bytesFullReason, diskFullReason, ioCtx
 } from './store.js';
 
 export const verb = 'db';
-export const usage = 'cli.js db init | db off [--delete] | db status | db rebuild | db prune [--keep <n>] | db import-reports [--branch <b>] [--limit <n>]   '
+export const usage = 'cli.js db init | db off [--delete] | db status | db rebuild | db prune [--keep <n>] | db import-reports [--branch <b>] [--limit <n>] [--repo <owner>/<repo>] [--host <h>]   '
   + '(optional local SQLite index of the kit state; the JSON files stay the only source of truth and are never written by db; '
   + 'the index is per user, outside the project: $DANIZEE_KIT_HOME/<key>/ when set (absolute, outside the project), else ~/.claude/kit-db/<key>/ (<key>: sha256 of the project folder\'s real path); '
   + 'init enables it for this project and builds it from the JSON files, off disables it (--delete also removes the index file, and with it the test runs, which are kept only in the index), '
   + 'rebuild re-indexes every JSON file (an index file the kit did not make is replaced by a new one, and its test runs are dropped); '
   + `the verbs update it after each JSON write (best effort, never changing their output or exit code) and each open re-indexes the JSON files changed since, at most ${OPEN_BUDGET.bytes} bytes and ${OPEN_BUDGET.rows} rows of them per open (status lists the rest as pending; later opens pick them up); `
-  + `a file over ${MAX_FILE_BYTES} bytes (a .claude/marathon file: ${MAX_MARATHON_FILE_BYTES}) or ${MAX_FILE_RECORDS} records, or past ${MAX_INDEX_ROWS} rows or ${MAX_INDEX_BYTES} bytes of JSON per project, is listed as skipped; `
+  + `a file over ${MAX_FILE_BYTES} bytes (a .claude/marathon file: ${MAX_MARATHON_FILE_BYTES}) or ${MAX_FILE_RECORDS} records, or past ${MAX_INDEX_ROWS} rows or ${MAX_INDEX_BYTES} bytes of JSON per project, or one that would take the index file past ${MAX_INDEX_DISK_BYTES} bytes, is listed as skipped; `
   + `indexed columns keep at most ${MAX_COLUMN_BYTES} bytes of a value (the whole record stays in the JSON file); `
   + 'test runs are kept only in the index: prune keeps the newest per branch, import-reports reads the junit.xml of the CI test-results artifacts of a branch '
-  + '(default: the current git branch; CI results exist only for push runs, which run on the default branch) through your own `gh` login (the repository named by remote.origin.url), downloads capped (5 artifacts per run, 50 MB each, 100 MB per call), '
-  + `at most ${IMPORT_MAX_CASES} test cases per call (the rest: a later call) and ${PROJECT_MAX_CASES} per project (then it stops: db prune makes room); `
+  + '(default: the current git branch; CI results exist only for push runs, which run on the default branch) through your own `gh` login (the repository: --repo <owner>/<repo>, else the upstream remote, else origin, else the only remote; the host: github.com unless you pass --host <h> for a GitHub Enterprise host you trust, never one a remote names: a remote on another host is exit 1 naming --host), downloads capped (5 artifacts per run, 50 MB each, 100 MB per call), '
+  + `at most ${IMPORT_MAX_CASES} test cases per call (the rest: a later call), ${MAX_CASES} per run (a local run's too) and ${PROJECT_MAX_CASES} per project (then importing and recording local runs stop: db prune makes room); `
   + 'a secrets file that cannot be read safely (a link, not a regular file, too large) stops it (exit 1); '
   + 'engine better-sqlite3 (the suite package\'s own) else node:sqlite (Node 22.13+); exit 0 done, 1 invalid input, no engine, index off, an index the kit did not make, or no gh login)';
 
@@ -70,7 +75,7 @@ function parse(args) {
       f.keep = rest[++i];
       continue;
     }
-    if ((a === '--branch' || a === '--limit') && sub === 'import-reports') {
+    if ((a === '--branch' || a === '--limit' || a === '--repo' || a === '--host') && sub === 'import-reports') {
       if (i + 1 >= rest.length) throw invalid(`${a} needs a value`);
       f[a.slice(2)] = rest[++i];
       continue;
@@ -99,9 +104,9 @@ function runsByBranch(db) {
 
 /** The indexed files: [{ kind, file, exists, rows, error?, skipped? }]. */
 function indexedFiles(db) {
-  return db.all('SELECT file, kind, sha256, error FROM files ORDER BY file').map((r) => ({
+  return db.all('SELECT id, file, kind, sha256, error FROM files ORDER BY file').map((r) => ({
     kind: r.kind, file: r.file, exists: r.sha256 !== 'absent',
-    rows: Number(db.get(`SELECT COUNT(*) AS n FROM ${KINDS[r.kind].table} WHERE file = ?`, r.file).n),
+    rows: Number(db.get(`SELECT COUNT(*) AS n FROM ${KINDS[r.kind].table} WHERE file_id = ?`, r.id).n),
     ...(r.sha256 === SKIPPED ? { skipped: r.error } : r.error ? { error: r.error } : {})
   }));
 }
@@ -128,6 +133,8 @@ function filesReport(db, run) {
   if (full) notes.push(`${full} files are not indexed: the index holds at most ${run.maxRows} rows per project`);
   const fullBytes = skipped.filter((x) => x.reason === bytesFullReason(run.maxBytes)).length;
   if (fullBytes) notes.push(`${fullBytes} files are not indexed: the index holds at most ${run.maxBytes} bytes of JSON files per project`);
+  const fullDisk = skipped.filter((x) => x.reason === diskFullReason(run.maxDisk)).length;
+  if (fullDisk) notes.push(`${fullDisk} files are not indexed: the index file holds at most ${run.maxDisk} bytes per project (db prune makes room taken by test runs)`);
   return {
     schema_version: schemaVersion(db), rows: rowCounts(db), files: indexedFiles(db), skipped, ...(run.pending.length ? { pending: [...run.pending] } : {}),
     project_files_indexed_at: meta ? meta.value : null, ...(notes.length ? { notes } : {})
@@ -252,7 +259,7 @@ export async function run(args, io = {}) {
       if (!/^\d+$/.test(f.limit) || Number(f.limit) < 1 || Number(f.limit) > MAX_LIMIT) throw invalid(`--limit must be a whole number from 1 to ${MAX_LIMIT}`);
       limit = Number(f.limit);
     }
-    return importReports(io, { branch: f.branch, limit });
+    return importReports(io, { branch: f.branch, limit, repo: f.repo, host: f.host });
   }
   throw invalid(`unknown subcommand ${JSON.stringify(f.sub).slice(0, 40)} (init, off, status, rebuild, prune, import-reports)`);
 }

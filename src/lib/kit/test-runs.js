@@ -4,7 +4,8 @@
  * A library, not a verb: cli.js discovery skips it (no `verb` export). Built for the suite-db plan (2026-10-16); no foreign code.
  *
  *   recordRun(io, run)        a local test run (scripts/ci-step.js runStep): stored when the index is on for the
- *                             project (`db init`), nothing at all when it is off
+ *                             project (`db init`), nothing at all when it is off; at most MAX_CASES cases of a run, and
+ *                             nothing (one stderr line naming `db prune`) once the index holds PROJECT_MAX_CASES
  *   parseTap(text, cwd)       every test of node's TAP output (spec lines too): suite path, name, file, status, duration,
  *                             message; a list in output order (same-named tests of two files stay two cases)
  *   parseTapSummary(text)     the runner's `# tests` / `# pass` / ... summary; a local run's counts are taken from it
@@ -23,8 +24,10 @@
  *                             JUNIT_MAX_BYTES, in memory. Nothing is ever written under an entry's name. Each artifact is
  *                             stored in its own transaction as soon as it is read; at most MAX_CASES cases per artifact,
  *                             IMPORT_MAX_CASES per call (the rest: a later call) and PROJECT_MAX_CASES in the index (the
- *                             import stops with a note naming `db prune`). The repository is the one remote.origin.url
- *                             names (read as data through safe-git), given to gh explicitly.
+ *                             import stops with a note naming `db prune`). The repository is --repo <owner>/<repo>, else the
+ *                             one the upstream remote names, else origin, else the only remote (read as data through
+ *                             safe-git), given to gh explicitly; the host is github.com unless the user passes --host
+ *                             (never the remote's: see githubRepo).
  *
  * Every stored string (case names, files, messages) is redacted with the project's secrets and credential-masked
  * (reflect.js scrub); a failure message is capped at MESSAGE_MAX bytes. The secrets file (`.claude/kit/secrets` of the
@@ -38,8 +41,9 @@
  * entries (safe-git.js resolveProgram: never a bare name, which Windows looks up in the child's folder first, and never
  * through an empty or relative PATH entry), gh's PATH keeps only absolute entries, and every spawn has a timeout. The
  * branch, commit and remote URL are read through safe-git (the repository's config is read as data; its hooks and
- * includes are never opened). gh runs in a private temp folder with the repository named (-R owner/repo, GH_REPO,
- * explicit repos/<owner>/<repo>/ API paths), so it never runs git in the project.
+ * includes are never opened). gh runs in a private temp folder with the repository named (-R host/owner/repo, GH_REPO,
+ * GH_HOST, explicit repos/<owner>/<repo>/ API paths), so it never runs git in the project. Repository content never
+ * chooses the host gh talks to (and sends the user's login to): github.com, or the user's own --host.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -140,10 +144,13 @@ const unescapeTap = (s) => s.replace(/\\(.)/g, '$1');
  * the enclosing subtests (`a > b`), `file` comes from the `location` node gives (it does on a failure). Cases are a list,
  * never keyed by name: two files' tests of the same name (node --test a.js b.js) stay two cases, so a failing one is never
  * replaced by a passing one. A TODO case counts as skip (the runner's `# todo`). The spec reporter's top-level lines are
- * read only when there is no TAP, and its closing "failing tests" recap is not counted twice.
+ * read only when there is no TAP, and its closing "failing tests" recap is not counted twice. At most `maxCases`
+ * (MAX_CASES) cases are kept: the rest of the output is not read, and the list's `truncated` is true.
  */
-export function parseTap(text, cwd) {
+export function parseTap(text, cwd, { maxCases = MAX_CASES } = {}) {
   const cases = [];
+  Object.defineProperty(cases, 'truncated', { value: false, writable: true, enumerable: false });
+  const full = () => { if (cases.length < maxCases) return false; cases.truncated = true; return true; };
   const lines = String(text).split('\n');
   const stack = []; // open `# Subtest:` markers: { indent, name }
   let tap = false;
@@ -191,7 +198,7 @@ export function parseTap(text, cwd) {
         }
         i = j;
       }
-      if (type !== 'suite') cases.push(c);
+      if (type !== 'suite') { if (full()) break; cases.push(c); }
       continue;
     }
   }
@@ -199,6 +206,7 @@ export function parseTap(text, cwd) {
   for (const line of lines) {
     if (/^✖ failing tests:?$/.test(line)) break; // the recap repeats the failures already listed
     const m = /^(✔|✖|﹣) (.+?)(?: \(([\d.]+)ms\))?(?: # .*)?$/.exec(line);
+    if (m && full()) break;
     if (m) cases.push({ suite: null, name: m[2].trim(), file: null, status: m[1] === '✔' ? 'pass' : m[1] === '✖' ? 'fail' : 'skip', duration_ms: m[3] ? Math.round(Number(m[3])) : null, message: null });
   }
   return cases;
@@ -432,32 +440,53 @@ export function projectSecrets(cwd, loc) {
   return all;
 }
 
+/** One stderr line about a local run that was not recorded (never thrown). */
+const notRecorded = (why) => { try { process.stderr.write(`kit: test run not recorded in the kit index: ${why}\n`); } catch { /* nowhere to say it */ } };
+
 /**
  * Record a local run when the index is on. run: { output, code, signal, started_at, finished_at, command }.
  * Resolves { recorded: false } when it is off, and { recorded: false, reason } with one stderr line when a secrets file
- * cannot be read safely (see projectSecrets: nothing is stored); throws (KitExit) when it is on but cannot be written.
+ * cannot be read safely (see projectSecrets: nothing is stored) or when the index already holds PROJECT_MAX_CASES test
+ * cases (or this run would take it past them: `db prune` makes room); throws (KitExit) when it is on but cannot be
+ * written. At most MAX_CASES cases of one run are stored (the run's counts still come from the runner's summary;
+ * data.cases_truncated says so). `io.importLimits` (tests only) lowers both caps, as for import-reports.
  */
 export async function recordRun(io, run) {
   const { cwd, env } = ioCtx(io);
   // a DANIZEE_KIT_HOME that cannot hold a setting: the index was never enabled (db status says why)
   const paths = quietPaths(cwd, env);
   if (!paths || !indexState(paths).enabled) return { recorded: false };
+  const caps = importLimits(io);
   const head = await gitHead(cwd, env);
   let secrets;
   try { secrets = projectSecrets(cwd, head.loc); } catch (e) {
     if (!(e instanceof KitExit)) throw e;
-    try { process.stderr.write(`kit: test run not recorded in the kit index: ${e.message}\n`); } catch { /* nowhere to say it */ }
+    notRecorded(e.message);
     return { recorded: false, reason: e.message };
   }
-  const cases = cleanCases(parseTap(run.output || '', cwd), secrets);
+  const parsed = parseTap(run.output || '', cwd, { maxCases: caps.artifactCases });
+  const cases = cleanCases(parsed, secrets);
   const status = run.code === 0 && !run.signal ? 'passed' : 'failed';
-  const id = await withIndex({ cwd, env }, (db) => insertRun(db, {
-    branch: runBranch(head), commit: head.commit, source: 'local', started_at: run.started_at, finished_at: run.finished_at,
-    summary: parseTapSummary(run.output || ''),
-    duration_ms: Date.parse(run.finished_at) - Date.parse(run.started_at), status,
-    data: { exit_code: run.code ?? null, signal: run.signal ?? null, command: run.command ? capBytes(scrub(String(run.command), secrets), 200) : undefined }
-  }, cases));
-  return { recorded: true, id, cases: cases.length, status };
+  let full = null;
+  const id = await withIndex({ cwd, env }, (db) => {
+    const stored = Number(db.get('SELECT COUNT(*) AS n FROM test_cases').n);
+    if (stored + cases.length > caps.projectCases) {
+      full = `the index holds ${stored} test cases and this run has ${cases.length}; at most ${caps.projectCases} are kept per project: `
+        + 'run `db prune --keep <n>` (fewer runs per branch) to make room';
+      return null;
+    }
+    return insertRun(db, {
+      branch: runBranch(head), commit: head.commit, source: 'local', started_at: run.started_at, finished_at: run.finished_at,
+      summary: parseTapSummary(run.output || ''),
+      duration_ms: Date.parse(run.finished_at) - Date.parse(run.started_at), status,
+      data: {
+        exit_code: run.code ?? null, signal: run.signal ?? null, command: run.command ? capBytes(scrub(String(run.command), secrets), 200) : undefined,
+        ...(parsed.truncated ? { cases_truncated: `only the first ${caps.artifactCases} test cases are stored` } : {})
+      }
+    }, cases);
+  });
+  if (full) { notRecorded(full); return { recorded: false, reason: full }; }
+  return { recorded: true, id, cases: cases.length, status, ...(parsed.truncated ? { truncated: true } : {}) };
 }
 
 // ================================================================ import-reports
@@ -480,30 +509,110 @@ export function parseRemoteUrl(url) {
   return { host: m[1].toLowerCase(), owner: parts[0], repo: parts[1] };
 }
 
+/** The host gh talks to unless the user names another with --host. */
+export const GITHUB_HOST = 'github.com';
+/** The remotes import-reports reads the repository from, in order of preference (as gh does: upstream first). */
+export const REMOTE_PREFERENCE = Object.freeze(['upstream', 'origin']);
+
 /**
- * The GitHub repository of the project, from its remote.origin.url (else its only remote), read as data through
- * safe-git (repoConfigEntries: no include, hook or program of the repository is opened): { host, owner, repo, arg, api }
- * where `arg` is what gh's -R takes and `api` the REST path prefix. A host without a dot (an ssh alias) counts as
- * github.com. KitExit 1 naming the problem.
+ * The host gh is pointed at for a host name: GitHub's own names for github.com (ssh.github.com, the SSH-over-443 host,
+ * and www.github.com) are github.com, and so is a host without a dot (an ssh alias of ~/.ssh/config, which names no
+ * host gh could talk to: github.com is the default anyway).
  */
-export async function githubRepo(loc, env = process.env) {
-  if (!loc || !loc.top) throw invalid('import-reports needs a git repository with a GitHub remote (remote.origin.url): not a git repository');
-  const entries = await repoConfigEntries(loc.top, { env, timeout: GIT_TIMEOUT_MS });
-  const urls = new Map();
-  for (const [k, v] of entries) { const m = /^remote\.(.+)\.url$/.exec(k); if (m && v) urls.set(m[1], v); }
-  const url = urls.get('origin') ?? (urls.size === 1 ? [...urls.values()][0] : null);
-  if (!url) throw invalid(`import-reports needs the GitHub repository: ${urls.size ? 'no remote named origin (and more than one remote)' : 'no git remote'} in ${loc.top}; add one (git remote add origin https://github.com/<owner>/<repo>.git)`);
-  const r = parseRemoteUrl(url);
-  if (!r) throw invalid(`import-reports cannot tell the GitHub repository from the remote URL ${JSON.stringify(capBytes(String(url), 200))}: it must name <owner>/<repo> ([A-Za-z0-9_.-])`);
-  const host = r.host.includes('.') ? r.host : 'github.com';
-  return { host, owner: r.owner, repo: r.repo, arg: host === 'github.com' ? `${r.owner}/${r.repo}` : `${host}/${r.owner}/${r.repo}`, api: `repos/${r.owner}/${r.repo}` };
+export function canonicalHost(h) {
+  const x = String(h).toLowerCase();
+  return !x.includes('.') || x === 'ssh.github.com' || x === 'www.github.com' ? GITHUB_HOST : x;
 }
 
 /**
+ * A remote URL fit for a message: the userinfo (`user[:password]@`, a token in it) dropped, everything up to the last
+ * `@` (more than needed rather than less), then redacted (scrub) and cut to 200 bytes.
+ */
+export function displayUrl(url, secrets = []) {
+  let u = String(url ?? '');
+  const scheme = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//.exec(u);
+  const head = scheme ? scheme[0] : '';
+  const rest = u.slice(head.length);
+  const at = rest.lastIndexOf('@');
+  if (at !== -1) u = head + rest.slice(at + 1);
+  return capBytes(scrub(u, secrets), 200);
+}
+
+/** The --host flag: a host name ([A-Za-z0-9.-], no port, no userinfo), canonical (see canonicalHost). KitExit 1 otherwise. */
+export function hostFlag(h) {
+  if (h === undefined) return undefined;
+  const x = String(h);
+  if (!HOST.test(x) || !x.includes('.') || x.includes('..')) throw invalid('--host must be a host name such as github.example.com (no scheme, port or path)');
+  return canonicalHost(x);
+}
+
+/** The --repo flag: <owner>/<repo>, each [A-Za-z0-9_.-]+, not . or .., not starting with -. KitExit 1 otherwise. */
+export function repoFlag(r) {
+  if (r === undefined) return undefined;
+  const parts = String(r).split('/');
+  if (parts.length !== 2 || !SLUG.test(String(r)) || parts.some((x) => x === '.' || x === '..' || x.startsWith('-'))) throw invalid('--repo must be <owner>/<repo> ([A-Za-z0-9_.-])');
+  return { owner: parts[0], repo: parts[1] };
+}
+
+const repoAt = (host, owner, repo, remote) => ({
+  host, owner, repo, remote,
+  // what the output shows (owner/repo on github.com), and what gh is given: always host-qualified
+  arg: host === GITHUB_HOST ? `${owner}/${repo}` : `${host}/${owner}/${repo}`,
+  gh: `${host}/${owner}/${repo}`,
+  api: `repos/${owner}/${repo}`
+});
+
+/**
+ * The GitHub repository import-reports reads: { host, owner, repo, remote, arg, gh, api } (`arg`: what the output shows,
+ * `gh`: what gh's -R and GH_REPO take, host-qualified; `api`: the REST path prefix; `remote`: the remote it came from,
+ * null for --repo).
+ *
+ * THE HOST NEVER COMES FROM THE REPOSITORY. gh sends the user's login for a host (a GitHub Enterprise token from the
+ * environment or gh's hosts file) to that host, so the host is github.com unless the user passes `--host <h>`. A remote
+ * on any other host, with no --host naming it, is exit 1 naming the remote's host and the flag (gh is never run).
+ *
+ * The owner and repo come from `--repo <owner>/<repo>` (the remotes are not read), else from the `upstream` remote when
+ * there is one (in a fork checkout it names the canonical repository, whose push runs hold the CI results), else
+ * `origin`, else the only remote: its first `url` value (the one git fetches from), read as data through safe-git
+ * (repoConfigEntries: no include, hook or program of the repository is opened). KitExit 1 naming the problem; a remote
+ * URL in a message never shows its userinfo (displayUrl).
+ */
+export async function githubRepo(loc, env = process.env, { host: flagHost, repo: flagRepo, secrets = [] } = {}) {
+  const host = flagHost ?? GITHUB_HOST;
+  if (flagRepo) return repoAt(host, flagRepo.owner, flagRepo.repo, null);
+  if (!loc || !loc.top) throw invalid('import-reports needs a git repository with a GitHub remote (or --repo <owner>/<repo>): not a git repository');
+  const entries = await repoConfigEntries(loc.top, { env, timeout: GIT_TIMEOUT_MS });
+  const urls = new Map();
+  // the first value of a multi-valued url: the one `git fetch` and `git remote -v` use
+  for (const [k, v] of entries) { const m = /^remote\.(.+)\.url$/.exec(k); if (m && v && !urls.has(m[1])) urls.set(m[1], v); }
+  const name = REMOTE_PREFERENCE.find((n) => urls.has(n)) ?? (urls.size === 1 ? [...urls.keys()][0] : null);
+  if (!name) {
+    throw invalid(`import-reports needs the GitHub repository: ${urls.size ? 'no remote named upstream or origin (and more than one remote)' : 'no git remote'} in ${loc.top}; `
+      + 'add one (git remote add origin https://github.com/<owner>/<repo>.git) or pass --repo <owner>/<repo>');
+  }
+  const url = urls.get(name);
+  const r = parseRemoteUrl(url);
+  if (!r) throw invalid(`import-reports cannot tell the GitHub repository from the remote URL ${JSON.stringify(displayUrl(url, secrets))} (the ${name} remote): it must name <owner>/<repo> ([A-Za-z0-9_.-]); or pass --repo <owner>/<repo>`);
+  const remoteHost = canonicalHost(r.host);
+  if (remoteHost !== host) {
+    throw invalid(flagHost
+      ? `the ${name} remote is on ${remoteHost}, not on --host ${host}: pass --repo <owner>/<repo> to name the repository on ${host}`
+      : `the ${name} remote is on ${remoteHost}, not ${GITHUB_HOST}: import-reports talks to ${GITHUB_HOST} unless you name the host yourself; `
+        + `pass --host ${remoteHost} only if it is a GitHub Enterprise host you trust (gh sends your login for that host to it), `
+        + `or --repo <owner>/<repo> for a repository on ${GITHUB_HOST}`);
+  }
+  return repoAt(host, r.owner, r.repo, name);
+}
+
+/** The environment variables gh reads a GitHub Enterprise token from: never passed to gh when the host is github.com. */
+const ENTERPRISE_TOKENS = ['GH_ENTERPRISE_TOKEN', 'GITHUB_ENTERPRISE_TOKEN'];
+
+/**
  * gh by its absolute path from the absolute PATH entries (never a bare name, never the project folder), with a PATH of
- * absolute entries only, the repository given (GH_REPO, and GH_HOST for a host other than github.com) and no system
- * git config: { file, env }. Exit 1 naming the fix when there is none. gh always runs in a private temp folder, never
- * the project, with the repository named explicitly, so it never runs git in the project.
+ * absolute entries only, the repository given (GH_REPO host-qualified, and GH_HOST always set to the chosen host, so an
+ * inherited GH_HOST never redirects it; for github.com no enterprise token variable) and no system git config:
+ * { file, env }. Exit 1 naming the fix when there is none. gh always runs in a private temp folder, never the project,
+ * with the repository named explicitly, so it never runs git in the project.
  */
 function ghProgram(env, repo) {
   const file = resolveProgram('gh', env);
@@ -513,8 +622,11 @@ function ghProgram(env, repo) {
     if (process.platform === 'win32' ? k.toUpperCase() === 'PATH' : k === 'PATH') childEnv[k] = absolutePathEntries(childEnv[k]).join(path.delimiter);
   }
   if (repo) {
-    childEnv.GH_REPO = repo.arg;
-    if (repo.host !== 'github.com') childEnv.GH_HOST = repo.host;
+    childEnv.GH_REPO = repo.gh;
+    childEnv.GH_HOST = repo.host;
+    if (repo.host === GITHUB_HOST) {
+      for (const k of Object.keys(childEnv)) if (ENTERPRISE_TOKENS.includes(process.platform === 'win32' ? k.toUpperCase() : k)) delete childEnv[k];
+    }
   }
   return { file, env: childEnv };
 }
@@ -709,7 +821,7 @@ const BRANCH_NAME = /^[^\s\0~^:?*[\\]{1,250}$/;
 /** The repository's default branch from `gh repo view <repo>` (one small call), else 'main'. */
 function defaultBranch({ cwd, env, repo }) {
   try {
-    const r = gh(['repo', 'view', repo.arg, '--json', 'defaultBranchRef'], { cwd, env, repo, maxBuffer: 64 * 1024 });
+    const r = gh(['repo', 'view', repo.gh, '--json', 'defaultBranchRef'], { cwd, env, repo, maxBuffer: 64 * 1024 });
     const name = r.status === 0 ? JSON.parse(r.stdout)?.defaultBranchRef?.name : null;
     return typeof name === 'string' && !name.startsWith('-') && BRANCH_NAME.test(name) ? name : 'main';
   } catch { return 'main'; }
@@ -721,11 +833,13 @@ function defaultBranch({ cwd, env, repo }) {
  * `cases` (IMPORT_MAX_CASES) test cases per call: an artifact past it is skipped (not downloaded once the budget is used
  * up) and a later call imports it. When the index would hold more than PROJECT_MAX_CASES test cases the import stops
  * with a note naming `db prune`.
- * Exit 1: the index is off (names `db init`), no GitHub remote, a secrets file that cannot be read safely, gh missing or
- * not logged in (names `gh auth login`), a bad flag.
+ * opts: { branch, limit, host (--host), repo (--repo <owner>/<repo>) }; see githubRepo for which repository and host.
+ * Exit 1: the index is off (names `db init`), no GitHub remote, a remote on a host other than github.com (or --host),
+ * a secrets file that cannot be read safely, gh missing or not logged in (names `gh auth login`), a bad flag.
  */
-export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) {
+export async function importReports(io, { branch, limit = DEFAULT_LIMIT, host: hostArg, repo: repoArg } = {}) {
   const { cwd, env } = ioCtx(io);
+  const flags = { host: hostFlag(hostArg), repo: repoFlag(repoArg) };
   const st = indexState(indexPaths(cwd, env));
   if (!st.enabled) throw invalid(st.problem || 'import-reports stores test runs in the kit index, which is off for this project: run `db init` first');
   let loc;
@@ -741,7 +855,7 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) 
   // fails closed before anything is fetched: without its secrets nothing may be stored
   const secrets = projectSecrets(cwd, loc);
   ghProgram(env); // gh missing: say so first
-  const repo = await githubRepo(loc, env);
+  const repo = await githubRepo(loc, env, { ...flags, secrets });
 
   // gh runs in a private temp folder with the repository named (-R, GH_REPO, explicit API paths): never git in the project
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-import-reports-'));
@@ -749,10 +863,12 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) 
     const ghIo = { cwd: dir, env, repo };
     const auth = gh(['auth', 'status'], ghIo);
     // gh's own message is not echoed (it can name hosts and accounts); the exit status is enough to say what to do
-    if (auth.status !== 0) throw invalid(`gh is not logged in (gh auth status exited ${auth.status}): run \`gh auth login\``);
+    if (auth.status !== 0) {
+      throw invalid(`gh is not logged in (gh auth status exited ${auth.status}): run \`gh auth login${repo.host === GITHUB_HOST ? '' : ` --hostname ${repo.host}`}\``);
+    }
 
     // push runs only (this repository's own branch): see parseRunList
-    const list = gh(['run', 'list', '-R', repo.arg, '--branch', branch, '--event', 'push', '--workflow', 'test.yml', '--limit', String(limit), '--json', 'databaseId,headSha,createdAt,conclusion,event,headBranch'], ghIo);
+    const list = gh(['run', 'list', '-R', repo.gh, '--branch', branch, '--event', 'push', '--workflow', 'test.yml', '--limit', String(limit), '--json', 'databaseId,headSha,createdAt,conclusion,event,headBranch'], ghIo);
     if (list.status !== 0) throw invalid(`gh run list failed: ${firstLine(list.stderr, secrets) || `exit ${list.status}`}`);
     const listed = parseRunList(list.stdout, branch);
     const runs = listed.slice(0, limit);
@@ -834,6 +950,6 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) 
         ? `no push runs of test.yml on ${branch}: CI test results come from push runs, which run on ${def}; try --branch ${def}`
         : `no push runs of test.yml on ${branch} yet`;
     }
-    return { branch, repo: repo.arg, runs_listed: runs.length, imported, skipped, ...(hint ? { hint } : {}), ...(note ? { note } : {}) };
+    return { branch, repo: repo.arg, repo_from: repo.remote ? `the ${repo.remote} remote` : '--repo', runs_listed: runs.length, imported, skipped, ...(hint ? { hint } : {}), ...(note ? { note } : {}) };
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }

@@ -30,8 +30,10 @@
  * MAX_FILE_RECORDS records is not indexed, and one open reads and indexes at most OPEN_BUDGET (bytes and rows) of new
  * or changed files; what does not fit stays as it was (listed by `db status` as pending, and kept in the pending table)
  * and later opens take the pending files first, oldest first, so none waits forever. The index holds at most
- * MAX_INDEX_ROWS JSON rows and MAX_INDEX_BYTES of JSON files per project; a file past either is skipped with that
- * reason. Indexed columns hold at most MAX_COLUMN_BYTES of a value. A file skipped after it was read keeps its stat and
+ * MAX_INDEX_ROWS JSON rows and MAX_INDEX_BYTES of JSON files per project, and the index file itself at most
+ * MAX_INDEX_DISK_BYTES (its pages in use, test runs included); a file past any of them is skipped with that reason.
+ * Rows name their file by a small integer id (files.id), never by its path, and indexed columns hold at most
+ * MAX_COLUMN_BYTES of a value. A file skipped after it was read keeps its stat and
  * is not read again until it changes. A file whose recorded stat cannot be trusted (its mtime too close to the read, or
  * in the future) is hashed once per open and, unchanged, costs the budget nothing. `.claude/marathon` is listed without
  * following links, read once and bounded (MARATHON_SCAN), at most MAX_MARATHON_FILES files: one beyond a bound is never
@@ -85,6 +87,15 @@ export const OPEN_BUDGET = Object.freeze({ bytes: 16 * 1024 * 1024, rows: 50000 
 export const MAX_INDEX_ROWS = 500000;
 /** The JSON one project's index holds at most, counted as the sizes of the files it indexes. */
 export const MAX_INDEX_BYTES = 256 * 1024 * 1024;
+/**
+ * The index file itself (its pages in use: PRAGMA page_count less freelist_count, times page_size, test runs included)
+ * holds at most this much per project: a file whose rows would take it past (estimated as INDEX_COST per JSON byte and
+ * per row, an upper bound of what its rows, columns and index entries take) is skipped with that reason. Pages freed by
+ * deleted rows are reused before the file grows, so the file on disk stays near this size.
+ */
+export const MAX_INDEX_DISK_BYTES = 512 * 1024 * 1024;
+/** The estimate of what indexing a file adds to the index file: bytes per JSON byte, plus bytes per row. */
+export const INDEX_COST = Object.freeze({ perByte: 5, perRow: 160 });
 /**
  * An indexed column (id, role, status, key, scope, rule, ...) holds at most this many bytes of its value: the index is
  * for queries and counts, never a second copy of a large value in a B-tree (the record itself stays whole in `data`
@@ -169,6 +180,37 @@ ALTER TABLE files ADD COLUMN stat TEXT;
     sql: `
 ALTER TABLE files ADD COLUMN bytes INTEGER;
 CREATE TABLE pending (file TEXT PRIMARY KEY, kind TEXT NOT NULL, since TEXT NOT NULL);
+`
+  },
+  {
+    // rows name their file by a small integer id (files.id), never by its path: a path repeated in every row (and in
+    // each table's primary key index) made the index hundreds of times larger than the JSON files. Existing rows are
+    // rewritten with their file's id (through temp tables, so the main schema holds only the final objects).
+    version: 4,
+    sql: `
+CREATE TEMP TABLE m4_files AS SELECT rowid AS id, file, kind, sha256, error, indexed_at, stat, bytes FROM files;
+CREATE TEMP TABLE m4_lessons AS SELECT f.rowid AS file_id, l.seq, l.id, l.role, l.status, l.session, l.created_at, l.data FROM lessons l JOIN files f ON f.file = l.file;
+CREATE TEMP TABLE m4_noise_ledger AS SELECT f.rowid AS file_id, n.seq, n.id, n.expires, n.data FROM noise_ledger n JOIN files f ON f.file = n.file;
+CREATE TEMP TABLE m4_triage AS SELECT f.rowid AS file_id, t.key, t.seq, t.scope, t.rule, t.status, t.data FROM triage t JOIN files f ON f.file = t.file;
+DROP TABLE lessons;
+DROP TABLE noise_ledger;
+DROP TABLE triage;
+DROP TABLE files;
+CREATE TABLE files (id INTEGER PRIMARY KEY, file TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, sha256 TEXT NOT NULL, error TEXT, indexed_at TEXT NOT NULL, stat TEXT, bytes INTEGER);
+CREATE TABLE lessons (file_id INTEGER NOT NULL, seq INTEGER NOT NULL, id TEXT, role TEXT, status TEXT, session TEXT, created_at TEXT, data TEXT NOT NULL, PRIMARY KEY (file_id, seq));
+CREATE INDEX lessons_role ON lessons (role, status);
+CREATE TABLE noise_ledger (file_id INTEGER NOT NULL, seq INTEGER NOT NULL, id TEXT, expires TEXT, data TEXT NOT NULL, PRIMARY KEY (file_id, seq));
+CREATE INDEX noise_ledger_id ON noise_ledger (id);
+CREATE TABLE triage (file_id INTEGER NOT NULL, key TEXT NOT NULL, seq INTEGER NOT NULL, scope TEXT, rule TEXT, status TEXT, data TEXT NOT NULL, PRIMARY KEY (file_id, key));
+CREATE INDEX triage_status ON triage (status);
+INSERT INTO files (id, file, kind, sha256, error, indexed_at, stat, bytes) SELECT id, file, kind, sha256, error, indexed_at, stat, bytes FROM temp.m4_files;
+INSERT INTO lessons (file_id, seq, id, role, status, session, created_at, data) SELECT file_id, seq, id, role, status, session, created_at, data FROM temp.m4_lessons;
+INSERT INTO noise_ledger (file_id, seq, id, expires, data) SELECT file_id, seq, id, expires, data FROM temp.m4_noise_ledger;
+INSERT INTO triage (file_id, key, seq, scope, rule, status, data) SELECT file_id, key, seq, scope, rule, status, data FROM temp.m4_triage;
+DROP TABLE temp.m4_files;
+DROP TABLE temp.m4_lessons;
+DROP TABLE temp.m4_noise_ledger;
+DROP TABLE temp.m4_triage;
 `
   }
 ]);
@@ -581,9 +623,20 @@ function columnValue(v) {
   return t + tail;
 }
 
+/** The id rows name a file by (files.id), or null when the file has no files row. */
+const fileId = (db, key) => { const r = db.get('SELECT id FROM files WHERE file = ?', key); return r ? Number(r.id) : null; };
 /** Delete one file's rows; returns how many there were. */
-const dropRows = (db, key) => { let n = 0; for (const k of Object.values(KINDS)) n += Number(db.run(`DELETE FROM ${k.table} WHERE file = ?`, key).changes || 0); return n; };
-const countRows = (db, key) => Object.values(KINDS).reduce((n, k) => n + Number(db.get(`SELECT COUNT(*) AS n FROM ${k.table} WHERE file = ?`, key).n), 0);
+const dropRows = (db, key) => {
+  const id = fileId(db, key);
+  if (id === null) return 0;
+  let n = 0;
+  for (const k of Object.values(KINDS)) n += Number(db.run(`DELETE FROM ${k.table} WHERE file_id = ?`, id).changes || 0);
+  return n;
+};
+const countRows = (db, key) => {
+  const id = fileId(db, key);
+  return id === null ? 0 : Object.values(KINDS).reduce((n, k) => n + Number(db.get(`SELECT COUNT(*) AS n FROM ${k.table} WHERE file_id = ?`, id).n), 0);
+};
 const totalRows = (db) => Number(db.get(`SELECT ${Object.values(KINDS).map((k) => `(SELECT COUNT(*) FROM ${k.table})`).join(' + ')} AS n`).n);
 /** The bytes of every indexed file but `key`. */
 const otherBytes = (db, key) => Number(db.get('SELECT COALESCE(SUM(bytes), 0) AS n FROM files WHERE file <> ? AND bytes IS NOT NULL', key).n);
@@ -595,6 +648,14 @@ const recordFile = (db, key, kind, sha, error, stat, bytes = null) => db.run(
 export const fullReason = (max) => `not indexed: the index holds at most ${max} rows per project (db rebuild retries)`;
 /** The reason a file is not indexed when the project's index holds its byte cap of JSON. */
 export const bytesFullReason = (max) => `not indexed: the index holds at most ${max} bytes of JSON files per project (db rebuild retries)`;
+/** The reason a file is not indexed when its rows would take the index file past MAX_INDEX_DISK_BYTES. */
+export const diskFullReason = (max) => `not indexed: the index file holds at most ${max} bytes per project (db prune makes room taken by test runs; db rebuild retries)`;
+
+/** The bytes of the index file's pages in use (free pages, which later writes reuse first, not counted). */
+export function indexUsedBytes(db) {
+  const n = (p) => Number(Object.values(db.get(`PRAGMA ${p}`) || {})[0] || 0);
+  return (n('page_count') - n('freelist_count')) * n('page_size');
+}
 
 /**
  * One open's indexing state: what it read and indexed so far against its budget (null: no budget), the files it left
@@ -608,6 +669,7 @@ export function indexRun({ budget = OPEN_BUDGET, limits = null } = {}) {
     budget: budget ? { bytes: low(l.bytes, budget.bytes), rows: low(l.rows, budget.rows) } : null,
     maxRows: low(l.maxRows, MAX_INDEX_ROWS),
     maxBytes: low(l.maxBytes, MAX_INDEX_BYTES),
+    maxDisk: low(l.maxDiskBytes, MAX_INDEX_DISK_BYTES),
     marathon: { files: low(l.marathonFiles, MAX_MARATHON_FILES), entries: low(l.marathonEntries, MARATHON_SCAN.entries), runEntries: low(l.marathonRunEntries, MARATHON_SCAN.runEntries) },
     bytes: 0, rows: 0, full: false, total: null, pending: [], found: null
   };
@@ -648,12 +710,18 @@ export function indexFile(db, kind, key, state = readState(key), run = null) {
     const others = (run ? run.total : totalRows(db)) - countRows(db, key);
     if (others + rows.length > maxRows) return skipRead(fullReason(maxRows));
     dropRows(db, key);
+    if (run) run.total = others;
+    // what the index file itself may hold: its pages in use (the file's old rows dropped) and an upper bound of the new rows
+    const maxDisk = run ? run.maxDisk : MAX_INDEX_DISK_BYTES;
+    if (rows.length && indexUsedBytes(db) + INDEX_COST.perByte * state.buf.length + INDEX_COST.perRow * rows.length > maxDisk) return skipRead(diskFullReason(maxDisk));
+    // the files row first: rows name their file by its id
+    recordFile(db, key, kind, sha, error, state.stat ? `${state.stat}:${sha}:${sha}` : null, size);
     if (rows.length) {
-      const ins = db.prepare(`INSERT OR REPLACE INTO ${spec.table} (file, ${spec.cols.join(', ')}, data) VALUES (?, ${spec.cols.map(() => '?').join(', ')}, ?)`);
-      for (const r of rows) ins.run(key, ...spec.cols.map((n) => columnValue(r[n])), JSON.stringify(r.data ?? null));
+      const id = fileId(db, key);
+      const ins = db.prepare(`INSERT OR REPLACE INTO ${spec.table} (file_id, ${spec.cols.join(', ')}, data) VALUES (?, ${spec.cols.map(() => '?').join(', ')}, ?)`);
+      for (const r of rows) ins.run(id, ...spec.cols.map((n) => columnValue(r[n])), JSON.stringify(r.data ?? null));
     }
     if (run) { run.rows += rows.length; run.total = others + rows.length; }
-    recordFile(db, key, kind, sha, error, state.stat ? `${state.stat}:${sha}:${sha}` : null, size);
     return true;
   } catch (e) {
     if (/SQLITE_BUSY|database is locked|SQLITE_FULL|SQLITE_IOERR|disk I\/O/i.test(firstLine(e))) throw e;
@@ -816,6 +884,30 @@ export function inTransaction(db, fn) {
   }
 }
 
+/**
+ * Fill files.bytes where it is NULL (an index made before migration 3, whose unchanged files are never re-indexed):
+ * the size of the read the row was recorded from (its stat) when it gives rows, else 0; no file is read, at most an
+ * lstat when no stat was recorded. Files about to be re-indexed (rebuild) are left alone: indexing sets their bytes.
+ */
+export function fillBytes(db) {
+  const rows = db.all("SELECT id, file, kind, stat FROM files WHERE bytes IS NULL AND sha256 NOT IN ('absent', 'rebuild', ?)", SKIPPED);
+  if (!rows.length) return 0;
+  inTransaction(db, () => {
+    for (const r of rows) {
+      const spec = KINDS[r.kind];
+      const has = spec && Number(db.get(`SELECT COUNT(*) AS n FROM ${spec.table} WHERE file_id = ?`, r.id).n) > 0;
+      let size = 0;
+      if (has) {
+        const recorded = r.stat ? Number(String(r.stat).split(':')[0]) : NaN;
+        if (Number.isSafeInteger(recorded) && recorded >= 0) size = recorded;
+        else { try { const st = fs.lstatSync(r.file); size = st.isFile() ? st.size : 0; } catch { size = 0; } }
+      }
+      db.run('UPDATE files SET bytes = ? WHERE id = ?', size, r.id);
+    }
+  });
+  return rows.length;
+}
+
 /** Drop one file from the index: its rows, its files row, its pending row. */
 const forget = (db, key, run) => { lower(run, dropRows(db, key)); db.run('DELETE FROM files WHERE file = ?', key); db.run('DELETE FROM pending WHERE file = ?', key); };
 
@@ -830,6 +922,7 @@ const forget = (db, key, run) => { lower(run, dropRows(db, key)); db.run('DELETE
 export function refreshIndex(db, root, run, { first = [] } = {}) {
   const found = projectFiles(root, run.marathon);
   run.found = found;
+  fillBytes(db);
   const done = new Set();
   const visit = (kind, key) => {
     if (done.has(key)) return;

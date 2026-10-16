@@ -12,7 +12,7 @@ import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { run as db } from '../src/lib/kit/db.js';
 import { withIndex, indexPaths } from '../src/lib/kit/store.js';
-import { parseJunit, parseTap, parseTapSummary, MESSAGE_MAX, MAX_DEPTH, capBytes, ARTIFACT_MAX_BYTES, ARTIFACTS_PER_RUN, IMPORT_MAX_BYTES, JUNIT_MAX_BYTES, ZIP_MAX_RATIO, parseArtifactList, readJunitFromZip, recordRun, SECRETS_MAX_BYTES, MAX_CASES, IMPORT_MAX_CASES, PROJECT_MAX_CASES, parseRemoteUrl } from '../src/lib/kit/test-runs.js';
+import { parseJunit, parseTap, parseTapSummary, MESSAGE_MAX, MAX_DEPTH, capBytes, ARTIFACT_MAX_BYTES, ARTIFACTS_PER_RUN, IMPORT_MAX_BYTES, JUNIT_MAX_BYTES, ZIP_MAX_RATIO, parseArtifactList, readJunitFromZip, recordRun, SECRETS_MAX_BYTES, MAX_CASES, IMPORT_MAX_CASES, PROJECT_MAX_CASES, parseRemoteUrl, displayUrl, canonicalHost } from '../src/lib/kit/test-runs.js';
 import { renderJunit } from '../src/lib/kit/render.js';
 import { runStep } from '../scripts/ci-step.js';
 
@@ -215,14 +215,15 @@ describe('local runs: scripts/ci-step.js runStep records into the kit index', ()
 
 // Artifacts are zip files (root/artifacts/<run>/<name>.zip) with ids (root/ids.json), of the repository o/r (the projects'
 // remote). The listing (gh api repos/o/r/actions/runs/<id>/artifacts) is logged in api-calls.jsonl; everything else (zip
-// downloads included) in calls.jsonl; every call's folder and GH_REPO in cwds.jsonl.
+// downloads included) in calls.jsonl; every call's folder, GH_REPO, GH_HOST and whether an enterprise token variable was
+// passed in cwds.jsonl.
 const FAKE_GH = `#!/usr/bin/env node
 const fs = require('fs'); const path = require('path');
 const root = process.env.FAKE_GH_ROOT; const a = process.argv.slice(2);
 const listing = a[0] === 'api' && /^repos\\/o\\/r\\/actions\\/runs\\/(\\d+)\\/artifacts\\?per_page=100$/.exec(a[1] || '');
 const zip = a[0] === 'api' && /^repos\\/o\\/r\\/actions\\/artifacts\\/(\\d+)\\/zip$/.exec(a[1] || '');
 fs.appendFileSync(path.join(root, listing ? 'api-calls.jsonl' : 'calls.jsonl'), JSON.stringify(a) + '\\n');
-fs.appendFileSync(path.join(root, 'cwds.jsonl'), JSON.stringify([process.cwd(), process.env.GH_REPO || null]) + '\\n');
+fs.appendFileSync(path.join(root, 'cwds.jsonl'), JSON.stringify([process.cwd(), process.env.GH_REPO || null, process.env.GH_HOST || null, Boolean(process.env.GH_ENTERPRISE_TOKEN || process.env.GITHUB_ENTERPRISE_TOKEN)]) + '\\n');
 const ids = fs.existsSync(path.join(root, 'ids.json')) ? JSON.parse(fs.readFileSync(path.join(root, 'ids.json'), 'utf-8')) : {};
 if (a[0] === 'api') {
   if (a.length !== 2 || !(listing || zip)) { process.stderr.write('fake gh: bad api call\\n'); process.exit(2); }
@@ -341,7 +342,7 @@ describe('db import-reports', () => {
       const calls = gh.calls();
       assert.deepEqual(calls[0], ['auth', 'status']);
       // push runs only (a fork's pull_request run can carry the same head branch name)
-      assert.deepEqual(calls[1], ['run', 'list', '-R', 'o/r', '--branch', 'feat/x', '--event', 'push', '--workflow', 'test.yml', '--limit', '5', '--json', 'databaseId,headSha,createdAt,conclusion,event,headBranch']);
+      assert.deepEqual(calls[1], ['run', 'list', '-R', 'github.com/o/r', '--branch', 'feat/x', '--event', 'push', '--workflow', 'test.yml', '--limit', '5', '--json', 'databaseId,headSha,createdAt,conclusion,event,headBranch']);
       // each test-results artifact by its id, after its run's listing (sizes and ids); never `gh run download`, never not-ours
       assert.deepEqual(gh.listings(), [302, 301, 300]);
       const ids = gh.ids;
@@ -911,18 +912,27 @@ describe('import-reports: bounded work per call and per project, gh never in the
       for (const [cwd, repo] of cwds) {
         assert.ok(!cwd.startsWith(real + path.sep) && !cwd.startsWith(dir + path.sep) && cwd !== real && cwd !== dir, `gh ran in ${cwd}`);
         assert.ok(path.basename(cwd).startsWith('kit-import-reports-'), cwd);
-        assert.equal(repo, 'o/r');
+        assert.equal(repo, 'github.com/o/r');
       }
       assert.ok(gh.calls().filter((c) => c[0] === 'api').every((c) => c[1].startsWith('repos/o/r/')));
 
       const g = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf-8' });
-      // a GitHub Enterprise remote in scp form: -R host/owner/repo, GH_HOST
+      // a GitHub Enterprise remote in scp form: refused unless the user names its host (--host); then -R host/owner/repo, GH_HOST
       g('remote', 'set-url', 'origin', 'git@ghe.example.com:o/r.git');
       fs.rmSync(path.join(gh.root, 'calls.jsonl'));
-      const e = await call(['import-reports', '--limit', '5'], dir, gh.env);
+      const refused = await call(['import-reports', '--limit', '5'], dir, gh.env);
+      assert.equal(refused.code, 1);
+      assert.match(refused.err, /the origin remote is on ghe\.example\.com, not github\.com: .*--host ghe\.example\.com/);
+      assert.ok(!fs.existsSync(path.join(gh.root, 'calls.jsonl')), 'gh is never called');
+      fs.rmSync(path.join(gh.root, 'cwds.jsonl'));
+      const e = await call(['import-reports', '--limit', '5', '--host', 'ghe.example.com'], dir, gh.env);
       assert.equal(e.code, 0, e.err);
       assert.equal(e.out.repo, 'ghe.example.com/o/r');
       assert.deepEqual(gh.calls()[1].slice(0, 4), ['run', 'list', '-R', 'ghe.example.com/o/r']);
+      for (const [, repo, host] of fs.readFileSync(path.join(gh.root, 'cwds.jsonl'), 'utf-8').trim().split('\n').map((l) => JSON.parse(l))) {
+        assert.equal(repo, 'ghe.example.com/o/r');
+        assert.equal(host, 'ghe.example.com');
+      }
       // no remote, or one that does not name owner/repo: exit 1 before gh runs
       for (const [setup, re] of [
         [() => g('remote', 'set-url', 'origin', 'https://github.com/o/r;touch x'), /cannot tell the GitHub repository from the remote URL/],
@@ -956,5 +966,286 @@ describe('import-reports: bounded work per call and per project, gh never in the
     for (const u of ['', '/srv/r.git', 'file:///srv/o/r.git', 'https://github.com/o/r/extra', 'https://github.com/o', 'https://github.com/../r', 'https://github.com/o/r;x', 'git@github.com:/o/r', 'https://github.com/o/r x', 'ext::sh -c touch% /tmp/x', 'https://-x/o/r']) {
       assert.equal(parseRemoteUrl(u), null, u);
     }
+  });
+});
+
+describe('import-reports: the repository never chooses the host gh talks to (review wt-4a H1 / L1 / L2, wt-4b M1 / L2 / L3)', () => {
+  const g = (dir, ...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf-8' });
+  /** Every gh call's [cwd, GH_REPO, GH_HOST, enterprise token passed] (see FAKE_GH). */
+  const ghEnvs = (gh) => (fs.existsSync(path.join(gh.root, 'cwds.jsonl')) ? fs.readFileSync(path.join(gh.root, 'cwds.jsonl'), 'utf-8').trim().split('\n').map((l) => JSON.parse(l)) : []);
+  const spawned = (gh) => fs.existsSync(path.join(gh.root, 'cwds.jsonl')) || fs.existsSync(path.join(gh.root, 'calls.jsonl')) || fs.existsSync(path.join(gh.root, 'api-calls.jsonl'));
+  const reset = (gh) => { for (const f of ['cwds.jsonl', 'calls.jsonl', 'api-calls.jsonl']) fs.rmSync(path.join(gh.root, f), { force: true }); };
+  const HOSTILE = { GH_HOST: 'evil.example.com', GH_ENTERPRISE_TOKEN: 'ENTERPRISE-SECRET-123', GITHUB_ENTERPRISE_TOKEN: 'ENTERPRISE-SECRET-456' };
+
+  it('a remote on another host is exit 1 naming the host and --host, and gh is never spawned, whatever GH_HOST says', { skip: !NODE_SQLITE }, async () => {
+    const dir = await project();
+    const gh = fakeGh();
+    try {
+      for (const url of ['https://evil.example.com/o/r.git', 'git@evil.example.com:o/r.git', 'ssh://git@evil.example.com:2222/o/r.git', 'https://10.0.0.1/o/r.git', 'https://gitlab.com/o/r.git']) {
+        g(dir, 'remote', 'set-url', 'origin', url);
+        for (const env of [gh.env, { ...gh.env, ...HOSTILE }]) {
+          reset(gh);
+          const r = await call(['import-reports', '--branch', 'feat/x'], dir, env);
+          assert.equal(r.code, 1, url);
+          const host = parseRemoteUrl(url).host;
+          assert.ok(r.err.includes(`the origin remote is on ${host}, not github.com`), r.err);
+          assert.ok(r.err.includes(`--host ${host}`), r.err);
+          assert.ok(!/gh auth login/.test(r.err), r.err);
+          assert.ok(!spawned(gh), `gh was spawned for ${url}`);
+        }
+      }
+    } finally { rm(dir); rm(gh.root); }
+  });
+
+  it('github.com: GH_HOST is always set to github.com (an inherited one is ignored), -R and GH_REPO are host-qualified, no enterprise token is passed', { skip: !NODE_SQLITE }, async () => {
+    const dir = await project();
+    const gh = fakeGh();
+    try {
+      for (const url of ['https://github.com/o/r.git', 'ssh://git@ssh.github.com:443/o/r.git', 'git@github-work:o/r.git']) {
+        g(dir, 'remote', 'set-url', 'origin', url);
+        reset(gh);
+        const r = await call(['import-reports', '--limit', '5'], dir, { ...gh.env, ...HOSTILE });
+        assert.equal(r.code, 0, `${url}: ${r.err}`);
+        assert.equal(r.out.repo, 'o/r');
+        assert.equal(r.out.repo_from, 'the origin remote');
+        const envs = ghEnvs(gh);
+        assert.ok(envs.length > 3);
+        for (const [, repo, host, token] of envs) {
+          assert.equal(host, 'github.com');
+          assert.equal(repo, 'github.com/o/r');
+          assert.equal(token, false, 'no enterprise token reaches gh for github.com');
+        }
+        assert.deepEqual(gh.calls()[1].slice(0, 4), ['run', 'list', '-R', 'github.com/o/r']);
+      }
+    } finally { rm(dir); rm(gh.root); }
+  });
+
+  it('--host <h> is the only way to another host: it must match the remote (else --repo), GH_HOST is set to it, and the login hint names it', { skip: !NODE_SQLITE }, async () => {
+    const dir = await project();
+    const gh = fakeGh();
+    try {
+      g(dir, 'remote', 'set-url', 'origin', 'https://ghe.corp.example/team/r.git');
+      reset(gh);
+      const r = await call(['import-reports', '--limit', '5', '--host', 'GHE.corp.example'], dir, { ...gh.env, ...HOSTILE });
+      assert.equal(r.code, 0, r.err);
+      assert.equal(r.out.repo, 'ghe.corp.example/team/r');
+      for (const [, repo, host, token] of ghEnvs(gh)) {
+        assert.equal(host, 'ghe.corp.example');
+        assert.equal(repo, 'ghe.corp.example/team/r');
+        assert.equal(token, true, 'the user named this host: its token is theirs to send');
+      }
+      assert.deepEqual(gh.calls()[1].slice(0, 4), ['run', 'list', '-R', 'ghe.corp.example/team/r']);
+      // the remote on github.com, --host another: refused before gh
+      g(dir, 'remote', 'set-url', 'origin', 'https://github.com/o/r.git');
+      reset(gh);
+      let bad = await call(['import-reports', '--branch', 'feat/x', '--host', 'ghe.corp.example'], dir, gh.env);
+      assert.equal(bad.code, 1);
+      assert.match(bad.err, /the origin remote is on github\.com, not on --host ghe\.corp\.example: pass --repo <owner>\/<repo>/);
+      assert.ok(!spawned(gh));
+      // --host with --repo: no remote is read
+      const r2 = await call(['import-reports', '--branch', 'feat/x', '--host', 'ghe.corp.example', '--repo', 'team/r'], dir, gh.env);
+      assert.equal(r2.code, 0, r2.err);
+      assert.equal(r2.out.repo, 'ghe.corp.example/team/r');
+      assert.equal(r2.out.repo_from, '--repo');
+      // not logged in to that host: the hint names it
+      fs.writeFileSync(path.join(gh.root, 'logged-out'), '');
+      bad = await call(['import-reports', '--branch', 'feat/x', '--host', 'ghe.corp.example', '--repo', 'team/r'], dir, gh.env);
+      assert.equal(bad.code, 1);
+      assert.match(bad.err, /run `gh auth login --hostname ghe\.corp\.example`/);
+      bad = await call(['import-reports', '--branch', 'feat/x'], dir, gh.env);
+      assert.match(bad.err, /run `gh auth login`$/);
+      // bad --host values: exit 1 before gh
+      fs.rmSync(path.join(gh.root, 'logged-out'));
+      reset(gh);
+      for (const h of ['https://ghe.corp.example', 'ghe.corp.example:443', 'u@ghe.corp.example', 'nodot', '', '-x.com', 'a..b', 'ghe.corp.example/x']) {
+        const x = await call(['import-reports', '--branch', 'feat/x', '--host', h], dir, gh.env);
+        assert.equal(x.code, 1, h);
+        assert.match(x.err, /--host must be a host name/, h);
+      }
+      assert.ok(!spawned(gh));
+    } finally { rm(dir); rm(gh.root); }
+  });
+
+  it('a multi-valued remote url: the first value (the one git fetches from) is used', { skip: !NODE_SQLITE }, async () => {
+    const dir = await project();
+    const gh = fakeGh();
+    try {
+      g(dir, 'config', '--add', 'remote.origin.url', 'https://evil.example.com/o/r.git');
+      let r = await call(['import-reports', '--limit', '5'], dir, gh.env);
+      assert.equal(r.code, 0, r.err);
+      assert.equal(r.out.repo, 'o/r');
+      assert.ok(ghEnvs(gh).every(([, , host]) => host === 'github.com'));
+      g(dir, 'config', '--unset-all', 'remote.origin.url');
+      g(dir, 'config', 'remote.origin.url', 'https://evil.example.com/o/r.git');
+      g(dir, 'config', '--add', 'remote.origin.url', 'https://github.com/o/r.git');
+      reset(gh);
+      r = await call(['import-reports', '--branch', 'feat/x'], dir, gh.env);
+      assert.equal(r.code, 1);
+      assert.match(r.err, /the origin remote is on evil\.example\.com/);
+      assert.ok(!spawned(gh));
+    } finally { rm(dir); rm(gh.root); }
+  });
+
+  it('an upstream remote is preferred over origin (a fork checkout), and --repo overrides the remotes', { skip: !NODE_SQLITE }, async () => {
+    const dir = await project();
+    const gh = fakeGh();
+    try {
+      fs.writeFileSync(path.join(gh.root, 'runs.json'), '[]');
+      g(dir, 'remote', 'add', 'upstream', 'git@github.com:up/stream.git');
+      let r = await call(['import-reports', '--branch', 'main'], dir, gh.env);
+      assert.equal(r.code, 0, r.err);
+      assert.equal(r.out.repo, 'up/stream');
+      assert.equal(r.out.repo_from, 'the upstream remote');
+      assert.deepEqual(gh.calls()[1].slice(0, 4), ['run', 'list', '-R', 'github.com/up/stream']);
+      // an upstream on another host is refused: never a silent fall back to origin
+      g(dir, 'remote', 'set-url', 'upstream', 'https://evil.example.com/up/stream.git');
+      reset(gh);
+      r = await call(['import-reports', '--branch', 'main'], dir, gh.env);
+      assert.equal(r.code, 1);
+      assert.match(r.err, /the upstream remote is on evil\.example\.com/);
+      assert.ok(!spawned(gh));
+      // --repo: the remotes are not read at all (none here, more than one, or one on another host)
+      r = await call(['import-reports', '--branch', 'main', '--repo', 'other/name.js'], dir, gh.env);
+      assert.equal(r.code, 0, r.err);
+      assert.equal(r.out.repo, 'other/name.js');
+      assert.equal(r.out.repo_from, '--repo');
+      assert.ok(ghEnvs(gh).every(([, repo, host]) => repo === 'github.com/other/name.js' && host === 'github.com'));
+      g(dir, 'remote', 'remove', 'upstream');
+      g(dir, 'remote', 'remove', 'origin');
+      reset(gh);
+      r = await call(['import-reports', '--branch', 'main'], dir, gh.env);
+      assert.equal(r.code, 1);
+      assert.match(r.err, /no git remote .*or pass --repo <owner>\/<repo>/);
+      assert.ok(!spawned(gh));
+      r = await call(['import-reports', '--branch', 'main', '--repo', 'other/name.js'], dir, gh.env);
+      assert.equal(r.code, 0, r.err);
+      for (const v of ['o', 'o/r/x', '../r', 'o/..', '-o/r', 'o/-r', 'o/r;x', '', 'o/', '/r', 'github.com/o/r']) {
+        reset(gh);
+        const x = await call(['import-reports', '--branch', 'main', '--repo', v], dir, gh.env);
+        assert.equal(x.code, 1, v);
+        assert.match(x.err, /--repo must be <owner>\/<repo>/, v);
+        assert.ok(!spawned(gh), v);
+      }
+      assert.equal((await call(['import-reports', '--repo'], dir, gh.env)).code, 1);
+      assert.equal((await call(['import-reports', '--host'], dir, gh.env)).code, 1);
+      assert.equal((await call(['prune', '--repo', 'o/r'], dir, gh.env)).code, 1);
+      // the usage names the new flags and the upstream preference
+      const help = await call(['--help'], dir);
+      assert.match(help.out.usage, /\[--repo <owner>\/<repo>\] \[--host <h>\]/);
+      assert.match(help.out.usage, /else the upstream remote, else origin/);
+      assert.match(help.out.usage, /never one a remote names/);
+    } finally { rm(dir); rm(gh.root); }
+  });
+
+  it('a remote URL in a message never shows its userinfo (a token in it)', { skip: !NODE_SQLITE }, async () => {
+    const dir = await project();
+    const gh = fakeGh();
+    try {
+      for (const [url, shown] of [
+        ['https://oauth2:glpat-SECRETTOKEN@gitlab.com/grp/sub/proj.git', 'https://gitlab.com/grp/sub/proj.git'],
+        [`https://x-access-token:${TOKEN}@ghe.corp.com/team/sub/repo.git`, 'https://ghe.corp.com/team/sub/repo.git'],
+        ['https://user:p@ss@host.example/a/b/c', 'https://host.example/a/b/c'],
+        ['deploy:glpat-SECRETTOKEN@host.example:a/b/c', 'host.example:a/b/c']
+      ]) {
+        g(dir, 'remote', 'set-url', 'origin', url);
+        const r = await call(['import-reports', '--branch', 'feat/x'], dir, gh.env);
+        assert.equal(r.code, 1);
+        for (const secret of ['glpat-SECRETTOKEN', TOKEN, 'oauth2', 'x-access-token', 'p@ss', 'deploy']) assert.ok(!r.err.includes(secret), `${secret} in: ${r.err}`);
+        assert.ok(r.err.includes(JSON.stringify(shown)), r.err);
+      }
+      // parsed, on another host: only the host is named
+      g(dir, 'remote', 'set-url', 'origin', `https://x-access-token:${TOKEN}@ghe.corp.com/o/r.git`);
+      const r = await call(['import-reports', '--branch', 'feat/x'], dir, gh.env);
+      assert.equal(r.code, 1);
+      assert.ok(!r.err.includes(TOKEN) && !r.err.includes('x-access-token'), r.err);
+      assert.match(r.err, /the origin remote is on ghe\.corp\.com/);
+      assert.ok(!spawned(gh));
+    } finally { rm(dir); rm(gh.root); }
+  });
+
+  it('displayUrl and canonicalHost', () => {
+    assert.equal(displayUrl('https://a:b@h.example/x'), 'https://h.example/x');
+    assert.equal(displayUrl('ssh://git@h.example:22/x'), 'ssh://h.example:22/x');
+    assert.equal(displayUrl('git@h.example:o/r'), 'h.example:o/r');
+    assert.equal(displayUrl(`https://h.example/${TOKEN}`).includes(TOKEN), false, 'credential-masked too');
+    assert.equal(displayUrl(`https://h.example/${SECRET}`, [SECRET]).includes(SECRET), false, 'redacted with the project secrets');
+    assert.equal(canonicalHost('SSH.GitHub.com'), 'github.com');
+    assert.equal(canonicalHost('www.github.com'), 'github.com');
+    assert.equal(canonicalHost('github-work'), 'github.com');
+    assert.equal(canonicalHost('github.com.evil.example'), 'github.com.evil.example');
+  });
+});
+
+describe('local runs: the per-run and per-project case caps apply to recordRun too (review wt-4b L4)', () => {
+  const tap = (n) => `${Array.from({ length: n }, (_, i) => `ok ${i + 1} - t${i}`).join('\n')}\n# tests ${n}\n# pass ${n}\n# fail 0\n`;
+  const at = { code: 0, started_at: '2026-10-16T00:00:00Z', finished_at: '2026-10-16T00:00:01Z' };
+  async function stderrOf(fn) {
+    const orig = process.stderr.write;
+    let out = '';
+    process.stderr.write = function (chunk, ...rest) { out += String(chunk); return typeof rest[rest.length - 1] === 'function' ? (rest[rest.length - 1](), true) : true; };
+    try { return { value: await fn(), stderr: out }; } finally { process.stderr.write = orig; }
+  }
+
+  it(`parseTap keeps at most ${MAX_CASES} cases (the rest of the output is not read) and says so`, () => {
+    const all = parseTap(tap(MAX_CASES + 5));
+    assert.equal(all.length, MAX_CASES);
+    assert.equal(all.truncated, true);
+    assert.equal(parseTap(tap(3)).truncated, false);
+    const few = parseTap(tap(5), undefined, { maxCases: 3 });
+    assert.deepEqual(few.map((c) => c.name), ['t0', 't1', 't2']);
+    assert.equal(few.truncated, true);
+    const spec = parseTap('✔ a (1ms)\n✔ b (1ms)\n✖ c (1ms)\n', undefined, { maxCases: 2 });
+    assert.equal(spec.length, 2);
+    assert.equal(spec.truncated, true);
+  });
+
+  it('recordRun stores at most the per-run cap (counts from the runner summary) and nothing past the project ceiling, with one stderr line naming db prune', { skip: !NODE_SQLITE }, async () => {
+    const dir = await project();
+    try {
+      const io = { cwd: dir, env: ENGINE, importLimits: { artifactCases: 3, projectCases: 7 } };
+      let { value: rec, stderr } = await stderrOf(() => recordRun(io, { ...at, output: tap(5) }));
+      assert.equal(stderr, '');
+      assert.equal(rec.recorded, true);
+      assert.equal(rec.cases, 3);
+      assert.equal(rec.truncated, true);
+      const [run] = await rows(dir, 'SELECT total, passed, data FROM test_runs WHERE id = ?', rec.id);
+      assert.equal(run.total, 5, 'the counts are the runner summary');
+      assert.match(JSON.parse(run.data).cases_truncated, /only the first 3 test cases are stored/);
+      assert.equal((await rows(dir, 'SELECT COUNT(*) AS n FROM test_cases'))[0].n, 3);
+      ({ value: rec, stderr } = await stderrOf(() => recordRun(io, { ...at, output: tap(3) })));
+      assert.equal(rec.recorded, true);
+      assert.equal(stderr, '');
+      // 6 stored: 3 more would pass the ceiling of 7
+      ({ value: rec, stderr } = await stderrOf(() => recordRun(io, { ...at, output: tap(3) })));
+      assert.equal(rec.recorded, false);
+      const lines = stderr.split('\n').filter(Boolean);
+      assert.equal(lines.length, 1, stderr);
+      assert.match(lines[0], /^kit: test run not recorded in the kit index: the index holds 6 test cases and this run has 3; at most 7 are kept per project: run `db prune --keep <n>`/);
+      assert.equal((await rows(dir, 'SELECT COUNT(*) AS n FROM test_runs'))[0].n, 2);
+      // db prune makes room
+      assert.equal((await call(['prune', '--keep', '1'], dir, ENGINE)).code, 0);
+      ({ value: rec } = await stderrOf(() => recordRun(io, { ...at, output: tap(3) })));
+      assert.equal(rec.recorded, true);
+    } finally { rm(dir); }
+  });
+
+  it(`runStep at the real project ceiling (${PROJECT_MAX_CASES} cases): the step's exit status is unchanged and nothing is stored`, { skip: !NODE_SQLITE, timeout: 120000 }, async () => {
+    const dir = await project();
+    const out = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-ceiling-'));
+    try {
+      await withIndex({ cwd: dir, env: ENGINE }, (d) => {
+        d.run("INSERT INTO test_runs (branch, started_at, status) VALUES ('filler', '2026-01-01T00:00:00Z', 'passed')");
+        d.exec(`WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < ${PROJECT_MAX_CASES}) INSERT INTO test_cases (run_id, name, status) SELECT 1, 'n', 'pass' FROM c`);
+      });
+      for (const [cmd, want] of [["echo 'not ok 1 - x'; exit 1", 1], ["echo 'ok 1 - fine'", 0]]) {
+        const lines = [];
+        const { value: code, stderr } = await stderrOf(() => runStep(() => ({ class: 'product' }), { cwd: dir, env: { ...process.env, ...ENGINE, CI_TEST_OUTPUT: path.join(out, 'o.txt'), CI_TEST_COMMAND: cmd }, log: (l) => lines.push(l) }));
+        assert.equal(code, want);
+        assert.ok(!lines.some((l) => /recorded in the kit index/.test(l)), lines.join('\n'));
+        assert.equal(stderr.split('\n').filter((l) => /kit: test run not recorded/.test(l)).length, 1, stderr);
+        assert.match(stderr, /db prune/);
+      }
+      assert.equal((await rows(dir, 'SELECT COUNT(*) AS n FROM test_runs'))[0].n, 1);
+    } finally { rm(dir); rm(out); }
   });
 });
