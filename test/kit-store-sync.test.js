@@ -1014,6 +1014,165 @@ describe('db sync / export / off write the JSON files all or none, after the dat
   });
 });
 
+describe('a failed or interrupted COMMIT never leaves the JSON files and the database apart (review round 7)', () => {
+  const LESSONS = '.claude/kit/lessons.json';
+  const CONFIG = '.claude/kit/store.local.json';
+  const JOURNAL = '.claude/kit/suite.db-files-journal';
+  const bytes = (dir, f) => fs.readFile(path.join(dir, f));
+  const tmpLeft = async (dir) => (await fs.readdir(path.join(dir, '.claude/kit'))).filter((n) => n.endsWith('.tmp'));
+  const theirLesson = (id, text) => ({ id, role: 'r', text, scope: '', session: 'tm', status: 'active', kept: 0, created_at: '2026-10-15T00:00:00.000Z' });
+  const textsOf = async (dir) => (await readJson(dir, LESSONS)).lessons.map((l) => `${l.id}:${l.text}`);
+  const WANT = ['L1:Run the linter before every commit.', 'L2:Pin every dependency to an exact version.', 'L3:Check database migrations against a copy of production.'];
+  /** L1 on json, db init, a local L2 on sqlite (lessons.json still holds only L1). */
+  async function sqliteSetup(dir) {
+    assert.equal((await save(dir, 'Run the linter before every commit.', [], {})).code, 0);
+    assert.equal((await call(db, ['init'], dir, ENV)).code, 0);
+    assert.equal((await save(dir, 'Check database migrations against a copy of production.')).code, 0);
+  }
+  /** ...then a pull brings the teammate's own L2 into lessons.json. */
+  async function renumberSetup(dir) {
+    await sqliteSetup(dir);
+    const pulled = await readJson(dir, LESSONS);
+    pulled.lessons.push(theirLesson('L2', 'Pin every dependency to an exact version.'));
+    await fs.writeFile(path.join(dir, LESSONS), JSON.stringify(pulled, null, 2));
+  }
+  /** Run `db <args>` in a child process that exits (code 9) at COMMIT, or right after it with `after`. */
+  async function dieAtCommit(dir, args, after = false) {
+    const script = path.join(dir, 'die-at-commit.mjs');
+    const url = (f) => JSON.stringify(new URL(`file://${path.join(HERE, '../src/lib/kit', f)}`).href);
+    await fs.writeFile(script, `import { run as db } from ${url('db.js')};
+import { loadEngine } from ${url('store.js')};
+const env = { KIT_SQLITE_ENGINE: 'node:sqlite' };
+const eng = await loadEngine({ cwd: process.cwd(), env: { ...process.env, ...env }, project: true });
+const orig = eng.open;
+eng.open = (f, o) => { const d = orig(f, o); const ex = d.exec; d.exec = (sql) => { if (sql === 'COMMIT' && !${after}) process.exit(9); const r = ex(sql); if (sql === 'COMMIT' && ${after}) process.exit(9); return r; }; return d; };
+await db(${JSON.stringify(args)}, { cwd: process.cwd(), env, stdin: async () => '', stdinIsTTY: false });
+process.exit(0);
+`);
+    return new Promise((resolve) => {
+      const p = spawn(process.execPath, [script], { cwd: dir, env: { ...process.env, ...ENV }, stdio: ['ignore', 'pipe', 'pipe'] });
+      let err = '';
+      p.stderr.on('data', (d) => { err += d; });
+      p.on('close', (code) => resolve({ code, err }));
+    });
+  }
+
+  it('db off whose COMMIT fails (disk full): the JSON files and the store choice byte-identical, still sqlite, no row lost', { skip }, async () => {
+    const dir = await tmp();
+    try {
+      await sqliteSetup(dir);
+      const before = { lessons: await bytes(dir, LESSONS), config: await bytes(dir, CONFIG) };
+      const eng = await loadEngine({ cwd: dir, env: { ...process.env, ...ENV }, project: true });
+      const orig = eng.open;
+      eng.open = (f, o) => {
+        const d = orig(f, o);
+        const ex = d.exec;
+        d.exec = (sql) => { if (sql === 'COMMIT') throw new Error('SQLITE_FULL: database or disk is full'); return ex(sql); };
+        return d;
+      };
+      let r;
+      try { r = await call(db, ['off'], dir, ENV); } finally { eng.open = orig; }
+      assert.notEqual(r.code, 0, 'off fails');
+      assert.match(r.err, /database or disk is full/);
+      assert.deepEqual(await bytes(dir, LESSONS), before.lessons, 'lessons.json byte-identical');
+      assert.deepEqual(await bytes(dir, CONFIG), before.config, 'store.local.json byte-identical');
+      assert.deepEqual(await readJson(dir, CONFIG), { store: 'sqlite' });
+      assert.equal(exists(path.join(dir, JOURNAL)), false, 'no journal left');
+      assert.deepEqual(await tmpLeft(dir), []);
+      assert.deepEqual(await lessonTexts(dir), ['Run the linter before every commit.', 'Check database migrations against a copy of production.']);
+      // the next off works and the lesson only the database held reaches the file
+      const ok = await call(db, ['off'], dir, ENV);
+      assert.equal(ok.code, 0, ok.err);
+      assert.deepEqual(await readJson(dir, CONFIG), { store: 'json' });
+      assert.deepEqual(await lessonTexts(dir, [], {}), ['Run the linter before every commit.', 'Check database migrations against a copy of production.']);
+      assert.equal(exists(path.join(dir, JOURNAL)), false);
+    } finally { await rm(dir); }
+  });
+
+  it('a sync killed at COMMIT: the next verb call puts the files back, and a sync afterwards makes no duplicate lesson', { skip }, async () => {
+    const dir = await tmp();
+    try {
+      await renumberSetup(dir);
+      const before = await bytes(dir, LESSONS);
+      const c = await dieAtCommit(dir, ['sync', '--from-files']);
+      assert.equal(c.code, 9, c.err);
+      assert.ok(exists(path.join(dir, JOURNAL)), 'the journal outlives the killed run');
+      assert.notDeepEqual(await bytes(dir, LESSONS), before, 'the merged file was renamed in before the kill');
+      // the next verb call recovers first: lessons.json is the pulled file again (still drift: the database never took it)
+      const s = await save(dir, 'Another lesson saved after the crash.');
+      assert.equal(s.code, 1);
+      assert.match(s.err, /lessons\.json changed since the database last synced/);
+      assert.deepEqual(await bytes(dir, LESSONS), before, 'lessons.json is back to its bytes before the killed sync');
+      assert.equal(exists(path.join(dir, JOURNAL)), false, 'the journal is removed once recovered');
+      assert.deepEqual(await tmpLeft(dir), []);
+      const s2 = await call(db, ['sync', '--from-files'], dir, ENV);
+      assert.equal(s2.code, 0, s2.err);
+      assert.deepEqual(s2.out.renumbered, [{ store: 'lessons', scope: LESSONS, from: 'L2', to: 'L3' }]);
+      assert.deepEqual(await textsOf(dir), WANT, 'no lesson twice');
+      assert.deepEqual(await lessonTexts(dir), WANT.map((x) => x.slice(3)));
+    } finally { await rm(dir); }
+  });
+
+  it('a sync killed right after COMMIT: the next open only removes the journal and leaves the files as they are', { skip }, async () => {
+    const dir = await tmp();
+    try {
+      await renumberSetup(dir);
+      const c = await dieAtCommit(dir, ['sync', '--from-files'], true);
+      assert.equal(c.code, 9, c.err);
+      assert.ok(exists(path.join(dir, JOURNAL)));
+      const merged = await bytes(dir, LESSONS);
+      assert.deepEqual(await textsOf(dir), WANT);
+      const r = await cli(['reflect', 'lessons', 'list'], dir, ENV);
+      assert.equal(r.code, 0, r.err);
+      assert.doesNotMatch(r.err, /put back/);
+      assert.equal(exists(path.join(dir, JOURNAL)), false, 'the journal is removed');
+      assert.deepEqual(await bytes(dir, LESSONS), merged, 'the committed files are not touched');
+      assert.deepEqual(await lessonTexts(dir), WANT.map((x) => x.slice(3)));
+      const s = await call(db, ['sync', '--from-files'], dir, ENV);
+      assert.equal(s.code, 0, s.err);
+      assert.deepEqual(await textsOf(dir), WANT, 'no lesson twice');
+    } finally { await rm(dir); }
+  });
+
+  it('a file changed after the kill is left alone and named; the others are put back', { skip }, async () => {
+    const dir = await tmp();
+    try {
+      await renumberSetup(dir);
+      const c = await dieAtCommit(dir, ['sync', '--from-files']);
+      assert.equal(c.code, 9, c.err);
+      const edited = await readJson(dir, LESSONS);
+      edited.lessons.push(theirLesson('L9', 'A lesson edited in by hand after the crash.'));
+      await fs.writeFile(path.join(dir, LESSONS), JSON.stringify(edited, null, 2));
+      const mine = await bytes(dir, LESSONS);
+      const r = await cli(['db', 'status'], dir, ENV);
+      assert.equal(r.code, 0, r.err);
+      assert.match(r.err, /left alone because they changed since: \.claude\/kit\/lessons\.json/);
+      assert.deepEqual(await bytes(dir, LESSONS), mine, 'the hand edit is kept');
+      assert.equal(exists(path.join(dir, JOURNAL)), false);
+      assert.deepEqual(JSON.parse(r.out).drifted, [{ store: 'lessons', scope: LESSONS }], 'and reported as drift');
+    } finally { await rm(dir); }
+  });
+
+  it('db off killed at COMMIT: the next verb call puts the files and the store choice back (sqlite, nothing lost)', { skip }, async () => {
+    const dir = await tmp();
+    try {
+      await sqliteSetup(dir);
+      const before = { lessons: await bytes(dir, LESSONS), config: await bytes(dir, CONFIG) };
+      const c = await dieAtCommit(dir, ['off']);
+      assert.equal(c.code, 9, c.err);
+      assert.deepEqual(await readJson(dir, CONFIG), { store: 'json' }, 'the store choice was renamed in before the kill');
+      assert.ok(exists(path.join(dir, JOURNAL)));
+      assert.deepEqual(await lessonTexts(dir), ['Run the linter before every commit.', 'Check database migrations against a copy of production.']);
+      assert.deepEqual(await bytes(dir, CONFIG), before.config, 'store.local.json is back');
+      assert.deepEqual(await bytes(dir, LESSONS), before.lessons, 'lessons.json is back');
+      assert.equal(exists(path.join(dir, JOURNAL)), false);
+      const st = await call(db, ['status'], dir, ENV);
+      assert.equal(st.out.store, 'sqlite');
+      assert.equal(st.out.drifted, undefined);
+    } finally { await rm(dir); }
+  });
+});
+
 describe('a project on the JSON files never runs code from its own folder (review round 6)', () => {
   const BETTER_IN_KIT = (() => { try { createRequire(path.join(HERE, '../src/lib/kit/store.js')).resolve('better-sqlite3'); return true; } catch { return false; } })();
   async function trap() {

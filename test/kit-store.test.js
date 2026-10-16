@@ -11,7 +11,7 @@ import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { run as reflect } from '../src/lib/kit/reflect.js';
 import { run as db } from '../src/lib/kit/db.js';
-import { storeCheck, loadEngine, GITIGNORE_RULES, SCHEMA_VERSION, resolveStore, withDb } from '../src/lib/kit/store.js';
+import { storeCheck, loadEngine, GITIGNORE_RULES, SCHEMA_VERSION, resolveStore, withDb, JOURNAL_GITIGNORE_RULE } from '../src/lib/kit/store.js';
 import kitPlugin from '../src/plugins/kit.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -319,6 +319,9 @@ describe('kit store: git-ignore rules', () => {
     const lines = (await fs.readFile(path.join(HERE, '..', '.gitignore'), 'utf-8')).split('\n').map((l) => l.trim());
     for (const r of GITIGNORE_RULES) assert.ok(lines.includes(r), r);
     assert.deepEqual([...GITIGNORE_RULES], ['.claude/kit/suite.db', '.claude/kit/suite.db-wal', '.claude/kit/suite.db-shm']);
+    // the files journal of db export / off / sync (review round 7)
+    assert.equal(JOURNAL_GITIGNORE_RULE, '.claude/kit/suite.db-files-journal');
+    assert.ok(lines.includes(JOURNAL_GITIGNORE_RULE));
   });
 
   it('the kit installer adds them to the target project, once', async () => {
@@ -329,6 +332,7 @@ describe('kit store: git-ignore rules', () => {
       await kitPlugin.install(path.join(dir, '.claude'), { targetDir: dir });
       const lines = (await fs.readFile(path.join(dir, '.gitignore'), 'utf-8')).split('\n');
       for (const r of [...GITIGNORE_RULES, '.claude/kit/scrub-patterns.local']) assert.equal(lines.filter((l) => l === r).length, 1, r);
+      assert.equal(lines.filter((l) => l === JOURNAL_GITIGNORE_RULE).length, 1, JOURNAL_GITIGNORE_RULE);
       assert.ok(exists(path.join(dir, '.claude/helpers/kit/store.js')));
       assert.ok(exists(path.join(dir, '.claude/helpers/kit/db.js')));
     } finally { await fs.rm(dir, { recursive: true, force: true }); }

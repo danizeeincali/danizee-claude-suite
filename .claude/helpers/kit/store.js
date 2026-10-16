@@ -30,6 +30,10 @@
  * each other synchronously). WAL journal. Migrations are numbered, run in one transaction, version in `meta`.
  * A write re-reads the store choice inside its lock (the state lock on json, the transaction on sqlite) and, when
  * `db init` / `db off` switched it meanwhile, runs again on the other store, so no committed write is lost.
+ * `db export` / `off` / `sync` write the JSON files (and, for `off`, the store choice) as their transaction's last step,
+ * all or none; a files journal (`.claude/kit/suite.db-files-journal`, git-ignored) written before the renames and
+ * removed after COMMIT lets the next database open put the files back when a crash stopped the run in between (see
+ * recoverFilesJournal).
  *
  * DRIFT. Shared JSON files (lessons.json, noise-ledger.json) can change under the database (a git pull). Each stored
  * document keeps the sha256 of its file as last imported, exported or synced (`store_docs.file_sha256`, 'absent' when
@@ -58,6 +62,13 @@ export const CONFIG_GITIGNORE_RULE = '.claude/kit/store.local.json';
 export const DB_FILE = path.join('.claude', 'kit', 'suite.db');
 export const GITIGNORE_RULES = Object.freeze(['.claude/kit/suite.db', '.claude/kit/suite.db-wal', '.claude/kit/suite.db-shm']);
 export const STORES = Object.freeze(['json', 'sqlite']);
+/**
+ * The files journal of a run that writes JSON files inside a database transaction (db export / off / sync): written
+ * (atomically) before the first file is renamed, removed right after COMMIT. Not `suite.db-journal`: that is SQLite's
+ * own rollback-journal name, and SQLite deletes a file of that name when it opens the database. Git-ignored.
+ */
+export const FILES_JOURNAL = path.join('.claude', 'kit', 'suite.db-files-journal');
+export const JOURNAL_GITIGNORE_RULE = '.claude/kit/suite.db-files-journal';
 export const ENGINES = Object.freeze(['better-sqlite3', 'node:sqlite']);
 export const BUSY_TIMEOUT_MS = 15000;
 export const ENGINE_FIX = 'install an engine: `npm install better-sqlite3` in the project, or run Node 22.5+ (built-in node:sqlite); or go back to the JSON files with `db off` on a machine that has one';
@@ -318,13 +329,41 @@ function wrap(raw) {
  * Throws exit 1 (naming the fix) when sqlite is configured and no engine loads, or the database is missing.
  */
 export async function resolveStore({ cwd = process.cwd(), env = process.env } = {}) {
-  const cfg = readConfig(cwd);
+  let cfg = readConfig(cwd);
+  if (cfg.store !== 'sqlite' && await recoverJsonSide(cwd, env)) cfg = readConfig(cwd);
   if (cfg.store !== 'sqlite') return { kind: 'json', cwd };
   const engine = await loadEngine({ cwd, env, project: true });
   if (!engine.name) throw invalid(`this project keeps its kit state in SQLite (${cfg.file}) but no SQLite engine loads here (${engine.errors.join('; ') || 'none tried'}): ${ENGINE_FIX}`);
   const dbFile = path.join(cwd, DB_FILE);
   if (!fs.existsSync(dbFile)) throw invalid(`${cfg.file} says "store": "sqlite" but ${dbFile} is missing: restore it, or run \`db init\` to create it again from the JSON files`);
   return { kind: 'sqlite', engine: engine.name, open: engine.open, dbFile, cwd };
+}
+
+/**
+ * A project on the JSON files with a files journal left beside a leftover suite.db (a `db off` stopped between its
+ * file renames, the store choice among them, and its COMMIT): recover it with the kit's own engine (never code from
+ * the project folder), then read the store choice again. Trouble here never stops a JSON verb: it is reported on
+ * stderr and the journal is kept for the next database open.
+ */
+export async function recoverJsonSide(cwd, env = process.env) {
+  const dbFile = path.join(cwd, DB_FILE);
+  if (!fs.existsSync(journalOf(dbFile)) || !fs.existsSync(dbFile)) return false;
+  return serial(dbFile, () => recoverJsonSideNow(cwd, env, dbFile));
+}
+
+async function recoverJsonSideNow(cwd, env, dbFile) {
+  let db = null;
+  try {
+    const own = await loadEngine({ cwd, env, project: false });
+    if (!own.name) throw new Error(own.errors.join('; ') || 'no SQLite engine');
+    db = own.open(dbFile);
+    db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
+    recoverFilesJournal(db, cwd, dbFile);
+    return true;
+  } catch (e) {
+    process.stderr.write(`kit db: cannot recover ${journalOf(dbFile)} yet (${String(e && e.message).split('\n')[0].slice(0, 200)}); it is kept for the next database open\n`);
+    return false;
+  } finally { try { db?.close(); } catch { /* not open */ } }
 }
 
 /** The scope key of a state file: relative to the project with `/`, absolute when outside it. */
@@ -355,6 +394,8 @@ export function openDb(ctx) {
     db.exec('PRAGMA journal_mode = WAL');
     db.exec('PRAGMA foreign_keys = ON');
     migrate(db, ctx.dbFile);
+    // before any read or drift check: finish what a run killed between its file renames and its COMMIT left behind
+    if (ctx.cwd && fs.existsSync(journalOf(ctx.dbFile))) recoverFilesJournal(db, ctx.cwd, ctx.dbFile);
   } catch (e) {
     try { db.close(); } catch { /* already failing */ }
     throw e instanceof KitExit ? e : invalid(`cannot set up ${ctx.dbFile}: ${String(e && e.message).split('\n')[0]}`);
@@ -385,24 +426,128 @@ function migrate(db, file) {
   }
 }
 
+// ================================================================ files journal
+
+/** The files journal beside a database file. */
+export const journalOf = (dbFile) => path.join(path.dirname(dbFile), path.basename(FILES_JOURNAL));
+
+const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
+
+/** Write `file` atomically and durably (temp file beside it, fsync, rename), with `mode` when given. Sync. */
+function putFileSync(file, buf, mode = null) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  try {
+    const fd = fs.openSync(tmp, 'wx', mode === null ? 0o666 : 0o600);
+    try {
+      if (mode !== null) fs.fchmodSync(fd, mode);
+      fs.writeFileSync(fd, buf);
+      fs.fsyncSync(fd);
+    } finally { fs.closeSync(fd); }
+    fs.renameSync(tmp, file);
+  } catch (e) { try { fs.rmSync(tmp, { force: true }); } catch { /* nothing left */ } throw e; }
+}
+
+/**
+ * Write the files journal of a run about to rename `entries` ([{ file, store?, scope?, before: Buffer|null, mode, sha }])
+ * over the originals: per file its path (relative to the project, `/` separators), the database document it belongs
+ * to (none for the store choice), its original bytes ('absent' when it did not exist) and mode, and the sha256 of the
+ * new bytes. Written atomically: a reader sees the whole journal or none.
+ */
+export function writeFilesJournal(cwd, dbFile, entries) {
+  const doc = {
+    version: 1,
+    note: 'kit db: JSON files being written by one database transaction; removed after its COMMIT. Do not edit',
+    written_at: new Date().toISOString(),
+    pid: process.pid,
+    files: entries.map((e) => ({
+      path: scopeKey(cwd, e.file),
+      ...(e.store ? { store: e.store, scope: e.scope } : {}),
+      new_sha256: e.sha,
+      original: e.before === null ? 'absent' : { mode: e.mode, base64: e.before.toString('base64') }
+    }))
+  };
+  putFileSync(journalOf(dbFile), Buffer.from(JSON.stringify(doc) + '\n'));
+}
+
+/** Remove the files journal (after COMMIT, or once every file is restored). */
+export function removeFilesJournal(dbFile) {
+  fs.rmSync(journalOf(dbFile), { force: true });
+}
+
+/**
+ * Recover a files journal: a run stopped (killed, power loss) after it wrote the journal and before it removed it.
+ * Runs in its own BEGIN IMMEDIATE, so it waits for a run still in that window and never undoes a live one.
+ * When the database holds, for every file of the journal that belongs to a document, the new hash, that run's COMMIT
+ * happened: the journal is only removed. Otherwise the COMMIT did not happen: every file whose bytes are still the
+ * new ones gets its original bytes back (or is removed when it did not exist), a file changed since is left alone and
+ * named on stderr (it now differs from the database: drift, `db sync --from-files` merges it), then the journal is
+ * removed. Returns { committed, restored, left } or null when there is no journal.
+ */
+export function recoverFilesJournal(db, cwd, dbFile) {
+  const jf = journalOf(dbFile);
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    // read under the write lock: a run still between its renames and its COMMIT holds it, so it has finished by now
+    let j;
+    try { j = JSON.parse(fs.readFileSync(jf, 'utf-8')); } catch (e) {
+      if (e.code === 'ENOENT') { db.exec('COMMIT'); return null; } // that run finished and removed it meanwhile
+      throw invalid(`cannot read ${jf} (${e.code || e.message}): it lists JSON files a stopped run was writing; check them against the database, then remove it`);
+    }
+    if (!j || !Array.isArray(j.files)) throw invalid(`${jf} is not a kit files journal: check the JSON files against the database, then remove it`);
+    const tracked = j.files.filter((f) => f.store);
+    const committed = tracked.every((f) => {
+      const row = db.get('SELECT file_sha256 FROM store_docs WHERE store = ? AND scope = ?', f.store, f.scope);
+      return !!row && row.file_sha256 === f.new_sha256;
+    });
+    const restored = [];
+    const left = [];
+    if (!committed) {
+      for (const f of j.files) {
+        const file = fileOfScope(cwd, f.path);
+        const now = fileHash(file);
+        if (now !== f.new_sha256) {
+          const orig = f.original === 'absent' ? 'absent' : sha256(Buffer.from(f.original.base64, 'base64'));
+          if (now !== orig) left.push(f.path);
+          continue;
+        }
+        if (f.original === 'absent') fs.rmSync(file, { force: true });
+        else putFileSync(file, Buffer.from(f.original.base64, 'base64'), f.original.mode ?? null);
+        restored.push(f.path);
+      }
+      process.stderr.write(`kit db: a run stopped after writing JSON files and before its database COMMIT; ${restored.length} file(s) put back as they were before it${restored.length ? ` (${restored.join(', ')})` : ''}`
+        + `${left.length ? `; left alone because they changed since: ${left.join(', ')} (they now differ from the database: \`db sync --from-files\` merges them)` : ''}\n`);
+    }
+    removeFilesJournal(dbFile);
+    db.exec('COMMIT');
+    return { committed, restored, left };
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch { /* nothing open */ }
+    throw e instanceof KitExit ? e : invalid(`cannot recover the JSON files listed in ${jf}: ${e.code || String(e && e.message).split('\n')[0]}; it is kept, run the command again`);
+  }
+}
+
 /**
  * One transaction on the database: `BEGIN IMMEDIATE` for writes, a plain read snapshot otherwise. `onRollback` runs
- * (awaited) when the transaction does not commit, fn's own error or COMMIT's, before the error is thrown on.
+ * (awaited) when the transaction does not commit, fn's own error or COMMIT's, before the error is thrown on;
+ * `onCommit` runs (awaited) right after COMMIT.
  */
-export function withDb(ctx, fn, { write = true, onRollback } = {}) {
+export function withDb(ctx, fn, { write = true, onRollback, onCommit } = {}) {
   return serial(ctx.dbFile, async () => {
     const db = openDb(ctx);
     try {
       db.exec(write ? 'BEGIN IMMEDIATE' : 'BEGIN');
+      let r;
       try {
-        const r = await fn(db);
+        r = await fn(db);
         db.exec('COMMIT');
-        return r;
       } catch (e) {
         try { db.exec('ROLLBACK'); } catch { /* already rolled back */ }
         if (onRollback) await onRollback(e);
         throw e;
       }
+      if (onCommit) await onCommit();
+      return r;
     } catch (e) {
       if (e instanceof KitExit) throw e;
       if (/SQLITE_BUSY|database is locked/i.test(String(e && e.message))) throw invalid(`${ctx.dbFile} is locked by another run (waited ${BUSY_TIMEOUT_MS} ms)`);

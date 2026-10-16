@@ -51,7 +51,8 @@ import { importReports, DEFAULT_LIMIT, MAX_LIMIT } from './test-runs.js';
 import {
   SPECS, DB_FILE, CONFIG_FILE, SCHEMA_VERSION, ENGINE_FIX, readConfig, writeConfig, loadEngine, probeEngine, resolveStore,
   withDb, schemaVersion, getDoc, putDoc, deleteDoc, scopeKey, rowCounts, listDocs, fileOfScope, fileHash, setFileHash,
-  driftOf, driftMessage, driftDetail, mergeDocs, getBase, REPAIR_ADVICE, duplicateIds, idList, shapeProblem
+  driftOf, driftMessage, driftDetail, mergeDocs, getBase, REPAIR_ADVICE, duplicateIds, idList, shapeProblem,
+  writeFilesJournal, removeFilesJournal, journalOf, recoverJsonSide
 } from './store.js';
 
 export const verb = 'db';
@@ -162,16 +163,22 @@ async function readSource(file, then, name) {
 }
 
 /**
- * The JSON files a database transaction writes, all or none. `add` queues a document and returns the sha256 of the
- * bytes it will write (to record in the transaction); `commit`, the transaction's last step, writes every file to a
- * temp file beside it (synced, the old file's mode kept) and only then renames them over the originals; if any step
- * fails, every file already renamed gets its original bytes back (or is removed when it did not exist) and the error
- * is thrown on, so the transaction rolls back too. `restore` (withDb's onRollback) undoes a commit whose transaction
- * then did not commit. Files and database never disagree.
+ * The JSON files a database transaction writes, all or none. `add` queues a document (with the database document it
+ * belongs to, none for the store choice) and returns the sha256 of the bytes it will write (to record in the
+ * transaction); `commit`, the transaction's last step, writes every file to a temp file beside it (synced, the old
+ * file's mode kept), then the files journal (store.js writeFilesJournal: each file's original bytes and new hash), and
+ * only then renames them over the originals; if any step fails, every file already renamed gets its original bytes
+ * back (or is removed when it did not exist) and the error is thrown on, so the transaction rolls back too. `restore`
+ * (withDb's onRollback) undoes a commit whose transaction then did not commit; `done` (withDb's onCommit) removes the
+ * journal. So files and database agree after every run that ends, failed or not. Only a run killed (SIGKILL, power
+ * loss) between its first rename and the journal's removal leaves them apart, and only until the next database open:
+ * it reads the journal (store.js recoverFilesJournal) and, when the COMMIT did not happen, puts back every file still
+ * holding the new bytes (one changed since is left alone and named) before anything reads or checks drift.
  */
-function fileBatch() {
+function fileBatch(ctx) {
   const queued = [];
   const done = [];
+  let journal = false;
   const fail = (file, e) => (e instanceof KitExit ? e : invalid(`cannot write ${file}: ${e.code || e.message}; nothing was changed`));
   async function put(file, buf, mode) {
     await fsp.mkdir(path.dirname(file), { recursive: true });
@@ -187,19 +194,24 @@ function fileBatch() {
     } catch (e) { await fsp.unlink(tmp).catch(() => {}); throw e; }
   }
   async function restore() {
+    let ok = true;
     while (done.length) {
       const d = done.pop();
       try {
         if (d.before === null) await fsp.rm(d.file, { force: true });
         else await fsp.rename(await put(d.file, d.before, d.mode), d.file);
-      } catch { /* best effort: the rest are still restored */ }
+      } catch { ok = false; /* best effort: the rest are still restored, the journal is kept for the next open */ }
+    }
+    if (ok && journal) {
+      try { removeFilesJournal(ctx.dbFile); journal = false; } catch { /* the next open finds every file restored */ }
     }
   }
   return {
-    add(file, doc) {
+    add(file, doc, at = {}) {
       const buf = Buffer.from(JSON.stringify(doc, null, 2) + '\n');
-      queued.push({ file, buf });
-      return crypto.createHash('sha256').update(buf).digest('hex');
+      const sha = crypto.createHash('sha256').update(buf).digest('hex');
+      queued.push({ file, buf, sha, store: at.store, scope: at.scope });
+      return sha;
     },
     async commit() {
       const staged = [];
@@ -210,6 +222,10 @@ function fileBatch() {
           let tmp;
           try { tmp = await put(q.file, q.buf, mode); } catch (e) { throw fail(q.file, e); }
           staged.push({ ...q, before, mode, tmp });
+        }
+        if (staged.length) {
+          try { writeFilesJournal(ctx.cwd, ctx.dbFile, staged); } catch (e) { throw fail(journalOf(ctx.dbFile), e); }
+          journal = true;
         }
         for (const st of staged) {
           try { await fsp.rename(st.tmp, st.file); } catch (e) { throw fail(st.file, e); }
@@ -222,7 +238,14 @@ function fileBatch() {
         throw e;
       }
     },
-    restore
+    restore,
+    async done() {
+      if (!journal) return;
+      // committed: a journal that cannot be removed now is removed by the next open (it sees the COMMIT happened)
+      try { removeFilesJournal(ctx.dbFile); journal = false; } catch (e) {
+        process.stderr.write(`kit db: cannot remove ${journalOf(ctx.dbFile)} (${e.code || e.message}); the next database open removes it\n`);
+      }
+    }
   };
 }
 
@@ -277,7 +300,7 @@ function exportInTx(db, cwd, overwrite, files) {
   const exported = [];
   for (const d of docs) {
     const doc = getDoc(db, d.store, d.scope);
-    setFileHash(db, d.store, d.scope, files.add(d.file, doc), doc);
+    setFileHash(db, d.store, d.scope, files.add(d.file, doc, { store: d.store, scope: d.scope }), doc);
     exported.push({ store: d.store, scope: d.scope });
   }
   const rows = rowCounts(db);
@@ -323,12 +346,12 @@ function exportInTx(db, cwd, overwrite, files) {
 
 async function exportAll(io, overwrite) {
   const ctx = await sqliteCtx(io);
-  const files = fileBatch();
+  const files = fileBatch(ctx);
   return withDb(ctx, async (db) => {
     const r = exportInTx(db, ctx.cwd, overwrite, files);
     await files.commit(); // last: a failed write restores the files and rolls the database back
     return r;
-  }, { onRollback: files.restore });
+  }, { onRollback: files.restore, onCommit: files.done });
 }
 
 async function off(io, overwrite) {
@@ -339,15 +362,17 @@ async function off(io, overwrite) {
     await writeConfig(cwd, 'json');
     return { store: 'json', exported: [], note: 'no database here: nothing to export' };
   }
-  // one write transaction from the read to the config write: a writer waits for it, then sees json and writes the file;
-  // the files are written last, and restored when the config write or the commit fails
-  const files = fileBatch();
+  // one write transaction from the read to the store switch: a writer waits for it, then sees json and writes the file.
+  // The store choice is one more file of the batch, written with the exported files as the transaction's last step:
+  // a failed write or COMMIT puts every one of them back, the choice included (still sqlite, nothing lost)
+  const files = fileBatch(ctx);
   return withDb(ctx, async (db) => {
     const r = exportInTx(db, cwd, overwrite, files);
+    const cfg = readConfig(cwd);
+    files.add(path.join(cwd, CONFIG_FILE), { ...(cfg.config || {}), store: 'json' });
     await files.commit();
-    await writeConfig(cwd, 'json');
     return { store: 'json', ...r };
-  }, { onRollback: files.restore });
+  }, { onRollback: files.restore, onCommit: files.done });
 }
 
 /**
@@ -365,7 +390,7 @@ async function sync(io, f) {
   if (readConfig(cwd).store !== 'sqlite') throw invalid('this project is on the JSON files (no sqlite store configured): nothing to sync');
   const ctx = await resolveStore({ cwd, env });
   const found = await sourceFiles(cwd);
-  const files = fileBatch();
+  const files = fileBatch(ctx);
   return withDb(ctx, async (db) => {
     let targets = withHeld(cwd, found, listDocs(db));
     if (f.scope !== undefined) {
@@ -396,7 +421,7 @@ async function sync(io, f) {
       putDoc(db, t.name, t.scope, m.doc);
       const doc = getDoc(db, t.name, t.scope);
       // export: the file gets the merged document at the end (left as it is when it already holds exactly that)
-      setFileHash(db, t.name, t.scope, JSON.stringify(doc) !== JSON.stringify(t.doc) ? files.add(t.file, doc) : fileHash(t.file), doc);
+      setFileHash(db, t.name, t.scope, JSON.stringify(doc) !== JSON.stringify(t.doc) ? files.add(t.file, doc, { store: t.name, scope: t.scope }) : fileHash(t.file), doc);
       const row = { kept: m.kept, added: m.added, updated: m.updated, unchanged: m.unchanged, conflicts: m.conflicts.length, deleted: m.deleted.length, renumbered: m.renumbered.length };
       synced.push({ store: t.name, scope: t.scope, ...row, ...(base === null ? { base: 'unknown: union, nothing deleted' } : {}) });
       const at = { store: t.name, scope: t.scope };
@@ -409,7 +434,7 @@ async function sync(io, f) {
     const rows = rowCounts(db);
     await files.commit();
     return { merged: true, synced, counts, conflicts, deleted, renumbered, discarded, kept_without_file: kept, rows };
-  }, { onRollback: files.restore });
+  }, { onRollback: files.restore, onCommit: files.done });
 }
 
 async function status(io) {
@@ -484,6 +509,13 @@ export async function run(args, io = {}) {
   if (f.sub === undefined || f.sub === '--help' || f.sub === '-h') {
     if (f.sub === undefined) throw invalid(`give a subcommand: init, export, off, sync, status, prune or import-reports\n${usage}`);
     return { usage };
+  }
+  {
+    // a files journal left by a `db off` stopped before its COMMIT is recovered first (the store choice is in it)
+    const { cwd, env } = ctxOf(io);
+    let onJson = true;
+    try { onJson = readConfig(cwd).store !== 'sqlite'; } catch { /* a broken config is reported by the subcommand */ }
+    if (onJson) await recoverJsonSide(cwd, env);
   }
   if (f.sub === 'init') return init(io);
   if (f.sub === 'export') {
