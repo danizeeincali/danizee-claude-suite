@@ -6,6 +6,10 @@
  *   db off                  export, then set config json (suite.db is kept; a later `db init` re-imports the JSON files over it)
  *   db status               store in use, engine, schema version, row counts
  *   db prune [--keep <n>]   keep the newest n test runs per branch (default 200), with their cases
+ *   db import-reports [--branch <b>] [--limit <n>]
+ *                           import the junit.xml of the newest CI `test-results-*` artifacts of a branch (default: the
+ *                           current git branch; newest 10 workflow runs) into test_runs/test_cases, each artifact once,
+ *                           through the user's own `gh` login (see ./test-runs.js); needs the sqlite store
  *
  * See ./store.js for the layout, the engine choice (better-sqlite3, else node:sqlite) and the write transactions.
  * `init` from the JSON files (the first time, or after `off`) imports `.claude/kit/lessons.json`, `.claude/kit/noise-ledger.json`, `.claude/kit/triage.json` and the
@@ -20,16 +24,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { KitExit } from './kit-exit.js';
 import { readJsonState, writeJsonAtomic } from './state-lock.js';
+import { importReports, DEFAULT_LIMIT, MAX_LIMIT } from './test-runs.js';
 import {
   SPECS, DB_FILE, CONFIG_FILE, SCHEMA_VERSION, ENGINE_FIX, readConfig, writeConfig, loadEngine, resolveStore, openDb,
   withDb, schemaVersion, getDoc, putDoc, scopeKey, rowCounts, listDocs, fileOfScope
 } from './store.js';
 
 export const verb = 'db';
-export const usage = 'cli.js db init | db export | db off | db status | db prune [--keep <n>]   '
+export const usage = 'cli.js db init | db export | db off | db status | db prune [--keep <n>] | db import-reports [--branch <b>] [--limit <n>]   '
   + '(optional SQLite store .claude/kit/suite.db for lessons, noise-ledger and triage; JSON files stay the default; '
   + 'init imports the JSON stores and sets .claude/kit/config.json {"store":"sqlite"}, export writes them back, off exports then sets json; '
-  + 'engine better-sqlite3 else node:sqlite (Node 22.5+); exit 0 done, 1 invalid input or no engine)';
+  + 'import-reports reads the CI test-results artifacts of a branch through your own `gh` login; '
+  + 'engine better-sqlite3 else node:sqlite (Node 22.5+); exit 0 done, 1 invalid input, no engine, no sqlite store or no gh login)';
 
 export const DEFAULT_KEEP = 200;
 const invalid = (m) => new KitExit(m, 1);
@@ -42,6 +48,11 @@ function parse(args) {
     if (a === '--keep' && sub === 'prune') {
       if (i + 1 >= rest.length) throw invalid('--keep needs a value');
       f.keep = rest[++i];
+      continue;
+    }
+    if ((a === '--branch' || a === '--limit') && sub === 'import-reports') {
+      if (i + 1 >= rest.length) throw invalid(`${a} needs a value`);
+      f[a.slice(2)] = rest[++i];
       continue;
     }
     throw invalid(`${a.startsWith('--') ? 'unknown flag' : 'unexpected argument'} ${JSON.stringify(a).slice(0, 60)}\n${usage}`);
@@ -131,12 +142,19 @@ async function status(io) {
   };
   if (cfg.store === 'sqlite') {
     const ctx = await resolveStore({ cwd, env }); // exit 1 naming the fix when the engine or the file is missing
-    Object.assign(out, await withDb(ctx, (db) => ({ schema_version: schemaVersion(db), rows: rowCounts(db), documents: listDocs(db) }), { write: false }));
+    Object.assign(out, await withDb(ctx, (db) => ({ schema_version: schemaVersion(db), rows: rowCounts(db), test_runs_by_branch: runsByBranch(db), documents: listDocs(db) }), { write: false }));
   } else if (out.db_exists && engine.name) {
     // json in use, a database left by `db off`: report it without changing it
     const db = openDb({ open: engine.open, dbFile });
-    try { Object.assign(out, { schema_version: schemaVersion(db), rows: rowCounts(db) }); } finally { db.close(); }
+    try { Object.assign(out, { schema_version: schemaVersion(db), rows: rowCounts(db), test_runs_by_branch: runsByBranch(db) }); } finally { db.close(); }
   }
+  return out;
+}
+
+/** Test runs per branch: { branch: n }, branches in name order. */
+function runsByBranch(db) {
+  const out = {};
+  for (const r of db.all('SELECT branch, COUNT(*) AS n FROM test_runs GROUP BY branch ORDER BY branch')) out[r.branch] = Number(r.n);
   return out;
 }
 
@@ -161,7 +179,7 @@ async function prune(io, keepArg) {
 export async function run(args, io = {}) {
   const f = parse(args);
   if (f.sub === undefined || f.sub === '--help' || f.sub === '-h') {
-    if (f.sub === undefined) throw invalid(`give a subcommand: init, export, off, status or prune\n${usage}`);
+    if (f.sub === undefined) throw invalid(`give a subcommand: init, export, off, status, prune or import-reports\n${usage}`);
     return { usage };
   }
   if (f.sub === 'init') return init(io);
@@ -178,5 +196,13 @@ export async function run(args, io = {}) {
   }
   if (f.sub === 'status') return status(io);
   if (f.sub === 'prune') return prune(io, f.keep);
-  throw invalid(`unknown subcommand ${JSON.stringify(f.sub).slice(0, 40)} (init, export, off, status, prune)`);
+  if (f.sub === 'import-reports') {
+    let limit = DEFAULT_LIMIT;
+    if (f.limit !== undefined) {
+      if (!/^\d+$/.test(f.limit) || Number(f.limit) < 1 || Number(f.limit) > MAX_LIMIT) throw invalid(`--limit must be a whole number from 1 to ${MAX_LIMIT}`);
+      limit = Number(f.limit);
+    }
+    return importReports(io, { branch: f.branch, limit });
+  }
+  throw invalid(`unknown subcommand ${JSON.stringify(f.sub).slice(0, 40)} (init, export, off, status, prune, import-reports)`);
 }

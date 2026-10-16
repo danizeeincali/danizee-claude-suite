@@ -53,6 +53,16 @@ jobs:
           import { reportStep } from './scripts/ci-step.js';
           reportStep(renderJunit, renderSarif);
           EOF
+      # The rendered files as a run artifact (no token, nothing posted): `db import-reports` reads them back into a
+      # project's local SQLite store through the user's own gh login.
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-node-${{ matrix.node }}
+          path: ${{ runner.temp }}/test-results
+          retention-days: 90
+          if-no-files-found: warn
       - name: Show failing tests
         if: failure()
         run: grep -n -A60 "not ok" "$RUNNER_TEMP/test-output.txt" | head -400

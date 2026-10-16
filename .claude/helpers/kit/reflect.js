@@ -76,7 +76,8 @@ export function maskCredentials(text) {
   for (const re of CREDENTIAL_PATTERNS) out = out.replace(re, (m) => { replaced++; found.push(m.slice(0, 6) + '…'); return '[credential]'; });
   return { text: out, replaced, found };
 }
-const scrub = (v, secrets) => maskCredentials(redactSecrets(v, secrets).text).text;
+/** Redact the project's secrets, then mask credential-shaped strings (used by trouble-log and by the test-run store). */
+export const scrub = (v, secrets) => maskCredentials(redactSecrets(v, secrets).text).text;
 // Matched on the last segment of the name, so mcp__<server>__browser_type counts like type.
 const EDIT_TOOL = /^(edit|write|multiedit|notebookedit|(browser_)?(type|fill|fill_form|input|set_?value|type_?text)|computer_?type)$/i;
 const isEditCall = (e) => EDIT_TOOL.test(String(e.name).split('__').pop())
@@ -394,7 +395,8 @@ function posInt(flags, k, def) {
   return Number(flags[k]);
 }
 
-async function loadSecrets(flags, cwd) {
+/** The project's secrets (or the --secrets-file ones) for scrub(); not a git repository falls back to the working folder. */
+export async function loadSecrets(flags, cwd) {
   if (flags['secrets-file']) {
     let t;
     try { t = await fs.readFile(path.resolve(cwd, flags['secrets-file']), 'utf-8'); } catch (e) { throw invalid(`cannot read secrets file: ${e.code || 'read failed'}`); }

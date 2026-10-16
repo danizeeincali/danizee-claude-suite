@@ -4,12 +4,16 @@
 //   runStep(classify)          blocking, fails closed: any nonzero exit of the test command fails; classify only labels the failure.
 //   reportStep(renderJunit, renderSarif)  advisory: write the results as JUnit (and SARIF when tests failed) files. Never fails.
 // No network, no token, nothing is posted anywhere: files are written locally and their paths printed.
+// When the project keeps its kit state in SQLite (.claude/kit/config.json {"store":"sqlite"}), runStep also records the
+// run in test_runs/test_cases (src/lib/kit/test-runs.js recordRun); on the JSON files (CI, by default) nothing is recorded.
+// Recording can never change the step's exit status: a failure is one printed line.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { testTargets, spawnedPaths } from '../src/lib/kit/test-map.js';
+import { recordRun } from '../src/lib/kit/test-runs.js';
 
 export { testTargets, spawnedPaths };
 
@@ -57,16 +61,40 @@ export function planStep(planTests, { env = process.env, cwd = process.cwd(), lo
  * so no class is trusted to mean "the product is fine": a run that gave no verdict must not turn the job green.
  * Resolves to the exit status the step should end with.
  */
-export function runStep(classify, { env = process.env, log = console.log } = {}) {
+export async function runStep(classify, { env = process.env, log = console.log, cwd = process.cwd() } = {}) {
   const command = env.CI_TEST_COMMAND || 'npm test';
+  const started = new Date().toISOString();
+  const result = await runTests(classify, command, env, log);
+  if (!result.started) return result.status;
+  await recordStep({ command, code: result.code, signal: result.signal, started_at: started, finished_at: new Date().toISOString() }, { env, log, cwd });
+  return result.status;
+}
+
+/** Record the run in the SQLite store when the project uses it. Never throws; a failure is one line. */
+export async function recordStep(run, { env = process.env, log = console.log, cwd = process.cwd() } = {}) {
+  try {
+    const file = outputFile(env);
+    const output = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '';
+    const r = await recordRun({ cwd, env }, { ...run, output });
+    if (r.recorded) log(`test run recorded in the kit store (run ${r.id}, ${r.cases} cases, ${r.status}).`);
+    return r;
+  } catch (e) {
+    log(`test run not recorded in the kit store: ${String(e && e.message).split('\n')[0]}`);
+    return null;
+  }
+}
+
+function runTests(classify, command, env, log) {
   const out = fs.createWriteStream(outputFile(env));
   return new Promise((resolve) => {
     const child = spawn('sh', ['-c', command], { stdio: ['ignore', 'pipe', 'pipe'], env });
     for (const s of [child.stdout, child.stderr]) s.on('data', (d) => { process.stdout.write(d); out.write(d); });
-    child.on('error', (e) => { out.end(); log(`::error::precondition: the test command could not start: "${command}": ${e.message}. The job fails; check the test script and the node install.`); resolve(1); });
+    // resolve after the output file is flushed, so a recorder reads all of it
+    let finished = false;
+    const done = (r) => { if (finished) return; finished = true; out.end(() => resolve(r)); };
+    child.on('error', (e) => { log(`::error::precondition: the test command could not start: "${command}": ${e.message}. The job fails; check the test script and the node install.`); done({ started: false, status: 1 }); });
     child.on('close', (code, signal) => {
-      out.end();
-      if (code === 0) return resolve(0);
+      if (code === 0) return done({ started: true, status: 0, code, signal });
       const c = classify({ code, signal });
       const ended = signal ? `signal ${signal}` : `status ${code}`;
       // Only a timeout (124), a signal death or a status >= 128 is labelled "timed out / killed by a signal"; any other status gets the neutral label.
@@ -79,7 +107,7 @@ export function runStep(classify, { env = process.env, log = console.log } = {})
         : c.class === 'precondition' ? 'check the test script and the node install'
         : 'see the failing tests above';
       log(`::error::"${command}" ended with ${ended}: ${label}. The job fails; ${next}.`);
-      resolve(code || 1);
+      done({ started: true, status: code || 1, code, signal });
     });
   });
 }

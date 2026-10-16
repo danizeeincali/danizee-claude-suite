@@ -97,6 +97,15 @@ CREATE TABLE test_cases (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NO
 CREATE INDEX test_cases_run ON test_cases (run_id);
 CREATE INDEX test_cases_name ON test_cases (suite, name);
 `
+  },
+  {
+    // test runs: the run's verdict, and the key of an imported CI report (workflow run id / artifact name) so a report is imported once
+    version: 2,
+    sql: `
+ALTER TABLE test_runs ADD COLUMN status TEXT;
+ALTER TABLE test_runs ADD COLUMN run_key TEXT;
+CREATE UNIQUE INDEX test_runs_run_key ON test_runs (run_key);
+`
   }
 ]);
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;

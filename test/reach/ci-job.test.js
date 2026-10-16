@@ -3,6 +3,7 @@
 //   "Test plan for this change"  prints the plan with a reason per item and never fails
 //   "npm test"                   fails closed: any nonzero exit fails; the ::error:: label tells the classes apart
 //   "Render test results"        writes junit.xml (and results.sarif when a test failed) as local files
+//   "Upload test results"        uploads those files (only them) as the run artifact test-results-node-<node>, always
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -14,7 +15,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const workflow = fs.readFileSync(path.join(root, '.github', 'workflows', 'test.yml'), 'utf-8');
 
-/** The steps of a job as { name, continueOnError, run } from the workflow text (no YAML library in this repo). */
+/** The steps of a job as { name, continueOnError, run, uses, if, with } from the workflow text (no YAML library in this repo). */
 function steps(job) {
   const lines = workflow.split('\n');
   const start = lines.findIndex((l) => l === `  ${job}:`);
@@ -25,9 +26,12 @@ function steps(job) {
     const l = lines[i];
     if (/^ {0,2}\S/.test(l)) break; // next job or top-level key
     let m = /^ {6}- (?:name: (.*)|(uses|run): (.*))$/.exec(l);
-    if (m) { cur = { name: m[1] ?? null, continueOnError: false, run: null }; out.push(cur); if (m[2] === 'run') cur.run = m[3]; continue; }
+    if (m) { cur = { name: m[1] ?? null, continueOnError: false, run: null, uses: null, if: null, with: {} }; out.push(cur); if (m[2] === 'run') cur.run = m[3]; if (m[2] === 'uses') cur.uses = m[3]; continue; }
     if (!cur) continue;
     if ((m = /^ {8}name: (.*)$/.exec(l))) cur.name = m[1];
+    else if ((m = /^ {8}uses: (.*)$/.exec(l))) cur.uses = m[1];
+    else if ((m = /^ {8}if: (.*)$/.exec(l))) cur.if = m[1];
+    else if (/^ {8}with:$/.test(l)) { while (i + 1 < lines.length && (m = /^ {10}([\w-]+): (.*)$/.exec(lines[i + 1]))) { cur.with[m[1]] = m[2]; i++; } }
     else if (/^ {8}continue-on-error: true$/.test(l)) cur.continueOnError = true;
     else if (/^ {8}run: \|$/.test(l)) {
       const body = [];
@@ -54,7 +58,28 @@ test('the job is wired: advisory steps cannot fail it, the test step can', () =>
   assert.equal(step('Render test results').continueOnError, true);
   assert.equal(step('npm test').continueOnError, false);
   assert.match(step('npm test').run, /exit-codes\.js/);
-  assert.doesNotMatch(workflow, /secrets\.|GITHUB_TOKEN|gh pr comment|upload-artifact/);
+  // No token and nothing posted. The one artifact upload (owner-approved, 2026-10-16) is the step checked below and no other.
+  assert.doesNotMatch(workflow, /secrets\.|GITHUB_TOKEN|gh pr comment/);
+  assert.equal(steps('node-test').filter((x) => /upload-artifact/.test(x.uses || '')).length, 1);
+  assert.equal((workflow.match(/upload-artifact/g) || []).length, 1);
+});
+
+test('the upload step always uploads only the rendered results, per node version, kept 90 days', () => {
+  const all = steps('node-test');
+  const names = all.map((x) => x.name);
+  const up = all.find((x) => x.name === 'Upload test results');
+  assert.ok(up, 'step "Upload test results" not found');
+  assert.ok(names.indexOf('Upload test results') === names.indexOf('Render test results') + 1, 'it follows the render step');
+  assert.equal(up.uses, 'actions/upload-artifact@v4');
+  assert.equal(up.if, 'always()');
+  assert.equal(up.run, null);
+  assert.match(workflow, /matrix:\n\s+node: \[/, 'the matrix key the artifact name uses is `node`');
+  assert.deepEqual(up.with, {
+    name: 'test-results-node-${{ matrix.node }}',
+    path: '${{ runner.temp }}/test-results',
+    'retention-days': '90',
+    'if-no-files-found': 'warn'
+  });
 });
 
 test('test plan step prints a reason per item and exits 0', () => {
