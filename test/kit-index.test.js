@@ -491,3 +491,216 @@ describe('danizee-claude-suite check: one info line about the index, never fatal
     } finally { rm(dir); }
   });
 });
+
+describe('the index reads only regular files, bounded, never through a link (review wt-1a / wt-1b)', () => {
+  const kitDir = (dir) => path.join(dir, '.claude', 'kit');
+  const status = async (dir) => { const st = await call(db, ['status'], dir); assert.equal(st.code, 0, st.err); return st.out; };
+  const skippedOf = (out, file) => out.skipped.find((s) => s.file === file);
+  const save = (dir, text, extra = []) => cli(['reflect', 'lessons', 'save', '--role', 'r', '--session', 's', '--text', text, ...extra], dir);
+
+  it('a default state file that turns into a link to /dev/zero is skipped: verb writes keep their output and exit, db init/status/rebuild finish', { skip, timeout: 60000 }, async () => {
+    const dir = tmp();
+    try {
+      fs.mkdirSync(kitDir(dir), { recursive: true });
+      assert.equal((await call(db, ['init'], dir)).code, 0);
+      const triage = path.join(fs.realpathSync(dir), TRIAGE);
+      fs.symlinkSync('/dev/zero', triage);
+      const base = await cli(['triage', 'list'], dir);
+      assert.equal(base.code, 2, 'the base verb refuses the link, as designed');
+      const t0 = Date.now();
+      const r = await save(dir, 'Run the linter before every commit.');
+      assert.equal(r.code, 0, r.err);
+      assert.equal(JSON.parse(r.out).saved, true);
+      assert.equal(r.err, '', 'the index update succeeds: the link is skipped');
+      assert.ok(Date.now() - t0 < 20000);
+      let out = await status(dir);
+      assert.deepEqual(skippedOf(out, triage), { kind: 'triage', file: triage, reason: 'a symbolic link' });
+      assert.equal(out.files.find((f) => f.file === triage).rows, 0);
+      assert.equal(out.rows.lessons, 1);
+      const rb = await call(db, ['rebuild'], dir);
+      assert.equal(rb.code, 0, rb.err);
+      assert.equal(skippedOf(rb.out, triage).reason, 'a symbolic link');
+      const again = await call(db, ['init'], dir);
+      assert.equal(again.code, 0, again.err);
+      // a FIFO in its place: never opened for a blocking read
+      fs.unlinkSync(triage);
+      assert.equal(spawnSync('mkfifo', [triage]).status, 0);
+      out = await status(dir);
+      assert.equal(skippedOf(out, triage).reason, 'not a regular file');
+      assert.equal((await save(dir, 'Check every spawned process exit status.')).err, '');
+      // larger than the cap (sparse): not read
+      fs.unlinkSync(triage);
+      fs.writeFileSync(triage, '');
+      fs.truncateSync(triage, 33 * 1024 * 1024);
+      out = await status(dir);
+      assert.match(skippedOf(out, triage).reason, /^larger than \d+ bytes$/);
+      // a regular file again: indexed again
+      fs.writeFileSync(triage, JSON.stringify({ version: 1, records: { k1: { scope: 'a.js', rule: 'r1', status: 'open' } } }));
+      out = await status(dir);
+      assert.equal(skippedOf(out, triage), undefined);
+      assert.equal(out.rows.triage, 1);
+    } finally { rm(dir); }
+  });
+
+  it('a default file linked to another project\'s file, a linked .claude/kit folder, a linked marathon folder: nothing read through them', { skip, timeout: 60000 }, async () => {
+    const dir = tmp();
+    const other = tmp();
+    try {
+      fs.mkdirSync(path.join(other, 'kit'), { recursive: true });
+      fs.mkdirSync(path.join(other, 'marathon', 'r1'), { recursive: true });
+      const marker = JSON.stringify({ version: 1, records: { k: { scope: 'MARKER-OTHER-PROJECT', rule: 'r', status: 'open' } } });
+      fs.writeFileSync(path.join(other, 'kit', 'triage.json'), marker);
+      fs.writeFileSync(path.join(other, 'marathon', 'r1', 'triage.json'), marker);
+      fs.mkdirSync(kitDir(dir), { recursive: true });
+      fs.symlinkSync(path.join(other, 'kit', 'triage.json'), path.join(kitDir(dir), 'triage.json'));
+      fs.mkdirSync(path.join(dir, '.claude', 'marathon', 'r2'), { recursive: true });
+      fs.symlinkSync(path.join(other, 'marathon', 'r1'), path.join(dir, '.claude', 'marathon', 'r1'));
+      fs.symlinkSync(path.join(other, 'marathon', 'r1', 'triage.json'), path.join(dir, '.claude', 'marathon', 'r2', 'triage.json'));
+      const init = await call(db, ['init'], dir);
+      assert.equal(init.code, 0, init.err);
+      assert.equal(init.out.rows.triage, 0);
+      assert.equal(skippedOf(init.out, path.join(fs.realpathSync(dir), TRIAGE)).reason, 'a symbolic link');
+      assert.ok(!init.out.files.some((f) => f.file.includes('marathon')), 'linked marathon run folders and files are not listed');
+      assert.equal((await rows(dir, "SELECT COUNT(*) AS n FROM triage WHERE scope = 'MARKER-OTHER-PROJECT'"))[0].n, 0);
+      // .claude/kit itself a link
+      const d2 = tmp();
+      try {
+        fs.mkdirSync(path.join(d2, '.claude'));
+        fs.symlinkSync(path.join(other, 'kit'), path.join(d2, '.claude', 'kit'));
+        const i2 = await call(db, ['init'], d2);
+        assert.equal(i2.code, 0, i2.err);
+        assert.equal(i2.out.rows.triage, 0);
+        assert.match(skippedOf(i2.out, path.join(fs.realpathSync(d2), TRIAGE)).reason, /a folder on its path \(\.claude\/kit\) is a symbolic link/);
+      } finally { rm(d2); }
+      // the whole marathon folder a link: not listed
+      const d3 = tmp();
+      try {
+        fs.mkdirSync(path.join(d3, '.claude'));
+        fs.symlinkSync(path.join(other, 'marathon'), path.join(d3, '.claude', 'marathon'));
+        const i3 = await call(db, ['init'], d3);
+        assert.equal(i3.code, 0, i3.err);
+        assert.ok(!i3.out.files.some((f) => f.file.includes('marathon')));
+      } finally { rm(d3); }
+    } finally { rm(dir); rm(other); }
+  });
+
+  it('db init enables the index only after its build commits; a file that cannot be indexed (deep nesting) is skipped, not a failure', { skip, timeout: 60000 }, async () => {
+    const dir = tmp();
+    try {
+      const deep = path.join(dir, '.claude', 'marathon', 'r1', 'triage-a.json');
+      fs.mkdirSync(path.dirname(deep), { recursive: true });
+      fs.writeFileSync(deep, `{"records":{"k":${'['.repeat(200000)}${']'.repeat(200000)}}}`);
+      const init = await call(db, ['init'], dir);
+      assert.equal(init.code, 0, init.err);
+      const key = path.join(fs.realpathSync(dir), '.claude', 'marathon', 'r1', 'triage-a.json');
+      const f = init.out.files.find((x) => x.file === key);
+      assert.ok(f && f.rows === 0 && (f.skipped || f.error), JSON.stringify(f));
+      assert.ok(init.out.project_files_indexed_at);
+      assert.equal((await status(dir)).index, 'on');
+      assert.equal((await call(db, ['rebuild'], dir)).code, 0);
+      // a build that fails: the setting is not written, the index stays off
+      const d2 = tmp();
+      try {
+        const p = indexPaths(d2, { ...process.env, ...ENV });
+        fs.mkdirSync(p.db, { recursive: true });
+        fs.writeFileSync(path.join(p.db, 'x'), 'not a database');
+        const bad = await call(db, ['init'], d2);
+        assert.notEqual(bad.code, 0);
+        assert.ok(!fs.existsSync(p.setting), 'no setting after a failed init');
+        assert.equal((await status(d2)).index, 'off');
+      } finally { rm(d2); }
+    } finally { rm(dir); }
+  });
+
+  it('an open re-reads only files whose size, mtime or inode changed; a tracked file that becomes a folder is dropped (rows gone, listed as skipped); rebuild never gets stuck', { skip, timeout: 60000 }, async () => {
+    const root = tmp();
+    const dir = path.join(root, 'p');
+    fs.mkdirSync(dir);
+    try {
+      assert.equal((await call(db, ['init'], dir)).code, 0);
+      assert.equal((await save(dir, 'Run the linter before every commit.')).code, 0);
+      const file = path.join(dir, LESSONS);
+      // same size, same mtime, same inode: not re-read (no hash taken)
+      // a whole-second mtime, recorded by an open, so it can be set back exactly below
+      const T = 1700000000;
+      fs.utimesSync(file, T, T);
+      assert.deepEqual(await lessonIds(dir), ['L1']);
+      const text = read(dir, LESSONS);
+      const swapped = text.replace('"L1"', '"L9"');
+      assert.equal(swapped.length, text.length);
+      const fd = fs.openSync(file, 'r+');
+      fs.writeSync(fd, swapped, 0);
+      fs.closeSync(fd);
+      fs.utimesSync(file, T, T);
+      assert.deepEqual(await lessonIds(dir), ['L1'], 'unchanged stat: the recorded rows stand');
+      fs.utimesSync(file, T, T + 5);
+      assert.deepEqual(await lessonIds(dir), ['L9'], 'a new mtime: re-read and re-indexed');
+
+      // M1: a --store file outside the project becomes a folder
+      const outside = path.join(root, 'x', 'l.json');
+      assert.equal((await save(dir, 'Check every spawned process exit status.', ['--store', outside])).code, 0);
+      const key = fs.realpathSync(outside);
+      fs.rmSync(outside);
+      fs.mkdirSync(outside);
+      const r = await save(dir, 'Pin every dependency version in lock files.');
+      assert.equal(r.code, 0, r.err);
+      assert.equal(r.err, '');
+      const out = await status(dir);
+      assert.deepEqual(skippedOf(out, key), { kind: 'lessons', file: key, reason: 'not a regular file' });
+      assert.equal((await rows(dir, 'SELECT COUNT(*) AS n FROM lessons WHERE file = ?', key))[0].n, 0);
+      const rb = await call(db, ['rebuild'], dir);
+      assert.equal(rb.code, 0, rb.err);
+      assert.equal(skippedOf(rb.out, key).reason, 'not a regular file');
+      // gone altogether: rebuild drops it
+      fs.rmSync(path.join(root, 'x'), { recursive: true });
+      assert.equal((await status(dir)).files.find((f) => f.file === key).exists, false);
+      const rb2 = await call(db, ['rebuild'], dir);
+      assert.equal(rb2.code, 0, rb2.err);
+      assert.ok(!rb2.out.files.some((f) => f.file === key), 'rebuild clears and re-scans: a gone file is not kept');
+    } finally { rm(root); }
+  });
+
+  it('new .claude/marathon/<run>/triage*.json files are indexed on the next open (no rebuild); at most 200, with a note', { skip, timeout: 120000 }, async () => {
+    const dir = tmp();
+    try {
+      assert.equal((await call(db, ['init'], dir)).code, 0);
+      const m = path.join(dir, '.claude', 'marathon');
+      const rec = (n) => JSON.stringify({ version: 1, records: Object.fromEntries(Array.from({ length: n }, (_, i) => [`k${i}`, { scope: 'a.js', rule: 'r', status: 'open' }])) });
+      fs.mkdirSync(path.join(m, 'r1'), { recursive: true });
+      fs.writeFileSync(path.join(m, 'r1', 'triage.json'), rec(2));
+      fs.writeFileSync(path.join(m, 'r1', 'notes.json'), rec(5));
+      let out = await status(dir);
+      assert.equal(out.rows.triage, 2, 'a pulled marathon triage file is indexed without a rebuild');
+      // after a verb write too
+      fs.writeFileSync(path.join(m, 'r1', 'triage-b.json'), rec(3));
+      assert.equal((await save(dir, 'Run the linter before every commit.')).err, '');
+      assert.equal((await rows(dir, 'SELECT COUNT(*) AS n FROM triage'))[0].n, 5);
+      for (let i = 0; i < 205; i++) {
+        fs.mkdirSync(path.join(m, `s${String(i).padStart(3, '0')}`));
+        fs.writeFileSync(path.join(m, `s${String(i).padStart(3, '0')}`, 'triage.json'), rec(1));
+      }
+      out = await status(dir);
+      assert.equal(out.files.filter((f) => f.file.includes(`${path.sep}marathon${path.sep}`)).length, 200);
+      assert.deepEqual(out.notes, ['7 .claude/marathon/<run>/triage*.json files beyond the first 200 are not indexed']);
+    } finally { rm(dir); }
+  });
+
+  it('a DANIZEE_KIT_HOME that cannot be used: verb writes print nothing (the index was never on), db subcommands report it', { skip }, async () => {
+    const dir = tmp();
+    try {
+      for (const home of ['relative/home', path.join(dir, 'inside')]) {
+        for (const args of [['noise-ledger', 'accept', '--id', 'a', '--reason', 'b', '--now', '2025-01-01'], ['reflect', 'lessons', 'save', '--role', 'r', '--session', 's', '--text', 'Run the linter before every commit.', '--distinct']]) {
+          const r = await cli(args, dir, { DANIZEE_KIT_HOME: home });
+          assert.equal(r.code, 0, r.err);
+          assert.equal(r.err, '', `${home}: ${args.join(' ')}`);
+        }
+        for (const sub of ['status', 'init', 'rebuild']) {
+          const r = await cli(['db', sub], dir, { DANIZEE_KIT_HOME: home });
+          assert.equal(r.code, 1, sub);
+          assert.match(r.err, /DANIZEE_KIT_HOME/);
+        }
+      }
+      assert.ok(!fs.existsSync(path.join(dir, 'inside')));
+    } finally { rm(dir); }
+  });
+});

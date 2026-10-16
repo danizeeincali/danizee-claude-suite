@@ -16,11 +16,19 @@
  *
  * WRITES. A verb writes its JSON file first (its own code path, under the state lock), then calls indexAfterWrite:
  * best effort, only when the index is enabled; any trouble is one stderr line, never a change to the verb's output or
- * exit code. READS. Verbs read their JSON files. Each time the index is opened, every file it holds whose sha256
- * differs from the one it recorded is re-indexed from that file (a file gone or not valid JSON leaves no rows), so a
- * git pull, an edit by hand, a write by an older kit or a crash between a file write and its index update heals on the
- * next open. Any path a verb was given (--store, --ledger, --state) is indexed under its real path, inside the project
- * or not: it is only an index.
+ * exit code. READS. Verbs read their JSON files. Each time the index is opened, every file it holds whose size, mtime
+ * or inode changed is re-read and, when its sha256 differs from the one recorded, re-indexed (a file gone or not valid
+ * JSON leaves no rows), and project state files it does not hold yet (a new `.claude/marathon/<run>/triage*.json`) are
+ * added, so a git pull, an edit by hand, a write by an older kit or a crash between a file write and its index update
+ * heals on the next open. Any path a verb was given (--store, --ledger, --state) is indexed under its real path, inside
+ * the project or not: it is only an index.
+ *
+ * UNTRUSTED FILES. A state file comes from the repository (a pull can put anything there), so the index reads one only
+ * as a regular file of at most MAX_FILE_BYTES: lstat first, opened with O_NOFOLLOW | O_NONBLOCK, fstat on the open file,
+ * read through it with a byte bound (readState). A symbolic link (in the project, also any folder on its way), a FIFO, a
+ * device, a folder, a file too large or unreadable, or one that cannot be indexed (say, nested too deep) is skipped:
+ * no rows, recorded with its reason and listed by `db status` (`skipped`). Skipping never changes a verb's output or
+ * exit code. `.claude/marathon` is listed without following links, at most MAX_MARATHON_FILES files.
  *
  * ENGINE. `better-sqlite3` only from this suite package's own node_modules (real path checked), else Node's built-in
  * `node:sqlite` (Node 22.13+ / 23.4+). Never anything from the project folder; no git is run. No engine: the index is
@@ -102,6 +110,13 @@ CREATE TABLE test_cases (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id INTEGER NO
 CREATE INDEX test_cases_run ON test_cases (run_id);
 CREATE INDEX test_cases_name ON test_cases (suite, name);
 CREATE TABLE imported_reports (run_key TEXT PRIMARY KEY, branch TEXT, imported_at TEXT NOT NULL);
+`
+  },
+  {
+    // a file's size, mtime and inode when it was read: an open re-reads (and hashes) only files whose stat changed
+    version: 2,
+    sql: `
+ALTER TABLE files ADD COLUMN stat TEXT;
 `
   }
 ]);
@@ -419,16 +434,71 @@ export function fileKey(file) {
   return realThrough(file) || path.resolve(file);
 }
 
-/** A file's bytes, or null when it does not exist. */
-function readBytes(file) {
-  try { return fs.readFileSync(file); } catch (e) { if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return null; throw e; }
+/** At most this many `.claude/marathon/<run>/triage*.json` files are indexed (in run and file name order). */
+export const MAX_MARATHON_FILES = 200;
+/** files.stat: `<size>:<mtimeNs>:<inode>:<sha256>` of the file when it was read. */
+/** Recorded in files.sha256 for a file that was skipped (not read): a link, not a regular file, too large, unreadable. */
+export const SKIPPED = 'skipped';
+
+const statKey = (st) => `${st.size}:${st.mtimeNs}:${st.ino}`;
+const skip = (reason) => ({ skip: reason });
+
+/**
+ * Read one state file for the index, never through a link and never more than MAX_FILE_BYTES:
+ * { absent } | { skip: reason } | { unchanged } (its size, mtime and inode are `known`) | { buf, stat }.
+ * Inside the project (`root`) no folder on the way may be a symbolic link either. Never throws.
+ */
+export function readState(file, { root = null, known = null } = {}) {
+  try {
+    if (root && inside(root, file)) {
+      const parts = path.relative(root, file).split(path.sep);
+      let p = root;
+      for (const part of parts.slice(0, -1)) {
+        p = path.join(p, part);
+        let st;
+        try { st = fs.lstatSync(p); } catch (e) { if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return { absent: true }; return skip(`cannot be checked (${e.code || 'error'})`); }
+        if (st.isSymbolicLink()) return skip(`a folder on its path (${path.relative(root, p)}) is a symbolic link`);
+        if (!st.isDirectory()) return { absent: true };
+      }
+    }
+    let st;
+    try { st = fs.lstatSync(file, { bigint: true }); } catch (e) {
+      if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return { absent: true };
+      return skip(`cannot be checked (${e.code || 'error'})`);
+    }
+    if (st.isSymbolicLink()) return skip('a symbolic link');
+    if (!st.isFile()) return skip('not a regular file');
+    if (st.size > BigInt(MAX_FILE_BYTES)) return skip(`larger than ${MAX_FILE_BYTES} bytes`);
+    if (known && statKey(st) === known) return { unchanged: true };
+    let fd;
+    // O_NONBLOCK: a file swapped for a FIFO after the lstat never blocks the open
+    try { fd = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0) | (fs.constants.O_NONBLOCK || 0)); } catch (e) {
+      return skip(e.code === 'ELOOP' ? 'a symbolic link' : `cannot be read (${e.code || 'error'})`);
+    }
+    try {
+      const fst = fs.fstatSync(fd, { bigint: true });
+      if (!fst.isFile()) return skip('not a regular file');
+      if (fst.size > BigInt(MAX_FILE_BYTES)) return skip(`larger than ${MAX_FILE_BYTES} bytes`);
+      const buf = Buffer.alloc(Number(fst.size) + 1);
+      let n = 0;
+      for (;;) {
+        const k = fs.readSync(fd, buf, n, buf.length - n, null);
+        if (k === 0) break;
+        n += k;
+        if (n >= buf.length) break;
+      }
+      if (n > MAX_FILE_BYTES || n > Number(fst.size)) return skip(`grew while it was read (or larger than ${MAX_FILE_BYTES} bytes)`);
+      return { buf: buf.subarray(0, n), stat: statKey(fst) };
+    } finally { fs.closeSync(fd); }
+  } catch (e) {
+    return skip(`cannot be read (${e.code || firstLine(e).slice(0, 80)})`);
+  }
 }
 
-const shaOf = (buf) => (buf === null ? 'absent' : crypto.createHash('sha256').update(buf).digest('hex'));
+const shaOf = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 
 /** Parse a state file's bytes as the verbs do (a leading BOM skipped): { doc } or { error }. */
 function parseState(buf) {
-  if (buf === null) return { doc: null };
   if (buf.length > MAX_FILE_BYTES) return { error: `larger than ${MAX_FILE_BYTES} bytes` };
   let b = buf;
   if (b.length >= 3 && b[0] === 0xef && b[1] === 0xbb && b[2] === 0xbf) b = b.subarray(3);
@@ -438,55 +508,119 @@ function parseState(buf) {
   } catch { return { error: 'not valid JSON' }; }
 }
 
-/** Replace the rows of one file (by its key) with what the file holds now and record its hash. Returns the row count. */
-export function indexFile(db, kind, key, buf = readBytes(key)) {
+const dropRows = (db, key) => { for (const k of Object.values(KINDS)) db.run(`DELETE FROM ${k.table} WHERE file = ?`, key); };
+const recordFile = (db, key, kind, sha, error, stat) => db.run(
+  'INSERT INTO files (file, kind, sha256, error, indexed_at, stat) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (file) DO UPDATE SET kind = excluded.kind, sha256 = excluded.sha256, error = excluded.error, indexed_at = excluded.indexed_at, stat = excluded.stat',
+  key, kind, sha, error ?? null, new Date().toISOString(), stat ?? null);
+
+/**
+ * Replace the rows of one file (by its key) with what `state` (readState) holds and record it. A file that is skipped,
+ * absent, not valid JSON or cannot be indexed (say, nested too deep) leaves no rows; it is recorded with its reason.
+ * Never throws for the file's content. Returns the row count.
+ */
+export function indexFile(db, kind, key, state = readState(key)) {
   const spec = KINDS[kind];
-  for (const k of Object.values(KINDS)) db.run(`DELETE FROM ${k.table} WHERE file = ?`, key);
-  const { doc, error } = parseState(buf);
-  const rows = doc ? spec.rows(doc) : [];
-  for (const r of rows) {
-    const { data, ...cols } = r;
-    const names = Object.keys(cols);
-    db.run(`INSERT OR REPLACE INTO ${spec.table} (file, ${names.join(', ')}, data) VALUES (?, ${names.map(() => '?').join(', ')}, ?)`,
-      key, ...names.map((n) => (cols[n] == null ? null : typeof cols[n] === 'number' ? cols[n] : String(cols[n]))), JSON.stringify(data ?? null));
+  dropRows(db, key);
+  if (state.skip) { recordFile(db, key, kind, SKIPPED, state.skip, null); return 0; }
+  if (state.absent) { recordFile(db, key, kind, 'absent', null, null); return 0; }
+  const { doc, error } = parseState(state.buf);
+  try {
+    const rows = doc ? spec.rows(doc) : [];
+    for (const r of rows) {
+      const { data, ...cols } = r;
+      const names = Object.keys(cols);
+      db.run(`INSERT OR REPLACE INTO ${spec.table} (file, ${names.join(', ')}, data) VALUES (?, ${names.map(() => '?').join(', ')}, ?)`,
+        key, ...names.map((n) => (cols[n] == null ? null : typeof cols[n] === 'number' ? cols[n] : String(cols[n]))), JSON.stringify(data ?? null));
+    }
+    const sha = shaOf(state.buf);
+    recordFile(db, key, kind, sha, error, state.stat ? `${state.stat}:${sha}` : null);
+    return rows.length;
+  } catch (e) {
+    if (/SQLITE_BUSY|database is locked|SQLITE_FULL|SQLITE_IOERR|disk I\/O/i.test(firstLine(e))) throw e;
+    dropRows(db, key);
+    recordFile(db, key, kind, SKIPPED, `cannot be indexed (${firstLine(e).slice(0, 120)})`, null);
+    return 0;
   }
-  db.run('INSERT INTO files (file, kind, sha256, error, indexed_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT (file) DO UPDATE SET kind = excluded.kind, sha256 = excluded.sha256, error = excluded.error, indexed_at = excluded.indexed_at',
-    key, kind, shaOf(buf), error ?? null, new Date().toISOString());
-  return rows.length;
 }
 
-/** Re-index `file` when the index does not hold it, or holds another hash or kind of it. True when it was re-indexed. */
-export function ensureFile(db, kind, file) {
-  const key = fileKey(file);
-  const buf = readBytes(key);
-  const row = db.get('SELECT kind, sha256 FROM files WHERE file = ?', key);
-  if (row && row.kind === kind && row.sha256 === shaOf(buf)) return false;
-  indexFile(db, kind, key, buf);
+/**
+ * Bring one file's rows up to date: skipped when its size, mtime and inode are the ones recorded, else read and
+ * re-indexed when its hash, kind or state changed. `key` is the indexed path (see fileKey). True when re-indexed.
+ */
+export function ensureKey(db, kind, key, root = null) {
+  const row = db.get('SELECT kind, sha256, error, stat FROM files WHERE file = ?', key);
+  const same = row && row.kind === kind;
+  // the recorded stat counts only together with the hash it was recorded with (a changed hash re-reads the file)
+  const tail = same && row.stat && row.sha256 !== SKIPPED && row.sha256 !== 'absent' ? `:${row.sha256}` : null;
+  const known = tail && row.stat.endsWith(tail) ? row.stat.slice(0, -tail.length) : null;
+  const state = readState(key, { root, known });
+  if (state.unchanged) return false;
+  if (same) {
+    if (state.skip && row.sha256 === SKIPPED && row.error === state.skip) return false;
+    if (state.absent && row.sha256 === 'absent') return false;
+    if (state.buf && row.sha256 === shaOf(state.buf)) {
+      const stat = `${state.stat}:${row.sha256}`;
+      if (row.stat !== stat) db.run('UPDATE files SET stat = ? WHERE file = ?', stat, key);
+      return false;
+    }
+  }
+  indexFile(db, kind, key, state);
   return true;
 }
 
-/** Re-index every file whose hash changed since it was indexed. Returns the files re-indexed. */
-export function refreshStale(db) {
+/** ensureKey for a path a verb was given (indexed under its real path). */
+export function ensureFile(db, kind, file, root = null) {
+  return ensureKey(db, kind, fileKey(file), root);
+}
+
+/** Re-index every recorded file that changed since it was indexed. Returns the files re-indexed. */
+export function refreshStale(db, root = null) {
   const out = [];
   for (const r of db.all('SELECT file, kind FROM files ORDER BY file')) {
-    if (!Object.hasOwn(KINDS, r.kind)) { db.run('DELETE FROM files WHERE file = ?', r.file); continue; }
-    if (ensureFile(db, r.kind, r.file)) out.push(r.file);
+    if (!Object.hasOwn(KINDS, r.kind)) { dropRows(db, r.file); db.run('DELETE FROM files WHERE file = ?', r.file); continue; }
+    if (ensureKey(db, r.kind, r.file, root)) out.push(r.file);
   }
   return out;
 }
 
-/** The project's own state files: each kind's default file and the per-stream triage files `.claude/marathon/<run>/triage*.json`. */
-export function projectFiles(cwd) {
-  const out = Object.entries(KINDS).map(([kind, k]) => ({ kind, file: path.join(cwd, ...k.defaultFile.split('/')) }));
-  const root = path.join(cwd, '.claude', 'marathon');
-  let runs = [];
-  try { runs = fs.readdirSync(root, { withFileTypes: true }); } catch { return out; }
-  for (const r of runs.filter((d) => d.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
-    let files = [];
-    try { files = fs.readdirSync(path.join(root, r.name)); } catch { continue; }
-    for (const f of files.sort()) if (/^triage[^/]*\.json$/.test(f)) out.push({ kind: 'triage', file: path.join(root, r.name, f) });
+/** A folder's entries, only when the folder itself is a real folder (never through a symbolic link); else []. */
+function listNoLink(dir) {
+  try {
+    if (!fs.lstatSync(dir).isDirectory()) return [];
+    return fs.readdirSync(dir, { withFileTypes: true });
+  } catch { return []; }
+}
+
+/**
+ * The project's own state files, as keys under the project's real path `root`: each kind's default file and the
+ * per-stream triage files `.claude/marathon/<run>/triage*.json` (no symbolic link is followed: a linked .claude,
+ * marathon or run folder, or a linked file, is not listed; at most MAX_MARATHON_FILES). The list carries `omitted`:
+ * the marathon files left out by the cap.
+ */
+export function projectFiles(root) {
+  const out = Object.entries(KINDS).map(([kind, k]) => ({ kind, file: path.join(root, ...k.defaultFile.split('/')), project: true }));
+  out.omitted = 0;
+  if (!listNoLink(path.join(root, '.claude')).some((d) => d.name === 'marathon' && d.isDirectory())) return out;
+  const marathon = path.join(root, '.claude', 'marathon');
+  let n = 0;
+  for (const r of listNoLink(marathon).filter((d) => d.isDirectory()).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+    const files = listNoLink(path.join(marathon, r.name)).filter((d) => d.isFile() && /^triage[^/]*\.json$/.test(d.name)).map((d) => d.name).sort();
+    for (const f of files) {
+      if (n >= MAX_MARATHON_FILES) { out.omitted++; continue; }
+      out.push({ kind: 'triage', file: path.join(marathon, r.name, f), project: true });
+      n++;
+    }
   }
   return out;
+}
+
+/** Index the project files the index does not hold yet (new marathon files after a pull, say); meta records the scan. */
+export function discoverProjectFiles(db, root) {
+  const known = new Set(db.all('SELECT file FROM files').map((r) => r.file));
+  const found = projectFiles(root);
+  for (const f of found) if (!known.has(f.file)) ensureKey(db, f.kind, f.file, root);
+  db.run("INSERT INTO meta (key, value) VALUES ('project_files_indexed', ?) ON CONFLICT (key) DO NOTHING", new Date().toISOString());
+  return found;
 }
 
 // ================================================================ opening the index
@@ -507,10 +641,9 @@ export function ioCtx(io = {}) {
   return { cwd: io.cwd || process.cwd(), env: io.env && Object.keys(io.env).length ? { ...process.env, ...io.env } : process.env };
 }
 
-/** Open the index file (created when missing), check it and bring its schema up to date: { db, fresh }. */
+/** Open the index file (created when missing), check it and bring its schema up to date: { db }. */
 export function openDb(engine, paths, { busyMs = BUSY_TIMEOUT_MS } = {}) {
   ensureIndexDir(paths);
-  const fresh = !fs.existsSync(paths.db);
   let db;
   try { db = engine.open(paths.db); } catch (e) { throw untrusted(`cannot open ${paths.db}: ${firstLine(e)}; \`db rebuild\` replaces it`); }
   try {
@@ -527,28 +660,32 @@ export function openDb(engine, paths, { busyMs = BUSY_TIMEOUT_MS } = {}) {
     throw untrusted(`cannot use ${paths.db}: ${firstLine(e)}; \`db rebuild\` replaces it with a new index built from the JSON files`);
   }
   try { fs.chmodSync(paths.db, 0o600); } catch { /* best effort */ }
-  return { db, fresh };
+  return { db };
 }
 
 /**
  * One BEGIN IMMEDIATE transaction on the project's index: `fn(db, { paths, engine, cwd, env })`. Opening first
- * re-indexes every file whose hash changed (and, for a new index file, indexes every project state file).
+ * re-reads every recorded file whose size, mtime or inode changed (re-indexing it when its hash did) and indexes any
+ * project state file not recorded yet (a new `.claude/marathon/<run>/triage*.json`, say); `refresh: false` skips both
+ * (`db rebuild` re-scans itself). `enabling: true` (db init) opens it before the setting exists.
  * Exit 1: the index is off (naming `db init`), no engine (naming the fix), an index the kit did not make.
  */
-export async function withIndex(io, fn, { busyMs = BUSY_TIMEOUT_MS, paths: given } = {}) {
+export async function withIndex(io, fn, { busyMs = BUSY_TIMEOUT_MS, paths: given, refresh = true, enabling = false } = {}) {
   const { cwd, env } = ioCtx(io);
   const paths = given || indexPaths(cwd, env);
   const st = indexState(paths);
-  if (!st.enabled) throw invalid(st.problem || 'the kit index is off for this project: run `db init` first');
+  if (st.problem || (!st.enabled && !enabling)) throw invalid(st.problem || 'the kit index is off for this project: run `db init` first');
   const engine = await loadEngine({ env });
   if (!engine.name) throw invalid(`no SQLite engine loads here (${engine.errors.join('; ') || 'none tried'}): ${ENGINE_FIX}`);
   return serial(paths.db, async () => {
-    const { db, fresh } = openDb(engine, paths, { busyMs });
+    const { db } = openDb(engine, paths, { busyMs });
     try {
       db.exec('BEGIN IMMEDIATE');
       try {
-        if (fresh) for (const f of projectFiles(cwd)) ensureFile(db, f.kind, f.file);
-        refreshStale(db);
+        if (refresh) {
+          refreshStale(db, paths.root);
+          discoverProjectFiles(db, paths.root);
+        }
         const r = await fn(db, { paths, engine: engine.name, cwd, env });
         db.exec('COMMIT');
         return r;
@@ -565,19 +702,38 @@ export async function withIndex(io, fn, { busyMs = BUSY_TIMEOUT_MS, paths: given
 }
 
 /**
+ * The index paths when the index can be on for this project, else null: a DANIZEE_KIT_HOME that is not usable
+ * (relative, inside the project) means no setting can exist, so the index is off. `db` subcommands report it.
+ */
+export function quietPaths(cwd, env) {
+  try { return indexPaths(cwd, env); } catch { return null; }
+}
+
+/**
  * After a verb wrote `file` (its JSON, under the state lock): update the index when it is enabled. Best effort: any
  * trouble is one stderr line and is never thrown, so the verb's output and exit code are as without an index.
  */
 export async function indexAfterWrite(io, kind, file) {
   try {
     const { cwd, env } = ioCtx(io);
-    const paths = indexPaths(cwd, env);
+    // a DANIZEE_KIT_HOME that cannot hold a setting: the index was never enabled, nothing to say (db status says why)
+    const paths = quietPaths(cwd, env);
+    if (!paths) return;
     const st = indexState(paths);
-    if (!st.enabled) { if (st.problem) throw new Error(st.problem); return; }
-    await withIndex(io, (db) => { ensureFile(db, kind, file); }, { busyMs: AFTER_WRITE_BUSY_MS, paths });
+    if (!st.enabled) {
+      // a folder problem only matters when a setting is there to be ignored (the index was enabled); else silence
+      if (st.problem && settingSeen(paths)) throw new Error(st.problem);
+      return;
+    }
+    await withIndex(io, (db) => { ensureFile(db, kind, file, paths.root); }, { busyMs: AFTER_WRITE_BUSY_MS, paths });
   } catch (e) {
     try { process.stderr.write(`kit index: not updated (${firstLine(e)}); the JSON file is written and stays the source of truth\n`); } catch { /* nowhere to say it */ }
   }
+}
+
+/** Whether something is at the setting's path (followed through links, only to tell the user it is not used). */
+function settingSeen(paths) {
+  try { fs.statSync(paths.setting); return true; } catch { return false; }
 }
 
 /** `promise.then(indexed(io, kind, file))`: the verb's result, after a best-effort index update (indexAfterWrite). */

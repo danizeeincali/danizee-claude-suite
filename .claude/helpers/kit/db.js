@@ -2,18 +2,23 @@
  * db — the optional local SQLite index of the kit's state (see ./store.js). The JSON files stay the only source of
  * truth for lessons, the noise ledger and triage; the index is a per-user, rebuildable copy, plus the test runs.
  *
- *   db init                 enable the index for this project (a per-user setting, never a file in the project) and
- *                           build it from the JSON files (an index file the kit did not make is replaced)
+ *   db init                 build the index from the JSON files (an index file the kit did not make is replaced), then
+ *                           enable it for this project (a per-user setting, never a file in the project), only once the
+ *                           build has committed: a failed init leaves the index off
  *   db off [--delete]       disable it; --delete also removes the index file (the JSON files are never touched; the
  *                           test runs, kept only in the index, go with it)
- *   db status               on or off, engine, index folder, schema version, row counts, indexed files, test runs per branch
- *   db rebuild              re-index every JSON file from scratch (test runs are kept); an index file the kit did not
- *                           make, or that is not a database, is replaced by a new one (its test runs are lost)
+ *   db status               on or off, engine, index folder, schema version, row counts, indexed files, the files skipped
+ *                           (a link, not a regular file, too large, unreadable, not indexable) with their reasons, test
+ *                           runs per branch; a DANIZEE_KIT_HOME that cannot be used is exit 1 here (the verbs stay silent)
+ *   db rebuild              clear every JSON file's rows and re-scan from scratch (test runs are kept); an index file the
+ *                           kit did not make, or that is not a database, is replaced by a new one (its test runs are lost)
  *   db prune [--keep <n>]   keep the newest n test runs per branch (default 200), with their cases
  *   db import-reports [--branch <b>] [--limit <n>]
  *                           import the junit.xml of the newest CI `test-results-*` artifacts of a branch (default: the
  *                           current git branch; newest 10 push runs of this repository) into test_runs/test_cases, each
- *                           artifact once, through the user's own `gh` login (see ./test-runs.js)
+ *                           artifact once, through the user's own `gh` login; downloads are capped (5 artifacts per run,
+ *                           50 MB each, 100 MB per call) and each zip is read here, only its junit.xml, bounded (see
+ *                           ./test-runs.js); no runs on the branch: a hint names the default branch
  *
  * WHERE. `$DANIZEE_KIT_HOME/<key>/` (an absolute folder outside the project) or `~/.claude/kit-db/<key>/`, <key> the
  * sha256 of the project folder's real path; mode 0700; `index.db` and the setting `enabled.json`. Nothing in the project
@@ -27,8 +32,8 @@ import fs from 'node:fs';
 import { KitExit } from './kit-exit.js';
 import { importReports, DEFAULT_LIMIT, MAX_LIMIT } from './test-runs.js';
 import {
-  KINDS, SCHEMA_VERSION, ENGINE_FIX, indexPaths, indexState, writeSetting, loadEngine, probeEngine, withIndex,
-  schemaVersion, rowCounts, indexFile, fileKey, projectFiles, ioCtx
+  KINDS, SCHEMA_VERSION, ENGINE_FIX, SKIPPED, MAX_MARATHON_FILES, indexPaths, indexState, writeSetting, loadEngine, probeEngine, withIndex,
+  schemaVersion, rowCounts, ensureKey, projectFiles, discoverProjectFiles, ioCtx
 } from './store.js';
 
 export const verb = 'db';
@@ -80,32 +85,45 @@ function runsByBranch(db) {
   return out;
 }
 
-/** The indexed files: [{ kind, file, rows, error? }]. */
+/** The indexed files: [{ kind, file, exists, rows, error?, skipped? }]. */
 function indexedFiles(db) {
   return db.all('SELECT file, kind, sha256, error FROM files ORDER BY file').map((r) => ({
     kind: r.kind, file: r.file, exists: r.sha256 !== 'absent',
     rows: Number(db.get(`SELECT COUNT(*) AS n FROM ${KINDS[r.kind].table} WHERE file = ?`, r.file).n),
-    ...(r.error ? { error: r.error } : {})
+    ...(r.sha256 === SKIPPED ? { skipped: r.error } : r.error ? { error: r.error } : {})
   }));
 }
 
+/** The files the index holds no rows for because they were not read: [{ kind, file, reason }]. */
+const skippedFiles = (db) => db.all('SELECT file, kind, error FROM files WHERE sha256 = ? ORDER BY file', SKIPPED).map((r) => ({ kind: r.kind, file: r.file, reason: r.error }));
+
+/** A note when the marathon cap left files out. */
+function capNotes(found) {
+  return found.omitted ? { notes: [`${found.omitted} .claude/marathon/<run>/triage*.json files beyond the first ${MAX_MARATHON_FILES} are not indexed`] } : {};
+}
+
+/** What status, init and rebuild report about the files. */
+function filesReport(db, found) {
+  const skipped = skippedFiles(db);
+  const meta = db.get("SELECT value FROM meta WHERE key = 'project_files_indexed'");
+  return { schema_version: schemaVersion(db), rows: rowCounts(db), files: indexedFiles(db), skipped, project_files_indexed_at: meta ? meta.value : null, ...capNotes(found) };
+}
+
 /**
- * Re-index every JSON file the index held and every project state file, from scratch (test runs kept). An index file
- * the kit did not make (or not a database) is removed and a new one built: { replaced } names why.
+ * Clear every JSON file's rows and re-scan, from scratch (test runs kept): the project state files and every other
+ * file the index held that still exists. A file that cannot be read or indexed is recorded as skipped, never an error.
+ * An index file the kit did not make (or not a database) is removed and a new one built: { replaced } names why.
+ * `enabling` (db init): built before the setting is written, which happens only after this commits.
  */
-async function rebuildIndex(io, paths) {
+async function rebuildIndex(io, paths, { enabling = false } = {}) {
   const build = () => withIndex(io, (db) => {
-    const known = db.all('SELECT file, kind FROM files').map((r) => ({ kind: r.kind, file: r.file }));
+    const known = db.all("SELECT file, kind FROM files WHERE sha256 <> 'absent'").map((r) => ({ kind: r.kind, file: r.file }));
     db.exec('DELETE FROM lessons; DELETE FROM noise_ledger; DELETE FROM triage; DELETE FROM files;');
-    const seen = new Set();
-    for (const f of [...projectFiles(paths.root), ...known]) {
-      const key = fileKey(f.file);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      indexFile(db, f.kind, key);
-    }
-    return { schema_version: schemaVersion(db), rows: rowCounts(db), files: indexedFiles(db) };
-  }, { paths });
+    db.run("DELETE FROM meta WHERE key = 'project_files_indexed'");
+    const found = discoverProjectFiles(db, paths.root);
+    for (const f of known) if (Object.hasOwn(KINDS, f.kind)) ensureKey(db, f.kind, f.file, paths.root);
+    return filesReport(db, found);
+  }, { paths, refresh: false, enabling });
   try { return await build(); } catch (e) {
     if (!(e instanceof KitExit && e.untrusted)) throw e;
     removeIndexFiles(paths);
@@ -117,8 +135,9 @@ async function init(io) {
   const { cwd, env } = ioCtx(io);
   const paths = indexPaths(cwd, env);
   const engine = await engineOrFix(env);
+  // the setting is written only after the build committed: a failed init leaves the index off
+  const built = await rebuildIndex({ cwd, env }, paths, { enabling: true });
   writeSetting(paths);
-  const built = await rebuildIndex({ cwd, env }, paths);
   return { index: 'on', engine: engine.name, dir: paths.dir, db: paths.db, project: paths.root, ...built };
 }
 
@@ -151,7 +170,7 @@ async function status(io) {
     rows: null
   };
   if (st.enabled && engine.name) {
-    Object.assign(out, await withIndex({ cwd, env }, (db) => ({ schema_version: schemaVersion(db), rows: rowCounts(db), files: indexedFiles(db), test_runs_by_branch: runsByBranch(db) }), { paths }));
+    Object.assign(out, await withIndex({ cwd, env }, (db) => ({ ...filesReport(db, projectFiles(paths.root)), test_runs_by_branch: runsByBranch(db) }), { paths }));
   }
   return out;
 }

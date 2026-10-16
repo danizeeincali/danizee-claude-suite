@@ -12,10 +12,15 @@
  *                             predefined ones and character references, size, depth and count caps)
  *   importReports(io, opts)   `db import-reports`: the newest CI test-results artifacts of a branch, through the user's own
  *                             `gh` login (spawned without a shell), each imported once (key: workflow run id / artifact name, kept in
- *                             imported_reports after `db prune` deletes the run). Before a run's artifacts are downloaded,
- *                             their sizes are read (`gh api repos/{owner}/{repo}/actions/runs/<id>/artifacts`) and an artifact
- *                             over ARTIFACT_MAX_BYTES is skipped, never downloaded (gh extracts a whole artifact before
- *                             any per-file cap applies)
+ *                             imported_reports after `db prune` deletes the run). The artifacts belong to whoever controls the
+ *                             repository's CI, so they are untrusted and every download is bounded: a run's artifact list
+ *                             (`gh api .../actions/runs/<id>/artifacts`) gives each one's id and size first; at most
+ *                             ARTIFACTS_PER_RUN per run, none over ARTIFACT_MAX_BYTES, at most IMPORT_MAX_BYTES in all per
+ *                             call. Each zip is fetched with `gh api .../actions/artifacts/<id>/zip` into a private temp
+ *                             file, cut off at its cap, and read here (readJunitFromZip, node:zlib only): its central
+ *                             directory is checked (no zip64, no entry over ZIP_ENTRY_MAX_BYTES or expanding more than
+ *                             ZIP_MAX_RATIO times), and only the one `junit.xml` at its root is inflated, bounded to
+ *                             JUNIT_MAX_BYTES, in memory. Nothing is ever written under an entry's name.
  *
  * Every stored string (case names, files, messages) is redacted with the project's secrets and credential-masked
  * (reflect.js scrub/loadSecrets); a failure message is capped at MESSAGE_MAX bytes. Downloaded files are untrusted
@@ -24,9 +29,10 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import zlib from 'node:zlib';
+import { spawn, spawnSync } from 'node:child_process';
 import { KitExit } from './kit-exit.js';
-import { indexPaths, indexState, withIndex, ioCtx } from './store.js';
+import { indexState, withIndex, ioCtx, quietPaths, indexPaths } from './store.js';
 import { scrub, loadSecrets } from './reflect.js';
 
 export const MESSAGE_MAX = 4096;
@@ -39,18 +45,24 @@ export const DEFAULT_LIMIT = 10;
 export const MAX_LIMIT = 100;
 export const ARTIFACT_PATTERN = 'test-results-*';
 const ARTIFACT_NAME = /^test-results-[A-Za-z0-9._-]{1,80}$/;
-/** What ARTIFACT_PATTERN matches (gh's glob), for the size check before a download. */
+/** What ARTIFACT_PATTERN matches (gh's glob): the artifacts import-reports considers. */
 const PATTERN_MATCH = /^test-results-/;
-/**
- * Largest artifact (its zip, as GitHub reports it) import-reports downloads; a bigger one is skipped, not fetched.
- * KNOWN LIMIT: this caps the COMPRESSED size (the API's size_in_bytes). `gh run download` then extracts the whole
- * artifact before readUntrusted's JUNIT_MAX_BYTES cap applies, so a small, highly compressed artifact still extracts
- * in full into the temp folder. Accepted: the artifacts come only from this repository's own push runs (the user's own
- * CI, read through the user's own gh login), not from forks or other repositories.
- */
+/** Largest artifact zip (as GitHub reports it, and as downloaded: the download is cut off past it) import-reports fetches. */
 export const ARTIFACT_MAX_BYTES = 50 * 1024 * 1024;
+/** Most bytes one import-reports call downloads in all. */
+export const IMPORT_MAX_BYTES = 100 * 1024 * 1024;
+/** Most test-results artifacts downloaded from one workflow run. */
+export const ARTIFACTS_PER_RUN = 5;
 /** Most artifacts one run may list: the size check reads one page of the listing, so a run with more is skipped. */
 export const ARTIFACTS_PER_PAGE = 100;
+/** A zip with more entries than this is not read. */
+export const ZIP_MAX_ENTRIES = 1000;
+/** A zip with an entry declaring more uncompressed bytes than this is refused (whatever the entry). */
+export const ZIP_ENTRY_MAX_BYTES = 64 * 1024 * 1024;
+/** A zip with an entry over 1 MiB that would expand more than this many times its compressed size is refused. */
+export const ZIP_MAX_RATIO = 500;
+/** The one entry read from an artifact: `junit.xml` at its root (the upload step's file). */
+export const JUNIT_ENTRY = 'junit.xml';
 const GH_FIX = 'install the GitHub CLI (https://cli.github.com) and run `gh auth login`';
 
 const invalid = (m) => new KitExit(m, 1);
@@ -349,7 +361,9 @@ export function gitHead(cwd, env = process.env) {
  */
 export async function recordRun(io, run) {
   const { cwd, env } = ioCtx(io);
-  if (!indexState(indexPaths(cwd, env)).enabled) return { recorded: false };
+  // a DANIZEE_KIT_HOME that cannot hold a setting: the index was never enabled (db status says why)
+  const paths = quietPaths(cwd, env);
+  if (!paths || !indexState(paths).enabled) return { recorded: false };
   const secrets = await loadSecrets({}, cwd);
   const head = gitHead(cwd, env);
   const cases = cleanCases(parseTap(run.output || '', cwd), secrets);
@@ -374,23 +388,131 @@ function gh(args, { cwd, env, maxBuffer = RUN_LIST_MAX_BYTES }) {
 
 const firstLine = (s, secrets) => capBytes(scrub(String(s || '').split('\n').find((l) => l.trim()) || '', secrets), 200);
 
-/** Read one downloaded file as untrusted data: a regular file (not a link), at most `max` bytes. */
-function readUntrusted(file, max) {
-  let st;
-  try { st = fs.lstatSync(file); } catch { return { missing: true }; }
-  if (!st.isFile()) return { error: 'not a regular file' };
-  if (st.size > max) return { error: `larger than ${max} bytes` };
+/** Read the downloaded zip (a file this process created): a regular file (not a link), at most `max` bytes, as a Buffer. */
+function readDownload(file, max) {
   const fd = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0));
   try {
-    const buf = Buffer.alloc(Math.min(st.size, max) + 1);
-    const n = fs.readSync(fd, buf, 0, buf.length, 0);
+    const st = fs.fstatSync(fd);
+    if (!st.isFile()) return { error: 'not a regular file' };
+    if (st.size > max) return { error: `larger than ${max} bytes` };
+    const buf = Buffer.alloc(st.size + 1);
+    let n = 0;
+    for (;;) { const k = fs.readSync(fd, buf, n, buf.length - n, null); if (!k) break; n += k; if (n >= buf.length) break; }
     if (n > max) return { error: `larger than ${max} bytes` };
-    return { text: buf.subarray(0, n).toString('utf-8') };
+    return { buf: buf.subarray(0, n) };
   } finally { fs.closeSync(fd); }
 }
 
 /**
- * A run's artifact listing from `gh api .../actions/runs/<id>/artifacts`, validated: [{ name, size, expired }].
+ * The text of the one `junit.xml` at the root of a zip archive, read from its central directory with node:zlib:
+ * { text } | { missing } | { error }. Refused (error) without inflating anything: not a zip, a multi-part or zip64
+ * archive, more than ZIP_MAX_ENTRIES entries, any entry declaring more than ZIP_ENTRY_MAX_BYTES or expanding more
+ * than ZIP_MAX_RATIO times (over 1 MiB), two junit.xml entries, an encrypted or non-regular (link) junit.xml, one over
+ * `maxOut` bytes. The inflate is bounded to `maxOut` bytes whatever the directory claims, and the result must have the
+ * declared size and CRC. Entry names are only compared, never used as paths.
+ */
+export function readJunitFromZip(buf, { maxOut = JUNIT_MAX_BYTES } = {}) {
+  const fail = (m) => ({ error: m });
+  if (!Buffer.isBuffer(buf) || buf.length < 22) return fail('not a zip archive');
+  let eocd = -1;
+  for (let i = buf.length - 22, stop = Math.max(0, buf.length - 22 - 0xffff); i >= stop; i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) return fail('not a zip archive');
+  const disk = buf.readUInt16LE(eocd + 4);
+  const cdDisk = buf.readUInt16LE(eocd + 6);
+  const here = buf.readUInt16LE(eocd + 8);
+  const count = buf.readUInt16LE(eocd + 10);
+  const cdSize = buf.readUInt32LE(eocd + 12);
+  const cdOff = buf.readUInt32LE(eocd + 16);
+  if (count === 0xffff || cdSize === 0xffffffff || cdOff === 0xffffffff) return fail('a zip64 archive: not read');
+  if (disk || cdDisk || here !== count) return fail('a multi-part zip archive: not read');
+  if (count > ZIP_MAX_ENTRIES) return fail(`a zip archive of more than ${ZIP_MAX_ENTRIES} entries: not read`);
+  const cdEnd = cdOff + cdSize;
+  if (cdEnd > eocd) return fail('a damaged zip archive (central directory out of range)');
+  let p = cdOff;
+  let found = null;
+  for (let i = 0; i < count; i++) {
+    if (p + 46 > cdEnd || buf.readUInt32LE(p) !== 0x02014b50) return fail('a damaged zip archive (central directory)');
+    const madeBy = buf.readUInt16LE(p + 4);
+    const flags = buf.readUInt16LE(p + 8);
+    const method = buf.readUInt16LE(p + 10);
+    const crc = buf.readUInt32LE(p + 16);
+    const csize = buf.readUInt32LE(p + 20);
+    const usize = buf.readUInt32LE(p + 24);
+    const nl = buf.readUInt16LE(p + 28);
+    const xl = buf.readUInt16LE(p + 30);
+    const cl = buf.readUInt16LE(p + 32);
+    const ext = buf.readUInt32LE(p + 38);
+    const lho = buf.readUInt32LE(p + 42);
+    if (p + 46 + nl + xl + cl > cdEnd) return fail('a damaged zip archive (central directory)');
+    const name = buf.subarray(p + 46, p + 46 + nl);
+    p += 46 + nl + xl + cl;
+    if (csize === 0xffffffff || usize === 0xffffffff || lho === 0xffffffff) return fail('a zip64 entry: not read');
+    if (usize > ZIP_ENTRY_MAX_BYTES) return fail(`an entry declares ${usize} bytes uncompressed, more than ${ZIP_ENTRY_MAX_BYTES}: refused`);
+    if (usize > 1024 * 1024 && usize > Math.max(csize, 1) * ZIP_MAX_RATIO) return fail(`an entry would expand ${Math.round(usize / Math.max(csize, 1))} times, more than ${ZIP_MAX_RATIO}: refused`);
+    if (!name.equals(Buffer.from(JUNIT_ENTRY))) continue;
+    if (found) return fail(`more than one ${JUNIT_ENTRY} entry: refused`);
+    found = { madeBy, flags, method, crc, csize, usize, ext, lho };
+  }
+  if (!found) return { missing: true };
+  if (found.flags & 1) return fail(`${JUNIT_ENTRY} is encrypted`);
+  const mode = (found.madeBy >> 8) === 3 ? found.ext >>> 16 : 0;
+  if (mode && (mode & 0o170000) !== 0o100000) return fail(`${JUNIT_ENTRY} not a regular file`);
+  if (found.usize > maxOut) return fail(`${JUNIT_ENTRY} larger than ${maxOut} bytes`);
+  const h = found.lho;
+  if (h + 30 > cdOff || buf.readUInt32LE(h) !== 0x04034b50) return fail('a damaged zip archive (local header)');
+  const lnl = buf.readUInt16LE(h + 26);
+  const lxl = buf.readUInt16LE(h + 28);
+  if (h + 30 + lnl > cdOff || !buf.subarray(h + 30, h + 30 + lnl).equals(Buffer.from(JUNIT_ENTRY))) return fail('a damaged zip archive (local header name differs)');
+  const start = h + 30 + lnl + lxl;
+  if (start + found.csize > cdOff) return fail('a damaged zip archive (entry out of range)');
+  const raw = buf.subarray(start, start + found.csize);
+  let data;
+  if (found.method === 0) data = raw;
+  else if (found.method === 8) {
+    try { data = zlib.inflateRawSync(raw, { maxOutputLength: maxOut }); } catch (e) {
+      return fail(e && e.code === 'ERR_BUFFER_TOO_LARGE' ? `${JUNIT_ENTRY} larger than ${maxOut} bytes` : `${JUNIT_ENTRY} cannot be inflated`);
+    }
+  } else return fail(`${JUNIT_ENTRY} uses compression method ${found.method}: not read`);
+  if (data.length !== found.usize) return fail(`${JUNIT_ENTRY} is not the size its zip directory declares`);
+  if (typeof zlib.crc32 === 'function' && (zlib.crc32(data) >>> 0) !== found.crc) return fail(`${JUNIT_ENTRY} fails its CRC check`);
+  return { text: data.toString('utf-8') };
+}
+
+/**
+ * Download one artifact zip with `gh api .../actions/artifacts/<id>/zip` (no shell) into `file` (created new, 0600),
+ * cut off once more than `max` bytes arrive: { status, bytes, over, stderr }.
+ */
+function downloadArtifact(id, file, max, { cwd, env }) {
+  return new Promise((resolve) => {
+    let fd;
+    try { fd = fs.openSync(file, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | (fs.constants.O_NOFOLLOW || 0), 0o600); } catch (e) {
+      resolve({ status: null, bytes: 0, over: false, stderr: `cannot create a temp file (${e.code || 'error'})` });
+      return;
+    }
+    let bytes = 0;
+    let over = false;
+    let err = '';
+    let settled = false;
+    const child = spawn('gh', ['api', `repos/{owner}/{repo}/actions/artifacts/${id}/zip`], { cwd, env, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+    const timer = setTimeout(() => { err = err || 'timed out'; child.kill('SIGKILL'); }, 300000);
+    const finish = (r) => { if (settled) return; settled = true; clearTimeout(timer); try { fs.closeSync(fd); } catch { /* closed */ } resolve(r); };
+    child.stdout.on('data', (d) => {
+      if (over) return;
+      bytes += d.length;
+      if (bytes > max) { over = true; child.kill('SIGKILL'); return; }
+      try { fs.writeSync(fd, d); } catch (e) { err = `cannot write the temp file (${e.code || 'error'})`; over = true; child.kill('SIGKILL'); }
+    });
+    child.stderr.on('data', (d) => { if (err.length < 4096) err += d.toString('utf-8').slice(0, 4096 - err.length); });
+    child.on('error', (e) => finish({ status: null, bytes, over, stderr: e.code === 'ENOENT' ? 'gh is not installed or not on PATH' : (e.code || e.message) }));
+    child.on('close', (code) => finish({ status: code, bytes, over, stderr: err }));
+  });
+}
+
+/**
+ * A run's artifact listing from `gh api .../actions/runs/<id>/artifacts`, validated: [{ id, name, size, expired }]
+ * (id null when the listing gives none: that artifact is not downloaded).
  * Throws (KitExit) when it is not that shape, or when the run has more artifacts than one page shows (their sizes
  * cannot all be checked).
  */
@@ -400,7 +522,7 @@ export function parseArtifactList(text) {
   if (!v || typeof v !== 'object' || !Array.isArray(v.artifacts)) throw invalid('its artifact list has no artifacts field');
   const arts = v.artifacts.map((a) => {
     if (!a || typeof a !== 'object' || typeof a.name !== 'string' || !Number.isSafeInteger(a.size_in_bytes) || a.size_in_bytes < 0) throw invalid('its artifact list has an entry without a name and size');
-    return { name: a.name, size: a.size_in_bytes, expired: a.expired === true };
+    return { id: Number.isSafeInteger(a.id) && a.id > 0 ? a.id : null, name: a.name, size: a.size_in_bytes, expired: a.expired === true };
   });
   if (Number.isSafeInteger(v.total_count) && v.total_count > arts.length) throw invalid(`it lists ${v.total_count} artifacts, more than the ${arts.length} whose sizes can be checked`);
   return arts;
@@ -427,8 +549,26 @@ export function parseRunList(text, branch) {
   return runs;
 }
 
+/** The download caps, lowered (never raised) by `io.importLimits` (tests only; not reachable from the command line). */
+function importLimits(io) {
+  const o = (io && io.importLimits) || {};
+  const low = (k, d) => (Number.isSafeInteger(o[k]) && o[k] > 0 ? Math.min(o[k], d) : d);
+  return { artifactBytes: low('artifactBytes', ARTIFACT_MAX_BYTES), totalBytes: low('totalBytes', IMPORT_MAX_BYTES), perRun: low('perRun', ARTIFACTS_PER_RUN) };
+}
+
+const BRANCH_NAME = /^[^\s\0~^:?*[\\]{1,250}$/;
+
+/** The repository's default branch from `gh repo view` (one small call), else 'main'. */
+function defaultBranch({ cwd, env }) {
+  try {
+    const r = gh(['repo', 'view', '--json', 'defaultBranchRef'], { cwd, env, maxBuffer: 64 * 1024 });
+    const name = r.status === 0 ? JSON.parse(r.stdout)?.defaultBranchRef?.name : null;
+    return typeof name === 'string' && !name.startsWith('-') && BRANCH_NAME.test(name) ? name : 'main';
+  } catch { return 'main'; }
+}
+
 /**
- * `db import-reports`: { branch, runs_listed, imported: [...], skipped: [...] }.
+ * `db import-reports`: { branch, runs_listed, imported: [...], skipped: [...], hint? }.
  * Exit 1: the index is off (names `db init`), gh missing or not logged in (names `gh auth login`), a bad flag.
  */
 export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) {
@@ -439,7 +579,8 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) 
     branch = gitHead(cwd, env).branch;
     if (!branch || branch === 'HEAD') throw invalid('cannot tell the current git branch (detached HEAD or not a git repository): pass --branch <b>');
   }
-  if (!branch || branch.startsWith('-') || !/^[^\s\0~^:?*[\\]{1,250}$/.test(branch)) throw invalid('--branch must be a git branch name');
+  if (!branch || branch.startsWith('-') || !BRANCH_NAME.test(branch)) throw invalid('--branch must be a git branch name');
+  const caps = importLimits(io);
 
   const auth = gh(['auth', 'status'], { cwd, env });
   // gh's own message is not echoed (it can name hosts and accounts); the exit status is enough to say what to do
@@ -456,52 +597,49 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) 
   const known = await withIndex({ cwd, env }, (db) => new Set(db.all('SELECT run_key FROM test_runs WHERE run_key IS NOT NULL UNION SELECT run_key FROM imported_reports').map((r) => r.run_key)));
   const skipped = listed.foreign.map((id) => ({ run_id: id, reason: 'not a push run of this repository branch' }));
   const found = [];
-  for (const r of runs) {
-    if (!r.conclusion) { skipped.push({ run_id: r.id, reason: 'not finished' }); continue; }
-    if ([...known].some((k) => k.startsWith(`${r.id}/`))) { skipped.push({ run_id: r.id, reason: 'already imported' }); continue; }
-    // sizes first: gh extracts a whole artifact before any cap here applies, so a big one is never downloaded
-    if (!Number.isSafeInteger(r.id) || r.id <= 0) continue;
-    const listing = gh(['api', `repos/{owner}/{repo}/actions/runs/${r.id}/artifacts?per_page=${ARTIFACTS_PER_PAGE}`], { cwd, env });
-    if (listing.status !== 0) { skipped.push({ run_id: r.id, reason: `cannot list its artifacts: ${firstLine(listing.stderr, secrets) || `exit ${listing.status}`}` }); continue; }
-    let arts;
-    try { arts = parseArtifactList(listing.stdout); } catch (e) { skipped.push({ run_id: r.id, reason: capBytes(e.message, 200) }); continue; }
-    const matching = arts.filter((a) => PATTERN_MATCH.test(a.name));
-    const big = matching.filter((a) => a.size > ARTIFACT_MAX_BYTES);
-    for (const a of big) skipped.push({ run_id: r.id, ...(ARTIFACT_NAME.test(a.name) ? { artifact: a.name } : {}), reason: `artifact is ${a.size} bytes, more than ${ARTIFACT_MAX_BYTES}: not downloaded` });
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-import-reports-'));
-    try {
-      // every matching artifact is small enough: one download by pattern; else each small one by its own name
-      const small = big.length ? matching.filter((a) => a.size <= ARTIFACT_MAX_BYTES && !a.expired && ARTIFACT_NAME.test(a.name)) : null;
-      const downloads = small === null
-        ? [['run', 'download', String(r.id), '-p', ARTIFACT_PATTERN, '-D', dir]]
-        : small.map((a) => ['run', 'download', String(r.id), '-n', a.name, '-D', path.join(dir, a.name)]);
-      let failed = null;
-      for (const args of downloads) {
-        const dl = gh(args, { cwd, env, maxBuffer: RUN_LIST_MAX_BYTES });
-        if (dl.status !== 0) { failed = { why: firstLine(dl.stderr, secrets), status: dl.status }; break; }
+  let spent = 0;
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-import-reports-'));
+  try {
+    for (const r of runs) {
+      if (!r.conclusion) { skipped.push({ run_id: r.id, reason: 'not finished' }); continue; }
+      if ([...known].some((k) => k.startsWith(`${r.id}/`))) { skipped.push({ run_id: r.id, reason: 'already imported' }); continue; }
+      // ids and sizes first: nothing is downloaded before its size is known to be within the caps
+      const listing = gh(['api', `repos/{owner}/{repo}/actions/runs/${r.id}/artifacts?per_page=${ARTIFACTS_PER_PAGE}`], { cwd, env });
+      if (listing.status !== 0) { skipped.push({ run_id: r.id, reason: `cannot list its artifacts: ${firstLine(listing.stderr, secrets) || `exit ${listing.status}`}` }); continue; }
+      let arts;
+      try { arts = parseArtifactList(listing.stdout); } catch (e) { skipped.push({ run_id: r.id, reason: capBytes(e.message, 200) }); continue; }
+      const matching = arts.filter((a) => PATTERN_MATCH.test(a.name)).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+      if (!matching.length) { skipped.push({ run_id: r.id, reason: 'no test-results artifact' }); continue; }
+      let taken = 0;
+      for (const a of matching) {
+        if (!ARTIFACT_NAME.test(a.name)) { skipped.push({ run_id: r.id, reason: 'an artifact name that is not test-results-<name>: not downloaded' }); continue; }
+        const at = { run_id: r.id, artifact: a.name };
+        const key = `${r.id}/${a.name}`;
+        if (known.has(key)) { skipped.push({ ...at, reason: 'already imported' }); continue; }
+        if (a.expired) { skipped.push({ ...at, reason: 'expired' }); continue; }
+        if (a.id === null) { skipped.push({ ...at, reason: 'the artifact list gives no id for it: not downloaded' }); continue; }
+        if (a.size > caps.artifactBytes) { skipped.push({ ...at, reason: `artifact is ${a.size} bytes, more than ${caps.artifactBytes}: not downloaded` }); continue; }
+        if (taken >= caps.perRun) { skipped.push({ ...at, reason: `more than ${caps.perRun} test-results artifacts in this run: not downloaded` }); continue; }
+        const room = Math.min(caps.artifactBytes, caps.totalBytes - spent);
+        if (a.size > room || room <= 0) { skipped.push({ ...at, reason: `the download budget of one import (${caps.totalBytes} bytes) is used up: not downloaded` }); continue; }
+        taken++;
+        const file = path.join(dir, `${a.id}.zip`);
+        const dl = await downloadArtifact(a.id, file, room, { cwd, env });
+        spent += dl.bytes;
+        try {
+          if (dl.over) { skipped.push({ ...at, reason: `download passed ${room} bytes (the artifact list said ${a.size}): stopped, not read` }); continue; }
+          if (dl.status !== 0) { skipped.push({ ...at, reason: `download failed: ${firstLine(dl.stderr, secrets) || `exit ${dl.status}`}` }); continue; }
+          const z = readDownload(file, room);
+          if (z.error) { skipped.push({ ...at, reason: `download ${z.error}` }); continue; }
+          const j = readJunitFromZip(z.buf);
+          if (j.missing || j.error) { skipped.push({ ...at, reason: j.missing ? `no ${JUNIT_ENTRY}` : capBytes(j.error, 200) }); continue; }
+          let parsed;
+          try { parsed = parseJunit(j.text); } catch (err) { skipped.push({ ...at, reason: capBytes(err.message, 200) }); continue; }
+          found.push({ run: r, artifact: a.name, key, cases: cleanCases(parsed.cases, secrets) });
+        } finally { fs.rmSync(file, { force: true }); }
       }
-      if (small !== null && !small.length) continue; // every test-results artifact was too big (listed above)
-      if (failed) {
-        const { why } = failed;
-        skipped.push({ run_id: r.id, reason: /no (valid )?artifact|no artifacts? match/i.test(why) ? 'no test-results artifact' : `download failed: ${why || `exit ${failed.status}`}` });
-        continue;
-      }
-      const entries = fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
-      let any = false;
-      for (const e of entries) {
-        if (!ARTIFACT_NAME.test(e.name) || !e.isDirectory()) continue;
-        any = true;
-        const key = `${r.id}/${e.name}`;
-        if (known.has(key)) { skipped.push({ run_id: r.id, artifact: e.name, reason: 'already imported' }); continue; }
-        const f = readUntrusted(path.join(dir, e.name, 'junit.xml'), JUNIT_MAX_BYTES);
-        if (f.missing || f.error) { skipped.push({ run_id: r.id, artifact: e.name, reason: f.missing ? 'no junit.xml' : `junit.xml ${f.error}` }); continue; }
-        let parsed;
-        try { parsed = parseJunit(f.text); } catch (err) { skipped.push({ run_id: r.id, artifact: e.name, reason: capBytes(err.message, 200) }); continue; }
-        found.push({ run: r, artifact: e.name, key, cases: cleanCases(parsed.cases, secrets) });
-      }
-      if (!any) skipped.push({ run_id: r.id, reason: 'no test-results artifact' });
-    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
-  }
+    }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 
   const imported = await withIndex({ cwd, env }, (db) => {
     const out = [];
@@ -516,5 +654,13 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) 
     }
     return out;
   });
-  return { branch, runs_listed: runs.length, imported, skipped };
+  let hint;
+  if (!runs.length) {
+    // CI keeps test results only for push runs, which the workflow runs on the default branch
+    const def = defaultBranch({ cwd, env });
+    hint = def !== branch
+      ? `no push runs of test.yml on ${branch}: CI test results come from push runs, which run on ${def}; try --branch ${def}`
+      : `no push runs of test.yml on ${branch} yet`;
+  }
+  return { branch, runs_listed: runs.length, imported, skipped, ...(hint ? { hint } : {}) };
 }

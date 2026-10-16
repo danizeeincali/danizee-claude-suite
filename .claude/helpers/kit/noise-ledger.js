@@ -22,7 +22,7 @@
  * Dates must be real YYYY-MM-DD days. Time comes from `--now` (a date, or an ISO time: with Z or an offset the UTC day is used) or the clock. `accept` refuses a
  * past expiry. Unknown entry and top-level fields are preserved on rewrite; a ledger whose `version` is newer than 1 is refused (exit 1). A missing default ledger is empty; a missing `--ledger` is an error for apply, empty for accept.
  *
- * After accept or a prune that removed entries, the optional local index (./store.js, `db init`) is updated, best effort:
+ * After accept and after every prune, the optional local index (./store.js, `db init`) is updated, best effort:
  * the ledger file stays the only store, and output and exit codes never depend on the index.
  *
  * Exit codes: 0 done (findings or not), 1 invalid input or broken ledger.

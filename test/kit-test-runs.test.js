@@ -7,10 +7,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import zlib from 'node:zlib';
+import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { run as db } from '../src/lib/kit/db.js';
 import { withIndex, indexPaths } from '../src/lib/kit/store.js';
-import { parseJunit, parseTap, parseTapSummary, MESSAGE_MAX, MAX_DEPTH, capBytes, ARTIFACT_MAX_BYTES, parseArtifactList } from '../src/lib/kit/test-runs.js';
+import { parseJunit, parseTap, parseTapSummary, MESSAGE_MAX, MAX_DEPTH, capBytes, ARTIFACT_MAX_BYTES, ARTIFACTS_PER_RUN, IMPORT_MAX_BYTES, JUNIT_MAX_BYTES, ZIP_MAX_RATIO, parseArtifactList, readJunitFromZip } from '../src/lib/kit/test-runs.js';
 import { renderJunit } from '../src/lib/kit/render.js';
 import { runStep } from '../scripts/ci-step.js';
 
@@ -210,33 +212,64 @@ describe('local runs: scripts/ci-step.js runStep records into the kit index', ()
 
 // ---------------------------------------------------------------- import-reports with a fake gh
 
+// Artifacts are zip files (root/artifacts/<run>/<name>.zip) with ids (root/ids.json). The listing (gh api .../runs/<id>/artifacts)
+// is logged in api-calls.jsonl; everything else (zip downloads included) in calls.jsonl.
 const FAKE_GH = `#!/usr/bin/env node
 const fs = require('fs'); const path = require('path');
 const root = process.env.FAKE_GH_ROOT; const a = process.argv.slice(2);
-// the artifact size listing (gh api) is logged apart from the other calls
-fs.appendFileSync(path.join(root, a[0] === 'api' ? 'api-calls.jsonl' : 'calls.jsonl'), JSON.stringify(a) + '\\n');
+const listing = a[0] === 'api' && /^repos\\/\\{owner\\}\\/\\{repo\\}\\/actions\\/runs\\/(\\d+)\\/artifacts\\?per_page=100$/.exec(a[1] || '');
+const zip = a[0] === 'api' && /^repos\\/\\{owner\\}\\/\\{repo\\}\\/actions\\/artifacts\\/(\\d+)\\/zip$/.exec(a[1] || '');
+fs.appendFileSync(path.join(root, listing ? 'api-calls.jsonl' : 'calls.jsonl'), JSON.stringify(a) + '\\n');
+const ids = fs.existsSync(path.join(root, 'ids.json')) ? JSON.parse(fs.readFileSync(path.join(root, 'ids.json'), 'utf-8')) : {};
 if (a[0] === 'api') {
-  const m = /^repos\\/\\{owner\\}\\/\\{repo\\}\\/actions\\/runs\\/(\\d+)\\/artifacts\\?per_page=100$/.exec(a[1] || '');
-  if (!m || a.length !== 2) { process.stderr.write('fake gh: bad api call\\n'); process.exit(2); }
-  const src = path.join(root, 'artifacts', m[1]);
-  const sizes = fs.existsSync(path.join(root, 'sizes.json')) ? JSON.parse(fs.readFileSync(path.join(root, 'sizes.json'), 'utf-8')) : {};
-  const du = (p) => { const st = fs.lstatSync(p); return st.isDirectory() ? fs.readdirSync(p).reduce((n, x) => n + du(path.join(p, x)), 0) : st.size; };
-  const artifacts = fs.existsSync(src) ? fs.readdirSync(src).sort().map((n) => ({ name: n, size_in_bytes: sizes[m[1] + '/' + n] ?? du(path.join(src, n)), expired: false })) : [];
-  process.stdout.write(JSON.stringify({ total_count: artifacts.length, artifacts })); process.exit(0);
+  if (a.length !== 2 || !(listing || zip)) { process.stderr.write('fake gh: bad api call\\n'); process.exit(2); }
+  if (listing) {
+    const src = path.join(root, 'artifacts', listing[1]);
+    const sizes = fs.existsSync(path.join(root, 'sizes.json')) ? JSON.parse(fs.readFileSync(path.join(root, 'sizes.json'), 'utf-8')) : {};
+    const artifacts = fs.existsSync(src) ? fs.readdirSync(src).sort().map((f) => { const n = f.replace(/\\.zip$/, ''); const k = listing[1] + '/' + n; return { id: ids[k], name: n, size_in_bytes: sizes[k] ?? fs.statSync(path.join(src, f)).size, expired: false }; }) : [];
+    process.stdout.write(JSON.stringify({ total_count: artifacts.length, artifacts })); process.exit(0);
+  }
+  const k = Object.keys(ids).find((x) => String(ids[x]) === zip[1]);
+  if (!k) { process.stderr.write('HTTP 404: Not Found\\n'); process.exit(1); }
+  process.stdout.write(fs.readFileSync(path.join(root, 'artifacts', k + '.zip')));
+  return;
 }
 if (a[0] === 'auth' && a[1] === 'status') { if (fs.existsSync(path.join(root, 'logged-out'))) { process.stderr.write('You are not logged into any GitHub hosts.\\n'); process.exit(1); } process.exit(0); }
 if (a[0] === 'run' && a[1] === 'list') { process.stdout.write(fs.readFileSync(path.join(root, 'runs.json'))); process.exit(0); }
-if (a[0] === 'run' && a[1] === 'download') {
-  const id = a[2]; const dest = a[a.indexOf('-D') + 1]; const src = path.join(root, 'artifacts', id);
-  if (!fs.existsSync(src)) { process.stderr.write('no valid artifacts found to download\\n'); process.exit(1); }
-  if (a.includes('-n')) { fs.cpSync(path.join(src, a[a.indexOf('-n') + 1]), dest, { recursive: true, verbatimSymlinks: true }); process.exit(0); }
-  for (const n of fs.readdirSync(src)) fs.cpSync(path.join(src, n), path.join(dest, n), { recursive: true, verbatimSymlinks: true });
-  process.exit(0);
-}
+if (a[0] === 'repo' && a[1] === 'view' && fs.existsSync(path.join(root, 'default-branch'))) { process.stdout.write(JSON.stringify({ defaultBranchRef: { name: fs.readFileSync(path.join(root, 'default-branch'), 'utf-8').trim() } })); process.exit(0); }
 process.stderr.write('fake gh: unexpected ' + a.join(' ') + '\\n'); process.exit(2);
 `;
 
 const junit = (cases) => `<?xml version="1.0" encoding="UTF-8"?>\n<testsuites name="node-test"><testsuite name="node-test">${cases}</testsuite></testsuites>\n`;
+
+/**
+ * A zip archive written here, byte by byte (so it can lie): entries { name, data, method (8 deflate, 0 stored),
+ * raw (the compressed bytes as given), usize (the declared uncompressed size), mode (unix mode), flags, crc }.
+ */
+function makeZip(entries) {
+  const locals = []; const centrals = []; let off = 0;
+  for (const e of entries) {
+    const data = Buffer.from(e.data ?? '');
+    const method = e.method ?? 8;
+    const comp = e.raw ?? (method === 8 ? zlib.deflateRawSync(data) : data);
+    const crc = (e.crc ?? zlib.crc32(data)) >>> 0;
+    const usize = e.usize ?? data.length;
+    const name = Buffer.from(e.name);
+    const lh = Buffer.alloc(30);
+    lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4); lh.writeUInt16LE(e.flags ?? 0, 6); lh.writeUInt16LE(method, 8);
+    lh.writeUInt32LE(crc, 14); lh.writeUInt32LE(comp.length, 18); lh.writeUInt32LE(usize, 22); lh.writeUInt16LE(name.length, 26);
+    const ch = Buffer.alloc(46);
+    ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE((3 << 8) | 20, 4); ch.writeUInt16LE(20, 6); ch.writeUInt16LE(e.flags ?? 0, 8); ch.writeUInt16LE(method, 10);
+    ch.writeUInt32LE(crc, 16); ch.writeUInt32LE(comp.length, 20); ch.writeUInt32LE(usize, 24); ch.writeUInt16LE(name.length, 28);
+    ch.writeUInt32LE(((e.mode ?? 0o100644) * 65536) >>> 0, 38); ch.writeUInt32LE(off, 42);
+    locals.push(lh, name, comp); centrals.push(ch, name);
+    off += 30 + name.length + comp.length;
+  }
+  const cd = Buffer.concat(centrals);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(entries.length, 8); end.writeUInt16LE(entries.length, 10); end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(off, 16);
+  return Buffer.concat([...locals, cd, end]);
+}
 
 function fakeGh() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fake-gh-'));
@@ -250,18 +283,36 @@ function fakeGh() {
     { databaseId: 300, headSha: '9'.repeat(40), createdAt: '2026-10-13T12:00:00Z', conclusion: 'success', event: 'push', headBranch: 'feat/x' },
     { databaseId: 'nope', headSha: 'x', createdAt: 'never', conclusion: 'success', event: 'push', headBranch: 'feat/x' }
   ]));
-  const art = (id, name, file, text) => { const d = path.join(root, 'artifacts', String(id), name); fs.mkdirSync(d, { recursive: true }); if (text !== undefined) fs.writeFileSync(path.join(d, file), text); return d; };
-  art(302, 'test-results-node-20', 'junit.xml', junit(`<testcase name="good" classname="node-test"/><testcase name="bad" classname="node-test"><failure message="test failed: bad ${SECRET} ${TOKEN}">${'y'.repeat(6000)}</failure></testcase>`));
-  art(302, 'test-results-node-22', 'junit.xml', '<!DOCTYPE lol [<!ENTITY a "aaaa">]><testsuites>&a;</testsuites>');
-  art(302, 'test-results-node-24', 'results.sarif', '{}');
-  art(302, 'not-ours', 'junit.xml', junit('<testcase name="ignored"/>'));
-  const d = art(301, 'test-results-node-20', 'junit.xml', junit('<testcase name="good" classname="node-test" time="0.5"/>'));
-  const link = art(301, 'test-results-node-22');
-  fs.symlinkSync(path.join(d, 'junit.xml'), path.join(link, 'junit.xml'));
+  const ids = {};
+  /** An artifact zip of a run, with its id; entries as makeZip takes them (or a Buffer: the whole download). */
+  const art = (run, name, entries) => {
+    const d = path.join(root, 'artifacts', String(run));
+    fs.mkdirSync(d, { recursive: true });
+    fs.writeFileSync(path.join(d, `${name}.zip`), Buffer.isBuffer(entries) ? entries : makeZip(entries));
+    ids[`${run}/${name}`] = run * 100 + Object.keys(ids).filter((k) => k.startsWith(`${run}/`)).length + 1;
+    fs.writeFileSync(path.join(root, 'ids.json'), JSON.stringify(ids));
+    return ids[`${run}/${name}`];
+  };
+  art(302, 'test-results-node-20', [{ name: 'junit.xml', data: junit(`<testcase name="good" classname="node-test"/><testcase name="bad" classname="node-test"><failure message="test failed: bad ${SECRET} ${TOKEN}">${'y'.repeat(6000)}</failure></testcase>`) }, { name: 'results.sarif', data: '{}' }]);
+  art(302, 'test-results-node-22', [{ name: 'junit.xml', data: '<!DOCTYPE lol [<!ENTITY a "aaaa">]><testsuites>&a;</testsuites>' }]);
+  art(302, 'test-results-node-24', [{ name: 'results.sarif', data: '{}' }]);
+  art(302, 'not-ours', [{ name: 'junit.xml', data: junit('<testcase name="ignored"/>') }]);
+  art(301, 'test-results-node-20', [{ name: 'junit.xml', data: junit('<testcase name="good" classname="node-test" time="0.5"/>'), method: 0 }]);
+  // a symbolic link entry named junit.xml: never followed, never read as a report
+  art(301, 'test-results-node-22', [{ name: 'junit.xml', data: '/etc/passwd', mode: 0o120777 }]);
   // run 300 has no artifacts (before the upload step existed)
   const env = { FAKE_GH_ROOT: root, PATH: `${bin}${path.delimiter}${path.dirname(process.execPath)}${path.delimiter}/usr/bin${path.delimiter}/bin`, ...ENGINE };
-  const calls = () => fs.readFileSync(path.join(root, 'calls.jsonl'), 'utf-8').trim().split('\n').map((l) => JSON.parse(l));
-  return { root, env, calls };
+  const lines = (f) => (fs.existsSync(path.join(root, f)) ? fs.readFileSync(path.join(root, f), 'utf-8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : []);
+  const calls = () => lines('calls.jsonl');
+  /** The artifact ids downloaded (gh api .../artifacts/<id>/zip), in order. */
+  const zips = () => calls().filter((c) => c[0] === 'api').map((c) => Number(/artifacts\/(\d+)\/zip$/.exec(c[1])[1]));
+  const listings = () => lines('api-calls.jsonl').map((c) => Number(/runs\/(\d+)\//.exec(c[1])[1]));
+  return { root, env, calls, zips, listings, ids, art };
+}
+
+/** db with io extras (importLimits: the download caps, lowered for a test). */
+async function callIo(args, cwd, env, extra) {
+  try { return { code: 0, out: await db(args, { cwd, env, ...extra }) }; } catch (e) { return { code: e.code ?? 99, err: e.message }; }
 }
 
 describe('db import-reports', () => {
@@ -286,7 +337,12 @@ describe('db import-reports', () => {
       assert.deepEqual(calls[0], ['auth', 'status']);
       // push runs only (a fork's pull_request run can carry the same head branch name)
       assert.deepEqual(calls[1], ['run', 'list', '--branch', 'feat/x', '--event', 'push', '--workflow', 'test.yml', '--limit', '5', '--json', 'databaseId,headSha,createdAt,conclusion,event,headBranch']);
-      assert.deepEqual(calls.slice(2).map((c) => c.slice(0, 5)), ['302', '301', '300'].map((id) => ['run', 'download', id, '-p', 'test-results-*']));
+      // each test-results artifact by its id, after its run's listing (sizes and ids); never `gh run download`, never not-ours
+      assert.deepEqual(gh.listings(), [302, 301, 300]);
+      const ids = gh.ids;
+      assert.deepEqual(gh.zips(), ['302/test-results-node-20', '302/test-results-node-22', '302/test-results-node-24', '301/test-results-node-20', '301/test-results-node-22'].map((k) => ids[k]));
+      assert.ok(calls.slice(2).every((c) => c.length === 2 && c[0] === 'api' && /^repos\/\{owner\}\/\{repo\}\/actions\/artifacts\/\d+\/zip$/.test(c[1])), JSON.stringify(calls));
+      assert.ok(!calls.some((c) => c[1] === 'download'));
 
       const runs = await rows(dir, 'SELECT * FROM test_runs ORDER BY id');
       assert.deepEqual(runs.map((x) => [x.branch, x.commit_sha.slice(0, 1), x.source, x.status, x.run_key, x.started_at]), [
@@ -303,7 +359,8 @@ describe('db import-reports', () => {
       assert.equal(again.code, 0, again.err);
       assert.deepEqual(again.out.imported, []);
       assert.deepEqual(again.out.skipped.filter((s) => s.reason === 'already imported').map((s) => s.run_id), [302, 301]);
-      assert.equal(gh.calls().filter((c) => c[1] === 'download').length, 4, 'only run 300 was asked for again');
+      assert.equal(gh.zips().length, 5, 'nothing downloaded again');
+      assert.deepEqual(gh.listings(), [302, 301, 300, 300], 'only run 300 was asked for again');
       assert.equal((await rows(dir, 'SELECT COUNT(*) AS n FROM test_runs'))[0].n, 2);
 
       // db status: test runs per branch; db rebuild re-indexes the JSON files and keeps the test runs
@@ -328,12 +385,10 @@ describe('db import-reports', () => {
       assert.equal(big.reason, `artifact is ${ARTIFACT_MAX_BYTES + 1} bytes, more than ${ARTIFACT_MAX_BYTES}: not downloaded`);
       const api = fs.readFileSync(path.join(gh.root, 'api-calls.jsonl'), 'utf-8').trim().split('\n').map((l) => JSON.parse(l));
       assert.deepEqual(api, ['302', '301', '300'].map((id) => ['api', `repos/{owner}/{repo}/actions/runs/${id}/artifacts?per_page=100`]));
-      const downloads = gh.calls().filter((c) => c[1] === 'download');
-      // run 302: only the small test-results artifacts, each by name; never the big one, never by pattern
-      const of302 = downloads.filter((c) => c[2] === '302');
-      assert.deepEqual(of302.map((c) => c.slice(0, 5)), [['run', 'download', '302', '-n', 'test-results-node-22'], ['run', 'download', '302', '-n', 'test-results-node-24']]);
-      assert.ok(!downloads.some((c) => c.includes('test-results-node-20') && c[2] === '302'));
-      assert.deepEqual(downloads.filter((c) => c[2] === '301').map((c) => c.slice(0, 5)), [['run', 'download', '301', '-p', 'test-results-*']]);
+      // run 302: only the small test-results artifacts, each by its id; never the big one
+      const ids = gh.ids;
+      assert.deepEqual(gh.zips(), [ids['302/test-results-node-22'], ids['302/test-results-node-24'], ids['301/test-results-node-20'], ids['301/test-results-node-22']]);
+      assert.ok(!gh.zips().includes(ids['302/test-results-node-20']));
       // a listing gh cannot give, or one with more artifacts than one page: the run is skipped, nothing downloaded
       assert.throws(() => parseArtifactList('{"total_count": 150, "artifacts": []}'), /150 artifacts/);
       assert.throws(() => parseArtifactList('{"artifacts": [{"name": "test-results-x"}]}'), /without a name and size/);
@@ -352,12 +407,13 @@ describe('db import-reports', () => {
       assert.equal(p.code, 0, p.err);
       assert.equal(p.out.pruned_runs, 1);
       assert.deepEqual((await rows(dir, 'SELECT run_key FROM test_runs')).map((x) => x.run_key), ['302/test-results-node-20']);
-      const downloads = gh.calls().filter((c) => c[1] === 'download').length;
+      const downloads = gh.zips().length;
       const again = await call(['import-reports', '--limit', '5'], dir, gh.env);
       assert.equal(again.code, 0, again.err);
       assert.deepEqual(again.out.imported, [], 'the pruned run 301 is not imported again');
       assert.deepEqual(again.out.skipped.filter((s) => s.reason === 'already imported').map((s) => s.run_id), [302, 301]);
-      assert.equal(gh.calls().filter((c) => c[1] === 'download').length, downloads + 1, 'only run 300 (no artifact) was asked for again');
+      assert.equal(gh.zips().length, downloads, 'nothing downloaded again');
+      assert.deepEqual(gh.listings(), [302, 301, 300, 300], 'only run 300 (no artifact) was asked for again');
       assert.equal((await rows(dir, 'SELECT COUNT(*) AS n FROM test_runs'))[0].n, 1, 'the prune stays done');
     } finally { rm(dir); rm(gh.root); }
   });
@@ -374,11 +430,7 @@ describe('db import-reports', () => {
         { databaseId: 313, headSha: '1'.repeat(40), createdAt: '2026-10-16T16:00:00Z', conclusion: 'success', event: 'push', headBranch: 'main' }
       );
       fs.writeFileSync(path.join(gh.root, 'runs.json'), JSON.stringify(runs));
-      for (const id of [310, 311, 312, 313]) {
-        const d = path.join(gh.root, 'artifacts', String(id), 'test-results-node-20');
-        fs.mkdirSync(d, { recursive: true });
-        fs.writeFileSync(path.join(d, 'junit.xml'), junit('<testcase name="poisoned" classname="node-test"/>'));
-      }
+      const poisoned = [310, 311, 312, 313].map((id) => gh.art(id, 'test-results-node-20', [{ name: 'junit.xml', data: junit('<testcase name="poisoned" classname="node-test"/>') }]));
       const r = await call(['import-reports', '--branch', 'feat/x', '--limit', '10'], dir, gh.env);
       assert.equal(r.code, 0, r.err);
       assert.deepEqual(r.out.imported.map((x) => x.run_id), [302, 301]);
@@ -386,8 +438,98 @@ describe('db import-reports', () => {
       const calls = gh.calls();
       assert.ok(calls[1].includes('--event') && calls[1][calls[1].indexOf('--event') + 1] === 'push');
       assert.ok(calls[1][calls[1].indexOf('--json') + 1].split(',').includes('event'));
-      assert.ok(!calls.some((c) => c[1] === 'download' && ['310', '311', '312', '313'].includes(c[2])), 'a foreign run is never downloaded');
+      assert.ok(!gh.zips().some((id) => poisoned.includes(id)), 'a foreign run is never downloaded');
+      assert.ok(!gh.listings().some((id) => [310, 311, 312, 313].includes(id)), 'nor listed');
       assert.equal((await rows(dir, "SELECT COUNT(*) AS n FROM test_cases WHERE name = 'poisoned'"))[0].n, 0);
+    } finally { rm(dir); rm(gh.root); }
+  });
+
+  it('crafted artifacts through gh: a zip bomb, traversal names, a download past its size and junk are refused; nothing is written by entry name (review wt-1a)', { skip: !NODE_SQLITE }, async () => {
+    const dir = await project();
+    const gh = fakeGh();
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-zip-outside-'));
+    try {
+      const runs = [{ databaseId: 400, headSha: 'd'.repeat(40), createdAt: '2026-10-17T12:00:00Z', conclusion: 'success', event: 'push', headBranch: 'feat/x' }];
+      fs.writeFileSync(path.join(gh.root, 'runs.json'), JSON.stringify(runs));
+      const big = Buffer.alloc(16 * 1024 * 1024, 0x3c);
+      gh.art(400, 'test-results-bomb', [{ name: 'junit.xml', data: big }]);
+      gh.art(400, 'test-results-liar', [{ name: 'junit.xml', data: big, usize: 100 }]);
+      gh.art(400, 'test-results-paths', ['../junit.xml', '../../junit.xml', path.join(outside, 'junit.xml'), 'a/../junit.xml', 'sub/junit.xml', './junit.xml']
+        .map((name) => ({ name, data: junit('<testcase name="escaped"/>') })));
+      gh.art(400, 'test-results-junk', Buffer.from('this is not a zip archive at all, only text'));
+      gh.art(400, 'test-results-twice', [{ name: 'junit.xml', data: junit('<testcase name="a"/>') }, { name: 'junit.xml', data: junit('<testcase name="b"/>') }]);
+      const r = await call(['import-reports', '--limit', '5'], dir, gh.env);
+      assert.equal(r.code, 0, r.err);
+      assert.deepEqual(r.out.imported, []);
+      const why = Object.fromEntries(r.out.skipped.map((x) => [x.artifact, x.reason]));
+      assert.match(why['test-results-bomb'], new RegExp(`expand \\d+ times, more than ${ZIP_MAX_RATIO}: refused`));
+      assert.equal(why['test-results-liar'], `junit.xml larger than ${JUNIT_MAX_BYTES} bytes`, 'the inflate is bounded whatever the directory says');
+      assert.equal(why['test-results-paths'], 'no junit.xml');
+      assert.equal(why['test-results-junk'], 'not a zip archive');
+      assert.match(why['test-results-twice'], /more than one junit\.xml/);
+      assert.deepEqual(fs.readdirSync(outside), [], 'nothing written outside');
+      assert.ok(!fs.existsSync(path.join(path.dirname(dir), 'junit.xml')) && !fs.existsSync(path.join(dir, 'junit.xml')) && !fs.existsSync(path.join(dir, 'sub')));
+      assert.equal((await rows(dir, "SELECT COUNT(*) AS n FROM test_cases WHERE name = 'escaped'"))[0].n, 0);
+      assert.ok(!fs.readdirSync(os.tmpdir()).some((f) => f.startsWith('kit-import-reports-') && fs.existsSync(path.join(os.tmpdir(), f, 'junit.xml'))));
+
+      // the list says 10 bytes, the download goes on: cut off at the cap, not read
+      fs.writeFileSync(path.join(gh.root, 'runs.json'), JSON.stringify([{ ...runs[0], databaseId: 401 }]));
+      const noise = crypto.randomBytes(8000).toString('hex');
+      gh.art(401, 'test-results-long', [{ name: 'junit.xml', data: junit(`<testcase name="x"><failure message="${noise}"/></testcase>`), method: 0 }]);
+      fs.writeFileSync(path.join(gh.root, 'sizes.json'), JSON.stringify({ '401/test-results-long': 10 }));
+      const r2 = await callIo(['import-reports', '--limit', '5'], dir, gh.env, { importLimits: { artifactBytes: 4096 } });
+      assert.equal(r2.code, 0, r2.err);
+      assert.deepEqual(r2.out.imported, []);
+      assert.deepEqual(r2.out.skipped, [{ run_id: 401, artifact: 'test-results-long', reason: 'download passed 4096 bytes (the artifact list said 10): stopped, not read' }]);
+      // limits from io only ever lower the caps
+      const r3 = await callIo(['import-reports', '--limit', '5'], dir, gh.env, { importLimits: { artifactBytes: ARTIFACT_MAX_BYTES * 10 } });
+      assert.equal(r3.out.imported.length, 1, 'the default cap: the 16 KB artifact is read');
+    } finally { rm(dir); rm(gh.root); rm(outside); }
+  });
+
+  it(`at most ${ARTIFACTS_PER_RUN} artifacts per run and ${IMPORT_MAX_BYTES} bytes per call are downloaded; the rest are listed as skipped`, { skip: !NODE_SQLITE }, async () => {
+    const dir = await project();
+    const gh = fakeGh();
+    try {
+      fs.writeFileSync(path.join(gh.root, 'runs.json'), JSON.stringify([500, 501].map((id) => ({ databaseId: id, headSha: 'e'.repeat(40), createdAt: '2026-10-17T12:00:00Z', conclusion: 'success', event: 'push', headBranch: 'feat/x' }))));
+      for (let i = 0; i < ARTIFACTS_PER_RUN + 2; i++) gh.art(500, `test-results-n${i}`, [{ name: 'junit.xml', data: junit(`<testcase name="t${i}"/>`) }]);
+      const r = await call(['import-reports', '--limit', '5'], dir, gh.env);
+      assert.equal(r.code, 0, r.err);
+      assert.equal(r.out.imported.length, ARTIFACTS_PER_RUN);
+      assert.deepEqual(r.out.skipped.filter((x) => /more than 5 test-results artifacts in this run: not downloaded/.test(x.reason)).map((x) => x.artifact), ['test-results-n5', 'test-results-n6']);
+      assert.equal(gh.zips().length, ARTIFACTS_PER_RUN);
+
+      // a call's budget: once used up, later artifacts are not downloaded
+      for (let i = 0; i < 3; i++) gh.art(501, `test-results-m${i}`, [{ name: 'junit.xml', data: junit(`<testcase name="m${i}"/>`), method: 0 }]);
+      const one = fs.statSync(path.join(gh.root, 'artifacts', '501', 'test-results-m0.zip')).size;
+      const before = gh.zips().length;
+      const r2 = await callIo(['import-reports', '--limit', '5'], dir, gh.env, { importLimits: { totalBytes: one * 2 + 10 } });
+      assert.equal(r2.code, 0, r2.err);
+      assert.deepEqual(r2.out.imported.map((x) => x.artifact), ['test-results-m0', 'test-results-m1']);
+      assert.deepEqual(r2.out.skipped.filter((x) => x.run_id === 501), [{ run_id: 501, artifact: 'test-results-m2', reason: `the download budget of one import (${one * 2 + 10} bytes) is used up: not downloaded` }]);
+      assert.equal(gh.zips().length, before + 2);
+    } finally { rm(dir); rm(gh.root); }
+  });
+
+  it('no push runs on the branch: says so and names the default branch to try (gh repo view, else main) (review wt-1b L3)', { skip: !NODE_SQLITE }, async () => {
+    const dir = await project();
+    const gh = fakeGh();
+    try {
+      fs.writeFileSync(path.join(gh.root, 'runs.json'), '[]');
+      let r = await call(['import-reports'], dir, gh.env);
+      assert.equal(r.code, 0, r.err);
+      assert.equal(r.out.runs_listed, 0);
+      assert.equal(r.out.hint, 'no push runs of test.yml on feat/x: CI test results come from push runs, which run on main; try --branch main');
+      fs.writeFileSync(path.join(gh.root, 'default-branch'), 'trunk\n');
+      r = await call(['import-reports'], dir, gh.env);
+      assert.match(r.out.hint, /run on trunk; try --branch trunk$/);
+      assert.ok(gh.calls().some((c) => c[0] === 'repo' && c[1] === 'view'));
+      r = await call(['import-reports', '--branch', 'trunk'], dir, gh.env);
+      assert.equal(r.out.hint, 'no push runs of test.yml on trunk yet');
+      // with runs: no hint
+      fs.writeFileSync(path.join(gh.root, 'runs.json'), JSON.stringify([{ databaseId: 300, headSha: '9'.repeat(40), createdAt: '2026-10-13T12:00:00Z', conclusion: 'success', event: 'push', headBranch: 'feat/x' }]));
+      r = await call(['import-reports'], dir, gh.env);
+      assert.equal(r.out.hint, undefined);
     } finally { rm(dir); rm(gh.root); }
   });
 
@@ -438,5 +580,40 @@ describe('db import-reports', () => {
       assert.match(r.err, /--branch must be a git branch name/);
       assert.ok(!fs.existsSync(path.join(gh.root, 'calls.jsonl')));
     } finally { rm(dir); rm(gh.root); }
+  });
+});
+
+describe('readJunitFromZip reads the central directory itself (node:zlib only)', () => {
+  const doc = junit('<testcase name="ok"/>');
+  it('reads junit.xml at the root, stored or deflated', () => {
+    for (const method of [0, 8]) assert.deepEqual(readJunitFromZip(makeZip([{ name: 'results.sarif', data: '{}' }, { name: 'junit.xml', data: doc, method }])), { text: doc });
+  });
+  for (const [label, entries, re] of [
+    ['an entry declaring more than 64 MB', [{ name: 'other.bin', data: 'x', usize: 65 * 1024 * 1024 }], /more than 67108864: refused/],
+    ['an entry expanding more than the ratio', [{ name: 'other.bin', data: Buffer.alloc(4 * 1024 * 1024) }], /expand \d+ times/],
+    ['a junit.xml over 5 MB (stored)', [{ name: 'junit.xml', data: Buffer.from(`<a>${'x '.repeat(3 * 1024 * 1024)}</a>`), method: 0 }], /junit\.xml larger than 5242880 bytes/],
+    ['a smaller declared size than inflated', [{ name: 'junit.xml', data: doc, usize: 10 }], /not the size its zip directory declares/],
+    ['a bad CRC', [{ name: 'junit.xml', data: doc, crc: 1 }], /CRC/],
+    ['an encrypted entry', [{ name: 'junit.xml', data: doc, flags: 1 }], /encrypted/],
+    ['a link entry', [{ name: 'junit.xml', data: '/etc/passwd', mode: 0o120777 }], /not a regular file/],
+    ['a directory entry', [{ name: 'junit.xml', data: '', mode: 0o040755 }], /not a regular file/],
+    ['an unknown method', [{ name: 'junit.xml', data: doc, method: 12 }], /compression method 12/],
+    ['damaged deflate data', [{ name: 'junit.xml', data: doc, raw: Buffer.from([0xff, 0xff, 0xff, 0xff]) }], /cannot be inflated/]
+  ]) {
+    it(`refuses ${label}`, () => {
+      const r = readJunitFromZip(makeZip(entries));
+      assert.ok(r.error && re.test(r.error), JSON.stringify(r));
+    });
+  }
+  it('a zip64 marker, a multi-part archive, a damaged directory and too many entries are not read', () => {
+    const z = makeZip([{ name: 'junit.xml', data: doc }]);
+    const at = z.length - 22;
+    const edit = (off, v, bytes = 2) => { const c = Buffer.from(z); if (bytes === 2) c.writeUInt16LE(v, at + off); else c.writeUInt32LE(v, at + off); return c; };
+    assert.match(readJunitFromZip(edit(16, 0xffffffff, 4)).error, /zip64/);
+    assert.match(readJunitFromZip(edit(4, 1)).error, /multi-part/);
+    assert.match(readJunitFromZip(edit(16, 5, 4)).error, /damaged/);
+    const many = makeZip(Array.from({ length: 1001 }, (_, i) => ({ name: `f${i}`, data: '', method: 0 })));
+    assert.match(readJunitFromZip(many).error, /more than 1000 entries/);
+    assert.deepEqual(readJunitFromZip(makeZip([{ name: 'JUNIT.XML', data: doc }, { name: '/junit.xml', data: doc }, { name: 'x/junit.xml', data: doc }])), { missing: true });
   });
 });

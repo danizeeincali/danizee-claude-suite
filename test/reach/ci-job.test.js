@@ -47,9 +47,13 @@ const step = (name) => {
   return s;
 };
 
+/**
+ * A temp folder for one step run. HOME and DANIZEE_KIT_HOME point into it, so the real `npm test` step (which records
+ * the run when the developer's kit index is on for this repository) never writes the developer's real index.
+ */
 function fixture() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ci-job-'));
-  return { dir, env: { ...process.env, RUNNER_TEMP: dir, CI_TEST_OUTPUT: path.join(dir, 'test-output.txt'), CI_RESULTS_DIR: path.join(dir, 'results') } };
+  return { dir, env: { ...process.env, HOME: dir, DANIZEE_KIT_HOME: path.join(dir, 'kit-home'), RUNNER_TEMP: dir, CI_TEST_OUTPUT: path.join(dir, 'test-output.txt'), CI_RESULTS_DIR: path.join(dir, 'results') } };
 }
 const runStepScript = (s, env) => spawnSync('bash', ['-eo', 'pipefail', '-c', s.run], { cwd: root, env, encoding: 'utf-8' });
 
@@ -114,6 +118,16 @@ test('test step: a passing run passes', () => {
   const { env } = fixture();
   const r = runStepScript(step('npm test'), { ...env, CI_TEST_COMMAND: 'echo "ok 1 - good"' });
   assert.equal(r.status, 0, r.stdout + r.stderr);
+});
+
+test('the step fixture keeps the kit index away from the real home: HOME and DANIZEE_KIT_HOME are the temp folder, nothing recorded', () => {
+  const { dir, env } = fixture();
+  assert.equal(env.HOME, dir);
+  assert.equal(env.DANIZEE_KIT_HOME, path.join(dir, 'kit-home'));
+  const r = runStepScript(step('npm test'), { ...env, CI_TEST_COMMAND: 'echo "ok 1 - good"; echo "not ok 2 - bad"; exit 1' });
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.doesNotMatch(r.stdout, /recorded in the kit index/);
+  assert.ok(!fs.existsSync(path.join(dir, 'kit-home')), 'no index folder made (the index is off in the temp home)');
 });
 
 for (const [label, command, pattern, next] of [
