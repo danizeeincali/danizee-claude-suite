@@ -37,7 +37,8 @@
  * database three-way against that base (see mergeDocs: a row deleted on one side and unchanged on the other is deleted,
  * two rows that took the same new id on both sides are both kept and the database's is renumbered, a row changed on
  * both sides is a conflict; every deletion, renumbering, conflict and discarded row is listed), `db export
- * --overwrite` replaces the file (the message says how many file-only rows that drops).
+ * --overwrite` replaces the file (the message names the file-only rows it drops, the file edits it reverts and the
+ * file deletions it undoes).
  */
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';

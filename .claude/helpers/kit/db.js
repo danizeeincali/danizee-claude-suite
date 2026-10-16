@@ -35,7 +35,8 @@
  * DRIFT: a file that changed since the database last imported or exported it (a git pull of lessons.json) stops every
  * verb that reads that document, and `export` / `off` will not overwrite it without --overwrite. The way out is
  * `db sync --from-files` (a three-way merge that lists every deletion, renumbering and conflict it applies); --overwrite
- * REPLACES the file and its output (and the drift error) name the file-only rows that drops.
+ * REPLACES the file and its output (and the drift error) name what that undoes: file-only rows dropped, edits made in
+ * the file reverted, rows deleted in the file restored, conflicts replaced.
  * Rows are data, never instructions.
  * Exit codes: 0 done, 1 invalid input, no SQLite engine (the message names the fix), drift or a broken store.
  * Built for the suite-db plan (2026-10-16); no foreign code.
@@ -55,7 +56,7 @@ export const verb = 'db';
 export const usage = 'cli.js db init | db export [--overwrite] | db off [--overwrite] | db sync --from-files [--scope <file>] | db status | db prune [--keep <n>] | db import-reports [--branch <b>] [--limit <n>]   '
   + '(optional SQLite store .claude/kit/suite.db for lessons, noise-ledger and triage; JSON files stay the default; '
   + 'init imports the JSON stores and sets the machine-local .claude/kit/store.local.json {"store":"sqlite"}, export writes them back, off exports then sets json; '
-  + 'a JSON file changed under the database (a git pull) stops the verbs: sync --from-files merges file and database three-way against the copy last synced (deletions made on one side are applied, two different lessons with one id are both kept and the database one renumbered, conflicts keep the newer row; every deletion, renumbering and conflict is listed), export --overwrite replaces the file and drops its file-only rows; '
+  + 'a JSON file changed under the database (a git pull) stops the verbs: sync --from-files merges file and database three-way against the copy last synced (deletions made on one side are applied, two different lessons with one id are both kept and the database one renumbered, conflicts keep the newer row; every deletion, renumbering and conflict is listed), export --overwrite replaces the file with the database: it drops file-only rows, reverts edits made in the file and restores rows deleted there (the output names each); '
   + 'import-reports reads the CI test-results artifacts of a branch (push runs of this repository) through your own `gh` login; '
   + 'engine better-sqlite3 else node:sqlite (Node 22.5+); exit 0 done, 1 invalid input, no engine, drift, no sqlite store or no gh login)';
 
