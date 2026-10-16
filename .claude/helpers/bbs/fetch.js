@@ -3,7 +3,8 @@
  *
  * GET only · no body, no auth/cookie headers · private hosts and private redirects refused ·
  * per-run URL and byte limits · every request logged to egress.jsonl · shallow, tagless clone with
- * hooks off · nothing from a clone is ever executed (only `git clone` and `git rev-parse HEAD` run).
+ * hooks off, source only (media, fonts, archives, binaries and lockfiles are never downloaded) · nothing from a clone
+ * is ever executed (only `git clone`, `ls-tree`, `read-tree` and `rev-parse HEAD` run, from outside the clone).
  * Injection points: fetchImpl, lookup, git (runner), now. Known gap: DNS rebinding between the host
  * check and the connect — documented, not fixed here.
  */
@@ -355,7 +356,7 @@ function absolutePathEnv(env) {
  */
 export function runGit(args, cwd, env, { timeout, exec = execFileSync } = {}) {
   try {
-    return exec(resolveGitPath(env), args, { cwd, env: absolutePathEnv(env), timeout, killSignal: 'SIGTERM', encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] });
+    return exec(resolveGitPath(env), args, { cwd, env: absolutePathEnv(env), timeout, killSignal: 'SIGTERM', encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (err) {
     if (err?.code === 'ETIMEDOUT' || err?.signal === 'SIGTERM') {
       const e = new Error(`git ${args[0]} timeout after ${timeout} ms`);
@@ -437,7 +438,51 @@ export async function headOf(dest, env, { git = defaultGit, timeout, hardened = 
   return String(r.stdout).trim();
 }
 
-/** Shallow, tagless clone with hooks off and prompts off; returns { sha } of HEAD. */
+/** Every path in HEAD's tree, NUL-separated: through safe-git when the kit is installed, as headOf does. */
+export async function treeOf(dest, env, { git = defaultGit, timeout, hardened = git === defaultGit, load = loadSafeGit } = {}) {
+  const args = ['ls-tree', '-r', '-z', '--name-only', 'HEAD'];
+  const kit = hardened ? await load() : null;
+  if (!kit) {
+    const abs = path.resolve(dest);
+    return String(await git(['--git-dir', path.join(abs, '.git'), ...args], path.dirname(abs), env, { timeout }) ?? '');
+  }
+  const r = await kit.safeGit(dest, args, { env, timeout });
+  if (r.code !== 0) throw Object.assign(new Error(`git ls-tree exited ${r.code}`), { stderr: r.stderr });
+  return String(r.stdout ?? '');
+}
+
+// ---------------------------------------------------------------- source only
+
+/**
+ * Files a borrow never needs: it reads ideas, so media, fonts, archives, compiled binaries, minified bundles and
+ * lockfiles are left on the server. Matched on the lower-cased base name.
+ */
+const SKIP_EXT = new Set([
+  'png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'ico', 'bmp', 'tif', 'tiff', 'heic', 'svg', 'psd', 'ai', 'sketch', 'fig', 'xcf',
+  'mp4', 'mov', 'webm', 'mkv', 'avi', 'm4v', 'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac',
+  'woff', 'woff2', 'ttf', 'otf', 'eot',
+  'zip', 'gz', 'tgz', 'tar', '7z', 'rar', 'bz2', 'xz', 'zst', 'jar', 'war', 'whl', 'nupkg',
+  'pdf', 'exe', 'dll', 'so', 'dylib', 'a', 'o', 'obj', 'wasm', 'bin', 'class', 'pyc', 'node', 'dmg', 'iso', 'apk', 'ipa',
+  'map', 'lockb', 'db', 'sqlite', 'onnx', 'pt', 'safetensors', 'gguf', 'npy', 'parquet'
+]);
+const SKIP_NAMES = new Set(['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'cargo.lock', 'poetry.lock',
+  'gemfile.lock', 'composer.lock', 'go.sum', 'uv.lock', 'pubspec.lock', 'podfile.lock', 'flake.lock']);
+
+/** True for a repository path the source-only clone downloads. */
+export function isSourcePath(p) {
+  const base = String(p).split('/').pop().toLowerCase();
+  if (SKIP_NAMES.has(base)) return false;
+  if (/\.min\.(js|css|mjs)$/.test(base)) return false;
+  const dot = base.lastIndexOf('.');
+  return dot <= 0 || !SKIP_EXT.has(base.slice(dot + 1));
+}
+
+/** One path as an anchored, literal sparse-checkout pattern (gitignore syntax: wildcards, !, # and spaces escaped). */
+export function sparsePattern(p) {
+  return '/' + String(p).replace(/[\\*?[\]!# ]/g, (c) => '\\' + c);
+}
+
+/** Shallow, tagless clone with hooks off and prompts off, source files only; returns { sha, kept, skipped }. */
 export async function cloneRepo(ref, dest, {
   git = defaultGit, lookup = defaultLookup, onEgress = () => {}, now = () => new Date(), timeoutMs = 30000, maxBytes = Infinity,
   maxCheckoutBytes = Infinity, hardened, loadKit = loadSafeGit
@@ -462,27 +507,62 @@ export async function cloneRepo(ref, dest, {
     // `git clone -c` writes these into fetched/repo/.git/config. Every value is chosen to be harmless
     // when it persists: hooks point at /dev/null (never a dir someone could recreate), no redirects,
     // no credential helper, lfs filters empty, only https/ssh transports. Nothing ever runs git inside
-    // fetched/repo afterwards except our own rev-parse with this same env.
+    // fetched/repo afterwards; our own rev-parse, ls-tree and read-tree name it from outside, with this same env.
     const args = ['clone', '--depth', '1', '--no-tags', '--no-recurse-submodules',
       '-c', 'core.hooksPath=/dev/null', '-c', 'http.followRedirects=false', '-c', 'credential.helper=',
       '-c', 'filter.lfs.smudge=', '-c', 'filter.lfs.process=', '-c', 'filter.lfs.required=false',
       '-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always', '-c', 'protocol.ssh.allow=always',
+      '--filter=blob:none', '--no-checkout',
       '--', text, dest];
-    try {
-      await git(args, path.dirname(path.resolve(dest)), env, { timeout: timeoutMs * 10 });
-    } catch (err) {
+    const abs = path.resolve(dest);
+    const parent = path.dirname(abs);
+    const gitDir = path.join(abs, '.git');
+    const fail = async (what, err) => {
       let partial = 0;
-      try { partial = await treeBytes(path.join(dest, '.git')); } catch { /* unreadable partial tree: count nothing */ }
+      try { partial = await treeBytes(gitDir); } catch { /* unreadable partial tree: count nothing */ }
       await fs.rm(dest, { recursive: true, force: true });
       const line = firstLine(err);
       await row({ error: line, bytes_in: partial });
-      throw new Error(`git clone failed: ${line}`);
+      throw new Error(`${what} failed: ${line}`);
+    };
+    // 1. commit and trees only: no blobs, nothing checked out
+    try {
+      await git(args, parent, env, { timeout: timeoutMs * 10 });
+    } catch (err) {
+      await fail('git clone', err);
     }
-    // bytes_in is what came over the wire: .git (the shallow pack). The checkout is the same blobs
-    // expanded, so it is not egress; it has its own cap so a small, highly compressible pack
-    // cannot fill the disk.
-    const bytes = await treeBytes(path.join(dest, '.git'));
-    const checkout = (await treeBytes(dest)) - bytes;
+    // 2. HEAD through the hardened reader first, so a clone whose config names a driver fails before anything is written
+    let sha;
+    try {
+      sha = await headOf(dest, env, { git, timeout: timeoutMs, hardened, load: loadKit });
+      if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(sha)) throw new Error(`unexpected HEAD "${sha.slice(0, 80)}"`);
+    } catch (err) {
+      await fs.rm(dest, { recursive: true, force: true });
+      throw new Error(`git rev-parse HEAD failed after clone: ${firstLine(err)}`);
+    }
+    // 3. the file list from the trees already here; 4. only source blobs are fetched and written. read-tree runs from
+    // the parent with --git-dir and --work-tree, never inside the clone, under the config written above.
+    let kept = 0;
+    let skipped = 0;
+    try {
+      const all = (await treeOf(dest, env, { git, timeout: timeoutMs, hardened, load: loadKit })).split('\0').filter(Boolean);
+      const keep = all.filter(isSourcePath);
+      kept = keep.length;
+      skipped = all.length - keep.length;
+      if (keep.length) {
+        await fs.mkdir(path.join(gitDir, 'info'), { recursive: true });
+        await fs.writeFile(path.join(gitDir, 'info', 'sparse-checkout'), keep.map(sparsePattern).join('\n') + '\n');
+        await git(['--git-dir', gitDir, '--work-tree', abs, '-c', 'core.sparseCheckout=true', '-c', 'core.sparseCheckoutCone=false',
+          '-c', 'core.hooksPath=/dev/null', 'read-tree', '-mu', 'HEAD'], parent, env, { timeout: timeoutMs * 10 });
+      }
+    } catch (err) {
+      await fail('source-only checkout', err);
+    }
+    // bytes_in is what came over the wire: .git (the shallow trees and the source blobs), less the sparse list we
+    // wrote. The checkout is the same blobs expanded, so it is not egress; it has its own cap so a small, highly
+    // compressible pack cannot fill the disk.
+    const bytes = (await treeBytes(gitDir)) - (await treeBytes(path.join(gitDir, 'info', 'sparse-checkout')));
+    const checkout = (await treeBytes(dest)) - (await treeBytes(gitDir));
     const over = bytes > maxBytes
       ? `clone of ${bytes} bytes exceeds the remaining allowance of ${maxBytes} bytes`
       : checkout > maxCheckoutBytes
@@ -493,16 +573,8 @@ export async function cloneRepo(ref, dest, {
       await row({ status: 0, bytes_in: bytes, refused: over });
       throw new EgressRefused(over);
     }
-    let sha;
-    try {
-      sha = await headOf(dest, env, { git, timeout: timeoutMs, hardened, load: loadKit });
-      if (!/^[0-9a-f]{40}([0-9a-f]{24})?$/.test(sha)) throw new Error(`unexpected HEAD "${sha.slice(0, 80)}"`);
-    } catch (err) {
-      await fs.rm(dest, { recursive: true, force: true });
-      throw new Error(`git rev-parse HEAD failed after clone: ${firstLine(err)}`);
-    }
-    await row({ status: 0, bytes_in: bytes });
-    return { sha };
+    await row({ status: 0, bytes_in: bytes, files_kept: kept, files_skipped: skipped });
+    return { sha, kept, skipped };
   } finally {
     await fs.rm(scratchDir, { recursive: true, force: true });
   }
@@ -623,13 +695,13 @@ export async function fetchRun(projectDir, opts = {}) {
         const cited = ext === 'bin' ? [] : extractLinks(r.body.toString('utf-8'), r.finalUrl);
         extraSource = { final_url: r.finalUrl, cited };
       } else {
-        const { sha } = await cloneRepo(source.ref, path.join(fetchedDir, 'repo'), {
+        const { sha, kept, skipped } = await cloneRepo(source.ref, path.join(fetchedDir, 'repo'), {
           git: git || defaultGit, lookup: lookup || defaultLookup, onEgress, now, timeoutMs, maxBytes: remaining,
           maxCheckoutBytes: cfg.limits?.max_checkout_bytes ?? DEFAULT_CONFIG.limits.max_checkout_bytes
         });
         identity = 'git:' + sha;
         files = ['fetched/repo'];
-        extraSource = {};
+        extraSource = { source_only: { kept, skipped } };
       }
       known = await lookupSource(projectDir, identity, cfg);
       reuse_from = known ? known.run : null;
