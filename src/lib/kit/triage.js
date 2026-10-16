@@ -144,7 +144,7 @@ function validateState(s) {
 export async function loadState(file, read = (opts) => readJsonState(file, opts)) {
   let parsed;
   try { parsed = await read({ fallback: null }); } catch (e) {
-    // the store's own errors (drift, no SQLite engine, no suite.db, an untrusted database) are not the file's: as they are
+    // the store's own errors (drift, no SQLite engine, no suite.db, a database the kit did not make) are not the file's: as they are
     if (e instanceof KitExit && e.store) throw e;
     if (e instanceof KitExit) throw invalid(`triage state ${file} is corrupt or unreadable: ${e.message}`);
     throw e;

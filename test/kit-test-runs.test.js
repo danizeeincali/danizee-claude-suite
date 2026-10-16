@@ -9,13 +9,16 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { run as db } from '../src/lib/kit/db.js';
-import { resolveStore, withDb } from '../src/lib/kit/store.js';
+import { resolveStore, withDb, storePaths } from '../src/lib/kit/store.js';
 import { parseJunit, parseTap, parseTapSummary, MESSAGE_MAX, MAX_DEPTH, capBytes, ARTIFACT_MAX_BYTES, parseArtifactList } from '../src/lib/kit/test-runs.js';
 import { renderJunit } from '../src/lib/kit/render.js';
 import { runStep } from '../scripts/ci-step.js';
 
 const NODE_SQLITE = (() => { try { createRequire(import.meta.url)('node:sqlite'); return true; } catch { return false; } })();
 const ENGINE = { KIT_SQLITE_ENGINE: 'node:sqlite' };
+// the machine-local store lives in a per-user folder: here a temporary one (one sub-folder per project)
+process.env.DANIZEE_KIT_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-home-'));
+process.on('exit', () => { try { fs.rmSync(process.env.DANIZEE_KIT_HOME, { recursive: true, force: true }); } catch { /* best effort */ } });
 const SECRET = 'project-secret-value-42';
 const TOKEN = 'ghp_abcdefghijklmnopqrstuvwxyz0123456789';
 
@@ -187,6 +190,8 @@ describe('local runs: scripts/ci-step.js runStep records into the sqlite store',
       assert.ok(!fs.existsSync(path.join(dir, '.claude', 'kit', 'suite.db')));
       assert.ok(!fs.existsSync(path.join(dir, '.claude', 'kit', 'config.json')));
       assert.ok(!fs.existsSync(path.join(dir, '.claude', 'kit', 'store.local.json')));
+      assert.ok(!fs.existsSync(storePaths(dir).db));
+      assert.ok(!fs.existsSync(storePaths(dir).config));
     } finally { rm(dir); }
   });
 

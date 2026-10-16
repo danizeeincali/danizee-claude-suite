@@ -11,8 +11,18 @@ import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { run as reflect } from '../src/lib/kit/reflect.js';
 import { run as db } from '../src/lib/kit/db.js';
-import { storeCheck, loadEngine, GITIGNORE_RULES, SCHEMA_VERSION, resolveStore, withDb, JOURNAL_GITIGNORE_RULE } from '../src/lib/kit/store.js';
+import { storeCheck, loadEngine, SCHEMA_VERSION, resolveStore, withDb, storePaths, STRAY_PROJECT_FILES } from '../src/lib/kit/store.js';
 import kitPlugin from '../src/plugins/kit.js';
+
+// the machine-local store lives in a per-user folder: here a temporary one (one sub-folder per project)
+process.env.DANIZEE_KIT_HOME = fsSync.mkdtempSync(path.join(os.tmpdir(), 'kit-home-'));
+process.on('exit', () => { try { fsSync.rmSync(process.env.DANIZEE_KIT_HOME, { recursive: true, force: true }); } catch { /* best effort */ } });
+/** Write this machine's store choice for a project (as `db init` / `db off` would). */
+export async function setChoice(dir, text) {
+  const p = storePaths(dir);
+  await fs.mkdir(p.dir, { recursive: true, mode: 0o700 });
+  await fs.writeFile(p.config, text);
+}
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(HERE, '../src/lib/kit/cli.js');
@@ -98,7 +108,8 @@ describe('kit store: lessons give the same results on the JSON files and on SQLi
         // sqlite never writes the JSON files (no split brain)
         assert.ok(!exists(path.join(b, '.claude/kit/lessons.json')));
         assert.ok(!exists(path.join(b, 'streams/a.json')));
-        assert.ok(exists(path.join(b, '.claude/kit/suite.db')));
+        assert.ok(exists(storePaths(b).db));
+        for (const f of STRAY_PROJECT_FILES) assert.ok(!exists(path.join(b, f)), `nothing of the store in the project: ${f}`);
         // and export writes exactly what the JSON run wrote
         const ex = await call(db, ['export'], b, env);
         assert.equal(ex.code, 0, ex.err);
@@ -155,9 +166,12 @@ describe('kit store: db verb', () => {
       assert.deepEqual(init.out.imported, [{ store: 'lessons', scope: '.claude/kit/lessons.json' }]);
       assert.equal(init.out.rows.lessons, 1);
       assert.equal(init.out.schema_version, SCHEMA_VERSION);
-      // the store choice is machine-local (git-ignored): .claude/kit/store.local.json, not the committed config.json
-      assert.deepEqual(JSON.parse(await fs.readFile(path.join(dir, '.claude/kit/store.local.json'), 'utf-8')), { store: 'sqlite' });
+      // the store choice is machine-local: store.local.json in the per-user store folder, never in the project
+      assert.deepEqual(JSON.parse(await fs.readFile(storePaths(dir).config, 'utf-8')), { store: 'sqlite' });
+      assert.equal(init.out.config, storePaths(dir).config);
+      assert.equal(init.out.db, storePaths(dir).db);
       assert.ok(!exists(path.join(dir, '.claude/kit/config.json')));
+      assert.ok(!exists(path.join(dir, '.claude/kit/store.local.json')));
       // side.json was not imported, but it is read from its file
       assert.equal((await call(reflect, ['lessons', 'list', '--store', 'side.json'], dir, env)).out.lessons.length, 1);
       assert.equal((await call(reflect, ['lessons', 'keep', '--id', 'L1', '--store', 'side.json'], dir, env)).code, 0);
@@ -199,14 +213,14 @@ describe('kit store: db verb', () => {
       assert.match(r.err, /lessons\.json is not valid JSON/);
       assert.ok(!exists(path.join(dir, '.claude/kit/config.json')));
       assert.ok(!exists(path.join(dir, '.claude/kit/store.local.json')));
+      assert.ok(!exists(storePaths(dir).config));
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
 
   it('sqlite configured and no engine: every store call exits 1 naming the fix, and never falls back to JSON', async () => {
     const dir = await tmp();
     try {
-      await fs.mkdir(path.join(dir, '.claude/kit'), { recursive: true });
-      await fs.writeFile(path.join(dir, '.claude/kit/store.local.json'), '{"store":"sqlite"}');
+      await setChoice(dir, '{"store":"sqlite"}');
       const env = { KIT_SQLITE_ENGINE: 'none' };
       const save = await call(reflect, ['lessons', 'save', '--role', 'r', '--session', 's', '--text', 'Write the failing test before the fix.'], dir, env);
       assert.equal(save.code, 1);
@@ -219,7 +233,7 @@ describe('kit store: db verb', () => {
         assert.equal(r.code, 1, sub);
         assert.match(r.err, /npm install better-sqlite3/, sub);
       }
-      const c = await storeCheck({ cwd: dir, env });
+      const c = await storeCheck({ cwd: dir, env: { ...process.env, ...env } });
       assert.equal(c.fatal, true);
       assert.match(c.line, /^kit store: sqlite, but no engine loads/);
       assert.match(c.fix, /npm install better-sqlite3/);
@@ -231,24 +245,22 @@ describe('kit store: db verb', () => {
   it('sqlite configured but suite.db missing: exit 1 that says so', { skip: !NODE_SQLITE }, async () => {
     const dir = await tmp();
     try {
-      await fs.mkdir(path.join(dir, '.claude/kit'), { recursive: true });
-      await fs.writeFile(path.join(dir, '.claude/kit/store.local.json'), '{"store":"sqlite"}');
+      await setChoice(dir, '{"store":"sqlite"}');
       const r = await call(reflect, ['lessons', 'list'], dir, { KIT_SQLITE_ENGINE: 'node:sqlite' });
       assert.equal(r.code, 1);
       assert.match(r.err, /suite\.db is missing/);
-      assert.equal((await storeCheck({ cwd: dir, env: { KIT_SQLITE_ENGINE: 'node:sqlite' } })).fatal, true);
+      assert.equal((await storeCheck({ cwd: dir, env: { ...process.env, KIT_SQLITE_ENGINE: 'node:sqlite' } })).fatal, true);
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
 
   it('a broken config is exit 1; status on json reports the store and engine', async () => {
     const dir = await tmp();
     try {
-      await fs.mkdir(path.join(dir, '.claude/kit'), { recursive: true });
-      await fs.writeFile(path.join(dir, '.claude/kit/config.json'), '{"store":"mongo"}');
+      await setChoice(dir, '{"store":"mongo"}');
       const r = await call(reflect, ['lessons', 'list'], dir);
       assert.equal(r.code, 1);
       assert.match(r.err, /"store" must be "json" or "sqlite"/);
-      await fs.writeFile(path.join(dir, '.claude/kit/config.json'), '{"store":"json"}');
+      await setChoice(dir, '{"store":"json"}');
       const c = await storeCheck({ cwd: dir });
       assert.equal(c.store, 'json');
       assert.equal(c.fatal, false);
@@ -314,25 +326,30 @@ describe('kit store: db verb', () => {
   });
 });
 
-describe('kit store: git-ignore rules', () => {
-  it('the repository ignores suite.db and its -wal/-shm', async () => {
-    const lines = (await fs.readFile(path.join(HERE, '..', '.gitignore'), 'utf-8')).split('\n').map((l) => l.trim());
-    for (const r of GITIGNORE_RULES) assert.ok(lines.includes(r), r);
-    assert.deepEqual([...GITIGNORE_RULES], ['.claude/kit/suite.db', '.claude/kit/suite.db-wal', '.claude/kit/suite.db-shm']);
-    // the files journal of db export / off / sync (review round 7)
-    assert.equal(JOURNAL_GITIGNORE_RULE, '.claude/kit/suite.db-files-journal');
-    assert.ok(lines.includes(JOURNAL_GITIGNORE_RULE));
-  });
-
-  it('the kit installer adds them to the target project, once', async () => {
+describe('kit store: nothing of the store is in the project', () => {
+  it('the store folder is per user and per project real path: $DANIZEE_KIT_HOME/<16 hex of sha256(realpath)>', async () => {
     const dir = await tmp();
     try {
-      await fs.writeFile(path.join(dir, '.gitignore'), 'node_modules\n.claude/kit/suite.db\n');
+      const p = storePaths(dir);
+      const real = fsSync.realpathSync(dir);
+      const id = (await import('crypto')).createHash('sha256').update(real).digest('hex').slice(0, 16);
+      assert.equal(p.dir, path.join(process.env.DANIZEE_KIT_HOME, id));
+      assert.equal(p.db, path.join(p.dir, 'suite.db'));
+      assert.equal(p.config, path.join(p.dir, 'store.local.json'));
+      assert.equal(p.journal, path.join(p.dir, 'suite.db-files-journal'));
+      assert.equal(storePaths(dir, {}).dir, path.join(os.homedir(), '.claude', 'kit-db', id), 'default: ~/.claude/kit-db/<id>');
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('the kit installer adds only its own rules (the store needs none), once', async () => {
+    const dir = await tmp();
+    try {
+      await fs.writeFile(path.join(dir, '.gitignore'), 'node_modules\n');
       await kitPlugin.install(path.join(dir, '.claude'), { targetDir: dir });
       await kitPlugin.install(path.join(dir, '.claude'), { targetDir: dir });
       const lines = (await fs.readFile(path.join(dir, '.gitignore'), 'utf-8')).split('\n');
-      for (const r of [...GITIGNORE_RULES, '.claude/kit/scrub-patterns.local']) assert.equal(lines.filter((l) => l === r).length, 1, r);
-      assert.equal(lines.filter((l) => l === JOURNAL_GITIGNORE_RULE).length, 1, JOURNAL_GITIGNORE_RULE);
+      for (const r of ['.claude/kit/secrets', '.claude/kit/cache/', '.claude/kit/scrub-patterns.local']) assert.equal(lines.filter((l) => l === r).length, 1, r);
+      assert.ok(!lines.some((l) => /suite\.db|store\.local/.test(l)));
       assert.ok(exists(path.join(dir, '.claude/helpers/kit/store.js')));
       assert.ok(exists(path.join(dir, '.claude/helpers/kit/db.js')));
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
@@ -364,8 +381,7 @@ describe('kit store: npx danizee-claude-suite db and check', () => {
     try {
       const ok = await bin(['check', '--path', dir], dir, { KIT_SQLITE_ENGINE: 'none' });
       assert.match(ok.out, /kit store: json files/);
-      await fs.mkdir(path.join(dir, '.claude/kit'), { recursive: true });
-      await fs.writeFile(path.join(dir, '.claude/kit/store.local.json'), '{"store":"sqlite"}');
+      await setChoice(dir, '{"store":"sqlite"}');
       const bad = await bin(['check', '--path', dir], dir, { KIT_SQLITE_ENGINE: 'none' });
       assert.match(bad.out, /kit store: sqlite, but no engine loads/);
       assert.match(bad.out, /npm install better-sqlite3/);
@@ -553,6 +569,7 @@ describe('kit store: noise-ledger and triage give the same results on the JSON f
     const dir = await tmp(); const elsewhere = await tmp();
     try {
       const env = await goSqlite(dir, 'node:sqlite');
+      await fs.mkdir(path.join(dir, '.claude/kit'), { recursive: true });
       await fs.symlink(path.join(elsewhere, 'triage.json'), path.join(dir, '.claude/kit/triage.json'));
       const r = await call(triage, ['list'], dir, env);
       assert.equal(r.code, 2);

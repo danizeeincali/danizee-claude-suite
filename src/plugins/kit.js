@@ -8,12 +8,11 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GITIGNORE_RULES as DB_GITIGNORE_RULES, CONFIG_GITIGNORE_RULE, JOURNAL_GITIGNORE_RULE, addGitignoreRules } from '../lib/kit/store.js';
+import { addGitignoreRules } from '../lib/kit/store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// The optional SQLite store (.claude/kit/suite.db and its -wal/-shm, see lib/kit/store.js) is machine-local state too,
-// and so is the choice to use it (.claude/kit/store.local.json): a clone without suite.db stays on the JSON files.
-export const GITIGNORE_RULES = ['.claude/kit/secrets', '.claude/kit/cache/', '.claude/kit/scrub-patterns.local', ...DB_GITIGNORE_RULES, JOURNAL_GITIGNORE_RULE, CONFIG_GITIGNORE_RULE];
+// The optional SQLite store (see lib/kit/store.js) needs no rule: it lives outside the project, in a per-user folder.
+const GITIGNORE_RULES = ['.claude/kit/secrets', '.claude/kit/cache/', '.claude/kit/scrub-patterns.local'];
 const LIB_DIR = path.join(__dirname, '..', 'lib', 'kit');
 
 export function getNamespace() {
@@ -48,7 +47,7 @@ export async function install(claudeDir, options = {}) {
   // The redact verb reads .claude/kit/secrets: real secret values, never committed. The graph verb caches
   // per-file facts under .claude/kit/cache/: machine-local and rebuilt on demand.
   if (!dry && options.targetDir) {
-    const missing = await addGitignoreRules(options.targetDir, GITIGNORE_RULES, "Kit: the redact verb's secret values, the scrub verb's private patterns, the graph verb's fact cache and the optional SQLite store are machine-local and never committed");
+    const missing = await addGitignoreRules(options.targetDir, GITIGNORE_RULES, "Kit: the redact verb's secret values, the scrub verb's private patterns and the graph verb's fact cache are machine-local and never committed");
     if (missing.length) files.push(`.gitignore (+ ${missing.length} kit rule)`);
   }
   return { plugin: 'kit', namespace: getNamespace(), files };

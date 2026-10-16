@@ -8,27 +8,37 @@ import fsSync from 'fs';
 import os from 'os';
 import crypto from 'crypto';
 import path from 'path';
-import { spawn } from 'child_process';
+import { spawn, spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { run as reflect } from '../src/lib/kit/reflect.js';
 import { run as noise } from '../src/lib/kit/noise-ledger.js';
 import { run as triage } from '../src/lib/kit/triage.js';
 import { run as db } from '../src/lib/kit/db.js';
-import { storeCheck, loadEngine, openDb, getDoc, writeConfig, SCHEMA_VERSION, CONFIG_GITIGNORE_RULE } from '../src/lib/kit/store.js';
+import { storeCheck, loadEngine, openDb, getDoc, writeConfig, SCHEMA_VERSION, storePaths, STRAY_PROJECT_FILES } from '../src/lib/kit/store.js';
 import { withStateLock } from '../src/lib/kit/state-lock.js';
-import kitPlugin from '../src/plugins/kit.js';
+
+// the machine-local store lives in a per-user folder: here a temporary one (one sub-folder per project)
+process.env.DANIZEE_KIT_HOME = fsSync.mkdtempSync(path.join(os.tmpdir(), 'kit-home-'));
+process.on('exit', () => { try { fsSync.rmSync(process.env.DANIZEE_KIT_HOME, { recursive: true, force: true }); } catch { /* best effort */ } });
+/** This machine's store files of a project (outside it): store.local.json, the files journal, suite.db. */
+const CONFIG = (dir) => storePaths(dir).config;
+const JOURNAL = (dir) => storePaths(dir).journal;
+const DBF = (dir) => storePaths(dir).db;
+/** A file of the project (a relative path) or of its store folder (CONFIG, JOURNAL, DBF). */
+const loc = (dir, f) => (typeof f === 'function' ? f(dir) : path.join(dir, f));
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(HERE, '../src/lib/kit/cli.js');
 const NODE_SQLITE = (() => { try { createRequire(import.meta.url)('node:sqlite'); return true; } catch { return false; } })();
 const ENV = { KIT_SQLITE_ENGINE: 'node:sqlite' };
 const skip = !NODE_SQLITE;
+const HAVE_GIT = spawnSync('git', ['--version']).status === 0;
 
 const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), 'kit-store-sync-'));
 const rm = (d) => fs.rm(d, { recursive: true, force: true });
 const exists = (p) => fsSync.existsSync(p);
-const readJson = async (dir, f) => JSON.parse(await fs.readFile(path.join(dir, f), 'utf-8'));
+const readJson = async (dir, f) => JSON.parse(await fs.readFile(loc(dir, f), 'utf-8'));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function call(verb, args, cwd, env = {}, stdin = '') {
@@ -58,7 +68,8 @@ const VISIT = (scope) => JSON.stringify({ enabled: ['r'], violations: [{ scope, 
 /** A raw connection to the project's suite.db (migrated), closed by the caller. */
 async function rawDb(dir) {
   const e = await loadEngine({ cwd: dir, env: { ...process.env, ...ENV } });
-  return openDb({ open: e.open, dbFile: path.join(dir, '.claude/kit/suite.db') });
+  await fs.mkdir(storePaths(dir).dir, { recursive: true, mode: 0o700 });
+  return openDb({ open: e.open, dbFile: DBF(dir) });
 }
 
 describe('db init from the JSON files re-imports every scope the database holds', () => {
@@ -338,6 +349,7 @@ describe('db sync --from-files is a three-way merge against the copy last synced
     try {
       assert.equal((await call(db, ['init'], dir, ENV)).code, 0);
       assert.equal((await save(dir, 'Check database migrations against a copy of production.')).code, 0);
+      await fs.mkdir(path.join(dir, '.claude/kit'), { recursive: true }); // the pull brings the folder
       await writeJson(dir, LESSONS, { version: 1, lessons: [theirLesson('L1', 'Pin every dependency to an exact version.')] });
       const out = await sync(dir);
       assert.deepEqual(out.renumbered, [{ store: 'lessons', scope: LESSONS, from: 'L1', to: 'L2' }]);
@@ -724,17 +736,22 @@ describe('a store file with one id twice is refused: give one a new id, then syn
 });
 
 describe('the store choice is machine-local', () => {
-  it('a clone with only the committed files (an old config.json saying sqlite, the JSON stores) stays on json and every verb works', { skip }, async () => {
+  it('a clone with in-project store files (config.json and store.local.json saying sqlite, a suite.db) stays on json and every verb works', { skip }, async () => {
     const dir = await tmp();
     try {
       await fs.mkdir(path.join(dir, '.claude/kit'), { recursive: true });
       await fs.writeFile(path.join(dir, '.claude/kit/config.json'), '{"store":"sqlite"}\n');
+      await fs.writeFile(path.join(dir, '.claude/kit/store.local.json'), '{"store":"sqlite"}\n');
+      await fs.writeFile(path.join(dir, '.claude/kit/suite.db'), 'not opened');
       await fs.writeFile(path.join(dir, '.claude/kit/lessons.json'), JSON.stringify({ version: 1, lessons: [] }));
       await fs.writeFile(path.join(dir, '.claude/kit/noise-ledger.json'), JSON.stringify({ version: 1, entries: [] }));
       for (const env of [ENV, { KIT_SQLITE_ENGINE: 'none' }]) {
         const st = await call(db, ['status'], dir, env);
         assert.equal(st.code, 0, st.err);
         assert.equal(st.out.store, 'json');
+        assert.equal(st.out.db, DBF(dir));
+        assert.deepEqual(st.out.ignored_in_project, ['.claude/kit/suite.db', '.claude/kit/store.local.json']);
+        assert.match(st.out.ignored_note, /never opened or read/);
         const c = await storeCheck({ cwd: dir, env: { ...process.env, ...env } });
         assert.equal(c.fatal, false);
         assert.equal(c.store, 'json');
@@ -748,55 +765,54 @@ describe('the store choice is machine-local', () => {
       assert.equal((await call(db, ['off'], dir, ENV)).code, 0);
       assert.equal((await readJson(dir, '.claude/kit/lessons.json')).lessons.length, 1);
       assert.deepEqual(await ledgerIds(dir, '.claude/kit/noise-ledger.json'), ['n1']);
-      assert.ok(!exists(path.join(dir, '.claude/kit/suite.db')));
-      assert.ok(!exists(path.join(dir, '.claude/kit/store.local.json')));
-      // opting in on this machine writes the local file only
+      assert.ok(!exists(DBF(dir)));
+      // opting in on this machine writes the per-user folder only; the in-project files are not touched
       assert.equal((await call(db, ['init'], dir, ENV)).code, 0);
-      assert.deepEqual(await readJson(dir, '.claude/kit/store.local.json'), { store: 'sqlite' });
+      assert.deepEqual(await readJson(dir, CONFIG), { store: 'sqlite' });
       assert.equal(await fs.readFile(path.join(dir, '.claude/kit/config.json'), 'utf-8'), '{"store":"sqlite"}\n', 'the committed file is not touched');
+      assert.equal(await fs.readFile(path.join(dir, '.claude/kit/store.local.json'), 'utf-8'), '{"store":"sqlite"}\n');
+      assert.equal(await fs.readFile(path.join(dir, '.claude/kit/suite.db'), 'utf-8'), 'not opened');
     } finally { await rm(dir); }
   });
 
-  it('an old config.json store key on the machine that has suite.db is taken once into store.local.json', { skip }, async () => {
-    const dir = await tmp();
+  it('the store folder is private (0700), records the project, and two worktree paths of one repository get two stores', { skip }, async () => {
+    const root = await tmp();
     try {
-      assert.equal((await save(dir, 'Save this lesson before the store moved.', [], {})).code, 0);
-      assert.equal((await call(db, ['init'], dir, ENV)).code, 0);
-      await fs.rm(path.join(dir, '.claude/kit/store.local.json'));
-      await fs.writeFile(path.join(dir, '.claude/kit/config.json'), '{"store":"sqlite"}');
-      const st = await call(db, ['status'], dir, ENV);
-      assert.equal(st.out.store, 'sqlite');
-      assert.deepEqual(await readJson(dir, '.claude/kit/store.local.json'), { store: 'sqlite' });
-      // from now on the local file decides
-      await fs.writeFile(path.join(dir, '.claude/kit/config.json'), '{"store":"json"}');
-      assert.equal((await call(db, ['status'], dir, ENV)).out.store, 'sqlite');
-    } finally { await rm(dir); }
+      const a = path.join(root, 'a'); const b = path.join(root, 'b');
+      await fs.mkdir(a); await fs.mkdir(b);
+      assert.equal((await call(db, ['init'], a, ENV)).code, 0);
+      const p = storePaths(a);
+      assert.equal(fsSync.statSync(p.dir).mode & 0o777, 0o700);
+      assert.deepEqual(Object.keys(await readJson(a, () => p.project)), ['project', 'created_at']);
+      assert.equal((await readJson(a, () => p.project)).project, fsSync.realpathSync(a));
+      const st = await call(db, ['status'], a, ENV);
+      assert.equal(st.out.project, fsSync.realpathSync(a));
+      assert.equal(st.out.store_dir, p.dir);
+      assert.notEqual(storePaths(b).dir, p.dir);
+      assert.equal((await call(db, ['status'], b, ENV)).out.store, 'json');
+      // a symbolic link to the same folder is the same project (one real path), not a second store
+      await fs.symlink(a, path.join(root, 'link'));
+      assert.equal(storePaths(path.join(root, 'link')).dir, p.dir);
+      assert.equal((await call(db, ['status'], path.join(root, 'link'), ENV)).out.store, 'sqlite');
+      // a folder that records another project is refused, not shared
+      await fs.writeFile(p.project, JSON.stringify({ project: '/somewhere/else' }));
+      const r = await call(db, ['init'], a, ENV);
+      assert.equal(r.code, 1);
+      assert.match(r.err, /records another project/);
+    } finally { await rm(root); }
   });
 
   it('db off with the database missing just sets json', { skip }, async () => {
     const dir = await tmp();
     try {
       assert.equal((await call(db, ['init'], dir, ENV)).code, 0);
-      await fs.rm(path.join(dir, '.claude/kit/suite.db'));
+      await fs.rm(DBF(dir));
       assert.equal((await call(reflect, ['lessons', 'list'], dir, ENV)).code, 1);
       const off = await call(db, ['off'], dir, ENV);
       assert.equal(off.code, 0, off.err);
       assert.equal(off.out.store, 'json');
-      assert.deepEqual(await readJson(dir, '.claude/kit/store.local.json'), { store: 'json' });
+      assert.deepEqual(await readJson(dir, CONFIG), { store: 'json' });
       assert.equal((await call(reflect, ['lessons', 'list'], dir, ENV)).code, 0);
-    } finally { await rm(dir); }
-  });
-
-  it('store.local.json is git-ignored in the repository and by the kit installer', async () => {
-    const lines = (await fs.readFile(path.join(HERE, '..', '.gitignore'), 'utf-8')).split('\n').map((l) => l.trim());
-    assert.ok(lines.includes(CONFIG_GITIGNORE_RULE));
-    assert.equal(CONFIG_GITIGNORE_RULE, '.claude/kit/store.local.json');
-    const dir = await tmp();
-    try {
-      await kitPlugin.install(path.join(dir, '.claude'), { targetDir: dir });
-      await kitPlugin.install(path.join(dir, '.claude'), { targetDir: dir });
-      const gi = (await fs.readFile(path.join(dir, '.gitignore'), 'utf-8')).split('\n');
-      assert.equal(gi.filter((l) => l === CONFIG_GITIGNORE_RULE).length, 1);
     } finally { await rm(dir); }
   });
 });
@@ -836,6 +852,7 @@ describe('concurrency: writers in flight while the store switches', () => {
         const writer = cli(['reflect', 'lessons', 'save', '--role', 'r', '--session', 'w', '--text', 'Write this lesson while the store switches.'], dir, ENV);
         await sleep(700);
         const doc = getDoc(raw, 'lessons', '.claude/kit/lessons.json');
+        await fs.mkdir(path.join(dir, '.claude/kit'), { recursive: true });
         await fs.writeFile(path.join(dir, '.claude/kit/lessons.json'), JSON.stringify(doc, null, 2));
         await writeConfig(dir, 'json');
         raw.exec('COMMIT');
@@ -901,7 +918,7 @@ describe('db status on the JSON store reads a leftover database without changing
       assert.match(st.out.error, /newer than this kit/);
       // older: reported as it is, and still that version afterwards
       const e = await loadEngine({ cwd: dir, env: { ...process.env, ...ENV } });
-      raw = e.open(path.join(dir, '.claude/kit/suite.db'));
+      raw = e.open(DBF(dir));
       raw.run("UPDATE meta SET value = '2' WHERE key = 'schema_version'");
       raw.close();
       const old = await call(db, ['status'], dir, ENV);
@@ -909,12 +926,12 @@ describe('db status on the JSON store reads a leftover database without changing
       assert.equal(old.out.schema_version, 2);
       assert.equal(old.out.error, undefined);
       assert.equal(old.out.rows.lessons, 0);
-      raw = e.open(path.join(dir, '.claude/kit/suite.db'), { readOnly: true });
+      raw = e.open(DBF(dir), { readOnly: true });
       try { assert.equal(raw.get("SELECT value FROM meta WHERE key = 'schema_version'").value, '2'); } finally { raw.close(); }
       // not a database at all: still exit 0, with an error field
-      await fs.writeFile(path.join(dir, '.claude/kit/suite.db'), 'not a database');
-      await fs.rm(path.join(dir, '.claude/kit/suite.db-wal'), { force: true });
-      await fs.rm(path.join(dir, '.claude/kit/suite.db-shm'), { force: true });
+      await fs.writeFile(DBF(dir), 'not a database');
+      await fs.rm(`${DBF(dir)}-wal`, { force: true });
+      await fs.rm(`${DBF(dir)}-shm`, { force: true });
       const junk = await call(db, ['status'], dir, ENV);
       assert.equal(junk.code, 0, junk.err);
       assert.match(junk.out.error, /cannot read/);
@@ -925,9 +942,9 @@ describe('db status on the JSON store reads a leftover database without changing
 describe('db sync / export / off write the JSON files all or none, after the database work (review round 6)', () => {
   const LESSONS = '.claude/kit/lessons.json';
   const LEDGER = '.claude/kit/noise-ledger.json';
-  const bytes = (dir, f) => fs.readFile(path.join(dir, f));
+  const bytes = (dir, f) => fs.readFile(loc(dir, f));
   const theirLesson = (id, text) => ({ id, role: 'r', text, scope: '', session: 'tm', status: 'active', kept: 0, created_at: '2026-10-15T00:00:00.000Z' });
-  const tmpLeft = async (dir) => (await fs.readdir(path.join(dir, '.claude/kit'))).filter((n) => n.endsWith('.tmp'));
+  const tmpLeft = async (dir) => [...await fs.readdir(path.join(dir, '.claude/kit')), ...await fs.readdir(storePaths(dir).dir)].filter((n) => n.endsWith('.tmp'));
   /** L1 on json, db init, a local L2 on sqlite, then a pull brings the teammate's own L2 into lessons.json. */
   async function renumberSetup(dir) {
     assert.equal((await save(dir, 'Run the linter before every commit.', [], {})).code, 0);
@@ -1017,10 +1034,8 @@ describe('db sync / export / off write the JSON files all or none, after the dat
 
 describe('a failed or interrupted COMMIT never leaves the JSON files and the database apart (review round 7)', () => {
   const LESSONS = '.claude/kit/lessons.json';
-  const CONFIG = '.claude/kit/store.local.json';
-  const JOURNAL = '.claude/kit/suite.db-files-journal';
-  const bytes = (dir, f) => fs.readFile(path.join(dir, f));
-  const tmpLeft = async (dir) => (await fs.readdir(path.join(dir, '.claude/kit'))).filter((n) => n.endsWith('.tmp'));
+  const bytes = (dir, f) => fs.readFile(loc(dir, f));
+  const tmpLeft = async (dir) => [...await fs.readdir(path.join(dir, '.claude/kit')), ...await fs.readdir(storePaths(dir).dir)].filter((n) => n.endsWith('.tmp'));
   const theirLesson = (id, text) => ({ id, role: 'r', text, scope: '', session: 'tm', status: 'active', kept: 0, created_at: '2026-10-15T00:00:00.000Z' });
   const textsOf = async (dir) => (await readJson(dir, LESSONS)).lessons.map((l) => `${l.id}:${l.text}`);
   const WANT = ['L1:Run the linter before every commit.', 'L2:Pin every dependency to an exact version.', 'L3:Check database migrations against a copy of production.'];
@@ -1078,7 +1093,7 @@ process.exit(0);
       assert.deepEqual(await bytes(dir, LESSONS), before.lessons, 'lessons.json byte-identical');
       assert.deepEqual(await bytes(dir, CONFIG), before.config, 'store.local.json byte-identical');
       assert.deepEqual(await readJson(dir, CONFIG), { store: 'sqlite' });
-      assert.equal(exists(path.join(dir, JOURNAL)), false, 'no journal left');
+      assert.equal(exists(loc(dir, JOURNAL)), false, 'no journal left');
       assert.deepEqual(await tmpLeft(dir), []);
       assert.deepEqual(await lessonTexts(dir), ['Run the linter before every commit.', 'Check database migrations against a copy of production.']);
       // the next off works and the lesson only the database held reaches the file
@@ -1086,7 +1101,7 @@ process.exit(0);
       assert.equal(ok.code, 0, ok.err);
       assert.deepEqual(await readJson(dir, CONFIG), { store: 'json' });
       assert.deepEqual(await lessonTexts(dir, [], {}), ['Run the linter before every commit.', 'Check database migrations against a copy of production.']);
-      assert.equal(exists(path.join(dir, JOURNAL)), false);
+      assert.equal(exists(loc(dir, JOURNAL)), false);
     } finally { await rm(dir); }
   });
 
@@ -1097,14 +1112,14 @@ process.exit(0);
       const before = await bytes(dir, LESSONS);
       const c = await dieAtCommit(dir, ['sync', '--from-files']);
       assert.equal(c.code, 9, c.err);
-      assert.ok(exists(path.join(dir, JOURNAL)), 'the journal outlives the killed run');
+      assert.ok(exists(loc(dir, JOURNAL)), 'the journal outlives the killed run');
       assert.notDeepEqual(await bytes(dir, LESSONS), before, 'the merged file was renamed in before the kill');
       // the next verb call recovers first: lessons.json is the pulled file again (still drift: the database never took it)
       const s = await save(dir, 'Another lesson saved after the crash.');
       assert.equal(s.code, 1);
       assert.match(s.err, /lessons\.json changed since the database last synced/);
       assert.deepEqual(await bytes(dir, LESSONS), before, 'lessons.json is back to its bytes before the killed sync');
-      assert.equal(exists(path.join(dir, JOURNAL)), false, 'the journal is removed once recovered');
+      assert.equal(exists(loc(dir, JOURNAL)), false, 'the journal is removed once recovered');
       assert.deepEqual(await tmpLeft(dir), []);
       const s2 = await call(db, ['sync', '--from-files'], dir, ENV);
       assert.equal(s2.code, 0, s2.err);
@@ -1120,13 +1135,13 @@ process.exit(0);
       await renumberSetup(dir);
       const c = await dieAtCommit(dir, ['sync', '--from-files'], true);
       assert.equal(c.code, 9, c.err);
-      assert.ok(exists(path.join(dir, JOURNAL)));
+      assert.ok(exists(loc(dir, JOURNAL)));
       const merged = await bytes(dir, LESSONS);
       assert.deepEqual(await textsOf(dir), WANT);
       const r = await cli(['reflect', 'lessons', 'list'], dir, ENV);
       assert.equal(r.code, 0, r.err);
       assert.doesNotMatch(r.err, /put back/);
-      assert.equal(exists(path.join(dir, JOURNAL)), false, 'the journal is removed');
+      assert.equal(exists(loc(dir, JOURNAL)), false, 'the journal is removed');
       assert.deepEqual(await bytes(dir, LESSONS), merged, 'the committed files are not touched');
       assert.deepEqual(await lessonTexts(dir), WANT.map((x) => x.slice(3)));
       const s = await call(db, ['sync', '--from-files'], dir, ENV);
@@ -1149,7 +1164,7 @@ process.exit(0);
       assert.equal(r.code, 0, r.err);
       assert.match(r.err, /left alone because they changed since: \.claude\/kit\/lessons\.json/);
       assert.deepEqual(await bytes(dir, LESSONS), mine, 'the hand edit is kept');
-      assert.equal(exists(path.join(dir, JOURNAL)), false);
+      assert.equal(exists(loc(dir, JOURNAL)), false);
       assert.deepEqual(JSON.parse(r.out).drifted, [{ store: 'lessons', scope: LESSONS }], 'and reported as drift');
     } finally { await rm(dir); }
   });
@@ -1162,11 +1177,11 @@ process.exit(0);
       const c = await dieAtCommit(dir, ['off']);
       assert.equal(c.code, 9, c.err);
       assert.deepEqual(await readJson(dir, CONFIG), { store: 'json' }, 'the store choice was renamed in before the kill');
-      assert.ok(exists(path.join(dir, JOURNAL)));
+      assert.ok(exists(loc(dir, JOURNAL)));
       assert.deepEqual(await lessonTexts(dir), ['Run the linter before every commit.', 'Check database migrations against a copy of production.']);
       assert.deepEqual(await bytes(dir, CONFIG), before.config, 'store.local.json is back');
       assert.deepEqual(await bytes(dir, LESSONS), before.lessons, 'lessons.json is back');
-      assert.equal(exists(path.join(dir, JOURNAL)), false);
+      assert.equal(exists(loc(dir, JOURNAL)), false);
       const st = await call(db, ['status'], dir, ENV);
       assert.equal(st.out.store, 'sqlite');
       assert.equal(st.out.drifted, undefined);
@@ -1205,11 +1220,13 @@ describe('a project on the JSON files never runs code from its own folder (revie
     } finally { await rm(dir); }
   });
 
-  it('a project configured for sqlite still resolves better-sqlite3 from its folder (the documented `npm install better-sqlite3` fix)', { skip: BETTER_IN_KIT ? 'better-sqlite3 is installed in the kit, which is tried first' : false }, async () => {
+  it('a project configured for sqlite still resolves better-sqlite3 from its folder (the documented `npm install better-sqlite3` fix)', { skip: BETTER_IN_KIT ? 'better-sqlite3 is installed in the kit, which is tried first' : HAVE_GIT ? false : 'needs git' }, async () => {
     const dir = await trap();
     try {
-      await fs.mkdir(path.join(dir, '.claude/kit'), { recursive: true });
-      await fs.writeFile(path.join(dir, '.claude/kit/store.local.json'), '{"store":"sqlite"}');
+      // npm-installed (git does not track it) in a git repository
+      spawnSync('git', ['init', '-q'], { cwd: dir });
+      await fs.mkdir(storePaths(dir).dir, { recursive: true, mode: 0o700 });
+      await fs.writeFile(CONFIG(dir), '{"store":"sqlite"}');
       const c = await storeCheck({ cwd: dir, env: { ...process.env, ...UNPINNED } });
       assert.equal(c.engine, 'better-sqlite3');
       assert.ok(exists(path.join(dir, 'PWNED')));
@@ -1218,9 +1235,7 @@ describe('a project on the JSON files never runs code from its own folder (revie
 });
 
 describe('the files journal is untrusted input: refused whole unless every entry is a file the kit writes (review round 8)', () => {
-  const JOURNAL = '.claude/kit/suite.db-files-journal';
   const LESSONS = '.claude/kit/lessons.json';
-  const CONFIG = '.claude/kit/store.local.json';
   const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
   const b64 = (t) => Buffer.from(t).toString('base64');
   let saves = 0;
@@ -1242,7 +1257,7 @@ describe('the files journal is untrusted input: refused whole unless every entry
   }
   async function writeJournal(dir, files) {
     const text = JSON.stringify({ version: 1, files });
-    await fs.writeFile(path.join(dir, JOURNAL), text);
+    await fs.writeFile(loc(dir, JOURNAL), text);
     return text;
   }
   /** Run a read-only verb and a write: both work; the journal is refused (named on stderr), kept byte-identical. */
@@ -1254,11 +1269,11 @@ describe('the files journal is untrusted input: refused whole unless every entry
     assert.match(r.err, /nothing was restored and it is kept/);
     assert.match(r.err, reason);
     assert.equal(JSON.parse(r.out).lessons[0].text, 'Run the linter before every commit.');
-    assert.equal(await fs.readFile(path.join(dir, JOURNAL), 'utf-8'), text, 'the journal is kept as it was');
+    assert.equal(await fs.readFile(loc(dir, JOURNAL), 'utf-8'), text, 'the journal is kept as it was');
     assert.deepEqual(await fs.readFile(path.join(dir, LESSONS)), lessons, 'nothing restored, not even the valid entry');
     const s = await cli(['reflect', 'lessons', 'save', '--role', 'r', '--session', `bad-journal-${++saves}`, '--text', 'Saved while a bad journal sits there.', '--distinct'], dir, env);
     assert.equal(s.code, 0, s.err);
-    assert.equal(await fs.readFile(path.join(dir, JOURNAL), 'utf-8'), text);
+    assert.equal(await fs.readFile(loc(dir, JOURNAL), 'utf-8'), text);
   }
 
   it('an absolute path outside the project is refused and the file there is untouched', { skip }, async () => {
@@ -1300,9 +1315,10 @@ describe('the files journal is untrusted input: refused whole unless every entry
       await fs.mkdir(path.join(dir, 'src'), { recursive: true });
       const cases = [
         [{ path: 'src/evil.json', store: 'lessons', scope: 'src/evil.json' }, /not a file the kit writes for lessons/],
-        [{ path: 'package.json' }, /an entry without a store is only \.claude\/kit\/store\.local\.json/],
-        [{ path: '.git/config.json', store: 'triage', scope: '.git/config.json' }, /not a kit state file/],
-        [{ path: 'src/run.sh', store: 'lessons', scope: 'src/run.sh' }, /not a kit state file/],
+        [{ path: 'package.json' }, /names no kit store/],
+        [{ path: '.git/config.json', store: 'triage', scope: '.git/config.json' }, /not a file the kit writes for triage/],
+        [{ path: 'src/run.sh', store: 'lessons', scope: 'src/run.sh' }, /not a file the kit writes for lessons/],
+        [{ store_choice: true, path: 'package.json' }, /is the store choice and names a path or store too/],
         [{ path: 'src/other.json', store: 'lessons', scope: LESSONS }, /scope is not its path/]
       ];
       for (const [entry, reason] of cases) {
@@ -1317,12 +1333,12 @@ describe('the files journal is untrusted input: refused whole unless every entry
       // a bad mode, bad base64, a path twice, not a journal at all, too many entries
       const v = await validEntry(dir);
       for (const [files, reason] of [
-        [[v, { ...v, path: CONFIG, store: undefined, scope: undefined, original: { mode: 'rwx', base64: b64('x') } }], /original mode is not a file mode/],
+        [[v, { ...v, path: undefined, store: undefined, scope: undefined, store_choice: true, original: { mode: 'rwx', base64: b64('x') } }], /original mode is not a file mode/],
         [[{ ...v, original: { base64: 'not base64!' } }], /neither 'absent' nor base64 bytes/],
         [[v, v], /twice/],
         [Array.from({ length: 5000 }, () => v), /more than 4096/]
       ]) await assertRefused(dir, await writeJournal(dir, files), reason);
-      await fs.writeFile(path.join(dir, JOURNAL), '{"files": "nope"}');
+      await fs.writeFile(loc(dir, JOURNAL), '{"files": "nope"}');
       await assertRefused(dir, '{"files": "nope"}', /not a kit files journal/);
     } finally { await rm(root); }
   });
@@ -1334,19 +1350,19 @@ describe('the files journal is untrusted input: refused whole unless every entry
       await fs.mkdir(path.join(dir, '.claude/marathon/run2'), { recursive: true });
       await fs.symlink(outside, path.join(dir, '.claude/marathon/run1'));
       await fs.symlink(path.join(outside, 'triage.json'), path.join(dir, '.claude/marathon/run2/triage.json'));
-      for (const [p, reason] of [['.claude/marathon/run1/triage.json', /symbolic link \(\.claude\/marathon\/run1\)/], ['.claude/marathon/run2/triage.json', /symbolic link \(\.claude\/marathon\/run2\/triage\.json\)/]]) {
+      for (const [p, reason] of [['.claude/marathon/run1/triage.json', /outside the project folder/], ['.claude/marathon/run2/triage.json', /symbolic link \(\.claude\/marathon\/run2\/triage\.json\)/]]) {
         const text = await writeJournal(dir, [await validEntry(dir), { path: p, store: 'triage', scope: p, new_sha256: sha('outside\n'), original: { mode: 0o644, base64: b64('REPLACED\n') } }]);
         await assertRefused(dir, text, reason);
         assert.equal(await fs.readFile(path.join(outside, 'triage.json'), 'utf-8'), 'outside\n', p);
       }
       // the journal itself as a link is refused too
-      await fs.rm(path.join(dir, JOURNAL));
+      await fs.rm(loc(dir, JOURNAL));
       await fs.writeFile(path.join(outside, 'j.json'), JSON.stringify({ version: 1, files: [await validEntry(dir)] }));
-      await fs.symlink(path.join(outside, 'j.json'), path.join(dir, JOURNAL));
+      await fs.symlink(path.join(outside, 'j.json'), loc(dir, JOURNAL));
       const r = await cli(['reflect', 'lessons', 'list'], dir);
       assert.equal(r.code, 0, r.err);
       assert.match(r.err, /refusing the files journal .*: it is a symbolic link; nothing was restored/);
-      assert.ok(fsSync.lstatSync(path.join(dir, JOURNAL)).isSymbolicLink(), 'kept');
+      assert.ok(fsSync.lstatSync(loc(dir, JOURNAL)).isSymbolicLink(), 'kept');
     } finally { await rm(root); }
   });
 
@@ -1373,7 +1389,7 @@ describe('the files journal is untrusted input: refused whole unless every entry
       assert.match(r.err, /1 file\(s\) put back/);
       assert.deepEqual(await fs.readFile(path.join(dir, LESSONS)), before);
       assert.equal(fsSync.statSync(path.join(dir, LESSONS)).mode & 0o7777, 0o644, 'permission bits only, no setuid or exec');
-      assert.equal(exists(path.join(dir, JOURNAL)), false);
+      assert.equal(exists(loc(dir, JOURNAL)), false);
     } finally { await rm(root); }
   });
 
@@ -1384,7 +1400,7 @@ describe('the files journal is untrusted input: refused whole unless every entry
       assert.equal((await call(db, ['init'], dir, ENV)).code, 0);
       const s2 = await save(dir, 'Keep this lesson only in the database.');
       assert.equal(s2.code, 0, s2.err);
-      const config = await fs.readFile(path.join(dir, CONFIG));
+      const config = await fs.readFile(loc(dir, CONFIG));
       const theirs = '{"version":1,"lessons":[],"written":"by another writer"}\n';
       let atRollback = null;
       const eng = await loadEngine({ cwd: dir, env: { ...process.env, ...ENV }, project: true });
@@ -1394,7 +1410,7 @@ describe('the files journal is untrusted input: refused whole unless every entry
         const ex = d.exec;
         d.exec = (sql) => {
           if (sql === 'COMMIT' && atRollback === null) { fsSync.writeFileSync(path.join(dir, LESSONS), theirs); atRollback = false; throw new Error('SQLITE_FULL: database or disk is full'); }
-          if (sql === 'ROLLBACK' && atRollback === false) atRollback = fsSync.readFileSync(path.join(dir, CONFIG));
+          if (sql === 'ROLLBACK' && atRollback === false) atRollback = fsSync.readFileSync(loc(dir, CONFIG));
           return ex(sql);
         };
         return d;
@@ -1406,10 +1422,10 @@ describe('the files journal is untrusted input: refused whole unless every entry
       assert.notEqual(r.code, 0);
       assert.ok(Buffer.isBuffer(atRollback), 'ROLLBACK ran');
       assert.deepEqual(atRollback, config, 'the store choice was already put back when ROLLBACK released the lock');
-      assert.deepEqual(await fs.readFile(path.join(dir, CONFIG)), config);
+      assert.deepEqual(await fs.readFile(loc(dir, CONFIG)), config);
       assert.equal(await fs.readFile(path.join(dir, LESSONS), 'utf-8'), theirs, 'the file changed since is not overwritten');
       assert.match(errs.join(''), /not put back because they changed since this run wrote them: .*lessons\.json/);
-      assert.equal(exists(path.join(dir, JOURNAL)), false);
+      assert.equal(exists(loc(dir, JOURNAL)), false);
     } finally { await rm(dir); }
   });
 });

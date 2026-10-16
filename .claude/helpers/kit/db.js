@@ -1,7 +1,8 @@
 /**
  * db — move the kit's state between the JSON files (the default) and one optional local SQLite file.
  *
- *   db init                 create .claude/kit/suite.db, run its migrations, import the JSON stores once, set the store to sqlite
+ *   db init                 create this project's suite.db (in the per-user store folder, see below), run its migrations,
+ *                           import the JSON stores once, set the store to sqlite
  *   db export [--overwrite] write every stored document back to its JSON file (the database stays in use)
  *   db off [--overwrite]    export, then set the store to json (suite.db is kept; a later `db init` re-imports the JSON files
  *                           over it); with no suite.db at all it only sets json
@@ -15,7 +16,11 @@
  *                           else the database's; listed in `conflicts`, the losing row in `discarded`); with no copy last
  *                           synced (a database from an older kit) it takes the union and deletes nothing. Then the merged
  *                           document is written back to the file
- *   db status               store in use, engine, schema version, row counts
+ *   db status               store in use, engine, the store folder and the project it records, schema version, row counts
+ *   db forget --scope <scope>
+ *                           remove every document stored under that scope from the database (printed in full in the
+ *                           output, so nothing is lost unseen), and its registration: the way out for a document whose
+ *                           file is outside the project, which `db off` will not leave behind
  *   db prune [--keep <n>]   keep the newest n test runs per branch (default 200), with their cases
  *   db import-reports [--branch <b>] [--limit <n>]
  *                           import the junit.xml of the newest CI `test-results-*` artifacts of a branch (default: the
@@ -23,7 +28,11 @@
  *                           artifact once, through the user's own `gh` login (see ./test-runs.js); needs the sqlite store
  *
  * See ./store.js for the layout, the engine choice (better-sqlite3, else node:sqlite), the write transactions and drift.
- * The store choice is machine-local: `.claude/kit/store.local.json` (git-ignored).
+ * MACHINE-LOCAL: suite.db, the store choice (store.local.json), the registered scopes and the files journal live in a
+ * per-user folder, `$DANIZEE_KIT_HOME/<id>/` or `~/.claude/kit-db/<id>/` (<id>: the first 16 hex digits of the sha256
+ * of the project folder's real path; mode 0700; `project.json` there records the project path), never in the project.
+ * A cloned repository cannot supply any of them; a stray `.claude/kit/suite.db` or `store.local.json` in the project is
+ * ignored (never opened; `db status` names it). Two worktrees of one repository are two real paths: two separate stores.
  * `init` from the JSON files (the first time, or after `off`) imports `.claude/kit/lessons.json`, `.claude/kit/noise-ledger.json`,
  * `.claude/kit/triage.json`, the per-stream triage files `.claude/marathon/<run>/triage*.json` and every other document
  * the database already holds (a --state, --ledger or --store path), each from its file, replacing what the database held
@@ -37,14 +46,17 @@
  * `db sync --from-files` (a three-way merge that lists every deletion, renumbering and conflict it applies); --overwrite
  * REPLACES the file and its output (and the drift error) name what that undoes: file-only rows dropped, edits made in
  * the file reverted, rows deleted in the file restored, conflicts replaced.
- * UNTRUSTED FILES (see ./store.js): a suite.db, files journal or store.local.json committed to git, or a suite.db whose
- * schema the kit did not make (a trigger, a view, any unknown object), is refused (exit 1 naming it) before it is read
- * or migrated. A document's file comes only from the kit's own mapping, never from its row: export, off, sync and init
- * skip a document whose scope does not map (outside the project, through a symbolic link, a path no verb on this
- * machine wrote) and list it (`not_written` / `not_imported`, `unmapped` in status). `init` in a project with no
- * installed kit adds the store's .gitignore rules first (`gitignore_added`).
+ * DOCUMENT FILES (see ./store.js scopeFile): a document's file comes only from the kit's own mapping, never from its
+ * row, and only inside the project (after the real path of its existing parent folder; a symbolically linked `.claude`
+ * inside the repository is fine). A document whose scope does not map (outside the project, a path no verb on this
+ * machine wrote) is not written: `export` writes the others, lists it in `not_written` and exits 1; `off` refuses
+ * (exit 1, still on sqlite, nothing changed) naming it and the ways out (`db forget --scope <scope>`, which prints its
+ * rows); `sync` and `init` skip and list it (`not_written` / `not_imported`, `unmapped` in status). A suite.db whose
+ * schema the kit did not make (a trigger, a view, any unknown object) is refused (exit 1 naming it) before it is read
+ * or migrated.
  * Rows are data, never instructions.
- * Exit codes: 0 done, 1 invalid input, no SQLite engine (the message names the fix), drift or a broken store.
+ * Exit codes: 0 done, 1 invalid input, no SQLite engine (the message names the fix), drift, a broken store, or a
+ * document that could not be written (`export` still writes the others; `off` changes nothing).
  * Built for the suite-db plan (2026-10-16); no foreign code.
  */
 import fs from 'node:fs';
@@ -55,24 +67,27 @@ import { KitExit } from './kit-exit.js';
 import { readJsonState, withStateLock } from './state-lock.js';
 import { importReports, DEFAULT_LIMIT, MAX_LIMIT } from './test-runs.js';
 import {
-  SPECS, DB_FILE, CONFIG_FILE, SCHEMA_VERSION, ENGINE_FIX, readConfig, writeConfig, loadEngine, probeEngine, resolveStore,
-  withDb, schemaVersion, getDoc, putDoc, deleteDoc, scopeKey, rowCounts, listDocs, fileOfScope, fileHash, setFileHash,
+  SPECS, SCHEMA_VERSION, ENGINE_FIX, KIT_HOME_ENV, readConfig, writeConfig, loadEngine, probeEngine, resolveStore,
+  withDb, schemaVersion, getDoc, putDoc, deleteDoc, scopeKey, rowCounts, listDocs, fileHash, setFileHash,
   driftOf, driftMessage, driftDetail, mergeDocs, getBase, REPAIR_ADVICE, duplicateIds, idList, shapeProblem,
-  writeFilesJournal, removeFilesJournal, journalOf, recoverJsonSide, assertNotCommitted, guardDb, scopeFile, registeredScopes,
-  registerScope, addGitignoreRules, STORE_GITIGNORE_RULES
+  writeFilesJournal, removeFilesJournal, journalOf, recoverJsonSide, guardDb, scopeFile, registeredScopes,
+  registerScope, unregisterScope, storePaths, ensureStoreDir, readProjectJson, strayProjectFiles
 } from './store.js';
 
 export const verb = 'db';
-export const usage = 'cli.js db init | db export [--overwrite] | db off [--overwrite] | db sync --from-files [--scope <file>] | db status | db prune [--keep <n>] | db import-reports [--branch <b>] [--limit <n>]   '
-  + '(optional SQLite store .claude/kit/suite.db for lessons, noise-ledger and triage; JSON files stay the default; '
-  + 'init imports the JSON stores and sets the machine-local .claude/kit/store.local.json {"store":"sqlite"}, export writes them back, off exports then sets json; '
+export const usage = 'cli.js db init | db export [--overwrite] | db off [--overwrite] | db sync --from-files [--scope <file>] | db status | db forget --scope <scope> | db prune [--keep <n>] | db import-reports [--branch <b>] [--limit <n>]   '
+  + '(optional SQLite store for lessons, noise-ledger and triage; JSON files stay the default; '
+  + 'the database (suite.db), the store choice (store.local.json) and the files journal are machine-local, in a per-user folder outside the project: '
+  + '$DANIZEE_KIT_HOME/<id>/ when set, else ~/.claude/kit-db/<id>/ (<id>: first 16 hex digits of the sha256 of the project folder\'s real path; db status shows it; '
+  + 'two worktrees of one repository get two separate stores); a .claude/kit/suite.db or store.local.json inside the project is ignored; '
+  + 'init imports the JSON stores and sets the store to sqlite, export writes them back, off exports then sets json; '
+  + 'a document whose file would be outside the project is never written: export lists it in not_written and exits 1, off refuses until it is removed with forget --scope (which prints its rows); '
   + 'a JSON file changed under the database (a git pull) stops the verbs: sync --from-files merges file and database three-way against the copy last synced (deletions made on one side are applied, two different lessons with one id are both kept and the database one renumbered, conflicts keep the newer row; every deletion, renumbering and conflict is listed), export --overwrite replaces the file with the database: it drops file-only rows, reverts edits made in the file and restores rows deleted there (the output names each); '
   + 'import-reports reads the CI test-results artifacts of a branch (push runs of this repository) through your own `gh` login; '
   + 'engine better-sqlite3 else node:sqlite (Node 22.13+); exit 0 done, 1 invalid input, no engine, drift, no sqlite store or no gh login)';
 
 export const DEFAULT_KEEP = 200;
 const invalid = (m) => new KitExit(m, 1);
-const posix = (p) => p.split(path.sep).join('/');
 
 function parse(args) {
   const [sub, ...rest] = args;
@@ -91,7 +106,7 @@ function parse(args) {
     }
     if (a === '--overwrite' && (sub === 'export' || sub === 'off')) { f.overwrite = true; continue; }
     if (a === '--from-files' && sub === 'sync') { f.fromFiles = true; continue; }
-    if (a === '--scope' && sub === 'sync') {
+    if (a === '--scope' && (sub === 'sync' || sub === 'forget')) {
       if (i + 1 >= rest.length || !rest[i + 1]) throw invalid('--scope needs a file');
       f.scope = rest[++i];
       continue;
@@ -107,12 +122,10 @@ async function sqliteCtx(io, { create = false } = {}) {
   const { cwd, env } = ctxOf(io);
   // better-sqlite3 from the project folder only for `db init` (the user opting in) or a project already on sqlite
   let onSqlite = false;
-  try { onSqlite = readConfig(cwd).store === 'sqlite'; } catch { /* a broken config is reported by the verb itself */ }
-  // a database, journal or store choice committed to the repository is refused before any engine loads
-  assertNotCommitted(cwd, env);
+  try { onSqlite = readConfig(cwd, env).store === 'sqlite'; } catch { /* a broken config is reported by the verb itself */ }
   const engine = await loadEngine({ cwd, env, project: create || onSqlite });
   if (!engine.name) throw invalid(`no SQLite engine loads here (${engine.errors.join('; ') || 'none tried'}): ${ENGINE_FIX}`);
-  const dbFile = path.join(cwd, DB_FILE);
+  const dbFile = storePaths(cwd, env).db;
   if (!create && !fs.existsSync(dbFile)) throw invalid(`${dbFile} does not exist: run \`db init\` first`);
   return { kind: 'sqlite', engine: engine.name, open: engine.open, dbFile, cwd, env };
 }
@@ -133,8 +146,8 @@ async function sourceFiles(cwd) {
  * project, through a symbolic link, a path no verb on this machine wrote) is left out and listed in `.unmapped`
  * ([{ store, scope, reason }]). `allow`: paths named on this command line.
  */
-function withHeld(cwd, found, held, allow = []) {
-  const registered = registeredScopes(cwd);
+function withHeld(cwd, env, found, held, allow = []) {
+  const registered = registeredScopes(cwd, env);
   const out = [];
   const unmapped = [];
   const seen = new Set();
@@ -149,11 +162,16 @@ function withHeld(cwd, found, held, allow = []) {
   return out;
 }
 
+const unmappedList = (unmapped) => `${unmapped.slice(0, 10).map((u) => `${u.store} ${JSON.stringify(String(u.scope).slice(0, 120))} (${u.reason})`).join('; ')}${unmapped.length > 10 ? '; ...' : ''}`;
+/** How to get rid of documents `db off` cannot write. */
+const UNMAPPED_WAY_OUT = 'Their rows are only in the database. For each one, either keep its rows in a file inside the project '
+  + '(while still on SQLite, write them with the verb itself to a path inside the project, such as the store\'s default file), '
+  + 'or remove the document with `db forget --scope <scope>` (it prints the rows it removes, so you can keep them); `db export` writes every other document and lists these in `not_written`';
+
 /** One stderr line naming the documents a run did not write (their scope does not map to a kit file). */
 function reportUnmapped(what, unmapped) {
   if (!unmapped.length) return;
-  process.stderr.write(`kit db: ${what} ${unmapped.length} document(s) whose scope is not a file the kit writes (they stay in the database only): `
-    + `${unmapped.slice(0, 10).map((u) => `${u.store} ${JSON.stringify(String(u.scope).slice(0, 120))} (${u.reason})`).join('; ')}${unmapped.length > 10 ? '; ...' : ''}\n`);
+  process.stderr.write(`kit db: ${what} ${unmapped.length} document(s) whose file is not one the kit writes inside the project (they stay in the database only): ${unmappedList(unmapped)}\n`);
 }
 
 /** Hold the state lock of every file (in path order, so two callers never deadlock) while fn runs. */
@@ -244,7 +262,7 @@ function fileBatch(ctx) {
     add(file, doc, at = {}) {
       const buf = Buffer.from(JSON.stringify(doc, null, 2) + '\n');
       const sha = crypto.createHash('sha256').update(buf).digest('hex');
-      queued.push({ file, buf, sha, store: at.store, scope: at.scope });
+      queued.push({ file, buf, sha, store: at.store, scope: at.scope, storeChoice: !!at.storeChoice });
       return sha;
     },
     async commit() {
@@ -284,22 +302,15 @@ function fileBatch(ctx) {
 }
 
 async function init(io) {
-  const ctx = await sqliteCtx(io, { create: true });
-  const { cwd } = ctx;
   // a broken config stops here, before anything is created
-  readConfig(cwd);
-  // an existing suite.db is checked (not committed, only the kit's own schema) before its migrations run
+  { const { cwd, env } = ctxOf(io); readConfig(cwd, env); }
+  const ctx = await sqliteCtx(io, { create: true });
+  const { cwd, env } = ctx;
+  // the per-user store folder (mode 0700, with project.json): nothing is written inside the project
+  const paths = ensureStoreDir(cwd, env);
+  // an existing suite.db is checked (only the kit's own schema) before its migrations run
   const held = fs.existsSync(ctx.dbFile) ? await withDb(ctx, (db) => listDocs(db), { write: false }) : [];
-  // no installed kit (an `npx ... db init`): nothing added the git-ignore rules; add them before creating anything
-  let gitignore = [];
-  if (!fs.existsSync(path.join(cwd, '.claude', 'helpers', 'kit'))) {
-    gitignore = await addGitignoreRules(cwd, STORE_GITIGNORE_RULES, 'Kit: the optional SQLite store (suite.db, its files journal and the store choice) is machine-local and never committed', { noFollow: true });
-    if (gitignore.refused) {
-      throw invalid(`${path.join(cwd, '.gitignore')} is not a regular file (a symbolic link?): add these lines to the project's .gitignore yourself, then run \`db init\` again: ${gitignore.refused.join(', ')}; nothing was changed`);
-    }
-  }
-  fs.mkdirSync(path.dirname(ctx.dbFile), { recursive: true });
-  const sources = withHeld(cwd, await sourceFiles(cwd), held);
+  const sources = withHeld(cwd, env, await sourceFiles(cwd), held);
   reportUnmapped('db init: did not import', sources.unmapped);
   // every source file stays locked from its read to the config write: a JSON writer waits, then sees sqlite
   return withStateLocks(sources.map((s) => s.file), async () => {
@@ -326,11 +337,10 @@ async function init(io) {
       if (!db.get("SELECT value FROM meta WHERE key = 'initialized_at'")) db.run("INSERT INTO meta (key, value) VALUES ('initialized_at', ?)", new Date().toISOString());
       return { imported, already_in_db: kept, dropped, rows: rowCounts(db), schema_version: schemaVersion(db) };
     });
-    await writeConfig(cwd, 'sqlite');
+    await writeConfig(cwd, 'sqlite', env);
     return {
-      store: 'sqlite', engine: ctx.engine, db: posix(DB_FILE), config: posix(CONFIG_FILE), ...res,
-      ...(sources.unmapped.length ? { not_imported: sources.unmapped } : {}),
-      ...(gitignore.length ? { gitignore_added: gitignore } : {})
+      store: 'sqlite', engine: ctx.engine, db: paths.db, config: paths.config, store_dir: paths.dir, ...res,
+      ...(sources.unmapped.length ? { not_imported: sources.unmapped } : {})
     };
   });
 }
@@ -340,9 +350,9 @@ async function init(io) {
  * the transaction's last step) and record the hash the file will have. A file that changed since the database last
  * synced it is not overwritten without `overwrite` (exit 1 naming it, nothing written).
  */
-function exportInTx(db, cwd, overwrite, files) {
+function exportInTx(db, cwd, env, overwrite, files) {
   // each document's file only through the kit's own mapping: one whose scope does not map is skipped and reported
-  const mapped = withHeld(cwd, [], listDocs(db));
+  const mapped = withHeld(cwd, env, [], listDocs(db));
   const docs = mapped.map((d) => ({ store: d.name, scope: d.scope, file: d.file }));
   reportUnmapped('did not write', mapped.unmapped);
   const drifted = docs.map((d) => driftOf(db, d.store, d.scope, d.file)).filter(Boolean)
@@ -399,19 +409,21 @@ function exportInTx(db, cwd, overwrite, files) {
 async function exportAll(io, overwrite) {
   const ctx = await sqliteCtx(io);
   const files = fileBatch(ctx);
-  return withDb(ctx, async (db) => {
-    const r = exportInTx(db, ctx.cwd, overwrite, files);
+  const r = await withDb(ctx, async (db) => {
+    const x = exportInTx(db, ctx.cwd, ctx.env, overwrite, files);
     await files.commit(); // last: a failed write restores the files and rolls the database back
-    return r;
+    return x;
   }, { onRollback: files.restore, onCommit: files.done });
+  // the other documents are written; a skipped one makes the run exit 1 (its rows are only in the database)
+  return r.not_written ? { ...r, exit: 1 } : r;
 }
 
 async function off(io, overwrite) {
-  const { cwd } = ctxOf(io);
-  if (readConfig(cwd).store !== 'sqlite') return { store: 'json', exported: [], note: 'already on the JSON files' };
+  const { cwd, env } = ctxOf(io);
+  if (readConfig(cwd, env).store !== 'sqlite') return { store: 'json', exported: [], note: 'already on the JSON files' };
   const ctx = await sqliteCtx(io, { create: true });
   if (!fs.existsSync(ctx.dbFile)) {
-    await writeConfig(cwd, 'json');
+    await writeConfig(cwd, 'json', env);
     return { store: 'json', exported: [], note: 'no database here: nothing to export' };
   }
   // one write transaction from the read to the store switch: a writer waits for it, then sees json and writes the file.
@@ -419,9 +431,14 @@ async function off(io, overwrite) {
   // a failed write or COMMIT puts every one of them back, the choice included (still sqlite, nothing lost)
   const files = fileBatch(ctx);
   return withDb(ctx, async (db) => {
-    const r = exportInTx(db, cwd, overwrite, files);
-    const cfg = readConfig(cwd);
-    files.add(path.join(cwd, CONFIG_FILE), { ...(cfg.config || {}), store: 'json' });
+    const r = exportInTx(db, cwd, env, overwrite, files);
+    // a document that cannot be written would be left in the database only: stay on sqlite, change nothing
+    if (r.not_written) {
+      throw invalid(`db off: ${r.not_written.length} document(s) cannot be written to a file inside the project, so the project stays on SQLite and nothing was changed: `
+        + `${unmappedList(r.not_written)}. ${UNMAPPED_WAY_OUT}; then run \`db off\` again`);
+    }
+    const cfg = readConfig(cwd, env);
+    files.add(cfg.file, { ...(cfg.config || {}), store: 'json' }, { storeChoice: true });
     await files.commit();
     return { store: 'json', ...r };
   }, { onRollback: files.restore, onCommit: files.done });
@@ -439,22 +456,22 @@ async function off(io, overwrite) {
 async function sync(io, f) {
   if (!f.fromFiles) throw invalid('db sync needs --from-files (merge the JSON files into the database)');
   const { cwd, env } = ctxOf(io);
-  if (readConfig(cwd).store !== 'sqlite') throw invalid('this project is on the JSON files (no sqlite store configured): nothing to sync');
+  if (readConfig(cwd, env).store !== 'sqlite') throw invalid('this project is on the JSON files (no sqlite store configured): nothing to sync');
   const ctx = await resolveStore({ cwd, env });
   const found = await sourceFiles(cwd);
   const files = fileBatch(ctx);
   // --scope names a file on this command line: it may be written even when no verb here wrote it before
   const named = f.scope !== undefined ? scopeKey(cwd, f.scope) : null;
   return withDb(ctx, async (db) => {
-    let targets = withHeld(cwd, found, listDocs(db), named ? [named] : []);
+    let targets = withHeld(cwd, env, found, listDocs(db), named ? [named] : []);
     let unmapped = targets.unmapped;
     if (named !== null) {
       const bad = unmapped.find((u) => u.scope === named);
       targets = targets.filter((t) => t.scope === named);
       unmapped = [];
-      if (!targets.length && bad) throw invalid(`${f.scope}: ${bad.reason}: the kit writes only files inside the project, through no symbolic link`);
+      if (!targets.length && bad) throw invalid(`${f.scope}: ${bad.reason}: the kit writes only files inside the project`);
       if (!targets.length) throw invalid(`${f.scope} is not a kit store file the database knows (see the documents in \`db status\`)`);
-      for (const t of targets) registerScope(cwd, t.name, t.scope);
+      for (const t of targets) registerScope(cwd, t.name, t.scope, env);
     }
     reportUnmapped('did not sync', unmapped);
     // read and shape-check every file first: a broken one stops sync before any write. The database writes all happen
@@ -498,29 +515,35 @@ async function sync(io, f) {
 
 async function status(io) {
   const { cwd, env } = ctxOf(io);
-  const cfg = readConfig(cwd);
-  const dbFile = path.join(cwd, DB_FILE);
-  // a database, journal or store choice committed to the repository is refused before any engine loads or opens it
-  if (cfg.store === 'sqlite' || fs.existsSync(dbFile)) assertNotCommitted(cwd, env);
+  const cfg = readConfig(cwd, env);
+  const paths = cfg.paths;
+  const dbFile = paths.db;
   // on sqlite the engine resolveStore loads; on json a probe that loads nothing (never code from the project folder)
   const engine = cfg.store === 'sqlite' ? await loadEngine({ cwd, env, project: true }) : probeEngine({ env });
+  const stray = strayProjectFiles(cwd);
   const out = {
     store: cfg.store,
     configured: cfg.configured,
     engine: engine.name,
     ...(engine.name ? {} : { engine_errors: engine.errors, fix: ENGINE_FIX }),
-    db: posix(DB_FILE),
+    store_dir: paths.dir,
+    project: readProjectJson(paths)?.project ?? null,
+    db: dbFile,
     db_exists: fs.existsSync(dbFile),
     schema_version: null,
     schema_target: SCHEMA_VERSION,
-    rows: null
+    rows: null,
+    ...(stray.length ? {
+      ignored_in_project: stray,
+      ignored_note: `the kit keeps its database, store choice and files journal in ${paths.dir} (set ${KIT_HOME_ENV} to move it), never in the project: these files in the project are never opened or read (another kit build, or a clone, left them); delete them if you do not need them`
+    } : {})
   };
   if (cfg.store === 'sqlite') {
     const ctx = await resolveStore({ cwd, env }); // exit 1 naming the fix when the engine or the file is missing
     Object.assign(out, await withDb(ctx, (db) => {
       const documents = listDocs(db);
       // drift only for documents the kit maps to a file (a row never makes the kit read a path it chose)
-      const mapped = withHeld(cwd, [], documents);
+      const mapped = withHeld(cwd, env, [], documents);
       const drifted = mapped.filter((d) => driftOf(db, d.name, d.scope, d.file)).map((d) => ({ store: d.name, scope: d.scope }));
       return {
         schema_version: schemaVersion(db), rows: rowCounts(db), test_runs_by_branch: runsByBranch(db), documents, ...(drifted.length ? { drifted } : {}),
@@ -541,10 +564,31 @@ async function status(io) {
       else Object.assign(out, { rows: rowCounts(db), test_runs_by_branch: runsByBranch(db) });
     } catch (e) {
       if (e instanceof KitExit && e.untrusted) throw e;
-      out.error = `cannot read ${posix(DB_FILE)}: ${String(e && e.message).split('\n')[0].slice(0, 200)}`;
+      out.error = `cannot read ${dbFile}: ${String(e && e.message).split('\n')[0].slice(0, 200)}`;
     } finally { try { db?.close(); } catch { /* not open */ } }
   }
   return out;
+}
+
+/**
+ * forget --scope <scope>: remove every document stored under that scope (any store) from the database, and its
+ * registration. The removed documents are in the output in full (`forgotten`), so nothing is lost unseen.
+ */
+async function forget(io, scope) {
+  if (scope === undefined) throw invalid('db forget needs --scope <scope> (as `db status` lists it under documents)');
+  const ctx = await sqliteCtx(io);
+  if (readConfig(ctx.cwd, ctx.env).store !== 'sqlite') throw invalid('this project is on the JSON files (no sqlite store configured): nothing to forget');
+  const forgotten = await withDb(ctx, (db) => {
+    const docs = listDocs(db).filter((d) => d.scope === scope && SPECS[d.store]);
+    if (!docs.length) throw invalid(`the database holds no document with scope ${JSON.stringify(scope).slice(0, 200)} (see the documents in \`db status\`)`);
+    return docs.map((d) => {
+      const doc = getDoc(db, d.store, d.scope);
+      deleteDoc(db, d.store, d.scope);
+      return { store: d.store, scope: d.scope, document: doc };
+    });
+  });
+  for (const f of forgotten) unregisterScope(ctx.cwd, f.store, f.scope, ctx.env);
+  return { forgotten };
 }
 
 /** Test runs per branch: { branch: n }, branches in name order. */
@@ -575,24 +619,25 @@ async function prune(io, keepArg) {
 export async function run(args, io = {}) {
   const f = parse(args);
   if (f.sub === undefined || f.sub === '--help' || f.sub === '-h') {
-    if (f.sub === undefined) throw invalid(`give a subcommand: init, export, off, sync, status, prune or import-reports\n${usage}`);
+    if (f.sub === undefined) throw invalid(`give a subcommand: init, export, off, sync, status, forget, prune or import-reports\n${usage}`);
     return { usage };
   }
   {
     // a files journal left by a `db off` stopped before its COMMIT is recovered first (the store choice is in it)
     const { cwd, env } = ctxOf(io);
     let onJson = true;
-    try { onJson = readConfig(cwd).store !== 'sqlite'; } catch { /* a broken config is reported by the subcommand */ }
+    try { onJson = readConfig(cwd, env).store !== 'sqlite'; } catch { /* a broken config is reported by the subcommand */ }
     if (onJson) await recoverJsonSide(cwd, env);
   }
   if (f.sub === 'init') return init(io);
   if (f.sub === 'export') {
-    if (readConfig(ctxOf(io).cwd).store !== 'sqlite') throw invalid('this project is on the JSON files already (no sqlite store configured): nothing to export');
+    if (readConfig(ctxOf(io).cwd, ctxOf(io).env).store !== 'sqlite') throw invalid('this project is on the JSON files already (no sqlite store configured): nothing to export');
     return exportAll(io, f.overwrite);
   }
   if (f.sub === 'off') return off(io, f.overwrite);
   if (f.sub === 'sync') return sync(io, f);
   if (f.sub === 'status') return status(io);
+  if (f.sub === 'forget') return forget(io, f.scope);
   if (f.sub === 'prune') return prune(io, f.keep);
   if (f.sub === 'import-reports') {
     let limit = DEFAULT_LIMIT;
@@ -602,5 +647,5 @@ export async function run(args, io = {}) {
     }
     return importReports(io, { branch: f.branch, limit });
   }
-  throw invalid(`unknown subcommand ${JSON.stringify(f.sub).slice(0, 40)} (init, export, off, sync, status, prune, import-reports)`);
+  throw invalid(`unknown subcommand ${JSON.stringify(f.sub).slice(0, 40)} (init, export, off, sync, status, forget, prune, import-reports)`);
 }

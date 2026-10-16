@@ -40,7 +40,13 @@ export const ARTIFACT_PATTERN = 'test-results-*';
 const ARTIFACT_NAME = /^test-results-[A-Za-z0-9._-]{1,80}$/;
 /** What ARTIFACT_PATTERN matches (gh's glob), for the size check before a download. */
 const PATTERN_MATCH = /^test-results-/;
-/** Largest artifact (its zip, as GitHub reports it) import-reports downloads; a bigger one is skipped, not fetched. */
+/**
+ * Largest artifact (its zip, as GitHub reports it) import-reports downloads; a bigger one is skipped, not fetched.
+ * KNOWN LIMIT: this caps the COMPRESSED size (the API's size_in_bytes). `gh run download` then extracts the whole
+ * artifact before readUntrusted's JUNIT_MAX_BYTES cap applies, so a small, highly compressed artifact still extracts
+ * in full into the temp folder. Accepted: the artifacts come only from this repository's own push runs (the user's own
+ * CI, read through the user's own gh login), not from forks or other repositories.
+ */
 export const ARTIFACT_MAX_BYTES = 50 * 1024 * 1024;
 /** Most artifacts one run may list: the size check reads one page of the listing, so a run with more is skipped. */
 export const ARTIFACTS_PER_PAGE = 100;
@@ -353,7 +359,7 @@ export async function recordRun(io, run) {
   try {
     id = await withDb(ctx, (db) => {
       // `db off` switched the store while this run waited for the database: test runs have no JSON store
-      if (readConfig(cwd).store !== 'sqlite') throw new StoreSwitched();
+      if (readConfig(cwd, env).store !== 'sqlite') throw new StoreSwitched();
       return insertRun(db, {
         branch: head.branch || '(no branch)', commit: head.commit, source: 'local', started_at: run.started_at, finished_at: run.finished_at,
         summary: parseTapSummary(run.output || ''),
@@ -439,7 +445,7 @@ export function parseRunList(text, branch) {
 export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) {
   const cwd = io.cwd || process.cwd();
   const env = io.env && Object.keys(io.env).length ? { ...process.env, ...io.env } : process.env;
-  if (readConfig(cwd).store !== 'sqlite') throw invalid('import-reports stores test runs in the SQLite store, and this project is on the JSON files: run `db init` first');
+  if (readConfig(cwd, env).store !== 'sqlite') throw invalid('import-reports stores test runs in the SQLite store, and this project is on the JSON files: run `db init` first');
   const ctx = await resolveStore({ cwd, env });
   if (branch === undefined) {
     branch = gitHead(cwd, env).branch;
@@ -510,7 +516,7 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) 
   }
 
   const imported = await withDb(ctx, (db) => {
-    if (readConfig(cwd).store !== 'sqlite') throw invalid('the project went back to the JSON files (`db off`) during the import: nothing imported');
+    if (readConfig(cwd, env).store !== 'sqlite') throw invalid('the project went back to the JSON files (`db off`) during the import: nothing imported');
     const out = [];
     for (const x of found) {
       if (db.get('SELECT run_key FROM test_runs WHERE run_key = ? UNION SELECT run_key FROM imported_reports WHERE run_key = ?', x.key, x.key)) { skipped.push({ run_id: x.run.id, artifact: x.artifact, reason: 'already imported' }); continue; }
