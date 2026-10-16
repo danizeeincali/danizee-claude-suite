@@ -8,12 +8,9 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { addGitignoreRules } from '../lib/kit/store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// The optional SQLite store (see lib/kit/store.js) lives outside the project, in a per-user folder; the project keeps
-// only the git-ignored marker naming it (.claude/kit/store-id, written by `db init`, which adds the same rule).
-const GITIGNORE_RULES = ['.claude/kit/secrets', '.claude/kit/cache/', '.claude/kit/scrub-patterns.local', '.claude/kit/store-id'];
+const GITIGNORE_RULES = ['.claude/kit/secrets', '.claude/kit/cache/', '.claude/kit/scrub-patterns.local'];
 const LIB_DIR = path.join(__dirname, '..', 'lib', 'kit');
 
 export function getNamespace() {
@@ -48,8 +45,15 @@ export async function install(claudeDir, options = {}) {
   // The redact verb reads .claude/kit/secrets: real secret values, never committed. The graph verb caches
   // per-file facts under .claude/kit/cache/: machine-local and rebuilt on demand.
   if (!dry && options.targetDir) {
-    const missing = await addGitignoreRules(options.targetDir, GITIGNORE_RULES, "Kit: the redact verb's secret values, the scrub verb's private patterns, the graph verb's fact cache and the SQLite store's id are machine-local and never committed");
-    if (missing.length) files.push(`.gitignore (+ ${missing.length} kit rule)`);
+    const gi = path.join(options.targetDir, '.gitignore');
+    const current = (await exists(gi)) ? await fs.readFile(gi, 'utf-8') : '';
+    const have = new Set(current.split('\n').map(l => l.trim()));
+    const missing = GITIGNORE_RULES.filter(r => !have.has(r));
+    if (missing.length) {
+      const sep = current.length && !current.endsWith('\n') ? '\n' : '';
+      await fs.writeFile(gi, `${current}${sep}\n# Kit: the redact verb's secret values, the scrub verb's private patterns and the graph verb's fact cache are machine-local and never committed\n${missing.join('\n')}\n`, 'utf-8');
+      files.push(`.gitignore (+ ${missing.length} kit rule)`);
+    }
   }
   return { plugin: 'kit', namespace: getNamespace(), files };
 }

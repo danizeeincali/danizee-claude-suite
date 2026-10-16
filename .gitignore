@@ -52,8 +52,5 @@ ruvector.db
 .claude/kit/secrets
 .claude/kit/cache/
 
-# Kit: the id of this machine's SQLite store (db init); machine-local, never committed
-.claude/kit/store-id
-
 # Kit: triage ledger (finding fingerprints, issue references) is machine-local
 .claude/kit/triage.json*
