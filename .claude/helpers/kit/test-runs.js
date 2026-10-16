@@ -10,7 +10,8 @@
  *   parseJunit(text)          a small strict JUnit XML parser for downloaded reports (no DOCTYPE, no entities but the five
  *                             predefined ones and character references, size, depth and count caps)
  *   importReports(io, opts)   `db import-reports`: the newest CI test-results artifacts of a branch, through the user's own
- *                             `gh` login (spawned without a shell), each imported once (key: workflow run id / artifact name)
+ *                             `gh` login (spawned without a shell), each imported once (key: workflow run id / artifact name, kept in
+ *                             imported_reports after `db prune` deletes the run)
  *
  * Every stored string (case names, files, messages) is redacted with the project's secrets and credential-masked
  * (reflect.js scrub/loadSecrets); a failure message is capped at MESSAGE_MAX bytes. Downloaded files are untrusted
@@ -293,6 +294,10 @@ export function insertRun(db, run, cases) {
     run.branch, run.commit ?? null, run.source ?? null, run.started_at, run.finished_at ?? null, ...totals,
     run.duration_ms ?? null, run.data ? JSON.stringify(run.data) : null, run.status, run.run_key ?? null
   ).lastInsertRowid);
+  // the key outlives the run: `db prune` deletes runs, never this, so a pruned report is not imported again
+  if (run.run_key != null) {
+    db.run('INSERT OR IGNORE INTO imported_reports (run_key, branch, imported_at) VALUES (?, ?, ?)', run.run_key, run.branch, new Date().toISOString());
+  }
   for (const c of cases) {
     db.run('INSERT INTO test_cases (run_id, suite, name, file, status, duration_ms, message) VALUES (?, ?, ?, ?, ?, ?, ?)',
       id, c.suite ?? null, c.name, c.file ?? null, c.status, c.duration_ms ?? null, c.message ?? null);
@@ -427,7 +432,8 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) 
   const listed = parseRunList(list.stdout, branch);
   const runs = listed.slice(0, limit);
 
-  const known = await withDb(ctx, (db) => new Set(db.all('SELECT run_key FROM test_runs WHERE run_key IS NOT NULL').map((r) => r.run_key)), { write: false });
+  // every key ever imported, the pruned runs' too (imported_reports), so a prune is never undone by the next import
+  const known = await withDb(ctx, (db) => new Set(db.all('SELECT run_key FROM test_runs WHERE run_key IS NOT NULL UNION SELECT run_key FROM imported_reports').map((r) => r.run_key)), { write: false });
   const skipped = listed.foreign.map((id) => ({ run_id: id, reason: 'not a push run of this repository branch' }));
   const found = [];
   for (const r of runs) {
@@ -462,7 +468,7 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) 
     if (readConfig(cwd).store !== 'sqlite') throw invalid('the project went back to the JSON files (`db off`) during the import: nothing imported');
     const out = [];
     for (const x of found) {
-      if (db.get('SELECT id FROM test_runs WHERE run_key = ?', x.key)) { skipped.push({ run_id: x.run.id, artifact: x.artifact, reason: 'already imported' }); continue; }
+      if (db.get('SELECT run_key FROM test_runs WHERE run_key = ? UNION SELECT run_key FROM imported_reports WHERE run_key = ?', x.key, x.key)) { skipped.push({ run_id: x.run.id, artifact: x.artifact, reason: 'already imported' }); continue; }
       const failed = x.cases.filter((c) => c.status === 'fail').length;
       const id = insertRun(db, {
         branch, commit: x.run.sha, source: `ci:${x.artifact}`, started_at: x.run.created || new Date(0).toISOString(), finished_at: null,

@@ -42,14 +42,16 @@
  * Built for the suite-db plan (2026-10-16); no foreign code.
  */
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { KitExit } from './kit-exit.js';
-import { readJsonState, writeJsonAtomic, withStateLock } from './state-lock.js';
+import { readJsonState, withStateLock } from './state-lock.js';
 import { importReports, DEFAULT_LIMIT, MAX_LIMIT } from './test-runs.js';
 import {
-  SPECS, DB_FILE, CONFIG_FILE, SCHEMA_VERSION, ENGINE_FIX, readConfig, writeConfig, loadEngine, resolveStore,
+  SPECS, DB_FILE, CONFIG_FILE, SCHEMA_VERSION, ENGINE_FIX, readConfig, writeConfig, loadEngine, probeEngine, resolveStore,
   withDb, schemaVersion, getDoc, putDoc, deleteDoc, scopeKey, rowCounts, listDocs, fileOfScope, fileHash, setFileHash,
-  driftOf, driftMessage, driftDetail, mergeDocs, getBase, REPAIR_ADVICE, duplicateIds, idList
+  driftOf, driftMessage, driftDetail, mergeDocs, getBase, REPAIR_ADVICE, duplicateIds, idList, shapeProblem
 } from './store.js';
 
 export const verb = 'db';
@@ -95,7 +97,10 @@ const ctxOf = (io) => ({ cwd: io.cwd || process.cwd(), env: io.env && Object.key
 
 async function sqliteCtx(io, { create = false } = {}) {
   const { cwd, env } = ctxOf(io);
-  const engine = await loadEngine({ cwd, env });
+  // better-sqlite3 from the project folder only for `db init` (the user opting in) or a project already on sqlite
+  let onSqlite = false;
+  try { onSqlite = readConfig(cwd).store === 'sqlite'; } catch { /* a broken config is reported by the verb itself */ }
+  const engine = await loadEngine({ cwd, env, project: create || onSqlite });
   if (!engine.name) throw invalid(`no SQLite engine loads here (${engine.errors.join('; ') || 'none tried'}): ${ENGINE_FIX}`);
   const dbFile = path.join(cwd, DB_FILE);
   if (!create && !fs.existsSync(dbFile)) throw invalid(`${dbFile} does not exist: run \`db init\` first`);
@@ -144,6 +149,9 @@ async function readSource(file, then, name) {
   }
   if (doc === null) return null;
   if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw invalid(`${file} is not a JSON object: ${REPAIR_ADVICE}; then run \`${then}\` again`);
+  // the layout putDoc needs (a list or an object per part), checked before anything is written
+  const bad = name ? shapeProblem(name, doc) : null;
+  if (bad) throw invalid(`${file}: ${bad}: ${REPAIR_ADVICE}; then run \`${then}\` again. Nothing was changed`);
   const dup = name ? duplicateIds(name, doc) : [];
   if (dup.length) {
     throw invalid(`${file} holds the same id more than once (${dup.map((d) => d.id).join(', ')}): two rows cannot share an id. `
@@ -151,6 +159,71 @@ async function readSource(file, then, name) {
       + `or remove the duplicate when it is the same row twice; then run \`${then}\` again. Nothing was changed`);
   }
   return doc;
+}
+
+/**
+ * The JSON files a database transaction writes, all or none. `add` queues a document and returns the sha256 of the
+ * bytes it will write (to record in the transaction); `commit`, the transaction's last step, writes every file to a
+ * temp file beside it (synced, the old file's mode kept) and only then renames them over the originals; if any step
+ * fails, every file already renamed gets its original bytes back (or is removed when it did not exist) and the error
+ * is thrown on, so the transaction rolls back too. `restore` (withDb's onRollback) undoes a commit whose transaction
+ * then did not commit. Files and database never disagree.
+ */
+function fileBatch() {
+  const queued = [];
+  const done = [];
+  const fail = (file, e) => (e instanceof KitExit ? e : invalid(`cannot write ${file}: ${e.code || e.message}; nothing was changed`));
+  async function put(file, buf, mode) {
+    await fsp.mkdir(path.dirname(file), { recursive: true });
+    const tmp = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
+    try {
+      const fh = await fsp.open(tmp, 'wx', mode === null ? 0o666 : 0o600);
+      try {
+        if (mode !== null) await fh.chmod(mode);
+        await fh.writeFile(buf);
+        await fh.sync();
+      } finally { await fh.close(); }
+      return tmp;
+    } catch (e) { await fsp.unlink(tmp).catch(() => {}); throw e; }
+  }
+  async function restore() {
+    while (done.length) {
+      const d = done.pop();
+      try {
+        if (d.before === null) await fsp.rm(d.file, { force: true });
+        else await fsp.rename(await put(d.file, d.before, d.mode), d.file);
+      } catch { /* best effort: the rest are still restored */ }
+    }
+  }
+  return {
+    add(file, doc) {
+      const buf = Buffer.from(JSON.stringify(doc, null, 2) + '\n');
+      queued.push({ file, buf });
+      return crypto.createHash('sha256').update(buf).digest('hex');
+    },
+    async commit() {
+      const staged = [];
+      try {
+        for (const q of queued) {
+          let before = null; let mode = null;
+          try { before = await fsp.readFile(q.file); mode = (await fsp.stat(q.file)).mode & 0o7777; } catch (e) { if (e.code !== 'ENOENT') throw fail(q.file, e); }
+          let tmp;
+          try { tmp = await put(q.file, q.buf, mode); } catch (e) { throw fail(q.file, e); }
+          staged.push({ ...q, before, mode, tmp });
+        }
+        for (const st of staged) {
+          try { await fsp.rename(st.tmp, st.file); } catch (e) { throw fail(st.file, e); }
+          st.tmp = null;
+          done.push(st);
+        }
+      } catch (e) {
+        for (const st of staged) if (st.tmp) await fsp.unlink(st.tmp).catch(() => {});
+        await restore();
+        throw e;
+      }
+    },
+    restore
+  };
 }
 
 async function init(io) {
@@ -192,10 +265,11 @@ async function init(io) {
 }
 
 /**
- * Inside a write transaction: write every stored document to its file and record the file's new hash. A file that
- * changed since the database last synced it is not overwritten without `overwrite` (exit 1 naming it, nothing written).
+ * Inside a write transaction: queue every stored document for its file (`files`, a fileBatch the caller commits as
+ * the transaction's last step) and record the hash the file will have. A file that changed since the database last
+ * synced it is not overwritten without `overwrite` (exit 1 naming it, nothing written).
  */
-async function exportInTx(db, cwd, overwrite) {
+function exportInTx(db, cwd, overwrite, files) {
   const docs = listDocs(db).filter((d) => SPECS[d.store]).map((d) => ({ ...d, file: fileOfScope(cwd, d.scope) }));
   const drifted = docs.map((d) => driftOf(db, d.store, d.scope, d.file)).filter(Boolean)
     .map((d) => ({ ...d, detail: driftDetail(db, d.store, d.scope, d.file) }));
@@ -203,8 +277,7 @@ async function exportInTx(db, cwd, overwrite) {
   const exported = [];
   for (const d of docs) {
     const doc = getDoc(db, d.store, d.scope);
-    await writeJsonAtomic(d.file, doc);
-    setFileHash(db, d.store, d.scope, fileHash(d.file), doc);
+    setFileHash(db, d.store, d.scope, files.add(d.file, doc), doc);
     exported.push({ store: d.store, scope: d.scope });
   }
   const rows = rowCounts(db);
@@ -250,7 +323,12 @@ async function exportInTx(db, cwd, overwrite) {
 
 async function exportAll(io, overwrite) {
   const ctx = await sqliteCtx(io);
-  return withDb(ctx, (db) => exportInTx(db, ctx.cwd, overwrite));
+  const files = fileBatch();
+  return withDb(ctx, async (db) => {
+    const r = exportInTx(db, ctx.cwd, overwrite, files);
+    await files.commit(); // last: a failed write restores the files and rolls the database back
+    return r;
+  }, { onRollback: files.restore });
 }
 
 async function off(io, overwrite) {
@@ -261,12 +339,15 @@ async function off(io, overwrite) {
     await writeConfig(cwd, 'json');
     return { store: 'json', exported: [], note: 'no database here: nothing to export' };
   }
-  // one write transaction from the read to the config write: a writer waits for it, then sees json and writes the file
+  // one write transaction from the read to the config write: a writer waits for it, then sees json and writes the file;
+  // the files are written last, and restored when the config write or the commit fails
+  const files = fileBatch();
   return withDb(ctx, async (db) => {
-    const r = await exportInTx(db, cwd, overwrite);
+    const r = exportInTx(db, cwd, overwrite, files);
+    await files.commit();
     await writeConfig(cwd, 'json');
     return { store: 'json', ...r };
-  });
+  }, { onRollback: files.restore });
 }
 
 /**
@@ -284,6 +365,7 @@ async function sync(io, f) {
   if (readConfig(cwd).store !== 'sqlite') throw invalid('this project is on the JSON files (no sqlite store configured): nothing to sync');
   const ctx = await resolveStore({ cwd, env });
   const found = await sourceFiles(cwd);
+  const files = fileBatch();
   return withDb(ctx, async (db) => {
     let targets = withHeld(cwd, found, listDocs(db));
     if (f.scope !== undefined) {
@@ -291,7 +373,9 @@ async function sync(io, f) {
       targets = targets.filter((t) => t.scope === key);
       if (!targets.length) throw invalid(`${f.scope} is not a kit store file the database knows (see the documents in \`db status\`)`);
     }
-    // read every file first: a broken one stops sync with nothing changed (the transaction rolls back)
+    // read and shape-check every file first: a broken one stops sync before any write. The database writes all happen
+    // in this transaction and the files are written only at its end, all or none (fileBatch): a failure anywhere
+    // rolls the database back and leaves every file as it was, so a retry merges against the same base
     const docs = [];
     for (const t of targets) docs.push({ ...t, doc: await readSource(t.file, 'db sync --from-files', t.name) });
     const synced = [];
@@ -311,9 +395,8 @@ async function sync(io, f) {
       const m = mergeDocs(t.name, getDoc(db, t.name, t.scope), t.doc, base);
       putDoc(db, t.name, t.scope, m.doc);
       const doc = getDoc(db, t.name, t.scope);
-      // export: the file gets the merged document (left as it is when it already holds exactly that)
-      if (JSON.stringify(doc) !== JSON.stringify(t.doc)) await writeJsonAtomic(t.file, doc);
-      setFileHash(db, t.name, t.scope, fileHash(t.file), doc);
+      // export: the file gets the merged document at the end (left as it is when it already holds exactly that)
+      setFileHash(db, t.name, t.scope, JSON.stringify(doc) !== JSON.stringify(t.doc) ? files.add(t.file, doc) : fileHash(t.file), doc);
       const row = { kept: m.kept, added: m.added, updated: m.updated, unchanged: m.unchanged, conflicts: m.conflicts.length, deleted: m.deleted.length, renumbered: m.renumbered.length };
       synced.push({ store: t.name, scope: t.scope, ...row, ...(base === null ? { base: 'unknown: union, nothing deleted' } : {}) });
       const at = { store: t.name, scope: t.scope };
@@ -323,14 +406,17 @@ async function sync(io, f) {
       for (const d of m.discarded) discarded.push({ ...at, ...d });
       for (const k of Object.keys(counts)) counts[k] += row[k];
     }
-    return { merged: true, synced, counts, conflicts, deleted, renumbered, discarded, kept_without_file: kept, rows: rowCounts(db) };
-  });
+    const rows = rowCounts(db);
+    await files.commit();
+    return { merged: true, synced, counts, conflicts, deleted, renumbered, discarded, kept_without_file: kept, rows };
+  }, { onRollback: files.restore });
 }
 
 async function status(io) {
   const { cwd, env } = ctxOf(io);
   const cfg = readConfig(cwd);
-  const engine = await loadEngine({ cwd, env });
+  // on sqlite the engine resolveStore loads; on json a probe that loads nothing (never code from the project folder)
+  const engine = cfg.store === 'sqlite' ? await loadEngine({ cwd, env, project: true }) : probeEngine({ env });
   const dbFile = path.join(cwd, DB_FILE);
   const out = {
     store: cfg.store,
@@ -351,10 +437,13 @@ async function status(io) {
       return { schema_version: schemaVersion(db), rows: rowCounts(db), test_runs_by_branch: runsByBranch(db), documents, ...(drifted.length ? { drifted } : {}) };
     }, { write: false }));
   } else if (out.db_exists && engine.name) {
-    // json in use, a database left by `db off`: read it read-only, never migrated; trouble is a field, not an exit
+    // json in use, a database left by `db off`: read it read-only, never migrated; trouble is a field, not an exit.
+    // Only the kit's own engine opens it (the kit's better-sqlite3 or the built-in node:sqlite), never the project's
     let db = null;
     try {
-      db = engine.open(dbFile, { readOnly: true });
+      const own = await loadEngine({ cwd, env, project: false });
+      if (!own.name) throw new Error(own.errors.join('; ') || 'no engine');
+      db = own.open(dbFile, { readOnly: true });
       out.schema_version = schemaVersion(db);
       if (out.schema_version > SCHEMA_VERSION) out.error = `schema version ${out.schema_version} is newer than this kit understands (${SCHEMA_VERSION})`;
       else Object.assign(out, { rows: rowCounts(db), test_runs_by_branch: runsByBranch(db) });

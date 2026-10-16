@@ -300,6 +300,27 @@ describe('db import-reports', () => {
     } finally { rm(dir); rm(gh.root); }
   });
 
+  it('db prune keeps the import key of a pruned CI run: the next import-reports neither downloads nor imports it again', { skip: !NODE_SQLITE }, async () => {
+    const dir = await project();
+    const gh = fakeGh();
+    try {
+      const r = await call(['import-reports', '--limit', '5'], dir, gh.env);
+      assert.equal(r.code, 0, r.err);
+      assert.equal(r.out.imported.length, 2);
+      const p = await call(['prune', '--keep', '1'], dir, ENGINE);
+      assert.equal(p.code, 0, p.err);
+      assert.equal(p.out.pruned_runs, 1);
+      assert.deepEqual((await rows(dir, 'SELECT run_key FROM test_runs')).map((x) => x.run_key), ['302/test-results-node-20']);
+      const downloads = gh.calls().filter((c) => c[1] === 'download').length;
+      const again = await call(['import-reports', '--limit', '5'], dir, gh.env);
+      assert.equal(again.code, 0, again.err);
+      assert.deepEqual(again.out.imported, [], 'the pruned run 301 is not imported again');
+      assert.deepEqual(again.out.skipped.filter((s) => s.reason === 'already imported').map((s) => s.run_id), [302, 301]);
+      assert.equal(gh.calls().filter((c) => c[1] === 'download').length, downloads + 1, 'only run 300 (no artifact) was asked for again');
+      assert.equal((await rows(dir, 'SELECT COUNT(*) AS n FROM test_runs'))[0].n, 1, 'the prune stays done');
+    } finally { rm(dir); rm(gh.root); }
+  });
+
   it('only push runs of this branch are imported: a fork pull_request run with the same head branch is never downloaded', { skip: !NODE_SQLITE }, async () => {
     const dir = await project();
     const gh = fakeGh();

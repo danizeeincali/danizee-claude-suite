@@ -1,7 +1,7 @@
 // The optional SQLite store against the JSON files it came from: re-import on init, drift after a git pull,
 // the machine-local store choice (a clone without suite.db), concurrent writers during db off / db init, and
 // db status on a leftover database. node:sqlite here.
-import { describe, it } from 'node:test';
+import { describe, it, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import fsSync from 'fs';
@@ -917,6 +917,142 @@ describe('db status on the JSON store reads a leftover database without changing
       const junk = await call(db, ['status'], dir, ENV);
       assert.equal(junk.code, 0, junk.err);
       assert.match(junk.out.error, /cannot read/);
+    } finally { await rm(dir); }
+  });
+});
+
+describe('db sync / export / off write the JSON files all or none, after the database work (review round 6)', () => {
+  const LESSONS = '.claude/kit/lessons.json';
+  const LEDGER = '.claude/kit/noise-ledger.json';
+  const bytes = (dir, f) => fs.readFile(path.join(dir, f));
+  const theirLesson = (id, text) => ({ id, role: 'r', text, scope: '', session: 'tm', status: 'active', kept: 0, created_at: '2026-10-15T00:00:00.000Z' });
+  const tmpLeft = async (dir) => (await fs.readdir(path.join(dir, '.claude/kit'))).filter((n) => n.endsWith('.tmp'));
+  /** L1 on json, db init, a local L2 on sqlite, then a pull brings the teammate's own L2 into lessons.json. */
+  async function renumberSetup(dir) {
+    assert.equal((await save(dir, 'Run the linter before every commit.', [], {})).code, 0);
+    assert.equal((await call(noise, ['accept', '--id', 'a', '--reason', 'known'], dir, {})).code, 0);
+    assert.equal((await call(db, ['init'], dir, ENV)).code, 0);
+    assert.equal((await save(dir, 'Check database migrations against a copy of production.')).code, 0);
+    const pulled = await readJson(dir, LESSONS);
+    pulled.lessons.push(theirLesson('L2', 'Pin every dependency to an exact version.'));
+    await fs.writeFile(path.join(dir, LESSONS), JSON.stringify(pulled, null, 2));
+  }
+  const textsOf = async (dir) => (await readJson(dir, LESSONS)).lessons.map((l) => `${l.id}:${l.text}`);
+  const WANT = ['L1:Run the linter before every commit.', 'L2:Pin every dependency to an exact version.', 'L3:Check database migrations against a copy of production.'];
+
+  it('a badly shaped noise-ledger.json after lessons need renumbering: exit 1, lessons.json byte-identical, the next sync makes no duplicate', { skip }, async () => {
+    const dir = await tmp();
+    try {
+      await renumberSetup(dir);
+      await fs.writeFile(path.join(dir, LEDGER), JSON.stringify({ version: 1, entries: { a: 1 } }));
+      const before = await bytes(dir, LESSONS);
+      const s1 = await call(db, ['sync', '--from-files'], dir, ENV);
+      assert.equal(s1.code, 1);
+      assert.match(s1.err, /noise-ledger\.json: entries is not a list/);
+      assert.match(s1.err, /Nothing was changed/);
+      assert.deepEqual(await bytes(dir, LESSONS), before, 'lessons.json is untouched');
+      await fs.writeFile(path.join(dir, LEDGER), JSON.stringify({ version: 1, entries: [] }));
+      const s2 = await call(db, ['sync', '--from-files'], dir, ENV);
+      assert.equal(s2.code, 0, s2.err);
+      assert.deepEqual(s2.out.renumbered, [{ store: 'lessons', scope: LESSONS, from: 'L2', to: 'L3' }]);
+      assert.deepEqual(await textsOf(dir), WANT, 'no lesson twice');
+      assert.deepEqual(await lessonTexts(dir), WANT.map((x) => x.slice(3)));
+    } finally { await rm(dir); }
+  });
+
+  it('a file write that fails during sync restores the files already written and rolls the database back', { skip }, async () => {
+    const dir = await tmp();
+    try {
+      await renumberSetup(dir);
+      assert.equal((await call(noise, ['accept', '--id', 'b', '--reason', 'local'], dir, ENV)).code, 0);
+      const ledger = await readJson(dir, LEDGER);
+      ledger.entries.push({ ...ledger.entries[0], id: 'c' });
+      await fs.writeFile(path.join(dir, LEDGER), JSON.stringify(ledger, null, 2));
+      const before = { lessons: await bytes(dir, LESSONS), ledger: await bytes(dir, LEDGER) };
+      const real = fs.rename;
+      const m = mock.method(fs, 'rename', async (from, to) => {
+        if (String(to).endsWith('noise-ledger.json')) { const e = new Error('no space left on device'); e.code = 'ENOSPC'; throw e; }
+        return real.call(fs, from, to);
+      });
+      let s1;
+      try { s1 = await call(db, ['sync', '--from-files'], dir, ENV); } finally { m.mock.restore(); }
+      assert.equal(s1.code, 1);
+      assert.match(s1.err, /cannot write .*noise-ledger\.json: ENOSPC/);
+      assert.deepEqual(await bytes(dir, LESSONS), before.lessons, 'the lessons.json already renamed is restored');
+      assert.deepEqual(await bytes(dir, LEDGER), before.ledger);
+      assert.deepEqual(await tmpLeft(dir), []);
+      const s2 = await call(db, ['sync', '--from-files'], dir, ENV);
+      assert.equal(s2.code, 0, s2.err);
+      assert.deepEqual(await textsOf(dir), WANT, 'no lesson twice');
+      assert.deepEqual((await readJson(dir, LEDGER)).entries.map((e) => e.id).sort(), ['a', 'b', 'c']);
+
+      // export: the same all-or-none; the hash of the restored file is not moved, so no spurious drift afterwards
+      assert.equal((await save(dir, 'Write the next lesson after the merge.')).code, 0);
+      assert.equal((await call(noise, ['accept', '--id', 'd', '--reason', 'later'], dir, ENV)).code, 0);
+      const mid = { lessons: await bytes(dir, LESSONS), ledger: await bytes(dir, LEDGER) };
+      for (const sub of ['export', 'off']) {
+        const m2 = mock.method(fs, 'rename', async (from, to) => {
+          if (String(to).endsWith('noise-ledger.json')) { const e = new Error('read-only file system'); e.code = 'EROFS'; throw e; }
+          return real.call(fs, from, to);
+        });
+        let ex;
+        try { ex = await call(db, [sub], dir, ENV); } finally { m2.mock.restore(); }
+        assert.equal(ex.code, 1, sub);
+        assert.match(ex.err, /EROFS/, sub);
+        assert.deepEqual(await bytes(dir, LESSONS), mid.lessons, sub);
+        assert.deepEqual(await bytes(dir, LEDGER), mid.ledger, sub);
+        assert.deepEqual(await tmpLeft(dir), [], sub);
+        const st = await call(db, ['status'], dir, ENV);
+        assert.equal(st.out.store, 'sqlite', `${sub} did not switch`);
+        assert.equal(st.out.drifted, undefined, `${sub}: no spurious drift`);
+      }
+      const ok = await call(db, ['export'], dir, ENV);
+      assert.equal(ok.code, 0, ok.err);
+      assert.equal(ok.out.overwritten, undefined);
+      assert.deepEqual((await readJson(dir, LESSONS)).lessons.map((l) => l.id), ['L1', 'L2', 'L3', 'L4']);
+    } finally { await rm(dir); }
+  });
+});
+
+describe('a project on the JSON files never runs code from its own folder (review round 6)', () => {
+  const BETTER_IN_KIT = (() => { try { createRequire(path.join(HERE, '../src/lib/kit/store.js')).resolve('better-sqlite3'); return true; } catch { return false; } })();
+  async function trap() {
+    const dir = await tmp();
+    const mod = path.join(dir, 'node_modules', 'better-sqlite3');
+    await fs.mkdir(mod, { recursive: true });
+    await fs.writeFile(path.join(dir, 'package.json'), '{"name":"cloned"}');
+    await fs.writeFile(path.join(mod, 'package.json'), '{"name":"better-sqlite3","main":"index.js"}');
+    await fs.writeFile(path.join(mod, 'index.js'), "require('fs').writeFileSync(require('path').join(__dirname, '..', '..', 'PWNED'), 'ran');\nmodule.exports = class { close() {} };\n");
+    return dir;
+  }
+  const UNPINNED = { KIT_SQLITE_ENGINE: '' };
+
+  it('check (storeCheck) and db status on a json project leave no marker', async () => {
+    const dir = await trap();
+    try {
+      const c = await storeCheck({ cwd: dir, env: { ...process.env, ...UNPINNED } });
+      assert.equal(c.store, 'json');
+      assert.equal(c.fatal, false);
+      assert.match(c.line, /^kit store: json files/);
+      assert.ok(!exists(path.join(dir, 'PWNED')), 'check ran the project\'s better-sqlite3');
+      const st = await call(db, ['status'], dir, UNPINNED);
+      assert.equal(st.code, 0, st.err);
+      assert.equal(st.out.store, 'json');
+      assert.ok(!exists(path.join(dir, 'PWNED')), 'db status ran the project\'s better-sqlite3');
+      // reflect / noise-ledger on json load nothing either
+      assert.equal((await call(noise, ['accept', '--id', 'a', '--reason', 'r'], dir, UNPINNED)).code, 0);
+      assert.ok(!exists(path.join(dir, 'PWNED')));
+    } finally { await rm(dir); }
+  });
+
+  it('a project configured for sqlite still resolves better-sqlite3 from its folder (the documented `npm install better-sqlite3` fix)', { skip: BETTER_IN_KIT ? 'better-sqlite3 is installed in the kit, which is tried first' : false }, async () => {
+    const dir = await trap();
+    try {
+      await fs.mkdir(path.join(dir, '.claude/kit'), { recursive: true });
+      await fs.writeFile(path.join(dir, '.claude/kit/store.local.json'), '{"store":"sqlite"}');
+      const c = await storeCheck({ cwd: dir, env: { ...process.env, ...UNPINNED } });
+      assert.equal(c.engine, 'better-sqlite3');
+      assert.ok(exists(path.join(dir, 'PWNED')));
     } finally { await rm(dir); }
   });
 });

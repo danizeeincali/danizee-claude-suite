@@ -9,8 +9,10 @@
  * a clone without suite.db stays on json); absent = json. An older `.claude/kit/config.json` "store" key is read once
  * and copied to the local file (a "sqlite" there counts only on a machine that has suite.db).
  *
- * ENGINE. `better-sqlite3` when it is installed (resolved from the kit folder, then the project), else Node's built-in
- * `node:sqlite` (`DatabaseSync`, Node 22.5+). Both are loaded lazily, on first use. A project configured for sqlite
+ * ENGINE. `better-sqlite3` when it is installed (resolved from the kit folder; from the project folder too, but only for
+ * a project configured for sqlite or an explicit `db init`), else Node's built-in `node:sqlite` (`DatabaseSync`,
+ * Node 22.5+). Both are loaded lazily, on first use. A project on the JSON files never runs code from its own folder:
+ * `check` and `db status` only probe there (probeEngine: a module resolve and a built-in check, nothing loaded). A project configured for sqlite
  * whose engine cannot load is an error (exit 1) that names the fix; it NEVER falls back to the JSON files (that would
  * split the state in two). `KIT_SQLITE_ENGINE=better-sqlite3|node:sqlite|none` pins the engine (tests, diagnosis).
  *
@@ -44,7 +46,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { createRequire } from 'node:module';
+import { createRequire, isBuiltin } from 'node:module';
 import { KitExit } from './kit-exit.js';
 import { withStateLock, readJsonState, writeJsonAtomic } from './state-lock.js';
 
@@ -151,6 +153,14 @@ ALTER TABLE store_docs ADD COLUMN file_sha256 TEXT;
     sql: `
 ALTER TABLE store_docs ADD COLUMN synced_doc TEXT;
 `
+  },
+  {
+    // every CI report key ever imported, kept when `db prune` deletes the run, so import-reports never brings it back
+    version: 5,
+    sql: `
+CREATE TABLE imported_reports (run_key TEXT PRIMARY KEY, branch TEXT, imported_at TEXT NOT NULL);
+INSERT OR IGNORE INTO imported_reports (run_key, branch, imported_at) SELECT run_key, branch, started_at FROM test_runs WHERE run_key IS NOT NULL;
+`
   }
 ]);
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
@@ -229,19 +239,44 @@ async function importNodeSqlite() {
 
 const engineCache = new Map();
 
-/** Load an engine: { name, open(file) } or { name: null, errors: [...] }. Lazy, cached per (pin, cwd). */
-export async function loadEngine({ cwd = process.cwd(), env = process.env } = {}) {
+/** The engines to try for a KIT_SQLITE_ENGINE pin, plus the error a bad pin gives. */
+function wantedEngines(env) {
   const pin = env && env.KIT_SQLITE_ENGINE ? String(env.KIT_SQLITE_ENGINE) : '';
-  const key = `${pin}\0${cwd}`;
-  if (engineCache.has(key)) return engineCache.get(key);
   const errors = [];
-  let found = null;
   if (pin && pin !== 'none' && !ENGINES.includes(pin)) errors.push(`KIT_SQLITE_ENGINE=${pin} is not one of ${ENGINES.join(', ')}, none`);
   const want = pin === 'none' ? [] : pin && ENGINES.includes(pin) ? [pin] : pin ? [] : ENGINES;
+  return { pin, want, errors };
+}
+
+/**
+ * Which engine would load, WITHOUT loading anything: better-sqlite3 when the kit folder resolves it (a path lookup, no
+ * code run), else node:sqlite when Node has it built in. Never looks in the project folder. { name, errors }.
+ */
+export function probeEngine({ env = process.env } = {}) {
+  const { want, errors } = wantedEngines(env);
+  for (const name of want) {
+    if (name === 'better-sqlite3') {
+      try { createRequire(import.meta.url).resolve('better-sqlite3'); return { name, errors }; } catch (e) { errors.push(`better-sqlite3: ${String(e && e.message).split('\n')[0]}`); }
+    } else if (isBuiltin('node:sqlite')) return { name, errors };
+    else errors.push(`node:sqlite: not built in (Node ${process.versions.node}; needs 22.5+)`);
+  }
+  return { name: null, errors };
+}
+
+/**
+ * Load an engine: { name, open(file) } or { name: null, errors: [...] }. Lazy, cached per (pin, cwd, project).
+ * `project`: also resolve better-sqlite3 from the project folder (runs that folder's code): only for a project
+ * configured for sqlite, or an explicit `db init`.
+ */
+export async function loadEngine({ cwd = process.cwd(), env = process.env, project = false } = {}) {
+  const { pin, want, errors } = wantedEngines(env);
+  const key = `${pin}\0${cwd}\0${project ? 1 : 0}`;
+  if (engineCache.has(key)) return engineCache.get(key);
+  let found = null;
   for (const name of want) {
     if (found) break;
     if (name === 'better-sqlite3') {
-      for (const base of [import.meta.url, path.join(cwd, 'package.json')]) {
+      for (const base of project ? [import.meta.url, path.join(cwd, 'package.json')] : [import.meta.url]) {
         try {
           const Database = createRequire(base)('better-sqlite3');
           // a native module built for another Node fails only when a database is opened: try one in memory
@@ -285,7 +320,7 @@ function wrap(raw) {
 export async function resolveStore({ cwd = process.cwd(), env = process.env } = {}) {
   const cfg = readConfig(cwd);
   if (cfg.store !== 'sqlite') return { kind: 'json', cwd };
-  const engine = await loadEngine({ cwd, env });
+  const engine = await loadEngine({ cwd, env, project: true });
   if (!engine.name) throw invalid(`this project keeps its kit state in SQLite (${cfg.file}) but no SQLite engine loads here (${engine.errors.join('; ') || 'none tried'}): ${ENGINE_FIX}`);
   const dbFile = path.join(cwd, DB_FILE);
   if (!fs.existsSync(dbFile)) throw invalid(`${cfg.file} says "store": "sqlite" but ${dbFile} is missing: restore it, or run \`db init\` to create it again from the JSON files`);
@@ -350,8 +385,11 @@ function migrate(db, file) {
   }
 }
 
-/** One transaction on the database: `BEGIN IMMEDIATE` for writes, a plain read snapshot otherwise. */
-export function withDb(ctx, fn, { write = true } = {}) {
+/**
+ * One transaction on the database: `BEGIN IMMEDIATE` for writes, a plain read snapshot otherwise. `onRollback` runs
+ * (awaited) when the transaction does not commit, fn's own error or COMMIT's, before the error is thrown on.
+ */
+export function withDb(ctx, fn, { write = true, onRollback } = {}) {
   return serial(ctx.dbFile, async () => {
     const db = openDb(ctx);
     try {
@@ -362,6 +400,7 @@ export function withDb(ctx, fn, { write = true } = {}) {
         return r;
       } catch (e) {
         try { db.exec('ROLLBACK'); } catch { /* already rolled back */ }
+        if (onRollback) await onRollback(e);
         throw e;
       }
     } catch (e) {
@@ -457,6 +496,17 @@ export function getBase(db, name, scope) {
   if (row.synced_doc === 'absent' || (row.synced_doc == null && row.file_sha256 === 'absent')) return {};
   if (row.synced_doc == null) return null;
   try { return JSON.parse(row.synced_doc); } catch { return null; }
+}
+
+/** Why a document does not fit its store's layout (a part that is not a list / an object), or null. As putDoc checks. */
+export function shapeProblem(name, doc) {
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return 'is not a JSON object';
+  for (const p of SPECS[name].parts) {
+    const v = doc[p.field];
+    if (v === undefined) continue;
+    if (p.kind === 'array' ? !Array.isArray(v) : (!v || typeof v !== 'object' || Array.isArray(v))) return `${p.field} is not ${p.kind === 'array' ? 'a list' : 'an object'}`;
+  }
+  return null;
 }
 
 /** Remove one document (all its rows). */
@@ -858,10 +908,12 @@ export async function storeCheck({ cwd = process.cwd(), env = process.env } = {}
   try { cfg = readConfig(cwd); } catch (e) {
     return { store: null, engine: null, ok: false, fatal: true, line: `kit store: ${e.message}`, fix: `repair or remove ${CONFIG_FILE}` };
   }
-  const engine = await loadEngine({ cwd, env });
   if (cfg.store === 'json') {
-    return { store: 'json', engine: engine.name, ok: true, fatal: false, line: `kit store: json files${engine.name ? ` (sqlite engine ${engine.name} loads; \`db init\` to switch)` : ' (no sqlite engine loads; json needs none)'}` };
+    // probed, not loaded: a project on the JSON files never runs code from its own folder here
+    const probe = probeEngine({ env });
+    return { store: 'json', engine: probe.name, ok: true, fatal: false, line: `kit store: json files${probe.name ? ` (sqlite engine ${probe.name} available, not loaded; \`db init\` to switch)` : ' (no sqlite engine available; json needs none)'}` };
   }
+  const engine = await loadEngine({ cwd, env, project: true });
   if (!engine.name) return { store: 'sqlite', engine: null, ok: false, fatal: true, line: `kit store: sqlite, but no engine loads (${engine.errors.join('; ')})`, fix: ENGINE_FIX };
   const dbFile = path.join(cwd, DB_FILE);
   if (!fs.existsSync(dbFile)) return { store: 'sqlite', engine: engine.name, ok: false, fatal: true, line: `kit store: sqlite (${engine.name}), but ${DB_FILE} is missing`, fix: 'restore the file, or run `db init` to create it again from the JSON files' };
