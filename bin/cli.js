@@ -241,7 +241,8 @@ program
 program
   .command('db <sub>')
   .description('Kit index: db init | off [--delete] | status | rebuild | prune [--keep <n>] | import-reports [--branch <b>] [--limit <n>] [--repo <owner>/<repo>] [--host <h>] '
-    + '(optional local SQLite index of the kit state and test runs, per user in ~/.claude/kit-db/<key>/ or $DANIZEE_KIT_HOME/<key>/, never in the project; the JSON files stay the only source of truth and the index is rebuilt from them)');
+    + '(optional local SQLite index of the kit state and test runs, per user in ~/.claude/kit-db/<key>/ or $DANIZEE_KIT_HOME/<key>/, never in the project; the JSON files stay the only source of truth and the index is rebuilt from them; '
+    + 'import-reports --host sends your login for that host to it: an agent must ask the user before passing it)');
 
 // `danizee-claude-suite db <sub> [args]` is the kit's `db` verb (same flags, JSON output and exit codes as
 // `node .claude/helpers/kit/cli.js db <sub>`), run in the current folder.

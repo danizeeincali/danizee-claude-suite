@@ -5,7 +5,8 @@
  *
  *   recordRun(io, run)        a local test run (scripts/ci-step.js runStep): stored when the index is on for the
  *                             project (`db init`), nothing at all when it is off; at most MAX_CASES cases of a run, and
- *                             nothing (one stderr line naming `db prune`) once the index holds PROJECT_MAX_CASES
+ *                             nothing (one stderr line naming `db prune --keep <n>`) once the index holds PROJECT_MAX_CASES
+ *                             or the run would take test runs past TEST_RUNS_MAX_BYTES (or the index file past its cap)
  *   parseTap(text, cwd)       every test of node's TAP output (spec lines too): suite path, name, file, status, duration,
  *                             message; a list in output order (same-named tests of two files stay two cases)
  *   parseTapSummary(text)     the runner's `# tests` / `# pass` / ... summary; a local run's counts are taken from it
@@ -23,14 +24,18 @@
  *                             ZIP_MAX_RATIO times), and only the one `junit.xml` at its root is inflated, bounded to
  *                             JUNIT_MAX_BYTES, in memory. Nothing is ever written under an entry's name. Each artifact is
  *                             stored in its own transaction as soon as it is read; at most MAX_CASES cases per artifact,
- *                             IMPORT_MAX_CASES per call (the rest: a later call) and PROJECT_MAX_CASES in the index (the
- *                             import stops with a note naming `db prune`). The repository is --repo <owner>/<repo>, else the
+ *                             IMPORT_MAX_CASES per call (the rest: a later call), PROJECT_MAX_CASES in the index, and
+ *                             TEST_RUNS_MAX_BYTES of the index file for all test runs, checked before each artifact is
+ *                             stored against an upper bound of what it takes (testRunCost), as is the index file's own
+ *                             cap (the import stops with a note naming `db prune --keep <n>`). The repository is --repo <owner>/<repo>, else the
  *                             one the upstream remote names, else origin, else the only remote (read as data through
  *                             safe-git), given to gh explicitly; the host is github.com unless the user passes --host
  *                             (never the remote's: see githubRepo).
  *
  * Every stored string (case names, files, messages) is redacted with the project's secrets and credential-masked
- * (reflect.js scrub); a failure message is capped at MESSAGE_MAX bytes. The secrets file (`.claude/kit/secrets` of the
+ * (reflect.js scrub); a name, suite or file is capped at NAME_MAX bytes and a failure message at MESSAGE_MAX bytes,
+ * a cut one ending in TRUNCATED. Repository- or server-derived text in a message (a remote's name or URL, gh's stderr,
+ * a parse error) is made printable (control characters replaced) and capped. The secrets file (`.claude/kit/secrets` of the
  * work tree, else of the main checkout) is read like a state file (store.js readState: a regular file, never through a
  * link, O_NONBLOCK, at most SECRETS_MAX_BYTES). Fail closed: when one is there but cannot be read that way (a link, a
  * FIFO, too large), recordRun stores nothing (one stderr line) and import-reports exits 1 naming it.
@@ -43,7 +48,8 @@
  * branch, commit and remote URL are read through safe-git (the repository's config is read as data; its hooks and
  * includes are never opened). gh runs in a private temp folder with the repository named (-R host/owner/repo, GH_REPO,
  * GH_HOST, explicit repos/<owner>/<repo>/ API paths), so it never runs git in the project. Repository content never
- * chooses the host gh talks to (and sends the user's login to): github.com, or the user's own --host.
+ * chooses the host gh talks to (and sends the user's login to): github.com, or the user's own --host. An error never
+ * offers the remote's host as a ready --host flag: an agent must ask the user before passing --host.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -51,13 +57,28 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { spawn, spawnSync } from 'node:child_process';
 import { KitExit } from './kit-exit.js';
-import { indexState, withIndex, ioCtx, quietPaths, indexPaths, readState, inTransaction } from './store.js';
+import { indexState, withIndex, ioCtx, quietPaths, indexPaths, readState, inTransaction, indexUsedBytes } from './store.js';
 import { scrub } from './reflect.js';
 import { parseSecretsFile, DEFAULT_SECRETS } from './redact.js';
 import { safeGit, locateRepo, resolveProgram, absolutePathEntries, repoConfigEntries } from './safe-git.js';
 
-export const MESSAGE_MAX = 4096;
-export const NAME_MAX = 1024;
+/** The most bytes of a case's failure message stored (longer: cut, ending in TRUNCATED). */
+export const MESSAGE_MAX = 1024;
+/** The most bytes of a case's name, suite (classname) or file stored (longer: cut, ending in TRUNCATED). */
+export const NAME_MAX = 256;
+/** What a stored string cut to its cap ends with. */
+export const TRUNCATED = '…[truncated]';
+/**
+ * The most bytes test runs may take of the index file (MAX_INDEX_DISK_BYTES, ./store.js), estimated per stored case and
+ * run (testRunCost: an upper bound of their rows and index entries): the rest of the index file is left for the JSON
+ * state files, which test data never starves. A run or artifact that would pass it is not stored (a note names
+ * `db prune --keep <n>`).
+ */
+export const TEST_RUNS_MAX_BYTES = 256 * 1024 * 1024;
+/** The estimate of one stored case and one run: fixed bytes plus OVERHEAD times its strings' bytes (see testRunCost). */
+export const RUN_COST = Object.freeze({ perCase: 96, perRun: 512, perKey: 96 });
+/** The most bytes of a local run's test output read (scripts/ci-step.js recordStep): the rest is not read (truncated). */
+export const OUTPUT_MAX_BYTES = 64 * 1024 * 1024;
 export const JUNIT_MAX_BYTES = 5 * 1024 * 1024;
 /** Most test cases one junit.xml (one artifact) may hold: more is refused. */
 export const MAX_CASES = 20000;
@@ -113,8 +134,27 @@ export function capBytes(s, max) {
   return t;
 }
 
-/** Redact first (a cut must never leave half a secret behind unrecognised), then cap. */
-export const clean = (v, secrets, max) => (v == null || v === '' ? null : capBytes(scrub(String(v), secrets), max));
+/** Cut a string to at most `max` UTF-8 bytes, ending in TRUNCATED when it was cut. */
+export function capMarked(s, max) {
+  if (Buffer.byteLength(s, 'utf-8') <= max) return s;
+  return capBytes(s, Math.max(0, max - Buffer.byteLength(TRUNCATED, 'utf-8'))) + TRUNCATED;
+}
+
+/** Redact first (a cut must never leave half a secret behind unrecognised), then cap (marked when cut). */
+export const clean = (v, secrets, max) => (v == null || v === '' ? null : capMarked(scrub(String(v), secrets), max));
+
+/**
+ * Repository- or server-derived text fit for a message: control characters (C0, DEL, C1) and bidirectional or
+ * invisible formatting characters each replaced by `?` (so nothing reaches a terminal as an escape sequence), cut to
+ * `max` bytes (marked).
+ */
+export function printable(s, max = 200) {
+  // eslint-disable-next-line no-control-regex
+  return capMarked(String(s ?? '').replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028\u2029\u202a-\u202e\u2060-\u2069\ufeff]/g, '?'), max);
+}
+
+/** A remote's name for a message: as it is when it is a plain name, else quoted and made printable (60 bytes). */
+export const remoteLabel = (name) => (/^[A-Za-z0-9._-]{1,60}$/.test(String(name)) ? String(name) : JSON.stringify(printable(name, 60)));
 
 // ================================================================ TAP (local runs)
 
@@ -375,6 +415,45 @@ export function insertRun(db, run, cases) {
   return id;
 }
 
+const textBytes = (v) => (v == null ? 0 : Buffer.byteLength(String(v), 'utf-8'));
+
+/**
+ * The bytes a run and its cases (strings already cleaned) are taken to need in the index file: an upper bound of their
+ * rows (pages half full at worst, so twice their bytes) and of the (suite, name) index entries (again twice), plus fixed
+ * bytes per case and per run (record headers, rowids, the run_id index, the imported_reports key). testRunBytes
+ * computes the same in SQL for what is stored.
+ */
+export function testRunCost(run, cases) {
+  let n = RUN_COST.perRun + 2 * (textBytes(run.branch) + textBytes(run.commit) + textBytes(run.source) + textBytes(run.data ? JSON.stringify(run.data) : null) + textBytes(run.run_key));
+  if (run.run_key != null) n += RUN_COST.perKey + 2 * (textBytes(run.run_key) + textBytes(run.branch));
+  for (const c of cases) {
+    const key = textBytes(c.suite) + textBytes(c.name);
+    n += RUN_COST.perCase + 2 * (key + textBytes(c.file) + textBytes(c.status) + textBytes(c.message)) + 2 * key;
+  }
+  return n;
+}
+
+/** testRunCost of every stored run and case, and of the imported_reports keys (which outlive `db prune`). */
+export function testRunBytes(db) {
+  const b = (c) => `COALESCE(length(CAST(${c} AS BLOB)), 0)`;
+  const one = (sql) => Number(Object.values(db.get(sql) || {})[0] || 0);
+  return one(`SELECT COALESCE(SUM(${RUN_COST.perCase} + 4 * (${b('suite')} + ${b('name')}) + 2 * (${b('file')} + ${b('status')} + ${b('message')})), 0) FROM test_cases`)
+    + one(`SELECT COALESCE(SUM(${RUN_COST.perRun} + 2 * (${b('branch')} + ${b('commit_sha')} + ${b('source')} + ${b('data')} + ${b('run_key')})), 0) FROM test_runs`)
+    + one(`SELECT COALESCE(SUM(${RUN_COST.perKey} + 2 * (${b('run_key')} + ${b('branch')})), 0) FROM imported_reports`);
+}
+
+/**
+ * Whether `cost` more bytes of test runs fit: null, or why not (a note naming `db prune --keep <n>`). Both the test
+ * runs' own share (`maxRunBytes`, TEST_RUNS_MAX_BYTES) and the index file's pages in use (`maxDisk`) are checked.
+ */
+export function testRunRoom(db, used, cost, { maxRunBytes, maxDisk }) {
+  const fix = 'run `db prune --keep <n>` (fewer runs per branch) to make room';
+  if (used + cost > maxRunBytes) return `test runs would take about ${used + cost} bytes of the index; at most ${maxRunBytes} are kept per project (the rest is for the kit's JSON state files): ${fix}`;
+  const disk = indexUsedBytes(db);
+  if (disk + cost > maxDisk) return `the index file holds ${disk} bytes in use and this needs up to ${cost} more; it holds at most ${maxDisk} per project: ${fix}`;
+  return null;
+}
+
 /** Clean every stored string of the cases: redacted and capped. */
 export function cleanCases(cases, secrets) {
   return cases.map((c) => ({
@@ -467,26 +546,30 @@ export async function recordRun(io, run) {
   const parsed = parseTap(run.output || '', cwd, { maxCases: caps.artifactCases });
   const cases = cleanCases(parsed, secrets);
   const status = run.code === 0 && !run.signal ? 'passed' : 'failed';
+  const row = {
+    branch: runBranch(head), commit: head.commit, source: 'local', started_at: run.started_at, finished_at: run.finished_at,
+    summary: parseTapSummary(run.output || ''),
+    duration_ms: Date.parse(run.finished_at) - Date.parse(run.started_at), status,
+    data: {
+      exit_code: run.code ?? null, signal: run.signal ?? null, command: run.command ? capBytes(scrub(String(run.command), secrets), 200) : undefined,
+      ...(parsed.truncated ? { cases_truncated: `only the first ${caps.artifactCases} test cases are stored` } : {}),
+      ...(run.output_truncated ? { output_truncated: `only the first ${run.output_truncated} bytes of the test output were read` } : {})
+    }
+  };
   let full = null;
-  const id = await withIndex({ cwd, env }, (db) => {
+  const id = await withIndex({ cwd, env, indexLimits: io && io.indexLimits }, (db, { run: open }) => {
     const stored = Number(db.get('SELECT COUNT(*) AS n FROM test_cases').n);
     if (stored + cases.length > caps.projectCases) {
       full = `the index holds ${stored} test cases and this run has ${cases.length}; at most ${caps.projectCases} are kept per project: `
         + 'run `db prune --keep <n>` (fewer runs per branch) to make room';
       return null;
     }
-    return insertRun(db, {
-      branch: runBranch(head), commit: head.commit, source: 'local', started_at: run.started_at, finished_at: run.finished_at,
-      summary: parseTapSummary(run.output || ''),
-      duration_ms: Date.parse(run.finished_at) - Date.parse(run.started_at), status,
-      data: {
-        exit_code: run.code ?? null, signal: run.signal ?? null, command: run.command ? capBytes(scrub(String(run.command), secrets), 200) : undefined,
-        ...(parsed.truncated ? { cases_truncated: `only the first ${caps.artifactCases} test cases are stored` } : {})
-      }
-    }, cases);
+    // the index file's cap, and the test runs' share of it, before anything is written
+    full = testRunRoom(db, testRunBytes(db), testRunCost(row, cases), { maxRunBytes: caps.runBytes, maxDisk: open.maxDisk });
+    return full ? null : insertRun(db, row, cases);
   });
   if (full) { notRecorded(full); return { recorded: false, reason: full }; }
-  return { recorded: true, id, cases: cases.length, status, ...(parsed.truncated ? { truncated: true } : {}) };
+  return { recorded: true, id, cases: cases.length, status, ...(parsed.truncated ? { truncated: true } : {}), ...(run.output_truncated ? { output_truncated: true } : {}) };
 }
 
 // ================================================================ import-reports
@@ -516,17 +599,18 @@ export const REMOTE_PREFERENCE = Object.freeze(['upstream', 'origin']);
 
 /**
  * The host gh is pointed at for a host name: GitHub's own names for github.com (ssh.github.com, the SSH-over-443 host,
- * and www.github.com) are github.com, and so is a host without a dot (an ssh alias of ~/.ssh/config, which names no
- * host gh could talk to: github.com is the default anyway).
+ * and www.github.com) are github.com; any other host is itself. A host without a dot (an ssh alias of ~/.ssh/config)
+ * is not assumed to be github.com: it can stand for a GitHub Enterprise host, whose repository of the same name is
+ * another one (githubRepo asks for --repo).
  */
 export function canonicalHost(h) {
   const x = String(h).toLowerCase();
-  return !x.includes('.') || x === 'ssh.github.com' || x === 'www.github.com' ? GITHUB_HOST : x;
+  return x === 'ssh.github.com' || x === 'www.github.com' ? GITHUB_HOST : x;
 }
 
 /**
  * A remote URL fit for a message: the userinfo (`user[:password]@`, a token in it) dropped, everything up to the last
- * `@` (more than needed rather than less), then redacted (scrub) and cut to 200 bytes.
+ * `@` (more than needed rather than less), then redacted (scrub), made printable and cut to 200 bytes.
  */
 export function displayUrl(url, secrets = []) {
   let u = String(url ?? '');
@@ -535,7 +619,7 @@ export function displayUrl(url, secrets = []) {
   const rest = u.slice(head.length);
   const at = rest.lastIndexOf('@');
   if (at !== -1) u = head + rest.slice(at + 1);
-  return capBytes(scrub(u, secrets), 200);
+  return printable(scrub(u, secrets), 200);
 }
 
 /** The --host flag: a host name ([A-Za-z0-9.-], no port, no userinfo), canonical (see canonicalHost). KitExit 1 otherwise. */
@@ -591,15 +675,24 @@ export async function githubRepo(loc, env = process.env, { host: flagHost, repo:
       + 'add one (git remote add origin https://github.com/<owner>/<repo>.git) or pass --repo <owner>/<repo>');
   }
   const url = urls.get(name);
+  const label = remoteLabel(name);
   const r = parseRemoteUrl(url);
-  if (!r) throw invalid(`import-reports cannot tell the GitHub repository from the remote URL ${JSON.stringify(displayUrl(url, secrets))} (the ${name} remote): it must name <owner>/<repo> ([A-Za-z0-9_.-]); or pass --repo <owner>/<repo>`);
+  if (!r) throw invalid(`import-reports cannot tell the GitHub repository from the remote URL ${JSON.stringify(displayUrl(url, secrets))} (the ${label} remote): it must name <owner>/<repo> ([A-Za-z0-9_.-]); or pass --repo <owner>/<repo>`);
+  if (!r.host.includes('.')) {
+    // an ssh alias (~/.ssh/config Host): which GitHub host it stands for is not in the repository
+    throw invalid(`the ${label} remote's host ${r.host} has no dot (an ssh alias?), so it does not say which GitHub host the repository is on: `
+      + `pass --repo <owner>/<repo> to name the repository on ${GITHUB_HOST}`
+      + (flagHost ? ` (or on --host ${host})` : ' (a GitHub Enterprise host: --host <host> as well, a host you name yourself)'));
+  }
   const remoteHost = canonicalHost(r.host);
   if (remoteHost !== host) {
+    // the remote's host is never offered as a ready flag: --host sends the user's login for it, a decision for the user
     throw invalid(flagHost
-      ? `the ${name} remote is on ${remoteHost}, not on --host ${host}: pass --repo <owner>/<repo> to name the repository on ${host}`
-      : `the ${name} remote is on ${remoteHost}, not ${GITHUB_HOST}: import-reports talks to ${GITHUB_HOST} unless you name the host yourself; `
-        + `pass --host ${remoteHost} only if it is a GitHub Enterprise host you trust (gh sends your login for that host to it), `
-        + `or --repo <owner>/<repo> for a repository on ${GITHUB_HOST}`);
+      ? `the ${label} remote is on ${remoteHost}, not on --host ${host}: pass --repo <owner>/<repo> to name the repository on ${host}`
+      : `the ${label} remote is on ${remoteHost}, not ${GITHUB_HOST}: import-reports talks to ${GITHUB_HOST} unless you name the host yourself. `
+        + 'If you trust this host as your GitHub Enterprise host, rerun with --host <host> yourself (gh sends your login for that host to it; '
+        + 'an agent must ask the user before passing --host); '
+        + `or pass --repo <owner>/<repo> for a repository on ${GITHUB_HOST}`);
   }
   return repoAt(host, r.owner, r.repo, name);
 }
@@ -640,7 +733,7 @@ function gh(args, { cwd, env, repo, maxBuffer = RUN_LIST_MAX_BYTES }) {
   return r;
 }
 
-const firstLine = (s, secrets) => capBytes(scrub(String(s || '').split('\n').find((l) => l.trim()) || '', secrets), 200);
+const firstLine = (s, secrets) => printable(scrub(String(s || '').split('\n').find((l) => l.trim()) || '', secrets), 200);
 
 /** Read the downloaded zip (a file this process created): a regular file (not a link), at most `max` bytes, as a Buffer. */
 function readDownload(file, max) {
@@ -812,11 +905,13 @@ function importLimits(io) {
   const low = (k, d) => (Number.isSafeInteger(o[k]) && o[k] > 0 ? Math.min(o[k], d) : d);
   return {
     artifactBytes: low('artifactBytes', ARTIFACT_MAX_BYTES), totalBytes: low('totalBytes', IMPORT_MAX_BYTES), perRun: low('perRun', ARTIFACTS_PER_RUN),
-    artifactCases: low('artifactCases', MAX_CASES), cases: low('cases', IMPORT_MAX_CASES), projectCases: low('projectCases', PROJECT_MAX_CASES)
+    artifactCases: low('artifactCases', MAX_CASES), cases: low('cases', IMPORT_MAX_CASES), projectCases: low('projectCases', PROJECT_MAX_CASES),
+    runBytes: low('runBytes', TEST_RUNS_MAX_BYTES)
   };
 }
 
-const BRANCH_NAME = /^[^\s\0~^:?*[\\]{1,250}$/;
+// eslint-disable-next-line no-control-regex
+const BRANCH_NAME = /^[^\s\0-\x1f\x7f~^:?*[\\]{1,250}$/;
 
 /** The repository's default branch from `gh repo view <repo>` (one small call), else 'main'. */
 function defaultBranch({ cwd, env, repo }) {
@@ -861,7 +956,8 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT, host: h
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-import-reports-'));
   try {
     const ghIo = { cwd: dir, env, repo };
-    const auth = gh(['auth', 'status'], ghIo);
+    // that host's login only: a stale login on another host is not this import's problem
+    const auth = gh(['auth', 'status', '--hostname', repo.host], ghIo);
     // gh's own message is not echoed (it can name hosts and accounts); the exit status is enough to say what to do
     if (auth.status !== 0) {
       throw invalid(`gh is not logged in (gh auth status exited ${auth.status}): run \`gh auth login${repo.host === GITHUB_HOST ? '' : ` --hostname ${repo.host}`}\``);
@@ -876,14 +972,18 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT, host: h
     const imported = [];
     let note;
 
-    await withIndex({ cwd, env }, async (db) => {
+    await withIndex({ cwd, env, indexLimits: io && io.indexLimits }, async (db, { run: open }) => {
       // every key ever imported, the pruned runs' too (imported_reports), so a prune is never undone by the next import
       const known = new Set(db.all('SELECT run_key FROM test_runs WHERE run_key IS NOT NULL UNION SELECT run_key FROM imported_reports').map((r) => r.run_key));
       let stored = Number(db.get('SELECT COUNT(*) AS n FROM test_cases').n);
       let callCases = 0;
       let spent = 0;
+      // the bytes test runs take (an estimate, see testRunCost): held to their share of the index file, and to the file's cap
+      let runBytes = testRunBytes(db);
+      const room = { maxRunBytes: caps.runBytes, maxDisk: open.maxDisk };
       const projectFull = () => `the index holds ${stored} test cases; at most ${caps.projectCases} are kept per project, so the import stopped: `
         + 'run `db prune --keep <n>` (fewer runs per branch) to make room, then import again';
+      const bytesFull = (why) => `the import stopped: ${why}, then import again`;
       for (const r of runs) {
         if (note) break;
         if (!r.conclusion) { skipped.push({ run_id: r.id, reason: 'not finished' }); continue; }
@@ -904,40 +1004,47 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT, host: h
           if (a.id === null) { skipped.push({ ...at, reason: 'the artifact list gives no id for it: not downloaded' }); continue; }
           if (a.size > caps.artifactBytes) { skipped.push({ ...at, reason: `artifact is ${a.size} bytes, more than ${caps.artifactBytes}: not downloaded` }); continue; }
           if (taken >= caps.perRun) { skipped.push({ ...at, reason: `more than ${caps.perRun} test-results artifacts in this run: not downloaded` }); continue; }
-          const room = Math.min(caps.artifactBytes, caps.totalBytes - spent);
-          if (a.size > room || room <= 0) { skipped.push({ ...at, reason: `the download budget of one import (${caps.totalBytes} bytes) is used up: not downloaded` }); continue; }
+          const dlRoom = Math.min(caps.artifactBytes, caps.totalBytes - spent);
+          if (a.size > dlRoom || dlRoom <= 0) { skipped.push({ ...at, reason: `the download budget of one import (${caps.totalBytes} bytes) is used up: not downloaded` }); continue; }
           if (callCases >= caps.cases) { skipped.push({ ...at, reason: `the case budget of one import (${caps.cases} test cases) is used up: not downloaded (a later import takes it)` }); continue; }
           if (stored >= caps.projectCases) { note = projectFull(); skipped.push({ ...at, reason: 'not downloaded: the index holds its most test cases per project (see note)' }); break; }
+          const before = testRunRoom(db, runBytes, RUN_COST.perRun, room);
+          if (before) { note = bytesFull(before); skipped.push({ ...at, reason: 'not downloaded: test runs fill their share of the index (see note)' }); break; }
           taken++;
           const file = path.join(dir, `${a.id}.zip`);
-          const dl = await downloadArtifact(a.id, file, room, ghIo);
+          const dl = await downloadArtifact(a.id, file, dlRoom, ghIo);
           spent += dl.bytes;
           let cases;
           try {
-            if (dl.over) { skipped.push({ ...at, reason: `download passed ${room} bytes (the artifact list said ${a.size}): stopped, not read` }); continue; }
+            if (dl.over) { skipped.push({ ...at, reason: `download passed ${dlRoom} bytes (the artifact list said ${a.size}): stopped, not read` }); continue; }
             if (dl.status !== 0) { skipped.push({ ...at, reason: `download failed: ${firstLine(dl.stderr, secrets) || `exit ${dl.status}`}` }); continue; }
-            const z = readDownload(file, room);
+            const z = readDownload(file, dlRoom);
             if (z.error) { skipped.push({ ...at, reason: `download ${z.error}` }); continue; }
             const j = readJunitFromZip(z.buf);
-            if (j.missing || j.error) { skipped.push({ ...at, reason: j.missing ? `no ${JUNIT_ENTRY}` : capBytes(j.error, 200) }); continue; }
-            try { cases = cleanCases(parseJunit(j.text, { maxCases: caps.artifactCases }).cases, secrets); } catch (err) { skipped.push({ ...at, reason: capBytes(err.message, 200) }); continue; }
+            if (j.missing || j.error) { skipped.push({ ...at, reason: j.missing ? `no ${JUNIT_ENTRY}` : printable(j.error, 200) }); continue; }
+            try { cases = cleanCases(parseJunit(j.text, { maxCases: caps.artifactCases }).cases, secrets); } catch (err) { skipped.push({ ...at, reason: printable(err.message, 200) }); continue; }
           } finally { fs.rmSync(file, { force: true }); }
           if (callCases + cases.length > caps.cases) { skipped.push({ ...at, reason: `${cases.length} test cases would take this import past its case budget (${caps.cases}): not stored (a later import takes it)` }); continue; }
           if (stored + cases.length > caps.projectCases) { note = projectFull(); skipped.push({ ...at, reason: `${cases.length} test cases would take the index past its most per project (see note): not stored` }); break; }
-          // stored now, in its own transaction: nothing is kept in memory for later, and the index is locked only briefly
           const failed = cases.filter((c) => c.status === 'fail').length;
+          const row = {
+            branch, commit: r.sha, source: `ci:${a.name}`, started_at: r.created || new Date(0).toISOString(), finished_at: null,
+            status: failed ? 'failed' : 'passed', run_key: key, data: { workflow_run_id: r.id, artifact: a.name, conclusion: r.conclusion }
+          };
+          const cost = testRunCost(row, cases);
+          const why = testRunRoom(db, runBytes, cost, room);
+          if (why) { note = bytesFull(why); skipped.push({ ...at, reason: `${cases.length} test cases would take test runs past their share of the index (see note): not stored` }); break; }
+          // stored now, in its own transaction: nothing is kept in memory for later, and the index is locked only briefly
           const id = inTransaction(db, () => {
             if (db.get('SELECT run_key FROM test_runs WHERE run_key = ? UNION SELECT run_key FROM imported_reports WHERE run_key = ?', key, key)) return null;
-            return insertRun(db, {
-              branch, commit: r.sha, source: `ci:${a.name}`, started_at: r.created || new Date(0).toISOString(), finished_at: null,
-              status: failed ? 'failed' : 'passed', run_key: key, data: { workflow_run_id: r.id, artifact: a.name, conclusion: r.conclusion }
-            }, cases);
+            return insertRun(db, row, cases);
           });
           known.add(key);
           if (id === null) { skipped.push({ ...at, reason: 'already imported' }); continue; }
           imported.push({ run_id: r.id, artifact: a.name, test_run: id, cases: cases.length, failed });
           callCases += cases.length;
           stored += cases.length;
+          runBytes += cost;
         }
       }
     }, { transaction: false });
@@ -950,6 +1057,6 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT, host: h
         ? `no push runs of test.yml on ${branch}: CI test results come from push runs, which run on ${def}; try --branch ${def}`
         : `no push runs of test.yml on ${branch} yet`;
     }
-    return { branch, repo: repo.arg, repo_from: repo.remote ? `the ${repo.remote} remote` : '--repo', runs_listed: runs.length, imported, skipped, ...(hint ? { hint } : {}), ...(note ? { note } : {}) };
+    return { branch, repo: repo.arg, repo_from: repo.remote ? `the ${remoteLabel(repo.remote)} remote` : '--repo', runs_listed: runs.length, imported, skipped, ...(hint ? { hint } : {}), ...(note ? { note } : {}) };
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }

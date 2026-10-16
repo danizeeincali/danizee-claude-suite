@@ -15,7 +15,8 @@
  *   db rebuild              clear every JSON file's rows and re-scan from scratch, not limited by the per-open budget
  *                           (test runs are kept); an index file the kit did not make, or that is not a database, is
  *                           replaced by a new one (its test runs are lost)
- *   db prune [--keep <n>]   keep the newest n test runs per branch (default 200), with their cases
+ *   db prune [--keep <n>]   keep the newest n test runs per branch (default 200), with their cases; the files skipped because
+ *                           the index file was full are read again by the next open (no rebuild needed)
  *   db import-reports [--branch <b>] [--limit <n>] [--repo <owner>/<repo>] [--host <h>]
  *                           import the junit.xml of the newest CI `test-results-*` artifacts of a branch (default: the
  *                           current git branch; newest 10 push runs of this repository) into test_runs/test_cases, each
@@ -27,8 +28,12 @@
  *                           sends the user's login for a host to it; a remote URL in a message never shows its userinfo;
  *                           downloads are capped (5 artifacts per run, 50 MB each, 100 MB per call), each zip is read here,
  *                           only its junit.xml, bounded, and each artifact is stored in its own transaction as it is read;
- *                           at most IMPORT_MAX_CASES cases per call and PROJECT_MAX_CASES in the index (then it stops with
- *                           a note naming `db prune`) (see ./test-runs.js); no runs on the branch: a hint names the default branch
+ *                           at most IMPORT_MAX_CASES cases per call and PROJECT_MAX_CASES in the index, and test runs take
+ *                           at most TEST_RUNS_MAX_BYTES of the index file (then it stops with a note naming
+ *                           `db prune --keep <n>`) (see ./test-runs.js); no runs on the branch: a hint names the default
+ *                           branch. AGENTS: never pass --host on your own (not even when an error names the remote's
+ *                           host): it sends the user's login for that host to it, so ask the user first and use the host
+ *                           they name
  *
  * WHERE. `$DANIZEE_KIT_HOME/<key>/` (an absolute folder outside the project) or `~/.claude/kit-db/<key>/`, <key> the
  * sha256 of the project folder's real path; mode 0700; `index.db` and the setting `enabled.json`. Nothing in the project
@@ -41,10 +46,10 @@
  */
 import fs from 'node:fs';
 import { KitExit } from './kit-exit.js';
-import { importReports, DEFAULT_LIMIT, MAX_LIMIT, MAX_CASES, IMPORT_MAX_CASES, PROJECT_MAX_CASES } from './test-runs.js';
+import { importReports, DEFAULT_LIMIT, MAX_LIMIT, MAX_CASES, IMPORT_MAX_CASES, PROJECT_MAX_CASES, TEST_RUNS_MAX_BYTES, NAME_MAX, MESSAGE_MAX } from './test-runs.js';
 import {
   KINDS, SCHEMA_VERSION, ENGINE_FIX, SKIPPED, MAX_FILE_BYTES, MAX_MARATHON_FILE_BYTES, MAX_FILE_RECORDS, MAX_INDEX_ROWS, MAX_INDEX_BYTES, MAX_INDEX_DISK_BYTES, MAX_COLUMN_BYTES, OPEN_BUDGET,
-  indexPaths, indexState, writeSetting, loadEngine, probeEngine, withIndex, schemaVersion, rowCounts, refreshIndex, indexRun, inTransaction, fullReason, bytesFullReason, diskFullReason, ioCtx
+  indexPaths, indexState, writeSetting, loadEngine, probeEngine, withIndex, schemaVersion, rowCounts, refreshIndex, indexRun, inTransaction, fullReason, bytesFullReason, diskFullReason, retryDiskFull, ioCtx
 } from './store.js';
 
 export const verb = 'db';
@@ -57,8 +62,10 @@ export const usage = 'cli.js db init | db off [--delete] | db status | db rebuil
   + `a file over ${MAX_FILE_BYTES} bytes (a .claude/marathon file: ${MAX_MARATHON_FILE_BYTES}) or ${MAX_FILE_RECORDS} records, or past ${MAX_INDEX_ROWS} rows or ${MAX_INDEX_BYTES} bytes of JSON per project, or one that would take the index file past ${MAX_INDEX_DISK_BYTES} bytes, is listed as skipped; `
   + `indexed columns keep at most ${MAX_COLUMN_BYTES} bytes of a value (the whole record stays in the JSON file); `
   + 'test runs are kept only in the index: prune keeps the newest per branch, import-reports reads the junit.xml of the CI test-results artifacts of a branch '
-  + '(default: the current git branch; CI results exist only for push runs, which run on the default branch) through your own `gh` login (the repository: --repo <owner>/<repo>, else the upstream remote, else origin, else the only remote; the host: github.com unless you pass --host <h> for a GitHub Enterprise host you trust, never one a remote names: a remote on another host is exit 1 naming --host), downloads capped (5 artifacts per run, 50 MB each, 100 MB per call), '
-  + `at most ${IMPORT_MAX_CASES} test cases per call (the rest: a later call), ${MAX_CASES} per run (a local run's too) and ${PROJECT_MAX_CASES} per project (then importing and recording local runs stop: db prune makes room); `
+  + '(default: the current git branch; CI results exist only for push runs, which run on the default branch) through your own `gh` login (the repository: --repo <owner>/<repo>, else the upstream remote, else origin, else the only remote; the host: github.com unless you pass --host <h> for a GitHub Enterprise host you trust, never one a remote names: a remote on another host, or an ssh alias host without a dot, is exit 1 naming --repo; '
+  + 'an agent must ask the user before passing --host, which sends the user\'s login for that host to it), downloads capped (5 artifacts per run, 50 MB each, 100 MB per call), '
+  + `at most ${IMPORT_MAX_CASES} test cases per call (the rest: a later call), ${MAX_CASES} per run (a local run's too), ${PROJECT_MAX_CASES} per project and ${TEST_RUNS_MAX_BYTES} bytes of the index file for test runs `
+  + `(then importing and recording local runs stop: db prune --keep <n> makes room, and the next open retries the JSON files skipped because the index file was full); a case keeps at most ${NAME_MAX} bytes of its name, suite and file and ${MESSAGE_MAX} of its message; `
   + 'a secrets file that cannot be read safely (a link, not a regular file, too large) stops it (exit 1); '
   + 'engine better-sqlite3 (the suite package\'s own) else node:sqlite (Node 22.13+); exit 0 done, 1 invalid input, no engine, index off, an index the kit did not make, or no gh login)';
 
@@ -134,7 +141,7 @@ function filesReport(db, run) {
   const fullBytes = skipped.filter((x) => x.reason === bytesFullReason(run.maxBytes)).length;
   if (fullBytes) notes.push(`${fullBytes} files are not indexed: the index holds at most ${run.maxBytes} bytes of JSON files per project`);
   const fullDisk = skipped.filter((x) => x.reason === diskFullReason(run.maxDisk)).length;
-  if (fullDisk) notes.push(`${fullDisk} files are not indexed: the index file holds at most ${run.maxDisk} bytes per project (db prune makes room taken by test runs)`);
+  if (fullDisk) notes.push(`${fullDisk} files are not indexed: the index file holds at most ${run.maxDisk} bytes per project (db prune --keep <n> makes room taken by test runs; the next open after it retries them)`);
   return {
     schema_version: schemaVersion(db), rows: rowCounts(db), files: indexedFiles(db), skipped, ...(run.pending.length ? { pending: [...run.pending] } : {}),
     project_files_indexed_at: meta ? meta.value : null, ...(notes.length ? { notes } : {})
@@ -238,7 +245,9 @@ async function prune(io, keepArg) {
       cases += Number(db.run('DELETE FROM test_cases WHERE run_id = ?', id).changes);
       db.run('DELETE FROM test_runs WHERE id = ?', id);
     }
-    return { keep, pruned_runs: doomed.length, pruned_cases: cases, remaining_runs: Number(db.get('SELECT COUNT(*) AS n FROM test_runs').n) };
+    // pages freed: the files skipped because the index file was full are read again by the next open
+    const retry = doomed.length ? retryDiskFull(db) : 0;
+    return { keep, pruned_runs: doomed.length, pruned_cases: cases, remaining_runs: Number(db.get('SELECT COUNT(*) AS n FROM test_runs').n), ...(retry ? { files_to_retry: retry } : {}) };
   });
 }
 

@@ -13,7 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn, spawnSync } from 'node:child_process';
 import { testTargets, spawnedPaths } from '../src/lib/kit/test-map.js';
-import { recordRun } from '../src/lib/kit/test-runs.js';
+import { recordRun, OUTPUT_MAX_BYTES } from '../src/lib/kit/test-runs.js';
 
 export { testTargets, spawnedPaths };
 
@@ -70,12 +70,31 @@ export async function runStep(classify, { env = process.env, log = console.log, 
   return result.status;
 }
 
-/** Record the run in the local kit index when it is on. Never throws; a failure is one line. */
-export async function recordStep(run, { env = process.env, log = console.log, cwd = process.cwd() } = {}) {
+/**
+ * At most `max` bytes of a file, as text cut at its last whole line: { text, truncated } (truncated: `max` when the
+ * file holds more; nothing past it is read). '' when it is not there.
+ */
+export function readBounded(file, max) {
+  let fd;
+  try { fd = fs.openSync(file, 'r'); } catch (e) { if (e.code === 'ENOENT') return { text: '', truncated: 0 }; throw e; }
   try {
-    const file = outputFile(env);
-    const output = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '';
-    const r = await recordRun({ cwd, env }, { ...run, output });
+    const buf = Buffer.alloc(max + 1);
+    let n = 0;
+    for (;;) { const k = fs.readSync(fd, buf, n, buf.length - n, null); if (!k) break; n += k; if (n >= buf.length) break; }
+    if (n <= max) return { text: buf.subarray(0, n).toString('utf-8'), truncated: 0 };
+    const nl = buf.lastIndexOf(0x0a, max - 1);
+    return { text: buf.subarray(0, nl === -1 ? max : nl + 1).toString('utf-8'), truncated: max };
+  } finally { fs.closeSync(fd); }
+}
+
+/**
+ * Record the run in the local kit index when it is on. Never throws; a failure is one line. At most `maxBytes`
+ * (OUTPUT_MAX_BYTES) of the test output are read: past that the run is recorded from what was read, marked truncated.
+ */
+export async function recordStep(run, { env = process.env, log = console.log, cwd = process.cwd(), maxBytes = OUTPUT_MAX_BYTES } = {}) {
+  try {
+    const { text: output, truncated } = readBounded(outputFile(env), Math.min(maxBytes, OUTPUT_MAX_BYTES));
+    const r = await recordRun({ cwd, env }, { ...run, output, ...(truncated ? { output_truncated: truncated } : {}) });
     if (r.recorded) log(`test run recorded in the kit index (run ${r.id}, ${r.cases} cases, ${r.status}).`);
     return r;
   } catch (e) {

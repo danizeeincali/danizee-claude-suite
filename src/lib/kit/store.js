@@ -34,7 +34,9 @@
  * MAX_INDEX_DISK_BYTES (its pages in use, test runs included); a file past any of them is skipped with that reason.
  * Rows name their file by a small integer id (files.id), never by its path, and indexed columns hold at most
  * MAX_COLUMN_BYTES of a value. A file skipped after it was read keeps its stat and
- * is not read again until it changes. A file whose recorded stat cannot be trusted (its mtime too close to the read, or
+ * is not read again until it changes, except one skipped because the index file was full: after `db prune` frees room
+ * the next open reads it again (retryDiskFull). Test runs take at most their own share of the index file
+ * (./test-runs.js TEST_RUNS_MAX_BYTES), so the JSON state files always have the rest. A file whose recorded stat cannot be trusted (its mtime too close to the read, or
  * in the future) is hashed once per open and, unchanged, costs the budget nothing. `.claude/marathon` is listed without
  * following links, read once and bounded (MARATHON_SCAN), at most MAX_MARATHON_FILES files: one beyond a bound is never
  * indexed (dropped when it was). `db init` and `db rebuild` are not limited by the per-open budget.
@@ -649,7 +651,18 @@ export const fullReason = (max) => `not indexed: the index holds at most ${max} 
 /** The reason a file is not indexed when the project's index holds its byte cap of JSON. */
 export const bytesFullReason = (max) => `not indexed: the index holds at most ${max} bytes of JSON files per project (db rebuild retries)`;
 /** The reason a file is not indexed when its rows would take the index file past MAX_INDEX_DISK_BYTES. */
-export const diskFullReason = (max) => `not indexed: the index file holds at most ${max} bytes per project (db prune makes room taken by test runs; db rebuild retries)`;
+export const diskFullReason = (max) => `not indexed: the index file holds at most ${max} bytes per project (db prune --keep <n> makes room taken by test runs; the next open after it retries)`;
+/** The start of diskFullReason: `db prune` lets the files skipped for it be read again (see retryDiskFull). */
+export const DISK_FULL_PREFIX = 'not indexed: the index file holds at most ';
+
+/**
+ * Let the next open retry every file skipped because the index file was full (diskFullReason): their recorded stat is
+ * cleared, so they are read again (within the open's budget) and indexed if they fit now. `db prune` calls it after
+ * freeing pages; no rebuild is needed. Returns how many files will be retried.
+ */
+export function retryDiskFull(db) {
+  return Number(db.run("UPDATE files SET stat = NULL WHERE sha256 = ? AND substr(error, 1, ?) = ?", SKIPPED, DISK_FULL_PREFIX.length, DISK_FULL_PREFIX).changes);
+}
 
 /** The bytes of the index file's pages in use (free pages, which later writes reuse first, not counted). */
 export function indexUsedBytes(db) {
