@@ -4,8 +4,8 @@
 //   runStep(classify)          blocking, fails closed: any nonzero exit of the test command fails; classify only labels the failure.
 //   reportStep(renderJunit, renderSarif)  advisory: write the results as JUnit (and SARIF when tests failed) files. Never fails.
 // No network, no token, nothing is posted anywhere: files are written locally and their paths printed.
-// When the project keeps its kit state in SQLite (`db init`; the store choice is machine-local, outside the project), runStep also records the
-// run in test_runs/test_cases (src/lib/kit/test-runs.js recordRun); on the JSON files (CI, by default) nothing is recorded.
+// When the optional local kit index is on for the project (`db init`; a per-user setting, outside the project), runStep also
+// records the run in test_runs/test_cases (src/lib/kit/test-runs.js recordRun); when it is off (CI, by default) nothing is recorded.
 // Recording can never change the step's exit status: a failure is one printed line.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -70,16 +70,16 @@ export async function runStep(classify, { env = process.env, log = console.log, 
   return result.status;
 }
 
-/** Record the run in the SQLite store when the project uses it. Never throws; a failure is one line. */
+/** Record the run in the local kit index when it is on. Never throws; a failure is one line. */
 export async function recordStep(run, { env = process.env, log = console.log, cwd = process.cwd() } = {}) {
   try {
     const file = outputFile(env);
     const output = fs.existsSync(file) ? fs.readFileSync(file, 'utf-8') : '';
     const r = await recordRun({ cwd, env }, { ...run, output });
-    if (r.recorded) log(`test run recorded in the kit store (run ${r.id}, ${r.cases} cases, ${r.status}).`);
+    if (r.recorded) log(`test run recorded in the kit index (run ${r.id}, ${r.cases} cases, ${r.status}).`);
     return r;
   } catch (e) {
-    log(`test run not recorded in the kit store: ${String(e && e.message).split('\n')[0]}`);
+    log(`test run not recorded in the kit index: ${String(e && e.message).split('\n')[0]}`);
     return null;
   }
 }

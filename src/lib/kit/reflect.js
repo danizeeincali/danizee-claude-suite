@@ -29,9 +29,8 @@
  * (NFC-normalised, lower-cased, punctuation dropped but combining marks kept, runs of Han/Kana/Thai/Lao/Khmer/Myanmar as character bigrams, stop words dropped, a trailing plural "s" dropped). A lesson may be saved for
  * another role. Retired lessons stay in the file with their reason and are hidden from `list` unless --all.
  * Every change holds the shared state lock (./state-lock.js: `<store>.lock`, heartbeat, stale-lock break) from load to
- * save and writes atomically through it, so parallel saves are all kept; `list` only reads and takes no lock. With the
- * optional SQLite store (./store.js, `db init`) the lessons live in the `lessons` table under the --store path as scope,
- * and each change is one BEGIN IMMEDIATE transaction instead; flags, output and exit codes are the same. A leading
+ * save and writes atomically through it, so parallel saves are all kept; `list` only reads and takes no lock. After a
+ * change, the optional local index (./store.js, `db init`) is updated, best effort: the file stays the only store. A leading
  * BOM is ignored. trouble-log exits 1 when its input has no events it recognises (empty, or neither shape).
  * Exit 0 done, 1 invalid input, 2 refused save.
  * Built from ideas audited by /w-bbs (run 2026-10-15-bugpatrol); no foreign code.
@@ -39,7 +38,8 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
-import { readDoc, updateDoc } from './store.js';
+import { withStateLock, readJsonState, writeJsonAtomic } from './state-lock.js';
+import { indexed } from './store.js';
 import { redactSecrets, parseSecretsFile, secretsRoots, loadProjectSecrets } from './redact.js';
 
 export const verb = 'reflect';
@@ -76,7 +76,7 @@ export function maskCredentials(text) {
   for (const re of CREDENTIAL_PATTERNS) out = out.replace(re, (m) => { replaced++; found.push(m.slice(0, 6) + '…'); return '[credential]'; });
   return { text: out, replaced, found };
 }
-/** Redact the project's secrets, then mask credential-shaped strings (used by trouble-log and by the test-run store). */
+/** Redact the project's secrets, then mask credential-shaped strings (used by trouble-log and by the test-run index). */
 export const scrub = (v, secrets) => maskCredentials(redactSecrets(v, secrets).text).text;
 // Matched on the last segment of the name, so mcp__<server>__browser_type counts like type.
 const EDIT_TOOL = /^(edit|write|multiedit|notebookedit|(browser_)?(type|fill|fill_form|input|set_?value|type_?text)|computer_?type)$/i;
@@ -278,21 +278,16 @@ export function checkLessonText(text) {
   return t;
 }
 
-const EMPTY = () => ({ version: 1, lessons: [] });
-
-function checkStore(data, file) {
+async function loadStore(file) {
+  const data = await readJsonState(file, { fallback: { version: 1, lessons: [] } });
   if (!data || !Array.isArray(data.lessons)) throw invalid(`lessons store ${file} has no lessons list`);
   const seen = new Set();
   for (const [i, l] of data.lessons.entries()) {
     if (!l || typeof l !== 'object' || Array.isArray(l)) throw invalid(`lessons store ${file} entry ${i + 1} is not a lesson (null or not an object): repair or move the file`);
-    if (seen.has(l.id)) throw invalid(`lessons store ${file} has duplicate id ${l.id}: repair the file in place: give one of the two lessons a new id (the next free one, the highest id plus one), or remove the duplicate when it is the same lesson twice`);
+    if (seen.has(l.id)) throw invalid(`lessons store ${file} has duplicate id ${l.id}: repair or move the file`);
     seen.add(l.id);
   }
   return data;
-}
-
-async function loadStore(io, file, load) {
-  return checkStore(load ? await load({ fallback: EMPTY() }) : await readDoc(io, 'lessons', file, { fallback: EMPTY() }), file);
 }
 
 const nextId = (lessons) => 'L' + (1 + Math.max(0, ...lessons.map((l) => Number(String(l.id).slice(1)) || 0)));
@@ -438,7 +433,7 @@ export async function run(args, io) {
   if (cmd === 'lessons') {
     if (pos.length !== 2) throw invalid(`reflect lessons needs save, keep, retire or list\n${usage}`);
     const store = path.resolve(cwd, flags.store || DEFAULT_STORE);
-    if (sub === 'list') return { lessons: listLessons(await loadStore(io, store), { role: flags.role, all: !!flags.all }) };
+    if (sub === 'list') return { lessons: listLessons(await loadStore(store), { role: flags.role, all: !!flags.all }) };
     if (!['save', 'keep', 'retire'].includes(sub)) throw invalid(`unknown lessons command "${sub}"\n${usage}`);
     let threshold = DEFAULTS.threshold;
     if (sub === 'save' && flags.threshold !== undefined) {
@@ -469,15 +464,15 @@ export async function run(args, io) {
         }
       }
     }
-    return updateDoc(io, 'lessons', store, async ({ load, save }) => {
-      const data = await loadStore(io, store, load);
+    return withStateLock(store, async () => {
+      const data = await loadStore(store);
       let result;
       if (sub === 'save') result = saveLesson(data, { role: flags.role, text: flags.text, scope: flags.scope, session: flags.session, maxNew, threshold, confirm: flags.confirm, distinct: !!flags.distinct });
       else if (sub === 'keep') result = keepLesson(data, needText(flags.id, 'id'));
       else result = retireLesson(data, needText(flags.id, 'id'), flags.reason);
-      await save(data);
+      await writeJsonAtomic(store, data);
       return result;
-    });
+    }).then(indexed(io, 'lessons', store));
   }
   throw invalid(`reflect needs trouble-log or lessons\n${usage}`);
 }

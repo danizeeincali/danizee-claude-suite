@@ -9,7 +9,7 @@ import { DaniZeeSuiteInstaller } from '../src/installer.js';
 import * as bc from '../src/plugins/bc.js';
 import { runDoctor, loadProjectChecks } from '../src/lib/kit/doctor.js';
 import { classify, CLASSES } from '../src/lib/kit/exit-codes.js';
-import { storeCheck } from '../src/lib/kit/store.js';
+import { indexCheck } from '../src/lib/kit/store.js';
 
 const program = new Command();
 
@@ -154,10 +154,9 @@ program
       if (doctor.failed.length) {
         console.log('\n' + chalk.red(`Fatal: ${doctor.failed.join(', ')}`));
       }
-      // Kit state store: one line. A project on sqlite whose engine cannot load is a fatal prerequisite (exit 4).
-      const store = await storeCheck({ cwd: options.path, env: process.env });
-      console.log('\n' + `  ${store.ok ? chalk.green('✓') : chalk.red('✗')} ${store.line}` + (store.fix ? chalk.dim(` (fix: ${store.fix})`) : ''));
-      process.exitCode = checkExitCode(store.fatal && doctor.exit === 0 ? 2 : doctor.exit);
+      // The optional kit index: one info line, never fatal (the JSON files are the kit's state)
+      console.log('\n' + chalk.dim(`  ℹ ${indexCheck({ cwd: options.path, env: process.env }).line}`));
+      process.exitCode = checkExitCode(doctor.exit);
     } catch (error) {
       spinner.fail(chalk.red('Check failed'));
       console.error(chalk.red(error.message));
@@ -241,22 +240,14 @@ program
 // Listed for --help only: the call itself is routed to the kit verb below, before commander parses.
 program
   .command('db <sub>')
-  .description('Kit state store: db init [--new] | export [--overwrite] | off [--overwrite] | sync --from-files [--scope <file>] | status | forget --scope <scope> | prune [--keep <n>] | import-reports [--branch <b>] [--limit <n>] '
-    + '(optional SQLite store, kept outside the project in ~/.claude/kit-db/<id>/ or $DANIZEE_KIT_HOME/<id>/, <id> in the git-ignored .claude/kit/store-id; JSON files stay the default; after a git pull changed a JSON file, sync --from-files merges it by row id, export --overwrite replaces the file)');
+  .description('Kit index: db init | off [--delete] | status | rebuild | prune [--keep <n>] | import-reports [--branch <b>] [--limit <n>] '
+    + '(optional local SQLite index of the kit state and test runs, per user in ~/.claude/kit-db/<key>/ or $DANIZEE_KIT_HOME/<key>/, never in the project; the JSON files stay the only source of truth and the index is rebuilt from them)');
 
 // `danizee-claude-suite db <sub> [args]` is the kit's `db` verb (same flags, JSON output and exit codes as
 // `node .claude/helpers/kit/cli.js db <sub>`), run in the current folder.
 if (process.argv[2] === 'db') {
-  // the project's installed kit must know the store before init switches it (an older kit would write the JSON files)
-  const { installedKitProblem } = await import('../src/lib/kit/store.js');
-  const problem = process.argv[3] === 'init' ? installedKitProblem(process.cwd()) : null;
-  if (problem) {
-    process.stderr.write(`kit: ${problem}\n`);
-    process.exitCode = 1;
-  } else {
-    const { main } = await import('../src/lib/kit/cli.js');
-    process.exitCode = await main(process.argv.slice(2));
-  }
+  const { main } = await import('../src/lib/kit/cli.js');
+  process.exitCode = await main(process.argv.slice(2));
 } else {
   program.parse();
 }

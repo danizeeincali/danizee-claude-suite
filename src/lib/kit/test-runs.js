@@ -1,9 +1,10 @@
 /**
- * test-runs — test results kept in the optional SQLite store (tables test_runs / test_cases, see ./store.js). A library,
- * not a verb: cli.js discovery skips it (no `verb` export). Built for the suite-db plan (2026-10-16); no foreign code.
+ * test-runs — test results kept in the optional local SQLite index (tables test_runs / test_cases / imported_reports,
+ * see ./store.js). Unlike the kit state, test runs live only in the index: the CI artifacts are their durable copy.
+ * A library, not a verb: cli.js discovery skips it (no `verb` export). Built for the suite-db plan (2026-10-16); no foreign code.
  *
- *   recordRun(io, run)        a local test run (scripts/ci-step.js runStep): stored when the project is on sqlite,
- *                             nothing at all on the JSON files (there is no JSON store for test runs)
+ *   recordRun(io, run)        a local test run (scripts/ci-step.js runStep): stored when the index is on for the
+ *                             project (`db init`), nothing at all when it is off
  *   parseTap(text, cwd)       every test of node's TAP output (spec lines too): suite path, name, file, status, duration,
  *                             message; a list in output order (same-named tests of two files stay two cases)
  *   parseTapSummary(text)     the runner's `# tests` / `# pass` / ... summary; a local run's counts are taken from it
@@ -25,7 +26,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { KitExit } from './kit-exit.js';
-import { readConfig, resolveStore, withDb, StoreSwitched } from './store.js';
+import { indexPaths, indexState, withIndex, ioCtx } from './store.js';
 import { scrub, loadSecrets } from './reflect.js';
 
 export const MESSAGE_MAX = 4096;
@@ -343,34 +344,22 @@ export function gitHead(cwd, env = process.env) {
 }
 
 /**
- * Record a local run when the project is on sqlite. run: { output, code, signal, started_at, finished_at }.
- * Resolves { recorded: false } on the JSON files; throws (KitExit) when sqlite is configured but cannot be written.
+ * Record a local run when the index is on. run: { output, code, signal, started_at, finished_at, command }.
+ * Resolves { recorded: false } when it is off; throws (KitExit) when it is on but cannot be written.
  */
 export async function recordRun(io, run) {
-  const cwd = io.cwd || process.cwd();
-  const env = io.env || process.env;
-  const ctx = await resolveStore({ cwd, env });
-  if (ctx.kind !== 'sqlite') return { recorded: false };
+  const { cwd, env } = ioCtx(io);
+  if (!indexState(indexPaths(cwd, env)).enabled) return { recorded: false };
   const secrets = await loadSecrets({}, cwd);
   const head = gitHead(cwd, env);
   const cases = cleanCases(parseTap(run.output || '', cwd), secrets);
   const status = run.code === 0 && !run.signal ? 'passed' : 'failed';
-  let id;
-  try {
-    id = await withDb(ctx, (db) => {
-      // `db off` switched the store while this run waited for the database: test runs have no JSON store
-      if (readConfig(cwd, env).store !== 'sqlite') throw new StoreSwitched();
-      return insertRun(db, {
-        branch: head.branch || '(no branch)', commit: head.commit, source: 'local', started_at: run.started_at, finished_at: run.finished_at,
-        summary: parseTapSummary(run.output || ''),
-        duration_ms: Date.parse(run.finished_at) - Date.parse(run.started_at), status,
-        data: { exit_code: run.code ?? null, signal: run.signal ?? null, command: run.command ? capBytes(scrub(String(run.command), secrets), 200) : undefined }
-      }, cases);
-    });
-  } catch (e) {
-    if (e instanceof StoreSwitched) return { recorded: false };
-    throw e;
-  }
+  const id = await withIndex({ cwd, env }, (db) => insertRun(db, {
+    branch: head.branch || '(no branch)', commit: head.commit, source: 'local', started_at: run.started_at, finished_at: run.finished_at,
+    summary: parseTapSummary(run.output || ''),
+    duration_ms: Date.parse(run.finished_at) - Date.parse(run.started_at), status,
+    data: { exit_code: run.code ?? null, signal: run.signal ?? null, command: run.command ? capBytes(scrub(String(run.command), secrets), 200) : undefined }
+  }, cases));
   return { recorded: true, id, cases: cases.length, status };
 }
 
@@ -440,13 +429,12 @@ export function parseRunList(text, branch) {
 
 /**
  * `db import-reports`: { branch, runs_listed, imported: [...], skipped: [...] }.
- * Exit 1: not on sqlite (names `db init`), gh missing or not logged in (names `gh auth login`), a bad flag.
+ * Exit 1: the index is off (names `db init`), gh missing or not logged in (names `gh auth login`), a bad flag.
  */
 export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) {
-  const cwd = io.cwd || process.cwd();
-  const env = io.env && Object.keys(io.env).length ? { ...process.env, ...io.env } : process.env;
-  if (readConfig(cwd, env).store !== 'sqlite') throw invalid('import-reports stores test runs in the SQLite store, and this project is on the JSON files: run `db init` first');
-  const ctx = await resolveStore({ cwd, env });
+  const { cwd, env } = ioCtx(io);
+  const st = indexState(indexPaths(cwd, env));
+  if (!st.enabled) throw invalid(st.problem || 'import-reports stores test runs in the kit index, which is off for this project: run `db init` first');
   if (branch === undefined) {
     branch = gitHead(cwd, env).branch;
     if (!branch || branch === 'HEAD') throw invalid('cannot tell the current git branch (detached HEAD or not a git repository): pass --branch <b>');
@@ -465,7 +453,7 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) 
   const runs = listed.slice(0, limit);
 
   // every key ever imported, the pruned runs' too (imported_reports), so a prune is never undone by the next import
-  const known = await withDb(ctx, (db) => new Set(db.all('SELECT run_key FROM test_runs WHERE run_key IS NOT NULL UNION SELECT run_key FROM imported_reports').map((r) => r.run_key)), { write: false });
+  const known = await withIndex({ cwd, env }, (db) => new Set(db.all('SELECT run_key FROM test_runs WHERE run_key IS NOT NULL UNION SELECT run_key FROM imported_reports').map((r) => r.run_key)));
   const skipped = listed.foreign.map((id) => ({ run_id: id, reason: 'not a push run of this repository branch' }));
   const found = [];
   for (const r of runs) {
@@ -515,8 +503,7 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) 
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
 
-  const imported = await withDb(ctx, (db) => {
-    if (readConfig(cwd, env).store !== 'sqlite') throw invalid('the project went back to the JSON files (`db off`) during the import: nothing imported');
+  const imported = await withIndex({ cwd, env }, (db) => {
     const out = [];
     for (const x of found) {
       if (db.get('SELECT run_key FROM test_runs WHERE run_key = ? UNION SELECT run_key FROM imported_reports WHERE run_key = ?', x.key, x.key)) { skipped.push({ run_id: x.run.id, artifact: x.artifact, reason: 'already imported' }); continue; }

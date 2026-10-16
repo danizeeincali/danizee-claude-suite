@@ -54,7 +54,7 @@ jobs:
           reportStep(renderJunit, renderSarif);
           EOF
       # The rendered files as a run artifact (no token, nothing posted): `db import-reports` reads them back into a
-      # project's local SQLite store through the user's own gh login. Advisory: a failed upload (artifact storage quota,
+      # project's local kit index through the user's own gh login. Advisory: a failed upload (artifact storage quota,
       # service outage) never fails a job whose tests passed.
       - name: Upload test results
         if: always()

@@ -22,9 +22,8 @@
  * Dates must be real YYYY-MM-DD days. Time comes from `--now` (a date, or an ISO time: with Z or an offset the UTC day is used) or the clock. `accept` refuses a
  * past expiry. Unknown entry and top-level fields are preserved on rewrite; a ledger whose `version` is newer than 1 is refused (exit 1). A missing default ledger is empty; a missing `--ledger` is an error for apply, empty for accept.
  *
- * STORE. With the optional SQLite store (./store.js, `db init`) the ledger's entries live in the `noise_ledger` table
- * under the --ledger path as scope (a ledger not in the database yet is read from its file), each change in one
- * BEGIN IMMEDIATE transaction; flags, output and exit codes are the same as on the JSON file.
+ * After accept or a prune that removed entries, the optional local index (./store.js, `db init`) is updated, best effort:
+ * the ledger file stays the only store, and output and exit codes never depend on the index.
  *
  * Exit codes: 0 done (findings or not), 1 invalid input or broken ledger.
  * Built from ideas audited by /w-bbs (run 2026-10-15-bugpatrol); no foreign code.
@@ -32,7 +31,8 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
-import { readDoc, updateDoc } from './store.js';
+import { withStateLock, readJsonState, writeJsonAtomic } from './state-lock.js';
+import { indexed } from './store.js';
 
 export const verb = 'noise-ledger';
 export const usage = 'cli.js noise-ledger apply [--in <file>] [--cap N] [--first-run] [--ledger <path>] [--now <date>] | accept --id <id> --reason <text> [--expires YYYY-MM-DD] [--ledger <path>] [--now <date>] | prune [--ledger <path>] [--now <date>]   (--in - = stdin)  '
@@ -205,10 +205,8 @@ export function parseArgs(args) {
   return f;
 }
 
-// `load` is the store's reader inside a write (see ./store.js); without it the ledger is read without changing anything.
-async function readLedger(io, file, { mustExist }, load) {
-  const opts = mustExist ? {} : { fallback: { version: 1, entries: [] } };
-  const parsed = load ? await load(opts) : await readDoc(io, 'noise-ledger', file, opts);
+async function readLedger(file, { mustExist }) {
+  const parsed = await readJsonState(file, mustExist ? {} : { fallback: { version: 1, entries: [] } });
   return normalizeLedger(parsed);
 }
 
@@ -238,7 +236,7 @@ export async function run(args, io = {}) {
     let data;
     try { data = JSON.parse(text); } catch { throw invalid('findings input is not valid JSON'); }
     const list = Array.isArray(data) ? data : data && typeof data === 'object' ? data.findings : undefined;
-    const ledger = await readLedger(io, ledgerFile, { mustExist: explicit });
+    const ledger = await readLedger(ledgerFile, { mustExist: explicit });
     return plan(list, { cap, firstRun: !!f.firstRun, ledger, now: day });
   }
 
@@ -251,26 +249,26 @@ export async function run(args, io = {}) {
       if (f.expires < day) throw invalid(`--expires ${q(f.expires)} is already in the past`);
       expires = f.expires;
     }
-    return updateDoc(io, 'noise-ledger', ledgerFile, async ({ load, save }) => {
-      const ledger = await readLedger(io, ledgerFile, { mustExist: false }, load);
+    return withStateLock(ledgerFile, async () => {
+      const ledger = await readLedger(ledgerFile, { mustExist: false });
       const entry = { id: f.id, reason: f.reason, added: day, ...(expires ? { expires } : {}) };
       const replaced = ledger.entries.some((e) => e.id === f.id);
       ledger.entries = [...ledger.entries.filter((e) => e.id !== f.id), entry];
       const out = normalizeLedger(ledger);
-      await save(out);
+      await writeJsonAtomic(ledgerFile, out);
       return { ledger: path.relative(cwd, ledgerFile) || ledgerFile, entry, replaced, entries: out.entries.length };
-    }, io.lockOpts);
+    }, io.lockOpts).then(indexed(io, 'noise-ledger', ledgerFile));
   }
 
   const expired = (l) => l.entries.filter((e) => isExpired(e, day));
   const rel = path.relative(cwd, ledgerFile) || ledgerFile;
   // nothing to write: read without the lock, so a read-only checkout works and nothing is created
-  const peek = await readLedger(io, ledgerFile, { mustExist: false });
+  const peek = await readLedger(ledgerFile, { mustExist: false });
   if (!expired(peek).length) return { ledger: rel, date: day, pruned: [], remaining: peek.entries.length };
-  return updateDoc(io, 'noise-ledger', ledgerFile, async ({ load, save }) => {
-    const ledger = await readLedger(io, ledgerFile, { mustExist: false }, load);
+  return withStateLock(ledgerFile, async () => {
+    const ledger = await readLedger(ledgerFile, { mustExist: false });
     const pruned = expired(ledger);
-    if (pruned.length) await save({ ...ledger, entries: ledger.entries.filter((e) => !isExpired(e, day)) });
+    if (pruned.length) await writeJsonAtomic(ledgerFile, { ...ledger, entries: ledger.entries.filter((e) => !isExpired(e, day)) });
     return { ledger: rel, date: day, pruned, remaining: ledger.entries.length - pruned.length };
-  }, io.lockOpts);
+  }, io.lockOpts).then(indexed(io, 'noise-ledger', ledgerFile));
 }

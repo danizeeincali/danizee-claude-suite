@@ -1,6 +1,6 @@
-// Test runs in the optional SQLite store (src/lib/kit/test-runs.js): local runs recorded by scripts/ci-step.js runStep,
-// CI reports imported by `db import-reports` through a FAKE `gh` put first on PATH (never the real gh, never the network),
-// the strict JUnit parser, and `db status` / `db export` reporting test runs.
+// Test runs in the optional local kit index (src/lib/kit/test-runs.js; they live only there): local runs recorded by
+// scripts/ci-step.js runStep, CI reports imported by `db import-reports` through a FAKE `gh` put first on PATH (never the
+// real gh, never the network), the strict JUnit parser, `db status` reporting test runs and `db rebuild` keeping them.
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -9,14 +9,14 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { run as db } from '../src/lib/kit/db.js';
-import { resolveStore, withDb, storePaths } from '../src/lib/kit/store.js';
+import { withIndex, indexPaths } from '../src/lib/kit/store.js';
 import { parseJunit, parseTap, parseTapSummary, MESSAGE_MAX, MAX_DEPTH, capBytes, ARTIFACT_MAX_BYTES, parseArtifactList } from '../src/lib/kit/test-runs.js';
 import { renderJunit } from '../src/lib/kit/render.js';
 import { runStep } from '../scripts/ci-step.js';
 
 const NODE_SQLITE = (() => { try { createRequire(import.meta.url)('node:sqlite'); return true; } catch { return false; } })();
 const ENGINE = { KIT_SQLITE_ENGINE: 'node:sqlite' };
-// the machine-local store lives in a per-user folder: here a temporary one (one sub-folder per project)
+// the index lives in a per-user folder: here a temporary one (one sub-folder per project)
 process.env.DANIZEE_KIT_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-home-'));
 process.on('exit', () => { try { fs.rmSync(process.env.DANIZEE_KIT_HOME, { recursive: true, force: true }); } catch { /* best effort */ } });
 const SECRET = 'project-secret-value-42';
@@ -26,18 +26,18 @@ async function call(args, cwd, env = {}) {
   try { return { code: 0, out: await db(args, { cwd, env }) }; } catch (e) { return { code: e.code ?? 99, err: e.message }; }
 }
 
-/** A git project with a secrets file; on sqlite unless json is asked for. */
-async function project({ sqlite = true } = {}) {
+/** A git project with a secrets file; the index on unless asked otherwise. */
+async function project({ index = true } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-test-runs-'));
   const g = (...a) => spawnSync('git', a, { cwd: dir, encoding: 'utf-8' });
   g('init', '-q', '-b', 'feat/x');
   g('-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '-q', '--allow-empty', '-m', 'init');
   fs.mkdirSync(path.join(dir, '.claude', 'kit'), { recursive: true });
   fs.writeFileSync(path.join(dir, '.claude', 'kit', 'secrets'), `${SECRET}\n`);
-  if (sqlite) { const r = await call(['init'], dir, ENGINE); assert.equal(r.code, 0, r.err); }
+  if (index) { const r = await call(['init'], dir, ENGINE); assert.equal(r.code, 0, r.err); }
   return dir;
 }
-const rows = async (dir, sql, ...ps) => withDb(await resolveStore({ cwd: dir, env: { ...process.env, ...ENGINE } }), (d) => d.all(sql, ...ps), { write: false });
+const rows = (dir, sql, ...ps) => withIndex({ cwd: dir, env: ENGINE }, (d) => d.all(sql, ...ps));
 const rm = (d) => fs.rmSync(d, { recursive: true, force: true });
 /** The environment without this runner's NODE_TEST_CONTEXT, so a nested `node --test` prints its own report. */
 const freshEnv = () => { const e = { ...process.env }; delete e.NODE_TEST_CONTEXT; return e; };
@@ -124,7 +124,7 @@ describe('parseTap', () => {
   it('capBytes never splits a character', () => assert.equal(capBytes('aé', 2), 'a'));
 });
 
-describe('local runs: scripts/ci-step.js runStep records into the sqlite store', () => {
+describe('local runs: scripts/ci-step.js runStep records into the kit index', () => {
   const failing = (msg) => `printf '%s\\n' 'TAP version 13' 'ok 1 - good' 'not ok 2 - bad' '  ---' '  duration_ms: 3' "  error: '${msg}'" '  ...'; exit 1`;
 
   it('records branch, commit, status and cases; the message is redacted, credential-masked and capped; the exit status is unchanged', { skip: !NODE_SQLITE }, async () => {
@@ -135,7 +135,7 @@ describe('local runs: scripts/ci-step.js runStep records into the sqlite store',
       const long = `${SECRET} ${TOKEN} ${'x'.repeat(6000)}`;
       const code = await runStep(() => ({ class: 'product' }), { cwd: dir, env: { ...process.env, ...ENGINE, CI_TEST_OUTPUT: out, CI_TEST_COMMAND: failing(long) }, log: (l) => lines.push(l) });
       assert.equal(code, 1);
-      assert.ok(lines.some((l) => /^test run recorded in the kit store \(run 1, 2 cases, failed\)\.$/.test(l)), lines.join('\n'));
+      assert.ok(lines.some((l) => /^test run recorded in the kit index \(run 1, 2 cases, failed\)\.$/.test(l)), lines.join('\n'));
       const [run] = await rows(dir, 'SELECT * FROM test_runs');
       const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf-8' }).stdout.trim();
       assert.equal(run.branch, 'feat/x');
@@ -180,31 +180,29 @@ describe('local runs: scripts/ci-step.js runStep records into the sqlite store',
     } finally { rm(dir); }
   });
 
-  it('on the JSON files nothing is recorded and nothing is printed about it', async () => {
-    const dir = await project({ sqlite: false });
+  it('with the index off nothing is recorded, nothing is created and nothing is printed about it', async () => {
+    const dir = await project({ index: false });
     try {
       const lines = [];
       const code = await runStep(() => ({ class: 'product' }), { cwd: dir, env: { ...process.env, CI_TEST_OUTPUT: path.join(dir, 'o.txt'), CI_TEST_COMMAND: failing('x') }, log: (l) => lines.push(l) });
       assert.equal(code, 1);
-      assert.ok(!lines.some((l) => /kit store/.test(l)), lines.join('\n'));
-      assert.ok(!fs.existsSync(path.join(dir, '.claude', 'kit', 'suite.db')));
-      assert.ok(!fs.existsSync(path.join(dir, '.claude', 'kit', 'config.json')));
-      assert.ok(!fs.existsSync(path.join(dir, '.claude', 'kit', 'store.local.json')));
-      assert.ok(!fs.existsSync(storePaths(dir).db));
-      assert.ok(!fs.existsSync(storePaths(dir).config));
+      assert.ok(!lines.some((l) => /kit index/.test(l)), lines.join('\n'));
+      assert.ok(!fs.existsSync(indexPaths(dir).db));
+      assert.ok(!fs.existsSync(indexPaths(dir).dir));
+      assert.deepEqual(fs.readdirSync(path.join(dir, '.claude', 'kit')), ['secrets']);
     } finally { rm(dir); }
   });
 
-  it('a store that cannot be written never changes the exit status: one line', { skip: !NODE_SQLITE }, async () => {
+  it('an index that cannot be written never changes the exit status: one line', { skip: !NODE_SQLITE }, async () => {
     const dir = await project();
     try {
       for (const [cmd, want] of [[failing('x'), 1], ["echo 'ok 1 - fine'", 0]]) {
         const lines = [];
         const code = await runStep(() => ({ class: 'product' }), { cwd: dir, env: { ...process.env, KIT_SQLITE_ENGINE: 'none', CI_TEST_OUTPUT: path.join(dir, 'o.txt'), CI_TEST_COMMAND: cmd }, log: (l) => lines.push(l) });
         assert.equal(code, want);
-        const notes = lines.filter((l) => /kit store/.test(l));
+        const notes = lines.filter((l) => /kit index/.test(l));
         assert.equal(notes.length, 1);
-        assert.match(notes[0], /^test run not recorded in the kit store: .*optional dependency better-sqlite3/);
+        assert.match(notes[0], /^test run not recorded in the kit index: .*optional dependency better-sqlite3/);
       }
     } finally { rm(dir); }
   });
@@ -308,11 +306,13 @@ describe('db import-reports', () => {
       assert.equal(gh.calls().filter((c) => c[1] === 'download').length, 4, 'only run 300 was asked for again');
       assert.equal((await rows(dir, 'SELECT COUNT(*) AS n FROM test_runs'))[0].n, 2);
 
-      // db status: test runs per branch; db export: test runs stay in the database
+      // db status: test runs per branch; db rebuild re-indexes the JSON files and keeps the test runs
       const st = await call(['status'], dir, ENGINE);
       assert.deepEqual(st.out.test_runs_by_branch, { 'feat/x': 2 });
-      const ex = await call(['export'], dir, ENGINE);
-      assert.deepEqual(ex.out.not_exported, { test_runs: 2, test_cases: 3 });
+      const rb = await call(['rebuild'], dir, ENGINE);
+      assert.equal(rb.code, 0, rb.err);
+      assert.equal(rb.out.rows.test_runs, 2);
+      assert.equal(rb.out.rows.test_cases, 3);
     } finally { rm(dir); rm(gh.root); }
   });
 
@@ -391,8 +391,8 @@ describe('db import-reports', () => {
     } finally { rm(dir); rm(gh.root); }
   });
 
-  it('needs the sqlite store: exit 1 naming db init (gh is never called)', async () => {
-    const dir = await project({ sqlite: false });
+  it('needs the index on: exit 1 naming db init (gh is never called)', async () => {
+    const dir = await project({ index: false });
     const gh = fakeGh();
     try {
       const r = await call(['import-reports', '--branch', 'main'], dir, gh.env);
@@ -419,7 +419,7 @@ describe('db import-reports', () => {
   });
 
   it('bad flags are exit 1', async () => {
-    const dir = await project({ sqlite: false });
+    const dir = await project({ index: false });
     try {
       for (const args of [['import-reports', '--limit', '0'], ['import-reports', '--limit', '101'], ['import-reports', '--limit', 'x'], ['import-reports', '--branch'], ['import-reports', '--keep', '2'], ['prune', '--branch', 'x']]) {
         assert.equal((await call(args, dir)).code, 1, args.join(' '));
