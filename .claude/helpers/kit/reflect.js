@@ -285,7 +285,7 @@ function checkStore(data, file) {
   const seen = new Set();
   for (const [i, l] of data.lessons.entries()) {
     if (!l || typeof l !== 'object' || Array.isArray(l)) throw invalid(`lessons store ${file} entry ${i + 1} is not a lesson (null or not an object): repair or move the file`);
-    if (seen.has(l.id)) throw invalid(`lessons store ${file} has duplicate id ${l.id}: repair or move the file`);
+    if (seen.has(l.id)) throw invalid(`lessons store ${file} has duplicate id ${l.id}: repair the file in place: give one of the two lessons a new id (the next free one, the highest id plus one), or remove the duplicate when it is the same lesson twice`);
     seen.add(l.id);
   }
   return data;

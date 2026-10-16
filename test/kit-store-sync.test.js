@@ -257,7 +257,7 @@ describe('drift: a shared JSON file changed under the database (a git pull)', ()
     try {
       const ex = await call(db, ['export', '--overwrite'], dir, ENV);
       assert.equal(ex.code, 0, ex.err);
-      assert.deepEqual(ex.out.overwritten, [{ store: 'lessons', scope: '.claude/kit/lessons.json', dropped_file_rows: 1, dropped: [{ part: 'lessons', id: 'L9' }], replaced_conflicts: 0 }]);
+      assert.deepEqual(ex.out.overwritten, [{ store: 'lessons', scope: '.claude/kit/lessons.json', dropped_file_rows: 1, dropped: [{ part: 'lessons', id: 'L9' }], replaced_conflicts: 0, replaced: [], reverted_file_edits: [], restored_file_deletions: [] }]);
       assert.match(ex.out.warning, /REPLACED 1 changed file\(s\) .*1 file-only row\(s\) were dropped from them \(L9\); `db sync --from-files` merges instead/);
       assert.equal((await readJson(dir, '.claude/kit/lessons.json')).lessons.length, 2);
       assert.equal((await lessonTexts(dir)).length, 2);
@@ -508,7 +508,7 @@ describe('a store file that is not a JSON object: repair it in place, then sync 
         await fs.writeFile(path.join(dir, LESSONS), text);
         const r = await call(db, ['sync', '--from-files'], dir, ENV);
         assert.equal(r.code, 1);
-        assert.match(r.err, /lessons\.json is not (a JSON object|valid JSON): repair the file in place \(after a git pull with a conflict: resolve the conflict markers and keep the rows of both sides\)/);
+        assert.match(r.err, /lessons\.json is not (a JSON object|valid JSON): repair the file in place \(after a git pull with a conflict: resolve the conflict markers and keep the rows of both sides; where both sides added the same id, keep both rows and give one of them the next free id, the highest id in the file plus one\)/);
         assert.match(r.err, /then run `db sync --from-files` again$/);
         assert.doesNotMatch(r.err, /db init|or move|repair or move/);
         assert.match(r.err, /do not move it away/);
@@ -526,8 +526,198 @@ describe('a store file that is not a JSON object: repair it in place, then sync 
       await fs.writeFile(path.join(dir, LESSONS), CONFLICTED);
       const r = await call(reflect, ['lessons', 'list'], dir, ENV);
       assert.equal(r.code, 1);
-      assert.match(r.err, /lessons\.json changed since the database last synced \(a git pull\?\) and is not valid JSON: repair the file in place \(after a git pull with a conflict: resolve the conflict markers and keep the rows of both sides\); do not move it away.*then run `db sync --from-files` to merge it with the database$/);
+      assert.match(r.err, /lessons\.json changed since the database last synced \(a git pull\?\) and is not valid JSON: repair the file in place \(after a git pull with a conflict: resolve the conflict markers and keep the rows of both sides; where both sides added the same id, keep both rows and give one of them the next free id, the highest id in the file plus one\); do not move it away.*then run `db sync --from-files` to merge it with the database$/);
       assert.doesNotMatch(r.err, /or move it away|the database keeps its copy/);
+    } finally { await rm(dir); }
+  });
+});
+
+describe('db export --overwrite names everything it undoes (the sync merge against the base, dry run)', () => {
+  const LESSONS = '.claude/kit/lessons.json';
+  const writeJson = (dir, f, v) => fs.writeFile(path.join(dir, f), `${JSON.stringify(v, null, 2)}\n`);
+  // L1 and L2 saved, db init; the teammate's file deletes L2 and retires L1
+  async function deletedAndRetired() {
+    const dir = await tmp();
+    assert.equal((await save(dir, 'Run the linter before every commit.', [], {})).code, 0);
+    assert.equal((await save(dir, 'Read the whole diff before you comment.', [], {})).code, 0);
+    assert.equal((await call(db, ['init'], dir, ENV)).code, 0);
+    const pulled = await readJson(dir, LESSONS);
+    const [l1] = pulled.lessons;
+    pulled.lessons = [{ ...l1, status: 'retired', retired_at: '2026-10-16T01:00:00.000Z', retire_reason: 'obsolete' }];
+    await writeJson(dir, LESSONS, pulled);
+    return dir;
+  }
+
+  it('the teammate deleted one lesson and retired another: the drift message and the overwrite output name both', { skip }, async () => {
+    const dir = await deletedAndRetired();
+    try {
+      const ex = await call(db, ['export'], dir, ENV);
+      assert.equal(ex.code, 1);
+      assert.match(ex.err, /drops 0 file-only row\(s\), reverts 1 edit\(s\) made in the file \(L1\), restores 1 row\(s\) deleted in the file \(L2\)/);
+      assert.doesNotMatch(ex.err, /unknown/);
+      const ow = await call(db, ['export', '--overwrite'], dir, ENV);
+      assert.equal(ow.code, 0, ow.err);
+      assert.deepEqual(ow.out.overwritten, [{
+        store: 'lessons', scope: LESSONS, dropped_file_rows: 0, dropped: [], replaced_conflicts: 0, replaced: [],
+        reverted_file_edits: [{ part: 'lessons', id: 'L1' }], restored_file_deletions: [{ part: 'lessons', id: 'L2' }]
+      }]);
+      assert.match(ow.out.warning, /0 file-only row\(s\) were dropped from them; 1 edit\(s\) made in the file were reverted \(L1\); 1 row\(s\) deleted in the file were restored \(L2\); `db sync --from-files` merges instead/);
+      // what the warning says is what happened: L2 is back, L1 active again
+      const file = await readJson(dir, LESSONS);
+      assert.deepEqual(file.lessons.map((l) => [l.id, l.status]), [['L1', 'active'], ['L2', 'active']]);
+    } finally { await rm(dir); }
+  });
+
+  it('db off --overwrite reports the same; without a base it says the effect beyond file-only rows is unknown', { skip }, async () => {
+    const dir = await deletedAndRetired();
+    try {
+      const raw = await rawDb(dir);
+      try { raw.run("UPDATE store_docs SET synced_doc = NULL WHERE store = 'lessons'"); } finally { raw.close(); }
+      const ex = await call(db, ['export'], dir, ENV);
+      assert.equal(ex.code, 1);
+      assert.match(ex.err, /drops 0 file-only row\(s\) and the file's side of 1 conflicting row\(s\) \(L1\); the database has no copy of the file as last synced .*which edits and deletions made in the file it would also revert is unknown/);
+      const off = await call(db, ['off', '--overwrite'], dir, ENV);
+      assert.equal(off.code, 0, off.err);
+      assert.equal(off.out.overwritten[0].base, 'unknown: edits and deletions made in the file cannot be told');
+      assert.match(off.out.warning, /the database had no copy as last synced, so which edits and deletions made in the file were reverted is unknown/);
+    } finally { await rm(dir); }
+  });
+
+  it('with a base, off --overwrite lists the reverted edit and the restored deletion', { skip }, async () => {
+    const dir = await deletedAndRetired();
+    try {
+      const off = await call(db, ['off', '--overwrite'], dir, ENV);
+      assert.equal(off.code, 0, off.err);
+      assert.deepEqual(off.out.overwritten[0].reverted_file_edits, [{ part: 'lessons', id: 'L1' }]);
+      assert.deepEqual(off.out.overwritten[0].restored_file_deletions, [{ part: 'lessons', id: 'L2' }]);
+      assert.match(off.out.warning, /reverted \(L1\).*restored \(L2\)/);
+    } finally { await rm(dir); }
+  });
+});
+
+describe('a lesson id reused after a deletion is another lesson, never merged into the old one', () => {
+  const LESSONS = '.claude/kit/lessons.json';
+  const writeJson = (dir, f, v) => fs.writeFile(path.join(dir, f), `${JSON.stringify(v, null, 2)}\n`);
+  const OLD = 'Read the whole diff before you comment.';
+  const NEW = 'Pin every dependency to an exact version.';
+  const teammateL2 = (createdAt) => ({ id: 'L2', role: 'r', text: NEW, scope: '', session: 'tm', status: 'active', kept: 0, created_at: createdAt });
+
+  for (const [label, createdAt] of [['the teammate saved first', '2026-01-01T00:00:00.000Z'], ['the teammate saved after the local keep', '2099-01-01T00:00:00.000Z']]) {
+    it(`the teammate deletes L2 and saves a new L2; the local database kept L2 (${label}): both lessons survive, listed`, { skip }, async () => {
+      const dir = await tmp();
+      try {
+        assert.equal((await save(dir, 'Run the linter before every commit.', [], {})).code, 0);
+        assert.equal((await save(dir, OLD, [], {})).code, 0);
+        assert.equal((await call(db, ['init'], dir, ENV)).code, 0);
+        assert.equal((await call(reflect, ['lessons', 'keep', '--id', 'L2'], dir, ENV)).code, 0);
+        const pulled = await readJson(dir, LESSONS);
+        pulled.lessons = [pulled.lessons[0], teammateL2(createdAt)];
+        await writeJson(dir, LESSONS, pulled);
+        const s = await call(db, ['sync', '--from-files'], dir, ENV);
+        assert.equal(s.code, 0, s.err);
+        assert.deepEqual(s.out.renumbered, [{ store: 'lessons', scope: LESSONS, from: 'L2', to: 'L3' }]);
+        assert.deepEqual(s.out.discarded, []);
+        assert.deepEqual(s.out.conflicts.map((c) => [c.id, c.kept, c.reason]), [['L2', 'database', 'changed in the database, deleted in the file: the edit is kept']]);
+        const file = await readJson(dir, LESSONS);
+        assert.deepEqual(file.lessons.map((l) => [l.id, l.text]), [['L1', 'Run the linter before every commit.'], ['L2', NEW], ['L3', OLD]]);
+        assert.equal(file.lessons[2].kept, 1, 'the old lesson keeps its local keep');
+        assert.equal(file.lessons[2].session, 's');
+        assert.deepEqual(await lessonTexts(dir), ['Run the linter before every commit.', NEW, OLD]);
+      } finally { await rm(dir); }
+    });
+  }
+
+  it('the local database retired the old L2: the new L2 survives and the old one stays retired as L3', { skip }, async () => {
+    const dir = await tmp();
+    try {
+      assert.equal((await save(dir, 'Run the linter before every commit.', [], {})).code, 0);
+      assert.equal((await save(dir, OLD, [], {})).code, 0);
+      assert.equal((await call(db, ['init'], dir, ENV)).code, 0);
+      assert.equal((await call(reflect, ['lessons', 'retire', '--id', 'L2', '--reason', 'superseded by review rules'], dir, ENV)).code, 0);
+      const pulled = await readJson(dir, LESSONS);
+      pulled.lessons = [pulled.lessons[0], teammateL2('2026-01-01T00:00:00.000Z')];
+      await writeJson(dir, LESSONS, pulled);
+      const s = await call(db, ['sync', '--from-files'], dir, ENV);
+      assert.equal(s.code, 0, s.err);
+      assert.deepEqual(s.out.renumbered.map((r) => [r.from, r.to]), [['L2', 'L3']]);
+      const file = await readJson(dir, LESSONS);
+      assert.deepEqual(file.lessons.map((l) => [l.id, l.text, l.status]), [['L1', 'Run the linter before every commit.', 'active'], ['L2', NEW, 'active'], ['L3', OLD, 'retired']]);
+    } finally { await rm(dir); }
+  });
+
+  it('the local database left the old L2 unchanged: it is deleted (the teammate deleted it), the new L2 is taken, nothing renumbered', { skip }, async () => {
+    const dir = await tmp();
+    try {
+      assert.equal((await save(dir, 'Run the linter before every commit.', [], {})).code, 0);
+      assert.equal((await save(dir, OLD, [], {})).code, 0);
+      assert.equal((await call(db, ['init'], dir, ENV)).code, 0);
+      const pulled = await readJson(dir, LESSONS);
+      pulled.lessons = [pulled.lessons[0], teammateL2('2026-01-01T00:00:00.000Z')];
+      await writeJson(dir, LESSONS, pulled);
+      const s = await call(db, ['sync', '--from-files'], dir, ENV);
+      assert.equal(s.code, 0, s.err);
+      assert.deepEqual(s.out.renumbered, []);
+      assert.deepEqual(s.out.deleted.map((d) => [d.id, d.deleted_in, d.row.text]), [['L2', 'file', OLD]]);
+      assert.deepEqual((await readJson(dir, LESSONS)).lessons.map((l) => [l.id, l.text]), [['L1', 'Run the linter before every commit.'], ['L2', NEW]]);
+    } finally { await rm(dir); }
+  });
+});
+
+describe('a store file with one id twice is refused: give one a new id, then sync', () => {
+  const LESSONS = '.claude/kit/lessons.json';
+  const teammate = (id, text, session) => ({ id, role: 'r', text, scope: '', session, status: 'active', kept: 0, created_at: '2026-10-15T00:00:00.000Z' });
+
+  it('db sync --from-files exits 1 naming the duplicated id, changes nothing; renumbered by hand it merges', { skip }, async () => {
+    const dir = await tmp();
+    try {
+      assert.equal((await save(dir, 'Run the linter before every commit.', [], {})).code, 0);
+      assert.equal((await call(db, ['init'], dir, ENV)).code, 0);
+      assert.equal((await save(dir, 'Check database migrations against a copy of production.')).code, 0);
+      const pulled = await readJson(dir, LESSONS);
+      pulled.lessons.push(teammate('L2', 'Ask a teammate before you merge on a Friday.', 'ta'), teammate('L2', 'Write the rollback step before the deploy step.', 'tb'));
+      const text = `${JSON.stringify(pulled, null, 2)}\n`;
+      await fs.writeFile(path.join(dir, LESSONS), text);
+      const before = await rawDb(dir);
+      let dbBefore;
+      try { dbBefore = getDoc(before, 'lessons', LESSONS); } finally { before.close(); }
+      const r = await call(db, ['sync', '--from-files'], dir, ENV);
+      assert.equal(r.code, 1);
+      assert.match(r.err, /lessons\.json holds the same id more than once \(L2\): two rows cannot share an id\. Repair the file in place: give one row of each duplicated id a new id \(the next free one, the highest id in the file plus one\), or remove the duplicate when it is the same row twice; then run `db sync --from-files` again\. Nothing was changed/);
+      assert.doesNotMatch(r.err, /or move|db init/);
+      assert.equal(await fs.readFile(path.join(dir, LESSONS), 'utf-8'), text, 'the file is untouched');
+      const after = await rawDb(dir);
+      try { assert.deepEqual(getDoc(after, 'lessons', LESSONS), dbBefore, 'the database is untouched'); } finally { after.close(); }
+      // the advice followed: the second L2 becomes L3; sync keeps all four lessons
+      pulled.lessons[2].id = 'L3';
+      await fs.writeFile(path.join(dir, LESSONS), `${JSON.stringify(pulled, null, 2)}\n`);
+      const s = await call(db, ['sync', '--from-files'], dir, ENV);
+      assert.equal(s.code, 0, s.err);
+      assert.deepEqual(s.out.renumbered.map((x) => [x.from, x.to]), [['L2', 'L4']]);
+      assert.deepEqual((await readJson(dir, LESSONS)).lessons.map((l) => l.id), ['L1', 'L2', 'L3', 'L4']);
+      assert.equal((await lessonTexts(dir)).length, 4);
+    } finally { await rm(dir); }
+  });
+
+  it('db init refuses a file with a duplicate id the same way', { skip }, async () => {
+    const dir = await tmp();
+    try {
+      await fs.mkdir(path.join(dir, '.claude/kit'), { recursive: true });
+      await fs.writeFile(path.join(dir, LESSONS), JSON.stringify({ version: 1, lessons: [teammate('L1', 'Run the linter before every commit.', 'a'), teammate('L1', 'Read the whole diff before you comment.', 'b')] }));
+      const r = await call(db, ['init'], dir, ENV);
+      assert.equal(r.code, 1);
+      assert.match(r.err, /holds the same id more than once \(L1\).*then run `db init` again\. Nothing was changed/);
+    } finally { await rm(dir); }
+  });
+
+  it("reflect's own duplicate-id error says to repair the file in place, not to move it", async () => {
+    const dir = await tmp();
+    try {
+      await fs.mkdir(path.join(dir, '.claude/kit'), { recursive: true });
+      await fs.writeFile(path.join(dir, LESSONS), JSON.stringify({ version: 1, lessons: [teammate('L1', 'Run the linter before every commit.', 'a'), teammate('L1', 'Read the whole diff before you comment.', 'b')] }));
+      const r = await call(reflect, ['lessons', 'list'], dir, {});
+      assert.equal(r.code, 1);
+      assert.match(r.err, /has duplicate id L1: repair the file in place: give one of the two lessons a new id \(the next free one, the highest id plus one\), or remove the duplicate/);
+      assert.doesNotMatch(r.err, /or move/);
     } finally { await rm(dir); }
   });
 });

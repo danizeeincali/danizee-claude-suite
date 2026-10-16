@@ -48,7 +48,7 @@ import { importReports, DEFAULT_LIMIT, MAX_LIMIT } from './test-runs.js';
 import {
   SPECS, DB_FILE, CONFIG_FILE, SCHEMA_VERSION, ENGINE_FIX, readConfig, writeConfig, loadEngine, resolveStore,
   withDb, schemaVersion, getDoc, putDoc, deleteDoc, scopeKey, rowCounts, listDocs, fileOfScope, fileHash, setFileHash,
-  driftOf, driftMessage, driftDetail, mergeDocs, getBase, REPAIR_ADVICE
+  driftOf, driftMessage, driftDetail, mergeDocs, getBase, REPAIR_ADVICE, duplicateIds, idList
 } from './store.js';
 
 export const verb = 'db';
@@ -132,9 +132,10 @@ async function withStateLocks(files, fn) {
 
 /**
  * A JSON store file as an object, or null when it does not exist; anything else is exit 1 telling to repair the file
- * in place and run `then` (the command that was running) again.
+ * in place and run `then` (the command that was running) again. A list holding one id twice is refused too: the
+ * merge matches rows by id, and every verb refuses such a store.
  */
-async function readSource(file, then) {
+async function readSource(file, then, name) {
   let doc;
   try { doc = await readJsonState(file, { fallback: null }); } catch (e) {
     if (e instanceof KitExit) throw invalid(`${e.message}: ${REPAIR_ADVICE}; then run \`${then}\` again`);
@@ -142,6 +143,12 @@ async function readSource(file, then) {
   }
   if (doc === null) return null;
   if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw invalid(`${file} is not a JSON object: ${REPAIR_ADVICE}; then run \`${then}\` again`);
+  const dup = name ? duplicateIds(name, doc) : [];
+  if (dup.length) {
+    throw invalid(`${file} holds the same id more than once (${dup.map((d) => d.id).join(', ')}): two rows cannot share an id. `
+      + 'Repair the file in place: give one row of each duplicated id a new id (the next free one, the highest id in the file plus one), '
+      + `or remove the duplicate when it is the same row twice; then run \`${then}\` again. Nothing was changed`);
+  }
   return doc;
 }
 
@@ -160,7 +167,7 @@ async function init(io) {
     const fromJson = readConfig(cwd).store !== 'sqlite';
     // read and parse every JSON store first: a broken one stops init before the database changes
     const found = [];
-    for (const s of sources) found.push({ ...s, doc: await readSource(s.file, 'db init'), sha: fileHash(s.file) });
+    for (const s of sources) found.push({ ...s, doc: await readSource(s.file, 'db init', s.name), sha: fileHash(s.file) });
     const res = await withDb(ctx, (db) => {
       const imported = [];
       const kept = [];
@@ -200,15 +207,32 @@ async function exportInTx(db, cwd, overwrite) {
     exported.push({ store: d.store, scope: d.scope });
   }
   const rows = rowCounts(db);
-  // what --overwrite replaced: every file-only row of a drifted file is gone from it (the database never had it)
+  // what --overwrite undid, found with the sync merge against the stored base: the rows only the file had are gone,
+  // the edits made in the file only are reverted, the rows the file deleted are back, every conflict has the database's side
+  const ref = (x) => ({ part: x.part, id: x.id });
   const overwritten = drifted.map((d) => ({
     store: d.store,
     scope: d.scope,
     ...(d.detail.error
       ? { file_was: d.detail.error }
-      : { dropped_file_rows: d.detail.file_only.length, dropped: d.detail.file_only, replaced_conflicts: d.detail.conflicts.length })
+      : {
+        dropped_file_rows: d.detail.file_only.length,
+        dropped: d.detail.file_only,
+        replaced_conflicts: d.detail.conflicts.length,
+        replaced: d.detail.conflicts.map(ref),
+        reverted_file_edits: d.detail.edited_in_file,
+        restored_file_deletions: d.detail.deleted_in_file,
+        ...(d.detail.base === null ? { base: 'unknown: edits and deletions made in the file cannot be told' } : {})
+      })
   }));
   const dropped = overwritten.reduce((n, o) => n + (o.dropped_file_rows || 0), 0);
+  const all = (k) => overwritten.flatMap((o) => o[k] || []);
+  const undone = [
+    all('reverted_file_edits').length ? `${all('reverted_file_edits').length} edit(s) made in the file were reverted${idList(all('reverted_file_edits'), 20)}` : '',
+    all('restored_file_deletions').length ? `${all('restored_file_deletions').length} row(s) deleted in the file were restored${idList(all('restored_file_deletions'), 20)}` : '',
+    all('replaced').length ? `the file's side of ${all('replaced').length} conflicting row(s) was replaced${idList(all('replaced'), 20)}` : '',
+    overwritten.some((o) => o.base) ? `for ${overwritten.filter((o) => o.base).map((o) => o.scope).join(', ')} the database had no copy as last synced, so which edits and deletions made in the file were reverted is unknown` : ''
+  ].filter(Boolean).map((x) => `${x}; `).join('');
   // test runs have no JSON store: they stay in the database only
   return {
     exported,
@@ -216,6 +240,7 @@ async function exportInTx(db, cwd, overwrite) {
       overwritten,
       warning: `--overwrite REPLACED ${drifted.length} changed file(s) with the database (${overwritten.map((o) => o.scope).join(', ')}): `
         + `${dropped} file-only row(s) were dropped from them${dropped ? ` (${overwritten.flatMap((o) => (o.dropped || []).map((x) => x.id)).slice(0, 20).join(', ')})` : ''}; `
+        + undone
         + '`db sync --from-files` merges instead'
     } : {}),
     not_exported: { test_runs: rows.test_runs, test_cases: rows.test_cases }
@@ -267,7 +292,7 @@ async function sync(io, f) {
     }
     // read every file first: a broken one stops sync with nothing changed (the transaction rolls back)
     const docs = [];
-    for (const t of targets) docs.push({ ...t, doc: await readSource(t.file, 'db sync --from-files') });
+    for (const t of targets) docs.push({ ...t, doc: await readSource(t.file, 'db sync --from-files', t.name) });
     const synced = [];
     const kept = [];
     const conflicts = [];
