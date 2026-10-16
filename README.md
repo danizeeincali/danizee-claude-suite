@@ -4,6 +4,18 @@
 
 Unified workflow shortcuts for Claude Code that **compound knowledge** — each task makes future tasks easier.
 
+## Most-used commands
+
+The five commands that do most of the work. Each short form is an alias for its long form and takes the same arguments.
+
+| Command | Long form | What it does |
+|---------|-----------|--------------|
+| `/mt` | `/w-marathon` | Runs a job with a finish line for hours or days: one interview, then a kickoff, a schema-checked finish line, a wake-up timer and a hard cost ceiling, with state kept in files so it survives compaction. `--resume` and `--status` pick a run back up. [More](#marathon--a-run-with-a-finish-line) |
+| `/pt` | `/w-plan-tdd-swarm` | Turns a half-baked idea into a built feature: interviews you to a refined spec, writes failing tests first, builds with a parallel agent swarm until they pass, then runs a full review. |
+| `/bbs` | `/w-bbs` | Beg, borrow, steal: takes one outside source (a repo, a web page, a local path or pasted text), finds its powers, checks what your project already has, lets you approve each power and where it lands, and hands the approved ones to a `/w-marathon` run. Foreign code is never executed. [More](#beg-borrow-steal--absorb-a-power-from-an-outside-source) |
+| `/bcp` | `/w-background-compound --push` | Everything `/bc` does, then pushes the branch and, when not on main, merges it to main. This is the owner's go. [More](#compaction-hooks-and-bc-vs-bcp) |
+| `/bc` | `/w-background-compound` | A background agent writes up the session's lessons while the lead writes a handoff, measures the context and hands you a ready-to-run prune line (`/compact` keep-list or `/clear` plus resume). Commits, never pushes. |
+
 ## Installation
 
 ```bash
