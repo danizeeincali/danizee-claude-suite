@@ -1,0 +1,525 @@
+{
+  "run": "2026-10-15-bugpatrol",
+  "source_identity": "git:960cd19d1a533567d40945a6b3a60057a2a87f55",
+  "ts": "2026-10-15T14:27:52.041Z",
+  "candidates": {
+    "noise ledger with flake quarantine": [
+      {
+        "id": "command:.claude/commands/.shortcuts/w-marathon.md",
+        "kind": "command",
+        "name": "w-marathon",
+        "path": ".claude/commands/.shortcuts/w-marathon.md",
+        "score": 0.071
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "kind": "command",
+        "name": "w-plan-tdd-swarm",
+        "path": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "score": 0.068
+      },
+      {
+        "id": "helper:.claude/helpers/marathon/findings.js",
+        "kind": "helper",
+        "name": "findings",
+        "path": ".claude/helpers/marathon/findings.js",
+        "score": 0.052
+      },
+      {
+        "id": "module:src/lib/marathon/findings.js",
+        "kind": "module",
+        "name": "findings",
+        "path": "src/lib/marathon/findings.js",
+        "score": 0.052
+      },
+      {
+        "id": "helper:.claude/helpers/kit/review-score.js",
+        "kind": "helper",
+        "name": "review-score",
+        "path": ".claude/helpers/kit/review-score.js",
+        "score": 0.049
+      }
+    ],
+    "two pass finding clustering": [
+      {
+        "id": "command:.claude/commands/.shortcuts/w-marathon.md",
+        "kind": "command",
+        "name": "w-marathon",
+        "path": ".claude/commands/.shortcuts/w-marathon.md",
+        "score": 0.151
+      },
+      {
+        "id": "helper:.claude/helpers/marathon/routing.js",
+        "kind": "helper",
+        "name": "routing",
+        "path": ".claude/helpers/marathon/routing.js",
+        "score": 0.126
+      },
+      {
+        "id": "module:src/lib/marathon/routing.js",
+        "kind": "module",
+        "name": "routing",
+        "path": "src/lib/marathon/routing.js",
+        "score": 0.126
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "kind": "command",
+        "name": "w-plan-tdd-swarm",
+        "path": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "score": 0.114
+      },
+      {
+        "id": "helper:.claude/helpers/kit/wording-judge.js",
+        "kind": "helper",
+        "name": "wording-judge",
+        "path": ".claude/helpers/kit/wording-judge.js",
+        "score": 0.101
+      }
+    ],
+    "asymmetric threshold router": [
+      {
+        "id": "helper:.claude/helpers/kit/push-gate.js",
+        "kind": "helper",
+        "name": "push-gate",
+        "path": ".claude/helpers/kit/push-gate.js",
+        "score": 0.112
+      },
+      {
+        "id": "module:src/lib/kit/push-gate.js",
+        "kind": "module",
+        "name": "push-gate",
+        "path": "src/lib/kit/push-gate.js",
+        "score": 0.112
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-bg-debug.md",
+        "kind": "command",
+        "name": "w-bg-debug",
+        "path": ".claude/commands/.shortcuts/w-bg-debug.md",
+        "score": 0.085
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-debug.md",
+        "kind": "command",
+        "name": "w-debug",
+        "path": ".claude/commands/.shortcuts/w-debug.md",
+        "score": 0.08
+      },
+      {
+        "id": "module:src/lib/follow-up-detector.js",
+        "kind": "module",
+        "name": "follow-up-detector",
+        "path": "src/lib/follow-up-detector.js",
+        "score": 0.077
+      }
+    ],
+    "change-impact test plan": [
+      {
+        "id": "helper:.claude/helpers/kit/impact.js",
+        "kind": "helper",
+        "name": "impact",
+        "path": ".claude/helpers/kit/impact.js",
+        "score": 0.127
+      },
+      {
+        "id": "module:src/lib/kit/impact.js",
+        "kind": "module",
+        "name": "impact",
+        "path": "src/lib/kit/impact.js",
+        "score": 0.127
+      },
+      {
+        "id": "script:package.json#test",
+        "kind": "script",
+        "name": "test",
+        "path": "package.json",
+        "score": 0.109
+      },
+      {
+        "id": "helper:.claude/helpers/kit/graph.js",
+        "kind": "helper",
+        "name": "graph",
+        "path": ".claude/helpers/kit/graph.js",
+        "score": 0.101
+      },
+      {
+        "id": "module:src/lib/kit/graph.js",
+        "kind": "module",
+        "name": "graph",
+        "path": "src/lib/kit/graph.js",
+        "score": 0.101
+      }
+    ],
+    "finding triage with fingerprint dedup and absence closing": [
+      {
+        "id": "command:.claude/commands/.shortcuts/w-ralph-pick.md",
+        "kind": "command",
+        "name": "w-ralph-pick",
+        "path": ".claude/commands/.shortcuts/w-ralph-pick.md",
+        "score": 0.075
+      },
+      {
+        "id": "helper:.claude/helpers/kit/redact.js",
+        "kind": "helper",
+        "name": "redact",
+        "path": ".claude/helpers/kit/redact.js",
+        "score": 0.069
+      },
+      {
+        "id": "module:src/lib/kit/redact.js",
+        "kind": "module",
+        "name": "redact",
+        "path": "src/lib/kit/redact.js",
+        "score": 0.069
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-end.md",
+        "kind": "command",
+        "name": "w-end",
+        "path": ".claude/commands/.shortcuts/w-end.md",
+        "score": 0.063
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-bbs.md",
+        "kind": "command",
+        "name": "w-bbs",
+        "path": ".claude/commands/.shortcuts/w-bbs.md",
+        "score": 0.061
+      }
+    ],
+    "shared budget for claim sub-sessions": [
+      {
+        "id": "command:.claude/commands/.shortcuts/w-marathon.md",
+        "kind": "command",
+        "name": "w-marathon",
+        "path": ".claude/commands/.shortcuts/w-marathon.md",
+        "score": 0.17
+      },
+      {
+        "id": "helper:.claude/helpers/marathon/budget.js",
+        "kind": "helper",
+        "name": "budget",
+        "path": ".claude/helpers/marathon/budget.js",
+        "score": 0.154
+      },
+      {
+        "id": "module:src/lib/marathon/budget.js",
+        "kind": "module",
+        "name": "budget",
+        "path": "src/lib/marathon/budget.js",
+        "score": 0.154
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "kind": "command",
+        "name": "w-plan-tdd-swarm",
+        "path": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "score": 0.099
+      },
+      {
+        "id": "helper:.claude/helpers/kit/wording-judge.js",
+        "kind": "helper",
+        "name": "wording-judge",
+        "path": ".claude/helpers/kit/wording-judge.js",
+        "score": 0.093
+      }
+    ],
+    "trouble-log reflection into lesson memory": [
+      {
+        "id": "helper:.claude/helpers/kit/wording-judge.js",
+        "kind": "helper",
+        "name": "wording-judge",
+        "path": ".claude/helpers/kit/wording-judge.js",
+        "score": 0.094
+      },
+      {
+        "id": "module:src/lib/kit/wording-judge.js",
+        "kind": "module",
+        "name": "wording-judge",
+        "path": "src/lib/kit/wording-judge.js",
+        "score": 0.094
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "kind": "command",
+        "name": "w-plan-tdd-swarm",
+        "path": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "score": 0.089
+      },
+      {
+        "id": "helper:.claude/helpers/marathon/routing.js",
+        "kind": "helper",
+        "name": "routing",
+        "path": ".claude/helpers/marathon/routing.js",
+        "score": 0.082
+      },
+      {
+        "id": "module:src/lib/marathon/routing.js",
+        "kind": "module",
+        "name": "routing",
+        "path": "src/lib/marathon/routing.js",
+        "score": 0.082
+      }
+    ],
+    "safe worktree cleanup for fix checkouts": [
+      {
+        "id": "command:.claude/commands/.shortcuts/w-fix.md",
+        "kind": "command",
+        "name": "w-fix",
+        "path": ".claude/commands/.shortcuts/w-fix.md",
+        "score": 0.154
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-bg-debug.md",
+        "kind": "command",
+        "name": "w-bg-debug",
+        "path": ".claude/commands/.shortcuts/w-bg-debug.md",
+        "score": 0.138
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-multi-repo.md",
+        "kind": "command",
+        "name": "w-multi-repo",
+        "path": ".claude/commands/.shortcuts/w-multi-repo.md",
+        "score": 0.134
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-hotfix.md",
+        "kind": "command",
+        "name": "w-hotfix",
+        "path": ".claude/commands/.shortcuts/w-hotfix.md",
+        "score": 0.131
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-debug.md",
+        "kind": "command",
+        "name": "w-debug",
+        "path": ".claude/commands/.shortcuts/w-debug.md",
+        "score": 0.123
+      }
+    ],
+    "Preflight doctor checks before a run": [
+      {
+        "id": "command:.claude/commands/.shortcuts/w-bbs.md",
+        "kind": "command",
+        "name": "w-bbs",
+        "path": ".claude/commands/.shortcuts/w-bbs.md",
+        "score": 0.102
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-marathon.md",
+        "kind": "command",
+        "name": "w-marathon",
+        "path": ".claude/commands/.shortcuts/w-marathon.md",
+        "score": 0.096
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-end.md",
+        "kind": "command",
+        "name": "w-end",
+        "path": ".claude/commands/.shortcuts/w-end.md",
+        "score": 0.084
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-fix.md",
+        "kind": "command",
+        "name": "w-fix",
+        "path": ".claude/commands/.shortcuts/w-fix.md",
+        "score": 0.083
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "kind": "command",
+        "name": "w-plan-tdd-swarm",
+        "path": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "score": 0.081
+      }
+    ],
+    "Exit code contract separating infrastructure from product failure": [
+      {
+        "id": "helper:.claude/helpers/kit/kit-exit.js",
+        "kind": "helper",
+        "name": "kit-exit",
+        "path": ".claude/helpers/kit/kit-exit.js",
+        "score": 0.163
+      },
+      {
+        "id": "module:src/lib/kit/kit-exit.js",
+        "kind": "module",
+        "name": "kit-exit",
+        "path": "src/lib/kit/kit-exit.js",
+        "score": 0.163
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-marathon.md",
+        "kind": "command",
+        "name": "w-marathon",
+        "path": ".claude/commands/.shortcuts/w-marathon.md",
+        "score": 0.116
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "kind": "command",
+        "name": "w-plan-tdd-swarm",
+        "path": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "score": 0.113
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-bbs.md",
+        "kind": "command",
+        "name": "w-bbs",
+        "path": ".claude/commands/.shortcuts/w-bbs.md",
+        "score": 0.091
+      }
+    ],
+    "SARIF JUnit and sticky PR comment renderers": [
+      {
+        "id": "command:.claude/commands/workflows/review.md",
+        "kind": "command",
+        "name": "review",
+        "path": ".claude/commands/workflows/review.md",
+        "score": 0.088
+      },
+      {
+        "id": "script:package.json#test",
+        "kind": "script",
+        "name": "test",
+        "path": "package.json",
+        "score": 0.08
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-agent-tdd-swarm.md",
+        "kind": "command",
+        "name": "w-agent-tdd-swarm",
+        "path": ".claude/commands/.shortcuts/w-agent-tdd-swarm.md",
+        "score": 0.066
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-bbs.md",
+        "kind": "command",
+        "name": "w-bbs",
+        "path": ".claude/commands/.shortcuts/w-bbs.md",
+        "score": 0.058
+      },
+      {
+        "id": "helper:.claude/helpers/kit/review-score.js",
+        "kind": "helper",
+        "name": "review-score",
+        "path": ".claude/helpers/kit/review-score.js",
+        "score": 0.054
+      }
+    ],
+    "repeated replay gate for claims": [
+      {
+        "id": "command:.claude/commands/.shortcuts/w-bbs.md",
+        "kind": "command",
+        "name": "w-bbs",
+        "path": ".claude/commands/.shortcuts/w-bbs.md",
+        "score": 0.094
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "kind": "command",
+        "name": "w-plan-tdd-swarm",
+        "path": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "score": 0.088
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-marathon.md",
+        "kind": "command",
+        "name": "w-marathon",
+        "path": ".claude/commands/.shortcuts/w-marathon.md",
+        "score": 0.086
+      },
+      {
+        "id": "helper:.claude/helpers/kit/wording-judge.js",
+        "kind": "helper",
+        "name": "wording-judge",
+        "path": ".claude/helpers/kit/wording-judge.js",
+        "score": 0.083
+      },
+      {
+        "id": "module:src/lib/kit/wording-judge.js",
+        "kind": "module",
+        "name": "wording-judge",
+        "path": "src/lib/kit/wording-judge.js",
+        "score": 0.083
+      }
+    ]
+  },
+  "judgments": {
+    "noise ledger with flake quarantine": {
+      "status": "missing",
+      "tool": null,
+      "why": "No candidate has accepted-decision expiry, reproduction retries, quarantine or flake-rate logic; marathon findings.js only normalizes/folds rows and review-score.js only scores planted bugs.",
+      "ts": "2026-10-15T14:29:31.025Z"
+    },
+    "two pass finding clustering": {
+      "status": "missing",
+      "tool": null,
+      "why": "No candidate buckets findings by rule and file set or runs a pairwise model merge; the marathon routing and wording-judge candidates do not cluster findings.",
+      "ts": "2026-10-15T14:29:31.025Z"
+    },
+    "asymmetric threshold router": {
+      "status": "partial",
+      "tool": "helper:.claude/helpers/kit/push-gate.js",
+      "why": "push-gate decide() returns abstain/ask/deny with a none/high/medium/low threshold and never allows, but has no ambiguity escalation band, auto-fix predicate or model-verdict downgrade.",
+      "ts": "2026-10-15T14:29:31.025Z"
+    },
+    "change-impact test plan": {
+      "status": "partial",
+      "tool": "helper:.claude/helpers/kit/impact.js",
+      "why": "impact.js maps diff to touched symbols, walks callers up to hops and scores risk with a lower_bound flag, but has no screen/flow inverse index, shared-component share rule, smoke set or test-plan coverage counts.",
+      "ts": "2026-10-15T14:29:31.025Z"
+    },
+    "finding triage with fingerprint dedup and absence closing": {
+      "status": "missing",
+      "tool": null,
+      "why": "No candidate fingerprints findings by screen, rule and element, keeps a triage ledger or closes issues after absent visits; redact.js fingerprints secrets only, which is unrelated.",
+      "ts": "2026-10-15T14:29:31.025Z"
+    },
+    "shared budget for claim sub-sessions": {
+      "status": "partial",
+      "tool": "helper:.claude/helpers/marathon/budget.js",
+      "why": "budget.js canFanOut sums spent tokens and in-flight budgets against a run token limit and usage ceiling, failing closed on bad input; it has no time limit, step/cost budget object, nesting depth counter or per-session spend recording.",
+      "ts": "2026-10-15T14:29:31.025Z"
+    },
+    "trouble-log reflection into lesson memory": {
+      "status": "missing",
+      "tool": null,
+      "why": "No candidate reduces an event log to trouble signals or runs a reviewer that saves, keeps or retires lessons; routing.js and wording-judge.js do not do this.",
+      "ts": "2026-10-15T14:29:31.025Z"
+    },
+    "safe worktree cleanup for fix checkouts": {
+      "status": "missing",
+      "tool": null,
+      "why": "The fix/debug/hotfix/multi-repo command workflows only create worktrees or run lens diffs; none removes checkouts, checks uncommitted state or deletes branches with the safe-then-force rule.",
+      "ts": "2026-10-15T14:29:31.025Z"
+    },
+    "Preflight doctor checks before a run": {
+      "status": "missing",
+      "tool": null,
+      "why": "No candidate defines a doctor/preflight verb or checks tools with fatal and non-fatal verdicts; the workflow commands only say to skip when the kit is missing.",
+      "ts": "2026-10-15T14:29:31.025Z"
+    },
+    "Exit code contract separating infrastructure from product failure": {
+      "status": "partial",
+      "tool": "helper:.claude/helpers/kit/kit-exit.js",
+      "why": "kit-exit.js defines a KitExit error carrying a numeric code, but only codes 1 (invalid or broken) and 2 (refused) exist; there is no clean code 0, dedicated regression code or unmet-precondition code, and no shared description text.",
+      "ts": "2026-10-15T14:29:31.025Z"
+    },
+    "SARIF JUnit and sticky PR comment renderers": {
+      "status": "missing",
+      "tool": null,
+      "why": "No candidate renders SARIF, JUnit or a sticky PR comment; review-score.js writes plain scores.json and package.json test only runs node --test.",
+      "ts": "2026-10-15T14:29:31.025Z"
+    },
+    "repeated replay gate for claims": {
+      "status": "partial",
+      "tool": "helper:.claude/helpers/kit/wording-judge.js",
+      "why": "wording-judge reports model opinion beside scores and the scorer never reads it, which covers the model-comment-only half; it has no program-decided verdict split, second identical replay run or untested downgrade.",
+      "ts": "2026-10-15T14:29:31.025Z"
+    }
+  }
+}

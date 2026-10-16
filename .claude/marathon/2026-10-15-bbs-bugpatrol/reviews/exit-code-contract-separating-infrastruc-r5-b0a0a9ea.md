@@ -1,0 +1,15 @@
+# Review b0a0a9ea-cf76-4faf-94bc-00bc96c70bc0 — exit-code-contract-separating-infrastruc, round 5
+
+- Commit: c97267f
+- Angle: accessibility
+- Result: pass
+- 3 findings
+
+## Medium (1)
+
+- **A judge's fail-closed incomplete scan, with --result given, is described as 'ran and said no' and told to pass --result again** — `.claude/helpers/kit/exit-codes.js:43` (facts): Since r4, an exit 2 from scrub (or push-gate) whose scan was cut short by a size, total or not-a-regular-file limit stays a blocking regression even with --result. That is correct, but describe/classify then return the generic regression description: 'a verb that judges the product ran and said no ... pass --result \<file|-\> to tell an unrun check (infrastructure) from a real verdict.' Confirmed: echo '{"hit\_count":0,"not\_scanned":\[{"path":"a","reason":"larger than 100 bytes"}\]}' | cli.js exit-codes describe 2 --verb scrub --result - prints exactly that text. Scrub found no hits; it blocked because files went unscanned (fail closed). The reader whose build turned red is told the product was judged and said no, and is told to do what they already did, with no word that the cause is an unscanned file they must shrink, split or scan with a higher limit. The description is the only explanation any surface shows, so it misleads the person trying to unblock the build. — fix: When --result is given for a judge and the 2 stays blocking with hit\_count 0 and a non-empty not\_scanned, return a specific description (fail closed: files were not scanned for a product reason such as a size limit; it blocks; list the reasons) instead of the generic regression text; add a test that asserts the description names the unscanned reason.
+
+## Low (2)
+
+- **Header still says 'complete false' or any non-empty not\_scanned reclassifies scrub's 2 as infrastructure** — `.claude/helpers/kit/exit-codes.js:12` (docs): Lines 12-14 say an exit 2 is infrastructure for 'scrub with hit\_count 0 and a non-empty not\_scanned list or complete false', and for push-gate with 'an incomplete scan'. Since the r4 fix, incompleteNoHits (line 90) reclassifies only when every not\_scanned entry has the partial-clone reason; complete false alone does nothing. Confirmed: {"hit\_count":0,"complete":false,"not\_scanned":\[\]} gives blocks true. The doc comment describes the pre-r4 rule. — fix: Reword lines 12-14 to say only a zero-hit scan whose every not\_scanned reason is an environment reason (partial clone) is infrastructure; size, total and other reasons stay blocking.
+- **Empty piped --result says 'not valid JSON' instead of saying nothing was piped** — `.claude/helpers/kit/exit-codes.js:185` (other): When a judge crashed or printed nothing, \`judge | cli.js exit-codes blocks 2 --verb scrub --result -\` gets empty stdin and fails with 'kit: --result is not valid JSON (pass the verb's JSON output)'. Confirmed with printf '' | ... (exit 1). The message suggests malformed output rather than an empty pipe, so a CI reader has to guess why. — fix: Before JSON.parse, if text.trim() is empty, throw '--result is empty (the verb printed nothing; did it crash?)'.

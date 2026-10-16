@@ -1,0 +1,15 @@
+# Review 1303b9bc-be82-402f-ba80-160d73b77745 — noise-ledger-with-flake-quarantine, round 3
+
+- Commit: 4fbf706
+- Angle: older environments and degraded networks
+- Result: pass
+- 3 findings
+
+## Medium (1)
+
+- **Breaking a stale lock lets two runs hold it at once, so accepts are still lost** — `src/lib/kit/noise-ledger.js:235` (correctness): When the lock is older than LOCK\_STALE\_MS, every waiter that stats it does an unconditional fs.rm(lock) and then retries. Waiter A can remove the old lock and create its own with 'wx', and waiter B, which saw the same stale mtime, then removes A's fresh lock and creates its own. Both run the read-modify-write together and the last rename wins. The finally block also does an unconditional rm, so a run can delete a lock that another run now holds. Checked: with a stale ledger.json.lock (mtime 10 min old) and 8 parallel accepts, 2 of 30 trials ended with fewer entries than successful runs, and every run reported success. A stale lock is exactly what a crashed or killed run (Ctrl-C, CI timeout) leaves behind. The lock is also never refreshed while held, so on a slow or network filesystem a run that holds it for more than 30s is treated as stale and broken while it is still writing. The same code is mirrored in .claude/helpers/kit/noise-ledger.js:235. — fix: Break a stale lock atomically: rename it to a unique name such as \`${lock}.${pid}.${rand}.stale\` and only the run whose rename succeeds removes it and retries; or write a random token into the lock and, in finally, remove it only if it still holds your token. Add a test that runs parallel accepts against a pre-existing stale lock and expects every entry kept.
+
+## Low (2)
+
+- **prune now fails on a read-only checkout and creates directories even when nothing expired** — `src/lib/kit/noise-ledger.js:292` (correctness): prune now always goes through withLock, which runs mkdir -p and creates \<ledger\>.lock before reading. Before this change, prune with nothing expired only read the file. Checked: on a read-only bind mount holding a valid ledger with no expired entries, prune exits 1 with 'cannot lock ledger ...: EROFS'. With no ledger present, prune now leaves empty .claude/kit/ directories behind. An advisory prune step on a read-only CI workspace or a mounted snapshot breaks for no reason. — fix: In prune, read the ledger first without a lock. Return early when nothing is expired, and take the lock and re-read only when there is something to write.
+- **Lock file handle close() is not awaited** — `src/lib/kit/noise-ledger.js:231` (correctness): (await fs.open(lock, 'wx')).close() drops the promise that close() returns. If close rejects (EIO/EBADF on a flaky network filesystem), the rejection is unhandled and can crash the process (Node \>=15 default) after the ledger was already written. Also, nothing guarantees the handle is closed before fn runs. The same code is mirrored in .claude/helpers/kit/noise-ledger.js:231. — fix: const h = await fs.open(lock, 'wx'); await h.close(); break;

@@ -1,0 +1,16 @@
+# Review fbdbe4c3-0dea-4863-a918-1e34ffabc558 — noise-ledger-with-flake-quarantine, round 1
+
+- Commit: 19973a4
+- Angle: r1: full read against the idea
+- Result: pass
+- 4 findings
+
+## Medium (2)
+
+- **Findings that did reproduce are still quarantined and never block** — `src/lib/kit/noise-ledger.js:142` (correctness): Quarantine fires when failures - reproductions \>= 2, whatever the reproduction count. A high-severity finding with failures 5 and reproductions 3 (it showed up again on 3 of 5 retries) is quarantined, removed from filed and summary, and blocking is false (checked: plan(\[{id:'z',severity:'high',failures:5,reproductions:3}\]) gives quarantined 1, blocking false). The idea brief says a finding that 'fails to reproduce on two retries' is quarantined. A finding that reproduced is confirmed, so an intermittent real bug is kept out of Ralph work. The packaged test fixes this behaviour in place with failures 3 and reproductions 1. The same logic is in .claude/helpers/kit/noise-ledger.js:142. — fix: Quarantine only when reproductions === 0 && failures \>= QUARANTINE\_AFTER, or document a ratio rule on purpose. Add a test showing that a finding with reproductions \> 0 is filed.
+- **--now with a UTC offset uses the local calendar day, not the UTC day** — `src/lib/kit/noise-ledger.js:48` (correctness): parseDate accepts ISO times with an offset but returns the literal YYYY-MM-DD prefix. With --now 2026-10-15T23:30:00-05:00 (UTC 2026-10-16T04:30Z), the day comes out as 2026-10-15, so a ledger entry that expires on 2026-10-15 still matches (checked: accepted 1). The header says expiry is 'UTC, inclusive', and today() takes the UTC day for a Date object, so the two kinds of --now input disagree near midnight. The same applies to '+0900' offsets. Mirrored in .claude/helpers/kit/noise-ledger.js:48. — fix: When the string has a time part with Z or an offset, return new Date(v).toISOString().slice(0,10). Keep the literal prefix only for a bare date. Add a test for an offset input near midnight.
+
+## Low (2)
+
+- **accept/prune rewrite the committed ledger and drop any extra entry or top-level fields** — `src/lib/kit/noise-ledger.js:110` (correctness): normalizeLedger rebuilds each entry from only id, reason, added and expires, and forces version 1. accept and prune write that result back. A field a team added by hand (for example owner or ticket) disappears silently from the committed file the next time anyone runs accept or prune (checked: an entry with owner and ticket comes back without them). An unknown future version is also rewritten as 1 without a warning. — fix: Spread the original entry (and the top-level object) before the normalised fields when writing, or refuse unknown fields and versions with exit 1 so nothing is lost silently.
+- **--in - reads a file named '-' instead of stdin, unlike sibling kit verbs** — `src/lib/kit/noise-ledger.js:226` (other): Other kit verbs treat '-' as stdin: graph and lenses take '--diff -' and safe-git takes '--input -'. noise-ledger apply resolves '--in -' as a path and fails with 'cannot read -: ENOENT'. Someone choosing between the two input methods by habit gets a confusing error. — fix: Treat f.in === '-' as the stdin branch, including the TTY check, or reject it with a message pointing to stdin.

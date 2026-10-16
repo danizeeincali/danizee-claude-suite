@@ -1,0 +1,12 @@
+{"run":"2026-10-15-bugpatrol","power":"noise ledger with flake quarantine","verdict":"rebuild","label":1,"ts":"2026-10-15T14:36:41.422Z"}
+{"run":"2026-10-15-bugpatrol","power":"two pass finding clustering","verdict":"rebuild","label":1,"ts":"2026-10-15T14:36:41.422Z"}
+{"run":"2026-10-15-bugpatrol","power":"asymmetric threshold router","verdict":"rebuild","label":1,"ts":"2026-10-15T14:36:41.422Z"}
+{"run":"2026-10-15-bugpatrol","power":"change-impact test plan","verdict":"rebuild","label":1,"ts":"2026-10-15T14:36:41.422Z"}
+{"run":"2026-10-15-bugpatrol","power":"finding triage with fingerprint dedup and absence closing","verdict":"rebuild","label":1,"ts":"2026-10-15T14:36:41.422Z"}
+{"run":"2026-10-15-bugpatrol","power":"shared budget for claim sub-sessions","verdict":"rebuild","label":1,"ts":"2026-10-15T14:36:41.422Z"}
+{"run":"2026-10-15-bugpatrol","power":"trouble-log reflection into lesson memory","verdict":"rebuild","label":1,"ts":"2026-10-15T14:36:41.422Z"}
+{"run":"2026-10-15-bugpatrol","power":"safe worktree cleanup for fix checkouts","verdict":"buy","label":1,"ts":"2026-10-15T14:36:41.422Z"}
+{"run":"2026-10-15-bugpatrol","power":"Preflight doctor checks before a run","verdict":"rebuild","label":1,"ts":"2026-10-15T14:36:41.422Z"}
+{"run":"2026-10-15-bugpatrol","power":"Exit code contract separating infrastructure from product failure","verdict":"rebuild","label":1,"ts":"2026-10-15T14:36:41.422Z"}
+{"run":"2026-10-15-bugpatrol","power":"SARIF JUnit and sticky PR comment renderers","verdict":"rebuild","label":1,"ts":"2026-10-15T14:36:41.422Z"}
+{"run":"2026-10-15-bugpatrol","power":"repeated replay gate for claims","verdict":"rebuild","label":1,"ts":"2026-10-15T14:36:41.422Z"}

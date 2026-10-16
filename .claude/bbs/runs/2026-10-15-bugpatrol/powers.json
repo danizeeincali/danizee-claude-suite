@@ -1,0 +1,177 @@
+{
+  "run": "2026-10-15-bugpatrol",
+  "source_identity": "git:960cd19d1a533567d40945a6b3a60057a2a87f55",
+  "powers": [
+    {
+      "name": "noise ledger with flake quarantine",
+      "what": "Caps new issues per run, holds back blocking on a first run, and quarantines findings that fail to reproduce on retry.",
+      "evidence": "packages/triage/src/noise.ts:4-17, 34-62, 72-79; packages/triage/src/ledger.ts:40-43",
+      "dependencies": [],
+      "data_needed": "per-run config (issue cap, first-run flag, retry count); per-finding failure and reproduction counts; a committed ledger of accepted decisions with optional expiry dates",
+      "network": "none",
+      "size": "small",
+      "licence": "Apache-2.0",
+      "idea": "Keep the first encounter with a new checker survivable. Rank findings by severity, then by how many screens they touch. File only the top N as separate issues and fold the rest into one summary item. On a project's first approved run, report but never block. A finding that fails to reproduce on two retries is marked quarantined: it stays listed and never blocks, and it is surfaced as a sign that the baseline or determinism setup needs attention, not silently dropped. Accepted decisions live in a committed file with an optional expiry, so a suppression is re-examined once it lapses; expired entries stop matching and can be pruned. Flake rate is failures minus reproductions, divided by failures."
+    },
+    {
+      "name": "two pass finding clustering",
+      "what": "Groups duplicate findings deterministically by rule and affected-file set, then asks a model only about the pairs left unresolved, merging only on high confidence.",
+      "evidence": "packages/triage/src/cluster.ts:23-46, 49-77, 79-88",
+      "dependencies": [
+        "@bugpatrol/core",
+        "@bugpatrol/decide"
+      ],
+      "data_needed": "list of findings with rule id, screen id, suspected files and severity; optional map of changed files per finding; optional decider for ambiguous pairs",
+      "network": "outbound",
+      "size": "small",
+      "licence": "Apache-2.0",
+      "idea": "One broken shared part should produce one issue, not twenty. The first pass is free: bucket findings by rule and by the sorted set of files they point at, keep the most severe member as the representative, and list every screen it touched. Only groups the first pass could not settle go to a model, one residual pair at a time. A pair is merged only when the model says yes with at least even odds and high confidence, because merging hides findings and so needs a stronger bar than raising one. Model cost then scales with real ambiguity rather than raw finding count, and the deterministic pass works with no model at all."
+    },
+    {
+      "name": "asymmetric threshold router",
+      "what": "Routes a decider's answers so that raising a question needs no confidence, while suppressing or auto-fixing needs high confidence and a deterministic regression can never be overridden.",
+      "evidence": "packages/decide/src/thresholds.ts:28-83, 86-93",
+      "dependencies": [
+        "@bugpatrol/core"
+      ],
+      "data_needed": "decider answers per question with kind, value and confidence; a low and a high threshold; flags for a deterministic regression and for a ledger match",
+      "network": "none",
+      "size": "small",
+      "licence": "Apache-2.0",
+      "idea": "Encode the principle that a wrong raise is recoverable but a wrong silence is not. Evaluate in a fixed order: a ledger match ends as intended; a deterministic regression always goes to a blocking check and the model cannot override it; a confident not-anomalous answer is ignored; a high ambiguity flag escalates; a missing answer or one below the low threshold becomes a human question. Suppression and auto-fix require the high threshold, and anything between the two thresholds asks. A check verdict from the model with no deterministic backing is downgraded to an issue, so a red check always means the same pixels changed. Auto-fix eligibility is a separate predicate with the same confidence floor."
+    },
+    {
+      "name": "change-impact test plan",
+      "what": "Maps changed files to affected screens through an inverse index, widens to flows and shared components, falls back to a smoke set when mapping is weak, and gives every item a reason.",
+      "evidence": "packages/recon/src/change-map.ts:19-78, 83-100, 115-124",
+      "dependencies": [
+        "@bugpatrol/core"
+      ],
+      "data_needed": "app model with screens and their source file lists, navigation edges, and flows with a criticality tag; the list of changed files",
+      "network": "none",
+      "size": "small",
+      "licence": "Apache-2.0",
+      "idea": "Build an inverse index from source file to screens during discovery. For a change set, direct hits get a direct-change reason. A file that touches at least a set share of screens (default 30 percent) is a shared component and gets its own reason, so a token-level edit is not under-tested. Any flow containing an affected screen pulls in the whole flow. If the share of changed files that map to any screen falls below a threshold (default 60 percent), add a smoke set ranked by how connected each screen is plus the entry points, and mark the run low-confidence rather than silently under-testing. Items are deduplicated by target, keeping the strongest reason, and always-on checks are appended. The output is a plan with coverage counts so a reviewer can see what was and was not tested."
+    },
+    {
+      "name": "finding triage with fingerprint dedup and absence closing",
+      "what": "Collapses one screen's raw check results into the few candidates a judge needs, and closes issues that automatic checks stop seeing",
+      "evidence": "repo/packages/agents/src/evaluate.ts:45-106, 133-161, 187-217, 220-274",
+      "dependencies": [
+        "@bugpatrol/core fingerprint",
+        "@bugpatrol/invariants",
+        "@bugpatrol/diff"
+      ],
+      "data_needed": "Per-screen UI snapshot, baseline screenshot and snapshot, a triage ledger of decided fingerprints, the issue store, enabled check list",
+      "network": "outbound",
+      "size": "medium",
+      "licence": "Apache-2.0",
+      "idea": "Each capture becomes candidates, not raw violations. All violations of one rule on one screen merge into a single candidate that lists the affected elements, so eleven instances are one decision. Every candidate gets a fingerprint from screen, rule and element signature. A fingerprint already decided in the triage ledger is not raised again; if it was filed as an issue, it adds one occurrence to that issue, at most once per session, so the count means how many sessions saw it. The first capture of a screen becomes its baseline, and absolute checks still run on it. Absence closes: an issue raised only by automatic checks on a screen is marked fixed after three consecutive visits where none of its fingerprints fired; any sighting resets the count. Constraints from the code: explorer-sourced issues never auto-close, and a check that is switched off gives no evidence of absence, so its issues are skipped. Closing also syncs to the tracker. Useful for any suite that must avoid re-raising known problems while still retiring fixed ones."
+    },
+    {
+      "name": "shared budget for claim sub-sessions",
+      "what": "One allowance of steps, cost and wall-clock time that every model session in a single review draws from",
+      "evidence": "repo/packages/agents/src/roles/claim-judge.ts:21-86, 95-150",
+      "dependencies": [
+        "@bugpatrol/core PrReview type",
+        "an internal runtime adapter that accepts step, cost and timeout limits"
+      ],
+      "data_needed": "Configured limits for max steps, optional cost ceiling, and timeout for the whole review; each session reports its steps and cost",
+      "network": "none",
+      "size": "small",
+      "licence": "Apache-2.0",
+      "idea": "A review-level budget object holds the running totals. Each new sub-session gets only what remains of the step, cost and time limits, and a sub-session that starts with nothing left is skipped with a logged reason instead of failing. The clock runs only while claim work is active, so an unrelated bug hunt does not eat the time allowance. Nested claim work increments a depth counter so the clock is started once and never double-counts. Pure checks such as replays and benchmarks use no model, so only the time limit can stop them. Each session's spend is recorded back into the budget and into the review's cost total as soon as it ends, including on failure. A runtime that throws fails the review, while limit exhaustion does not. Suits a marathon runner in which several sub-agents must share one allowance."
+    },
+    {
+      "name": "trouble-log reflection into lesson memory",
+      "what": "Builds a mechanical trouble log from a finished session and has a reviewer model save, keep or retire short lessons for future runs",
+      "evidence": "repo/packages/agents/src/roles/reflect.ts:19-62, 64-160; repo/packages/agents/src/tools/memory.ts:52-63, 71-142",
+      "dependencies": [
+        "@bugpatrol/core lesson helpers",
+        "an internal runtime adapter",
+        "node:util"
+      ],
+      "data_needed": "Session event log, session summary, existing lesson store with roles and scopes, optional app guide text, memory limits",
+      "network": "outbound",
+      "size": "medium",
+      "licence": "Apache-2.0",
+      "idea": "Before any model is called, the event log is reduced to a trouble log of plain signals: the same tool call repeated with identical input, the same field typed into again, three or more waits in a row, failed actions, and the stop reason. Lines are capped and length-limited, and secrets are redacted. Only then does a reviewer model run, with three tools: save a lesson, keep an existing one, or retire a wrong one with a reason. The reviewer is told to write one imperative, app-specific sentence per lesson, and the session has a hard cap on new lessons. Lesson writing is guarded by a word-overlap check against existing lessons of the same role. A near match must be confirmed by id rather than duplicated, and a deliberately different lesson must be marked as such to save. A lesson may be saved for another role, for example so the judge can tell the fixer why a fix failed. Reusable for any agent workflow that wants to learn across runs without a vector store."
+    },
+    {
+      "name": "safe worktree cleanup for fix checkouts",
+      "what": "Sweeps finished fix checkouts and their branches, keeping any that hold unpublished or unreviewed work",
+      "evidence": "repo/packages/agents/src/roles/worktrees.ts:13-92, 94-143",
+      "dependencies": [
+        "node:child_process",
+        "node:fs/promises",
+        "node:path",
+        "git command line"
+      ],
+      "data_needed": "Fix records with worktree path, branch, repo path, PR state and status; issue statuses; access to the origin remote",
+      "network": "outbound",
+      "size": "small",
+      "licence": "Apache-2.0",
+      "idea": "Each fix attempt that ran in its own checkout is swept only when it is provably safe. A checkout is kept if its fix is still running or retesting, if its path is outside the managed worktree folder, if it has uncommitted changes, or if it has local commits and the fix is not yet done. A checkout already gone from disk just gets its removal recorded and pruned from the repo. Branch deletion is more cautious: publication is confirmed by querying the exact remote ref rather than trusting a cached tracking ref. The branch is deleted with the safe flag first, and forced only when the PR is known merged (a squash merge looks unmerged to git) or the remote matches the local tip. A branch with no commits of its own is dropped as harmless. Every decision is returned as removed or kept with a reason, so a sweep can be reported to the user. Directly applicable to fix-in-worktree flows in a command kit."
+    },
+    {
+      "name": "Preflight doctor checks before a run",
+      "what": "A doctor command that builds a list of named checks (config present, runtime version, required binaries on PATH, agent runtimes usable, optional GitHub CLI login) and separates fatal failures from advisory warnings, then maps any fatal failure to a usage exit code.",
+      "evidence": "packages/cli/src/commands/doctor.ts:14-133",
+      "dependencies": [
+        "node:child_process",
+        "node:fs",
+        "@bugpatrol/agents",
+        "@bugpatrol/core"
+      ],
+      "data_needed": "Project config file, the parsed run config (agent runtimes, app platform, GitHub toggle), and the local PATH and environment",
+      "network": "none",
+      "size": "small",
+      "licence": "Apache-2.0",
+      "idea": "Run a fast preflight before any expensive work. Each check reports a name, a pass or fail flag, a human sentence saying what was found or what to install, and whether it is fatal. Fatal failures block the run with a usage exit code. Non-fatal ones, such as an unpinned container image, a missing project model or a logged-out GitHub CLI, print a warning and let work continue, because the local loop is still useful without them. Checks depend on the chosen mode: agent runtimes are only probed when agents are enabled, and the container pin only matters for the deterministic gate. Adopt this as a doctor verb in the kit: list the tools each workflow needs, give each a clear fix hint, and let the verdict decide the exit code."
+    },
+    {
+      "name": "Exit code contract separating infrastructure from product failure",
+      "what": "A small, documented exit-code table that keeps product regressions, usage errors, missing prerequisites and infrastructure failures distinct, with one predicate that says which outcome is allowed to block a merge.",
+      "evidence": "packages/core/src/exit-codes.ts:7-39; packages/cli/src/commands/run-cli.ts:106-110",
+      "dependencies": [],
+      "data_needed": "The run outcome and status (clean, regression, usage, recon required, infrastructure error)",
+      "network": "none",
+      "size": "small",
+      "licence": "Apache-2.0",
+      "idea": "Give each outcome its own numeric code and a one-line description, and reserve a single code for the only result that should fail a build. Infrastructure problems such as a crashed browser, a missing network or a boot failure must never turn a build red on their own, because a team that sees false reds stops trusting the gate. The same description text can be reused in the terminal summary and in report output, so every surface says the same thing. For the kit, adopt this as the contract for every verb and helper script: exit 0 for clean, a dedicated code for a real regression, another for misuse, and another for a precondition that was never met, so CI can tell a broken tool from a broken product."
+    },
+    {
+      "name": "SARIF JUnit and sticky PR comment renderers",
+      "what": "Three pure renderers that turn one list of findings and a run record into a code-scanning SARIF file, a JUnit XML report with one test case per planned target, and a single PR comment body that is edited in place using a hidden marker.",
+      "evidence": "packages/report/src/sarif.ts:4-53; packages/report/src/junit.ts:4-57; packages/report/src/pr-comment.ts:4, 12-71",
+      "dependencies": [
+        "@bugpatrol/core (types only)"
+      ],
+      "data_needed": "A list of findings with rule id, severity, route, summary, fingerprint and suspected files, plus the run status and plan coverage",
+      "network": "none",
+      "size": "small",
+      "licence": "Apache-2.0",
+      "idea": "Keep the report layer free of I/O so each renderer is a pure function that is easy to test. SARIF should mark only blocking findings as errors and everything advisory as warnings or notes, so code-scanning views do not overstate the result. JUnit should attribute each failure to the test case that produced it, keep orphan findings rather than dropping them, and add an explicit incomplete-run error when the run did not finish. The PR comment should lead with one verdict line, separate blocking, filed and needs-decision items, and carry a hidden marker so a later run edits the same comment instead of appending another. Adopt these three renderers for the kit's review and CI output, and escape all text for XML."
+    },
+    {
+      "name": "repeated replay gate for claims",
+      "what": "Only a disproof that code reproduces on a second replay may fail a check; anything a model judged, or any flaky replay, stays a comment",
+      "evidence": "docs/adr/0007-only-a-repeated-replay-blocks.md:9-29 (evidence table and context), 30-51 (decision: second replay, agreement rules, Flaky replay becomes untested)",
+      "dependencies": [],
+      "data_needed": "A deterministic check per claim (issue repro, exact assertion or output diff) and the ability to run it twice on each build",
+      "network": "none",
+      "size": "medium",
+      "licence": "Apache-2.0",
+      "idea": "Split every verdict by how it was decided. Only verdicts a program decided (a replay, an exact check, or a diff of normalised outputs) may fail a gate, and only after a second identical run agrees on the steps reached, the check answers and the outputs. If the two runs disagree, downgrade the verdict to untested with a flakiness reason rather than failing. A model's judgement, however confident, is posted as a comment only. Useful for a Claude Code workflow that wants a hard stop without letting model opinion block work."
+    }
+  ],
+  "not_inventoried": [
+    "commit-keyed patrol loop with closed-PR lessons",
+    "Stable finding fingerprints from rule and bucketed regions",
+    "one-sentence consequence rule for findings",
+    "commit replayable routines with the work"
+  ],
+  "total": 16,
+  "none_found": null,
+  "ts": "2026-10-15T14:27:45.319Z"
+}

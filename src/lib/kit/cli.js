@@ -18,12 +18,17 @@ import { KitExit } from './kit-exit.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
-/** Map of verb → module, from the sibling modules that export a verb. */
+/** Map of verb → module, from the sibling modules that export a verb. A module whose import throws is skipped with a stderr note naming it. */
 export async function loadVerbs(dir = HERE) {
   const verbs = new Map();
   const files = (await fs.readdir(dir)).filter(f => f.endsWith('.js') && f !== 'cli.js' && f !== 'kit-exit.js').sort();
   for (const f of files) {
-    const mod = await import(pathToFileURL(path.join(dir, f)).href);
+    let mod;
+    try { mod = await import(pathToFileURL(path.join(dir, f)).href); } catch (e) {
+      // a module that cannot load (e.g. it needs a newer node) must not take the other verbs down, `doctor` above all
+      process.stderr.write(`kit: skipping ${f}: ${String(e && e.message).split('\n')[0]}\n`);
+      continue;
+    }
     if (typeof mod.verb !== 'string' || typeof mod.run !== 'function') continue;
     if (verbs.has(mod.verb)) throw new Error(`verb "${mod.verb}" is exported by ${verbs.get(mod.verb).file} and ${f}`);
     verbs.set(mod.verb, { file: f, run: mod.run, usage: mod.usage || `cli.js ${mod.verb}` });
@@ -31,14 +36,22 @@ export async function loadVerbs(dir = HERE) {
   return verbs;
 }
 
-async function readStdinBytes() {
+// opts.maxBytes bounds the read: it stops (and destroys the stream) as soon as the running byte count passes it, returning what was read so far
+// (longer than maxBytes, so the caller can tell the input was over the cap). Without it the whole of stdin is read.
+async function readStdinBytes(opts = {}) {
   if (process.stdin.isTTY) return Buffer.alloc(0);
+  const max = Number.isFinite(opts && opts.maxBytes) ? opts.maxBytes : Infinity;
   const chunks = [];
-  for await (const c of process.stdin) chunks.push(c);
+  let total = 0;
+  for await (const c of process.stdin) {
+    chunks.push(c);
+    total += c.length;
+    if (total > max) break;
+  }
   return Buffer.concat(chunks);
 }
 
-async function readStdin() { return (await readStdinBytes()).toString('utf-8'); }
+async function readStdin(opts) { return (await readStdinBytes(opts)).toString('utf-8'); }
 
 export async function main(argv = process.argv.slice(2)) {
   const verbs = await loadVerbs();

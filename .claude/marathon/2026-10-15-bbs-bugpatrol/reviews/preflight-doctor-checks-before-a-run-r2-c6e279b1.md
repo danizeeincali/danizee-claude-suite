@@ -1,0 +1,17 @@
+# Review c6e279b1-d4f3-4564-b4b2-5708c9d35858 — preflight-doctor-checks-before-a-run, round 2
+
+- Commit: 52c1f2b
+- Angle: failure conditions and error paths
+- Result: pass
+- 5 findings
+
+## Medium (1)
+
+- **--config targets resolve against the project root, not the cwd the config path was resolved from, and the failure does not say where it looked** — `src/lib/kit/doctor.js:213` (correctness): loadConfig resolves an explicit --config path against io.cwd (line 201), but customCheck anchors every file/json/bin target at findProjectRoot(cwd) (line 213). Confirmed: from \<project\>/sub with sub/my.json = {checks:\[{name:'x',kind:'file',target:'here.txt',fatal:true}\]} and sub/here.txt present, \`doctor --config my.json\` exits 2 with found 'here.txt not found'. A config kept beside a sub-package blocks the run with a false fatal failure, and the found/fix text ('Create here.txt.') sends the user to create a file that already exists, with no hint which directory was searched. Neither the header nor usage says targets are root-relative. — fix: Say in usage/header that project-check targets are relative to the project root, and name the resolved directory (or the root) in the found text of failing file/json/bin path checks; add a test for --config from a subdirectory.
+
+## Low (4)
+
+- **A project check name valid under one profile makes another profile exit 1** — `src/lib/kit/doctor.js:230` (correctness): The built-in collision check only knows the names of the current profile. Confirmed: doctor.json with a check named 'bin:claude' passes \`doctor\` (exit 0) but \`doctor --profile marathon\` throws 'collides with a built-in check' (exit 1), so the config the user validated blocks the marathon preflight as invalid input. — fix: Reject in parseConfig (or runDoctor) any project name that matches a built-in name from any profile, so the error shows on the first run.
+- **A nested repo without the kit inherits the outer project's kit, config and marathon.json** — `src/lib/kit/doctor.js:62` (correctness): findProjectRoot searches every ancestor for .claude/helpers/kit/cli.js before it looks for the nearest .git. Confirmed: \<outer\> with the kit and \<outer\>/inner/.git (no kit): doctor run with cwd inner reports 'file:.claude/helpers/kit/cli.js present', loads \<outer\>/.claude/kit/doctor.json and would check \<outer\>/.claude/marathon.json, exit 0. The fatal kit-present check cannot fail for an inner repo. — fix: Stop the kit-marker walk at the nearest .git boundary (search for both markers in one upward walk and take the first directory holding either).
+- **A file check whose target is a directory says 'not found'** — `src/lib/kit/doctor.js:125` (facts): isFile returns false for a directory, so checkFile reports '\<rel\> not found' and fix 'Create \<rel\>.' when the path exists as a folder; the user is told to create something that is already there. — fix: stat once and report '\<rel\> is a directory, not a file' when it exists but is not a regular file.
+- **Packaged marathon run accepts either exit code** — `test/kit-preflight-doctor-checks-before-a-run-packaged.test.js:19` (test-quality): assert.ok(\[0, 2\].includes(mara.code)) plus a row-shape check passes whether marathon's fatal checks run or not; a packaged build that dropped the marathon.json or git-tree checks would still pass. — fix: Assert the specific failed list (e.g. that json:.claude/marathon.json is in failed and exit is 2 when it is absent) and that bin:claude is advisory.

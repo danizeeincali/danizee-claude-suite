@@ -246,6 +246,17 @@ export function foldHelpers(rows) {
     }
   }
 
+  // A done row may name its spawn by a unique id prefix (as a lead copying a short id writes it). Fold it into
+  // that spawn so the helper is counted once, with its real tokens, instead of as an open spawn plus a stray done.
+  const spawns = [...folded.values()].filter(h => h.budget !== null || h.role !== null);
+  for (const [id, h] of [...folded]) {
+    if (!h.done || h.role !== null || h.budget !== null || typeof id !== 'string' || id.length < 8) continue;
+    const owners = spawns.filter(s => typeof s.id === 'string' && s.id !== id && s.id.startsWith(id));
+    if (owners.length !== 1 || owners[0].done) continue;
+    Object.assign(owners[0], { tokens: h.tokens, outcome: h.outcome, done: true });
+    folded.delete(id);
+  }
+
   for (const h of folded.values()) {
     h.over_budget = h.done && typeof h.tokens === 'number' && typeof h.budget === 'number' && h.tokens > h.budget;
   }

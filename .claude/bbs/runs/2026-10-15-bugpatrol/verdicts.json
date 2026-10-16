@@ -1,0 +1,386 @@
+{
+  "run": "2026-10-15-bugpatrol",
+  "source_identity": "git:960cd19d1a533567d40945a6b3a60057a2a87f55",
+  "powers_ts": "2026-10-15T14:27:45.319Z",
+  "sandbox": {
+    "present": true,
+    "kind": "unshare",
+    "reason": "unshare is available"
+  },
+  "rows": {
+    "noise ledger with flake quarantine": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "No candidate has accepted-decision expiry, reproduction retries, quarantine or flake-rate logic; marathon findings.js only normalizes/folds rows and review-score.js only scores planted bugs.",
+        "ts": "2026-10-15T14:29:31.025Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "noise.ts and ledger.ts import only node:fs and core helpers (paths.ts uses node:fs/node:path; fingerprint.ts uses node:crypto) plus types. Grep for fetch, http, net, child_process and WebSocket across these files and core/src found nothing.",
+        "ts": "2026-10-15T14:32:41.489Z"
+      },
+      "decision": "rebuild"
+    },
+    "two pass finding clustering": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "No candidate buckets findings by rule and file set or runs a pairwise model merge; the marathon routing and wording-judge candidates do not cluster findings.",
+        "ts": "2026-10-15T14:29:31.025Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "network probe found: the source makes a network call the inventory does not account for"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "network probe found: the source makes a network call the inventory does not account for"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "found",
+        "evidence": "cluster.ts:65 calls decider.ask in its optional model pass (guarded at cluster.ts:28), and the concrete Decider in @bugpatrol/decide is ModelDecider, whose fetch POST at decide/src/providers/model.ts:218 hits openrouter, vercel gateway, openai, anthropic or a custom endpoint. The only in-repo caller, cli/src/commands/run-pipeline.ts:287, calls cluster(findings) with no decider, so the path is dormant there but reachable by any caller passing one.",
+        "ts": "2026-10-15T14:32:41.636Z"
+      },
+      "decision": "rebuild"
+    },
+    "asymmetric threshold router": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "partial",
+        "tool": "helper:.claude/helpers/kit/push-gate.js",
+        "why": "push-gate decide() returns abstain/ask/deny with a none/high/medium/low threshold and never allows, but has no ambiguity escalation band, auto-fix predicate or model-verdict downgrade.",
+        "ts": "2026-10-15T14:29:31.025Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "thresholds.ts imports only types from @bugpatrol/core and is pure routing logic with no network, fs or process calls.",
+        "ts": "2026-10-15T14:32:41.800Z"
+      },
+      "decision": "rebuild"
+    },
+    "change-impact test plan": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "partial",
+        "tool": "helper:.claude/helpers/kit/impact.js",
+        "why": "impact.js maps diff to touched symbols, walks callers up to hops and scores risk with a lower_bound flag, but has no screen/flow inverse index, shared-component share rule, smoke set or test-plan coverage counts.",
+        "ts": "2026-10-15T14:29:31.025Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "change-map.ts imports only types from @bugpatrol/core (line 1) and contains no fetch, http, child_process or model calls on grep.",
+        "ts": "2026-10-15T14:32:41.973Z"
+      },
+      "decision": "rebuild"
+    },
+    "finding triage with fingerprint dedup and absence closing": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "No candidate fingerprints findings by screen, rule and element, keeps a triage ledger or closes issues after absent visits; redact.js fingerprints secrets only, which is unrelated.",
+        "ts": "2026-10-15T14:29:31.025Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "network probe found: the source makes a network call the inventory does not account for"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "network probe found: the source makes a network call the inventory does not account for"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "found",
+        "evidence": "packages/agents/src/evaluate.ts:8 imports closeOnGitHub, called near line 268 when an absent issue is closed; closeOnGitHub (github.ts:421-446) spawns the gh CLI (github.ts:15) for GitHub API calls when agents.github.enabled is set. Fingerprint, dedup and diff logic otherwise use local files only.",
+        "ts": "2026-10-15T14:32:42.126Z"
+      },
+      "decision": "rebuild"
+    },
+    "shared budget for claim sub-sessions": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "partial",
+        "tool": "helper:.claude/helpers/marathon/budget.js",
+        "why": "budget.js canFanOut sums spent tokens and in-flight budgets against a run token limit and usage ceiling, failing closed on bad input; it has no time limit, step/cost budget object, nesting depth counter or per-session spend recording.",
+        "ts": "2026-10-15T14:29:31.025Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "network probe found: the source makes a network call the inventory does not account for"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "network probe found: the source makes a network call the inventory does not account for"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "found",
+        "evidence": "ClaimBudget (claim-judge.ts:18-85) is pure counters, but claimJudge calls runtime.run near line 125; createRuntime (runtime/index.ts:10) returns ModelRuntime which calls fetch at runtime/model.ts:182 and :394 to a model provider, or CliRuntime which spawns a shell command (runtime/cli.ts:169).",
+        "ts": "2026-10-15T14:32:42.269Z"
+      },
+      "decision": "rebuild"
+    },
+    "trouble-log reflection into lesson memory": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "No candidate reduces an event log to trouble signals or runs a reviewer that saves, keeps or retires lessons; routing.js and wording-judge.js do not do this.",
+        "ts": "2026-10-15T14:29:31.025Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "network probe found: the source makes a network call the inventory does not account for"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "network probe found: the source makes a network call the inventory does not account for"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "found",
+        "evidence": "reflectOnSession in roles/reflect.ts calls a runtime run near line 130, the same ModelRuntime fetch to an LLM endpoint (runtime/model.ts:182, :394) or CliRuntime spawn (runtime/cli.ts:169); tools/memory.ts has no network or process calls.",
+        "ts": "2026-10-15T14:32:42.417Z"
+      },
+      "decision": "rebuild"
+    },
+    "safe worktree cleanup for fix checkouts": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "The fix/debug/hotfix/multi-repo command workflows only create worktrees or run lens diffs; none removes checkouts, checks uncommitted state or deletes branches with the safe-then-force rule.",
+        "ts": "2026-10-15T14:29:31.025Z"
+      },
+      "legal": [
+        "rebuild",
+        "buy",
+        "skip"
+      ],
+      "default": "buy",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "network probe found: the source makes a network call the inventory does not account for"
+        }
+      ],
+      "not_legal_why": {
+        "use": "network probe found: the source makes a network call the inventory does not account for"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "found",
+        "evidence": "roles/worktrees.ts:105 runs git ls-remote --heads origin via execFile, contacting the origin remote to confirm the branch was published; the other git calls (worktree prune/remove, status, merge-base, branch -d) are local.",
+        "ts": "2026-10-15T14:32:42.550Z"
+      },
+      "decision": "buy"
+    },
+    "Preflight doctor checks before a run": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "No candidate defines a doctor/preflight verb or checks tools with fatal and non-fatal verdicts; the workflow commands only say to skip when the kit is missing.",
+        "ts": "2026-10-15T14:29:31.025Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "network probe found: the source makes a network call the inventory does not account for"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "network probe found: the source makes a network call the inventory does not account for"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "found",
+        "evidence": "doctor.ts:115-116 spawns the gh CLI with --version and auth status when agents.github is enabled; gh auth status validates the token against the GitHub API, an outbound call. The rest is local: existsSync, PATH lookup (runtime/index.ts:27) and env-key checks (runtime/index.ts:45).",
+        "ts": "2026-10-15T14:32:42.683Z"
+      },
+      "decision": "rebuild"
+    },
+    "Exit code contract separating infrastructure from product failure": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "partial",
+        "tool": "helper:.claude/helpers/kit/kit-exit.js",
+        "why": "kit-exit.js defines a KitExit error carrying a numeric code, but only codes 1 (invalid or broken) and 2 (refused) exist; there is no clean code 0, dedicated regression code or unmet-precondition code, and no shared description text.",
+        "ts": "2026-10-15T14:29:31.025Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "exit-codes.ts (39 lines) is a constants table plus describeExit and blocksMerge with no imports; run-cli.ts imports only ConfigError, describeExit, ExitCode and a RunResult type and only parses flags and formats text. No fetch, http, child_process or SDK use.",
+        "ts": "2026-10-15T14:32:42.857Z"
+      },
+      "decision": "rebuild"
+    },
+    "SARIF JUnit and sticky PR comment renderers": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "No candidate renders SARIF, JUnit or a sticky PR comment; review-score.js writes plain scores.json and package.json test only runs node --test.",
+        "ts": "2026-10-15T14:29:31.025Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "sarif.ts, junit.ts and pr-comment.ts import only types from @bugpatrol/core and build strings or objects; the URLs at sarif.ts:26 and :34 are static schema strings, not requests. Grep for fetch, http, spawn and exec found no calls.",
+        "ts": "2026-10-15T14:32:42.987Z"
+      },
+      "decision": "rebuild"
+    },
+    "repeated replay gate for claims": {
+      "licence": "Apache-2.0",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "partial",
+        "tool": "helper:.claude/helpers/kit/wording-judge.js",
+        "why": "wording-judge reports model opinion beside scores and the scorer never reads it, which covers the model-comment-only half; it has no program-decided verdict split, second identical replay run or untested downgrade.",
+        "ts": "2026-10-15T14:29:31.025Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "network probe found: the source makes a network call the inventory does not account for"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "network probe found: the source makes a network call the inventory does not account for"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "found",
+        "evidence": "The second-replay logic (claims.ts:933-968, replayClaims at 438-527) uses no model but drives the app under test: request steps call fetch at drivers/src/api.ts:123. claims.ts also imports claim-judge.ts, which creates a model runtime (claim-judge.ts:116).",
+        "ts": "2026-10-15T14:32:43.111Z"
+      },
+      "decision": "rebuild"
+    }
+  },
+  "decisions": {
+    "noise ledger with flake quarantine": "rebuild",
+    "two pass finding clustering": "rebuild",
+    "asymmetric threshold router": "rebuild",
+    "change-impact test plan": "rebuild",
+    "finding triage with fingerprint dedup and absence closing": "rebuild",
+    "shared budget for claim sub-sessions": "rebuild",
+    "trouble-log reflection into lesson memory": "rebuild",
+    "safe worktree cleanup for fix checkouts": "buy",
+    "Preflight doctor checks before a run": "rebuild",
+    "Exit code contract separating infrastructure from product failure": "rebuild",
+    "SARIF JUnit and sticky PR comment renderers": "rebuild",
+    "repeated replay gate for claims": "rebuild"
+  },
+  "ts": "2026-10-15T14:36:41.422Z"
+}

@@ -116,6 +116,12 @@ Skip this block for non-UI tasks.
 - Bug fix patterns that recur
 - Feature patterns worth templating
 
+**🧩 CLUSTER (advisory):** Phases 1-3 may report the same finding twice. Write them as JSON (`[{"id","rule","severity","files":[...]}]`) to `<printed dir>/findings.json`, then group them before candidates are listed. Shell variables do not persist between Bash calls: run `mktemp -d` once and read the printed directory, write the file with the Write tool there, and put the literal path in the block (`<printed dir>` is a placeholder: write the printed one in its place; the block refuses to run until you do); remove the directory when done.
+```bash
+F='<printed dir>/findings.json'; if [ ! -f "$F" ]; then echo "F is still the placeholder or does not exist: put the file you wrote under the directory mktemp -d printed in place of <printed dir>" >&2; (exit 1); elif [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): cluster skipped, advisory"; else node .claude/helpers/kit/cli.js cluster --file "$F"; fi
+```
+Exit 0: show one entry per cluster (the representative, with its member ids). For each `pending_pairs` entry, judge whether the two clusters are one defect; only when sure, write `[{"a","b","same":true,"p":0.9,"confidence":"high"}]` to a file and rerun with `--answers <file>` (an unjudged pair stays apart). Exit 1: invalid input, say so and keep the unclustered list. If the kit is not installed, say so in one line and keep the list as is. Either way the review goes on (no gates).
+
 **If candidate identified:**
 1. Generate unique ID: RC-NNN (check .claude/ralph-candidates.md for next available)
 2. Assign priority: P1 (critical) / P2 (important) / P3 (nice-to-have)
@@ -164,6 +170,10 @@ Skip this block for non-UI tasks.
 **RALPH CANDIDATE CHECK (MANDATORY):**
 - Dev pattern identified for future Ralph loop: yes/no
 - If yes, logged to: .claude/ralph-candidates.md (use format: RC-NNN)
+
+**AUTORESEARCH CANDIDATE CHECK (RC-A):**
+Scan the work just completed for measurable optimization targets (function runtimes, test duration, bundle size, query counts, coverage gaps). If any, append an RC-A entry (KPI, baseline, benchmark command, impact score) to .claude/ralph-candidates.md.
+- RC-A candidates found: yes/no
 
 NEVER skip this phase. Workflow is INCOMPLETE without compound.
 

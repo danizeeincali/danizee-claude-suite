@@ -1434,3 +1434,101 @@ STATUS: PASS|FAIL
 **Options**: write `egress_zero` only when the probe was `clean` (a `found` power gets a "network calls only through the named CLI" line instead); cut slugs at the last `-` before 40.
 **Priority**: P2
 **Status**: needs-owner
+
+## Candidates from the Bugpatrol /w-bbs run (compounded 2026-10-15)
+
+### RC-D039: The surfaces scan lists the kit CLI as a cli surface
+
+**Auto-Generated From**: /w-background-compound on 2026-10-15
+**Type**: Diagnostic
+**Verifies**: `surfaces` reports `.claude/helpers/kit/cli.js` as a `cli` surface; in run 2026-10-15-bugpatrol it listed only `bin/cli.js` commands (48 surfaces: job 1, cli 2, lib 1, workflow 44), so powers aimed at the kit had no cli target to name
+
+**Test Command**:
+```bash
+node .claude/helpers/kit/cli.js surfaces --json 2>/dev/null | grep -c '"file": *".claude/helpers/kit/cli.js"'; # expect >= 1
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: KIT_CLI_IS_A_SURFACE
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F035 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+---
+
+### RC-F035: Teach the surfaces scan about the kit CLI
+
+**Auto-Generated From**: /w-background-compound on 2026-10-15
+**Type**: Conditional Fix
+**Triggered By**: RC-D039 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// surfaces.js: besides package.json "bin" entries, treat a tracked file that dispatches on process.argv verbs
+// (e.g. .claude/helpers/kit/cli.js) as kind 'cli', one surface per verb, so `targets` can name it
+```
+
+**File**: src/lib/bbs/surfaces.js (add a test beside test/bbs-surfaces.test.js)
+
+**Completion Tests**:
+1. Pattern: a `cli` surface whose file is the kit CLI appears in `surfaces` output for this repo
+2. Test: RC-D039 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D039 fails)
+
+---
+
+### RC-D040: A helper that returns JSON must also have written its output file
+
+**Auto-Generated From**: /w-background-compound on 2026-10-15
+**Type**: Diagnostic
+**Verifies**: after a haiku/sonnet helper step in `/w-bbs` (the judge, the target picker), the file the step was told to write exists and is non-empty; in run 2026-10-15-bugpatrol some helpers returned the JSON in their reply but never wrote the file, and the step moved on as if it had
+
+**Test Command**:
+```bash
+grep -n "output file\|wrote the file\|missing output" src/plugins/dot-shortcuts.js src/lib/bbs/*.js; # expect a check on the helper's output file before the step is marked done
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: HELPER_OUTPUT_FILE_CHECKED
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F036 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+---
+
+### RC-F036: Check the helper's output file, then write it from the reply if it is missing
+
+**Auto-Generated From**: /w-background-compound on 2026-10-15
+**Type**: Conditional Fix
+**Triggered By**: RC-D040 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// after each helper step: if (!exists(outFile) || size(outFile) === 0) -> record "helper wrote no file", re-ask once;
+// still empty -> the step stays "pending" with that reason (never "done")
+```
+
+**File**: src/plugins/dot-shortcuts.js (w-bbs step text) and src/lib/bbs/steps.js
+
+**Completion Tests**:
+1. Pattern: the w-bbs doc and steps.js both name the output-file check
+2. Test: RC-D040 returns STATUS: PASS
+
+**Status**: ready (only runs if RC-D040 fails)
+
+---

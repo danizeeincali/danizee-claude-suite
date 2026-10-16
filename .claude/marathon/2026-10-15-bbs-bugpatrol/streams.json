@@ -1,0 +1,153 @@
+{
+  "streams": [
+    {
+      "name": "_meta",
+      "state": "meta",
+      "isolation": "worktree",
+      "created": "2026-10-15T14:36:46.599Z",
+      "tasks": [],
+      "finished": "2026-10-15T21:21:10.849Z"
+    },
+    {
+      "name": "noise-ledger-with-flake-quarantine",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/noise-ledger-with-flake-quarantine.md",
+      "next": "done: build gate met",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-noise-ledger-with-flake-quarantine",
+      "phase": "build",
+      "skill": "w-tdd-swarm",
+      "base": "34cd7f04b70e49e5a1d8844f0b4b5bf351912a65"
+    },
+    {
+      "name": "two-pass-finding-clustering",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/two-pass-finding-clustering.md",
+      "next": "integration stream wires it",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-two-pass-finding-clustering",
+      "phase": "done",
+      "skill": "w-tdd-swarm",
+      "base": "34cd7f04b70e49e5a1d8844f0b4b5bf351912a65"
+    },
+    {
+      "name": "asymmetric-threshold-router",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/asymmetric-threshold-router.md",
+      "next": "integration stream wires it",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-asymmetric-threshold-router",
+      "phase": "done",
+      "skill": "w-tdd-swarm",
+      "base": "34cd7f04b70e49e5a1d8844f0b4b5bf351912a65"
+    },
+    {
+      "name": "change-impact-test-plan",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/change-impact-test-plan.md",
+      "next": "integration stream wires it",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-change-impact-test-plan",
+      "phase": "done",
+      "skill": "w-tdd-swarm",
+      "base": "986205078cd7261a2142189f4dd5a24690488ae9"
+    },
+    {
+      "name": "finding-triage-with-fingerprint-dedup-an",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/finding-triage-with-fingerprint-dedup-an.md",
+      "next": "done: build gate met",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-finding-triage-with-fingerprint-dedup-an",
+      "phase": "build",
+      "skill": "w-tdd-swarm",
+      "base": "986205078cd7261a2142189f4dd5a24690488ae9"
+    },
+    {
+      "name": "shared-budget-for-claim-sub-sessions",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/shared-budget-for-claim-sub-sessions.md",
+      "next": "done: build gate met",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-shared-budget-for-claim-sub-sessions",
+      "phase": "build",
+      "skill": "w-tdd-swarm",
+      "base": "986205078cd7261a2142189f4dd5a24690488ae9"
+    },
+    {
+      "name": "trouble-log-reflection-into-lesson-memor",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/trouble-log-reflection-into-lesson-memor.md",
+      "next": "done: build gate met",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-trouble-log-reflection-into-lesson-memor",
+      "phase": "build",
+      "skill": "w-tdd-swarm",
+      "base": "08e87411186ecde569922ff1eb5818da246d8528"
+    },
+    {
+      "name": "preflight-doctor-checks-before-a-run",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/preflight-doctor-checks-before-a-run.md",
+      "next": "integration stream wires it",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-preflight-doctor-checks-before-a-run",
+      "phase": "done",
+      "skill": "w-tdd-swarm",
+      "base": "08e87411186ecde569922ff1eb5818da246d8528"
+    },
+    {
+      "name": "exit-code-contract-separating-infrastruc",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/exit-code-contract-separating-infrastruc.md",
+      "next": "done: build gate met",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-exit-code-contract-separating-infrastruc",
+      "phase": "build",
+      "skill": "w-tdd-swarm",
+      "base": "08e87411186ecde569922ff1eb5818da246d8528"
+    },
+    {
+      "name": "sarif-junit-and-sticky-pr-comment-render",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/sarif-junit-and-sticky-pr-comment-render.md",
+      "next": "done: build gate met",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-sarif-junit-and-sticky-pr-comment-render",
+      "phase": "build",
+      "skill": "/w-tdd-swarm",
+      "base": "ecce4339c671c607fbdbe4d2c61f5dd9f1407b91"
+    },
+    {
+      "name": "repeated-replay-gate-for-claims",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/briefs/repeated-replay-gate-for-claims.md",
+      "next": "integration stream wires it",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-repeated-replay-gate-for-claims",
+      "phase": "done",
+      "skill": "/w-tdd-swarm",
+      "base": "ecce4339c671c607fbdbe4d2c61f5dd9f1407b91"
+    },
+    {
+      "name": "integration",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-15-bugpatrol/integration.md",
+      "next": "owner's go to push",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-integration",
+      "phase": "done",
+      "base": "5297ea6de9628c7d10d431d5cc42dc45f6ebfcb6"
+    }
+  ],
+  "handoff": {
+    "ts": "2026-10-15T19:27:07.894Z",
+    "trigger": "auto",
+    "branch": "claude/project-thread-24nlxj",
+    "commit": "ddea5fc",
+    "uncommitted": 0,
+    "tasks": [],
+    "context_tokens": 383707,
+    "context_pct": 38.4
+  }
+}

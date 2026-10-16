@@ -115,6 +115,33 @@ describe('marathon store — foldHelpers', () => {
     assert.equal(h2.over_budget, false);
     assert.equal(h2.model, 'opus');
   });
+
+  it('folds a done row that names its spawn by a unique id prefix, so the helper counts once', () => {
+    const rows = [
+      { event: 'spawn', id: '322dd931-aaaa-4bbb-8ccc-000000000001', budget: 120000, role: 'fix', stream: 'a' },
+      { event: 'spawn', id: '5a61741c-aaaa-4bbb-8ccc-000000000002', budget: 100000, role: 'fix', stream: 'a' },
+      { event: 'done', helper_id: '322dd931', tokens: 85129, outcome: 'green' }
+    ];
+    const folded = foldHelpers(rows);
+    assert.equal(folded.size, 2);
+    const h = folded.get('322dd931-aaaa-4bbb-8ccc-000000000001');
+    assert.equal(h.done, true);
+    assert.equal(h.tokens, 85129);
+    assert.equal(folded.has('322dd931'), false);
+  });
+
+  it('leaves an ambiguous or too-short prefix as its own row', () => {
+    const rows = [
+      { event: 'spawn', id: 'abcdef12-0001', budget: 10, role: 'fix' },
+      { event: 'spawn', id: 'abcdef12-0002', budget: 10, role: 'fix' },
+      { event: 'done', helper_id: 'abcdef12', tokens: 5 },
+      { event: 'done', helper_id: 'abc', tokens: 7 }
+    ];
+    const folded = foldHelpers(rows);
+    assert.equal(folded.get('abcdef12-0001').done, false);
+    assert.equal(folded.get('abcdef12').tokens, 5);
+    assert.equal(folded.get('abc').tokens, 7);
+  });
 });
 
 describe('marathon config', () => {

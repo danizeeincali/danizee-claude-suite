@@ -4,10 +4,23 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import ora from 'ora';
 import os from 'os';
+import fs from 'fs';
 import { DaniZeeSuiteInstaller } from '../src/installer.js';
 import * as bc from '../src/plugins/bc.js';
+import { runDoctor, loadProjectChecks } from '../src/lib/kit/doctor.js';
+import { classify, CLASSES } from '../src/lib/kit/exit-codes.js';
+import { indexCheck } from '../src/lib/kit/store.js';
 
 const program = new Command();
+
+/**
+ * Exit status of `check` for a doctor status, through the kit's exit-code contract (src/lib/kit/exit-codes.js):
+ * doctor 0 -> clean (0), doctor 1 -> usage (1), doctor 2 (a fatal prerequisite is missing) -> precondition (4).
+ * Infrastructure (5) and product failure (2) are never produced by a preflight: nothing is judged here.
+ */
+function checkExitCode(doctorExit) {
+  return CLASSES[classify({ code: doctorExit, verb: 'doctor' }).class].code;
+}
 
 /**
  * A ~/.claude/commands/<name>.md silently wins over the project's .claude/commands copy.
@@ -90,9 +103,16 @@ program
 
 program
   .command('check')
-  .description('Verify installation status')
+  .description('Verify installation status, then run the preflight doctor checks (exit 0 ok, 1 usage, 4 a fatal prerequisite is missing)')
   .option('-p, --path <path>', 'Path to check', process.cwd())
+  .option('--profile <profile>', 'Doctor profile: kit, marathon, bbs or review', 'kit')
   .action(async (options) => {
+    let isDir = false;
+    try { isDir = fs.statSync(options.path).isDirectory(); } catch { /* missing */ }
+    if (!isDir) {
+      console.error(`check: --path ${options.path} does not exist (or is not a directory)`);
+      process.exit(checkExitCode(1));
+    }
     const spinner = ora('Checking installation...').start();
 
     try {
@@ -121,10 +141,26 @@ program
       if (!status.installed) {
         console.log('\n' + chalk.yellow('Run `npx danizee-claude-suite init` to install.'));
       }
+
+      // Preflight doctor: named checks, fatal ones block (exit 4), advisory ones only warn.
+      const project = await loadProjectChecks(options.path); // .claude/kit/doctor.json; an invalid one throws (usage)
+      const doctor = await runDoctor({ profile: options.profile, cwd: options.path, env: process.env, custom: project.checks, customBase: project.base });
+      console.log(chalk.bold('\nDoctor checks (' + doctor.profile + ')\n'));
+      for (const c of doctor.checks) {
+        const mark = c.ok ? chalk.green('✓') : (c.fatal ? chalk.red('✗') : chalk.yellow('!'));
+        console.log(`  ${mark} ${c.name}: ${c.found}`);
+        if (!c.ok && c.fix) console.log(chalk.dim(`      fix: ${c.fix}`));
+      }
+      if (doctor.failed.length) {
+        console.log('\n' + chalk.red(`Fatal: ${doctor.failed.join(', ')}`));
+      }
+      // The optional kit index: one info line, never fatal (the JSON files are the kit's state)
+      console.log('\n' + chalk.dim(`  ℹ ${indexCheck({ cwd: options.path, env: process.env }).line}`));
+      process.exitCode = checkExitCode(doctor.exit);
     } catch (error) {
       spinner.fail(chalk.red('Check failed'));
       console.error(chalk.red(error.message));
-      process.exit(1);
+      process.exit(checkExitCode(1));
     }
   });
 
@@ -201,4 +237,18 @@ program
     }
   });
 
-program.parse();
+// Listed for --help only: the call itself is routed to the kit verb below, before commander parses.
+program
+  .command('db <sub>')
+  .description('Kit index: db init | off [--delete] | status | rebuild | prune [--keep <n>] | import-reports [--branch <b>] [--limit <n>] [--repo <owner>/<repo>] [--host <h>] '
+    + '(optional local SQLite index of the kit state and test runs, per user in ~/.claude/kit-db/<key>/ or $DANIZEE_KIT_HOME/<key>/, never in the project; the JSON files stay the only source of truth and the index is rebuilt from them; '
+    + 'import-reports --host sends your login for that host to it: an agent must ask the user before passing it)');
+
+// `danizee-claude-suite db <sub> [args]` is the kit's `db` verb (same flags, JSON output and exit codes as
+// `node .claude/helpers/kit/cli.js db <sub>`), run in the current folder.
+if (process.argv[2] === 'db') {
+  const { main } = await import('../src/lib/kit/cli.js');
+  process.exitCode = await main(process.argv.slice(2));
+} else {
+  program.parse();
+}

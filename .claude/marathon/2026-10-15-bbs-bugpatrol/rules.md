@@ -1,0 +1,66 @@
+# Standing rules
+
+Rules Claude reads at every wake-up and every review. Anything Claude can forget, lose or
+talk itself out of lives here, in a test, or in a scripted check — never only in chat.
+Add a rule the second time something goes wrong.
+
+## Quality
+
+- **Never weaken an assertion.** A fixer that loosens a test to make it pass has introduced a
+  defect. A separate reviewer checks every fix; the next round restores the test.
+- A flaky test is a bug, not noise. Fix the code or the test's isolation; never retry it away.
+- "Done" means checked in the real, packaged, running thing — not only in the test suite.
+- Two clean reviews in a row close a stream. The tolerance in `finish-line.json` decides what
+  "clean" means; the human owns that number.
+- Findings are rows with a severity and a category. The write-up is generated from the rows,
+  never retyped. A category seen in two reviews becomes a test, a scan, a fixture or a rule.
+
+## Process
+
+- Scripts decide, the model acts: streaks, counts, budgets, gates and keep-lists come from
+  `node .claude/helpers/marathon/cli.js <verb>`, never from memory or arithmetic in chat.
+- Never spawn a helper after `cli.js budget` exits non-zero. Exit 2 = the ceiling or the token
+  budget: finish the step, the run is PAUSED, stop. Exit 1 = broken state or invalid input: fix it,
+  rerun `budget`, and only then spawn.
+- Every helper gets a token budget in its brief and a row in the ledger; the actual spend is
+  recorded from the task notification.
+- Never build or run browser tests against the port the owner is using. Use a scratch copy on
+  its own port and swap the served build once, announced.
+- When a rule changes, fix the shared test helper first, then edit only the tests that still fail.
+- Each test run gets its own temp folder that is cleaned up afterwards.
+- Code and reviews go into git as soon as they exist. State lives in files, never only in chat.
+
+## Ownership
+
+- Nothing is pushed or merged without the owner's go (`/bcp` is that go for a compound).
+- Lines only the human can close are listed once under "Waiting on human" and never retried.
+- A problem the owner finds while using the build is an escape: record it with
+  `cli.js record escape` so skipped reviews show their cost.
+
+## Learned in the bbs audit (2026-10-15)
+
+- The workflow targets of this run were proposed on a cloud machine whose session history showed only w-bbs, so each carries an `unused_reason`. Before the integration stream wires a workflow row, confirm that workflow is one the owner runs; a row in a workflow they never use is a power nobody reaches.
+- Sub-agent helpers can return their JSON without writing the output file they were told to write. Check that the file exists before the next verb reads it, and write it from the returned JSON when it is missing.
+- Any kit verb that read-modify-writes a state file (ledgers, budgets, lesson stores, triage state) takes an exclusive lock file (`fs.open(<file>.lock, 'wx')`, bounded retry, stale-lock timeout) across load..save, writes through a uniquely named temp file + rename, and has a test that runs parallel writers and expects every write kept. Seen in two r1/r2 reviews (shared-budget, noise-ledger).
+
+## Lock refinement (2026-10-15, noise-ledger r3)
+Locks, refined (review r3): a stale lock is broken atomically, by renaming it to a unique name; only the run whose rename succeeds goes on. Each lock holds a random token and is removed only by the run whose token it still holds. Await every handle close(). A command with nothing to write reads without taking the lock, so it works on a read-only checkout.
+
+## Convergence
+A stream with 2 passing reviews in a row on its current code is done reviewing. Its low findings stay open within the tolerance and are listed for the owner. Medium or high findings always get a fix round and a fresh review.
+
+## Stale-lock breaking, final form (2026-10-15)
+Stale-lock breaking, final form (shared-budget r2 showed that a plain rename still lets a late waiter steal a fresh lock): each lock file holds a random token. A waiter that judges the lock stale reads its token T, then takes a second lock <file>.lock.break with wx. While it holds that, it re-reads <file>.lock and removes it only if the token is still T, then releases the break lock (a break lock older than 2x the stale age may itself be removed). The total wait before giving up must be longer than the stale age, so a waiter always reaches the break path. Test: pre-age a lock, run N parallel writers as separate processes, expect all N writes kept, repeated 10 times.
+Addition (triage fix): under the break lock, re-check staleness (mtime) as well as the token, because a fresh lock can replace the stale one between the stat and the token read; a multi-process test caught this.
+
+## Budget raised (2026-10-15T17:16Z)
+Dani chose "Raise to 14M" on the decision card; run_token_budget in .claude/marathon.json set to 14000000.
+
+## Judges fail closed (lead, exit-codes r11)
+A product judge's exit 2 (scrub, push-gate) always blocks. `--result` may describe why (hits, unscanned files and their reasons, a remedy) and may reject a result whose own exit field contradicts the code, but no not_scanned reason turns a judge's 2 into infrastructure: scrub never fetches (GIT_NO_LAZY_FETCH=1), so "object not available locally" is deterministic in sparse/blobless clones, not a network fault. Eleven review rounds found a new fail-open path in the reclassification each time.
+
+## Reflect certification note (lead)
+Reflect's gate was met by r6 (2 mediums, inside tolerance, then fixed in fe88c89) and r7 (one low) on fe88c89. A lead-spawned r8 ran with an empty brief (review-brief found no diff past the certified HEAD); it re-read the whole module at fe88c89 and repeated r7's low. It is not recorded as a review row because it had no brief.
+
+## CI step fails closed (lead, integration r1)
+The approved "exit code contract → test.yml (blocking)" row read "only a product failure may fail the job". Built literally, a broken test script (127), an OOM kill (137) or a runner that reports failures as 2 went green with zero tests run. Decision: the CI test step fails on any nonzero exit; exit-codes only labels the failure (product / infrastructure / precondition) so a reader can tell them apart. Tell the owner.

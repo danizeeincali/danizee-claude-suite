@@ -1,0 +1,10 @@
+# Review 34e2e890-ead0-483b-adeb-d7f3f7a67375 — exit-code-contract-separating-infrastruc, round 8
+
+- Commit: a49caea
+- Angle: one input method at a time
+- Result: pass
+- 1 findings
+
+## Medium (1)
+
+- **Library entry fails open: a mistyped verb or an unparsed result makes a judge's exit 2 stop blocking** — `src/lib/kit/exit-codes.js:162` (correctness): The header (line 15) names classify()/blocksMerge() as the library input method, and the brief says code integrations call a module function. That path skips the checks the CLI path makes. (1) classify() never validates the verb, unlike toVerb() on the CLI: blocksMerge(2, 'Scrub') and blocksMerge(2, 'scrub ') return false, and classify({code:2, verb:'pushgate'}) returns class precondition. The CLI rejects these with exit 1. (2) blocksMerge wraps classify in try { } catch { return false }, so an input error becomes 'does not block'. Passing the judge's stdout string as given, which is the natural call after spawnSync (blocksMerge(r.status, 'scrub', r.signal, r.stdout)), returns false even when that output has hit\_count 3. With no result, the same 2 blocks (true). Confirmed: blocksMerge(2,'scrub',null,'{"hit\_count":3,"not\_scanned":\[\]}') returns false, while blocksMerge(2,'scrub',null,{hit\_count:3,not\_scanned:\[\]}) returns true. On this input method, a mistake by the integrator turns a real regression (a secret hit or a push-gate deny) into a green gate with no error. The CLI fails closed on the same mistakes. The test at test/kit-exit-code-contract-separating-infrastruc.test.js:83 only checks that a bad code returns false. It does not cover a bad result or a bad verb for a judge. — fix: In classify, reject a verb outside the registered set (or at least one that is a case or whitespace variant of a PRODUCT\_JUDGES name) with KitExit 1. In blocksMerge, rethrow input errors, or return true when code === 2 and the verb is a product judge, so bad input never unblocks a verdict. Add tests for blocksMerge(2,'scrub',null,'\<json string\>') and blocksMerge(2,'Scrub') that assert they do not return false silently.

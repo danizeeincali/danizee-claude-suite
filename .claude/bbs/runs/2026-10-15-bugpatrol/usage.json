@@ -1,0 +1,23 @@
+{
+  "run": "2026-10-15-bugpatrol",
+  "ts": "2026-10-15T14:29:31.181Z",
+  "evidence": "transcripts",
+  "window_days": 90,
+  "files_read": 1,
+  "files_unreadable": 0,
+  "lines_skipped": 0,
+  "workflows": [
+    {
+      "name": "w-bbs",
+      "count": 1,
+      "sessions": 1,
+      "last_used": "2026-10-15T14:18:45.390Z",
+      "file": ".claude/commands/.shortcuts/w-bbs.md",
+      "via": {
+        "w-bbs": 1
+      }
+    }
+  ],
+  "other_invocations": 0,
+  "installed": 49
+}
