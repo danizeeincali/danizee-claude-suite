@@ -141,7 +141,7 @@ function filesReport(db, run) {
   const fullBytes = skipped.filter((x) => x.reason === bytesFullReason(run.maxBytes)).length;
   if (fullBytes) notes.push(`${fullBytes} files are not indexed: the index holds at most ${run.maxBytes} bytes of JSON files per project`);
   const fullDisk = skipped.filter((x) => x.reason === diskFullReason(run.maxDisk)).length;
-  if (fullDisk) notes.push(`${fullDisk} files are not indexed: the index file holds at most ${run.maxDisk} bytes per project (db prune --keep <n> makes room taken by test runs; the next open after it retries them)`);
+  if (fullDisk) notes.push(`${fullDisk} files are not indexed: the index file holds at most ${run.maxDisk} bytes per project (db prune --keep <n> makes room taken by test runs and the next open after it retries them; db rebuild retries every file)`);
   return {
     schema_version: schemaVersion(db), rows: rowCounts(db), files: indexedFiles(db), skipped, ...(run.pending.length ? { pending: [...run.pending] } : {}),
     project_files_indexed_at: meta ? meta.value : null, ...(notes.length ? { notes } : {})

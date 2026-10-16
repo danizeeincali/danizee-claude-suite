@@ -1088,7 +1088,7 @@ describe('the index file is bounded by its own size, rows name their file by id 
       const reason = diskFullReason(cap);
       const skipped = r.skipped.filter((x) => x.reason === reason);
       assert.ok(skipped.length > 0 && skipped.length < 40, `${skipped.length} skipped`);
-      assert.ok(r.notes.some((n) => n === `${skipped.length} files are not indexed: the index file holds at most ${cap} bytes per project (db prune --keep <n> makes room taken by test runs; the next open after it retries them)`), r.notes.join('\n'));
+      assert.ok(r.notes.some((n) => n === `${skipped.length} files are not indexed: the index file holds at most ${cap} bytes per project (db prune --keep <n> makes room taken by test runs and the next open after it retries them; db rebuild retries every file)`), r.notes.join('\n'));
       let size = await used(dir);
       assert.ok(size.file <= cap, `index file ${size.file} > ${cap}`);
       assert.equal(r.rows.triage, (40 - skipped.length) * 500);

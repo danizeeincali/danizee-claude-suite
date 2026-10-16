@@ -651,7 +651,7 @@ export const fullReason = (max) => `not indexed: the index holds at most ${max} 
 /** The reason a file is not indexed when the project's index holds its byte cap of JSON. */
 export const bytesFullReason = (max) => `not indexed: the index holds at most ${max} bytes of JSON files per project (db rebuild retries)`;
 /** The reason a file is not indexed when its rows would take the index file past MAX_INDEX_DISK_BYTES. */
-export const diskFullReason = (max) => `not indexed: the index file holds at most ${max} bytes per project (db prune --keep <n> makes room taken by test runs; the next open after it retries)`;
+export const diskFullReason = (max) => `not indexed: the index file holds at most ${max} bytes per project (db prune --keep <n> makes room taken by test runs and the next open after it retries; db rebuild retries every file)`;
 /** The start of diskFullReason: `db prune` lets the files skipped for it be read again (see retryDiskFull). */
 export const DISK_FULL_PREFIX = 'not indexed: the index file holds at most ';
 
