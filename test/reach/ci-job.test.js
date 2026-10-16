@@ -56,6 +56,7 @@ const runStepScript = (s, env) => spawnSync('bash', ['-eo', 'pipefail', '-c', s.
 test('the job is wired: advisory steps cannot fail it, the test step can', () => {
   assert.equal(step('Test plan for this change').continueOnError, true);
   assert.equal(step('Render test results').continueOnError, true);
+  assert.equal(steps('node-test').find((x) => x.name === 'Upload test results')?.continueOnError, true, 'a failed artifact upload never fails the job');
   assert.equal(step('npm test').continueOnError, false);
   assert.match(step('npm test').run, /exit-codes\.js/);
   // No token and nothing posted. The one artifact upload (owner-approved, 2026-10-16) is the step checked below and no other.
@@ -72,6 +73,7 @@ test('the upload step always uploads only the rendered results, per node version
   assert.ok(names.indexOf('Upload test results') === names.indexOf('Render test results') + 1, 'it follows the render step');
   assert.equal(up.uses, 'actions/upload-artifact@v4');
   assert.equal(up.if, 'always()');
+  assert.equal(up.continueOnError, true);
   assert.equal(up.run, null);
   assert.match(workflow, /matrix:\n\s+node: \[/, 'the matrix key the artifact name uses is `node`');
   assert.deepEqual(up.with, {

@@ -30,11 +30,14 @@
  * `db init` / `db off` switched it meanwhile, runs again on the other store, so no committed write is lost.
  *
  * DRIFT. Shared JSON files (lessons.json, noise-ledger.json) can change under the database (a git pull). Each stored
- * document keeps the sha256 of its file as last imported or exported (`store_docs.file_sha256`, 'absent' when there
- * was no file); a read or write of a scope whose file exists with another hash is exit 1 naming the file and the two
- * ways out: `db sync --from-files` MERGES the file into the database by row id (see mergeDocs: nothing is dropped, a
- * row changed on both sides is a listed conflict), `db export --overwrite` replaces the file (the message says how many
- * file-only rows that drops).
+ * document keeps the sha256 of its file as last imported, exported or synced (`store_docs.file_sha256`, 'absent' when
+ * there was no file) and that document itself, the BASE of the next merge (`store_docs.synced_doc`, 'absent' when there
+ * was no file, NULL when unknown: synced by a kit older than schema 4). A read or write of a scope whose file exists
+ * with another hash is exit 1 naming the file and the two ways out: `db sync --from-files` MERGES the file and the
+ * database three-way against that base (see mergeDocs: a row deleted on one side and unchanged on the other is deleted,
+ * two rows that took the same new id on both sides are both kept and the database's is renumbered, a row changed on
+ * both sides is a conflict; every deletion, renumbering, conflict and discarded row is listed), `db export
+ * --overwrite` replaces the file (the message says how many file-only rows that drops).
  */
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
@@ -64,10 +67,20 @@ const invalid = (m) => new KitExit(m, 1);
 export const SPECS = Object.freeze({
   lessons: {
     defaultFile: '.claude/kit/lessons.json',
-    parts: [{ field: 'lessons', kind: 'array', table: 'lessons', cols: (x) => ({ id: x?.id, role: x?.role, status: x?.status, session: x?.session, created_at: x?.created_at }) }]
+    parts: [{
+      field: 'lessons',
+      kind: 'array',
+      table: 'lessons',
+      cols: (x) => ({ id: x?.id, role: x?.role, status: x?.status, session: x?.session, created_at: x?.created_at }),
+      // ids are made per machine (reflect: L<max+1>), so one id on two sides can be two different lessons: the merge
+      // renumbers the database's one to the next free L<n>, unless both carry the same identity (one lesson, edited)
+      identity: ['created_at', 'session'],
+      renumber: (used) => `L${1 + Math.max(0, ...used.map((id) => Number(String(id).slice(1)) || 0))}`
+    }]
   },
   'noise-ledger': {
     defaultFile: '.claude/kit/noise-ledger.json',
+    // an entry's id is the id of the finding it accepts: one id on two sides is the same finding (never renumbered)
     parts: [{ field: 'entries', kind: 'array', table: 'noise_ledger', cols: (x) => ({ id: x?.id, expires: x?.expires }) }]
   },
   triage: {
@@ -85,6 +98,7 @@ export const SPECS = Object.freeze({
       }
       return out;
     },
+    // records and scopes are keyed by fingerprint / scope: one key on two sides is the same record (never renumbered)
     parts: [
       { field: 'records', kind: 'map', table: 'triage', cols: (x) => ({ scope: x?.scope, rule: x?.rule, status: x?.status }) },
       { field: 'scopes', kind: 'map', table: 'triage_scopes', cols: () => ({}) }
@@ -128,6 +142,13 @@ CREATE UNIQUE INDEX test_runs_run_key ON test_runs (run_key);
     version: 3,
     sql: `
 ALTER TABLE store_docs ADD COLUMN file_sha256 TEXT;
+`
+  },
+  {
+    // three-way merge: the document as last synced with its file (the merge base; 'absent': no file then; NULL: unknown)
+    version: 4,
+    sql: `
+ALTER TABLE store_docs ADD COLUMN synced_doc TEXT;
 `
   }
 ]);
@@ -376,9 +397,11 @@ export function getDoc(db, name, scope) {
 
 /**
  * Replace one document in the database (all its rows). The document must be a JSON object.
- * `fileSha` (a hash, 'absent' or null) sets the file hash it was synced with; left out, an existing row keeps its own.
+ * `fileSha` (a hash, 'absent' or null) sets the file hash it was synced with, and `synced` the document that file held
+ * (the merge base: an object, 'absent', or null for unknown; a fileSha of 'absent' means 'absent'); left out, an
+ * existing row keeps its own.
  */
-export function putDoc(db, name, scope, doc, fileSha) {
+export function putDoc(db, name, scope, doc, fileSha, synced) {
   const spec = SPECS[name];
   if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw invalid(`${name} state for ${scope} is not a JSON object`);
   const json = JSON.parse(JSON.stringify(doc));
@@ -412,9 +435,27 @@ export function putDoc(db, name, scope, doc, fileSha) {
     db.run('INSERT INTO store_docs (store, scope, data, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (store, scope) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at',
       name, scope, JSON.stringify({ keys, fields }), new Date().toISOString());
   } else {
-    db.run('INSERT INTO store_docs (store, scope, data, updated_at, file_sha256) VALUES (?, ?, ?, ?, ?) ON CONFLICT (store, scope) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at, file_sha256 = excluded.file_sha256',
-      name, scope, JSON.stringify({ keys, fields }), new Date().toISOString(), fileSha);
+    db.run('INSERT INTO store_docs (store, scope, data, updated_at, file_sha256, synced_doc) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (store, scope) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at, file_sha256 = excluded.file_sha256, synced_doc = excluded.synced_doc',
+      name, scope, JSON.stringify({ keys, fields }), new Date().toISOString(), fileSha, encodeSynced(fileSha, synced));
   }
+}
+
+function encodeSynced(fileSha, synced) {
+  if (fileSha === 'absent' || synced === 'absent') return 'absent';
+  if (synced && typeof synced === 'object' && !Array.isArray(synced)) return JSON.stringify(synced);
+  return null;
+}
+
+/**
+ * The merge base of a scope: the document as last synced with its file; {} when there was no file then (nothing was
+ * shared yet); null when unknown (no stored document, or synced by a kit older than schema 4).
+ */
+export function getBase(db, name, scope) {
+  const row = db.get('SELECT file_sha256, synced_doc FROM store_docs WHERE store = ? AND scope = ?', name, scope);
+  if (!row) return null;
+  if (row.synced_doc === 'absent' || (row.synced_doc == null && row.file_sha256 === 'absent')) return {};
+  if (row.synced_doc == null) return null;
+  try { return JSON.parse(row.synced_doc); } catch { return null; }
 }
 
 /** Remove one document (all its rows). */
@@ -433,9 +474,9 @@ export function fileHash(file) {
   return crypto.createHash('sha256').update(buf).digest('hex');
 }
 
-/** Record the hash of a scope's file as it is now (after an import or an export). */
-export function setFileHash(db, name, scope, sha) {
-  db.run('UPDATE store_docs SET file_sha256 = ? WHERE store = ? AND scope = ?', sha, name, scope);
+/** Record the hash of a scope's file as it is now and the document it holds (after an import, export or sync). */
+export function setFileHash(db, name, scope, sha, synced) {
+  db.run('UPDATE store_docs SET file_sha256 = ?, synced_doc = ? WHERE store = ? AND scope = ?', sha, encodeSynced(sha, synced), name, scope);
 }
 
 /** The file changed since the database last synced it: { scope, file } or null. A missing file is not drift. */
@@ -460,7 +501,7 @@ export function readFileDoc(file) {
 // ---------------------------------------------------------------- merge (drift recovery)
 
 /** Timestamp fields a row may carry; the newest one dates the row. */
-const STAMP_FIELDS = Object.freeze(['updated_at', 'retired_at', 'decided_at', 'closed_at', 'created_at', 'added']);
+const STAMP_FIELDS = Object.freeze(['updated_at', 'retired_at', 'decided_at', 'closed_at', 'last_kept', 'created_at', 'added']);
 function stampOf(item) {
   if (!item || typeof item !== 'object') return null;
   let best = null;
@@ -488,16 +529,40 @@ function keyedRows(kind, v) {
 }
 const rowId = (kind, key, item) => (kind === 'map' ? key : (item && typeof item === 'object' && item.id != null ? String(item.id) : key.replace(/^json:/, '').slice(0, 80)));
 
+/** Same row on both sides of a pair: every identity field present (a string) and equal. */
+function sameIdentity(part, a, b) {
+  if (!part.identity) return true;
+  return part.identity.every((k) => typeof a?.[k] === 'string' && a[k] === b?.[k]);
+}
+
 /**
- * Merge a scope's file document into its database document, row by row (by `id` in a list, by key in a map):
- * a row only in the database is kept, a row only in the file is added, an identical row is unchanged, and a row that
- * differs on both sides is a conflict: the side with the newer timestamp field wins (updated_at, retired_at, ...),
- * else the database's. Top-level fields keep the database's value; one only the file has is added.
- * Returns { doc, kept, added, unchanged, conflicts: [{ part, id, kept: 'database'|'file', reason }], file_only: [{ part, id }] }.
+ * Merge a scope's file document and its database document, row by row (by `id` in a list, by key in a map), against
+ * `base`, the document as last synced with the file (getBase: an object, {} when there was no file, null when unknown).
+ *
+ * With a base (three-way), for each row:
+ * - identical on both sides: one row (unchanged);
+ * - in the base and changed on one side only: that side's version (a file edit is `updated`, a database edit `kept`);
+ *   deleted on one side and unchanged on the other: deleted (listed in `deleted` with the side that deleted it and
+ *   the row); changed on one side and deleted on the other: the edit is kept, listed as a conflict;
+ * - in the base and changed on both sides: a conflict, the side with the newer timestamp field wins (updated_at,
+ *   retired_at, last_kept, ...), else the database's;
+ * - not in the base, on one side only: added on that side, kept (`added` from the file, `kept` from the database);
+ * - not in the base, on both sides with different content: two rows that took the same new id (an ID COLLISION) when
+ *   the store renumbers (lessons: identity fields created_at and session differ): both are kept, the file's row keeps
+ *   its id (it is committed and shared) and the database's gets the next free id (listed in `renumbered`); otherwise
+ *   (same identity, or a store whose id names the thing itself: a noise-ledger finding id, a triage fingerprint) one
+ *   row edited on both sides: a conflict as above.
+ * Without a base (a database synced by an older kit): the union, nothing deleted; a pair with different content is a
+ * collision or a conflict by the same identity rule.
+ * Every conflict's losing row goes to `discarded` in full. Top-level fields keep the database's value; one only the
+ * file has is added.
+ * Returns { doc, kept, added, updated, unchanged, conflicts: [{ part, id, kept: 'database'|'file', reason }],
+ *   deleted: [{ part, id, deleted_in: 'file'|'database', row }], renumbered: [{ part, from, to }],
+ *   discarded: [{ part, id, side, row }], file_only: [{ part, id }] (the file rows the database does not have) }.
  */
-export function mergeDocs(name, dbDoc, fileDoc) {
+export function mergeDocs(name, dbDoc, fileDoc, base = null) {
   const spec = SPECS[name];
-  const out = { kept: 0, added: 0, unchanged: 0, conflicts: [], file_only: [] };
+  const out = { kept: 0, added: 0, updated: 0, unchanged: 0, conflicts: [], deleted: [], renumbered: [], discarded: [], file_only: [] };
   if (!dbDoc) {
     for (const p of spec.parts) for (const [key, item] of keyedRows(p.kind, fileDoc[p.field])) { out.added++; out.file_only.push({ part: p.field, id: rowId(p.kind, key, item) }); }
     return { doc: JSON.parse(JSON.stringify(fileDoc)), ...out };
@@ -508,41 +573,95 @@ export function mergeDocs(name, dbDoc, fileDoc) {
     const fileRows = keyedRows(p.kind, fileDoc[p.field]);
     if (!fileRows.length && doc[p.field] === undefined) continue;
     const dbRows = keyedRows(p.kind, doc[p.field]);
+    const baseRows = base ? keyedRows(p.kind, base[p.field]) : [];
     const fileByKey = new Map(fileRows);
-    const dbKeys = new Set(dbRows.map(([k]) => k));
+    const dbByKey = new Map(dbRows);
+    const baseByKey = base ? new Map(baseRows) : null;
     const merged = [];
-    for (const [key, item] of dbRows) {
-      if (!fileByKey.has(key)) { out.kept++; merged.push([key, item]); continue; }
-      const other = fileByKey.get(key);
-      if (same(item, other)) { out.unchanged++; merged.push([key, item]); continue; }
-      const a = stampOf(item);
-      const b = stampOf(other);
+    const collided = [];
+    const idOf = (key, item) => rowId(p.kind, key, item);
+    const conflict = (key, d, f, why) => {
+      const a = stampOf(d);
+      const b = stampOf(f);
       const fileWins = a !== null && b !== null && b > a;
-      out.conflicts.push({ part: p.field, id: rowId(p.kind, key, item), kept: fileWins ? 'file' : 'database', reason: a !== null && b !== null ? (fileWins ? 'the file row is newer' : (b < a ? 'the database row is newer' : 'same timestamp: the database row')) : 'no timestamp on both sides: the database row' });
-      merged.push([key, fileWins ? other : item]);
+      out.conflicts.push({ part: p.field, id: idOf(key, d), kept: fileWins ? 'file' : 'database', reason: why || (a !== null && b !== null ? (fileWins ? 'the file row is newer' : (b < a ? 'the database row is newer' : 'same timestamp: the database row')) : 'no timestamp on both sides: the database row') });
+      out.discarded.push({ part: p.field, id: idOf(key, d), side: fileWins ? 'database' : 'file', row: fileWins ? d : f });
+      merged.push([key, fileWins ? f : d]);
+    };
+    for (const [key, d] of dbRows) {
+      const inFile = fileByKey.has(key);
+      const f = fileByKey.get(key);
+      if (inFile && same(d, f)) { out.unchanged++; merged.push([key, d]); continue; }
+      if (baseByKey && baseByKey.has(key)) {
+        const b = baseByKey.get(key);
+        if (!inFile) {
+          if (same(d, b)) { out.deleted.push({ part: p.field, id: idOf(key, d), deleted_in: 'file', row: d }); continue; }
+          out.conflicts.push({ part: p.field, id: idOf(key, d), kept: 'database', reason: 'changed in the database, deleted in the file: the edit is kept' });
+          out.kept++;
+          merged.push([key, d]);
+          continue;
+        }
+        if (same(d, b)) { out.updated++; merged.push([key, f]); continue; }
+        if (same(f, b)) { out.kept++; merged.push([key, d]); continue; }
+        conflict(key, d, f);
+        continue;
+      }
+      if (!inFile) { out.kept++; merged.push([key, d]); continue; }
+      // not in the base, on both sides, different: the same id taken twice, or one row edited on both sides
+      if (p.renumber && !sameIdentity(p, d, f)) {
+        out.added++;
+        out.file_only.push({ part: p.field, id: idOf(key, f) });
+        merged.push([key, f]);
+        collided.push(d);
+        continue;
+      }
+      conflict(key, d, f);
     }
-    for (const [key, item] of fileRows) {
-      if (dbKeys.has(key)) continue;
+    for (const [key, f] of fileRows) {
+      if (dbByKey.has(key)) continue;
+      if (baseByKey && baseByKey.has(key)) {
+        if (same(f, baseByKey.get(key))) { out.deleted.push({ part: p.field, id: idOf(key, f), deleted_in: 'database', row: f }); continue; }
+        out.conflicts.push({ part: p.field, id: idOf(key, f), kept: 'file', reason: 'changed in the file, deleted in the database: the edit is kept' });
+        out.file_only.push({ part: p.field, id: idOf(key, f) });
+        merged.push([key, f]);
+        continue;
+      }
       out.added++;
-      out.file_only.push({ part: p.field, id: rowId(p.kind, key, item) });
-      merged.push([key, item]);
+      out.file_only.push({ part: p.field, id: idOf(key, f) });
+      merged.push([key, f]);
+    }
+    if (collided.length) {
+      // the next free id after every id either side or the base ever used (a deleted id is not reused)
+      const used = [...dbRows, ...fileRows, ...baseRows].map(([, x]) => x?.id).filter((x) => x != null);
+      for (const d of collided) {
+        const to = p.renumber(used);
+        used.push(to);
+        out.renumbered.push({ part: p.field, from: String(d.id), to });
+        merged.push([`id:${to}`, Object.fromEntries(Object.entries(d).map(([k, v]) => [k, k === 'id' ? to : v]))]);
+      }
     }
     doc[p.field] = p.kind === 'map' ? Object.fromEntries(merged) : merged.map(([, item]) => item);
   }
   return { doc, ...out };
 }
 
+/** What to do with a store file that is not a usable JSON object (a git conflict, a bad edit): never move it away. */
+export const REPAIR_ADVICE = 'repair the file in place (after a git pull with a conflict: resolve the conflict markers and keep the rows of both sides); '
+  + 'do not move it away: a moved file is not drift, so the next export would write the database copy over it and the other side\'s rows would never reach the database';
+
 /** The drift message for one scope: what `db sync --from-files` (merge) and `db export --overwrite` (replace) do to it. */
 export function driftMessage(scope, detail = {}) {
   if (detail.error) {
-    return `${scope} changed since the database last synced (a git pull?) and ${detail.error}: repair the file (or move it away: the database keeps its copy), `
-      + 'then run `db sync --from-files` to merge it into the database by row id';
+    return `${scope} changed since the database last synced (a git pull?) and ${detail.error}: ${REPAIR_ADVICE}; `
+      + 'then run `db sync --from-files` to merge it with the database';
   }
   const n = detail.file_only ? detail.file_only.length : null;
   const ids = detail.file_only && detail.file_only.length ? ` (${detail.file_only.slice(0, 10).map((x) => x.id).join(', ')}${detail.file_only.length > 10 ? ', ...' : ''})` : '';
   const c = detail.conflicts ? detail.conflicts.length : 0;
   return `${scope} changed since the database last synced (a git pull?): run \`db sync --from-files\` to MERGE the file into the database by row id `
-    + '(rows from both sides are kept; a row changed on both sides keeps the newer one, else the database\'s, and is listed). '
+    + '(three-way, against the copy last synced: changes and additions from both sides are taken, a row deleted on one side and unchanged on the other is deleted, '
+    + 'two different rows that took the same new id are both kept and the database\'s is renumbered, a row changed on both sides keeps the newer one, else the database\'s; '
+    + 'every deletion, renumbering and conflict is listed). '
     + `\`db export --overwrite\` instead REPLACES the file with the database and drops ${n === null ? 'every' : n} file-only row(s)${ids}`
     + `${c ? ` and the file's side of ${c} conflicting row(s)` : ''}`;
 }
@@ -551,7 +670,7 @@ export function driftMessage(scope, detail = {}) {
 export function driftDetail(db, name, scope, file) {
   const f = readFileDoc(file);
   if (f.error) return { error: f.error };
-  const m = mergeDocs(name, getDoc(db, name, scope), f.doc);
+  const m = mergeDocs(name, getDoc(db, name, scope), f.doc, getBase(db, name, scope));
   return { file_only: m.file_only, conflicts: m.conflicts };
 }
 
@@ -609,8 +728,12 @@ export async function updateDoc(io, name, file, fn, lockOpts) {
           load: (opts = {}) => loadFromDb(db, name, file, scope, opts),
           save: async (doc) => {
             const known = db.get('SELECT 1 AS x FROM store_docs WHERE store = ? AND scope = ?', name, scope);
-            // the first write of a scope read from its file: remember the file it came from
-            putDoc(db, name, scope, doc, known ? undefined : fileHash(file));
+            // the first write of a scope read from its file: remember the file it came from (its hash and document)
+            if (known) putDoc(db, name, scope, doc);
+            else {
+              const sha = fileHash(file);
+              putDoc(db, name, scope, doc, sha, sha === 'absent' ? 'absent' : (readFileDoc(file).doc ?? null));
+            }
           }
         });
       });
