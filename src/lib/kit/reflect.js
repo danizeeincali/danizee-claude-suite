@@ -29,7 +29,9 @@
  * (NFC-normalised, lower-cased, punctuation dropped but combining marks kept, runs of Han/Kana/Thai/Lao/Khmer/Myanmar as character bigrams, stop words dropped, a trailing plural "s" dropped). A lesson may be saved for
  * another role. Retired lessons stay in the file with their reason and are hidden from `list` unless --all.
  * Every change holds the shared state lock (./state-lock.js: `<store>.lock`, heartbeat, stale-lock break) from load to
- * save and writes atomically through it, so parallel saves are all kept; `list` only reads and takes no lock. A leading
+ * save and writes atomically through it, so parallel saves are all kept; `list` only reads and takes no lock. With the
+ * optional SQLite store (./store.js, `db init`) the lessons live in the `lessons` table under the --store path as scope,
+ * and each change is one BEGIN IMMEDIATE transaction instead; flags, output and exit codes are the same. A leading
  * BOM is ignored. trouble-log exits 1 when its input has no events it recognises (empty, or neither shape).
  * Exit 0 done, 1 invalid input, 2 refused save.
  * Built from ideas audited by /w-bbs (run 2026-10-15-bugpatrol); no foreign code.
@@ -37,7 +39,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
-import { withStateLock, readJsonState, writeJsonAtomic } from './state-lock.js';
+import { readDoc, updateDoc } from './store.js';
 import { redactSecrets, parseSecretsFile, secretsRoots, loadProjectSecrets } from './redact.js';
 
 export const verb = 'reflect';
@@ -275,8 +277,9 @@ export function checkLessonText(text) {
   return t;
 }
 
-async function loadStore(file) {
-  const data = await readJsonState(file, { fallback: { version: 1, lessons: [] } });
+const EMPTY = () => ({ version: 1, lessons: [] });
+
+function checkStore(data, file) {
   if (!data || !Array.isArray(data.lessons)) throw invalid(`lessons store ${file} has no lessons list`);
   const seen = new Set();
   for (const [i, l] of data.lessons.entries()) {
@@ -285,6 +288,10 @@ async function loadStore(file) {
     seen.add(l.id);
   }
   return data;
+}
+
+async function loadStore(io, file, load) {
+  return checkStore(load ? await load({ fallback: EMPTY() }) : await readDoc(io, 'lessons', file, { fallback: EMPTY() }), file);
 }
 
 const nextId = (lessons) => 'L' + (1 + Math.max(0, ...lessons.map((l) => Number(String(l.id).slice(1)) || 0)));
@@ -429,7 +436,7 @@ export async function run(args, io) {
   if (cmd === 'lessons') {
     if (pos.length !== 2) throw invalid(`reflect lessons needs save, keep, retire or list\n${usage}`);
     const store = path.resolve(cwd, flags.store || DEFAULT_STORE);
-    if (sub === 'list') return { lessons: listLessons(await loadStore(store), { role: flags.role, all: !!flags.all }) };
+    if (sub === 'list') return { lessons: listLessons(await loadStore(io, store), { role: flags.role, all: !!flags.all }) };
     if (!['save', 'keep', 'retire'].includes(sub)) throw invalid(`unknown lessons command "${sub}"\n${usage}`);
     let threshold = DEFAULTS.threshold;
     if (sub === 'save' && flags.threshold !== undefined) {
@@ -460,13 +467,13 @@ export async function run(args, io) {
         }
       }
     }
-    return withStateLock(store, async () => {
-      const data = await loadStore(store);
+    return updateDoc(io, 'lessons', store, async ({ load, save }) => {
+      const data = await loadStore(io, store, load);
       let result;
       if (sub === 'save') result = saveLesson(data, { role: flags.role, text: flags.text, scope: flags.scope, session: flags.session, maxNew, threshold, confirm: flags.confirm, distinct: !!flags.distinct });
       else if (sub === 'keep') result = keepLesson(data, needText(flags.id, 'id'));
       else result = retireLesson(data, needText(flags.id, 'id'), flags.reason);
-      await writeJsonAtomic(store, data);
+      await save(data);
       return result;
     });
   }

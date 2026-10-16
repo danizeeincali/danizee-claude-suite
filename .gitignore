@@ -54,3 +54,8 @@ ruvector.db
 
 # Kit: triage ledger (finding fingerprints, issue references) is machine-local
 .claude/kit/triage.json*
+
+# Kit: the optional SQLite store (`db init`) is machine-local state
+.claude/kit/suite.db
+.claude/kit/suite.db-wal
+.claude/kit/suite.db-shm

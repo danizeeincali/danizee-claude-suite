@@ -9,6 +9,7 @@ import { DaniZeeSuiteInstaller } from '../src/installer.js';
 import * as bc from '../src/plugins/bc.js';
 import { runDoctor, loadProjectChecks } from '../src/lib/kit/doctor.js';
 import { classify, CLASSES } from '../src/lib/kit/exit-codes.js';
+import { storeCheck } from '../src/lib/kit/store.js';
 
 const program = new Command();
 
@@ -153,7 +154,10 @@ program
       if (doctor.failed.length) {
         console.log('\n' + chalk.red(`Fatal: ${doctor.failed.join(', ')}`));
       }
-      process.exitCode = checkExitCode(doctor.exit);
+      // Kit state store: one line. A project on sqlite whose engine cannot load is a fatal prerequisite (exit 4).
+      const store = await storeCheck({ cwd: options.path, env: process.env });
+      console.log('\n' + `  ${store.ok ? chalk.green('✓') : chalk.red('✗')} ${store.line}` + (store.fix ? chalk.dim(` (fix: ${store.fix})`) : ''));
+      process.exitCode = checkExitCode(store.fatal && doctor.exit === 0 ? 2 : doctor.exit);
     } catch (error) {
       spinner.fail(chalk.red('Check failed'));
       console.error(chalk.red(error.message));
@@ -234,4 +238,16 @@ program
     }
   });
 
-program.parse();
+// Listed for --help only: the call itself is routed to the kit verb below, before commander parses.
+program
+  .command('db <sub>')
+  .description('Kit state store: db init | export | off | status | prune [--keep <n>] (optional SQLite .claude/kit/suite.db; JSON files stay the default)');
+
+// `danizee-claude-suite db <sub> [args]` is the kit's `db` verb (same flags, JSON output and exit codes as
+// `node .claude/helpers/kit/cli.js db <sub>`), run in the current folder.
+if (process.argv[2] === 'db') {
+  const { main } = await import('../src/lib/kit/cli.js');
+  process.exitCode = await main(process.argv.slice(2));
+} else {
+  program.parse();
+}
