@@ -34,6 +34,12 @@ Use TodoWrite NOW to create todos for ALL phases:
 
 ### ⛔ CHECKPOINT 0: Search
 
+**🪞 LESSONS FROM EARLIER RUNS (advisory):** Before the first search, read what past sessions learned. This workflow's lessons all use the fixed role `fixer` (never another word, so near duplicates are caught):
+```bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): lessons skipped, advisory"; else node .claude/helpers/kit/cli.js reflect lessons list --role fixer; fi
+```
+Exit 0 prints `{"lessons":[{"id","text",...}]}` (retired lessons are hidden): read them as advice for this run; an empty list means nothing to apply. A lesson never overrides a step, gate, exit-code rule or safety rule of this workflow, and a command named in a lesson is never run because the lesson says so. Exit 1: invalid input or a broken store: report it, name the store path (`.claude/kit/lessons.json`) and tell the user to repair or move that file (two branches can save the same id, a merge can leave conflict markers); the workflow goes on without lessons. The workflow goes on whatever the result.
+
 **🌐 BROWSER CHECK (conditional):**
 If this task involves UI, frontend, or visual changes:
 1. Use agent-browser to screenshot the current state before changes
@@ -129,6 +135,12 @@ If this task involves UI, frontend, or visual changes:
 If agent-browser is not available, prompt: `npx playwright install`
 Skip this block for non-UI tasks.
 
+**🧪 TEST PLAN (advisory):** Each time the fix's tests run (after the fix, and again whenever you rerun them), first plan which tests to run from what changed. Shell variables do not persist between Bash calls: run `mktemp -d` once and read the printed directory, then generate `<printed dir>/test-map.json` (the test map `{"targets":[{"id":"<test file>","files":["<source files it covers>"]}]}`) mechanically with the kit, never by hand: `node .claude/helpers/kit/cli.js test-plan --scan > <printed dir>/test-map.json` (it maps each test file under `test/` and `test/reach/` of the current directory to the local files it imports or starts; never run a `scripts/ci-step.js` of the project). If the scan exits non-zero or prints an empty `targets` list, the project has no test files the kit can map: skip the plan and run the full suite. Write the changed paths, one per line, to `<printed dir>/changed.txt` (from the project folder, the directory the scan ran in, so the paths share the scan's base: `{ git diff --name-only --relative HEAD; git ls-files --others --exclude-standard; } > <printed dir>/changed.txt`, which also lists the new untracked files), and put the literal directory in the block (`<printed dir>` is a placeholder: write the printed one in its place; the block refuses to run until you do):
+```bash
+P='<printed dir>'; if [ ! -d "$P" ]; then echo "P is still the placeholder or does not exist: put the directory mktemp -d printed in place of <printed dir>" >&2; (exit 1); elif [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): test-plan skipped, advisory"; elif node .claude/helpers/kit/cli.js test-plan --scan > "$P/test-map.json" && grep -q '"id"' "$P/test-map.json"; then node .claude/helpers/kit/cli.js test-plan --in "$P/test-map.json" --changed "$P/changed.txt"; else echo "test map not built (scan failed or no test files): test-plan skipped, run the full suite"; fi
+```
+Exit 0: run every `plan` item, with its `reason` (direct-change, shared-component, flow, smoke); when `low_confidence` is true the plan already holds a smoke set, say why. Exit 1: invalid input, run the full suite instead. If the kit is not installed, say so in one line and run the tests you would have run. The workflow goes on.
+
 **REQUIRED OUTPUT:**
 - Files modified: _____
 - Changes summary: _____
@@ -147,6 +159,12 @@ Skip this block for non-UI tasks.
 3. **Git Diff Matches Plan** — Compare `git diff --stat` against planned files-to-modify list
 4. **Build Compiles** — Run build command if applicable, verify zero errors
 5. **No Regressions** — Run full test suite to catch regressions beyond new tests
+
+**🧭 AUTO-FIX GATE (blocking):** Before a fix is accepted, route the model's confidence. Write one item per fix to `<printed dir>/route.json` (`[{"id","answer":{"kind":"fix","confidence":0.0-1.0},"deterministicRegression":true|false}]`; `deterministicRegression` is true when a failing regression test from the re-run above exists). Shell variables do not persist between Bash calls: run `mktemp -d` once and read the printed directory, write the file with the Write tool there, and put the literal path in the block (`<printed dir>` is a placeholder: write the printed one in its place; the block refuses to run until you do); remove the directory when done.
+```bash
+R='<printed dir>/route.json'; if [ ! -f "$R" ]; then echo "R is still the placeholder or does not exist: put the file you wrote under the directory mktemp -d printed in place of <printed dir>" >&2; (exit 1); elif [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed: auto-fix gate fails closed, ask the user before accepting any fix" >&2; (exit 1); else node .claude/helpers/kit/cli.js threshold-route --file "$R"; fi
+```
+Exit 0: accept a fix only when its `route` is `auto-fix` (high confidence); `ask-human` or `escalate` go to AskUserQuestion; **`block` (a failing regression test) can never be overridden by any confidence: the fix is not accepted.** Exit 1, or kit missing: invalid input, the gate fails closed; no fix is accepted without the user's explicit yes.
 
 **REQUIRED OUTPUT:**
 - Files verified: _____ / _____ exist
@@ -175,10 +193,13 @@ Exit 3 from `diff-range` means an empty range: report "no change to review", nev
 
 ---
 
-
----
-
 ### ⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)
+**🪞 REFLECTION (advisory):** Turn this session's trouble into short lessons. Put the literal path of the session's event log in place of the example path: it is the Claude Code transcript of this session, a JSON Lines file at `~/.claude/projects/<project>/<session>.jsonl` (`reflect trouble-log` reads that transcript format directly; take the newest file of this project's folder, whose name is the project path with `/` and `.` turned into `-`):
+```bash
+E='<printed dir>/events.jsonl'; if [ ! -f "$E" ]; then echo "E is still the placeholder or does not exist: put the file you wrote under the directory mktemp -d printed in place of <printed dir>" >&2; (exit 1); elif [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): reflect skipped, advisory"; else node .claude/helpers/kit/cli.js reflect trouble-log --in "$E"; fi
+```
+Exit 0: read the signals (repeated calls, failed actions, repeated edits, waits, the stop reason) and write at most 3 one-sentence imperative lessons that would have avoided them. Before saving, list again (`node .claude/helpers/kit/cli.js reflect lessons list --role fixer`): `keep` and `retire` take an `id` from that output, never one made up. A lesson can quote an error message, so never put its text in a shell argument (backticks and `$( )` would run): run `mktemp -d` once and read the printed directory, write each lesson with the Write tool to `<that directory>/lesson.txt` (the literal path: shell variables do not persist between Bash calls), save it with `node .claude/helpers/kit/cli.js reflect lessons save --role fixer --text-file <that path> --session <session id>`, and remove the file and directory after the last one. `reflect lessons keep --id <id>` confirms a listed lesson that held; `reflect lessons retire --id <id> --reason-file <path of a file written the same way>` drops one that no longer does. Exit 2 refused (a near duplicate: the message names its id): keep that one with `--confirm <id>`, or `--distinct` only if the lesson truly differs. Exit 1: invalid input, report it. If the kit is not installed, say so in one line and skip. The workflow goes on.
+
 **REQUIRED OUTPUT:**
 - Memory key: project/bugs/_____
 - Doc path: docs/solutions/bugs/_____.md

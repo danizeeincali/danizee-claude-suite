@@ -1,0 +1,95 @@
+{
+  "run": "2026-10-15-bugpatrol",
+  "ts": "2026-10-15T20:29:27.139Z",
+  "powers": {
+    "noise ledger with flake quarantine": {
+      "verb": "noise-ledger",
+      "entry": null,
+      "reach": []
+    },
+    "two pass finding clustering": {
+      "verb": "cluster",
+      "entry": null,
+      "reach": []
+    },
+    "asymmetric threshold router": {
+      "verb": "threshold-route",
+      "entry": null,
+      "reach": []
+    },
+    "finding triage with fingerprint dedup and absence closing": {
+      "verb": "triage",
+      "entry": null,
+      "reach": []
+    },
+    "shared budget for claim sub-sessions": {
+      "verb": "shared-budget",
+      "entry": null,
+      "reach": []
+    },
+    "trouble-log reflection into lesson memory": {
+      "verb": "reflect",
+      "entry": null,
+      "reach": []
+    },
+    "repeated replay gate for claims": {
+      "verb": "replay-gate",
+      "entry": null,
+      "reach": []
+    },
+    "change-impact test plan": {
+      "verb": "test-plan",
+      "entry": "src/lib/kit/test-plan.js#planTests",
+      "reach": [
+        {
+          "surface": "job:.github/workflows/test.yml",
+          "at": "node-test",
+          "test": "test/reach/ci-job.test.js",
+          "command": "node --test test/reach/ci-job.test.js"
+        }
+      ]
+    },
+    "Preflight doctor checks before a run": {
+      "verb": "doctor",
+      "entry": "src/lib/kit/doctor.js#runDoctor",
+      "reach": [
+        {
+          "surface": "cli:bin/cli.js",
+          "at": "check",
+          "test": "test/reach/cli-check.test.js",
+          "command": "node --test test/reach/cli-check.test.js"
+        }
+      ]
+    },
+    "Exit code contract separating infrastructure from product failure": {
+      "verb": "exit-codes",
+      "entry": "src/lib/kit/exit-codes.js#classify",
+      "reach": [
+        {
+          "surface": "cli:bin/cli.js",
+          "at": "check",
+          "test": "test/reach/cli-check.test.js",
+          "command": "node --test test/reach/cli-check.test.js"
+        },
+        {
+          "surface": "job:.github/workflows/test.yml",
+          "at": "node-test",
+          "test": "test/reach/ci-job.test.js",
+          "command": "node --test test/reach/ci-job.test.js"
+        }
+      ]
+    },
+    "SARIF JUnit and sticky PR comment renderers": {
+      "verb": "render",
+      "entry": "src/lib/kit/render.js#renderJunit",
+      "reach": [
+        {
+          "surface": "job:.github/workflows/test.yml",
+          "at": "test.yml",
+          "test": "test/reach/ci-job.test.js",
+          "command": "node --test test/reach/ci-job.test.js"
+        }
+      ]
+    }
+  }
+}

@@ -98,6 +98,12 @@ STOP and wait for user response.
 ---
 
 ### ⛔ CHECKPOINT 2: Diagnosis (BLOCKING GATE)
+**REPLAY GATE (blocking):** The diagnosis must reproduce on a second replay before it counts. Run the reproduction twice and write `{"verdicts":[{"id":"diagnosis","decided_by":"replay","outcome":"fail","runs":[{"steps":[...],"outputs":{...}},{"steps":[...],"outputs":{...}}]}]}` (outcome `fail` = the bug reproduced) to `<printed dir>/gate.json`. Shell variables do not persist between Bash calls: run `mktemp -d` once and read the printed directory, write the file with the Write tool there, and put the literal path in the block (`<printed dir>` is a placeholder: write the printed one in its place; the block refuses to run until you do); remove the directory when done.
+```bash
+G='<printed dir>/gate.json'; if [ ! -f "$G" ]; then echo "G is still the placeholder or does not exist: put the file you wrote under the directory mktemp -d printed in place of <printed dir>" >&2; (exit 1); elif [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed: replay gate fails closed, the diagnosis is unconfirmed" >&2; (exit 1); else node .claude/helpers/kit/cli.js replay-gate --file "$G"; fi
+```
+**Exit 2: a `blocking` verdict, the two runs agree: the diagnosis is confirmed, go on to the user gate.** Exit 0: the verdict is `untested` (the runs differ or there was one) or `comment`: the diagnosis is NOT confirmed, do not proceed to Plan; replay again or choose "Investigate more". Exit 1, or kit missing: invalid input, the gate fails closed; the diagnosis is unconfirmed until the user explicitly accepts it unreplayed at the gate below.
+
 **REQUIRED OUTPUT:**
 - Confirmed root cause: _____
 - Evidence supporting diagnosis: _____
@@ -108,7 +114,6 @@ NEVER proceed to Plan until:
 - [ ] Root cause identified with high confidence
 - [ ] Evidence documented
 - [ ] User confirms diagnosis
-
 **USER GATE:** Use AskUserQuestion
 - Question: "Root cause confirmed: [X]. Proceed to Plan fix?"
 - Options: ["Continue", "Investigate more", "Revise diagnosis"]

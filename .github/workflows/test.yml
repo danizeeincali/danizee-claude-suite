@@ -17,14 +17,54 @@ jobs:
         node: [20, 22]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
+      # Advisory: which tests the change touches, with a reason per item. Never fails the job.
+      # Logic in scripts/ci-step.js; the kit entry (test-plan planTests) is imported here and passed in.
+      - name: Test plan for this change
+        continue-on-error: true
+        run: |
+          node --input-type=module <<'EOF'
+          import { planTests } from './src/lib/kit/test-plan.js';
+          import { planStep } from './scripts/ci-step.js';
+          planStep(planTests);
+          EOF
+      # Blocking and fails closed: any nonzero exit of the test command fails this step. exit-codes classify is
+      # called only to label the ::error:: annotation (product failure, infrastructure: rerun, or precondition).
       - name: npm test
-        shell: bash
-        run: npm test 2>&1 | tee "$RUNNER_TEMP/test-output.txt"; exit ${PIPESTATUS[0]}
+        run: |
+          node --input-type=module <<'EOF'
+          import { classify } from './src/lib/kit/exit-codes.js';
+          import { runStep } from './scripts/ci-step.js';
+          process.exitCode = await runStep(classify);
+          EOF
+      # Advisory: the test results as JUnit XML (and SARIF when a test failed), written as local files; nothing is posted.
+      - name: Render test results
+        if: always()
+        continue-on-error: true
+        run: |
+          node --input-type=module <<'EOF'
+          import { renderJunit, renderSarif } from './src/lib/kit/render.js';
+          import { reportStep } from './scripts/ci-step.js';
+          reportStep(renderJunit, renderSarif);
+          EOF
+      # The rendered files as a run artifact (no token, nothing posted): `db import-reports` reads them back into a
+      # project's local kit index through the user's own gh login. Advisory: a failed upload (artifact storage quota,
+      # service outage) never fails a job whose tests passed.
+      - name: Upload test results
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-node-${{ matrix.node }}
+          path: ${{ runner.temp }}/test-results
+          retention-days: 90
+          if-no-files-found: warn
       - name: Show failing tests
         if: failure()
         run: grep -n -A60 "not ok" "$RUNNER_TEMP/test-output.txt" | head -400

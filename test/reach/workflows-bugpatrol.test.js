@@ -1,0 +1,339 @@
+// Reach test: each bugpatrol power is run by the INSTALLED workflow command file inside the approved step, and the
+// call that step makes (same verb, same flags) is accepted by the kit.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { stepSection, verbCall } from '../../src/lib/bbs/wiring.js';
+
+const CLI = '.claude/helpers/kit/cli.js';
+const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'wf-bugpatrol-'));
+const put = (name, data) => { const f = path.join(tmp, name); fs.writeFileSync(f, typeof data === 'string' ? data : JSON.stringify(data)); return f; };
+const run = (args) => spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf-8', cwd: process.cwd() });
+const ok = (r, codes = [0]) => assert.ok(codes.includes(r.status), `exit ${r.status}: ${r.stderr || r.stdout}`);
+
+const FINDINGS = put('findings.json', [
+  { id: 'a', rule: 'r1', severity: 'high', files: ['x.js'], locations: ['x.js'], failures: 0, reproductions: 0 },
+  { id: 'b', rule: 'r1', severity: 'low', files: ['x.js', 'y.js'], locations: ['y.js'], failures: 2, reproductions: 0 }
+]);
+const VISIT = put('visit.json', { scopes: ['x.js'], enabled: ['r1'], violations: [{ scope: 'x.js', rule: 'r1', source: 'auto', element: 'e' }] });
+const ROUTE = put('route.json', [{ id: 'f1', answer: { kind: 'fix', confidence: 0.9 }, deterministicRegression: false }]);
+const MAP = put('map.json', { targets: [{ id: 't1', files: ['a.js'] }, { id: 't2', files: ['b.js'] }] });
+const CHANGED = put('changed.txt', 'a.js\n');
+const EVENTS = put('events.jsonl', '{"type":"tool","name":"Edit","input":{"path":"a"},"ok":false,"error":"x"}\n{"type":"stop","reason":"end_turn"}\n');
+const RENDER = put('render.json', { findings: [{ message: 'm', severity: 'advisory', file: 'x.js', line: 1 }] });
+const run1 = { steps: ['s'], outputs: { o: 1 } };
+const GATE = put('gate.json', { verdicts: [{ id: 'diagnosis', decided_by: 'replay', outcome: 'fail', runs: [run1, run1] }] });
+
+// What each step runs: the verb's own call, with the flags the step text uses.
+const calls = {
+  'noise-ledger': () => {
+    // The step passes no --ledger: the default ledger is used and a missing one is fine.
+    const r = run(['noise-ledger', 'apply', '--in', FINDINGS]); ok(r);
+    const out = JSON.parse(r.stdout);
+    assert.ok(out.filed.some(f => f.id === 'a'), 'finding a is filed');
+    assert.ok(out.quarantined.some(f => f.id === 'b'), 'finding b never reproduced on retry: quarantined');
+  },
+  cluster: () => { const r = run(['cluster', '--file', FINDINGS]); ok(r); assert.ok(JSON.parse(r.stdout).clusters); },
+  'threshold-route': () => { const r = run(['threshold-route', '--file', ROUTE]); ok(r); assert.match(r.stdout, /auto-fix/); },
+  'test-plan': () => { const r = run(['test-plan', '--in', MAP, '--changed', CHANGED]); ok(r); assert.equal(JSON.parse(r.stdout).plan[0].id, 't1'); },
+  triage: () => ok(run(['triage', 'visit', '--session', 's1', '--in', VISIT, '--state', path.join(tmp, 'triage.json')])),
+  'shared-budget': () => {
+    const state = path.join(tmp, `budget-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+    ok(run(['shared-budget', 'open', '--state', state, '--steps', '5']));
+    const g = run(['shared-budget', 'grant', '--state', state, '--helper', 'h1', '--steps', '2']); ok(g);
+    ok(run(['shared-budget', 'grant', '--state', state, '--helper', 'h2', '--steps', '2'])); // a second concurrent helper is not skipped
+    ok(run(['shared-budget', 'release', '--state', state, '--helper', 'h2']));
+    ok(run(['shared-budget', 'spend', '--state', state, '--helper', 'h1', '--steps', '1', '--outcome', 'ok']));
+  },
+  reflect: () => ok(run(['reflect', 'trouble-log', '--in', EVENTS])),
+  doctor: () => ok(run(['doctor', '--profile', 'marathon']), [0, 2]),
+  render: () => { ok(run(['render', 'sarif', '--file', RENDER, '--out', path.join(tmp, 'o.sarif')])); ok(run(['render', 'junit', '--file', RENDER, '--out', path.join(tmp, 'o.xml')])); ok(run(['render', 'comment', '--file', RENDER, '--key', 'review', '--out', path.join(tmp, 'o.md')])); },
+  'replay-gate': () => ok(run(['replay-gate', '--file', GATE]), [2])
+};
+
+const CP4 = '⛔ CHECKPOINT 4: Ralph Candidates (AUTO-PROCEED)';
+const VER = '✅ VERIFICATION CHECKPOINT — Cross-Method Validation';
+const rows = [
+  ['w-review', CP4, 'noise-ledger'], ['w-review', CP4, 'triage'],
+  ['w-review', '⛔ CHECKPOINT 1: Code Analysis', 'cluster'],
+  ['w-review', VER, 'threshold-route'], ['w-review', VER, 'shared-budget'], ['w-review', VER, 'replay-gate'],
+  ['w-review', '⛔ CHECKPOINT 5: Compound (MANDATORY - NEVER SKIP)', 'render'],
+  ['w-bg-review', 'Phase 4: Ralph Candidates', 'cluster'],
+  ['w-fix', VER, 'threshold-route'],
+  ['w-fix', '⛔ CHECKPOINT 2: Fix Applied', 'test-plan'],
+  ['w-fix', '⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)', 'reflect'],
+  ['w-marathon', '⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met', 'shared-budget'],
+  ['w-marathon', '⛔ CHECKPOINT 3: Arm', 'doctor'],
+  ['w-bbs', '⛔ CHECKPOINT 6: Compound (MANDATORY)', 'reflect'],
+  ['w-debug', '⛔ CHECKPOINT 2: Diagnosis (BLOCKING GATE)', 'replay-gate'],
+  // /pt and /mt are the owner's daily workflows: the same powers, in their normal flow.
+  ['w-plan-tdd-swarm', '⛔ CHECKPOINT 5: Build', 'test-plan'],
+  ['w-plan-tdd-swarm', '⛔ CHECKPOINT 6: Review', 'cluster'], ['w-plan-tdd-swarm', '⛔ CHECKPOINT 6: Review', 'noise-ledger'], ['w-plan-tdd-swarm', '⛔ CHECKPOINT 6: Review', 'triage'],
+  ['w-plan-tdd-swarm', VER, 'threshold-route'], ['w-plan-tdd-swarm', VER, 'replay-gate'],
+  ['w-plan-tdd-swarm', '⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)', 'reflect'],
+  ['w-marathon', '⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met', 'cluster'], ['w-marathon', '⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met', 'triage'],
+  ['w-marathon', '⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met', 'threshold-route'], ['w-marathon', '⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met', 'replay-gate'], ['w-marathon', '⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met', 'test-plan']
+];
+
+for (const [wf, heading, verb] of rows) {
+  test(`${wf} · ${heading} runs kit/cli.js ${verb} and the call is accepted`, () => {
+    const text = fs.readFileSync(`.claude/commands/.shortcuts/${wf}.md`, 'utf-8');
+    const section = stepSection(text, heading);
+    assert.notEqual(section, null, `heading "${heading}" is missing from ${wf}.md`);
+    assert.match(section, verbCall(verb), `"${heading}" in ${wf}.md never runs kit/cli.js ${verb}`);
+    // The step must be reached top-down before the section hands off: before its first AUTO-PROCEED / REQUIRED OUTPUT / "proceed" line.
+    const lines = section.split(/\r?\n/);
+    const call = verbCall(verb);
+    const at = lines.findIndex(l => call.test(l));
+    const stop = lines.findIndex((l, i) => i > 0 && /AUTO-PROCEED|REQUIRED OUTPUT|\bproceed\b/i.test(l));
+    assert.ok(at >= 0, `no line of "${heading}" runs kit/cli.js ${verb}`);
+    if (stop >= 0) assert.ok(at < stop, `"${heading}" in ${wf}.md runs ${verb} at line ${at + 1}, after its handoff line ${stop + 1}: ${lines[stop].slice(0, 70)}`);
+    calls[verb]();
+  });
+}
+
+// Budget and gate wording: what the step text must say, proved on the installed command files.
+const installed = (wf) => fs.readFileSync(`.claude/commands/.shortcuts/${wf}.md`, 'utf-8');
+
+test('w-marathon 4.1a: state per run and stream, opened at 4.2, explicit grant amount, --state on every call, release, wait vs used up', () => {
+  const t = installed('w-marathon');
+  const a = t.indexOf('**4.1a Shared helper allowance');
+  const b = t.indexOf('**4.2 Isolate', a);
+  assert.ok(a >= 0 && b > a);
+  const sec = t.slice(a, b);
+  assert.match(sec, /\.claude\/marathon\/<run-id>\/helper-budget-<stream>\.json/, 'state path carries run id and stream');
+  assert.doesNotMatch(t, /\.claude\/marathon\/helper-budget\.json/, 'no fixed shared state path');
+  assert.match(sec, /shared-budget grant --state "\$S" --helper <id> --steps <[^>]+> --cost <[^>]+>/, 'grant passes an amount');
+  assert.match(sec, /shared-budget spend --state "\$S"/, 'spend line carries --state');
+  assert.doesNotMatch(sec, /--time-ms/, 'no wall-clock allowance');
+  assert.match(sec, /shared-budget status --state "\$S"[^\n]*depth[^\n]*stop --state "\$S"[^\n]*until depth is 0/, 'resume drains depth');
+  assert.match(sec, /shared-budget release --state "\$S" --helper <id>/, 'release for a helper that ends without a spend');
+  assert.match(sec, /fully reserved by other sub-sessions[^\n]*\*\*wait\*\*/, 'a reserved skip means wait');
+  assert.match(sec, /exhausted[^\n]*CHECKPOINT 5/, 'only an exhausted limit goes to CHECKPOINT 5');
+  const s42 = t.slice(b, b + 4000);
+  assert.match(s42, /shared-budget open --state "\$S"/, 'allowance is opened when the stream is activated (4.2)');
+});
+
+test('w-review claim budget: state lives under a fresh mktemp -d, removed at the end of the checkpoint', () => {
+  const sec = stepSection(installed('w-review'), VER);
+  assert.match(sec, /D=\$\(mktemp -d\)/);
+  assert.match(sec, /B=<printed dir>\/review-budget\.json/);
+  assert.match(sec, /Shell variables do not persist between Bash calls/);
+  assert.match(sec, /rm -rf "\$D"/);
+  assert.doesNotMatch(sec, /\.claude\/kit\/review-budget\.json/, 'no fixed state file');
+  assert.match(sec, /shared-budget grant --state "\$B" --helper <id> --steps <n>/);
+  assert.match(sec, /shared-budget release --state "\$B"/);
+});
+
+test('w-review replay gate: exit 1 or a missing kit is FAIL, never PASS', () => {
+  const sec = stepSection(installed('w-review'), VER);
+  assert.match(sec, /Exit 1[^\n]*or a missing kit[^\n]*FAIL[^\n]*replay gate could not run: <reason>[^\n]*never PASS/);
+  assert.doesNotMatch(sec, /nothing fails the check on unreplayed evidence/);
+  assert.match(sec, /fails closed \(FAIL, "replay gate could not run: kit not installed"\)/);
+});
+
+test('reflect steps (w-fix, w-bbs): lessons go in by --text-file / --reason-file, never in a quoted shell argument', () => {
+  for (const [wf, heading, role] of [['w-fix', '⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)', 'fixer'], ['w-bbs', '⛔ CHECKPOINT 6: Compound (MANDATORY)', 'bbs'], ['w-plan-tdd-swarm', '⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)', 'pt']]) {
+    const sec = stepSection(installed(wf), heading);
+    assert.match(sec, new RegExp(`reflect lessons save --role ${role} --text-file <`), `${wf} saves with its fixed role and --text-file`);
+    assert.match(sec, /retire --id <id> --reason-file </, `${wf} retires with --reason-file`);
+    assert.match(sec, /mktemp -d/, `${wf} writes the lesson under a mktemp directory`);
+    assert.match(sec, /shell variables do not persist/, `${wf} uses the printed path literally`);
+    assert.doesNotMatch(sec, /--text "/, `${wf} no longer puts the lesson in --text "..."`);
+    assert.doesNotMatch(sec, /--reason "/, `${wf} no longer puts the reason in --reason "..."`);
+  }
+});
+
+test('w-review render step: redact --keep-lines sits before any post, outputs go to a mktemp directory, no repo-root reports/', () => {
+  const sec = stepSection(installed('w-review'), '⛔ CHECKPOINT 5: Compound (MANDATORY - NEVER SKIP)');
+  const lines = sec.split(/\r?\n/);
+  const render = lines.findIndex(l => /cli\.js render /.test(l));
+  const redact = lines.findIndex(l => /cli\.js redact --keep-lines </.test(l));
+  const post = lines.findIndex(l => /post `?\$W\/review-comment\.md/.test(l));
+  assert.ok(render >= 0 && redact > render && post > redact, `render ${render}, redact ${redact}, post ${post}`);
+  assert.match(sec, /redact exits non-zero|`redact` exits non-zero/);
+  assert.match(sec, /do not post/);
+  assert.match(sec, /mktemp -d/);
+  assert.match(sec, /--out "\$W\/raw"/);
+  assert.doesNotMatch(sec, /--out reports\//);
+  assert.doesNotMatch(sec, /mkdir -p reports/);
+  assert.doesNotMatch(sec, /`reports\/review/);
+});
+
+// /w-marathon: cluster and triage only annotate the reviewer's rows; the review steps sit in 4.5 before the rows are
+// recorded, the fix checks in 4.7 territory before the 4.8 gate.
+test('w-marathon 4.5: cluster and triage run before record review, and never lower the recorded counts', () => {
+  const t = installed('w-marathon');
+  const a = t.indexOf('**4.5 Review round');
+  const rec = t.indexOf('Then: `cli.js record review stream=', a);
+  const gate = t.indexOf('**4.8 Gate.**', a);
+  assert.ok(a >= 0 && rec > a && gate > rec);
+  const sec = t.slice(a, rec);
+  for (const v of ['cluster', 'triage']) assert.match(sec, verbCall(v), `4.5 runs ${v} before the rows are recorded`);
+  assert.match(sec, /recorded counts stay the reviewer's real counts/);
+  assert.match(sec, /never removes a row or lowers a count/);
+  assert.match(sec, /mktemp -d/);
+  assert.match(sec, /Shell variables do not persist between Bash calls/);
+  const fix = t.slice(t.indexOf('**4.7 Fix round.**'), gate);
+  for (const v of ['test-plan', 'threshold-route', 'replay-gate']) assert.match(fix, verbCall(v), `4.7 runs ${v} before the 4.8 gate`);
+  assert.ok(fix.indexOf('cli.js test-plan') < fix.indexOf('cli.js threshold-route'), 'tests are picked before claimed fixes are routed');
+  assert.match(fix, /`block` \(a failing regression test\) can never be overridden/);
+});
+
+test('w-plan-tdd-swarm: review inputs go through files written with the Write tool, noise-ledger severities mapped, replay gate fails closed', () => {
+  const t = installed('w-plan-tdd-swarm');
+  const rev = stepSection(t, '⛔ CHECKPOINT 6: Review');
+  assert.match(rev, /critical to high and info to low/);
+  assert.match(rev, /never goes in a shell argument/);
+  assert.match(rev, /P=<printed dir>/);
+  assert.ok(rev.indexOf('cli.js noise-ledger') < rev.indexOf('cli.js triage visit'), 'ledger before triage');
+  const ver = stepSection(t, VER);
+  assert.match(ver, /Exit 1[^\n]*or a missing kit[^\n]*FAIL[^\n]*replay gate could not run: <reason>[^\n]*never PASS/);
+  const build = stepSection(t, '⛔ CHECKPOINT 5: Build');
+  assert.match(build, /test-plan --in "\$P\/test-map\.json" --changed "\$P\/changed\.txt"/);
+});
+
+test('the new /pt and /mt kit blocks parse with bash -n', () => {
+  const blocks = [];
+  const pt = installed('w-plan-tdd-swarm');
+  for (const h of ['⛔ CHECKPOINT 5: Build', '⛔ CHECKPOINT 6: Review', VER, '⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)']) {
+    for (const m of stepSection(pt, h).matchAll(/```(?:bash|sh)\n([\s\S]*?)```/g)) if (/kit\/cli\.js (test-plan|cluster|noise-ledger|triage|threshold-route|replay-gate|reflect)\b/.test(m[1])) blocks.push(m[1]);
+  }
+  const mt = stepSection(installed('w-marathon'), '⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met');
+  for (const m of mt.matchAll(/```bash\n([\s\S]*?)```/g)) if (/kit\/cli\.js (test-plan|cluster|triage|threshold-route|replay-gate)\b/.test(m[1])) blocks.push(m[1]);
+  assert.equal(blocks.length, 12, 'pt: test-plan, cluster, noise-ledger, triage, threshold-route, replay-gate, reflect; mt: cluster, triage, test-plan, threshold-route, replay-gate');
+  for (const b of blocks) {
+    const r = spawnSync('bash', ['-n'], { input: b, encoding: 'utf-8' });
+    assert.equal(r.status, 0, `bash -n failed: ${r.stderr}\n${b}`);
+  }
+});
+
+// Round 7 review fixes: the steps spell out the shapes the verbs accept.
+test('r7: triage repeats, replay-gate run shape, router kinds, cluster id, test map, event log and ledger severity are spelled out', () => {
+  const pt = installed('w-plan-tdd-swarm');
+  const mt = stepSection(installed('w-marathon'), '⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met');
+  const rv = installed('w-review');
+  for (const [name, t] of [['pt', pt], ['mt', mt], ['review', rv]]) {
+    if (name !== 'review') assert.match(t, /\\?`raise\\?` entr(y|ies) with status \\?`pending\\?` or \\?`reopened\\?`|\\?`raise\\?` with status \\?`pending\\?`/, `${name} reads repeats from raise/pending`);
+    assert.match(t, /\\?`closed\\?` stays empty for agent-sourced rows|`closed` stays empty for agent-sourced rows/, `${name} says closed stays empty`);
+  }
+  assert.match(rv, /node \.claude\/helpers\/kit\/cli\.js triage decide/);
+  assert.doesNotMatch(rv, /[^.\/]kit\/cli\.js triage decide/);
+  assert.doesNotMatch(pt, /[^.\/]kit\/cli\.js triage decide/);
+  for (const [name, t] of [['pt', stepSection(pt, VER)], ['mt', mt]]) assert.match(t, /"runs":\[\{"steps":\[\.\.\.\],"checks":\{\.\.\.\},"outputs":\{\.\.\.\}\}/, `${name} gives the run shape`);
+  assert.match(stepSection(pt, VER), /anomaly\|not-anomalous\|ambiguous\|suppress\|fix\|check/);
+  assert.match(mt, /"id":"<row index as a string>"/);
+  assert.match(stepSection(pt, '⛔ CHECKPOINT 5: Build'), /node \.claude\/helpers\/kit\/cli\.js test-plan --scan > /);
+  assert.match(mt, /\(cd <worktree> && node "\$K" test-plan --scan\) > "\$M\.tmp" && grep -q '"id"' "\$M\.tmp" && mv "\$M\.tmp" "\$M" \|\| rm -f "\$M\.tmp"/);
+  assert.match(mt, /test-map-<stream>\.json; if \[ -f \.claude\/helpers\/kit\/cli\.js \]/);
+  for (const t of [pt, mt]) assert.doesNotMatch(t.replace(/never run a \\?`scripts\/ci-step\.js\\?`[^.]*\./g, ''), /node scripts\/ci-step/, 'a workflow never runs the repo script');
+  assert.match(mt, /test-plan --in "\$T"/);
+  assert.match(stepSection(pt, '⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)'), /~\/\.claude\/projects\/<project>\/<session>\.jsonl/);
+  assert.match(rv, /map critical to high and info to low/);
+});
+
+// Round 8 review fixes.
+test('r8: per-stream test map, defect-specific cluster rule, fixed lessons roles read back, string id, issue/ignore routes', () => {
+  const pt = installed('w-plan-tdd-swarm');
+  const mtAll = installed('w-marathon');
+  const mt = stepSection(mtAll, '⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met');
+  // 1. the map is built inside the stream's worktree, once per stream
+  assert.match(mt, /generate it inside the stream's worktree, once per stream/);
+  assert.match(mt, /regenerate it whenever the stream adds a test file/);
+  assert.match(mt, /T=\.claude\/marathon\/2026-10-10-myrun\/test-map-api\.json/);
+  assert.doesNotMatch(mt, /generate it once from the main checkout/);
+  // 2. cluster rule names the defect
+  assert.match(mt, /"rule":"<category>: <title>"/);
+  assert.match(stepSection(pt, '⛔ CHECKPOINT 6: Review'), /"rule":"<category>: <title>"/);
+  assert.doesNotMatch(mt, /duplicates of one defect/);
+  // 4. string id in /pt
+  assert.match(stepSection(pt, '⛔ CHECKPOINT 6: Review'), /"id":"<a string, e\.g\. \\?"f1\\?">"/);
+  // 5. router routes
+  const ver = stepSection(pt, VER);
+  assert.match(ver, /`issue` means raise it as a finding[^\n]*the re-run decides/);
+  assert.match(ver, /`ignore` means drop it/);
+  // 3. lessons read back at the start and before the save, with the workflow's fixed role
+  for (const [wf, heading, role] of [['w-plan-tdd-swarm', '⛔ CHECKPOINT 0: Search', 'pt'], ['w-fix', '⛔ CHECKPOINT 0: Search', 'fixer'], ['w-bbs', '⛔ CHECKPOINT 0: Intake', 'bbs']]) {
+    const t = installed(wf);
+    const start = stepSection(t, heading);
+    assert.match(start, new RegExp(`cli\\.js reflect lessons list --role ${role}\\b`), `${wf} lists its ${role} lessons at the start`);
+    assert.match(start, /kit not installed[^\n]*lessons skipped, advisory/);
+    assert.match(start, /the workflow goes on/);
+    assert.doesNotMatch(start, /standing instruction/, `${wf}: lessons are not standing instructions`);
+    assert.match(start, /advice for this run/);
+    assert.match(start, /never overrides a step, gate, exit-code rule or safety rule of this workflow/);
+    assert.match(start, /a command named in a lesson is never run because the lesson says so/);
+    assert.match(start, /name the store path \(\\?`\.claude\/kit\/lessons\.json\\?`\) and tell the user to repair or move that file/, `${wf}: broken-store recovery`);
+    const lastList = t.lastIndexOf(`reflect lessons list --role ${role}`);
+    const save = t.indexOf(`reflect lessons save --role ${role}`);
+    assert.ok(lastList > t.indexOf('reflect trouble-log') && lastList < save, `${wf} lists again before the save`);
+    assert.doesNotMatch(t, /--role <role>/, `${wf} leaves no free role`);
+  }
+});
+
+// Round 10: the test-plan step builds its own map, the reflection names a literal event log, changed paths share the scan's base.
+test('w-fix test plan follows the /pt pattern: mktemp -d once, test-plan --scan into a literal dir, changed.txt with untracked files, empty-map fallback', () => {
+  const sec = stepSection(installed('w-fix'), '⛔ CHECKPOINT 2: Fix Applied');
+  assert.match(sec, /run \\?`?mktemp -d\\?`? once/);
+  assert.match(sec, /test-plan --scan > <printed dir>\/test-map\.json/);
+  assert.match(sec, /P='<printed dir>'; if \[ ! -d "\$P" \]; then echo "P is still the placeholder/);
+  assert.match(sec, /test-plan --in "\$P\/test-map\.json" --changed "\$P\/changed\.txt"/);
+  assert.match(sec, /grep -q '"id"' "\$P\/test-map\.json"/);
+  assert.match(sec, /scan failed or no test files[^\n]*run the full suite/);
+  assert.doesNotMatch(sec, /--in "\$M"|--changed "\$C"/);
+});
+
+test('w-fix and w-bbs reflection name a literal E= path and the newest transcript under ~/.claude/projects/<project>/', () => {
+  for (const [wf, heading] of [['w-fix', '⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)'], ['w-bbs', '⛔ CHECKPOINT 6: Compound (MANDATORY)']]) {
+    const sec = stepSection(installed(wf), heading);
+    assert.match(sec, /E='<printed dir>\/events\.jsonl'; if \[ ! -f "\$E" \]; then echo "E is still the placeholder/, `${wf}: guarded E=`);
+    assert.match(sec, /~\/\.claude\/projects\/<project>\/<session>\.jsonl/, `${wf}: transcript location`);
+    assert.match(sec, /take the newest file of this project's folder/, `${wf}: newest transcript`);
+  }
+});
+
+test('changed paths share the scan base: git diff --name-only --relative plus git ls-files --others --exclude-standard (/pt, /w-fix, /mt)', () => {
+  for (const wf of ['w-plan-tdd-swarm', 'w-fix', 'w-marathon']) {
+    const t = installed(wf);
+    assert.match(t, /git diff --name-only --relative (HEAD|<base>)/, `${wf}: --relative`);
+    assert.match(t, /git ls-files --others --exclude-standard/, `${wf}: untracked files`);
+    assert.doesNotMatch(t, /git diff --name-only HEAD >|git -C <worktree> diff --name-only/, `${wf}: no git-root relative list`);
+  }
+  assert.match(installed('w-marathon'), /\(cd <worktree> && \{ git diff --name-only --relative <base>;/);
+});
+
+test('every kit/cli.js bash block of w-fix, w-bbs, w-plan-tdd-swarm, w-marathon assigns each "$VAR" it uses in the same block', () => {
+  const ENV = new Set(['HOME', 'PWD', 'PATH', 'RC']);
+  // Documented literal placeholder: the w-bbs evidence block is run as `E=<the path you wrote>; <block>` (its text says so).
+  const PLACEHOLDER = { 'w-bbs': { E: /`E=<the path you wrote>; <block>`/ } };
+  for (const wf of ['w-fix', 'w-bbs', 'w-plan-tdd-swarm', 'w-marathon']) {
+    const blocks = [...installed(wf).matchAll(/```(?:bash|sh)\n([\s\S]*?)```/g)].map(m => m[1]).filter(b => b.includes('kit/cli.js'));
+    assert.ok(blocks.length > 0, `${wf}: no kit blocks found`);
+    for (const b of blocks) {
+      const used = new Set([...b.matchAll(/\$\{?([A-Za-z_][A-Za-z0-9_]*)/g)].map(m => m[1]));
+      for (const v of used) {
+        if (ENV.has(v)) continue;
+        if (PLACEHOLDER[wf]?.[v]) { assert.match(installed(wf), PLACEHOLDER[wf][v], `${wf}: "$${v}" placeholder is not documented`); continue; }
+        const assigned = new RegExp(`(^|[\\s;&(|{])${v}=|for ${v} |read (-r )?${v}\\b`).test(b);
+        assert.ok(assigned, `${wf}: "$${v}" is used but not assigned in its block: ${b.slice(0, 120).replace(/\n/g, ' ')}`);
+      }
+    }
+  }
+});
+
+test('r12: no block carries a runnable example temp path, and every placeholder block is guarded', async () => {
+    const src = fs.readFileSync(new URL('../../src/plugins/dot-shortcuts.js', import.meta.url), 'utf8');
+    assert.ok(!/^[A-Z]=\/tmp\/tmp\.AbC123/m.test(src), 'a block still assigns the runnable example path');
+    const assigns = src.split('\n').filter((l) => /^[A-Z]='<printed dir>/.test(l));
+    assert.ok(assigns.length >= 20, `expected the guarded blocks, found ${assigns.length}`);
+    for (const l of assigns) assert.match(l, /^([A-Z])='<printed dir>[^']*'; if \[ ! -[df] "\$\1" \]; then echo "\1 is still the placeholder or does not exist[^"]*" >&2; \(exit 1\); el/, l.slice(0, 120));
+  });
+test('r12: a guarded block run as written fails with a message naming the placeholder', async () => {
+    const r = spawnSync('bash', ['-c', `P='<printed dir>'; if [ ! -d "$P" ]; then echo "P is still the placeholder or does not exist: put the directory mktemp -d printed in place of <printed dir>" >&2; (exit 1); else echo ran; fi`], { encoding: 'utf8' });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /P is still the placeholder/);
+    assert.ok(!r.stdout.includes('ran'));
+  });
