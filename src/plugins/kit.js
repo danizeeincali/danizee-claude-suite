@@ -8,11 +8,12 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { GITIGNORE_RULES as DB_GITIGNORE_RULES } from '../lib/kit/store.js';
+import { GITIGNORE_RULES as DB_GITIGNORE_RULES, CONFIG_GITIGNORE_RULE } from '../lib/kit/store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// The optional SQLite store (.claude/kit/suite.db and its -wal/-shm, see lib/kit/store.js) is machine-local state too.
-const GITIGNORE_RULES = ['.claude/kit/secrets', '.claude/kit/cache/', '.claude/kit/scrub-patterns.local', ...DB_GITIGNORE_RULES];
+// The optional SQLite store (.claude/kit/suite.db and its -wal/-shm, see lib/kit/store.js) is machine-local state too,
+// and so is the choice to use it (.claude/kit/store.local.json): a clone without suite.db stays on the JSON files.
+export const GITIGNORE_RULES = ['.claude/kit/secrets', '.claude/kit/cache/', '.claude/kit/scrub-patterns.local', ...DB_GITIGNORE_RULES, CONFIG_GITIGNORE_RULE];
 const LIB_DIR = path.join(__dirname, '..', 'lib', 'kit');
 
 export function getNamespace() {

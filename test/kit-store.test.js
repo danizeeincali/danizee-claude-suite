@@ -155,7 +155,9 @@ describe('kit store: db verb', () => {
       assert.deepEqual(init.out.imported, [{ store: 'lessons', scope: '.claude/kit/lessons.json' }]);
       assert.equal(init.out.rows.lessons, 1);
       assert.equal(init.out.schema_version, SCHEMA_VERSION);
-      assert.deepEqual(JSON.parse(await fs.readFile(path.join(dir, '.claude/kit/config.json'), 'utf-8')), { store: 'sqlite' });
+      // the store choice is machine-local (git-ignored): .claude/kit/store.local.json, not the committed config.json
+      assert.deepEqual(JSON.parse(await fs.readFile(path.join(dir, '.claude/kit/store.local.json'), 'utf-8')), { store: 'sqlite' });
+      assert.ok(!exists(path.join(dir, '.claude/kit/config.json')));
       // side.json was not imported, but it is read from its file
       assert.equal((await call(reflect, ['lessons', 'list', '--store', 'side.json'], dir, env)).out.lessons.length, 1);
       assert.equal((await call(reflect, ['lessons', 'keep', '--id', 'L1', '--store', 'side.json'], dir, env)).code, 0);
@@ -196,6 +198,7 @@ describe('kit store: db verb', () => {
       assert.equal(r.code, 1);
       assert.match(r.err, /lessons\.json is not valid JSON/);
       assert.ok(!exists(path.join(dir, '.claude/kit/config.json')));
+      assert.ok(!exists(path.join(dir, '.claude/kit/store.local.json')));
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
 
@@ -203,7 +206,7 @@ describe('kit store: db verb', () => {
     const dir = await tmp();
     try {
       await fs.mkdir(path.join(dir, '.claude/kit'), { recursive: true });
-      await fs.writeFile(path.join(dir, '.claude/kit/config.json'), '{"store":"sqlite"}');
+      await fs.writeFile(path.join(dir, '.claude/kit/store.local.json'), '{"store":"sqlite"}');
       const env = { KIT_SQLITE_ENGINE: 'none' };
       const save = await call(reflect, ['lessons', 'save', '--role', 'r', '--session', 's', '--text', 'Write the failing test before the fix.'], dir, env);
       assert.equal(save.code, 1);
@@ -229,7 +232,7 @@ describe('kit store: db verb', () => {
     const dir = await tmp();
     try {
       await fs.mkdir(path.join(dir, '.claude/kit'), { recursive: true });
-      await fs.writeFile(path.join(dir, '.claude/kit/config.json'), '{"store":"sqlite"}');
+      await fs.writeFile(path.join(dir, '.claude/kit/store.local.json'), '{"store":"sqlite"}');
       const r = await call(reflect, ['lessons', 'list'], dir, { KIT_SQLITE_ENGINE: 'node:sqlite' });
       assert.equal(r.code, 1);
       assert.match(r.err, /suite\.db is missing/);
@@ -358,7 +361,7 @@ describe('kit store: npx danizee-claude-suite db and check', () => {
       const ok = await bin(['check', '--path', dir], dir, { KIT_SQLITE_ENGINE: 'none' });
       assert.match(ok.out, /kit store: json files/);
       await fs.mkdir(path.join(dir, '.claude/kit'), { recursive: true });
-      await fs.writeFile(path.join(dir, '.claude/kit/config.json'), '{"store":"sqlite"}');
+      await fs.writeFile(path.join(dir, '.claude/kit/store.local.json'), '{"store":"sqlite"}');
       const bad = await bin(['check', '--path', dir], dir, { KIT_SQLITE_ENGINE: 'none' });
       assert.match(bad.out, /kit store: sqlite, but no engine loads/);
       assert.match(bad.out, /npm install better-sqlite3/);

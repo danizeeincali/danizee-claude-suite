@@ -4,7 +4,7 @@
 //   runStep(classify)          blocking, fails closed: any nonzero exit of the test command fails; classify only labels the failure.
 //   reportStep(renderJunit, renderSarif)  advisory: write the results as JUnit (and SARIF when tests failed) files. Never fails.
 // No network, no token, nothing is posted anywhere: files are written locally and their paths printed.
-// When the project keeps its kit state in SQLite (.claude/kit/config.json {"store":"sqlite"}), runStep also records the
+// When the project keeps its kit state in SQLite (.claude/kit/store.local.json {"store":"sqlite"}), runStep also records the
 // run in test_runs/test_cases (src/lib/kit/test-runs.js recordRun); on the JSON files (CI, by default) nothing is recorded.
 // Recording can never change the step's exit status: a failure is one printed line.
 import fs from 'node:fs';

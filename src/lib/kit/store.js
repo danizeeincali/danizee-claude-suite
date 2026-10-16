@@ -5,7 +5,9 @@
  *
  * STORES. JSON files are the default and the fallback: each verb's file, written through ./state-lock.js exactly as
  * before. A project opts into one local SQLite file, `.claude/kit/suite.db` (plus -wal/-shm, git-ignored), with
- * `.claude/kit/config.json` `{"store":"sqlite"}` (written by `db init`); absent config = json.
+ * `.claude/kit/store.local.json` `{"store":"sqlite"}` (written by `db init`; git-ignored: the choice is machine-local,
+ * a clone without suite.db stays on json); absent = json. An older `.claude/kit/config.json` "store" key is read once
+ * and copied to the local file (a "sqlite" there counts only on a machine that has suite.db).
  *
  * ENGINE. `better-sqlite3` when it is installed (resolved from the kit folder, then the project), else Node's built-in
  * `node:sqlite` (`DatabaseSync`, Node 22.5+). Both are loaded lazily, on first use. A project configured for sqlite
@@ -24,15 +26,27 @@
  * WRITES. One transaction per verb call, `BEGIN IMMEDIATE` (this replaces state-lock for the sqlite store), with a
  * busy timeout across processes and a promise queue inside one process (so two calls in one process never wait on
  * each other synchronously). WAL journal. Migrations are numbered, run in one transaction, version in `meta`.
+ * A write re-reads the store choice inside its lock (the state lock on json, the transaction on sqlite) and, when
+ * `db init` / `db off` switched it meanwhile, runs again on the other store, so no committed write is lost.
+ *
+ * DRIFT. Shared JSON files (lessons.json, noise-ledger.json) can change under the database (a git pull). Each stored
+ * document keeps the sha256 of its file as last imported or exported (`store_docs.file_sha256`, 'absent' when there
+ * was no file); a read or write of a scope whose file exists with another hash is exit 1 naming the file and the two
+ * ways out (`db sync --from-files`, `db export --overwrite`).
  */
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { KitExit } from './kit-exit.js';
 import { withStateLock, readJsonState, writeJsonAtomic } from './state-lock.js';
 
-export const CONFIG_FILE = path.join('.claude', 'kit', 'config.json');
+/** The machine-local store choice (git-ignored). */
+export const CONFIG_FILE = path.join('.claude', 'kit', 'store.local.json');
+/** Where the store choice lived before; its "store" key is read once and copied to CONFIG_FILE. */
+export const LEGACY_CONFIG_FILE = path.join('.claude', 'kit', 'config.json');
+export const CONFIG_GITIGNORE_RULE = '.claude/kit/store.local.json';
 export const DB_FILE = path.join('.claude', 'kit', 'suite.db');
 export const GITIGNORE_RULES = Object.freeze(['.claude/kit/suite.db', '.claude/kit/suite.db-wal', '.claude/kit/suite.db-shm']);
 export const STORES = Object.freeze(['json', 'sqlite']);
@@ -106,6 +120,13 @@ ALTER TABLE test_runs ADD COLUMN status TEXT;
 ALTER TABLE test_runs ADD COLUMN run_key TEXT;
 CREATE UNIQUE INDEX test_runs_run_key ON test_runs (run_key);
 `
+  },
+  {
+    // drift: the sha256 of a document's JSON file as last imported or exported ('absent': no file then; NULL: unknown)
+    version: 3,
+    sql: `
+ALTER TABLE store_docs ADD COLUMN file_sha256 TEXT;
+`
   }
 ]);
 export const SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
@@ -115,12 +136,11 @@ const SCOPE_COL = { lessons: 'scope', noise_ledger: 'scope', triage: 'stream', t
 
 // ================================================================ config and engine
 
-/** The configured store: { store: 'json'|'sqlite', configured: bool, file }. A broken config is exit 1. */
-export function readConfig(cwd) {
-  const file = path.join(cwd, CONFIG_FILE);
+/** A config file's JSON object, or null when it does not exist. A broken one is exit 1. */
+function readConfigObject(file) {
   let text;
   try { text = fs.readFileSync(file, 'utf-8'); } catch (e) {
-    if (e.code === 'ENOENT') return { store: 'json', configured: false, file };
+    if (e.code === 'ENOENT') return null;
     throw invalid(`cannot read ${file}: ${e.code || e.message}`);
   }
   let v;
@@ -128,13 +148,43 @@ export function readConfig(cwd) {
   if (!v || typeof v !== 'object' || Array.isArray(v)) throw invalid(`${file} must be a JSON object like {"store":"json"}`);
   const store = v.store ?? 'json';
   if (!STORES.includes(store)) throw invalid(`${file}: "store" must be "json" or "sqlite" (got ${JSON.stringify(store).slice(0, 40)})`);
-  return { store, configured: true, file, config: v };
+  return v;
 }
 
+/**
+ * The configured store: { store: 'json'|'sqlite', configured: bool, file }. A broken config is exit 1.
+ * Read from the machine-local CONFIG_FILE; when it is absent, an older committed LEGACY_CONFIG_FILE "store" key is
+ * taken once and copied to CONFIG_FILE, except a "sqlite" on a machine with no suite.db (another clone: json).
+ */
+export function readConfig(cwd) {
+  const file = path.join(cwd, CONFIG_FILE);
+  const v = readConfigObject(file);
+  if (v) return { store: v.store ?? 'json', configured: true, file, config: v };
+  const legacyFile = path.join(cwd, LEGACY_CONFIG_FILE);
+  const legacy = readConfigObject(legacyFile);
+  if (!legacy || legacy.store === undefined) return { store: 'json', configured: false, file };
+  if (legacy.store === 'sqlite' && !fs.existsSync(path.join(cwd, DB_FILE))) return { store: 'json', configured: false, file, legacy_ignored: legacyFile };
+  writeFileAtomicSync(file, `${JSON.stringify({ store: legacy.store }, null, 2)}\n`);
+  return { store: legacy.store, configured: true, file, config: { store: legacy.store }, migrated_from: legacyFile };
+}
+
+function writeFileAtomicSync(file, text) {
+  const tmp = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(tmp, text, { flag: 'wx' });
+    fs.renameSync(tmp, file);
+  } catch (e) {
+    try { fs.rmSync(tmp, { force: true }); } catch { /* nothing left */ }
+    throw invalid(`cannot write ${file}: ${e.code || e.message}`);
+  }
+}
+
+/** Set the machine-local store choice. */
 export async function writeConfig(cwd, store) {
   const file = path.join(cwd, CONFIG_FILE);
   let cur = {};
-  try { cur = readConfig(cwd).config || {}; } catch { cur = {}; }
+  try { cur = readConfigObject(file) || {}; } catch { cur = {}; }
   await writeJsonAtomic(file, { ...cur, store });
 }
 
@@ -172,7 +222,7 @@ export async function loadEngine({ cwd = process.cwd(), env = process.env } = {}
           const Database = createRequire(base)('better-sqlite3');
           // a native module built for another Node fails only when a database is opened: try one in memory
           new Database(':memory:').close();
-          found = { name, open: (file) => wrap(new Database(file)) };
+          found = { name, open: (file, o = {}) => wrap(new Database(file, o.readOnly ? { readonly: true, fileMustExist: true } : {})) };
           break;
         } catch (e) { if (base === import.meta.url) errors.push(`better-sqlite3: ${String(e && e.message).split('\n')[0]}`); }
       }
@@ -180,7 +230,7 @@ export async function loadEngine({ cwd = process.cwd(), env = process.env } = {}
       try {
         const { DatabaseSync } = await importNodeSqlite();
         if (typeof DatabaseSync !== 'function') throw new Error('no DatabaseSync');
-        found = { name, open: (file) => wrap(new DatabaseSync(file)) };
+        found = { name, open: (file, o = {}) => wrap(o.readOnly ? new DatabaseSync(file, { readOnly: true }) : new DatabaseSync(file)) };
       } catch (e) { errors.push(`node:sqlite: ${String(e && e.message).split('\n')[0]} (Node ${process.versions.node}; needs 22.5+)`); }
     }
   }
@@ -322,8 +372,11 @@ export function getDoc(db, name, scope) {
   return doc;
 }
 
-/** Replace one document in the database (all its rows). The document must be a JSON object. */
-export function putDoc(db, name, scope, doc) {
+/**
+ * Replace one document in the database (all its rows). The document must be a JSON object.
+ * `fileSha` (a hash, 'absent' or null) sets the file hash it was synced with; left out, an existing row keeps its own.
+ */
+export function putDoc(db, name, scope, doc, fileSha) {
   const spec = SPECS[name];
   if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw invalid(`${name} state for ${scope} is not a JSON object`);
   const json = JSON.parse(JSON.stringify(doc));
@@ -353,8 +406,50 @@ export function putDoc(db, name, scope, doc) {
       });
     }
   }
-  db.run('INSERT INTO store_docs (store, scope, data, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (store, scope) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at',
-    name, scope, JSON.stringify({ keys, fields }), new Date().toISOString());
+  if (fileSha === undefined) {
+    db.run('INSERT INTO store_docs (store, scope, data, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (store, scope) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at',
+      name, scope, JSON.stringify({ keys, fields }), new Date().toISOString());
+  } else {
+    db.run('INSERT INTO store_docs (store, scope, data, updated_at, file_sha256) VALUES (?, ?, ?, ?, ?) ON CONFLICT (store, scope) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at, file_sha256 = excluded.file_sha256',
+      name, scope, JSON.stringify({ keys, fields }), new Date().toISOString(), fileSha);
+  }
+}
+
+/** Remove one document (all its rows). */
+export function deleteDoc(db, name, scope) {
+  for (const p of SPECS[name].parts) db.run(`DELETE FROM ${p.table} WHERE ${SCOPE_COL[p.table]} = ?`, scope);
+  db.run('DELETE FROM store_docs WHERE store = ? AND scope = ?', name, scope);
+}
+
+/** The sha256 of a file's bytes, or 'absent' when it does not exist. */
+export function fileHash(file) {
+  let buf;
+  try { buf = fs.readFileSync(file); } catch (e) {
+    if (e.code === 'ENOENT') return 'absent';
+    throw invalid(`cannot read ${file}: ${e.code || e.message}`);
+  }
+  return crypto.createHash('sha256').update(buf).digest('hex');
+}
+
+/** Record the hash of a scope's file as it is now (after an import or an export). */
+export function setFileHash(db, name, scope, sha) {
+  db.run('UPDATE store_docs SET file_sha256 = ? WHERE store = ? AND scope = ?', sha, name, scope);
+}
+
+/** The file changed since the database last synced it: { scope, file } or null. A missing file is not drift. */
+export function driftOf(db, name, scope, file) {
+  const row = db.get('SELECT file_sha256 FROM store_docs WHERE store = ? AND scope = ?', name, scope);
+  if (!row || row.file_sha256 == null) return null; // not in the database yet, or synced before hashes were kept
+  const now = fileHash(file);
+  if (now === 'absent' || now === row.file_sha256) return null;
+  return { store: name, scope, file };
+}
+
+export const driftMessage = (scope) => `${scope} changed since the database last synced (a git pull?): run \`db sync --from-files\` to take the file, or \`db export --overwrite\` to keep the database`;
+
+function assertNoDrift(db, name, scope, file) {
+  const d = driftOf(db, name, scope, file);
+  if (d) throw invalid(driftMessage(scope));
 }
 
 /** Load for the sqlite store: the database's document, else the JSON file still on disk, else fallback / error. */
@@ -364,6 +459,10 @@ async function loadFromDb(db, name, file, scope, opts) {
   return readJsonState(file, opts);
 }
 
+/** Thrown inside a lock or transaction when the store choice changed since the call resolved it: run again. */
+export class StoreSwitched extends Error {}
+const SWITCH_RETRIES = 5;
+
 /**
  * Read a verb's document without changing anything: the JSON file (readJsonState semantics: `fallback` when it does
  * not exist, else "<file> does not exist") or the database row set for its scope.
@@ -371,7 +470,11 @@ async function loadFromDb(db, name, file, scope, opts) {
 export async function readDoc(io, name, file, opts = {}) {
   const ctx = await resolveStore(ioCtx(io));
   if (ctx.kind === 'json') return readJsonState(file, opts);
-  return withDb(ctx, (db) => loadFromDb(db, name, file, scopeKey(ctx.cwd, file), opts), { write: false });
+  const scope = scopeKey(ctx.cwd, file);
+  return withDb(ctx, (db) => {
+    assertNoDrift(db, name, scope, file);
+    return loadFromDb(db, name, file, scope, opts);
+  }, { write: false });
 }
 
 /**
@@ -379,15 +482,36 @@ export async function readDoc(io, name, file, opts = {}) {
  * JSON: under the shared state lock (`lockOpts`), written atomically. SQLite: one BEGIN IMMEDIATE transaction.
  */
 export async function updateDoc(io, name, file, fn, lockOpts) {
-  const ctx = await resolveStore(ioCtx(io));
-  if (ctx.kind === 'json') {
-    return withStateLock(file, () => fn({ load: (opts = {}) => readJsonState(file, opts), save: (doc) => writeJsonAtomic(file, doc) }), lockOpts);
+  for (let attempt = 0; ; attempt++) {
+    const ctx = await resolveStore(ioCtx(io));
+    try {
+      if (ctx.kind === 'json') {
+        return await withStateLock(file, () => {
+          // `db init` holds this lock until it has switched the store: a writer that waited for it goes to the database
+          if (readConfig(ctx.cwd).store !== 'json') throw new StoreSwitched();
+          return fn({ load: (opts = {}) => readJsonState(file, opts), save: (doc) => writeJsonAtomic(file, doc) });
+        }, lockOpts);
+      }
+      const scope = scopeKey(ctx.cwd, file);
+      return await withDb(ctx, (db) => {
+        // `db off` holds the write transaction until it has switched the store: a writer that waited goes to the file
+        if (readConfig(ctx.cwd).store !== 'sqlite') throw new StoreSwitched();
+        assertNoDrift(db, name, scope, file);
+        return fn({
+          load: (opts = {}) => loadFromDb(db, name, file, scope, opts),
+          save: async (doc) => {
+            const known = db.get('SELECT 1 AS x FROM store_docs WHERE store = ? AND scope = ?', name, scope);
+            // the first write of a scope read from its file: remember the file it came from
+            putDoc(db, name, scope, doc, known ? undefined : fileHash(file));
+          }
+        });
+      });
+    } catch (e) {
+      if (e instanceof StoreSwitched && attempt < SWITCH_RETRIES) continue;
+      if (e instanceof StoreSwitched) throw invalid(`the kit store kept switching while writing ${file}; run the command again`);
+      throw e;
+    }
   }
-  const scope = scopeKey(ctx.cwd, file);
-  return withDb(ctx, (db) => fn({
-    load: (opts = {}) => loadFromDb(db, name, file, scope, opts),
-    save: async (doc) => putDoc(db, name, scope, doc)
-  }));
 }
 
 function ioCtx(io = {}) {

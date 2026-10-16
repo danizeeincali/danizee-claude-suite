@@ -19,7 +19,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { KitExit } from './kit-exit.js';
-import { readConfig, resolveStore, withDb } from './store.js';
+import { readConfig, resolveStore, withDb, StoreSwitched } from './store.js';
 import { scrub, loadSecrets } from './reflect.js';
 
 export const MESSAGE_MAX = 4096;
@@ -277,11 +277,21 @@ export async function recordRun(io, run) {
   const head = gitHead(cwd, env);
   const cases = cleanCases(parseTap(run.output || '', cwd), secrets);
   const status = run.code === 0 && !run.signal ? 'passed' : 'failed';
-  const id = await withDb(ctx, (db) => insertRun(db, {
-    branch: head.branch || '(no branch)', commit: head.commit, source: 'local', started_at: run.started_at, finished_at: run.finished_at,
-    duration_ms: Date.parse(run.finished_at) - Date.parse(run.started_at), status,
-    data: { exit_code: run.code ?? null, signal: run.signal ?? null, command: run.command ? capBytes(scrub(String(run.command), secrets), 200) : undefined }
-  }, cases));
+  let id;
+  try {
+    id = await withDb(ctx, (db) => {
+      // `db off` switched the store while this run waited for the database: test runs have no JSON store
+      if (readConfig(cwd).store !== 'sqlite') throw new StoreSwitched();
+      return insertRun(db, {
+        branch: head.branch || '(no branch)', commit: head.commit, source: 'local', started_at: run.started_at, finished_at: run.finished_at,
+        duration_ms: Date.parse(run.finished_at) - Date.parse(run.started_at), status,
+        data: { exit_code: run.code ?? null, signal: run.signal ?? null, command: run.command ? capBytes(scrub(String(run.command), secrets), 200) : undefined }
+      }, cases);
+    });
+  } catch (e) {
+    if (e instanceof StoreSwitched) return { recorded: false };
+    throw e;
+  }
   return { recorded: true, id, cases: cases.length, status };
 }
 
@@ -311,17 +321,25 @@ function readUntrusted(file, max) {
   } finally { fs.closeSync(fd); }
 }
 
-/** The run list from `gh run list --json`, validated. */
-export function parseRunList(text) {
+/**
+ * The run list from `gh run list --json`, validated. Only push runs of `branch` are kept: a pull_request run whose
+ * head branch has the same name can come from a fork, and its artifacts are someone else's (gh run list has no
+ * head-repository field, so same-repository pull requests are left out too). The others come back in `foreign`.
+ */
+export function parseRunList(text, branch) {
   let v;
   try { v = JSON.parse(text); } catch { throw invalid('gh run list did not return JSON'); }
   if (!Array.isArray(v)) throw invalid('gh run list did not return a list');
-  return v.filter((r) => r && typeof r === 'object' && Number.isSafeInteger(r.databaseId) && r.databaseId > 0).map((r) => ({
+  const valid = v.filter((r) => r && typeof r === 'object' && Number.isSafeInteger(r.databaseId) && r.databaseId > 0);
+  const ours = (r) => r.event === 'push' && (branch === undefined || r.headBranch === branch);
+  const runs = valid.filter(ours).map((r) => ({
     id: r.databaseId,
     sha: typeof r.headSha === 'string' && /^[0-9a-f]{7,64}$/.test(r.headSha) ? r.headSha : null,
     created: typeof r.createdAt === 'string' && !Number.isNaN(Date.parse(r.createdAt)) ? new Date(Date.parse(r.createdAt)).toISOString() : null,
     conclusion: typeof r.conclusion === 'string' ? r.conclusion.slice(0, 40) : ''
   }));
+  runs.foreign = valid.filter((r) => !ours(r)).map((r) => r.databaseId);
+  return runs;
 }
 
 /**
@@ -344,12 +362,14 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) 
   if (auth.status !== 0) throw invalid(`gh is not logged in (gh auth status exited ${auth.status}): run \`gh auth login\``);
 
   const secrets = await loadSecrets({}, cwd);
-  const list = gh(['run', 'list', '--branch', branch, '--workflow', 'test.yml', '--limit', String(limit), '--json', 'databaseId,headSha,createdAt,conclusion'], { cwd, env });
+  // push runs only (this repository's own branch): see parseRunList
+  const list = gh(['run', 'list', '--branch', branch, '--event', 'push', '--workflow', 'test.yml', '--limit', String(limit), '--json', 'databaseId,headSha,createdAt,conclusion,event,headBranch'], { cwd, env });
   if (list.status !== 0) throw invalid(`gh run list failed: ${firstLine(list.stderr, secrets) || `exit ${list.status}`}`);
-  const runs = parseRunList(list.stdout).slice(0, limit);
+  const listed = parseRunList(list.stdout, branch);
+  const runs = listed.slice(0, limit);
 
   const known = await withDb(ctx, (db) => new Set(db.all('SELECT run_key FROM test_runs WHERE run_key IS NOT NULL').map((r) => r.run_key)), { write: false });
-  const skipped = [];
+  const skipped = listed.foreign.map((id) => ({ run_id: id, reason: 'not a push run of this repository branch' }));
   const found = [];
   for (const r of runs) {
     if (!r.conclusion) { skipped.push({ run_id: r.id, reason: 'not finished' }); continue; }
@@ -380,6 +400,7 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) 
   }
 
   const imported = await withDb(ctx, (db) => {
+    if (readConfig(cwd).store !== 'sqlite') throw invalid('the project went back to the JSON files (`db off`) during the import: nothing imported');
     const out = [];
     for (const x of found) {
       if (db.get('SELECT id FROM test_runs WHERE run_key = ?', x.key)) { skipped.push({ run_id: x.run.id, artifact: x.artifact, reason: 'already imported' }); continue; }

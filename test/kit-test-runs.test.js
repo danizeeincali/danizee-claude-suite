@@ -137,6 +137,7 @@ describe('local runs: scripts/ci-step.js runStep records into the sqlite store',
       assert.ok(!lines.some((l) => /kit store/.test(l)), lines.join('\n'));
       assert.ok(!fs.existsSync(path.join(dir, '.claude', 'kit', 'suite.db')));
       assert.ok(!fs.existsSync(path.join(dir, '.claude', 'kit', 'config.json')));
+      assert.ok(!fs.existsSync(path.join(dir, '.claude', 'kit', 'store.local.json')));
     } finally { rm(dir); }
   });
 
@@ -180,11 +181,11 @@ function fakeGh() {
   fs.mkdirSync(bin);
   fs.writeFileSync(path.join(bin, 'gh'), FAKE_GH, { mode: 0o755 });
   fs.writeFileSync(path.join(root, 'runs.json'), JSON.stringify([
-    { databaseId: 303, headSha: 'c'.repeat(40), createdAt: '2026-10-16T12:00:00Z', conclusion: '' },
-    { databaseId: 302, headSha: 'b'.repeat(40), createdAt: '2026-10-15T12:00:00Z', conclusion: 'failure' },
-    { databaseId: 301, headSha: 'a'.repeat(40), createdAt: '2026-10-14T12:00:00Z', conclusion: 'success' },
-    { databaseId: 300, headSha: '9'.repeat(40), createdAt: '2026-10-13T12:00:00Z', conclusion: 'success' },
-    { databaseId: 'nope', headSha: 'x', createdAt: 'never', conclusion: 'success' }
+    { databaseId: 303, headSha: 'c'.repeat(40), createdAt: '2026-10-16T12:00:00Z', conclusion: '', event: 'push', headBranch: 'feat/x' },
+    { databaseId: 302, headSha: 'b'.repeat(40), createdAt: '2026-10-15T12:00:00Z', conclusion: 'failure', event: 'push', headBranch: 'feat/x' },
+    { databaseId: 301, headSha: 'a'.repeat(40), createdAt: '2026-10-14T12:00:00Z', conclusion: 'success', event: 'push', headBranch: 'feat/x' },
+    { databaseId: 300, headSha: '9'.repeat(40), createdAt: '2026-10-13T12:00:00Z', conclusion: 'success', event: 'push', headBranch: 'feat/x' },
+    { databaseId: 'nope', headSha: 'x', createdAt: 'never', conclusion: 'success', event: 'push', headBranch: 'feat/x' }
   ]));
   const art = (id, name, file, text) => { const d = path.join(root, 'artifacts', String(id), name); fs.mkdirSync(d, { recursive: true }); if (text !== undefined) fs.writeFileSync(path.join(d, file), text); return d; };
   art(302, 'test-results-node-20', 'junit.xml', junit(`<testcase name="good" classname="node-test"/><testcase name="bad" classname="node-test"><failure message="test failed: bad ${SECRET} ${TOKEN}">${'y'.repeat(6000)}</failure></testcase>`));
@@ -220,7 +221,8 @@ describe('db import-reports', () => {
 
       const calls = gh.calls();
       assert.deepEqual(calls[0], ['auth', 'status']);
-      assert.deepEqual(calls[1], ['run', 'list', '--branch', 'feat/x', '--workflow', 'test.yml', '--limit', '5', '--json', 'databaseId,headSha,createdAt,conclusion']);
+      // push runs only (a fork's pull_request run can carry the same head branch name)
+      assert.deepEqual(calls[1], ['run', 'list', '--branch', 'feat/x', '--event', 'push', '--workflow', 'test.yml', '--limit', '5', '--json', 'databaseId,headSha,createdAt,conclusion,event,headBranch']);
       assert.deepEqual(calls.slice(2).map((c) => c.slice(0, 5)), ['302', '301', '300'].map((id) => ['run', 'download', id, '-p', 'test-results-*']));
 
       const runs = await rows(dir, 'SELECT * FROM test_runs ORDER BY id');
@@ -246,6 +248,35 @@ describe('db import-reports', () => {
       assert.deepEqual(st.out.test_runs_by_branch, { 'feat/x': 2 });
       const ex = await call(['export'], dir, ENGINE);
       assert.deepEqual(ex.out.not_exported, { test_runs: 2, test_cases: 3 });
+    } finally { rm(dir); rm(gh.root); }
+  });
+
+  it('only push runs of this branch are imported: a fork pull_request run with the same head branch is never downloaded', { skip: !NODE_SQLITE }, async () => {
+    const dir = await project();
+    const gh = fakeGh();
+    try {
+      const runs = JSON.parse(fs.readFileSync(path.join(gh.root, 'runs.json'), 'utf-8'));
+      runs.unshift(
+        { databaseId: 310, headSha: 'd'.repeat(40), createdAt: '2026-10-16T13:00:00Z', conclusion: 'success', event: 'pull_request', headBranch: 'feat/x' },
+        { databaseId: 311, headSha: 'e'.repeat(40), createdAt: '2026-10-16T14:00:00Z', conclusion: 'success', event: 'pull_request_target', headBranch: 'feat/x' },
+        { databaseId: 312, headSha: 'f'.repeat(40), createdAt: '2026-10-16T15:00:00Z', conclusion: 'success', headBranch: 'feat/x' },
+        { databaseId: 313, headSha: '1'.repeat(40), createdAt: '2026-10-16T16:00:00Z', conclusion: 'success', event: 'push', headBranch: 'main' }
+      );
+      fs.writeFileSync(path.join(gh.root, 'runs.json'), JSON.stringify(runs));
+      for (const id of [310, 311, 312, 313]) {
+        const d = path.join(gh.root, 'artifacts', String(id), 'test-results-node-20');
+        fs.mkdirSync(d, { recursive: true });
+        fs.writeFileSync(path.join(d, 'junit.xml'), junit('<testcase name="poisoned" classname="node-test"/>'));
+      }
+      const r = await call(['import-reports', '--branch', 'feat/x', '--limit', '10'], dir, gh.env);
+      assert.equal(r.code, 0, r.err);
+      assert.deepEqual(r.out.imported.map((x) => x.run_id), [302, 301]);
+      for (const id of [310, 311, 312, 313]) assert.ok(r.out.skipped.some((x) => x.run_id === id && /not a push run/.test(x.reason)), String(id));
+      const calls = gh.calls();
+      assert.ok(calls[1].includes('--event') && calls[1][calls[1].indexOf('--event') + 1] === 'push');
+      assert.ok(calls[1][calls[1].indexOf('--json') + 1].split(',').includes('event'));
+      assert.ok(!calls.some((c) => c[1] === 'download' && ['310', '311', '312', '313'].includes(c[2])), 'a foreign run is never downloaded');
+      assert.equal((await rows(dir, "SELECT COUNT(*) AS n FROM test_cases WHERE name = 'poisoned'"))[0].n, 0);
     } finally { rm(dir); rm(gh.root); }
   });
 

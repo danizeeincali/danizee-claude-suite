@@ -59,3 +59,4 @@ ruvector.db
 .claude/kit/suite.db
 .claude/kit/suite.db-wal
 .claude/kit/suite.db-shm
+.claude/kit/store.local.json
