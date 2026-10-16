@@ -452,7 +452,9 @@ function putFileSync(file, buf, mode = null) {
  * Write the files journal of a run about to rename `entries` ([{ file, store?, scope?, before: Buffer|null, mode, sha }])
  * over the originals: per file its path (relative to the project, `/` separators), the database document it belongs
  * to (none for the store choice), its original bytes ('absent' when it did not exist) and mode, and the sha256 of the
- * new bytes. Written atomically: a reader sees the whole journal or none.
+ * new bytes. Written atomically: a reader sees the whole journal or none. A file outside the project (a `--state`
+ * path elsewhere) is not listed: recovery never writes outside the project (see checkFilesJournal); after a crash such
+ * a file shows as drift (its bytes differ from the database's hash) and `db sync --from-files` merges it.
  */
 export function writeFilesJournal(cwd, dbFile, entries) {
   const doc = {
@@ -460,8 +462,8 @@ export function writeFilesJournal(cwd, dbFile, entries) {
     note: 'kit db: JSON files being written by one database transaction; removed after its COMMIT. Do not edit',
     written_at: new Date().toISOString(),
     pid: process.pid,
-    files: entries.map((e) => ({
-      path: scopeKey(cwd, e.file),
+    files: entries.map((e) => ({ e, key: scopeKey(cwd, e.file) })).filter(({ key }) => !path.posix.isAbsolute(key)).map(({ e, key }) => ({
+      path: key,
       ...(e.store ? { store: e.store, scope: e.scope } : {}),
       new_sha256: e.sha,
       original: e.before === null ? 'absent' : { mode: e.mode, base64: e.before.toString('base64') }
@@ -475,14 +477,82 @@ export function removeFilesJournal(dbFile) {
   fs.rmSync(journalOf(dbFile), { force: true });
 }
 
+/** Largest files journal recovery reads, and most files it lists: anything bigger is refused, not parsed. */
+export const JOURNAL_MAX_BYTES = 32 * 1024 * 1024;
+export const JOURNAL_MAX_FILES = 4096;
+const HEX64 = /^[0-9a-f]{64}$/;
+const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+const TRIAGE_STREAM_FILE = /^\.claude\/marathon\/[^/]+\/triage[^/]*\.json$/;
+const posixPath = (p) => p.split(path.sep).join('/');
+
+/** A store file the kit itself maps for `store` (its default file, or a per-stream triage file), relative with `/`. */
+function kitMappedFile(store, rel) {
+  const spec = SPECS[store];
+  if (!spec) return false;
+  return rel === spec.defaultFile || (store === 'triage' && TRIAGE_STREAM_FILE.test(rel));
+}
+
+/**
+ * Check a parsed files journal before anything is restored: it is untrusted input (a cloned repository can carry a
+ * suite.db and a journal). Returns null when every entry is one the kit itself writes in a batch, else the problem.
+ * An entry is accepted only when its path is a plain project-relative path (no absolute path, no `.` / `..` / empty
+ * segment, no `.git` segment, a `.json` file) that is either the store choice (CONFIG_FILE, no store) or the file of
+ * a document (`store` a kit store, `scope` the same path, and either a store_docs row for it or a file the kit maps:
+ * the store's default file or a per-stream triage file); nothing on the way to it, from the project folder down, is a
+ * symbolic link; its new hash is a sha256 (a batch never writes absence); its original is 'absent' or base64 bytes
+ * with an optional integer mode. No path twice.
+ */
+function checkFilesJournal(db, cwd, j) {
+  if (!j || typeof j !== 'object' || Array.isArray(j) || j.version !== 1 || !Array.isArray(j.files)) return 'not a kit files journal (version 1 with a files list)';
+  if (j.files.length > JOURNAL_MAX_FILES) return `lists ${j.files.length} files, more than ${JOURNAL_MAX_FILES}`;
+  const config = posixPath(CONFIG_FILE);
+  const seen = new Set();
+  for (const [i, f] of j.files.entries()) {
+    const at = `entry ${i + 1}`;
+    if (!f || typeof f !== 'object' || Array.isArray(f)) return `${at} is not an object`;
+    const p = f.path;
+    if (typeof p !== 'string' || !p || p.length > 4096 || p.includes('\0') || p.includes('\\')) return `${at} has no usable path`;
+    const segs = p.split('/');
+    if (path.posix.isAbsolute(p) || path.win32.isAbsolute(p) || segs.some((x) => !x || x === '.' || x === '..')) return `${at} path ${JSON.stringify(p.slice(0, 200))} is not a plain path inside the project`;
+    if (segs.some((x) => x.toLowerCase() === '.git') || !p.endsWith('.json')) return `${at} path ${JSON.stringify(p.slice(0, 200))} is not a kit state file`;
+    if (seen.has(p)) return `${at} lists ${p} twice`;
+    seen.add(p);
+    if (f.store === undefined) {
+      if (f.scope !== undefined || p !== config) return `${at} path ${p} is not a file the kit writes (an entry without a store is only ${config})`;
+    } else {
+      if (typeof f.store !== 'string' || !SPECS[f.store]) return `${at} names no kit store`;
+      if (f.scope !== p) return `${at} scope is not its path ${p}`;
+      const row = db.get('SELECT 1 AS x FROM store_docs WHERE store = ? AND scope = ?', f.store, f.scope);
+      if (!row && !kitMappedFile(f.store, p)) return `${at} path ${p} is not a file the kit writes for ${f.store} (no such document in the database)`;
+    }
+    if (typeof f.new_sha256 !== 'string' || !HEX64.test(f.new_sha256)) return `${at} (${p}) has no sha256 for its new bytes`;
+    const o = f.original;
+    if (o !== 'absent') {
+      if (!o || typeof o !== 'object' || Array.isArray(o) || typeof o.base64 !== 'string' || !BASE64.test(o.base64)) return `${at} (${p}) original is neither 'absent' nor base64 bytes`;
+      if (o.mode !== undefined && o.mode !== null && !(Number.isInteger(o.mode) && o.mode >= 0 && o.mode <= 0o7777)) return `${at} (${p}) original mode is not a file mode`;
+    }
+    let cur = cwd;
+    for (const seg of segs) {
+      cur = path.join(cur, seg);
+      let st;
+      try { st = fs.lstatSync(cur); } catch (e) { if (e.code === 'ENOENT') break; return `${at} (${p}) cannot be checked: ${e.code || e.message}`; }
+      if (st.isSymbolicLink()) return `${at} (${p}) goes through a symbolic link (${posixPath(path.relative(cwd, cur))})`;
+    }
+  }
+  return null;
+}
+
 /**
  * Recover a files journal: a run stopped (killed, power loss) after it wrote the journal and before it removed it.
  * Runs in its own BEGIN IMMEDIATE, so it waits for a run still in that window and never undoes a live one.
- * When the database holds, for every file of the journal that belongs to a document, the new hash, that run's COMMIT
- * happened: the journal is only removed. Otherwise the COMMIT did not happen: every file whose bytes are still the
- * new ones gets its original bytes back (or is removed when it did not exist), a file changed since is left alone and
- * named on stderr (it now differs from the database: drift, `db sync --from-files` merges it), then the journal is
- * removed. Returns { committed, restored, left } or null when there is no journal.
+ * The journal is untrusted: it is checked whole first (checkFilesJournal; size and entry count capped, no symbolic
+ * link followed) and on any problem refused: one stderr line names it, nothing is restored, the journal is kept and
+ * the verb goes on. When the database holds, for every file of the journal that belongs to a document, the new hash,
+ * that run's COMMIT happened: the journal is only removed. Otherwise the COMMIT did not happen: every file whose bytes
+ * are still the new ones gets its original bytes back (permission bits only, `& 0o666`) or is removed when it did
+ * not exist, a file changed since is left alone and named on stderr (it now differs from the database: drift,
+ * `db sync --from-files` merges it), then the journal is removed. Returns { committed, restored, left },
+ * { refused } or null when there is no journal.
  */
 export function recoverFilesJournal(db, cwd, dbFile) {
   const jf = journalOf(dbFile);
@@ -490,11 +560,26 @@ export function recoverFilesJournal(db, cwd, dbFile) {
   try {
     // read under the write lock: a run still between its renames and its COMMIT holds it, so it has finished by now
     let j;
-    try { j = JSON.parse(fs.readFileSync(jf, 'utf-8')); } catch (e) {
+    let problem = null;
+    try {
+      const st = fs.lstatSync(jf);
+      if (st.isSymbolicLink()) problem = 'it is a symbolic link';
+      else if (!st.isFile()) problem = 'it is not a file';
+      else if (st.size > JOURNAL_MAX_BYTES) problem = `it is ${st.size} bytes, more than ${JOURNAL_MAX_BYTES}`;
+      else {
+        const text = fs.readFileSync(jf, 'utf-8');
+        try { j = JSON.parse(text); } catch { problem = 'it is not JSON'; }
+      }
+    } catch (e) {
       if (e.code === 'ENOENT') { db.exec('COMMIT'); return null; } // that run finished and removed it meanwhile
-      throw invalid(`cannot read ${jf} (${e.code || e.message}): it lists JSON files a stopped run was writing; check them against the database, then remove it`);
+      problem = `it cannot be read (${e.code || e.message})`;
     }
-    if (!j || !Array.isArray(j.files)) throw invalid(`${jf} is not a kit files journal: check the JSON files against the database, then remove it`);
+    if (!problem) problem = checkFilesJournal(db, cwd, j);
+    if (problem) {
+      db.exec('ROLLBACK');
+      process.stderr.write(`kit db: refusing the files journal ${jf}: ${String(problem).slice(0, 300)}; nothing was restored and it is kept (check the JSON files against the database, then remove it)\n`);
+      return { refused: problem };
+    }
     const tracked = j.files.filter((f) => f.store);
     const committed = tracked.every((f) => {
       const row = db.get('SELECT file_sha256 FROM store_docs WHERE store = ? AND scope = ?', f.store, f.scope);
@@ -512,7 +597,7 @@ export function recoverFilesJournal(db, cwd, dbFile) {
           continue;
         }
         if (f.original === 'absent') fs.rmSync(file, { force: true });
-        else putFileSync(file, Buffer.from(f.original.base64, 'base64'), f.original.mode ?? null);
+        else putFileSync(file, Buffer.from(f.original.base64, 'base64'), Number.isInteger(f.original.mode) ? f.original.mode & 0o666 : null);
         restored.push(f.path);
       }
       process.stderr.write(`kit db: a run stopped after writing JSON files and before its database COMMIT; ${restored.length} file(s) put back as they were before it${restored.length ? ` (${restored.join(', ')})` : ''}`
@@ -529,7 +614,8 @@ export function recoverFilesJournal(db, cwd, dbFile) {
 
 /**
  * One transaction on the database: `BEGIN IMMEDIATE` for writes, a plain read snapshot otherwise. `onRollback` runs
- * (awaited) when the transaction does not commit, fn's own error or COMMIT's, before the error is thrown on;
+ * (awaited) when the transaction does not commit, fn's own error or COMMIT's, before ROLLBACK (so still under the
+ * write lock, unless SQLite already rolled back on its own) and before the error is thrown on;
  * `onCommit` runs (awaited) right after COMMIT.
  */
 export function withDb(ctx, fn, { write = true, onRollback, onCommit } = {}) {
@@ -542,8 +628,9 @@ export function withDb(ctx, fn, { write = true, onRollback, onCommit } = {}) {
         r = await fn(db);
         db.exec('COMMIT');
       } catch (e) {
-        try { db.exec('ROLLBACK'); } catch { /* already rolled back */ }
-        if (onRollback) await onRollback(e);
+        // put the files back while this run still holds the write lock (ROLLBACK releases it): a writer waiting in
+        // BEGIN IMMEDIATE never sees half-restored files, nor has its own committed files overwritten by this restore
+        try { if (onRollback) await onRollback(e); } finally { try { db.exec('ROLLBACK'); } catch { /* already rolled back */ } }
         throw e;
       }
       if (onCommit) await onCommit();

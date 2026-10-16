@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import os from 'os';
+import crypto from 'crypto';
 import path from 'path';
 import { spawn } from 'child_process';
 import { fileURLToPath } from 'url';
@@ -1212,6 +1213,203 @@ describe('a project on the JSON files never runs code from its own folder (revie
       const c = await storeCheck({ cwd: dir, env: { ...process.env, ...UNPINNED } });
       assert.equal(c.engine, 'better-sqlite3');
       assert.ok(exists(path.join(dir, 'PWNED')));
+    } finally { await rm(dir); }
+  });
+});
+
+describe('the files journal is untrusted input: refused whole unless every entry is a file the kit writes (review round 8)', () => {
+  const JOURNAL = '.claude/kit/suite.db-files-journal';
+  const LESSONS = '.claude/kit/lessons.json';
+  const CONFIG = '.claude/kit/store.local.json';
+  const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
+  const b64 = (t) => Buffer.from(t).toString('base64');
+  let saves = 0;
+  /** A project on the JSON files (one lesson) with a leftover migrated suite.db, and a directory beside it. */
+  async function setup() {
+    const root = await tmp();
+    const dir = path.join(root, 'proj');
+    const outside = path.join(root, 'outside');
+    await fs.mkdir(dir, { recursive: true });
+    await fs.mkdir(outside, { recursive: true });
+    assert.equal((await save(dir, 'Run the linter before every commit.', [], {})).code, 0);
+    (await rawDb(dir)).close();
+    return { root, dir, outside };
+  }
+  /** One valid entry (lessons.json holds its new bytes) placed before the bad ones: a refusal must not restore it. */
+  async function validEntry(dir) {
+    const now = await fs.readFile(path.join(dir, LESSONS));
+    return { path: LESSONS, store: 'lessons', scope: LESSONS, new_sha256: sha(now), original: { mode: 0o644, base64: b64('{"version":1,"lessons":[]}\n') } };
+  }
+  async function writeJournal(dir, files) {
+    const text = JSON.stringify({ version: 1, files });
+    await fs.writeFile(path.join(dir, JOURNAL), text);
+    return text;
+  }
+  /** Run a read-only verb and a write: both work; the journal is refused (named on stderr), kept byte-identical. */
+  async function assertRefused(dir, text, reason, env = {}) {
+    const lessons = await fs.readFile(path.join(dir, LESSONS));
+    const r = await cli(['reflect', 'lessons', 'list'], dir, env);
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.err, /refusing the files journal/);
+    assert.match(r.err, /nothing was restored and it is kept/);
+    assert.match(r.err, reason);
+    assert.equal(JSON.parse(r.out).lessons[0].text, 'Run the linter before every commit.');
+    assert.equal(await fs.readFile(path.join(dir, JOURNAL), 'utf-8'), text, 'the journal is kept as it was');
+    assert.deepEqual(await fs.readFile(path.join(dir, LESSONS)), lessons, 'nothing restored, not even the valid entry');
+    const s = await cli(['reflect', 'lessons', 'save', '--role', 'r', '--session', `bad-journal-${++saves}`, '--text', 'Saved while a bad journal sits there.', '--distinct'], dir, env);
+    assert.equal(s.code, 0, s.err);
+    assert.equal(await fs.readFile(path.join(dir, JOURNAL), 'utf-8'), text);
+  }
+
+  it('an absolute path outside the project is refused and the file there is untouched', { skip }, async () => {
+    const { root, dir, outside } = await setup();
+    try {
+      const tgt = path.join(outside, 'target.json');
+      await fs.writeFile(tgt, 'original\n');
+      const text = await writeJournal(dir, [await validEntry(dir), { path: tgt, store: 'lessons', scope: tgt, new_sha256: sha('original\n'), original: { mode: 0o644, base64: b64('REPLACED BY JOURNAL\n') } }]);
+      await assertRefused(dir, text, /not a plain path inside the project/);
+      assert.equal(await fs.readFile(tgt, 'utf-8'), 'original\n');
+    } finally { await rm(root); }
+  });
+
+  it('a `..` path is refused: nothing outside is replaced or created', { skip }, async () => {
+    const { root, dir, outside } = await setup();
+    try {
+      await fs.writeFile(path.join(outside, 'rel.json'), 'original\n');
+      const text = await writeJournal(dir, [await validEntry(dir),
+        { path: '../outside/rel.json', new_sha256: sha('original\n'), original: { mode: 0o755, base64: b64('REPLACED\n') } },
+        { path: '.claude/../../outside/new.json', store: 'triage', scope: '.claude/../../outside/new.json', new_sha256: sha('x'), original: 'absent' }]);
+      await assertRefused(dir, text, /\.\.\/outside\/rel\.json.*not a plain path inside the project/);
+      assert.equal(await fs.readFile(path.join(outside, 'rel.json'), 'utf-8'), 'original\n');
+      assert.deepEqual(await fs.readdir(outside), ['rel.json']);
+    } finally { await rm(root); }
+  });
+
+  it("a new hash of 'absent' is refused: a missing file is never created from the journal", { skip }, async () => {
+    const { root, dir } = await setup();
+    try {
+      const text = await writeJournal(dir, [await validEntry(dir), { path: '.claude/kit/noise-ledger.json', store: 'noise-ledger', scope: '.claude/kit/noise-ledger.json', new_sha256: 'absent', original: { base64: b64('{"planted":true}') } }]);
+      await assertRefused(dir, text, /has no sha256 for its new bytes/);
+      assert.equal(exists(path.join(dir, '.claude/kit/noise-ledger.json')), false);
+    } finally { await rm(root); }
+  });
+
+  it('a relative path the kit does not write (no such document, not a kit file, the store choice under another name) is refused', { skip }, async () => {
+    const { root, dir } = await setup();
+    try {
+      await fs.mkdir(path.join(dir, 'src'), { recursive: true });
+      const cases = [
+        [{ path: 'src/evil.json', store: 'lessons', scope: 'src/evil.json' }, /not a file the kit writes for lessons/],
+        [{ path: 'package.json' }, /an entry without a store is only \.claude\/kit\/store\.local\.json/],
+        [{ path: '.git/config.json', store: 'triage', scope: '.git/config.json' }, /not a kit state file/],
+        [{ path: 'src/run.sh', store: 'lessons', scope: 'src/run.sh' }, /not a kit state file/],
+        [{ path: 'src/other.json', store: 'lessons', scope: LESSONS }, /scope is not its path/]
+      ];
+      for (const [entry, reason] of cases) {
+        const file = path.join(dir, entry.path);
+        await fs.mkdir(path.dirname(file), { recursive: true });
+        await fs.writeFile(file, 'theirs\n');
+        const text = await writeJournal(dir, [await validEntry(dir), { ...entry, new_sha256: sha('theirs\n'), original: { mode: 0o4777, base64: b64('PLANTED\n') } }]);
+        await assertRefused(dir, text, reason);
+        assert.equal(await fs.readFile(file, 'utf-8'), 'theirs\n', entry.path);
+        await fs.rm(file);
+      }
+      // a bad mode, bad base64, a path twice, not a journal at all, too many entries
+      const v = await validEntry(dir);
+      for (const [files, reason] of [
+        [[v, { ...v, path: CONFIG, store: undefined, scope: undefined, original: { mode: 'rwx', base64: b64('x') } }], /original mode is not a file mode/],
+        [[{ ...v, original: { base64: 'not base64!' } }], /neither 'absent' nor base64 bytes/],
+        [[v, v], /twice/],
+        [Array.from({ length: 5000 }, () => v), /more than 4096/]
+      ]) await assertRefused(dir, await writeJournal(dir, files), reason);
+      await fs.writeFile(path.join(dir, JOURNAL), '{"files": "nope"}');
+      await assertRefused(dir, '{"files": "nope"}', /not a kit files journal/);
+    } finally { await rm(root); }
+  });
+
+  it('a target or a parent that is a symbolic link is refused and nothing behind it is written', { skip }, async () => {
+    const { root, dir, outside } = await setup();
+    try {
+      await fs.writeFile(path.join(outside, 'triage.json'), 'outside\n');
+      await fs.mkdir(path.join(dir, '.claude/marathon/run2'), { recursive: true });
+      await fs.symlink(outside, path.join(dir, '.claude/marathon/run1'));
+      await fs.symlink(path.join(outside, 'triage.json'), path.join(dir, '.claude/marathon/run2/triage.json'));
+      for (const [p, reason] of [['.claude/marathon/run1/triage.json', /symbolic link \(\.claude\/marathon\/run1\)/], ['.claude/marathon/run2/triage.json', /symbolic link \(\.claude\/marathon\/run2\/triage\.json\)/]]) {
+        const text = await writeJournal(dir, [await validEntry(dir), { path: p, store: 'triage', scope: p, new_sha256: sha('outside\n'), original: { mode: 0o644, base64: b64('REPLACED\n') } }]);
+        await assertRefused(dir, text, reason);
+        assert.equal(await fs.readFile(path.join(outside, 'triage.json'), 'utf-8'), 'outside\n', p);
+      }
+      // the journal itself as a link is refused too
+      await fs.rm(path.join(dir, JOURNAL));
+      await fs.writeFile(path.join(outside, 'j.json'), JSON.stringify({ version: 1, files: [await validEntry(dir)] }));
+      await fs.symlink(path.join(outside, 'j.json'), path.join(dir, JOURNAL));
+      const r = await cli(['reflect', 'lessons', 'list'], dir);
+      assert.equal(r.code, 0, r.err);
+      assert.match(r.err, /refusing the files journal .*: it is a symbolic link; nothing was restored/);
+      assert.ok(fsSync.lstatSync(path.join(dir, JOURNAL)).isSymbolicLink(), 'kept');
+    } finally { await rm(root); }
+  });
+
+  it('on sqlite too: a bad journal is refused at the database open and the verbs still work; a valid one still recovers', { skip }, async () => {
+    const { root, dir, outside } = await setup();
+    try {
+      assert.equal((await call(db, ['init'], dir, ENV)).code, 0);
+      const tgt = path.join(outside, 'target.json');
+      await fs.writeFile(tgt, 'original\n');
+      const text = await writeJournal(dir, [{ path: tgt, store: 'lessons', scope: tgt, new_sha256: sha('original\n'), original: { base64: b64('X') } }]);
+      const st = await cli(['db', 'status'], dir, ENV);
+      assert.equal(st.code, 0, st.err);
+      assert.match(st.err, /refusing the files journal/);
+      assert.equal(JSON.parse(st.out).store, 'sqlite');
+      await assertRefused(dir, text, /not a plain path inside the project/, ENV);
+      assert.equal(await fs.readFile(tgt, 'utf-8'), 'original\n');
+      // a valid journal of an uncommitted run (lessons.json holds bytes the database never committed): put back
+      const before = await fs.readFile(path.join(dir, LESSONS));
+      const newer = Buffer.from(JSON.stringify({ version: 1, lessons: [] }, null, 2) + '\n');
+      await fs.writeFile(path.join(dir, LESSONS), newer);
+      await writeJournal(dir, [{ path: LESSONS, store: 'lessons', scope: LESSONS, new_sha256: sha(newer), original: { mode: 0o4755, base64: before.toString('base64') } }]);
+      const r = await cli(['db', 'status'], dir, ENV);
+      assert.equal(r.code, 0, r.err);
+      assert.match(r.err, /1 file\(s\) put back/);
+      assert.deepEqual(await fs.readFile(path.join(dir, LESSONS)), before);
+      assert.equal(fsSync.statSync(path.join(dir, LESSONS)).mode & 0o7777, 0o644, 'permission bits only, no setuid or exec');
+      assert.equal(exists(path.join(dir, JOURNAL)), false);
+    } finally { await rm(root); }
+  });
+
+  it('a failed COMMIT puts the files back before ROLLBACK, and leaves a file changed since alone', { skip }, async () => {
+    const dir = await tmp();
+    try {
+      assert.equal((await save(dir, 'Run the linter before every commit.', [], {})).code, 0);
+      assert.equal((await call(db, ['init'], dir, ENV)).code, 0);
+      const s2 = await save(dir, 'Keep this lesson only in the database.');
+      assert.equal(s2.code, 0, s2.err);
+      const config = await fs.readFile(path.join(dir, CONFIG));
+      const theirs = '{"version":1,"lessons":[],"written":"by another writer"}\n';
+      let atRollback = null;
+      const eng = await loadEngine({ cwd: dir, env: { ...process.env, ...ENV }, project: true });
+      const orig = eng.open;
+      eng.open = (f, o) => {
+        const d = orig(f, o);
+        const ex = d.exec;
+        d.exec = (sql) => {
+          if (sql === 'COMMIT' && atRollback === null) { fsSync.writeFileSync(path.join(dir, LESSONS), theirs); atRollback = false; throw new Error('SQLITE_FULL: database or disk is full'); }
+          if (sql === 'ROLLBACK' && atRollback === false) atRollback = fsSync.readFileSync(path.join(dir, CONFIG));
+          return ex(sql);
+        };
+        return d;
+      };
+      const errs = [];
+      const w = mock.method(process.stderr, 'write', (s) => { errs.push(String(s)); return true; });
+      let r;
+      try { r = await call(db, ['off'], dir, ENV); } finally { eng.open = orig; w.mock.restore(); }
+      assert.notEqual(r.code, 0);
+      assert.ok(Buffer.isBuffer(atRollback), 'ROLLBACK ran');
+      assert.deepEqual(atRollback, config, 'the store choice was already put back when ROLLBACK released the lock');
+      assert.deepEqual(await fs.readFile(path.join(dir, CONFIG)), config);
+      assert.equal(await fs.readFile(path.join(dir, LESSONS), 'utf-8'), theirs, 'the file changed since is not overwritten');
+      assert.match(errs.join(''), /not put back because they changed since this run wrote them: .*lessons\.json/);
+      assert.equal(exists(path.join(dir, JOURNAL)), false);
     } finally { await rm(dir); }
   });
 });

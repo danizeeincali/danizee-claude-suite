@@ -169,7 +169,8 @@ async function readSource(file, then, name) {
  * file's mode kept), then the files journal (store.js writeFilesJournal: each file's original bytes and new hash), and
  * only then renames them over the originals; if any step fails, every file already renamed gets its original bytes
  * back (or is removed when it did not exist) and the error is thrown on, so the transaction rolls back too. `restore`
- * (withDb's onRollback) undoes a commit whose transaction then did not commit; `done` (withDb's onCommit) removes the
+ * (withDb's onRollback, run before ROLLBACK releases the write lock) undoes a commit whose transaction then did not
+ * commit, putting back only files that still hold this run's bytes (one changed since is left alone and named); `done` (withDb's onCommit) removes the
  * journal. So files and database agree after every run that ends, failed or not. Only a run killed (SIGKILL, power
  * loss) between its first rename and the journal's removal leaves them apart, and only until the next database open:
  * it reads the journal (store.js recoverFilesJournal) and, when the COMMIT did not happen, puts back every file still
@@ -193,15 +194,22 @@ function fileBatch(ctx) {
       return tmp;
     } catch (e) { await fsp.unlink(tmp).catch(() => {}); throw e; }
   }
+  const hashOf = async (file) => {
+    try { return crypto.createHash('sha256').update(await fsp.readFile(file)).digest('hex'); } catch (e) { if (e.code === 'ENOENT') return 'absent'; throw e; }
+  };
   async function restore() {
     let ok = true;
+    const left = [];
     while (done.length) {
       const d = done.pop();
       try {
+        // only a file that still holds this run's bytes: one changed since (another writer) is left alone and named
+        if (await hashOf(d.file) !== d.sha) { left.push(d.file); continue; }
         if (d.before === null) await fsp.rm(d.file, { force: true });
         else await fsp.rename(await put(d.file, d.before, d.mode), d.file);
       } catch { ok = false; /* best effort: the rest are still restored, the journal is kept for the next open */ }
     }
+    if (left.length) process.stderr.write(`kit db: not put back because they changed since this run wrote them: ${left.join(', ')} (they may now differ from the database: \`db sync --from-files\` merges them)\n`);
     if (ok && journal) {
       try { removeFilesJournal(ctx.dbFile); journal = false; } catch { /* the next open finds every file restored */ }
     }
