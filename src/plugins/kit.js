@@ -11,8 +11,9 @@ import { fileURLToPath } from 'url';
 import { addGitignoreRules } from '../lib/kit/store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// The optional SQLite store (see lib/kit/store.js) needs no rule: it lives outside the project, in a per-user folder.
-const GITIGNORE_RULES = ['.claude/kit/secrets', '.claude/kit/cache/', '.claude/kit/scrub-patterns.local'];
+// The optional SQLite store (see lib/kit/store.js) lives outside the project, in a per-user folder; the project keeps
+// only the git-ignored marker naming it (.claude/kit/store-id, written by `db init`, which adds the same rule).
+const GITIGNORE_RULES = ['.claude/kit/secrets', '.claude/kit/cache/', '.claude/kit/scrub-patterns.local', '.claude/kit/store-id'];
 const LIB_DIR = path.join(__dirname, '..', 'lib', 'kit');
 
 export function getNamespace() {
@@ -47,7 +48,7 @@ export async function install(claudeDir, options = {}) {
   // The redact verb reads .claude/kit/secrets: real secret values, never committed. The graph verb caches
   // per-file facts under .claude/kit/cache/: machine-local and rebuilt on demand.
   if (!dry && options.targetDir) {
-    const missing = await addGitignoreRules(options.targetDir, GITIGNORE_RULES, "Kit: the redact verb's secret values, the scrub verb's private patterns and the graph verb's fact cache are machine-local and never committed");
+    const missing = await addGitignoreRules(options.targetDir, GITIGNORE_RULES, "Kit: the redact verb's secret values, the scrub verb's private patterns, the graph verb's fact cache and the SQLite store's id are machine-local and never committed");
     if (missing.length) files.push(`.gitignore (+ ${missing.length} kit rule)`);
   }
   return { plugin: 'kit', namespace: getNamespace(), files };

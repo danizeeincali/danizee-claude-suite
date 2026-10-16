@@ -6,27 +6,30 @@
  * STORES. JSON files are the default and the fallback: each verb's file, written through ./state-lock.js exactly as
  * before. A project opts into one local SQLite file with `db init`.
  *
- * MACHINE-LOCAL STATE lives outside the project, in a per-user folder (storePaths): `$DANIZEE_KIT_HOME/<id>/` when
- * DANIZEE_KIT_HOME is set (tests), else `~/.claude/kit-db/<id>/`, where <id> is the first 16 hex digits of the sha256
- * of the project folder's real path. The folder is created with mode 0700 and holds `suite.db` (plus -wal/-shm), the
- * store choice `store.local.json` ({"store":"sqlite"|"json"}, plus the "scopes" registered by this machine's verbs),
- * the files journal `suite.db-files-journal` and `project.json` (the project path, shown by `db status`). Absent
- * store.local.json = json. So nothing in a cloned repository can supply a database, a journal, a store choice or a
- * registered scope: a stray `.claude/kit/suite.db` or `store.local.json` in the project is never opened (`db status`
- * names it once). Two worktrees of one repository have two real paths, so two separate stores.
+ * MACHINE-LOCAL STATE lives outside the project, in a per-user folder `<base>/<id>/`: <base> is `$DANIZEE_KIT_HOME`
+ * when set (tests; it must be absolute and outside the project, else exit 1), else `~/.claude/kit-db`; <id> is a random
+ * 128-bit id (32 hex digits) that `db init` writes to the project's git-ignored marker `.claude/kit/store-id` (mode
+ * 0600; the kit installer and `db init` add its .gitignore rule). The folder is created with mode 0700 and holds
+ * `suite.db` (plus -wal/-shm), the store choice `store.local.json` ({"store":"sqlite"|"json"}, plus the "scopes"
+ * registered by this machine's verbs), the files journal `suite.db-files-journal` and `project.json` ({ id, path }: the
+ * project's real path, in the file system's own spelling). See locateStore: no marker means the JSON files and nothing
+ * is created; a marker is only an id (the store choice lives in the per-user folder), so a junk or planted marker can
+ * only be ignored or cause a refusal, never a read of another store; a marker the kit wrote whose store is gone is
+ * exit 1 (never a silent fall back to the JSON files); a moved project keeps its store; a copy of the project folder
+ * that still exists beside the original is exit 1 until `db init --new` gives it its own. So nothing in a cloned
+ * repository can supply a database, a journal, a store choice or a registered scope: a stray `.claude/kit/suite.db` or
+ * `store.local.json` in the project is never opened (`db status` names it once). A new worktree has no marker.
  *
  * ENGINE. `better-sqlite3`, else Node's built-in `node:sqlite` (`DatabaseSync`, unflagged from Node 22.13 / 23.4; older
- * Node counts as having none). better-sqlite3 is loaded (1) from the kit package's own dependencies when the kit runs
- * from the npm package (src/lib/kit of `danizee-claude-suite`), else (2) from the project's node_modules, only for a
- * project on sqlite or an explicit `db init`, and only when the real path of the module (and of its node_modules
- * folder) is inside the project folder, the project is a git repository and `git ls-files` (`:(icase,literal)`
- * pathspec on those real paths, relative to the repository top) shows none of it tracked: a committed node_modules is
- * the repository's code, an npm-installed one the user's choice. Any git error, or no git, means the project copy is
- * not loaded (node:sqlite is used). Both engines are loaded lazily, on first use. A project on the JSON files never
- * runs code from its own folder: `check` and `db status` only probe (probeEngine: a module resolve in the kit package
- * and a built-in check, nothing loaded). A project configured for sqlite whose engine cannot load is an error (exit 1)
- * that names the fix; it NEVER falls back to the JSON files (that would split the state in two).
- * `KIT_SQLITE_ENGINE=better-sqlite3|node:sqlite|none` pins the engine (tests, diagnosis).
+ * Node counts as having none). better-sqlite3 is loaded only from the kit package's own install: when the kit runs from
+ * the npm package (src/lib/kit of `danizee-claude-suite`) and the module's real path is inside that package's own
+ * node_modules (never a copy found by climbing to a parent node_modules, such as the project's). The project's
+ * installed copy (.claude/helpers/kit) and every other case use node:sqlite. Code from the project folder is never
+ * loaded, and no git is run. Engines are loaded lazily, on first use; `check` and `db status` on the JSON files only
+ * probe (probeEngine: a module resolve in the kit package and a built-in check, nothing loaded). A project configured
+ * for sqlite whose engine cannot load is an error (exit 1) that names the fix; it NEVER falls back to the JSON files
+ * (that would split the state in two). `KIT_SQLITE_ENGINE=better-sqlite3|node:sqlite|none` pins the engine (tests,
+ * diagnosis).
  *
  * LAYOUT. A verb's document (the JSON it used to write) is split into rows: each collection of the document (an
  * array or an object of items) goes to its own table, one row per item, with the item as JSON in `data` (key order
@@ -50,7 +53,9 @@
  * default file, a per-stream triage file `.claude/marathon/<run>/triage*.json`, a scope this machine's verbs wrote
  * (registered in the per-user store.local.json) or the path named on the command line; and only when that path, after
  * the real path of its existing parent folder, is inside the project folder (a symbolically linked `.claude` inside
- * the repository is fine) and not inside `.git`. Any other document is not written: export lists it in `not_written`
+ * the repository is fine) and not inside `.git`, no link on the way leads nowhere, and the file itself is not a
+ * symbolic link (import, export, sync, drift and the files journal read store files with O_NOFOLLOW; the JSON store
+ * keeps following links as it always did). Any other document is not written: export lists it in `not_written`
  * and exits 1, off refuses (exit 1, the project stays on sqlite) naming it and the ways out.
  *
  * DEFENCE IN DEPTH. The database is this machine's, but before it is used its sqlite_master must hold only objects the
@@ -76,10 +81,8 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { createRequire, isBuiltin } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
 import { KitExit } from './kit-exit.js';
 import { withStateLock, readJsonState, writeJsonAtomic } from './state-lock.js';
-import { resolveGit } from './safe-git.js';
 
 /** The environment variable that replaces `~/.claude/kit-db` as the folder of the per-project store folders (tests). */
 export const KIT_HOME_ENV = 'DANIZEE_KIT_HOME';
@@ -101,10 +104,10 @@ export const STRAY_PROJECT_FILES = Object.freeze(['.claude/kit/suite.db', '.clau
 export const STORES = Object.freeze(['json', 'sqlite']);
 export const ENGINES = Object.freeze(['better-sqlite3', 'node:sqlite']);
 export const BUSY_TIMEOUT_MS = 15000;
-export const ENGINE_FIX = 'install an engine: `npm install better-sqlite3` in the project, or run Node 22.13+ (built-in node:sqlite; on Node 22.5+ before 22.13 only with --experimental-sqlite); or go back to the JSON files with `db off` on a machine that has one';
+export const ENGINE_FIX = 'this machine\'s store needs a SQLite engine on this machine: run Node 22.13+ (built-in node:sqlite; on Node 22.5+ before 22.13 only with --experimental-sqlite), '
+  + 'or install the suite package with its optional dependency better-sqlite3 (only the package\'s own copy, in its own node_modules, is ever loaded; never one from the project)';
 
 const invalid = (m) => new KitExit(m, 1);
-const sha256hex = (s) => crypto.createHash('sha256').update(s).digest('hex');
 
 // ================================================================ schema
 
@@ -212,22 +215,90 @@ const SCOPE_COL = { lessons: 'scope', noise_ledger: 'scope', triage: 'stream', t
 
 // ================================================================ the per-user store folder
 
-/** The project folder's real path (the identity of its store). */
+/** The project's store marker: the id of its per-user store folder, written by `db init` (git-ignored, mode 0600). */
+export const MARKER_FILE = '.claude/kit/store-id';
+const STORE_ID = /^[0-9a-f]{32}$/;
+const MARKER_MAX_BYTES = 256;
+/** What to do when a project's store is gone. */
+const MISSING_FIX = 'run `db init` to start a new one (imported from the JSON files) or restore it';
+
+/** The project folder's real path, in the file system's own spelling (realpathSync.native): the path a store records. */
 export function projectRoot(cwd) {
-  try { return fs.realpathSync(cwd); } catch (e) { throw invalid(`cannot resolve the project folder ${cwd}: ${e.code || e.message}`); }
+  try { return fs.realpathSync.native(cwd); } catch (e) { throw invalid(`cannot resolve the project folder ${cwd}: ${e.code || e.message}`); }
 }
 
 /**
- * Where this project's machine-local store lives: { root (the project's real path), base, dir, db, config, journal,
- * project }. dir is `<base>/<first 16 hex of sha256(root)>`, base `$DANIZEE_KIT_HOME` when set, else
- * `~/.claude/kit-db`. Nothing is created here (see ensureStoreDir).
+ * The real path of `p` through its deepest existing folder (the missing rest appended as it is): { real }, or
+ * { dangling: <path> } when a symbolic link on the way leads nowhere, or { error }.
  */
-export function storePaths(cwd, env = process.env) {
-  const root = projectRoot(cwd);
-  const home = env && env[KIT_HOME_ENV] ? String(env[KIT_HOME_ENV]) : '';
-  const base = home ? path.resolve(home) : path.join(os.homedir(), '.claude', 'kit-db');
-  const dir = path.join(base, sha256hex(root).slice(0, 16));
-  return { root, base, dir, db: path.join(dir, DB_NAME), config: path.join(dir, CONFIG_NAME), journal: path.join(dir, JOURNAL_NAME), project: path.join(dir, PROJECT_NAME) };
+function realThrough(p) {
+  let dir = path.resolve(p);
+  const rest = [];
+  for (;;) {
+    try { return { real: path.join(fs.realpathSync.native(dir), ...rest) }; } catch (e) {
+      if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') return { error: `cannot be checked (${e.code || e.message})` };
+      // a link whose target is missing: never a plain name to append (what it would create is somewhere else)
+      try { if (fs.lstatSync(dir).isSymbolicLink()) return { dangling: dir }; } catch { /* absent: go up */ }
+      const up = path.dirname(dir);
+      if (up === dir) return { error: 'cannot be resolved' };
+      rest.unshift(path.basename(dir));
+      dir = up;
+    }
+  }
+}
+
+/**
+ * The folder of the per-user store folders: `$DANIZEE_KIT_HOME` when set (an absolute path whose real path is not the
+ * project folder or inside it, else exit 1), else `~/.claude/kit-db`.
+ */
+export function kitBase(root, env = process.env) {
+  const raw = env && env[KIT_HOME_ENV] ? String(env[KIT_HOME_ENV]) : '';
+  if (!raw) return path.join(os.homedir(), '.claude', 'kit-db');
+  if (!path.isAbsolute(raw)) throw invalid(`${KIT_HOME_ENV}=${JSON.stringify(raw).slice(0, 200)} is not an absolute path: set it to an absolute folder outside the project (or unset it to use ~/.claude/kit-db)`);
+  const base = path.resolve(raw);
+  const r = realThrough(base);
+  if (!r.real) throw invalid(`${KIT_HOME_ENV} (${base}) ${r.dangling ? `leads through a symbolic link that points nowhere (${r.dangling})` : r.error}`);
+  if (r.real === root || inside(root, r.real)) {
+    throw invalid(`${KIT_HOME_ENV} (${base}) is inside the project folder ${root}: the per-user store must live outside the project (a repository must never supply it); set it to a folder outside the project`);
+  }
+  return base;
+}
+
+/** Read a small regular file without following a final symbolic link (O_NOFOLLOW where the platform has it). */
+function readNoFollowSync(file, max = Infinity) {
+  const C = fs.constants;
+  const fd = fs.openSync(file, C.O_RDONLY | (C.O_NOFOLLOW || 0) | (C.O_NONBLOCK || 0));
+  try {
+    const st = fs.fstatSync(fd);
+    if (!st.isFile()) throw Object.assign(new Error('not a regular file'), { code: 'ENOTREG' });
+    if (st.size > max) throw Object.assign(new Error(`${st.size} bytes`), { code: 'ETOOBIG' });
+    return fs.readFileSync(fd);
+  } finally { fs.closeSync(fd); }
+}
+
+/**
+ * The project's store marker: { state: 'none' } (no file), { state: 'invalid', why } (a link, not a file, outside the
+ * project, not 32 hex digits) or { state: 'ok', id, own } (own: its permission bits are 0600 as `db init` writes it,
+ * so not a file git checked out; always true on Windows). Never followed through a link.
+ */
+export function readMarker(root) {
+  const file = path.join(root, ...MARKER_FILE.split('/'));
+  let st;
+  try { st = fs.lstatSync(file); } catch (e) {
+    if (e.code === 'ENOENT' || e.code === 'ENOTDIR') return { state: 'none', file };
+    return { state: 'invalid', file, why: `${MARKER_FILE} cannot be checked (${e.code || e.message})` };
+  }
+  if (st.isSymbolicLink()) return { state: 'invalid', file, why: `${MARKER_FILE} is a symbolic link (\`db init\` writes a plain file)` };
+  if (!st.isFile()) return { state: 'invalid', file, why: `${MARKER_FILE} is not a file` };
+  const out = outsideProject(root, file);
+  if (out) return { state: 'invalid', file, why: `${MARKER_FILE} ${out}` };
+  let text;
+  try { text = readNoFollowSync(file, MARKER_MAX_BYTES).toString('utf-8').trim(); } catch (e) {
+    return { state: 'invalid', file, why: `${MARKER_FILE} cannot be read (${e.code === 'ELOOP' ? 'a symbolic link' : e.code || e.message})` };
+  }
+  if (!STORE_ID.test(text)) return { state: 'invalid', file, why: `${MARKER_FILE} does not hold a store id \`db init\` writes (32 hex digits)` };
+  const own = process.platform === 'win32' || (st.mode & 0o077) === 0;
+  return { state: 'ok', file, id: text, own, mode: st.mode & 0o777 };
 }
 
 /** Why the store folder is not a usable private folder of this user, or null (also when it does not exist yet). */
@@ -239,33 +310,162 @@ function storeDirProblem(dir) {
   return null;
 }
 
-/** project.json of a store folder: { project } or null. */
+/** project.json of a store folder ({ id, path, created_at, moved_from?, moved_at? }) or null. */
 export function readProjectJson(paths) {
+  if (!paths || !paths.project) return null;
   try {
     const v = JSON.parse(fs.readFileSync(paths.project, 'utf-8'));
     return v && typeof v === 'object' && !Array.isArray(v) ? v : null;
   } catch { return null; }
 }
 
+/** The paths of store `id` under `base`. */
+function pathsOf(root, base, id) {
+  const dir = path.join(base, id);
+  return { root, base, id, dir, db: path.join(dir, DB_NAME), config: path.join(dir, CONFIG_NAME), journal: path.join(dir, JOURNAL_NAME), project: path.join(dir, PROJECT_NAME) };
+}
+
+/** Whether two existing paths are one folder (device and inode): a case or link spelling of the same project. */
+function sameFolder(a, b) {
+  try {
+    const x = fs.statSync(a, { bigint: true });
+    const y = fs.statSync(b, { bigint: true });
+    return x.dev === y.dev && x.ino === y.ino;
+  } catch { return false; }
+}
+
 /**
- * Create the project's store folder (mode 0700, its parents too when missing) with its project.json, and check it:
- * a folder that is a symbolic link, belongs to another user or records another project is exit 1. Returns storePaths.
+ * Where this project's machine-local store lives. The project names it by the id in its marker (MARKER_FILE, written
+ * by `db init`); the store is `<base>/<id>/` (kitBase). Returns { root, marker, kind, id, base, dir, db, config,
+ * journal, project, why?, moved? }:
+ * - kind 'none': no marker. The project is on the JSON files and nothing is created (dir and the files are null).
+ * - kind 'ignored' (why): a marker that is not one `db init` wrote (a link, not 32 hex digits, outside the project), or
+ *   a valid id with no store on this machine in a file that does not look like `db init`'s (not mode 0600: committed
+ *   to git?). The JSON files are used, `db status` warns. A marker never switches a project to SQLite by itself: the
+ *   choice lives in the per-user folder.
+ * - kind 'store': the marker's store exists and its project.json records that id. When project.json records another
+ *   path: the same folder under another spelling is fine; another folder that still exists with the same marker means
+ *   THIS folder is a copy (exit 1: `db init --new`); otherwise the project moved: project.json takes this path and
+ *   keeps `moved_from` until `db status` reports it once.
+ * A marker the kit wrote whose store is missing is exit 1 (never a silent fall back to the JSON files), except with
+ * `missingOk` (db init): kind 'missing'. `copyOk`: kind 'copy' (copy_of) instead of the exit.
+ */
+export function locateStore(cwd, env = process.env, { missingOk = false, copyOk = false } = {}) {
+  const root = projectRoot(cwd);
+  const marker = readMarker(root);
+  const empty = { root, marker, id: null, base: null, dir: null, db: null, config: null, journal: null, project: null };
+  if (marker.state === 'none') return { ...empty, kind: 'none' };
+  if (marker.state !== 'ok') return { ...empty, kind: 'ignored', why: marker.why };
+  const p = { ...pathsOf(root, kitBase(root, env), marker.id), marker };
+  const missing = (what) => {
+    if (missingOk) return { ...p, kind: 'missing', why: what };
+    throw invalid(`this project was on the SQLite store but its database is missing (${what}): ${MISSING_FIX}`);
+  };
+  let st = null;
+  try { st = fs.lstatSync(p.dir); } catch (e) { if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') throw invalid(`cannot check the kit store folder ${p.dir}: ${e.code || e.message}`); }
+  if (!st) {
+    if (!marker.own) {
+      return { ...empty, kind: 'ignored', why: `${MARKER_FILE} names store ${marker.id}, which this machine does not have, and its permissions (${marker.mode.toString(8).padStart(4, '0')}) are not the 0600 \`db init\` writes (committed to git?): it is ignored` };
+    }
+    return missing(`${MARKER_FILE} names store ${marker.id}; ${p.dir} does not exist`);
+  }
+  const bad = storeDirProblem(p.dir);
+  if (bad) throw invalid(`the kit store folder ${p.dir} ${bad}: refusing it`);
+  const pj = readProjectJson(p);
+  if (!pj || pj.id !== marker.id || typeof pj.path !== 'string') return missing(`${p.project} does not record store ${marker.id}`);
+  if (pj.path !== root && !sameFolder(pj.path, root)) {
+    const there = fs.existsSync(pj.path) ? readMarker(pj.path) : null;
+    if (there && there.state === 'ok' && there.id === marker.id) {
+      if (copyOk) return { ...p, kind: 'copy', copy_of: pj.path };
+      throw invalid(`this project folder (${root}) is a copy of ${pj.path}, which uses the same SQLite store (${p.dir}): two folders must not share one store. `
+        + `Run \`db init --new\` here to give this copy its own store, imported from its JSON files (run \`db export\` in ${pj.path} first to bring the JSON files it shares up to date)`);
+    }
+    // moved (or renamed): the store follows the project
+    const moved = { ...pj, path: root, moved_from: pj.path, moved_at: new Date().toISOString() };
+    writeFileAtomicSync(p.project, `${JSON.stringify(moved, null, 2)}\n`);
+    return { ...p, kind: 'store', moved: { from: moved.moved_from, at: moved.moved_at } };
+  }
+  return { ...p, kind: 'store', ...(pj.moved_from ? { moved: { from: pj.moved_from, at: pj.moved_at ?? null } } : {}) };
+}
+
+/** locateStore without the options (the paths every verb uses; dir and the files are null when there is no store). */
+export function storePaths(cwd, env = process.env) {
+  return locateStore(cwd, env);
+}
+
+/** After `db status` reported a move once: drop the note from project.json. */
+export function clearMoved(paths) {
+  const pj = readProjectJson(paths);
+  if (!pj || !pj.moved_from) return;
+  const { moved_from: _f, moved_at: _a, ...rest } = pj;
+  writeFileAtomicSync(paths.project, `${JSON.stringify(rest, null, 2)}\n`);
+}
+
+/**
+ * This project's existing store folder, checked (not a symbolic link, this user's, mode 0700). No store is exit 1
+ * (`db init` creates one: createStore). Returns locateStore's paths.
  */
 export function ensureStoreDir(cwd, env = process.env) {
   const p = storePaths(cwd, env);
-  try {
-    fs.mkdirSync(p.base, { recursive: true, mode: 0o700 });
-    try { fs.mkdirSync(p.dir, { mode: 0o700 }); } catch (e) { if (e.code !== 'EEXIST') throw e; }
-  } catch (e) { throw invalid(`cannot create the kit store folder ${p.dir}: ${e.code || e.message}`); }
+  if (p.kind !== 'store') throw invalid(`this project has no kit store on this machine${p.why ? ` (${p.why})` : ''}: run \`db init\``);
   const bad = storeDirProblem(p.dir);
   if (bad) throw invalid(`the kit store folder ${p.dir} ${bad}: remove it (or set ${KIT_HOME_ENV} to another folder) and run the command again`);
   try { fs.chmodSync(p.dir, 0o700); } catch (e) { throw invalid(`cannot make ${p.dir} private (mode 0700): ${e.code || e.message}`); }
-  const pj = readProjectJson(p);
-  if (pj && pj.project !== p.root) {
-    throw invalid(`the kit store folder ${p.dir} records another project (${JSON.stringify(String(pj.project)).slice(0, 300)}), not ${p.root}: remove that folder and run the command again`);
-  }
-  if (!pj) writeFileAtomicSync(p.project, `${JSON.stringify({ project: p.root, created_at: new Date().toISOString() }, null, 2)}\n`);
   return p;
+}
+
+/**
+ * Start a new store for the project (`db init` on a project without one, or `db init --new`): a random 128-bit id,
+ * `<base>/<id>/` (mode 0700) with project.json { id, path }, then the marker (mode 0600) naming it, written last.
+ * A marker that is a symbolic link, or a marker path outside the project, is exit 1 before anything is created.
+ * Returns { paths, undo }: undo() (a failed init) removes the new folder and puts the old marker back.
+ */
+export function createStore(cwd, env = process.env) {
+  const root = projectRoot(cwd);
+  const markerFile = path.join(root, ...MARKER_FILE.split('/'));
+  const out = outsideProject(root, markerFile);
+  if (out) throw invalid(`cannot write the store marker ${MARKER_FILE}: it ${out}; nothing was changed`);
+  const base = kitBase(root, env);
+  const id = crypto.randomBytes(16).toString('hex');
+  const p = { ...pathsOf(root, base, id), kind: 'store' };
+  try {
+    fs.mkdirSync(base, { recursive: true, mode: 0o700 });
+    fs.mkdirSync(p.dir, { mode: 0o700 });
+  } catch (e) { throw invalid(`cannot create the kit store folder ${p.dir}: ${e.code || e.message}`); }
+  const removeDir = () => { try { fs.rmSync(p.dir, { recursive: true, force: true }); } catch { /* best effort */ } };
+  let before = null;
+  try {
+    const bad = storeDirProblem(p.dir);
+    if (bad) throw invalid(`the kit store folder ${p.dir} ${bad}: remove it (or set ${KIT_HOME_ENV} to another folder) and run the command again`);
+    fs.chmodSync(p.dir, 0o700);
+    writeFileAtomicSync(p.project, `${JSON.stringify({ id, path: root, created_at: new Date().toISOString() }, null, 2)}\n`);
+    try { before = readNoFollowSync(markerFile, MARKER_MAX_BYTES); } catch (e) {
+      if (e.code !== 'ENOENT') throw invalid(`cannot replace ${MARKER_FILE} (${e.code === 'ELOOP' ? 'a symbolic link' : e.code || e.message}): remove it and run \`db init\` again; nothing was changed`);
+    }
+    fs.mkdirSync(path.dirname(markerFile), { recursive: true });
+    if (before === null) {
+      // exclusive: two `db init` at once never both think they made the project's store
+      let fd;
+      try { fd = fs.openSync(markerFile, 'wx', 0o600); } catch (e) {
+        throw invalid(e.code === 'EEXIST' ? `another \`db init\` wrote ${MARKER_FILE} meanwhile: run \`db init\` again` : `cannot write ${markerFile}: ${e.code || e.message}`);
+      }
+      try { fs.fchmodSync(fd, 0o600); fs.writeFileSync(fd, `${id}\n`); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
+    } else {
+      try { putFileSync(markerFile, Buffer.from(`${id}\n`), 0o600); } catch (e) { throw invalid(`cannot write ${markerFile}: ${e.code || e.message}`); }
+    }
+  } catch (e) { removeDir(); throw e; }
+  const undo = () => {
+    try {
+      let now = null;
+      try { now = readNoFollowSync(markerFile, MARKER_MAX_BYTES).toString('utf-8').trim(); } catch { /* gone */ }
+      if (now === id) {
+        if (before === null) fs.rmSync(markerFile, { force: true });
+        else putFileSync(markerFile, before, 0o600);
+      }
+    } catch { /* best effort */ }
+    removeDir();
+  };
+  return { paths: p, undo };
 }
 
 /** The STRAY_PROJECT_FILES that exist in the project (by lstat only: never opened). */
@@ -292,10 +492,12 @@ function readConfigObject(file) {
 
 /**
  * The configured store: { store: 'json'|'sqlite', configured: bool, file, paths }, from the per-user store.local.json
- * (absent = json). A broken one is exit 1. Nothing in the project folder is read.
+ * of the project's store (locateStore; absent = json, and json when the project has no store). A broken one is exit 1.
+ * In the project folder only the marker is read.
  */
 export function readConfig(cwd, env = process.env) {
   const paths = storePaths(cwd, env);
+  if (paths.kind !== 'store') return { store: 'json', configured: false, file: null, paths };
   const v = readConfigObject(paths.config);
   if (v) return { store: v.store ?? 'json', configured: true, file: paths.config, config: v, paths };
   return { store: 'json', configured: false, file: paths.config, paths };
@@ -313,7 +515,7 @@ function writeFileAtomicSync(file, text) {
   }
 }
 
-/** Set the machine-local store choice (creating the store folder when needed). */
+/** Set the machine-local store choice of the project's existing store (ensureStoreDir). */
 export async function writeConfig(cwd, store, env = process.env) {
   const { config } = ensureStoreDir(cwd, env);
   let cur = {};
@@ -378,73 +580,37 @@ function kitPackageRoot() {
 }
 const KIT_PACKAGE = kitPackageRoot();
 
-/** git for a read-only question, by its absolute path, no shell, no GIT_* variable, C locale, fsmonitor off. */
-function gitQuery(cwd, args, env) {
-  let git;
-  try { git = resolveGit(env); } catch (e) { return { error: `git not found (${e.message})` }; }
-  const clean = {};
-  for (const [k, v] of Object.entries(env || {})) if (!/^GIT_/i.test(k) && !/^LC_|^LANG/.test(k)) clean[k] = v;
-  Object.assign(clean, { LC_ALL: 'C', GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' });
-  const r = spawnSync(git, ['-c', 'core.fsmonitor=', ...args], { cwd, env: clean, shell: false, encoding: 'utf-8', timeout: 20000, maxBuffer: 4 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
-  if (r.error) return { error: `git ${args[0]}: ${r.error.code || r.error.message}` };
-  if (r.status !== 0) return { error: `git ${args[0]} exited ${r.status ?? r.signal}${String(r.stderr || '').trim() ? `: ${String(r.stderr).trim().split('\n')[0].slice(0, 200)}` : ''}` };
-  return { stdout: r.stdout };
-}
-
 const inside = (root, p) => { const rel = path.relative(root, p); return !!rel && !rel.startsWith(`..${path.sep}`) && rel !== '..' && !path.isAbsolute(rel); };
 
 /**
- * Whether the project's own better-sqlite3 may be loaded: { base } (resolve from there) or { why }. Only when the real
- * path of the module, of its package folder and of the node_modules folder holding it are inside the project folder,
- * the project is a git repository, and `git ls-files` (`:(icase,literal)` on each real path, relative to the
- * repository top) lists nothing: a committed (vendored) node_modules is the repository's code. No git, or any git
- * error: not loaded.
+ * The kit package's own better-sqlite3: { file } (its real path) or { why }. Only when the kit runs from the npm
+ * package and the module's real path is inside `<package>/node_modules/`: a copy Node would find by climbing to a
+ * parent node_modules (the project's, when the package is installed inside a project) is never loaded. Nothing is
+ * loaded here.
  */
-export function projectEngineCheck(cwd, env = process.env) {
-  const root = projectRoot(cwd);
-  const base = path.join(root, 'package.json');
-  let resolved;
-  try { resolved = createRequire(base).resolve('better-sqlite3'); } catch (e) { return { why: `not installed in the project (${String(e && e.message).split('\n')[0].slice(0, 120)})` }; }
-  // its package folder: the nearest folder above the module (real path) whose package.json names better-sqlite3
-  let reals;
-  try {
-    const file = fs.realpathSync(resolved);
-    let pkg = path.dirname(file);
-    for (;;) {
-      let name = null;
-      try { name = JSON.parse(fs.readFileSync(path.join(pkg, 'package.json'), 'utf-8')).name; } catch { /* none here */ }
-      if (name === 'better-sqlite3') break;
-      const up = path.dirname(pkg);
-      if (up === pkg) return { why: `resolved to ${file}, with no better-sqlite3 package folder above it` };
-      pkg = up;
-    }
-    // the module, its package folder and the folder holding it (node_modules, or what it links to)
-    reals = [file, pkg, fs.realpathSync(path.dirname(pkg))];
-  } catch (e) { return { why: `cannot resolve its real path (${e.code || e.message})` }; }
-  const out = reals.find((p) => !inside(root, p));
-  if (out) return { why: `${out} is outside the project folder` };
-  const top = gitQuery(root, ['rev-parse', '--show-toplevel'], env);
-  if (top.error) return { why: `cannot tell whether git tracks it (${top.error}); only an npm-installed copy in a git repository is loaded` };
-  let topReal;
-  try { topReal = fs.realpathSync(top.stdout.trim()); } catch (e) { return { why: `cannot resolve the repository top (${e.code || e.message})` }; }
-  if (reals.some((p) => !inside(topReal, p))) return { why: 'it is outside the git repository' };
-  const specs = [...new Set(reals.map((p) => `:(icase,literal)${path.relative(topReal, p).split(path.sep).join('/')}`))];
-  const ls = gitQuery(topReal, ['ls-files', '-z', '--', ...specs], env);
-  if (ls.error) return { why: `cannot tell whether git tracks it (${ls.error})` };
-  if (ls.stdout.split('\0').some(Boolean)) return { why: 'committed to git (a committed node_modules is the repository\'s code; an npm-installed one is loaded)' };
-  return { base };
+function kitBetterSqlite() {
+  if (!KIT_PACKAGE) return { why: 'not used by the project\'s installed kit copy (.claude/helpers/kit), which loads only the built-in node:sqlite' };
+  let own;
+  try { own = path.join(fs.realpathSync.native(KIT_PACKAGE), 'node_modules'); } catch (e) { return { why: `cannot resolve the kit package folder (${e.code || e.message})` }; }
+  let file;
+  try { file = fs.realpathSync.native(createRequire(path.join(KIT_PACKAGE, 'package.json')).resolve('better-sqlite3')); } catch (e) {
+    return { why: String(e && e.message).split('\n')[0].slice(0, 200) };
+  }
+  if (!inside(own, file)) return { why: `resolved to ${file}, which is not in the kit package's own node_modules (${own}): not loaded` };
+  return { file };
 }
 
 /**
- * Which engine would load, WITHOUT loading anything: better-sqlite3 when the kit package resolves it (a path lookup,
- * no code run), else node:sqlite when Node has it built in. Never looks in the project folder. { name, errors }.
+ * Which engine would load, WITHOUT loading anything: better-sqlite3 when the kit package has its own copy (a path
+ * lookup, no code run), else node:sqlite when Node has it built in. Never looks in the project folder. { name, errors }.
  */
 export function probeEngine({ env = process.env } = {}) {
   const { want, errors } = wantedEngines(env);
   for (const name of want) {
     if (name === 'better-sqlite3') {
-      if (!KIT_PACKAGE) { errors.push('better-sqlite3: not probed (the kit runs from the project\'s installed copy; a project on sqlite loads an npm-installed copy from its own node_modules)'); continue; }
-      try { createRequire(path.join(KIT_PACKAGE, 'package.json')).resolve('better-sqlite3'); return { name, errors }; } catch (e) { errors.push(`better-sqlite3: ${String(e && e.message).split('\n')[0]}`); }
+      const b = kitBetterSqlite();
+      if (b.file) return { name, errors };
+      errors.push(`better-sqlite3: ${b.why}`);
     } else {
       const sup = nodeSqliteSupport();
       if (!sup.ok) errors.push(sup.why);
@@ -456,35 +622,25 @@ export function probeEngine({ env = process.env } = {}) {
 }
 
 /**
- * Load an engine: { name, open(file) } or { name: null, errors: [...] }. Lazy, cached per (pin, cwd, project).
- * better-sqlite3 from the kit package's own dependencies (when the kit runs from the npm package), else, with
- * `project` (a project configured for sqlite, or an explicit `db init`), from the project's node_modules when
- * projectEngineCheck allows it; else node:sqlite.
+ * Load an engine: { name, open(file) } or { name: null, errors: [...] }. Lazy, cached per pin. better-sqlite3 only
+ * from the kit package's own node_modules (kitBetterSqlite), else node:sqlite. Code from the project folder is never
+ * loaded.
  */
-export async function loadEngine({ cwd = process.cwd(), env = process.env, project = false } = {}) {
+export async function loadEngine({ env = process.env } = {}) {
   const { pin, want, errors } = wantedEngines(env);
-  const key = `${pin}\0${cwd}\0${project ? 1 : 0}`;
-  if (engineCache.has(key)) return engineCache.get(key);
+  if (engineCache.has(pin)) return engineCache.get(pin);
   let found = null;
   for (const name of want) {
     if (found) break;
     if (name === 'better-sqlite3') {
-      const bases = [];
-      if (KIT_PACKAGE) bases.push({ base: path.join(KIT_PACKAGE, 'package.json'), label: 'better-sqlite3' });
-      if (project) {
-        const chk = projectEngineCheck(cwd, env);
-        if (chk.base) bases.push({ base: chk.base, label: 'better-sqlite3 (project)' });
-        else errors.push(`better-sqlite3 (project): ${chk.why}: not loaded`);
-      }
-      for (const { base, label } of bases) {
-        try {
-          const Database = createRequire(base)('better-sqlite3');
-          // a native module built for another Node fails only when a database is opened: try one in memory
-          new Database(':memory:').close();
-          found = { name, open: (file, o = {}) => wrap(new Database(file, o.readOnly ? { readonly: true, fileMustExist: true } : {})) };
-          break;
-        } catch (e) { errors.push(`${label}: ${String(e && e.message).split('\n')[0]}`); }
-      }
+      const b = kitBetterSqlite();
+      if (!b.file) { errors.push(`better-sqlite3: ${b.why}`); continue; }
+      try {
+        const Database = createRequire(path.join(KIT_PACKAGE, 'package.json'))(b.file);
+        // a native module built for another Node fails only when a database is opened: try one in memory
+        new Database(':memory:').close();
+        found = { name, open: (file, o = {}) => wrap(new Database(file, o.readOnly ? { readonly: true, fileMustExist: true } : {})) };
+      } catch (e) { errors.push(`better-sqlite3: ${String(e && e.message).split('\n')[0]}`); }
     } else {
       const sup = nodeSqliteSupport();
       if (!sup.ok) { errors.push(sup.why); continue; }
@@ -496,7 +652,7 @@ export async function loadEngine({ cwd = process.cwd(), env = process.env, proje
     }
   }
   const res = found || { name: null, errors };
-  engineCache.set(key, res);
+  engineCache.set(pin, res);
   return res;
 }
 
@@ -577,10 +733,10 @@ export async function resolveStore({ cwd = process.cwd(), env = process.env } = 
   if (cfg.store !== 'sqlite') return { kind: 'json', cwd, env };
   const bad = storeDirProblem(cfg.paths.dir);
   if (bad) throw invalid(`the kit store folder ${cfg.paths.dir} ${bad}: refusing it`);
-  const engine = await loadEngine({ cwd, env, project: true });
+  const engine = await loadEngine({ env });
   if (!engine.name) throw invalid(`this project keeps its kit state in SQLite (${cfg.file}) but no SQLite engine loads here (${engine.errors.join('; ') || 'none tried'}): ${ENGINE_FIX}`);
   const dbFile = cfg.paths.db;
-  if (!fs.existsSync(dbFile)) throw invalid(`${cfg.file} says "store": "sqlite" but ${dbFile} is missing: restore it, or run \`db init\` to create it again from the JSON files`);
+  if (!fs.existsSync(dbFile)) throw invalid(`this project was on the SQLite store but its database is missing (${cfg.file} says "store": "sqlite"; ${dbFile} does not exist): ${MISSING_FIX}`);
   return { kind: 'sqlite', engine: engine.name, open: engine.open, dbFile, cwd, env };
 }
 
@@ -593,7 +749,7 @@ export async function resolveStore({ cwd = process.cwd(), env = process.env } = 
  */
 export async function recoverJsonSide(cwd, env = process.env) {
   const { db: dbFile, dir } = storePaths(cwd, env);
-  if (!fs.existsSync(journalOf(dbFile)) || !fs.existsSync(dbFile)) return false;
+  if (!dbFile || !fs.existsSync(journalOf(dbFile)) || !fs.existsSync(dbFile)) return false;
   const bad = storeDirProblem(dir);
   if (bad) throw invalid(`the kit store folder ${dir} ${bad}: refusing it`);
   return serial(dbFile, () => recoverJsonSideNow(cwd, env, dbFile));
@@ -602,7 +758,7 @@ export async function recoverJsonSide(cwd, env = process.env) {
 async function recoverJsonSideNow(cwd, env, dbFile) {
   let db = null;
   try {
-    const own = await loadEngine({ cwd, env, project: false });
+    const own = await loadEngine({ env });
     if (!own.name) throw new Error(own.errors.join('; ') || 'no SQLite engine');
     db = own.open(dbFile);
     db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
@@ -736,7 +892,7 @@ const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$
 const TRIAGE_STREAM_FILE = /^\.claude\/marathon\/[^/]+\/triage[^/]*\.json$/;
 
 /** A store file the kit maps for `store` by itself (its default file, or a per-stream triage file), relative with `/`. */
-function kitMappedFile(store, rel) {
+export function kitMappedFile(store, rel) {
   const spec = SPECS[store];
   if (!spec) return false;
   return rel === spec.defaultFile || (store === 'triage' && TRIAGE_STREAM_FILE.test(rel));
@@ -759,27 +915,23 @@ function relativeProblem(p) {
 /**
  * Why `file` is not inside the project folder, or null: the real path of its deepest existing parent folder, plus the
  * rest of the path, must be inside the project's real path and not inside `.git` (a symbolic link inside the
- * repository, such as a linked `.claude`, is fine as long as it points inside the project).
+ * repository, such as a linked `.claude`, is fine as long as it points inside the project). A symbolic link that leads
+ * nowhere anywhere on the path counts as outside (what it would create is somewhere else), and so does a file that is
+ * itself a symbolic link (the kit's store paths never read or write a store file through a link).
  */
 export function outsideProject(cwd, file) {
   const root = projectRoot(cwd);
-  let dir = path.dirname(path.resolve(cwd, file));
-  const rest = [path.basename(file)];
-  for (;;) {
-    let real;
-    try { real = fs.realpathSync(dir); } catch (e) {
-      if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') return `cannot be checked (${e.code || e.message})`;
-      const up = path.dirname(dir);
-      if (up === dir) return 'cannot be resolved';
-      rest.unshift(path.basename(dir));
-      dir = up;
-      continue;
-    }
-    const full = path.join(real, ...rest);
-    if (!inside(root, full)) return `is outside the project folder ${root} (after following symbolic links: ${full})`;
-    if (path.relative(root, full).split(path.sep).some((x) => x.toLowerCase() === '.git')) return 'is inside .git';
-    return null;
+  const abs = path.resolve(cwd, file);
+  try { if (fs.lstatSync(abs).isSymbolicLink()) return `is a symbolic link (${abs}): the kit never reads or writes a store file through a link`; } catch (e) {
+    if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') return `cannot be checked (${e.code || e.message})`;
   }
+  const r = realThrough(path.dirname(abs));
+  if (r.dangling) return `leads through a symbolic link that points nowhere (${r.dangling}), so it is not inside the project folder ${root}`;
+  if (!r.real) return r.error;
+  const full = path.join(r.real, path.basename(abs));
+  if (!inside(root, full)) return `is outside the project folder ${root} (after following symbolic links: ${full})`;
+  if (path.relative(root, full).split(path.sep).some((x) => x.toLowerCase() === '.git')) return 'is inside .git';
+  return null;
 }
 
 /**
@@ -788,7 +940,11 @@ export function outsideProject(cwd, file) {
  */
 export function registeredScopes(cwd, env = process.env) {
   let v = null;
-  try { v = readConfigObject(storePaths(cwd, env).config); } catch { return {}; }
+  try {
+    const { config } = storePaths(cwd, env);
+    if (!config) return {};
+    v = readConfigObject(config);
+  } catch { return {}; }
   const out = {};
   const sc = v && v.scopes;
   if (!sc || typeof sc !== 'object' || Array.isArray(sc)) return out;
@@ -816,6 +972,7 @@ export function unregisterScope(cwd, store, scope, env = process.env) {
   const reg = registeredScopes(cwd, env);
   if (!(reg[store] || []).includes(scope)) return;
   const { config: file } = storePaths(cwd, env);
+  if (!file) return;
   let cur = {};
   try { cur = readConfigObject(file) || {}; } catch { return; }
   const scopes = { ...reg, [store]: reg[store].filter((x) => x !== scope) };
@@ -866,10 +1023,10 @@ function checkFilesJournal(cwd, j, env) {
       if (bad) return `${at} ${bad}`;
       if (typeof f.store !== 'string' || !SPECS[f.store]) return `${at} names no kit store`;
       if (f.scope !== p) return `${at} scope is not its path ${p}`;
+      // the file itself a symbolic link: recovery would read through it; refused (defence in depth)
+      try { if (fs.lstatSync(fileOfScope(cwd, p)).isSymbolicLink()) return `${at} the file is a symbolic link (${p})`; } catch { /* absent: fine */ }
       const m = scopeFile(cwd, f.store, p, { registered });
       if (!m.file) return `${at} ${m.reason}`;
-      // the file itself a symbolic link: recovery would read through it; refused (defence in depth)
-      try { if (fs.lstatSync(m.file).isSymbolicLink()) return `${at} the file is a symbolic link (${p})`; } catch { /* absent: fine */ }
     }
     if (seen.has(p)) return `${at} lists ${p} twice`;
     seen.add(p);
@@ -1088,14 +1245,47 @@ export function deleteDoc(db, name, scope) {
   db.run('DELETE FROM store_docs WHERE store = ? AND scope = ?', name, scope);
 }
 
-/** The sha256 of a file's bytes, or 'absent' when it does not exist. */
+/**
+ * A store file's bytes for the SQLite store's own paths (import, export, sync, drift, the files journal), never
+ * through a final symbolic link: lstat, then open with O_NOFOLLOW where the platform has it. A link is an error with
+ * code ELOOP; a missing file ENOENT.
+ */
+export function readStoreFile(file) {
+  let st = null;
+  try { st = fs.lstatSync(file); } catch (e) { if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') throw e; }
+  if (st && st.isSymbolicLink()) throw Object.assign(new Error(`${file} is a symbolic link`), { code: 'ELOOP' });
+  try { return readNoFollowSync(file); } catch (e) { if (e.code === 'ENOTDIR') e.code = 'ENOENT'; throw e; }
+}
+
+/** The message for a store file the SQLite store will not read or write because it is a symbolic link. */
+const linkRefusal = (file) => `${file} is a symbolic link: the kit's SQLite store never reads or writes a store file through a link (it could lead out of the project); replace the link with the file itself`;
+
+/** The sha256 of a file's bytes, or 'absent' when it does not exist. A symbolic link is exit 1 (readStoreFile). */
 export function fileHash(file) {
   let buf;
-  try { buf = fs.readFileSync(file); } catch (e) {
+  try { buf = readStoreFile(file); } catch (e) {
     if (e.code === 'ENOENT') return 'absent';
+    if (e.code === 'ELOOP') throw invalid(linkRefusal(file));
     throw invalid(`cannot read ${file}: ${e.code || e.message}`);
   }
   return crypto.createHash('sha256').update(buf).digest('hex');
+}
+
+/**
+ * readJsonState's semantics (fallback when missing, a BOM skipped, UTF-16 and bad JSON refused with fixed texts) for
+ * the SQLite store's own reads of a store file, never through a symbolic link (exit 1).
+ */
+export async function readJsonNoFollow(file, { fallback } = {}) {
+  let buf;
+  try { buf = readStoreFile(file); } catch (err) {
+    if (err.code === 'ENOENT' && fallback !== undefined) return fallback;
+    if (err.code === 'ENOENT') throw invalid(`${file} does not exist`);
+    if (err.code === 'ELOOP') throw invalid(linkRefusal(file));
+    throw invalid(`cannot read ${file}: ${err.code || err.message}`);
+  }
+  if (buf.length >= 2 && ((buf[0] === 0xff && buf[1] === 0xfe) || (buf[0] === 0xfe && buf[1] === 0xff))) throw invalid(`${file} is UTF-16; save it as UTF-8`);
+  if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) buf = buf.subarray(3);
+  try { return JSON.parse(buf.toString('utf-8')); } catch { throw invalid(`${file} is not valid JSON`); }
 }
 
 /** Record the hash of a scope's file as it is now and the document it holds (after an import, export or sync). */
@@ -1115,7 +1305,7 @@ export function driftOf(db, name, scope, file) {
 /** A file's document for a drift report: the parsed object, or { error } when it is not a JSON object. */
 export function readFileDoc(file) {
   let text;
-  try { text = fs.readFileSync(file, 'utf-8'); } catch (e) { return { error: e.code === 'ENOENT' ? 'does not exist' : (e.code || e.message) }; }
+  try { text = readStoreFile(file).toString('utf-8'); } catch (e) { return { error: e.code === 'ENOENT' ? 'does not exist' : e.code === 'ELOOP' ? 'is a symbolic link' : (e.code || e.message) }; }
   let v;
   try { v = JSON.parse(text.replace(/^﻿/, '')); } catch { return { error: 'is not valid JSON' }; }
   if (!v || typeof v !== 'object' || Array.isArray(v)) return { error: 'is not a JSON object' };
@@ -1380,7 +1570,7 @@ function assertNoDrift(db, name, scope, file) {
 async function loadFromDb(db, name, file, scope, opts) {
   const doc = getDoc(db, name, scope);
   if (doc !== null) return doc;
-  return readJsonState(file, opts);
+  return readJsonNoFollow(file, opts);
 }
 
 /** Thrown inside a lock or transaction when the store choice changed since the call resolved it: run again. */
@@ -1487,8 +1677,9 @@ export function installedKitProblem(cwd) {
 
 /**
  * Add the `rules` a project's .gitignore lacks, under one `# comment` line; returns the rules added. Used by the kit
- * installer and by `db init`. `noFollow`: a .gitignore that is a symbolic link (or not a regular file) is left alone
- * and the rules are returned in `refused` instead (`db init` runs in a repository it did not write).
+ * installer (the project it installs into) and by `db init` (the store marker's rule, with `noFollow`). `noFollow`: a
+ * .gitignore that is a symbolic link (or not a regular file) is left alone and the rules are returned in `refused`
+ * instead (`db init` runs in a repository it did not write: a linked .gitignore could lead out of the project).
  */
 export async function addGitignoreRules(dir, rules, comment, { noFollow = false } = {}) {
   const gi = path.join(dir, '.gitignore');
@@ -1513,16 +1704,16 @@ export async function addGitignoreRules(dir, rules, comment, { noFollow = false 
 export async function storeCheck({ cwd = process.cwd(), env = process.env } = {}) {
   let cfg;
   try { cfg = readConfig(cwd, env); } catch (e) {
-    return { store: null, engine: null, ok: false, fatal: true, line: `kit store: ${e.message}`, fix: 'repair or remove that file (it is this machine\'s store choice)' };
+    return { store: null, engine: null, ok: false, fatal: true, line: `kit store: ${e.message}`, fix: 'as the message says (the store choice and the store folder are this machine\'s, outside the project)' };
   }
   if (cfg.store === 'json') {
     // probed, not loaded: a project on the JSON files never runs code from its own folder here
     const probe = probeEngine({ env });
     return { store: 'json', engine: probe.name, ok: true, fatal: false, line: `kit store: json files${probe.name ? ` (sqlite engine ${probe.name} available, not loaded; \`db init\` to switch)` : ' (no sqlite engine available; json needs none)'}` };
   }
-  const engine = await loadEngine({ cwd, env, project: true });
+  const engine = await loadEngine({ env });
   if (!engine.name) return { store: 'sqlite', engine: null, ok: false, fatal: true, line: `kit store: sqlite, but no engine loads (${engine.errors.join('; ')})`, fix: ENGINE_FIX };
   const dbFile = cfg.paths.db;
-  if (!fs.existsSync(dbFile)) return { store: 'sqlite', engine: engine.name, ok: false, fatal: true, line: `kit store: sqlite (${engine.name}), but ${dbFile} is missing`, fix: 'restore the file, or run `db init` to create it again from the JSON files' };
+  if (!fs.existsSync(dbFile)) return { store: 'sqlite', engine: engine.name, ok: false, fatal: true, line: `kit store: sqlite (${engine.name}), but its database ${dbFile} is missing`, fix: MISSING_FIX };
   return { store: 'sqlite', engine: engine.name, ok: true, fatal: false, line: `kit store: sqlite ${dbFile} (engine ${engine.name} loads)` };
 }

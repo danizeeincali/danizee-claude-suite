@@ -11,7 +11,7 @@ import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { run as reflect } from '../src/lib/kit/reflect.js';
 import { run as db } from '../src/lib/kit/db.js';
-import { storeCheck, loadEngine, SCHEMA_VERSION, resolveStore, withDb, storePaths, STRAY_PROJECT_FILES } from '../src/lib/kit/store.js';
+import { storeCheck, loadEngine, SCHEMA_VERSION, resolveStore, withDb, storePaths, createStore, STRAY_PROJECT_FILES } from '../src/lib/kit/store.js';
 import kitPlugin from '../src/plugins/kit.js';
 
 // the machine-local store lives in a per-user folder: here a temporary one (one sub-folder per project)
@@ -19,8 +19,8 @@ process.env.DANIZEE_KIT_HOME = fsSync.mkdtempSync(path.join(os.tmpdir(), 'kit-ho
 process.on('exit', () => { try { fsSync.rmSync(process.env.DANIZEE_KIT_HOME, { recursive: true, force: true }); } catch { /* best effort */ } });
 /** Write this machine's store choice for a project (as `db init` / `db off` would). */
 export async function setChoice(dir, text) {
-  const p = storePaths(dir);
-  await fs.mkdir(p.dir, { recursive: true, mode: 0o700 });
+  let p = storePaths(dir);
+  if (p.kind !== 'store') p = createStore(dir).paths; // the marker and the per-user folder, as `db init` makes them
   await fs.writeFile(p.config, text);
 }
 
@@ -214,6 +214,8 @@ describe('kit store: db verb', () => {
       assert.ok(!exists(path.join(dir, '.claude/kit/config.json')));
       assert.ok(!exists(path.join(dir, '.claude/kit/store.local.json')));
       assert.ok(!exists(storePaths(dir).config));
+      assert.ok(!exists(path.join(dir, '.claude/kit/store-id')), 'no marker left behind');
+      assert.deepEqual(fsSync.readdirSync(process.env.DANIZEE_KIT_HOME).filter((n) => { try { return JSON.parse(fsSync.readFileSync(path.join(process.env.DANIZEE_KIT_HOME, n, 'project.json'), 'utf-8')).path === fsSync.realpathSync.native(dir); } catch { return false; } }), [], 'no store folder left behind');
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
 
@@ -224,19 +226,20 @@ describe('kit store: db verb', () => {
       const env = { KIT_SQLITE_ENGINE: 'none' };
       const save = await call(reflect, ['lessons', 'save', '--role', 'r', '--session', 's', '--text', 'Write the failing test before the fix.'], dir, env);
       assert.equal(save.code, 1);
-      assert.match(save.err, /npm install better-sqlite3/);
+      assert.match(save.err, /install the suite package with its optional dependency better-sqlite3/);
       assert.match(save.err, /Node 22\.5\+/);
+      assert.doesNotMatch(save.err, /db off. on a machine/, 'the store is this machine\'s: another machine cannot export it');
       assert.ok(!exists(path.join(dir, '.claude/kit/lessons.json')), 'no JSON fallback');
       assert.equal((await call(reflect, ['lessons', 'list'], dir, env)).code, 1);
       for (const sub of ['init', 'export', 'off', 'status', 'prune']) {
         const r = await call(db, [sub], dir, env);
         assert.equal(r.code, 1, sub);
-        assert.match(r.err, /npm install better-sqlite3/, sub);
+        assert.match(r.err, /optional dependency better-sqlite3/, sub);
       }
       const c = await storeCheck({ cwd: dir, env: { ...process.env, ...env } });
       assert.equal(c.fatal, true);
       assert.match(c.line, /^kit store: sqlite, but no engine loads/);
-      assert.match(c.fix, /npm install better-sqlite3/);
+      assert.match(c.fix, /optional dependency better-sqlite3/);
       // the trouble-log side of reflect has no store and still works
       assert.equal((await call(reflect, ['trouble-log'], dir, env, '{"type":"stop","reason":"x"}')).code, 0);
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
@@ -248,7 +251,7 @@ describe('kit store: db verb', () => {
       await setChoice(dir, '{"store":"sqlite"}');
       const r = await call(reflect, ['lessons', 'list'], dir, { KIT_SQLITE_ENGINE: 'node:sqlite' });
       assert.equal(r.code, 1);
-      assert.match(r.err, /suite\.db is missing/);
+      assert.match(r.err, /this project was on the SQLite store but its database is missing \(.*suite\.db does not exist\): run `db init` to start a new one/);
       assert.equal((await storeCheck({ cwd: dir, env: { ...process.env, KIT_SQLITE_ENGINE: 'node:sqlite' } })).fatal, true);
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
@@ -327,28 +330,40 @@ describe('kit store: db verb', () => {
 });
 
 describe('kit store: nothing of the store is in the project', () => {
-  it('the store folder is per user and per project real path: $DANIZEE_KIT_HOME/<16 hex of sha256(realpath)>', async () => {
+  it('the store folder is per user, named by the random id in the project\'s marker: $DANIZEE_KIT_HOME/<id> (none without a marker)', async () => {
     const dir = await tmp();
     try {
+      const none = storePaths(dir);
+      assert.equal(none.kind, 'none');
+      assert.equal(none.dir, null, 'no marker: no store, nothing created');
+      assert.equal(fsSync.readdirSync(dir).length, 0);
+      const { paths } = createStore(dir);
       const p = storePaths(dir);
-      const real = fsSync.realpathSync(dir);
-      const id = (await import('crypto')).createHash('sha256').update(real).digest('hex').slice(0, 16);
-      assert.equal(p.dir, path.join(process.env.DANIZEE_KIT_HOME, id));
+      assert.equal(p.kind, 'store');
+      assert.match(p.id, /^[0-9a-f]{32}$/);
+      assert.equal(p.id, paths.id);
+      assert.equal(fsSync.readFileSync(path.join(dir, '.claude/kit/store-id'), 'utf-8'), `${p.id}\n`);
+      assert.equal(fsSync.statSync(path.join(dir, '.claude/kit/store-id')).mode & 0o777, 0o600);
+      assert.equal(p.dir, path.join(process.env.DANIZEE_KIT_HOME, p.id));
       assert.equal(p.db, path.join(p.dir, 'suite.db'));
       assert.equal(p.config, path.join(p.dir, 'store.local.json'));
       assert.equal(p.journal, path.join(p.dir, 'suite.db-files-journal'));
-      assert.equal(storePaths(dir, {}).dir, path.join(os.homedir(), '.claude', 'kit-db', id), 'default: ~/.claude/kit-db/<id>');
+      assert.deepEqual(JSON.parse(fsSync.readFileSync(p.project, 'utf-8')).path, fsSync.realpathSync.native(dir));
+      assert.equal(JSON.parse(fsSync.readFileSync(p.project, 'utf-8')).id, p.id);
+      // the default base (no DANIZEE_KIT_HOME): only computed, never created here (the marker's store is not there)
+      const home = path.join(os.homedir(), '.claude', 'kit-db', p.id);
+      if (!exists(home)) assert.throws(() => storePaths(dir, {}), new RegExp(`database is missing \\(\\.claude/kit/store-id names store ${p.id}; ${home.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} does not exist\\)`));
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
 
-  it('the kit installer adds only its own rules (the store needs none), once', async () => {
+  it('the kit installer adds only its own rules (the store needs only its marker\'s), once', async () => {
     const dir = await tmp();
     try {
       await fs.writeFile(path.join(dir, '.gitignore'), 'node_modules\n');
       await kitPlugin.install(path.join(dir, '.claude'), { targetDir: dir });
       await kitPlugin.install(path.join(dir, '.claude'), { targetDir: dir });
       const lines = (await fs.readFile(path.join(dir, '.gitignore'), 'utf-8')).split('\n');
-      for (const r of ['.claude/kit/secrets', '.claude/kit/cache/', '.claude/kit/scrub-patterns.local']) assert.equal(lines.filter((l) => l === r).length, 1, r);
+      for (const r of ['.claude/kit/secrets', '.claude/kit/cache/', '.claude/kit/scrub-patterns.local', '.claude/kit/store-id']) assert.equal(lines.filter((l) => l === r).length, 1, r);
       assert.ok(!lines.some((l) => /suite\.db|store\.local/.test(l)));
       assert.ok(exists(path.join(dir, '.claude/helpers/kit/store.js')));
       assert.ok(exists(path.join(dir, '.claude/helpers/kit/db.js')));
@@ -384,7 +399,7 @@ describe('kit store: npx danizee-claude-suite db and check', () => {
       await setChoice(dir, '{"store":"sqlite"}');
       const bad = await bin(['check', '--path', dir], dir, { KIT_SQLITE_ENGINE: 'none' });
       assert.match(bad.out, /kit store: sqlite, but no engine loads/);
-      assert.match(bad.out, /npm install better-sqlite3/);
+      assert.match(bad.out, /optional dependency better-sqlite3/);
       assert.equal(bad.code, 4);
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });

@@ -241,8 +241,8 @@ program
 // Listed for --help only: the call itself is routed to the kit verb below, before commander parses.
 program
   .command('db <sub>')
-  .description('Kit state store: db init | export [--overwrite] | off [--overwrite] | sync --from-files [--scope <file>] | status | forget --scope <scope> | prune [--keep <n>] | import-reports [--branch <b>] [--limit <n>] '
-    + '(optional SQLite store, kept outside the project in ~/.claude/kit-db/<id>/ or $DANIZEE_KIT_HOME/<id>/; JSON files stay the default; after a git pull changed a JSON file, sync --from-files merges it by row id, export --overwrite replaces the file)');
+  .description('Kit state store: db init [--new] | export [--overwrite] | off [--overwrite] | sync --from-files [--scope <file>] | status | forget --scope <scope> | prune [--keep <n>] | import-reports [--branch <b>] [--limit <n>] '
+    + '(optional SQLite store, kept outside the project in ~/.claude/kit-db/<id>/ or $DANIZEE_KIT_HOME/<id>/, <id> in the git-ignored .claude/kit/store-id; JSON files stay the default; after a git pull changed a JSON file, sync --from-files merges it by row id, export --overwrite replaces the file)');
 
 // `danizee-claude-suite db <sub> [args]` is the kit's `db` verb (same flags, JSON output and exit codes as
 // `node .claude/helpers/kit/cli.js db <sub>`), run in the current folder.

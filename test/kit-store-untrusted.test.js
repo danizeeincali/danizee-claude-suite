@@ -19,7 +19,7 @@ import { run as reflect } from '../src/lib/kit/reflect.js';
 import { run as triage } from '../src/lib/kit/triage.js';
 import { run as db } from '../src/lib/kit/db.js';
 import { run as noise } from '../src/lib/kit/noise-ledger.js';
-import { storeCheck, nodeSqliteSupport, registeredScopes, storePaths, projectEngineCheck, STRAY_PROJECT_FILES } from '../src/lib/kit/store.js';
+import { storeCheck, nodeSqliteSupport, registeredScopes, storePaths, createStore, STRAY_PROJECT_FILES } from '../src/lib/kit/store.js';
 
 // the machine-local store lives in a per-user folder: here a temporary one (one sub-folder per project)
 process.env.DANIZEE_KIT_HOME = fsSync.mkdtempSync(path.join(os.tmpdir(), 'kit-home-'));
@@ -176,13 +176,20 @@ describe('nothing in a cloned repository supplies a database, journal, store cho
       const st2 = JSON.parse((await cli(['db', 'status'], clone, ENV)).out);
       assert.deepEqual(st2.documents, [{ store: 'lessons', scope: LESSONS }]);
       assert.deepEqual(registeredScopes(clone), {});
-      // nothing in the clone changed (the kit wrote only its own folder), the trigger never ran
-      assert.deepEqual(snapshot(clone), before);
+      // nothing in the clone changed but the git-ignored marker naming this machine's store (and its .gitignore rule);
+      // the kit wrote only its own folder, the trigger never ran
+      const mid = snapshot(clone);
+      assert.match(await fs.readFile(path.join(clone, '.claude/kit/store-id'), 'utf-8'), /^[0-9a-f]{32}\n$/);
+      assert.ok((await fs.readFile(path.join(clone, '.gitignore'), 'utf-8')).split('\n').includes('.claude/kit/store-id'));
+      assert.equal(git(clone, 'status', '--porcelain', '--', '.claude/kit/store-id'), '', 'the marker is git-ignored');
+      delete mid['.claude/kit/store-id']; delete mid['.gitignore'];
+      assert.deepEqual(mid, before);
       assert.deepEqual(snapshot(path.dirname(home)), homeBefore, 'the user settings are untouched');
       assert.equal(await fs.readFile(target, 'utf-8'), '{"theme":"dark"}\n');
       // db off writes lessons.json only
       assert.equal((await cli(['db', 'off'], clone, ENV)).code, 0);
       const after = snapshot(clone);
+      delete after['.claude/kit/store-id']; delete after['.gitignore'];
       assert.notEqual(after[LESSONS], before[LESSONS]);
       assert.deepEqual({ ...after, [LESSONS]: null }, { ...before, [LESSONS]: null });
       assert.equal(await fs.readFile(path.join(clone, 'package.json'), 'utf-8'), '{"name":"victim"}\n');
@@ -226,116 +233,108 @@ describe('nothing in a cloned repository supplies a database, journal, store cho
   });
 });
 
-describe('the project\'s better-sqlite3 is loaded only when npm-installed: inside the project, in a git repository, untracked (r10a-1, r10a-2, r9a-2)', () => {
-  /** A project on sqlite (store choice set on this machine) whose node_modules holds the stand-in. */
+describe('better-sqlite3 is loaded only from the kit package\'s own node_modules: never one from the project (r11a-1, r11a-3, r10a-1, r10a-2, r9a-2)', () => {
+  /** A project on sqlite (marker and store choice set on this machine) whose node_modules holds the stand-in. */
   async function onSqlite(dir) {
     await fs.writeFile(path.join(dir, 'package.json'), '{"name":"cloned"}');
-    const p = storePaths(dir);
-    await fs.mkdir(p.dir, { recursive: true, mode: 0o700 });
-    await fs.writeFile(p.config, '{"store":"sqlite"}');
+    createStore(dir);
+    await fs.writeFile(storePaths(dir).config, '{"store":"sqlite"}');
   }
-  /** check, db status, a verb and db init: none runs the module (no PWNED), each uses node:sqlite or nothing. */
-  async function assertNotLoaded(dir, why) {
-    assert.match(projectEngineCheck(dir).why || '', why);
-    const c = await storeCheck({ cwd: dir, env: { ...process.env, ...UNPINNED } });
+  /** check, db status, a verb and db init: none runs the module (no PWNED), each uses node:sqlite. */
+  async function assertNotLoaded(dir, cwd = dir) {
+    const c = await storeCheck({ cwd, env: { ...process.env, ...UNPINNED } });
     assert.notEqual(c.engine, 'better-sqlite3');
-    for (const args of [['db', 'status'], ['reflect', 'lessons', 'list'], ['db', 'init']]) {
-      await cli(args, dir, UNPINNED);
+    for (const args of [['db', 'init'], ['db', 'status'], ['reflect', 'lessons', 'list']]) {
+      const r = await cli(args, cwd, UNPINNED);
+      assert.equal(r.code, 0, `${args.join(' ')}: ${r.err}`);
       assert.ok(!exists(path.join(dir, 'PWNED')), `${args.join(' ')} ran the project's better-sqlite3`);
     }
-    const init = await cli(['db', 'init'], dir, UNPINNED);
+    const init = await cli(['db', 'init'], cwd, UNPINNED);
     assert.equal(init.code, 0, init.err);
-    assert.equal(JSON.parse(init.out).engine, 'node:sqlite');
+    assert.equal(JSON.parse(init.out).engine, BETTER_IN_KIT ? 'better-sqlite3' : 'node:sqlite');
+    assert.ok(!exists(path.join(dir, 'PWNED')));
   }
 
-  it('committed through a symbolic link: node_modules -> vendor with vendor/better-sqlite3 committed is not loaded', { skip: skipGit }, async () => {
+  it('committed: node_modules/better-sqlite3 in the repository is not loaded', { skip: skipGit }, async () => {
     const dir = await tmp();
     try {
       await onSqlite(dir);
-      await fakeBetterSqlite(path.join(dir, 'vendor', 'better-sqlite3'), dir);
-      await fs.symlink('vendor', path.join(dir, 'node_modules'));
+      await fakeBetterSqlite(path.join(dir, 'node_modules', 'better-sqlite3'), dir);
       git(dir, 'init', '-q');
-      git(dir, 'add', 'package.json', 'vendor', 'node_modules');
+      git(dir, 'add', 'package.json', 'node_modules');
       git(dir, 'commit', '-q', '-m', 'vendored');
-      assert.equal(git(dir, 'ls-files', '--', 'node_modules/better-sqlite3'), '', 'a plain pathspec does not see it (the r10a-1 bypass)');
-      await assertNotLoaded(dir, /committed to git/);
+      await assertNotLoaded(dir);
     } finally { await rm(dir); }
   });
 
-  it('committed under another case (Node_Modules/Better-Sqlite3 in the index, as on a case-insensitive disk) is not loaded', { skip: skipGit }, async () => {
-    const dir = await tmp();
-    try {
-      await onSqlite(dir);
-      await fakeBetterSqlite(path.join(dir, 'node_modules', 'better-sqlite3'), dir);
-      git(dir, 'init', '-q');
-      for (const f of ['package.json', 'index.js']) {
-        const blob = git(dir, 'hash-object', '-w', path.join('node_modules/better-sqlite3', f)).trim();
-        git(dir, 'update-index', '--add', '--cacheinfo', `100644,${blob},Node_Modules/Better-Sqlite3/${f}`);
-      }
-      git(dir, 'commit', '-q', '-m', 'vendored');
-      assert.equal(git(dir, 'ls-files', '--', 'node_modules/better-sqlite3'), '', 'a plain pathspec does not see it (the r10a-2 bypass)');
-      await assertNotLoaded(dir, /committed to git/);
-    } finally { await rm(dir); }
-  });
-
-  it('in a project that is not a git repository (a tarball, degit) it is not loaded', { skip }, async () => {
-    const dir = await tmp();
-    try {
-      await onSqlite(dir);
-      await fakeBetterSqlite(path.join(dir, 'node_modules', 'better-sqlite3'), dir);
-      await assertNotLoaded(dir, /cannot tell whether git tracks it/);
-    } finally { await rm(dir); }
-  });
-
-  it('a git that fails (dubious ownership) means not loaded, and the verbs still work on node:sqlite', { skip: skipGit }, async () => {
-    const dir = await tmp();
-    const bin = await tmp();
-    try {
-      await onSqlite(dir);
-      await fakeBetterSqlite(path.join(dir, 'node_modules', 'better-sqlite3'), dir);
-      git(dir, 'init', '-q');
-      await fs.writeFile(path.join(bin, 'git'), "#!/bin/sh\necho 'fatal: detected dubious ownership in repository' >&2\nexit 128\n", { mode: 0o755 });
-      const env = { ...UNPINNED, PATH: `${bin}${path.delimiter}${process.env.PATH}` };
-      assert.match(projectEngineCheck(dir, { ...process.env, ...env }).why, /git rev-parse exited 128: fatal: detected dubious ownership/);
-      const init = await cli(['db', 'init'], dir, env);
-      assert.equal(init.code, 0, init.err);
-      assert.equal(JSON.parse(init.out).engine, 'node:sqlite');
-      assert.equal((await cli(['reflect', 'lessons', 'list'], dir, env)).code, 0);
-      assert.ok(!exists(path.join(dir, 'PWNED')));
-    } finally { await rm(dir); await rm(bin); }
-  });
-
-  it('a node_modules above the project (outside its folder) is not loaded', { skip: skipGit }, async () => {
-    const root = await tmp();
-    try {
-      const dir = path.join(root, 'p');
-      await fs.mkdir(dir);
-      await onSqlite(dir);
-      await fakeBetterSqlite(path.join(root, 'node_modules', 'better-sqlite3'), dir);
-      git(dir, 'init', '-q');
-      await assertNotLoaded(dir, /outside the project folder/);
-    } finally { await rm(root); }
-  });
-
-  it('npm-installed (git does not track it) in a git repository: loaded, the documented `npm install better-sqlite3` fix', { skip: BETTER_IN_KIT ? 'better-sqlite3 is installed in the kit, which is tried first' : skipGit }, async () => {
+  it('npm-installed (untracked, git-ignored) is not loaded either: the project folder never supplies code', { skip: skipGit }, async () => {
     const dir = await tmp();
     try {
       await onSqlite(dir);
       await fakeBetterSqlite(path.join(dir, 'node_modules', 'better-sqlite3'), dir);
       git(dir, 'init', '-q');
       await fs.writeFile(path.join(dir, '.gitignore'), 'node_modules\n');
-      git(dir, 'add', '-A');
-      git(dir, 'commit', '-q', '-m', 'init');
-      assert.ok(projectEngineCheck(dir).base);
-      // a fresh process (this one caches the engine it loaded per project)
-      const url = JSON.stringify(new URL(`file://${path.join(HERE, '../src/lib/kit/store.js')}`).href);
-      const d = spawnSync(process.execPath, ['--input-type=module', '-e', `import { storeCheck } from ${url}; process.stdout.write(JSON.stringify(await storeCheck({ cwd: process.cwd() })));`], { cwd: dir, env: { ...process.env, ...UNPINNED }, encoding: 'utf-8' });
-      assert.equal(JSON.parse(d.stdout).engine, 'better-sqlite3', 'an npm-installed (untracked) better-sqlite3 is the user\'s choice');
-      assert.ok(exists(path.join(dir, 'PWNED')));
+      await assertNotLoaded(dir);
     } finally { await rm(dir); }
   });
 
-  it('a project on the JSON files never loads it, even npm-installed', { skip: skipGit }, async () => {
+  it('through a symbolic link: node_modules -> vendor with vendor/better-sqlite3 is not loaded', { skip }, async () => {
+    const dir = await tmp();
+    try {
+      await onSqlite(dir);
+      await fakeBetterSqlite(path.join(dir, 'vendor', 'better-sqlite3'), dir);
+      await fs.symlink('vendor', path.join(dir, 'node_modules'));
+      await assertNotLoaded(dir);
+    } finally { await rm(dir); }
+  });
+
+  it('a submodule-style folder: node_modules -> sub/node_modules where sub is its own repository (the r11a-1 bypass) is not loaded', { skip: skipGit }, async () => {
+    const root = await tmp();
+    try {
+      const b = path.join(root, 'B');
+      const a = path.join(root, 'A');
+      await fs.mkdir(b); await fs.mkdir(a);
+      await fakeBetterSqlite(path.join(b, 'node_modules', 'better-sqlite3'), path.join(root, 'C'));
+      git(b, 'init', '-q'); git(b, 'add', '-A'); git(b, 'commit', '-q', '-m', 'b');
+      await fs.writeFile(path.join(a, 'package.json'), '{"name":"cloned"}');
+      git(a, 'init', '-q');
+      git(a, '-c', 'protocol.file.allow=always', 'submodule', 'add', '-q', b, 'sub');
+      await fs.symlink(path.join('sub', 'node_modules'), path.join(a, 'node_modules'));
+      git(a, 'add', '-A'); git(a, 'commit', '-q', '-m', 'a');
+      git(root, '-c', 'protocol.file.allow=always', 'clone', '-q', '--recursive', a, 'C');
+      const c = path.join(root, 'C');
+      assert.ok(exists(path.join(c, 'node_modules', 'better-sqlite3', 'index.js')), 'the clone has the submodule\'s module');
+      await onSqlite(c);
+      await assertNotLoaded(c);
+    } finally { await rm(root); }
+  });
+
+  it('the kit package installed inside the project (node_modules/danizee-claude-suite) does not climb to the project\'s node_modules/better-sqlite3 (r11a-3)', { skip }, async () => {
+    const dir = await tmp();
+    try {
+      await onSqlite(dir);
+      await fakeBetterSqlite(path.join(dir, 'node_modules', 'better-sqlite3'), dir);
+      const pkg = path.join(dir, 'node_modules', 'danizee-claude-suite');
+      await fs.mkdir(path.join(pkg, 'src', 'lib'), { recursive: true });
+      await fs.cp(path.join(HERE, '..', 'src', 'lib', 'kit'), path.join(pkg, 'src', 'lib', 'kit'), { recursive: true });
+      await fs.writeFile(path.join(pkg, 'package.json'), JSON.stringify({ name: 'danizee-claude-suite', type: 'module' }));
+      const kitCli = path.join(pkg, 'src', 'lib', 'kit', 'cli.js');
+      for (const args of [['db', 'init'], ['db', 'status'], ['reflect', 'lessons', 'list']]) {
+        const r = spawnSync(process.execPath, [kitCli, ...args], { cwd: dir, env: { ...process.env, ...UNPINNED }, encoding: 'utf-8' });
+        assert.equal(r.status, 0, `${args.join(' ')}: ${r.stderr}`);
+        assert.ok(!exists(path.join(dir, 'PWNED')), `${args.join(' ')} ran the project's better-sqlite3 through the kit package`);
+        if (args[1] === 'init') assert.equal(JSON.parse(r.stdout).engine, 'node:sqlite');
+      }
+    } finally { await rm(dir); }
+  });
+
+  it('no git is run to decide (no tracked checks to bypass), and the sources keep no project loading', async () => {
+    const src = await fs.readFile(path.join(HERE, '../src/lib/kit/store.js'), 'utf-8');
+    assert.doesNotMatch(src, /child_process|spawnSync|projectEngineCheck|ls-files/);
+    assert.match(src, /inside\(own, file\)/, 'the resolved module must be inside the kit package\'s own node_modules');
+  });
+
+  it('a project on the JSON files never loads it', { skip: skipGit }, async () => {
     const dir = await tmp();
     try {
       await fs.writeFile(path.join(dir, 'package.json'), '{"name":"cloned"}');
@@ -376,7 +375,7 @@ describe('a database the kit did not make is refused before it is read or migrat
   it('a recursive view in place of store_docs fails fast (exit 1 naming it) on the JSON side and in db status', { skip }, async () => {
     const dir = await tmp();
     try {
-      await fs.mkdir(storePaths(dir).dir, { recursive: true, mode: 0o700 });
+      createStore(dir);
       const d = raw(DB(dir));
       d.exec("CREATE VIEW store_docs AS WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c) SELECT 'lessons' AS store, 'a.json' AS scope, NULL AS file_sha256 FROM c WHERE x < 0");
       closeFlat(d);
@@ -533,7 +532,7 @@ describe('a document\'s file is one the kit maps, inside the project; one that i
     } finally { await rm(dir); }
   });
 
-  it('a .claude that is a symbolic link to a folder outside the project: not imported, export exits 1, off refuses', { skip }, async () => {
+  it('a .claude that is a symbolic link to a folder outside the project: db init refuses, nothing created, the JSON files keep working (r11b-3)', { skip }, async () => {
     const root = await tmp();
     try {
       const dir = path.join(root, 'p');
@@ -541,17 +540,34 @@ describe('a document\'s file is one the kit maps, inside the project; one that i
       await fs.mkdir(dir);
       await fs.symlink('../shared/.claude', path.join(dir, '.claude'));
       assert.equal((await save(dir, 'Run the linter before every commit.', [], {})).code, 0);
+      const homeBefore = fsSync.readdirSync(process.env.DANIZEE_KIT_HOME).sort();
+      const sharedBefore = snapshot(path.join(root, 'shared'));
+      const projectBefore = snapshot(dir);
       const init = await call(db, ['init'], dir, ENV);
-      assert.equal(init.code, 0, init.err);
-      assert.deepEqual(init.out.imported, []);
-      assert.ok(init.out.not_imported.some((u) => u.scope === LESSONS && /outside the project folder/.test(u.reason)));
-      assert.equal((await save(dir, 'Pin every dependency to an exact version.')).code, 0);
-      assert.equal((await call(db, ['export'], dir, ENV)).out.exit, 1);
-      const off = await call(db, ['off'], dir, ENV);
-      assert.equal(off.code, 1);
-      assert.match(off.err, /stays on SQLite/);
-      assert.equal((await call(db, ['status'], dir, ENV)).out.store, 'sqlite');
-      assert.equal(JSON.parse(await fs.readFile(path.join(root, 'shared/.claude/kit/lessons.json'), 'utf-8')).lessons.length, 1, 'nothing written outside');
+      assert.equal(init.code, 1);
+      assert.match(init.err, /^db init: \.claude\/kit\/store-id is outside the project folder .*Nothing was created; the project stays on the JSON files$/);
+      assert.deepEqual(fsSync.readdirSync(process.env.DANIZEE_KIT_HOME).sort(), homeBefore, 'no store folder');
+      assert.deepEqual(snapshot(path.join(root, 'shared')), sharedBefore, 'no marker outside');
+      assert.deepEqual(snapshot(dir), projectBefore);
+      assert.equal((await call(db, ['status'], dir, ENV)).out.store, 'json');
+      assert.equal((await save(dir, 'Pin every dependency to an exact version.', [], {})).code, 0);
+      assert.equal(JSON.parse(await fs.readFile(path.join(root, 'shared/.claude/kit/lessons.json'), 'utf-8')).lessons.length, 2, 'the JSON files still work through the link, as on base');
+    } finally { await rm(root); }
+  });
+
+  it('a .claude/kit linked outside with the marker path fine is refused too: each default store file must map inside (r11b-3)', { skip }, async () => {
+    const root = await tmp();
+    try {
+      const dir = path.join(root, 'p');
+      await fs.mkdir(path.join(root, 'shared'), { recursive: true });
+      await fs.mkdir(path.join(dir, '.claude/kit'), { recursive: true });
+      await fs.symlink(path.join(root, 'shared', 'lessons.json'), path.join(dir, '.claude/kit/lessons.json'));
+      await fs.writeFile(path.join(root, 'shared', 'lessons.json'), '{"version":1,"lessons":[]}');
+      const init = await call(db, ['init'], dir, ENV);
+      assert.equal(init.code, 1);
+      assert.match(init.err, /^db init: \.claude\/kit\/lessons\.json is a symbolic link/);
+      assert.ok(!exists(path.join(dir, '.claude/kit/store-id')));
+      assert.equal(storePaths(dir).kind, 'none');
     } finally { await rm(root); }
   });
 
@@ -626,7 +642,7 @@ describe('triage list gives the store\'s own errors as they are (r9b-1)', () => 
       await fs.rm(DB(dir));
       const missing = await call(triage, ['list'], dir, ENV);
       assert.equal(missing.code, 1);
-      assert.match(missing.err, /suite\.db is missing/);
+      assert.match(missing.err, /^this project was on the SQLite store but its database is missing \(.*suite\.db does not exist\)/);
       assert.doesNotMatch(missing.err, /corrupt or unreadable/);
       // on the JSON files a broken state file keeps its label
       const j = await tmp();
@@ -660,8 +676,8 @@ describe('the Node version that has node:sqlite (r9b-2)', () => {
   });
 });
 
-describe('db init writes nothing in the project (r9b-3 superseded: no .gitignore rule is needed)', () => {
-  it('init, a save and status leave the project as it was; the store folder is 0700', { skip }, async () => {
+describe('db init writes only the git-ignored store marker in the project (r11b-1)', () => {
+  it('init, a save and status leave the project as it was but for the marker (0600) and its .gitignore rule; the store folder is 0700', { skip }, async () => {
     const dir = await tmp();
     try {
       await fs.writeFile(path.join(dir, '.gitignore'), 'node_modules');
@@ -671,13 +687,22 @@ describe('db init writes nothing in the project (r9b-3 superseded: no .gitignore
       assert.equal(r.out.gitignore_added, undefined);
       assert.equal((await save(dir, 'Run the linter before every commit.')).code, 0);
       assert.equal((await call(db, ['status'], dir, ENV)).code, 0);
-      assert.deepEqual(snapshot(dir), before);
+      const after = snapshot(dir);
+      assert.equal(await fs.readFile(path.join(dir, '.claude/kit/store-id'), 'utf-8'), `${r.out.store_id}\n`);
+      assert.equal(fsSync.statSync(path.join(dir, '.claude/kit/store-id')).mode & 0o777, 0o600);
+      assert.equal(await fs.readFile(path.join(dir, '.gitignore'), 'utf-8'), 'node_modules\n\n# Kit: the id of this machine\'s SQLite store (db init); machine-local, never committed\n.claude/kit/store-id\n');
+      for (const k of ['.claude/', '.claude/kit/', '.claude/kit/store-id', '.gitignore']) delete after[k];
+      delete before['.gitignore'];
+      assert.deepEqual(after, before);
+      // a second init adds the rule once
+      assert.equal((await call(db, ['init'], dir, ENV)).code, 0);
+      assert.equal((await fs.readFile(path.join(dir, '.gitignore'), 'utf-8')).split('\n').filter((l) => l === '.claude/kit/store-id').length, 1);
       for (const f of STRAY_PROJECT_FILES) assert.ok(!exists(path.join(dir, f)), f);
       assert.equal(fsSync.statSync(storePaths(dir).dir).mode & 0o777, 0o700);
       if (HAVE_GIT) {
         git(dir, 'init', '-q');
         git(dir, 'add', '-A');
-        assert.doesNotMatch(git(dir, 'ls-files'), /suite\.db|store\.local\.json/);
+        assert.doesNotMatch(git(dir, 'ls-files'), /suite\.db|store\.local\.json|store-id/);
       }
     } finally { await rm(dir); }
   });

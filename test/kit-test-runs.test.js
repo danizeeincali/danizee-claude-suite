@@ -204,7 +204,7 @@ describe('local runs: scripts/ci-step.js runStep records into the sqlite store',
         assert.equal(code, want);
         const notes = lines.filter((l) => /kit store/.test(l));
         assert.equal(notes.length, 1);
-        assert.match(notes[0], /^test run not recorded in the kit store: .*npm install better-sqlite3/);
+        assert.match(notes[0], /^test run not recorded in the kit store: .*optional dependency better-sqlite3/);
       }
     } finally { rm(dir); }
   });

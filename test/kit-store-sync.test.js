@@ -15,7 +15,7 @@ import { run as reflect } from '../src/lib/kit/reflect.js';
 import { run as noise } from '../src/lib/kit/noise-ledger.js';
 import { run as triage } from '../src/lib/kit/triage.js';
 import { run as db } from '../src/lib/kit/db.js';
-import { storeCheck, loadEngine, openDb, getDoc, writeConfig, SCHEMA_VERSION, storePaths, STRAY_PROJECT_FILES } from '../src/lib/kit/store.js';
+import { storeCheck, loadEngine, openDb, getDoc, writeConfig, SCHEMA_VERSION, storePaths, createStore, STRAY_PROJECT_FILES } from '../src/lib/kit/store.js';
 import { withStateLock } from '../src/lib/kit/state-lock.js';
 
 // the machine-local store lives in a per-user folder: here a temporary one (one sub-folder per project)
@@ -68,7 +68,7 @@ const VISIT = (scope) => JSON.stringify({ enabled: ['r'], violations: [{ scope, 
 /** A raw connection to the project's suite.db (migrated), closed by the caller. */
 async function rawDb(dir) {
   const e = await loadEngine({ cwd: dir, env: { ...process.env, ...ENV } });
-  await fs.mkdir(storePaths(dir).dir, { recursive: true, mode: 0o700 });
+  if (storePaths(dir).kind !== 'store') createStore(dir); // the marker and the per-user folder, as `db init` makes them
   return openDb({ open: e.open, dbFile: DBF(dir) });
 }
 
@@ -783,22 +783,30 @@ describe('the store choice is machine-local', () => {
       assert.equal((await call(db, ['init'], a, ENV)).code, 0);
       const p = storePaths(a);
       assert.equal(fsSync.statSync(p.dir).mode & 0o777, 0o700);
-      assert.deepEqual(Object.keys(await readJson(a, () => p.project)), ['project', 'created_at']);
-      assert.equal((await readJson(a, () => p.project)).project, fsSync.realpathSync(a));
+      assert.deepEqual(Object.keys(await readJson(a, () => p.project)), ['id', 'path', 'created_at']);
+      assert.equal((await readJson(a, () => p.project)).path, fsSync.realpathSync.native(a));
+      assert.equal((await readJson(a, () => p.project)).id, p.id);
       const st = await call(db, ['status'], a, ENV);
-      assert.equal(st.out.project, fsSync.realpathSync(a));
+      assert.equal(st.out.project, fsSync.realpathSync.native(a));
       assert.equal(st.out.store_dir, p.dir);
-      assert.notEqual(storePaths(b).dir, p.dir);
+      assert.equal(st.out.store_id, p.id);
+      assert.equal(storePaths(b).dir, null, 'another worktree has no marker: no store');
       assert.equal((await call(db, ['status'], b, ENV)).out.store, 'json');
       // a symbolic link to the same folder is the same project (one real path), not a second store
       await fs.symlink(a, path.join(root, 'link'));
       assert.equal(storePaths(path.join(root, 'link')).dir, p.dir);
       assert.equal((await call(db, ['status'], path.join(root, 'link'), ENV)).out.store, 'sqlite');
-      // a folder that records another project is refused, not shared
-      await fs.writeFile(p.project, JSON.stringify({ project: '/somewhere/else' }));
-      const r = await call(db, ['init'], a, ENV);
+      // a folder that records another store id is not this project's store: refused, never shared
+      await fs.writeFile(p.project, JSON.stringify({ id: 'f'.repeat(32), path: fsSync.realpathSync.native(a) }));
+      const r = await call(db, ['status'], a, ENV);
       assert.equal(r.code, 1);
-      assert.match(r.err, /records another project/);
+      assert.match(r.err, /this project was on the SQLite store but its database is missing \(.*project\.json does not record store /);
+      // db init starts a new store (another id); the old folder is left alone
+      const re = await call(db, ['init'], a, ENV);
+      assert.equal(re.code, 0, re.err);
+      assert.notEqual(re.out.store_id, p.id);
+      assert.equal(re.out.new_store, true);
+      assert.ok(exists(p.db), 'the other folder is not touched');
     } finally { await rm(root); }
   });
 
@@ -1190,7 +1198,6 @@ process.exit(0);
 });
 
 describe('a project on the JSON files never runs code from its own folder (review round 6)', () => {
-  const BETTER_IN_KIT = (() => { try { createRequire(path.join(HERE, '../src/lib/kit/store.js')).resolve('better-sqlite3'); return true; } catch { return false; } })();
   async function trap() {
     const dir = await tmp();
     const mod = path.join(dir, 'node_modules', 'better-sqlite3');
@@ -1220,16 +1227,22 @@ describe('a project on the JSON files never runs code from its own folder (revie
     } finally { await rm(dir); }
   });
 
-  it('a project configured for sqlite still resolves better-sqlite3 from its folder (the documented `npm install better-sqlite3` fix)', { skip: BETTER_IN_KIT ? 'better-sqlite3 is installed in the kit, which is tried first' : HAVE_GIT ? false : 'needs git' }, async () => {
+  it('a project configured for sqlite never loads better-sqlite3 from its folder either, even npm-installed (r11a-1: only the kit package\'s own copy)', { skip: HAVE_GIT ? false : 'needs git' }, async () => {
     const dir = await trap();
     try {
       // npm-installed (git does not track it) in a git repository
       spawnSync('git', ['init', '-q'], { cwd: dir });
-      await fs.mkdir(storePaths(dir).dir, { recursive: true, mode: 0o700 });
+      await fs.writeFile(path.join(dir, '.gitignore'), 'node_modules\n');
+      createStore(dir);
       await fs.writeFile(CONFIG(dir), '{"store":"sqlite"}');
       const c = await storeCheck({ cwd: dir, env: { ...process.env, ...UNPINNED } });
-      assert.equal(c.engine, 'better-sqlite3');
-      assert.ok(exists(path.join(dir, 'PWNED')));
+      assert.notEqual(c.engine, 'better-sqlite3');
+      assert.ok(!exists(path.join(dir, 'PWNED')));
+      for (const args of [['db', 'init'], ['db', 'status'], ['reflect', 'lessons', 'list']]) {
+        const r = await cli(args, dir, UNPINNED);
+        assert.equal(r.code, 0, `${args.join(' ')}: ${r.err}`);
+        assert.ok(!exists(path.join(dir, 'PWNED')), `${args.join(' ')} ran the project's better-sqlite3`);
+      }
     } finally { await rm(dir); }
   });
 });
