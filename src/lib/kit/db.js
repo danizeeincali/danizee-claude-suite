@@ -8,7 +8,7 @@
  *   db off [--delete]       disable it; --delete also removes the index file (the JSON files are never touched; the
  *                           test runs, kept only in the index, go with it)
  *   db status               on or off, engine, index folder, schema version, row counts, indexed files, the files skipped
- *                           (a link, not a regular file, too large, too many records, the project's row cap reached,
+ *                           (a link, not a regular file, too large, too many records, the project's row or byte cap reached,
  *                           unreadable, not indexable) with their reasons, the files pending (new or changed, beyond this
  *                           open's budget: see ./store.js OPEN_BUDGET), test runs per branch; a DANIZEE_KIT_HOME that
  *                           cannot be used is exit 1 here (the verbs stay silent)
@@ -19,9 +19,12 @@
  *   db import-reports [--branch <b>] [--limit <n>]
  *                           import the junit.xml of the newest CI `test-results-*` artifacts of a branch (default: the
  *                           current git branch; newest 10 push runs of this repository) into test_runs/test_cases, each
- *                           artifact once, through the user's own `gh` login; downloads are capped (5 artifacts per run,
- *                           50 MB each, 100 MB per call) and each zip is read here, only its junit.xml, bounded (see
- *                           ./test-runs.js); no runs on the branch: a hint names the default branch
+ *                           artifact once, through the user's own `gh` login, for the GitHub repository named by
+ *                           remote.origin.url (read as data through safe-git; gh runs with -R and outside the project);
+ *                           downloads are capped (5 artifacts per run, 50 MB each, 100 MB per call), each zip is read here,
+ *                           only its junit.xml, bounded, and each artifact is stored in its own transaction as it is read;
+ *                           at most IMPORT_MAX_CASES cases per call and PROJECT_MAX_CASES in the index (then it stops with
+ *                           a note naming `db prune`) (see ./test-runs.js); no runs on the branch: a hint names the default branch
  *
  * WHERE. `$DANIZEE_KIT_HOME/<key>/` (an absolute folder outside the project) or `~/.claude/kit-db/<key>/`, <key> the
  * sha256 of the project folder's real path; mode 0700; `index.db` and the setting `enabled.json`. Nothing in the project
@@ -33,10 +36,10 @@
  */
 import fs from 'node:fs';
 import { KitExit } from './kit-exit.js';
-import { importReports, DEFAULT_LIMIT, MAX_LIMIT } from './test-runs.js';
+import { importReports, DEFAULT_LIMIT, MAX_LIMIT, IMPORT_MAX_CASES, PROJECT_MAX_CASES } from './test-runs.js';
 import {
-  KINDS, SCHEMA_VERSION, ENGINE_FIX, SKIPPED, MAX_MARATHON_FILES, MAX_FILE_BYTES, MAX_FILE_RECORDS, MAX_INDEX_ROWS, OPEN_BUDGET, indexPaths, indexState, writeSetting, loadEngine,
-  probeEngine, withIndex, schemaVersion, rowCounts, ensureKey, refreshIndex, indexRun, inTransaction, fullReason, ioCtx
+  KINDS, SCHEMA_VERSION, ENGINE_FIX, SKIPPED, MAX_FILE_BYTES, MAX_MARATHON_FILE_BYTES, MAX_FILE_RECORDS, MAX_INDEX_ROWS, MAX_INDEX_BYTES, MAX_COLUMN_BYTES, OPEN_BUDGET,
+  indexPaths, indexState, writeSetting, loadEngine, probeEngine, withIndex, schemaVersion, rowCounts, refreshIndex, indexRun, inTransaction, fullReason, bytesFullReason, ioCtx
 } from './store.js';
 
 export const verb = 'db';
@@ -46,9 +49,12 @@ export const usage = 'cli.js db init | db off [--delete] | db status | db rebuil
   + 'init enables it for this project and builds it from the JSON files, off disables it (--delete also removes the index file, and with it the test runs, which are kept only in the index), '
   + 'rebuild re-indexes every JSON file (an index file the kit did not make is replaced by a new one, and its test runs are dropped); '
   + `the verbs update it after each JSON write (best effort, never changing their output or exit code) and each open re-indexes the JSON files changed since, at most ${OPEN_BUDGET.bytes} bytes and ${OPEN_BUDGET.rows} rows of them per open (status lists the rest as pending; later opens pick them up); `
-  + `a file over ${MAX_FILE_BYTES} bytes or ${MAX_FILE_RECORDS} records, or past ${MAX_INDEX_ROWS} rows per project, is listed as skipped; `
+  + `a file over ${MAX_FILE_BYTES} bytes (a .claude/marathon file: ${MAX_MARATHON_FILE_BYTES}) or ${MAX_FILE_RECORDS} records, or past ${MAX_INDEX_ROWS} rows or ${MAX_INDEX_BYTES} bytes of JSON per project, is listed as skipped; `
+  + `indexed columns keep at most ${MAX_COLUMN_BYTES} bytes of a value (the whole record stays in the JSON file); `
   + 'test runs are kept only in the index: prune keeps the newest per branch, import-reports reads the junit.xml of the CI test-results artifacts of a branch '
-  + '(default: the current git branch; CI results exist only for push runs, which run on the default branch) through your own `gh` login, downloads capped (5 artifacts per run, 50 MB each, 100 MB per call); '
+  + '(default: the current git branch; CI results exist only for push runs, which run on the default branch) through your own `gh` login (the repository named by remote.origin.url), downloads capped (5 artifacts per run, 50 MB each, 100 MB per call), '
+  + `at most ${IMPORT_MAX_CASES} test cases per call (the rest: a later call) and ${PROJECT_MAX_CASES} per project (then it stops: db prune makes room); `
+  + 'a secrets file that cannot be read safely (a link, not a regular file, too large) stops it (exit 1); '
   + 'engine better-sqlite3 (the suite package\'s own) else node:sqlite (Node 22.13+); exit 0 done, 1 invalid input, no engine, index off, an index the kit did not make, or no gh login)';
 
 export const DEFAULT_KEEP = 200;
@@ -111,13 +117,17 @@ function filesReport(db, run) {
   const skipped = skippedFiles(db);
   const meta = db.get("SELECT value FROM meta WHERE key = 'project_files_indexed'");
   const notes = [];
-  const omitted = run.found ? run.found.omitted.size : 0;
-  if (omitted) notes.push(`${omitted} .claude/marathon/<run>/triage*.json files beyond the first ${MAX_MARATHON_FILES} are not indexed`);
+  const cut = run.found && run.found.truncated;
+  if (cut && cut.files) notes.push(`only the first ${run.marathon.files} .claude/marathon/<run>/triage*.json files (in run and file name order) are indexed: the run folders after them are not read`);
+  if (cut && cut.entries) notes.push(`.claude/marathon has more than ${run.marathon.entries} entries: only ${run.marathon.entries} of them are read (the others are not indexed)`);
+  if (cut && cut.runEntries) notes.push(`the .claude/marathon run folders hold more than ${run.marathon.runEntries} entries: the rest are not read (not indexed)`);
   if (run.pending.length) {
     notes.push(`${run.pending.length} new or changed files are not indexed yet: one open of the index reads at most ${run.budget.bytes} bytes and indexes at most ${run.budget.rows} rows of them; later opens (any kit verb write, db status) pick them up, db rebuild does them all`);
   }
   const full = skipped.filter((x) => x.reason === fullReason(run.maxRows)).length;
   if (full) notes.push(`${full} files are not indexed: the index holds at most ${run.maxRows} rows per project`);
+  const fullBytes = skipped.filter((x) => x.reason === bytesFullReason(run.maxBytes)).length;
+  if (fullBytes) notes.push(`${fullBytes} files are not indexed: the index holds at most ${run.maxBytes} bytes of JSON files per project`);
   return {
     schema_version: schemaVersion(db), rows: rowCounts(db), files: indexedFiles(db), skipped, ...(run.pending.length ? { pending: [...run.pending] } : {}),
     project_files_indexed_at: meta ? meta.value : null, ...(notes.length ? { notes } : {})
@@ -127,23 +137,25 @@ function filesReport(db, run) {
 /**
  * Clear every JSON file's rows and re-scan, from scratch (test runs kept): the project state files and every other
  * file the index held that still exists (a marathon file beyond the cap is not). Not limited by the per-open budget;
- * each file in its own transaction. A file that cannot be read or indexed is recorded as skipped, never an error.
+ * each file in its own transaction. The clear keeps the files rows (their recorded hash and stat reset, gone files
+ * dropped), so a rebuild that stops halfway still knows every file the next one has to re-scan, --store / --ledger /
+ * --state files outside the default set included. A file that cannot be read or indexed is recorded as skipped, never an error.
  * An index file the kit did not make (or not a database) is removed and a new one built: { replaced } names why.
  * `enabling` (db init): built before the setting is written, which happens only after this commits.
  */
 async function rebuildIndex(io, paths, { enabling = false } = {}) {
   const build = () => withIndex(io, (db) => {
-    const known = db.all("SELECT file, kind FROM files WHERE sha256 <> 'absent'").map((r) => ({ kind: r.kind, file: r.file }));
     inTransaction(db, () => {
-      db.exec('DELETE FROM lessons; DELETE FROM noise_ledger; DELETE FROM triage; DELETE FROM files;');
+      db.exec("DELETE FROM lessons; DELETE FROM noise_ledger; DELETE FROM triage; DELETE FROM pending; DELETE FROM files WHERE sha256 = 'absent';");
+      db.run("UPDATE files SET sha256 = 'rebuild', error = NULL, stat = NULL, bytes = NULL");
       db.run("DELETE FROM meta WHERE key = 'project_files_indexed'");
     });
     const run = refreshIndex(db, paths.root, indexRun({ budget: null, limits: io.indexLimits }));
-    const listed = new Set(run.found.map((f) => f.file));
-    for (const f of known) {
-      if (!Object.hasOwn(KINDS, f.kind) || listed.has(f.file) || run.found.omitted.has(f.file)) continue;
-      inTransaction(db, () => ensureKey(db, f.kind, f.file, paths.root, run));
-    }
+    // a file gone since the clear: not kept (the project's own default files stay listed as absent)
+    const project = new Set(run.found.map((f) => f.file));
+    inTransaction(db, () => {
+      for (const r of db.all("SELECT file FROM files WHERE sha256 = 'absent'")) if (!project.has(r.file)) db.run('DELETE FROM files WHERE file = ?', r.file);
+    });
     return filesReport(db, run);
   }, { paths, refresh: false, transaction: false, enabling });
   try { return await build(); } catch (e) {

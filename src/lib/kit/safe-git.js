@@ -807,6 +807,16 @@ export async function safeGitConfig(dir, { git = defaultGitRunner, env = process
   return withScratch(async (scratch) => (await prepare(dir, makeCtx(git, env, scratch, timeout, limits), { walksWorkTree: false })).overrides);
 }
 
+/**
+ * The repository's own config entries (its config file, plus config.worktree when extensions.worktreeConfig is set),
+ * read as data exactly as safeGit reads them: `git config --file <f> --no-includes`, run outside any repository, so no
+ * include, hook or other program the repository names is ever opened. [[key, value|null], ...]; `dir` is the
+ * repository top (or its git dir). KitExit as safeGit.
+ */
+export async function repoConfigEntries(dir, { git = defaultGitRunner, env = process.env, timeout, limits } = {}) {
+  return withScratch(async (scratch) => (await inspect(dir, makeCtx(git, env, scratch, timeout, limits))).entries);
+}
+
 // ---------------------------------------------------------------- the shadow git dir
 
 const mib = (n) => `${Math.round(n / MiB * 10) / 10} MiB`;

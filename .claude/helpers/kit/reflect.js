@@ -390,8 +390,7 @@ function posInt(flags, k, def) {
   return Number(flags[k]);
 }
 
-/** The project's secrets (or the --secrets-file ones) for scrub(); not a git repository falls back to the working folder. */
-export async function loadSecrets(flags, cwd) {
+async function loadSecrets(flags, cwd) {
   if (flags['secrets-file']) {
     let t;
     try { t = await fs.readFile(path.resolve(cwd, flags['secrets-file']), 'utf-8'); } catch (e) { throw invalid(`cannot read secrets file: ${e.code || 'read failed'}`); }

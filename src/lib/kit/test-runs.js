@@ -20,20 +20,26 @@
  *                             file, cut off at its cap, and read here (readJunitFromZip, node:zlib only): its central
  *                             directory is checked (no zip64, no entry over ZIP_ENTRY_MAX_BYTES or expanding more than
  *                             ZIP_MAX_RATIO times), and only the one `junit.xml` at its root is inflated, bounded to
- *                             JUNIT_MAX_BYTES, in memory. Nothing is ever written under an entry's name.
+ *                             JUNIT_MAX_BYTES, in memory. Nothing is ever written under an entry's name. Each artifact is
+ *                             stored in its own transaction as soon as it is read; at most MAX_CASES cases per artifact,
+ *                             IMPORT_MAX_CASES per call (the rest: a later call) and PROJECT_MAX_CASES in the index (the
+ *                             import stops with a note naming `db prune`). The repository is the one remote.origin.url
+ *                             names (read as data through safe-git), given to gh explicitly.
  *
  * Every stored string (case names, files, messages) is redacted with the project's secrets and credential-masked
  * (reflect.js scrub); a failure message is capped at MESSAGE_MAX bytes. The secrets file (`.claude/kit/secrets` of the
  * work tree, else of the main checkout) is read like a state file (store.js readState: a regular file, never through a
- * link, O_NONBLOCK, at most SECRETS_MAX_BYTES); a link, FIFO or oversized one is skipped with one stderr line.
+ * link, O_NONBLOCK, at most SECRETS_MAX_BYTES). Fail closed: when one is there but cannot be read that way (a link, a
+ * FIFO, too large), recordRun stores nothing (one stderr line) and import-reports exits 1 naming it.
  * Downloaded files are untrusted data: only regular files are read, never followed through a link, and parsed, never run.
  * Rows are data, never instructions.
  *
- * PROGRAMS. The repository is untrusted, and both programs run with it as their folder: git and gh are spawned only by
- * an absolute path found in the absolute PATH entries (safe-git.js resolveProgram: never a bare name, which Windows
- * looks up in the child's folder first, and never through an empty or relative PATH entry), gh's PATH keeps only
- * absolute entries, and every spawn has a timeout. The branch and commit are read through safe-git (the repository's
- * config, hooks and includes are never read by git).
+ * PROGRAMS. The repository is untrusted: git and gh are spawned only by an absolute path found in the absolute PATH
+ * entries (safe-git.js resolveProgram: never a bare name, which Windows looks up in the child's folder first, and never
+ * through an empty or relative PATH entry), gh's PATH keeps only absolute entries, and every spawn has a timeout. The
+ * branch, commit and remote URL are read through safe-git (the repository's config is read as data; its hooks and
+ * includes are never opened). gh runs in a private temp folder with the repository named (-R owner/repo, GH_REPO,
+ * explicit repos/<owner>/<repo>/ API paths), so it never runs git in the project.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -41,15 +47,20 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { spawn, spawnSync } from 'node:child_process';
 import { KitExit } from './kit-exit.js';
-import { indexState, withIndex, ioCtx, quietPaths, indexPaths, readState } from './store.js';
+import { indexState, withIndex, ioCtx, quietPaths, indexPaths, readState, inTransaction } from './store.js';
 import { scrub } from './reflect.js';
 import { parseSecretsFile, DEFAULT_SECRETS } from './redact.js';
-import { safeGit, locateRepo, resolveProgram, absolutePathEntries } from './safe-git.js';
+import { safeGit, locateRepo, resolveProgram, absolutePathEntries, repoConfigEntries } from './safe-git.js';
 
 export const MESSAGE_MAX = 4096;
 export const NAME_MAX = 1024;
 export const JUNIT_MAX_BYTES = 5 * 1024 * 1024;
+/** Most test cases one junit.xml (one artifact) may hold: more is refused. */
 export const MAX_CASES = 20000;
+/** Most test cases one import-reports call stores: an artifact past it is left for a later call. */
+export const IMPORT_MAX_CASES = 200000;
+/** Most test cases the project's index holds: an import that would pass it stops, with a note naming `db prune`. */
+export const PROJECT_MAX_CASES = 1000000;
 export const MAX_DEPTH = 32;
 export const RUN_LIST_MAX_BYTES = 1024 * 1024;
 export const DEFAULT_LIMIT = 10;
@@ -227,9 +238,10 @@ function decode(s) {
 
 /**
  * Strict, small JUnit XML parser: { suites, cases: [{ suite, name, file, status, duration_ms, message }] }.
- * Refuses a DOCTYPE or any entity declaration, unknown entities, unbalanced tags, depth > MAX_DEPTH, more than MAX_CASES cases.
+ * Refuses a DOCTYPE or any entity declaration, unknown entities, unbalanced tags, depth > MAX_DEPTH, more than `maxCases`
+ * (MAX_CASES) cases.
  */
-export function parseJunit(text) {
+export function parseJunit(text, { maxCases = MAX_CASES } = {}) {
   if (typeof text !== 'string') throw invalid('junit.xml: not text');
   if (Buffer.byteLength(text, 'utf-8') > JUNIT_MAX_BYTES) throw invalid(`junit.xml is larger than ${JUNIT_MAX_BYTES} bytes`);
   const src = text.replace(/^﻿/, '');
@@ -306,7 +318,7 @@ export function parseJunit(text) {
     if (name === 'testsuite') suites++;
     if (name === 'testcase') {
       if (cur) throw invalid('junit.xml: a testcase inside a testcase');
-      if (cases.length >= MAX_CASES) throw invalid(`junit.xml: more than ${MAX_CASES} test cases`);
+      if (cases.length >= maxCases) throw invalid(`junit.xml: more than ${maxCases} test cases`);
       const t = Number(attrs.time);
       cur = { suite: attrs.classname ?? null, name: attrs.name ?? '', file: attrs.file ?? null, status: 'pass', duration_ms: Number.isFinite(t) && t >= 0 ? Math.round(t * 1000) : null, message: null };
       if (selfClose) { cases.push(cur); cur = null; }
@@ -396,7 +408,9 @@ const runBranch = (head) => (!head.repo ? NO_BRANCH : head.unborn ? NO_COMMITS :
  * The project's secrets for scrub(): `.claude/kit/secrets` of the work tree, then of the main checkout (a linked
  * worktree has none of its own: the file is git-ignored), as redact.js secretsRoots finds them, but located on the file
  * system (safe-git locateRepo), never by running git; outside a repository, of `cwd`. Each file is read like a state
- * file (readState): a link, FIFO, device or a file over SECRETS_MAX_BYTES is skipped with one stderr line.
+ * file (readState). Fails closed: a secrets file that is there but cannot be read safely (a link, a folder on its way
+ * that is a link, a FIFO, a device, a file over SECRETS_MAX_BYTES, unreadable) is KitExit 1 naming it, since without its
+ * secrets nothing may be stored.
  */
 export function projectSecrets(cwd, loc) {
   const roots = [];
@@ -410,8 +424,8 @@ export function projectSecrets(cwd, loc) {
     const st = readState(file, { root, max: SECRETS_MAX_BYTES });
     if (st.absent) continue;
     if (st.skip) {
-      try { process.stderr.write(`kit: the secrets file ${file} is skipped (${st.skip}): its secrets are not redacted from the stored test results\n`); } catch { /* nowhere to say it */ }
-      continue;
+      throw invalid(`the secrets file ${file} cannot be read safely (${st.skip}): its secrets could not be redacted, so no test results are stored; `
+        + `make it a regular file (not a symbolic link) of at most ${SECRETS_MAX_BYTES} bytes`);
     }
     all.push(...parseSecretsFile(st.buf.toString('utf-8')));
   }
@@ -420,7 +434,8 @@ export function projectSecrets(cwd, loc) {
 
 /**
  * Record a local run when the index is on. run: { output, code, signal, started_at, finished_at, command }.
- * Resolves { recorded: false } when it is off; throws (KitExit) when it is on but cannot be written.
+ * Resolves { recorded: false } when it is off, and { recorded: false, reason } with one stderr line when a secrets file
+ * cannot be read safely (see projectSecrets: nothing is stored); throws (KitExit) when it is on but cannot be written.
  */
 export async function recordRun(io, run) {
   const { cwd, env } = ioCtx(io);
@@ -428,7 +443,12 @@ export async function recordRun(io, run) {
   const paths = quietPaths(cwd, env);
   if (!paths || !indexState(paths).enabled) return { recorded: false };
   const head = await gitHead(cwd, env);
-  const secrets = projectSecrets(cwd, head.loc);
+  let secrets;
+  try { secrets = projectSecrets(cwd, head.loc); } catch (e) {
+    if (!(e instanceof KitExit)) throw e;
+    try { process.stderr.write(`kit: test run not recorded in the kit index: ${e.message}\n`); } catch { /* nowhere to say it */ }
+    return { recorded: false, reason: e.message };
+  }
   const cases = cleanCases(parseTap(run.output || '', cwd), secrets);
   const status = run.code === 0 && !run.signal ? 'passed' : 'failed';
   const id = await withIndex({ cwd, env }, (db) => insertRun(db, {
@@ -442,22 +462,65 @@ export async function recordRun(io, run) {
 
 // ================================================================ import-reports
 
+/** A GitHub owner/repo pair, as gh takes it. */
+const SLUG = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+const HOST = /^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/;
+
+/**
+ * The GitHub repository a remote URL names: { host, owner, repo } or null. https://, ssh://, git:// and the scp form
+ * (git@host:owner/repo), `.git` and a trailing slash dropped; owner and repo must each be [A-Za-z0-9_.-]+ (not . or ..).
+ */
+export function parseRemoteUrl(url) {
+  const u = String(url ?? '').trim();
+  let m = /^(?:https?|ssh|git):\/\/(?:[^@/\s]+@)?([^/:\s]+)(?::\d{1,5})?\/([^\s]+)$/.exec(u);
+  if (!m && !u.includes('://')) m = /^(?:[^@/:\s]+@)?([^/:\s]+):(?!\/)([^\s]+)$/.exec(u);
+  if (!m || !HOST.test(m[1])) return null;
+  const parts = m[2].replace(/\/+$/, '').replace(/\.git$/, '').split('/');
+  if (parts.length !== 2 || parts.some((x) => x === '.' || x === '..') || !SLUG.test(parts.join('/'))) return null;
+  return { host: m[1].toLowerCase(), owner: parts[0], repo: parts[1] };
+}
+
+/**
+ * The GitHub repository of the project, from its remote.origin.url (else its only remote), read as data through
+ * safe-git (repoConfigEntries: no include, hook or program of the repository is opened): { host, owner, repo, arg, api }
+ * where `arg` is what gh's -R takes and `api` the REST path prefix. A host without a dot (an ssh alias) counts as
+ * github.com. KitExit 1 naming the problem.
+ */
+export async function githubRepo(loc, env = process.env) {
+  if (!loc || !loc.top) throw invalid('import-reports needs a git repository with a GitHub remote (remote.origin.url): not a git repository');
+  const entries = await repoConfigEntries(loc.top, { env, timeout: GIT_TIMEOUT_MS });
+  const urls = new Map();
+  for (const [k, v] of entries) { const m = /^remote\.(.+)\.url$/.exec(k); if (m && v) urls.set(m[1], v); }
+  const url = urls.get('origin') ?? (urls.size === 1 ? [...urls.values()][0] : null);
+  if (!url) throw invalid(`import-reports needs the GitHub repository: ${urls.size ? 'no remote named origin (and more than one remote)' : 'no git remote'} in ${loc.top}; add one (git remote add origin https://github.com/<owner>/<repo>.git)`);
+  const r = parseRemoteUrl(url);
+  if (!r) throw invalid(`import-reports cannot tell the GitHub repository from the remote URL ${JSON.stringify(capBytes(String(url), 200))}: it must name <owner>/<repo> ([A-Za-z0-9_.-])`);
+  const host = r.host.includes('.') ? r.host : 'github.com';
+  return { host, owner: r.owner, repo: r.repo, arg: host === 'github.com' ? `${r.owner}/${r.repo}` : `${host}/${r.owner}/${r.repo}`, api: `repos/${r.owner}/${r.repo}` };
+}
+
 /**
  * gh by its absolute path from the absolute PATH entries (never a bare name, never the project folder), with a PATH of
- * absolute entries only (gh runs git itself): { file, env }. Exit 1 naming the fix when there is none.
+ * absolute entries only, the repository given (GH_REPO, and GH_HOST for a host other than github.com) and no system
+ * git config: { file, env }. Exit 1 naming the fix when there is none. gh always runs in a private temp folder, never
+ * the project, with the repository named explicitly, so it never runs git in the project.
  */
-function ghProgram(env) {
+function ghProgram(env, repo) {
   const file = resolveProgram('gh', env);
   if (!file) throw invalid(`the GitHub CLI \`gh\` is not installed or not on PATH (only absolute PATH entries are searched): ${GH_FIX}`);
-  const childEnv = { ...env };
+  const childEnv = { ...env, GIT_CONFIG_NOSYSTEM: '1' };
   for (const k of Object.keys(childEnv)) {
     if (process.platform === 'win32' ? k.toUpperCase() === 'PATH' : k === 'PATH') childEnv[k] = absolutePathEntries(childEnv[k]).join(path.delimiter);
+  }
+  if (repo) {
+    childEnv.GH_REPO = repo.arg;
+    if (repo.host !== 'github.com') childEnv.GH_HOST = repo.host;
   }
   return { file, env: childEnv };
 }
 
-function gh(args, { cwd, env, maxBuffer = RUN_LIST_MAX_BYTES }) {
-  const prog = ghProgram(env);
+function gh(args, { cwd, env, repo, maxBuffer = RUN_LIST_MAX_BYTES }) {
+  const prog = ghProgram(env, repo);
   const r = spawnSync(prog.file, args, { cwd, env: prog.env, encoding: 'utf-8', shell: false, maxBuffer, timeout: GH_TIMEOUT_MS, killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'pipe'] });
   if (r.error && r.error.code === 'ENOENT') throw invalid(`the GitHub CLI \`gh\` is not installed or not on PATH: ${GH_FIX}`);
   if (r.error && r.error.code === 'ETIMEDOUT') throw invalid(`gh ${args[0]} ${args[1] || ''} took longer than ${GH_TIMEOUT_MS} ms and was stopped`);
@@ -564,7 +627,7 @@ export function readJunitFromZip(buf, { maxOut = JUNIT_MAX_BYTES } = {}) {
  * Download one artifact zip with `gh api .../actions/artifacts/<id>/zip` (no shell) into `file` (created new, 0600),
  * cut off once more than `max` bytes arrive: { status, bytes, over, stderr }.
  */
-function downloadArtifact(id, file, max, { cwd, env }) {
+function downloadArtifact(id, file, max, { cwd, env, repo }) {
   return new Promise((resolve) => {
     let fd;
     try { fd = fs.openSync(file, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | (fs.constants.O_NOFOLLOW || 0), 0o600); } catch (e) {
@@ -576,8 +639,8 @@ function downloadArtifact(id, file, max, { cwd, env }) {
     let err = '';
     let settled = false;
     let prog;
-    try { prog = ghProgram(env); } catch (e) { try { fs.closeSync(fd); } catch { /* closed */ } resolve({ status: null, bytes: 0, over: false, stderr: e.message }); return; }
-    const child = spawn(prog.file, ['api', `repos/{owner}/{repo}/actions/artifacts/${id}/zip`], { cwd, env: prog.env, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+    try { prog = ghProgram(env, repo); } catch (e) { try { fs.closeSync(fd); } catch { /* closed */ } resolve({ status: null, bytes: 0, over: false, stderr: e.message }); return; }
+    const child = spawn(prog.file, ['api', `${repo.api}/actions/artifacts/${id}/zip`], { cwd, env: prog.env, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
     const timer = setTimeout(() => { err = err || 'timed out'; child.kill('SIGKILL'); }, DOWNLOAD_TIMEOUT_MS);
     const finish = (r) => { if (settled) return; settled = true; clearTimeout(timer); try { fs.closeSync(fd); } catch { /* closed */ } resolve(r); };
     child.stdout.on('data', (d) => {
@@ -631,27 +694,35 @@ export function parseRunList(text, branch) {
   return runs;
 }
 
-/** The download caps, lowered (never raised) by `io.importLimits` (tests only; not reachable from the command line). */
+/** The download and case caps, lowered (never raised) by `io.importLimits` (tests only; not reachable from the command line). */
 function importLimits(io) {
   const o = (io && io.importLimits) || {};
   const low = (k, d) => (Number.isSafeInteger(o[k]) && o[k] > 0 ? Math.min(o[k], d) : d);
-  return { artifactBytes: low('artifactBytes', ARTIFACT_MAX_BYTES), totalBytes: low('totalBytes', IMPORT_MAX_BYTES), perRun: low('perRun', ARTIFACTS_PER_RUN) };
+  return {
+    artifactBytes: low('artifactBytes', ARTIFACT_MAX_BYTES), totalBytes: low('totalBytes', IMPORT_MAX_BYTES), perRun: low('perRun', ARTIFACTS_PER_RUN),
+    artifactCases: low('artifactCases', MAX_CASES), cases: low('cases', IMPORT_MAX_CASES), projectCases: low('projectCases', PROJECT_MAX_CASES)
+  };
 }
 
 const BRANCH_NAME = /^[^\s\0~^:?*[\\]{1,250}$/;
 
-/** The repository's default branch from `gh repo view` (one small call), else 'main'. */
-function defaultBranch({ cwd, env }) {
+/** The repository's default branch from `gh repo view <repo>` (one small call), else 'main'. */
+function defaultBranch({ cwd, env, repo }) {
   try {
-    const r = gh(['repo', 'view', '--json', 'defaultBranchRef'], { cwd, env, maxBuffer: 64 * 1024 });
+    const r = gh(['repo', 'view', repo.arg, '--json', 'defaultBranchRef'], { cwd, env, repo, maxBuffer: 64 * 1024 });
     const name = r.status === 0 ? JSON.parse(r.stdout)?.defaultBranchRef?.name : null;
     return typeof name === 'string' && !name.startsWith('-') && BRANCH_NAME.test(name) ? name : 'main';
   } catch { return 'main'; }
 }
 
 /**
- * `db import-reports`: { branch, runs_listed, imported: [...], skipped: [...], hint? }.
- * Exit 1: the index is off (names `db init`), gh missing or not logged in (names `gh auth login`), a bad flag.
+ * `db import-reports`: { branch, repo, runs_listed, imported: [...], skipped: [...], hint?, note? }.
+ * Each artifact is stored in its own transaction as soon as it is read (nothing is collected in memory), at most
+ * `cases` (IMPORT_MAX_CASES) test cases per call: an artifact past it is skipped (not downloaded once the budget is used
+ * up) and a later call imports it. When the index would hold more than PROJECT_MAX_CASES test cases the import stops
+ * with a note naming `db prune`.
+ * Exit 1: the index is off (names `db init`), no GitHub remote, a secrets file that cannot be read safely, gh missing or
+ * not logged in (names `gh auth login`), a bad flag.
  */
 export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) {
   const { cwd, env } = ioCtx(io);
@@ -667,85 +738,102 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) 
   } else loc = await locateOrNull(cwd);
   if (!branch || branch.startsWith('-') || !BRANCH_NAME.test(branch)) throw invalid('--branch must be a git branch name');
   const caps = importLimits(io);
-
-  const auth = gh(['auth', 'status'], { cwd, env });
-  // gh's own message is not echoed (it can name hosts and accounts); the exit status is enough to say what to do
-  if (auth.status !== 0) throw invalid(`gh is not logged in (gh auth status exited ${auth.status}): run \`gh auth login\``);
-
+  // fails closed before anything is fetched: without its secrets nothing may be stored
   const secrets = projectSecrets(cwd, loc);
-  // push runs only (this repository's own branch): see parseRunList
-  const list = gh(['run', 'list', '--branch', branch, '--event', 'push', '--workflow', 'test.yml', '--limit', String(limit), '--json', 'databaseId,headSha,createdAt,conclusion,event,headBranch'], { cwd, env });
-  if (list.status !== 0) throw invalid(`gh run list failed: ${firstLine(list.stderr, secrets) || `exit ${list.status}`}`);
-  const listed = parseRunList(list.stdout, branch);
-  const runs = listed.slice(0, limit);
+  ghProgram(env); // gh missing: say so first
+  const repo = await githubRepo(loc, env);
 
-  // every key ever imported, the pruned runs' too (imported_reports), so a prune is never undone by the next import
-  const known = await withIndex({ cwd, env }, (db) => new Set(db.all('SELECT run_key FROM test_runs WHERE run_key IS NOT NULL UNION SELECT run_key FROM imported_reports').map((r) => r.run_key)));
-  const skipped = listed.foreign.map((id) => ({ run_id: id, reason: 'not a push run of this repository branch' }));
-  const found = [];
-  let spent = 0;
+  // gh runs in a private temp folder with the repository named (-R, GH_REPO, explicit API paths): never git in the project
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-import-reports-'));
   try {
-    for (const r of runs) {
-      if (!r.conclusion) { skipped.push({ run_id: r.id, reason: 'not finished' }); continue; }
-      // ids and sizes first: nothing is downloaded before its size is known to be within the caps
-      const listing = gh(['api', `repos/{owner}/{repo}/actions/runs/${r.id}/artifacts?per_page=${ARTIFACTS_PER_PAGE}`], { cwd, env });
-      if (listing.status !== 0) { skipped.push({ run_id: r.id, reason: `cannot list its artifacts: ${firstLine(listing.stderr, secrets) || `exit ${listing.status}`}` }); continue; }
-      let arts;
-      try { arts = parseArtifactList(listing.stdout); } catch (e) { skipped.push({ run_id: r.id, reason: capBytes(e.message, 200) }); continue; }
-      const matching = arts.filter((a) => PATTERN_MATCH.test(a.name)).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-      if (!matching.length) { skipped.push({ run_id: r.id, reason: 'no test-results artifact' }); continue; }
-      let taken = 0;
-      for (const a of matching) {
-        if (!ARTIFACT_NAME.test(a.name)) { skipped.push({ run_id: r.id, reason: 'an artifact name that is not test-results-<name>: not downloaded' }); continue; }
-        const at = { run_id: r.id, artifact: a.name };
-        const key = `${r.id}/${a.name}`;
-        if (known.has(key)) { skipped.push({ ...at, reason: 'already imported' }); continue; }
-        if (a.expired) { skipped.push({ ...at, reason: 'expired' }); continue; }
-        if (a.id === null) { skipped.push({ ...at, reason: 'the artifact list gives no id for it: not downloaded' }); continue; }
-        if (a.size > caps.artifactBytes) { skipped.push({ ...at, reason: `artifact is ${a.size} bytes, more than ${caps.artifactBytes}: not downloaded` }); continue; }
-        if (taken >= caps.perRun) { skipped.push({ ...at, reason: `more than ${caps.perRun} test-results artifacts in this run: not downloaded` }); continue; }
-        const room = Math.min(caps.artifactBytes, caps.totalBytes - spent);
-        if (a.size > room || room <= 0) { skipped.push({ ...at, reason: `the download budget of one import (${caps.totalBytes} bytes) is used up: not downloaded` }); continue; }
-        taken++;
-        const file = path.join(dir, `${a.id}.zip`);
-        const dl = await downloadArtifact(a.id, file, room, { cwd, env });
-        spent += dl.bytes;
-        try {
-          if (dl.over) { skipped.push({ ...at, reason: `download passed ${room} bytes (the artifact list said ${a.size}): stopped, not read` }); continue; }
-          if (dl.status !== 0) { skipped.push({ ...at, reason: `download failed: ${firstLine(dl.stderr, secrets) || `exit ${dl.status}`}` }); continue; }
-          const z = readDownload(file, room);
-          if (z.error) { skipped.push({ ...at, reason: `download ${z.error}` }); continue; }
-          const j = readJunitFromZip(z.buf);
-          if (j.missing || j.error) { skipped.push({ ...at, reason: j.missing ? `no ${JUNIT_ENTRY}` : capBytes(j.error, 200) }); continue; }
-          let parsed;
-          try { parsed = parseJunit(j.text); } catch (err) { skipped.push({ ...at, reason: capBytes(err.message, 200) }); continue; }
-          found.push({ run: r, artifact: a.name, key, cases: cleanCases(parsed.cases, secrets) });
-        } finally { fs.rmSync(file, { force: true }); }
-      }
-    }
-  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    const ghIo = { cwd: dir, env, repo };
+    const auth = gh(['auth', 'status'], ghIo);
+    // gh's own message is not echoed (it can name hosts and accounts); the exit status is enough to say what to do
+    if (auth.status !== 0) throw invalid(`gh is not logged in (gh auth status exited ${auth.status}): run \`gh auth login\``);
 
-  const imported = await withIndex({ cwd, env }, (db) => {
-    const out = [];
-    for (const x of found) {
-      if (db.get('SELECT run_key FROM test_runs WHERE run_key = ? UNION SELECT run_key FROM imported_reports WHERE run_key = ?', x.key, x.key)) { skipped.push({ run_id: x.run.id, artifact: x.artifact, reason: 'already imported' }); continue; }
-      const failed = x.cases.filter((c) => c.status === 'fail').length;
-      const id = insertRun(db, {
-        branch, commit: x.run.sha, source: `ci:${x.artifact}`, started_at: x.run.created || new Date(0).toISOString(), finished_at: null,
-        status: failed ? 'failed' : 'passed', run_key: x.key, data: { workflow_run_id: x.run.id, artifact: x.artifact, conclusion: x.run.conclusion }
-      }, x.cases);
-      out.push({ run_id: x.run.id, artifact: x.artifact, test_run: id, cases: x.cases.length, failed });
+    // push runs only (this repository's own branch): see parseRunList
+    const list = gh(['run', 'list', '-R', repo.arg, '--branch', branch, '--event', 'push', '--workflow', 'test.yml', '--limit', String(limit), '--json', 'databaseId,headSha,createdAt,conclusion,event,headBranch'], ghIo);
+    if (list.status !== 0) throw invalid(`gh run list failed: ${firstLine(list.stderr, secrets) || `exit ${list.status}`}`);
+    const listed = parseRunList(list.stdout, branch);
+    const runs = listed.slice(0, limit);
+    const skipped = listed.foreign.map((id) => ({ run_id: id, reason: 'not a push run of this repository branch' }));
+    const imported = [];
+    let note;
+
+    await withIndex({ cwd, env }, async (db) => {
+      // every key ever imported, the pruned runs' too (imported_reports), so a prune is never undone by the next import
+      const known = new Set(db.all('SELECT run_key FROM test_runs WHERE run_key IS NOT NULL UNION SELECT run_key FROM imported_reports').map((r) => r.run_key));
+      let stored = Number(db.get('SELECT COUNT(*) AS n FROM test_cases').n);
+      let callCases = 0;
+      let spent = 0;
+      const projectFull = () => `the index holds ${stored} test cases; at most ${caps.projectCases} are kept per project, so the import stopped: `
+        + 'run `db prune --keep <n>` (fewer runs per branch) to make room, then import again';
+      for (const r of runs) {
+        if (note) break;
+        if (!r.conclusion) { skipped.push({ run_id: r.id, reason: 'not finished' }); continue; }
+        // ids and sizes first: nothing is downloaded before its size is known to be within the caps
+        const listing = gh(['api', `${repo.api}/actions/runs/${r.id}/artifacts?per_page=${ARTIFACTS_PER_PAGE}`], ghIo);
+        if (listing.status !== 0) { skipped.push({ run_id: r.id, reason: `cannot list its artifacts: ${firstLine(listing.stderr, secrets) || `exit ${listing.status}`}` }); continue; }
+        let arts;
+        try { arts = parseArtifactList(listing.stdout); } catch (e) { skipped.push({ run_id: r.id, reason: capBytes(e.message, 200) }); continue; }
+        const matching = arts.filter((a) => PATTERN_MATCH.test(a.name)).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+        if (!matching.length) { skipped.push({ run_id: r.id, reason: 'no test-results artifact' }); continue; }
+        let taken = 0;
+        for (const a of matching) {
+          if (!ARTIFACT_NAME.test(a.name)) { skipped.push({ run_id: r.id, reason: 'an artifact name that is not test-results-<name>: not downloaded' }); continue; }
+          const at = { run_id: r.id, artifact: a.name };
+          const key = `${r.id}/${a.name}`;
+          if (known.has(key)) { skipped.push({ ...at, reason: 'already imported' }); continue; }
+          if (a.expired) { skipped.push({ ...at, reason: 'expired' }); continue; }
+          if (a.id === null) { skipped.push({ ...at, reason: 'the artifact list gives no id for it: not downloaded' }); continue; }
+          if (a.size > caps.artifactBytes) { skipped.push({ ...at, reason: `artifact is ${a.size} bytes, more than ${caps.artifactBytes}: not downloaded` }); continue; }
+          if (taken >= caps.perRun) { skipped.push({ ...at, reason: `more than ${caps.perRun} test-results artifacts in this run: not downloaded` }); continue; }
+          const room = Math.min(caps.artifactBytes, caps.totalBytes - spent);
+          if (a.size > room || room <= 0) { skipped.push({ ...at, reason: `the download budget of one import (${caps.totalBytes} bytes) is used up: not downloaded` }); continue; }
+          if (callCases >= caps.cases) { skipped.push({ ...at, reason: `the case budget of one import (${caps.cases} test cases) is used up: not downloaded (a later import takes it)` }); continue; }
+          if (stored >= caps.projectCases) { note = projectFull(); skipped.push({ ...at, reason: 'not downloaded: the index holds its most test cases per project (see note)' }); break; }
+          taken++;
+          const file = path.join(dir, `${a.id}.zip`);
+          const dl = await downloadArtifact(a.id, file, room, ghIo);
+          spent += dl.bytes;
+          let cases;
+          try {
+            if (dl.over) { skipped.push({ ...at, reason: `download passed ${room} bytes (the artifact list said ${a.size}): stopped, not read` }); continue; }
+            if (dl.status !== 0) { skipped.push({ ...at, reason: `download failed: ${firstLine(dl.stderr, secrets) || `exit ${dl.status}`}` }); continue; }
+            const z = readDownload(file, room);
+            if (z.error) { skipped.push({ ...at, reason: `download ${z.error}` }); continue; }
+            const j = readJunitFromZip(z.buf);
+            if (j.missing || j.error) { skipped.push({ ...at, reason: j.missing ? `no ${JUNIT_ENTRY}` : capBytes(j.error, 200) }); continue; }
+            try { cases = cleanCases(parseJunit(j.text, { maxCases: caps.artifactCases }).cases, secrets); } catch (err) { skipped.push({ ...at, reason: capBytes(err.message, 200) }); continue; }
+          } finally { fs.rmSync(file, { force: true }); }
+          if (callCases + cases.length > caps.cases) { skipped.push({ ...at, reason: `${cases.length} test cases would take this import past its case budget (${caps.cases}): not stored (a later import takes it)` }); continue; }
+          if (stored + cases.length > caps.projectCases) { note = projectFull(); skipped.push({ ...at, reason: `${cases.length} test cases would take the index past its most per project (see note): not stored` }); break; }
+          // stored now, in its own transaction: nothing is kept in memory for later, and the index is locked only briefly
+          const failed = cases.filter((c) => c.status === 'fail').length;
+          const id = inTransaction(db, () => {
+            if (db.get('SELECT run_key FROM test_runs WHERE run_key = ? UNION SELECT run_key FROM imported_reports WHERE run_key = ?', key, key)) return null;
+            return insertRun(db, {
+              branch, commit: r.sha, source: `ci:${a.name}`, started_at: r.created || new Date(0).toISOString(), finished_at: null,
+              status: failed ? 'failed' : 'passed', run_key: key, data: { workflow_run_id: r.id, artifact: a.name, conclusion: r.conclusion }
+            }, cases);
+          });
+          known.add(key);
+          if (id === null) { skipped.push({ ...at, reason: 'already imported' }); continue; }
+          imported.push({ run_id: r.id, artifact: a.name, test_run: id, cases: cases.length, failed });
+          callCases += cases.length;
+          stored += cases.length;
+        }
+      }
+    }, { transaction: false });
+
+    let hint;
+    if (!runs.length) {
+      // CI keeps test results only for push runs, which the workflow runs on the default branch
+      const def = defaultBranch(ghIo);
+      hint = def !== branch
+        ? `no push runs of test.yml on ${branch}: CI test results come from push runs, which run on ${def}; try --branch ${def}`
+        : `no push runs of test.yml on ${branch} yet`;
     }
-    return out;
-  });
-  let hint;
-  if (!runs.length) {
-    // CI keeps test results only for push runs, which the workflow runs on the default branch
-    const def = defaultBranch({ cwd, env });
-    hint = def !== branch
-      ? `no push runs of test.yml on ${branch}: CI test results come from push runs, which run on ${def}; try --branch ${def}`
-      : `no push runs of test.yml on ${branch} yet`;
-  }
-  return { branch, runs_listed: runs.length, imported, skipped, ...(hint ? { hint } : {}) };
+    return { branch, repo: repo.arg, runs_listed: runs.length, imported, skipped, ...(hint ? { hint } : {}), ...(note ? { note } : {}) };
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }

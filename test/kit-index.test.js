@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { run as db } from '../src/lib/kit/db.js';
 import { run as reflect } from '../src/lib/kit/reflect.js';
-import { indexPaths, indexCheck, withIndex, nodeSqliteSupport, projectKey, MAX_FILE_BYTES, MAX_FILE_RECORDS, OPEN_BUDGET, fullReason } from '../src/lib/kit/store.js';
+import { indexPaths, indexCheck, withIndex, nodeSqliteSupport, projectKey, MAX_FILE_BYTES, MAX_FILE_RECORDS, OPEN_BUDGET, fullReason, MAX_MARATHON_FILE_BYTES } from '../src/lib/kit/store.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(HERE, '..', 'src', 'lib', 'kit', 'cli.js');
@@ -681,7 +681,7 @@ describe('the index reads only regular files, bounded, never through a link (rev
       }
       out = await status(dir);
       assert.equal(out.files.filter((f) => f.file.includes(`${path.sep}marathon${path.sep}`)).length, 200);
-      assert.deepEqual(out.notes, ['7 .claude/marathon/<run>/triage*.json files beyond the first 200 are not indexed']);
+      assert.deepEqual(out.notes, ['only the first 200 .claude/marathon/<run>/triage*.json files (in run and file name order) are indexed: the run folders after them are not read']);
     } finally { rm(dir); }
   });
 
@@ -726,9 +726,9 @@ describe('the cost of indexing is bounded (review wt-2a-1, wt-2b L1 / L2)', () =
       fs.mkdirSync(path.join(m, 'rbig'));
       fs.writeFileSync(path.join(m, 'rbig', 'triage.json'), '');
       fs.truncateSync(path.join(m, 'rbig', 'triage.json'), 64 * 1024 * 1024);
-      // over the record cap: not indexed
+      // over the record cap (small records, under the marathon byte cap): not indexed
       fs.mkdirSync(path.join(m, 'rmany'));
-      fs.writeFileSync(path.join(m, 'rmany', 'triage.json'), rec(MAX_FILE_RECORDS + 1));
+      fs.writeFileSync(path.join(m, 'rmany', 'triage.json'), JSON.stringify({ records: Object.fromEntries(Array.from({ length: MAX_FILE_RECORDS + 1 }, (_, i) => [`k${i}`, {}])) }));
 
       const t0 = Date.now();
       const r = await save(dir, 'Run the linter before every commit.');
@@ -746,7 +746,7 @@ describe('the cost of indexing is bounded (review wt-2a-1, wt-2b L1 / L2)', () =
       assert.ok(out.pending.length > 0);
       assert.ok(out.notes.some((n) => /new or changed files are not indexed yet/.test(n)), JSON.stringify(out.notes));
       assert.ok(out.rows.triage <= 2 * OPEN_BUDGET.rows);
-      assert.equal(out.skipped.find((x) => x.file === path.join(m, 'rbig', 'triage.json')).reason, `larger than ${MAX_FILE_BYTES} bytes`);
+      assert.equal(out.skipped.find((x) => x.file === path.join(m, 'rbig', 'triage.json')).reason, `larger than ${MAX_MARATHON_FILE_BYTES} bytes`);
       let n = 0;
       while (out.pending && n++ < 20) out = await status(dir);
       assert.equal(out.pending, undefined, 'later opens pick up the rest');
@@ -810,12 +810,231 @@ describe('the cost of indexing is bounded (review wt-2a-1, wt-2b L1 / L2)', () =
       assert.equal(marathonFiles(out).length, 200);
       assert.equal(out.rows.triage, 200);
       assert.ok(!out.files.some((f) => f.file === path.join(m, 's199', 'triage.json')), 'dropped: beyond the cap');
-      assert.deepEqual(out.notes, ['6 .claude/marathon/<run>/triage*.json files beyond the first 200 are not indexed']);
+      assert.deepEqual(out.notes, ['only the first 200 .claude/marathon/<run>/triage*.json files (in run and file name order) are indexed: the run folders after them are not read']);
       const rb = await call(db, ['rebuild'], dir);
       assert.equal(rb.code, 0, rb.err);
       assert.equal(marathonFiles(rb.out).length, 200);
       assert.equal(rb.out.rows.triage, 200);
-      assert.deepEqual(rb.out.notes, ['6 .claude/marathon/<run>/triage*.json files beyond the first 200 are not indexed']);
+      assert.deepEqual(rb.out.notes, ['only the first 200 .claude/marathon/<run>/triage*.json files (in run and file name order) are indexed: the run folders after them are not read']);
+    } finally { rm(dir); }
+  });
+});
+
+describe('bounded index size, bounded listing, no file pending forever (review wt-3a M2 / L1 / L2, wt-3b L1 / L2 / L4 / L5)', () => {
+  const dbIo = (dir, args, indexLimits) => db(args, { cwd: dir, env: ENV, ...(indexLimits ? { indexLimits } : {}) });
+  const peek = (dir, sql, ...ps) => withIndex({ cwd: dir, env: ENV }, (d) => d.all(sql, ...ps), { refresh: false });
+  const marathon = (dir) => path.join(fs.realpathSync(dir), '.claude', 'marathon');
+  const put = (file, text, mtimeSec) => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text);
+    if (mtimeSec !== undefined) fs.utimesSync(file, mtimeSec, mtimeSec);
+  };
+  /** A triage file of one record whose status is `n` bytes long (the reviewer's shape: one huge value). */
+  const huge = (n, ch = 'x') => JSON.stringify({ records: { k: { scope: 'a.js', rule: 'r', status: ch.repeat(n) } } });
+
+  it('the JSON a project indexes is capped in bytes, indexed columns are cut, marathon files have a smaller size cap (M2)', { skip, timeout: 120000 }, async () => {
+    const dir = tmp();
+    try {
+      assert.equal((await call(db, ['init'], dir)).code, 0);
+      const m = marathon(dir);
+      const old = Math.floor(Date.now() / 1000) - 3600;
+      for (let i = 0; i < 5; i++) put(path.join(m, `r${i}`, 'triage.json'), huge(300000), old);
+      const one = fs.statSync(path.join(m, 'r0', 'triage.json')).size;
+      // the byte cap (lowered here): files past it are skipped with that reason and a note; rebuild and status agree
+      const cap = Math.floor(one * 2.5);
+      for (const args of [['rebuild'], ['status']]) {
+        const out = await dbIo(dir, args, { maxBytes: cap });
+        const reason = `not indexed: the index holds at most ${cap} bytes of JSON files per project (db rebuild retries)`;
+        assert.deepEqual(out.skipped.filter((x) => x.reason === reason).map((x) => path.basename(path.dirname(x.file))), ['r2', 'r3', 'r4'], args[0]);
+        assert.equal(out.rows.triage, 2, args[0]);
+        assert.ok(out.notes.includes(`3 files are not indexed: the index holds at most ${cap} bytes of JSON files per project`), JSON.stringify(out.notes));
+      }
+      // the default cap: all five; each indexed column holds at most MAX_COLUMN_BYTES, the record stays whole in data
+      const out = await dbIo(dir, ['rebuild']);
+      assert.equal(out.rows.triage, 5);
+      const [col] = await peek(dir, 'SELECT MAX(LENGTH(CAST(status AS BLOB))) AS n, MIN(LENGTH(data)) AS d FROM triage');
+      assert.ok(col.n <= 1024, `status column: ${col.n} bytes`);
+      assert.ok(col.d > 300000, 'the whole record is in data');
+      const [row] = await peek(dir, 'SELECT status FROM triage LIMIT 1');
+      assert.match(row.status, new RegExp(`^x+…#${sha('x'.repeat(300000))}$`));
+      // two long keys with the same first kilobytes stay two rows
+      const a = 'k'.repeat(5000);
+      put(path.join(dir, TRIAGE), JSON.stringify({ records: { [`${a}1`]: { status: 'open' }, [`${a}2`]: { status: 'open' } } }), old);
+      assert.equal((await dbIo(dir, ['status'])).rows.triage, 7);
+      // a marathon file over 1 MiB is not read; the same file as the default triage file is
+      const big = huge(MAX_MARATHON_FILE_BYTES + 10);
+      put(path.join(m, 'r9', 'triage.json'), big, old);
+      put(path.join(dir, TRIAGE), big, old);
+      const st = await dbIo(dir, ['status']);
+      assert.equal(st.skipped.find((x) => x.file === path.join(m, 'r9', 'triage.json')).reason, `larger than ${MAX_MARATHON_FILE_BYTES} bytes`);
+      assert.equal(st.files.find((x) => x.file === path.join(fs.realpathSync(dir), TRIAGE)).rows, 1);
+      assert.ok(MAX_FILE_BYTES > MAX_MARATHON_FILE_BYTES);
+    } finally { rm(dir); }
+  });
+
+  it('a marathon folder with thousands of run folders is read once and bounded, with a note (L1)', { skip, timeout: 120000 }, async () => {
+    const dir = tmp();
+    try {
+      assert.equal((await call(db, ['init'], dir)).code, 0);
+      const m = marathon(dir);
+      for (let i = 0; i < 2100; i++) put(path.join(m, `r${String(i).padStart(4, '0')}`, 'triage.json'), '{}');
+      const t0 = Date.now();
+      let out = await dbIo(dir, ['status']);
+      assert.ok(out.notes.includes('.claude/marathon has more than 2000 entries: only 2000 of them are read (the others are not indexed)'), JSON.stringify(out.notes));
+      assert.ok(out.notes.includes('only the first 200 .claude/marathon/<run>/triage*.json files (in run and file name order) are indexed: the run folders after them are not read'));
+      assert.equal(out.files.filter((f) => f.file.startsWith(m + path.sep)).length, 200);
+      const t1 = Date.now();
+      out = await dbIo(dir, ['status']);
+      assert.ok(Date.now() - t1 < 5000, `a second status took ${Date.now() - t1} ms (the first ${t1 - t0})`);
+      assert.equal(out.files.filter((f) => f.file.startsWith(m + path.sep)).length, 200);
+
+      // the entries of the run folders are bounded in all too (lowered here); a file left out by it is dropped
+      const d2 = tmp();
+      try {
+        assert.equal((await call(db, ['init'], d2)).code, 0);
+        const m2 = marathon(d2);
+        for (const r of ['a', 'b', 'c']) for (let i = 0; i < 4; i++) put(path.join(m2, r, `triage-${i}.json`), JSON.stringify({ records: { [`${r}${i}`]: {} } }));
+        let s2 = await dbIo(d2, ['status']);
+        assert.equal(s2.rows.triage, 12);
+        s2 = await dbIo(d2, ['status'], { marathonRunEntries: 6 });
+        assert.ok(s2.notes.includes('the .claude/marathon run folders hold more than 6 entries: the rest are not read (not indexed)'), JSON.stringify(s2.notes));
+        assert.ok(s2.rows.triage >= 4 && s2.rows.triage <= 6, String(s2.rows.triage));
+        assert.ok(!s2.files.some((f) => f.file.startsWith(path.join(m2, 'c') + path.sep)), 'the run folders after the bound are dropped');
+        assert.equal((await dbIo(d2, ['status'])).rows.triage, 12, 'within the bounds again: all of them');
+      } finally { rm(d2); }
+    } finally { rm(dir); }
+  });
+
+  it('files with a future mtime are hashed once per open, cost the budget nothing when unchanged, and never keep others pending (L2 / wt-3b L1)', { skip, timeout: 120000 }, async () => {
+    const dir = tmp();
+    try {
+      assert.equal((await call(db, ['init'], dir)).code, 0);
+      const m = marathon(dir);
+      const future = Math.floor(Date.now() / 1000) + 86400;
+      const names = ['r0', 'r1', 'r2', 'r3', 'r4', 'r5'];
+      for (const [i, r] of names.entries()) put(path.join(m, r, 'triage.json'), huge(900000, String(i)), future);
+      const limits = { bytes: 2 * 1024 * 1024 };
+      let out = await dbIo(dir, ['status'], limits);
+      assert.ok(out.rows.triage >= 1 && out.rows.triage < names.length, String(out.rows.triage));
+      assert.ok(out.pending.length > 0);
+      let n = 0;
+      while (out.pending && n++ < 10) out = await dbIo(dir, ['status'], limits);
+      assert.equal(out.pending, undefined, `still pending after ${n} opens`);
+      assert.equal(out.rows.triage, names.length);
+      // nothing changed: every later open hashes them, re-indexes nothing and leaves nothing pending or noted
+      for (let i = 0; i < 3; i++) {
+        out = await dbIo(dir, ['status'], limits);
+        assert.equal(out.pending, undefined);
+        assert.equal(out.notes, undefined, JSON.stringify(out.notes));
+      }
+      const before = await peek(dir, 'SELECT file, indexed_at FROM triage JOIN files USING (file) ORDER BY file');
+      // a new file is not starved by them
+      put(path.join(m, 'r6', 'triage.json'), JSON.stringify({ records: { new1: { status: 'open' } } }));
+      out = await dbIo(dir, ['status'], limits);
+      assert.equal(out.rows.triage, names.length + 1);
+      assert.equal(out.pending, undefined);
+      assert.ok(before.length === names.length);
+      // a rewrite that keeps size, mtime and inode (the same future mtime set again) is still seen: the hash differs
+      const f = path.join(m, 'r3', 'triage.json');
+      const fd = fs.openSync(f, 'r+');
+      fs.writeSync(fd, huge(900000, 'Z'), 0);
+      fs.closeSync(fd);
+      fs.utimesSync(f, future, future);
+      await dbIo(dir, ['status'], limits);
+      const [r3] = await peek(dir, 'SELECT status FROM triage WHERE file = ?', f);
+      assert.ok(r3.status.startsWith('ZZZ'), r3.status.slice(0, 10));
+    } finally { rm(dir); }
+  });
+
+  it('pending files go first on the next open, oldest first, ahead of newer files that sort before them', { skip, timeout: 60000 }, async () => {
+    const dir = tmp();
+    try {
+      assert.equal((await call(db, ['init'], dir)).code, 0);
+      const m = marathon(dir);
+      const three = (p) => JSON.stringify({ records: { [`${p}1`]: {}, [`${p}2`]: {}, [`${p}3`]: {} } });
+      for (const r of ['r2', 'r3', 'r4', 'r5']) put(path.join(m, r, 'triage.json'), three(r));
+      const limits = { rows: 3 };
+      const indexedRuns = async () => (await peek(dir, 'SELECT DISTINCT file FROM triage ORDER BY file')).map((x) => path.basename(path.dirname(x.file)));
+      let out = await dbIo(dir, ['status'], limits);
+      assert.deepEqual(await indexedRuns(), ['r2']);
+      assert.deepEqual(out.pending.map((f) => path.basename(path.dirname(f))), ['r3', 'r4', 'r5']);
+      assert.deepEqual((await peek(dir, 'SELECT file FROM pending ORDER BY since, file')).map((x) => path.basename(path.dirname(x.file))), ['r3', 'r4', 'r5']);
+      // r0 is new and sorts first: the files already waiting go before it
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      put(path.join(m, 'r0', 'triage.json'), three('r0'));
+      out = await dbIo(dir, ['status'], limits);
+      assert.deepEqual(await indexedRuns(), ['r2', 'r3']);
+      assert.deepEqual((await peek(dir, 'SELECT file FROM pending ORDER BY since, file')).map((x) => path.basename(path.dirname(x.file))), ['r4', 'r5', 'r0']);
+      out = await dbIo(dir, ['status'], limits);
+      out = await dbIo(dir, ['status'], limits);
+      assert.deepEqual(await indexedRuns(), ['r2', 'r3', 'r4', 'r5']);
+      out = await dbIo(dir, ['status'], limits);
+      assert.deepEqual(await indexedRuns(), ['r0', 'r2', 'r3', 'r4', 'r5']);
+      assert.equal(out.pending, undefined);
+      assert.deepEqual(await peek(dir, 'SELECT file FROM pending'), []);
+    } finally { rm(dir); }
+  });
+
+  it('rows dropped when a file turns absent in an open are taken off its running total: a later file is not wrongly "full" (wt-3b L2)', { skip, timeout: 60000 }, async () => {
+    const dir = tmp();
+    try {
+      const real = fs.realpathSync(dir);
+      put(path.join(dir, LESSONS), JSON.stringify({ lessons: [{ id: 'L1' }, { id: 'L2' }, { id: 'L3' }] }));
+      put(path.join(dir, LEDGER), JSON.stringify({ entries: [{ id: 'a' }, { id: 'b' }] }));
+      const limits = { maxRows: 5 };
+      const init = await dbIo(dir, ['init'], limits);
+      assert.equal(init.rows.lessons + init.rows.noise_ledger, 5);
+      put(path.join(dir, LESSONS), JSON.stringify({ lessons: [{ id: 'L1' }, { id: 'L2' }, { id: 'L9' }] }));
+      fs.rmSync(path.join(dir, LEDGER));
+      put(path.join(dir, '.claude', 'marathon', 'r1', 'triage.json'), JSON.stringify({ records: { k1: {}, k2: {} } }));
+      const out = await dbIo(dir, ['status'], limits);
+      assert.deepEqual(out.skipped, [], JSON.stringify(out.skipped));
+      assert.deepEqual([out.rows.lessons, out.rows.noise_ledger, out.rows.triage], [3, 0, 2]);
+      assert.equal(out.files.find((f) => f.file === path.join(real, LEDGER)).exists, false);
+    } finally { rm(dir); }
+  });
+
+  it('a rebuild that stops after its clear still knows every file to re-scan, a --store file outside the project included (wt-3b L4)', { skip, timeout: 60000 }, async () => {
+    const root = tmp();
+    const dir = path.join(root, 'p');
+    fs.mkdirSync(dir);
+    try {
+      assert.equal((await call(db, ['init'], dir)).code, 0);
+      const outside = path.join(root, 'elsewhere', 'lessons.json');
+      const r = await cli(['reflect', 'lessons', 'save', '--role', 'r', '--session', 's', '--text', 'Run the linter before every commit.', '--store', outside], dir);
+      assert.equal(r.code, 0, r.err);
+      const key = fs.realpathSync(outside);
+      assert.equal((await rows(dir, 'SELECT COUNT(*) AS n FROM lessons WHERE file = ?', key))[0].n, 1);
+      // what rebuild's first transaction leaves when the process dies right after it (the same statements, committed)
+      await withIndex({ cwd: dir, env: ENV }, (d) => {
+        d.exec("DELETE FROM lessons; DELETE FROM noise_ledger; DELETE FROM triage; DELETE FROM pending; DELETE FROM files WHERE sha256 = 'absent';");
+        d.run("UPDATE files SET sha256 = 'rebuild', error = NULL, stat = NULL, bytes = NULL");
+        d.run("DELETE FROM meta WHERE key = 'project_files_indexed'");
+      }, { refresh: false });
+      assert.deepEqual((await peek(dir, 'SELECT file FROM files')).map((x) => x.file), [key], 'the outside file is still listed');
+      const rb = await call(db, ['rebuild'], dir);
+      assert.equal(rb.code, 0, rb.err);
+      assert.equal(rb.out.files.find((f) => f.file === key).rows, 1);
+      assert.equal(rb.out.rows.lessons, 1);
+      // the source: rebuild clears rows in a transaction that keeps the files rows
+      const src = fs.readFileSync(path.join(HERE, '..', 'src', 'lib', 'kit', 'db.js'), 'utf-8');
+      assert.ok(!/DELETE FROM files;/.test(src));
+    } finally { rm(root); }
+  });
+
+  it('an after-write open reads and hashes the verb\'s own file once (wt-3b L5)', { skip, timeout: 60000 }, async () => {
+    const dir = tmp();
+    try {
+      assert.equal((await call(db, ['init'], dir)).code, 0);
+      assert.equal((await cli(['reflect', 'lessons', 'save', '--role', 'r', '--session', 's', '--text', 'Run the linter before every commit.'], dir)).code, 0);
+      const file = path.join(dir, LESSONS);
+      const text = read(dir, LESSONS).replace('"r"', '"q"');
+      fs.writeFileSync(file, text);
+      // written just now: its mtime is too recent to trust, so the old code read it a second time in the same open
+      const bytes = await withIndex({ cwd: dir, env: ENV }, (d, { run }) => run.bytes, { first: [{ kind: 'lessons', file }] });
+      assert.equal(bytes, Buffer.byteLength(text));
+      const [l] = await rows(dir, 'SELECT role FROM lessons');
+      assert.equal(l.role, 'q');
     } finally { rm(dir); }
   });
 });

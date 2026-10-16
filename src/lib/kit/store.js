@@ -26,12 +26,16 @@
  * --state) is indexed under its real path, inside the project or not: it is only an index.
  *
  * BOUNDED COST. Repository content decides how much there is to index, so every open is bounded: a file over
- * MAX_FILE_BYTES is never read, one with more than MAX_FILE_RECORDS records is not indexed, and one open reads and
- * indexes at most OPEN_BUDGET (bytes and rows) of new or changed files; what does not fit stays as it was (listed by
- * `db status` as pending) and later opens pick it up. The index holds at most MAX_INDEX_ROWS JSON rows per project; a
- * file past it is skipped with that reason. A file skipped after it was read keeps its stat and is not read again until
- * it changes. `.claude/marathon` is listed without following links, at most MAX_MARATHON_FILES files: one beyond the cap
- * is never indexed (dropped when it was). `db init` and `db rebuild` are not limited by the per-open budget.
+ * MAX_FILE_BYTES (a `.claude/marathon` file: MAX_MARATHON_FILE_BYTES) is never read, one with more than
+ * MAX_FILE_RECORDS records is not indexed, and one open reads and indexes at most OPEN_BUDGET (bytes and rows) of new
+ * or changed files; what does not fit stays as it was (listed by `db status` as pending, and kept in the pending table)
+ * and later opens take the pending files first, oldest first, so none waits forever. The index holds at most
+ * MAX_INDEX_ROWS JSON rows and MAX_INDEX_BYTES of JSON files per project; a file past either is skipped with that
+ * reason. Indexed columns hold at most MAX_COLUMN_BYTES of a value. A file skipped after it was read keeps its stat and
+ * is not read again until it changes. A file whose recorded stat cannot be trusted (its mtime too close to the read, or
+ * in the future) is hashed once per open and, unchanged, costs the budget nothing. `.claude/marathon` is listed without
+ * following links, read once and bounded (MARATHON_SCAN), at most MAX_MARATHON_FILES files: one beyond a bound is never
+ * indexed (dropped when it was). `db init` and `db rebuild` are not limited by the per-open budget.
  *
  * UNTRUSTED FILES. A state file comes from the repository (a pull can put anything there), so the index reads one only
  * as a regular file of at most MAX_FILE_BYTES: lstat first, opened with O_NOFOLLOW | O_NONBLOCK, fstat on the open file,
@@ -67,6 +71,8 @@ export const BUSY_TIMEOUT_MS = 15000;
 export const AFTER_WRITE_BUSY_MS = 2000;
 /** A JSON file larger than this is recorded (skipped, with its reason) but never read. */
 export const MAX_FILE_BYTES = 4 * 1024 * 1024;
+/** The same for a `.claude/marathon/<run>/` file (any number of them can arrive with a pull): smaller. */
+export const MAX_MARATHON_FILE_BYTES = 1024 * 1024;
 /** A JSON file holding more records than this is recorded (skipped, with its reason) but not indexed. */
 export const MAX_FILE_RECORDS = 20000;
 /**
@@ -77,7 +83,20 @@ export const MAX_FILE_RECORDS = 20000;
 export const OPEN_BUDGET = Object.freeze({ bytes: 16 * 1024 * 1024, rows: 50000 });
 /** The JSON rows (lessons, noise_ledger and triage together) one project's index holds at most. */
 export const MAX_INDEX_ROWS = 500000;
-/** A recorded stat is trusted only when the file's mtime is older than the recorded read by more than this. */
+/** The JSON one project's index holds at most, counted as the sizes of the files it indexes. */
+export const MAX_INDEX_BYTES = 256 * 1024 * 1024;
+/**
+ * An indexed column (id, role, status, key, scope, rule, ...) holds at most this many bytes of its value: the index is
+ * for queries and counts, never a second copy of a large value in a B-tree (the record itself stays whole in `data`
+ * and in the JSON file). A longer value is cut and ends with `…#<sha256 of the whole value>`, so two long keys never collide.
+ */
+export const MAX_COLUMN_BYTES = 1024;
+/**
+ * A recorded stat is trusted only when the file's mtime is older than the recorded read by more than this. A file whose
+ * mtime is later than that (a rewrite in the same timestamp tick as the read, or a mtime in the future: an extracted
+ * archive, rsync -t, a skewed clock) is hashed once per open, and when its hash is the one recorded it counts as clean:
+ * not re-indexed and not charged to the open's budget.
+ */
 export const RACY_MS = 2000;
 export const ENGINE_FIX = 'the kit index needs a SQLite engine on this machine: run Node 22.13+ (built-in node:sqlite; on Node 22.5+ before 22.13 only with --experimental-sqlite), '
   + 'or install the suite package with its optional dependency better-sqlite3 (only the package\'s own copy, in its own node_modules, is ever loaded; never one from the project)';
@@ -142,6 +161,14 @@ CREATE TABLE imported_reports (run_key TEXT PRIMARY KEY, branch TEXT, imported_a
     version: 2,
     sql: `
 ALTER TABLE files ADD COLUMN stat TEXT;
+`
+  },
+  {
+    // the bytes of each indexed file (the per-project byte cap), and the files an open left for later, oldest first
+    version: 3,
+    sql: `
+ALTER TABLE files ADD COLUMN bytes INTEGER;
+CREATE TABLE pending (file TEXT PRIMARY KEY, kind TEXT NOT NULL, since TEXT NOT NULL);
 `
   }
 ]);
@@ -462,17 +489,24 @@ export function fileKey(file) {
 
 /** At most this many `.claude/marathon/<run>/triage*.json` files are indexed (in run and file name order). */
 export const MAX_MARATHON_FILES = 200;
+/**
+ * Listing `.claude/marathon` reads at most this many of its entries (the run folders, in the order the file system
+ * gives them; the ones read are then sorted), and at most MARATHON_SCAN.runEntries entries of the run folders in all.
+ * Run folders after the MAX_MARATHON_FILES-th triage file are not read at all.
+ */
+export const MARATHON_SCAN = Object.freeze({ entries: 2000, runEntries: 20000 });
 /** Recorded in files.sha256 for a file that was skipped: a link, not a regular file, too large, too many records, unreadable. */
 export const SKIPPED = 'skipped';
 
 const statKey = (st) => `${st.size}:${st.mtimeNs}:${st.ino}`;
 const skip = (reason) => ({ skip: reason });
+const MARATHON_FILE = /^triage[^/]*\.json$/;
 
 /**
  * Read one file, never through a link and never more than `max` bytes (default MAX_FILE_BYTES):
- * { absent } | { skip: reason } | { unchanged } (its size, mtime and inode are `known`) | { deferred } (`allow(size)`
- * said no: not read) | { buf, stat }. Inside `root` no folder on the way may be a symbolic link either. Opened with
- * O_NOFOLLOW | O_NONBLOCK (a FIFO never blocks), checked with fstat as a regular file. Never throws.
+ * { absent } | { skip: reason } | { unchanged } (its size, mtime and inode are `known`) | { deferred } (`allow(size,
+ * stat)` said no: not read) | { buf, stat }. Inside `root` no folder on the way may be a symbolic link either. Opened
+ * with O_NOFOLLOW | O_NONBLOCK (a FIFO never blocks), checked with fstat as a regular file. Never throws.
  */
 export function readState(file, { root = null, known = null, max = MAX_FILE_BYTES, allow = null } = {}) {
   try {
@@ -496,7 +530,7 @@ export function readState(file, { root = null, known = null, max = MAX_FILE_BYTE
     if (!st.isFile()) return skip('not a regular file');
     if (st.size > BigInt(max)) return skip(`larger than ${max} bytes`);
     if (known && statKey(st) === known) return { unchanged: true };
-    if (allow && !allow(Number(st.size))) return { deferred: true };
+    if (allow && !allow(Number(st.size), statKey(st))) return { deferred: true };
     let fd;
     // O_NONBLOCK: a file swapped for a FIFO after the lstat never blocks the open
     try { fd = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW || 0) | (fs.constants.O_NONBLOCK || 0)); } catch (e) {
@@ -535,20 +569,37 @@ function parseState(buf) {
   } catch { return { error: 'not valid JSON' }; }
 }
 
+/** An indexed column's value: at most MAX_COLUMN_BYTES (see there). */
+function columnValue(v) {
+  if (v == null) return null;
+  if (typeof v === 'number') return v;
+  const s = String(v);
+  if (s.length * 3 <= MAX_COLUMN_BYTES || Buffer.byteLength(s, 'utf-8') <= MAX_COLUMN_BYTES) return s;
+  const tail = `…#${crypto.createHash('sha256').update(s).digest('hex')}`;
+  let t = Buffer.from(s, 'utf-8').subarray(0, MAX_COLUMN_BYTES - Buffer.byteLength(tail, 'utf-8')).toString('utf-8');
+  if (t.endsWith('�')) t = t.slice(0, -1);
+  return t + tail;
+}
+
 /** Delete one file's rows; returns how many there were. */
 const dropRows = (db, key) => { let n = 0; for (const k of Object.values(KINDS)) n += Number(db.run(`DELETE FROM ${k.table} WHERE file = ?`, key).changes || 0); return n; };
 const countRows = (db, key) => Object.values(KINDS).reduce((n, k) => n + Number(db.get(`SELECT COUNT(*) AS n FROM ${k.table} WHERE file = ?`, key).n), 0);
 const totalRows = (db) => Number(db.get(`SELECT ${Object.values(KINDS).map((k) => `(SELECT COUNT(*) FROM ${k.table})`).join(' + ')} AS n`).n);
-const recordFile = (db, key, kind, sha, error, stat) => db.run(
-  'INSERT INTO files (file, kind, sha256, error, indexed_at, stat) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (file) DO UPDATE SET kind = excluded.kind, sha256 = excluded.sha256, error = excluded.error, indexed_at = excluded.indexed_at, stat = excluded.stat',
-  key, kind, sha, error ?? null, new Date().toISOString(), stat ?? null);
+/** The bytes of every indexed file but `key`. */
+const otherBytes = (db, key) => Number(db.get('SELECT COALESCE(SUM(bytes), 0) AS n FROM files WHERE file <> ? AND bytes IS NOT NULL', key).n);
+const recordFile = (db, key, kind, sha, error, stat, bytes = null) => db.run(
+  'INSERT INTO files (file, kind, sha256, error, indexed_at, stat, bytes) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (file) DO UPDATE SET kind = excluded.kind, sha256 = excluded.sha256, error = excluded.error, indexed_at = excluded.indexed_at, stat = excluded.stat, bytes = excluded.bytes',
+  key, kind, sha, error ?? null, new Date().toISOString(), stat ?? null, bytes);
 
 /** The reason a file is not indexed when the project's index is full. */
 export const fullReason = (max) => `not indexed: the index holds at most ${max} rows per project (db rebuild retries)`;
+/** The reason a file is not indexed when the project's index holds its byte cap of JSON. */
+export const bytesFullReason = (max) => `not indexed: the index holds at most ${max} bytes of JSON files per project (db rebuild retries)`;
 
 /**
  * One open's indexing state: what it read and indexed so far against its budget (null: no budget), the files it left
- * for later (`pending`), and the project's row cap. `limits` (tests only) can lower the budget and the cap, never raise them.
+ * for later (`pending`), and the project's row and byte caps. `limits` (tests only) can lower the budget and the caps,
+ * never raise them.
  */
 export function indexRun({ budget = OPEN_BUDGET, limits = null } = {}) {
   const low = (v, d) => (Number.isSafeInteger(v) && v > 0 ? Math.min(v, d) : d);
@@ -556,6 +607,8 @@ export function indexRun({ budget = OPEN_BUDGET, limits = null } = {}) {
   return {
     budget: budget ? { bytes: low(l.bytes, budget.bytes), rows: low(l.rows, budget.rows) } : null,
     maxRows: low(l.maxRows, MAX_INDEX_ROWS),
+    maxBytes: low(l.maxBytes, MAX_INDEX_BYTES),
+    marathon: { files: low(l.marathonFiles, MAX_MARATHON_FILES), entries: low(l.marathonEntries, MARATHON_SCAN.entries), runEntries: low(l.marathonRunEntries, MARATHON_SCAN.runEntries) },
     bytes: 0, rows: 0, full: false, total: null, pending: [], found: null
   };
 }
@@ -564,37 +617,43 @@ export function indexRun({ budget = OPEN_BUDGET, limits = null } = {}) {
 const fitsBytes = (run, size) => !run || !run.budget || (!run.full && (run.bytes === 0 || run.bytes + size <= run.budget.bytes));
 const defer = (run, key) => { if (!run.pending.includes(key)) run.pending.push(key); return false; };
 
+/** Drop `n` rows from the open's running total (when it has one). */
+const lower = (run, n) => { if (run && run.total !== null) run.total -= n; };
+
 /**
  * Replace the rows of one file (by its key) with what `state` (readState) holds and record it. A file that is skipped,
- * absent, not valid JSON, holds more than MAX_FILE_RECORDS records, does not fit the project's row cap, or cannot be
- * indexed (say, nested too deep) leaves no rows; it is recorded with its reason. One prepared INSERT per file.
- * Never throws for the file's content. Returns false only when `run`'s row budget left it for a later open.
+ * absent, not valid JSON, holds more than MAX_FILE_RECORDS records, does not fit the project's row or byte cap, or
+ * cannot be indexed (say, nested too deep) leaves no rows; it is recorded with its reason. Indexed columns are cut to
+ * MAX_COLUMN_BYTES. One prepared INSERT per file. Never throws for the file's content. Returns false only when `run`'s
+ * row budget left it for a later open.
  */
 export function indexFile(db, kind, key, state = readState(key), run = null) {
   const spec = KINDS[kind];
-  if (state.skip) { dropRows(db, key); recordFile(db, key, kind, SKIPPED, state.skip, null); return true; }
-  if (state.absent) { dropRows(db, key); recordFile(db, key, kind, 'absent', null, null); return true; }
+  if (state.skip) { lower(run, dropRows(db, key)); recordFile(db, key, kind, SKIPPED, state.skip, null); return true; }
+  if (state.absent) { lower(run, dropRows(db, key)); recordFile(db, key, kind, 'absent', null, null); return true; }
   const { doc, error } = parseState(state.buf);
-  const sha = shaOf(state.buf);
-  // a file skipped after it was read keeps its stat: it is not read again until it changes
-  const skipRead = (reason) => { if (run && run.total !== null) run.total -= dropRows(db, key); else dropRows(db, key); recordFile(db, key, kind, SKIPPED, reason, state.stat ? `${state.stat}:${SKIPPED}` : null); return true; };
+  const sha = state.sha || shaOf(state.buf);
+  // a file skipped after it was read keeps its stat (and the hash of what was read): not read again until it changes
+  const skipRead = (reason) => { lower(run, dropRows(db, key)); recordFile(db, key, kind, SKIPPED, reason, state.stat ? `${state.stat}:${SKIPPED}:${sha}` : null); return true; };
   try {
     const rows = doc ? spec.rows(doc) : [];
     if (rows.length > MAX_FILE_RECORDS) return skipRead(`more than ${MAX_FILE_RECORDS} records`);
     if (run && run.budget && run.rows > 0 && run.rows + rows.length > run.budget.rows) { run.full = true; return defer(run, key); }
     const maxRows = run ? run.maxRows : MAX_INDEX_ROWS;
+    const maxBytes = run ? run.maxBytes : MAX_INDEX_BYTES;
+    // what counts against the byte cap: the size of a file that gives rows
+    const size = rows.length ? state.buf.length : 0;
+    if (size && otherBytes(db, key) + size > maxBytes) return skipRead(bytesFullReason(maxBytes));
     if (run && run.total === null) run.total = totalRows(db);
     const others = (run ? run.total : totalRows(db)) - countRows(db, key);
     if (others + rows.length > maxRows) return skipRead(fullReason(maxRows));
     dropRows(db, key);
     if (rows.length) {
       const ins = db.prepare(`INSERT OR REPLACE INTO ${spec.table} (file, ${spec.cols.join(', ')}, data) VALUES (?, ${spec.cols.map(() => '?').join(', ')}, ?)`);
-      for (const r of rows) {
-        ins.run(key, ...spec.cols.map((n) => (r[n] == null ? null : typeof r[n] === 'number' ? r[n] : String(r[n]))), JSON.stringify(r.data ?? null));
-      }
+      for (const r of rows) ins.run(key, ...spec.cols.map((n) => columnValue(r[n])), JSON.stringify(r.data ?? null));
     }
     if (run) { run.rows += rows.length; run.total = others + rows.length; }
-    recordFile(db, key, kind, sha, error, state.stat ? `${state.stat}:${sha}` : null);
+    recordFile(db, key, kind, sha, error, state.stat ? `${state.stat}:${sha}:${sha}` : null, size);
     return true;
   } catch (e) {
     if (/SQLITE_BUSY|database is locked|SQLITE_FULL|SQLITE_IOERR|disk I\/O/i.test(firstLine(e))) throw e;
@@ -606,75 +665,141 @@ export function indexFile(db, kind, key, state = readState(key), run = null) {
 }
 
 /**
- * The recorded stat of a files row (`<size>:<mtimeNs>:<inode>`, recorded as `<stat>:<sha256 or skipped>`), when it
- * can be trusted: recorded with the current hash, and the file's mtime older than the recorded read by more than
- * RACY_MS (a rewrite in the same timestamp tick as the read would otherwise keep the same stat). Else null: re-read.
+ * What a files row says about the read it was recorded from: { stat, readSha, mtimeMs } (stat `<size>:<mtimeNs>:<inode>`,
+ * recorded as `<stat>:<sha256 or skipped>:<sha256 of the bytes read>`), only when recorded together with the row's
+ * current sha256 column; else null.
  */
-function trustedStat(row) {
-  if (!row || !row.stat) return null;
-  const tail = `:${row.sha256}`;
-  if (row.sha256 === 'absent' || !row.stat.endsWith(tail)) return null;
-  const st = row.stat.slice(0, -tail.length);
-  const readAt = Date.parse(row.indexed_at);
+function recordedRead(row) {
+  if (!row || !row.stat || row.sha256 === 'absent') return null;
+  const p = String(row.stat).split(':');
+  if (p.length !== 5 || p[3] !== row.sha256 || !/^[0-9a-f]{64}$/.test(p[4])) return null;
   let mtimeMs;
-  try { mtimeMs = Number(BigInt(st.split(':')[1]) / 1000000n); } catch { return null; }
-  if (!Number.isFinite(readAt) || mtimeMs >= readAt - RACY_MS) return null;
-  return st;
+  try { mtimeMs = Number(BigInt(p[1]) / 1000000n); } catch { return null; }
+  return { stat: p.slice(0, 3).join(':'), readSha: p[4], mtimeMs };
+}
+
+/**
+ * The recorded stat when it can be trusted without a read: the file's mtime older than the recorded read by more than
+ * RACY_MS (a rewrite in the same timestamp tick as the read would otherwise keep the same stat). A later mtime (that
+ * tick, or the future) is not trusted: the file is hashed (see ensureKey).
+ */
+function trustedStat(row, rec) {
+  if (!rec) return null;
+  const readAt = Date.parse(row.indexed_at);
+  if (!Number.isFinite(readAt) || rec.mtimeMs >= readAt - RACY_MS) return null;
+  return rec.stat;
+}
+
+/** The byte cap of one state file: smaller for the `.claude/marathon/<run>/` files of the project `root`. */
+export function maxBytesFor(key, root) {
+  return root && inside(path.join(root, '.claude', 'marathon'), key) ? MAX_MARATHON_FILE_BYTES : MAX_FILE_BYTES;
 }
 
 /**
  * Bring one file's rows up to date: skipped when its size, mtime and inode are the ones recorded (see trustedStat),
  * else read and re-indexed when its hash, kind or state changed. A read that does not fit `run`'s budget is left for a
- * later open (listed in run.pending). `key` is the indexed path (see fileKey). True when re-indexed.
+ * later open (listed in run.pending). A file whose stat is the recorded one but not trusted (its mtime is too recent,
+ * or in the future) is read without asking the budget and, when its hash is the recorded one, counts as clean and
+ * costs the budget nothing. `key` is the indexed path (see fileKey). True when re-indexed.
  */
 export function ensureKey(db, kind, key, root = null, run = null) {
   const row = db.get('SELECT kind, sha256, error, stat, indexed_at FROM files WHERE file = ?', key);
   const same = row && row.kind === kind;
-  const state = readState(key, { root, known: same ? trustedStat(row) : null, allow: run ? (n) => fitsBytes(run, n) : null });
+  const rec = same ? recordedRead(row) : null;
+  const state = readState(key, {
+    root, known: trustedStat(row, rec), max: maxBytesFor(key, root),
+    allow: run ? (n, st) => (rec && st === rec.stat) || fitsBytes(run, n) : null
+  });
   if (state.unchanged) return false;
   if (state.deferred) return defer(run, key);
-  if (state.buf && run) run.bytes += state.buf.length;
+  const verify = !!(state.buf && rec && state.stat === rec.stat);
+  if (state.buf) {
+    state.sha = shaOf(state.buf);
+    if (run && !verify) run.bytes += state.buf.length;
+  }
   if (same) {
     if (state.skip && row.sha256 === SKIPPED && row.error === state.skip) return false;
     if (state.absent && row.sha256 === 'absent') return false;
-    if (state.buf && row.sha256 === shaOf(state.buf)) {
+    if (state.buf && (row.sha256 === state.sha || (verify && row.sha256 === SKIPPED && rec.readSha === state.sha))) {
       // the same content: record the stat (and when it was read) so the next open need not read it
-      db.run('UPDATE files SET stat = ?, indexed_at = ? WHERE file = ?', `${state.stat}:${row.sha256}`, new Date().toISOString(), key);
+      db.run('UPDATE files SET stat = ?, indexed_at = ? WHERE file = ?', `${state.stat}:${row.sha256}:${state.sha}`, new Date().toISOString(), key);
       return false;
     }
+  }
+  if (verify && run) {
+    // changed under a stat that looked the same: now it is a read like any other
+    if (!fitsBytes(run, state.buf.length)) return defer(run, key);
+    run.bytes += state.buf.length;
   }
   return indexFile(db, kind, key, state, run);
 }
 
-/** A folder's entries, only when the folder itself is a real folder (never through a symbolic link); else []. */
-function listNoLink(dir) {
+/** Whether `p` is a real folder (not a symbolic link). */
+const isRealDir = (p) => { try { return fs.lstatSync(p).isDirectory(); } catch { return false; } };
+
+/**
+ * At most `max` entries of a real folder (never through a symbolic link), in the order the file system gives them:
+ * { entries, more } (more: the folder has entries beyond them).
+ */
+function readSomeEntries(dir, max) {
+  if (!isRealDir(dir)) return { entries: [], more: false };
+  let d;
+  try { d = fs.opendirSync(dir); } catch { return { entries: [], more: false }; }
+  const entries = [];
+  let more = false;
   try {
-    if (!fs.lstatSync(dir).isDirectory()) return [];
-    return fs.readdirSync(dir, { withFileTypes: true });
-  } catch { return []; }
+    for (;;) {
+      const e = d.readSync();
+      if (!e) break;
+      if (entries.length >= max) { more = true; break; }
+      entries.push(e);
+    }
+  } catch { /* what was read so far */ } finally { try { d.closeSync(); } catch { /* closed */ } }
+  return { entries, more };
 }
+
+const byName = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
 /**
  * The project's own state files, as keys under the project's real path `root`: each kind's default file and the
  * per-stream triage files `.claude/marathon/<run>/triage*.json` (no symbolic link is followed: a linked .claude,
- * marathon or run folder, or a linked file, is not listed; at most MAX_MARATHON_FILES). The list carries `omitted`:
- * the marathon files left out by the cap (their keys), never indexed.
+ * marathon or run folder, or a linked file, is not listed; at most `limits.files` of them, MAX_MARATHON_FILES). The
+ * marathon folder is read once and bounded (MARATHON_SCAN); run folders after the last listed file are not read. The
+ * list carries `truncated` ({ files, entries, runEntries }: which bound left something out, or null) and `isOmitted(key)`:
+ * whether a marathon triage file was left out by a bound (never indexed; dropped when it was).
  */
-export function projectFiles(root) {
+export function projectFiles(root, limits = indexRun({ budget: null }).marathon) {
   const out = Object.entries(KINDS).map(([kind, k]) => ({ kind, file: path.join(root, ...k.defaultFile.split('/')), project: true }));
-  out.omitted = new Set();
-  if (!listNoLink(path.join(root, '.claude')).some((d) => d.name === 'marathon' && d.isDirectory())) return out;
   const marathon = path.join(root, '.claude', 'marathon');
-  let n = 0;
-  for (const r of listNoLink(marathon).filter((d) => d.isDirectory()).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
-    const files = listNoLink(path.join(marathon, r.name)).filter((d) => d.isFile() && /^triage[^/]*\.json$/.test(d.name)).map((d) => d.name).sort();
+  const listed = new Set();
+  const truncated = { files: false, entries: false, runEntries: false };
+  out.truncated = null;
+  out.isOmitted = (key) => {
+    if (!out.truncated || listed.has(key)) return false;
+    const rel = path.relative(marathon, key).split(path.sep);
+    return rel.length === 2 && rel[0] !== '..' && !path.isAbsolute(path.relative(marathon, key)) && MARATHON_FILE.test(rel[1]);
+  };
+  if (!isRealDir(path.join(root, '.claude')) || !isRealDir(marathon)) return out;
+  const top = readSomeEntries(marathon, limits.entries);
+  truncated.entries = top.more;
+  const runs = top.entries.filter((d) => d.isDirectory()).map((d) => d.name).sort(byName);
+  let scanned = 0;
+  for (let i = 0; i < runs.length; i++) {
+    if (listed.size >= limits.files) { truncated.files = true; break; }
+    const left = limits.runEntries - scanned;
+    const some = readSomeEntries(path.join(marathon, runs[i]), left);
+    scanned += some.entries.length;
+    if (some.more) truncated.runEntries = true;
+    const files = some.entries.filter((d) => d.isFile() && MARATHON_FILE.test(d.name)).map((d) => d.name).sort(byName);
     for (const f of files) {
-      const file = path.join(marathon, r.name, f);
-      if (n >= MAX_MARATHON_FILES) { out.omitted.add(file); continue; }
+      if (listed.size >= limits.files) { truncated.files = true; break; }
+      const file = path.join(marathon, runs[i], f);
       out.push({ kind: 'triage', file, project: true });
-      n++;
+      listed.add(file);
     }
+    if (truncated.runEntries) break;
   }
+  if (truncated.files || truncated.entries || truncated.runEntries) out.truncated = truncated;
   return out;
 }
 
@@ -691,29 +816,36 @@ export function inTransaction(db, fn) {
   }
 }
 
+/** Drop one file from the index: its rows, its files row, its pending row. */
+const forget = (db, key, run) => { lower(run, dropRows(db, key)); db.run('DELETE FROM files WHERE file = ?', key); db.run('DELETE FROM pending WHERE file = ?', key); };
+
 /**
  * Bring the index up to date with the files, each file in its own transaction (a failure keeps what was done before
- * it): first `first` (the file a verb just wrote: [{ kind, file }]), then every recorded file (a marathon file beyond
- * the cap, or of an unknown kind, is dropped), then the project files it does not hold yet. Within `run`'s budget: what
- * does not fit is left for a later open (run.pending). Returns `run`, with run.found = projectFiles(root).
+ * it), each file at most once per open: first `first` (the file a verb just wrote: [{ kind, file }]), then the files
+ * earlier opens left pending (oldest first, so none waits forever), then every recorded file (a marathon file left out
+ * by a bound, or of an unknown kind, is dropped), then the project files it does not hold yet. Within `run`'s budget:
+ * what does not fit is left for a later open (run.pending, and the pending table with the time it was first left).
+ * Returns `run`, with run.found = projectFiles(root).
  */
 export function refreshIndex(db, root, run, { first = [] } = {}) {
-  const found = projectFiles(root);
+  const found = projectFiles(root, run.marathon);
   run.found = found;
-  for (const f of first) {
-    const key = fileKey(f.file);
-    if (!found.omitted.has(key)) inTransaction(db, () => ensureKey(db, f.kind, key, root, run));
-  }
+  const done = new Set();
+  const visit = (kind, key) => {
+    if (done.has(key)) return;
+    done.add(key);
+    inTransaction(db, () => {
+      if (!Object.hasOwn(KINDS, kind) || found.isOmitted(key)) { forget(db, key, run); return; }
+      ensureKey(db, kind, key, root, run);
+      if (run.pending.includes(key)) db.run('INSERT INTO pending (file, kind, since) VALUES (?, ?, ?) ON CONFLICT (file) DO UPDATE SET kind = excluded.kind', key, kind, new Date().toISOString());
+      else db.run('DELETE FROM pending WHERE file = ?', key);
+    });
+  };
+  for (const f of first) { const key = fileKey(f.file); if (!found.isOmitted(key)) visit(f.kind, key); }
+  for (const p of db.all('SELECT file, kind FROM pending ORDER BY since, file')) visit(p.kind, p.file);
   const recorded = db.all('SELECT file, kind FROM files ORDER BY file');
-  for (const r of recorded) {
-    if (!Object.hasOwn(KINDS, r.kind) || found.omitted.has(r.file)) {
-      inTransaction(db, () => { if (run.total !== null) run.total -= dropRows(db, r.file); else dropRows(db, r.file); db.run('DELETE FROM files WHERE file = ?', r.file); });
-      continue;
-    }
-    inTransaction(db, () => ensureKey(db, r.kind, r.file, root, run));
-  }
-  const known = new Set(recorded.map((r) => r.file));
-  for (const f of found) if (!known.has(f.file)) inTransaction(db, () => ensureKey(db, f.kind, f.file, root, run));
+  for (const r of recorded) visit(r.kind, r.file);
+  for (const f of found) visit(f.kind, f.file);
   inTransaction(db, () => db.run("INSERT INTO meta (key, value) VALUES ('project_files_indexed', ?) ON CONFLICT (key) DO NOTHING", new Date().toISOString()));
   return run;
 }
