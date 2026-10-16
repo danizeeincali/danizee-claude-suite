@@ -49,6 +49,30 @@ export const SPECS = Object.freeze({
   lessons: {
     defaultFile: '.claude/kit/lessons.json',
     parts: [{ field: 'lessons', kind: 'array', table: 'lessons', cols: (x) => ({ id: x?.id, role: x?.role, status: x?.status, session: x?.session, created_at: x?.created_at }) }]
+  },
+  'noise-ledger': {
+    defaultFile: '.claude/kit/noise-ledger.json',
+    parts: [{ field: 'entries', kind: 'array', table: 'noise_ledger', cols: (x) => ({ id: x?.id, expires: x?.expires }) }]
+  },
+  triage: {
+    defaultFile: '.claude/kit/triage.json',
+    // per-stream triage files (marathon streams pass --state) are imported by `db init` too
+    extraFiles: async (cwd) => {
+      const root = path.join(cwd, '.claude', 'marathon');
+      const out = [];
+      let runs = [];
+      try { runs = await fsp.readdir(root, { withFileTypes: true }); } catch { return out; }
+      for (const r of runs.filter((d) => d.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
+        let files = [];
+        try { files = await fsp.readdir(path.join(root, r.name)); } catch { continue; }
+        for (const f of files.sort()) if (/^triage[^/]*\.json$/.test(f)) out.push(path.join(root, r.name, f));
+      }
+      return out;
+    },
+    parts: [
+      { field: 'records', kind: 'map', table: 'triage', cols: (x) => ({ scope: x?.scope, rule: x?.rule, status: x?.status }) },
+      { field: 'scopes', kind: 'map', table: 'triage_scopes', cols: () => ({}) }
+    ]
   }
 });
 

@@ -372,3 +372,181 @@ describe('kit store: npx danizee-claude-suite db and check', () => {
     assert.match(src, /storeCheck\(/);
   });
 });
+
+// ================================================================ step 2: noise-ledger and triage on the adapter
+import { run as noise } from '../src/lib/kit/noise-ledger.js';
+import { run as triage } from '../src/lib/kit/triage.js';
+
+const FINDINGS = JSON.stringify([
+  { id: 'a1', severity: 'high', locations: ['x.js', 'y.js'] },
+  { id: 'b2', severity: 'low', failures: 2, reproductions: 0 },
+  { id: 'c3', severity: 'medium', rule: 'r1', files: ['z.js'] },
+  { id: 'd4', severity: 'medium' }
+]);
+const NOISE_STEPS = [
+  ['apply', '--now', '2026-10-16'],
+  ['accept', '--id', 'a1', '--reason', 'known, tracked elsewhere', '--now', '2026-10-16', '--expires', '2026-10-20'],
+  ['accept', '--id', 'd4', '--reason', 'accepted forever', '--now', '2026-10-16'],
+  ['accept', '--id', 'zz', '--reason', 'old', '--now', '2026-10-16', '--expires', '2026-10-01'],
+  ['accept', '--id', 'c3', '--reason', 'short', '--now', '2026-10-16', '--expires', '2026-10-17'],
+  ['apply', '--now', '2026-10-16', '--cap', '1'],
+  ['apply', '--now', '2026-10-18', '--first-run'],
+  ['prune', '--now', '2026-10-16'],
+  ['prune', '--now', '2026-10-25'],
+  ['apply', '--now', '2026-10-25'],
+  ['accept', '--id', 'a1', '--reason', 'replaced reason', '--now', '2026-10-25'],
+  ['apply', '--ledger', 'streams/missing.json', '--now', '2026-10-16'],
+  ['accept', '--id', 's1', '--reason', 'stream ledger', '--ledger', 'streams/ledger.json', '--now', '2026-10-16'],
+  ['apply', '--ledger', 'streams/ledger.json', '--now', '2026-10-16'],
+  ['prune', '--ledger', 'streams/ledger.json', '--now', '2026-10-16'],
+  ['accept', '--id', 'x', '--now', '2026-10-16'],
+  ['frob'],
+];
+
+const visitOf = (n) => JSON.stringify({
+  scopes: ['src/a.js', 'src/b.js'],
+  enabled: ['no-eval', 'max-len'],
+  violations: n === 1 ? [
+    { scope: 'src/a.js', rule: 'no-eval', source: 'auto', location: 'src/a.js:12' },
+    { scope: 'src/a.js', rule: 'no-eval', source: 'auto', location: 'src/a.js:80' },
+    { scope: 'src/b.js', rule: 'max-len', source: 'agent', element: 'line 4000' },
+    { scope: 'constructor', rule: 'max-len', source: 'auto', element: 'x' }
+  ] : n === 2 ? [
+    { scope: 'src/a.js', rule: 'no-eval', source: 'auto', location: 'src/a.js:13' }
+  ] : []
+});
+const TRIAGE_STEPS = [
+  ['visit', '--session', 's1'],
+  ['visit', '--session', 's1'],
+  ['list'],
+  ['visit', '--session', 's2'],
+  ['visit', '--session', 's3'],
+  ['visit', '--session', 's4'],
+  ['visit', '--session', 's5'],
+  ['list', '--status', 'fixed'],
+  ['visit', '--session', 's6', '--state', '.claude/marathon/run-1/triage-api.json'],
+  ['visit', '--session', 's7', '--state', '.claude/marathon/run-1/triage-web.json'],
+  ['list', '--state', '.claude/marathon/run-1/triage-api.json'],
+  ['list', '--state', '.claude/marathon/run-1/triage-none.json'],
+  ['list', '--status', 'bogus'],
+  ['decide', '0000000000000000', '--as', 'filed'],
+];
+const triageStdin = (s) => (s[0] !== 'visit' ? '' : visitOf({ s1: 1, s2: 2, s6: 1, s7: 2 }[s[2]] ?? 3));
+
+/** Replace the project folder in outputs so two folders compare equal. */
+const unDir = (v, dir) => JSON.parse(JSON.stringify(v).split(JSON.stringify(dir).slice(1, -1)).join('<dir>'));
+
+describe('kit store: noise-ledger and triage give the same results on the JSON files and on SQLite', () => {
+  for (const eng of ENGINES_UNDER_TEST) {
+    it(`noise-ledger: same outputs, exit codes and exported ledgers (${eng.name})`, { skip: eng.skip }, async () => {
+      const a = await tmp(); const b = await tmp();
+      try {
+        const json = unDir(await runSteps(noise, NOISE_STEPS, a, {}, () => FINDINGS), a);
+        const env = await goSqlite(b, eng.name);
+        const sql = unDir(await runSteps(noise, NOISE_STEPS, b, env, () => FINDINGS), b);
+        assert.deepEqual(sql, json);
+        assert.ok(json.some((x) => x.code === 1) && json.some((x) => x.out && x.out.pruned && x.out.pruned.length));
+        assert.ok(!exists(path.join(b, '.claude/kit/noise-ledger.json')) && !exists(path.join(b, 'streams/ledger.json')), 'sqlite writes no JSON file');
+        assert.equal((await call(db, ['export'], b, env)).code, 0);
+        for (const f of ['.claude/kit/noise-ledger.json', 'streams/ledger.json']) {
+          assert.equal(await fs.readFile(path.join(b, f), 'utf-8'), await fs.readFile(path.join(a, f), 'utf-8'), f);
+        }
+      } finally { await fs.rm(a, { recursive: true, force: true }); await fs.rm(b, { recursive: true, force: true }); }
+    });
+
+    it(`triage: same outputs, exit codes and exported states; --state paths stay separate streams (${eng.name})`, { skip: eng.skip }, async () => {
+      const a = await tmp(); const b = await tmp();
+      try {
+        const json = unDir(await runSteps(triage, TRIAGE_STEPS, a, {}, triageStdin), a);
+        const env = await goSqlite(b, eng.name);
+        const sql = unDir(await runSteps(triage, TRIAGE_STEPS, b, env, triageStdin), b);
+        assert.deepEqual(sql, json);
+        assert.ok(json.some((x) => x.out && x.out.closed && x.out.closed.length), 'the steps close a record by absence');
+        const st = await call(db, ['status'], b, env);
+        assert.deepEqual(st.out.documents.filter((d) => d.store === 'triage').map((d) => d.scope),
+          ['.claude/kit/triage.json', '.claude/marathon/run-1/triage-api.json', '.claude/marathon/run-1/triage-web.json']);
+        assert.ok(!exists(path.join(b, '.claude/kit/triage.json')) && !exists(path.join(b, '.claude/marathon')), 'sqlite writes no JSON file');
+        assert.equal((await call(db, ['export'], b, env)).code, 0);
+        for (const f of ['.claude/kit/triage.json', '.claude/marathon/run-1/triage-api.json', '.claude/marathon/run-1/triage-web.json']) {
+          assert.equal(await fs.readFile(path.join(b, f), 'utf-8'), await fs.readFile(path.join(a, f), 'utf-8'), f);
+        }
+      } finally { await fs.rm(a, { recursive: true, force: true }); await fs.rm(b, { recursive: true, force: true }); }
+    });
+  }
+
+  it('db init imports the ledger, the default triage state and the per-stream triage files; the verbs then read the database', { skip: !NODE_SQLITE }, async () => {
+    const dir = await tmp();
+    try {
+      for (const s of NOISE_STEPS.slice(1, 3)) assert.equal((await call(noise, s, dir)).code, 0);
+      assert.equal((await call(triage, ['visit', '--session', 's1'], dir, {}, visitOf(1))).code, 0);
+      assert.equal((await call(triage, ['visit', '--session', 's1', '--state', '.claude/marathon/r1/triage-api.json'], dir, {}, visitOf(2))).code, 0);
+      const before = {
+        apply: (await call(noise, ['apply', '--now', '2026-10-16'], dir, {}, FINDINGS)).out,
+        list: (await call(triage, ['list'], dir)).out,
+        api: (await call(triage, ['list', '--state', '.claude/marathon/r1/triage-api.json'], dir)).out
+      };
+      const env = { KIT_SQLITE_ENGINE: 'node:sqlite' };
+      const init = await call(db, ['init'], dir, env);
+      assert.equal(init.code, 0, init.err);
+      assert.deepEqual(init.out.imported, [
+        { store: 'lessons', scope: '.claude/kit/lessons.json' },
+        { store: 'noise-ledger', scope: '.claude/kit/noise-ledger.json' },
+        { store: 'triage', scope: '.claude/kit/triage.json' },
+        { store: 'triage', scope: '.claude/marathon/r1/triage-api.json' }
+      ].filter((x) => x.store !== 'lessons'));
+      assert.equal(init.out.rows.noise_ledger, 2);
+      assert.ok(init.out.rows.triage >= 3);
+      // the JSON files are gone from the picture: move them away and the answers stay the same
+      await fs.rename(path.join(dir, '.claude/kit/noise-ledger.json'), path.join(dir, 'ledger.bak'));
+      await fs.rename(path.join(dir, '.claude/kit/triage.json'), path.join(dir, 'triage.bak'));
+      await fs.rm(path.join(dir, '.claude/marathon'), { recursive: true });
+      assert.deepEqual((await call(noise, ['apply', '--now', '2026-10-16'], dir, env, FINDINGS)).out, before.apply);
+      assert.deepEqual((await call(triage, ['list'], dir, env)).out, before.list);
+      assert.deepEqual((await call(triage, ['list', '--state', '.claude/marathon/r1/triage-api.json'], dir, env)).out, before.api);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('a corrupt triage state or ledger file is exit 1 on sqlite too (read from the file before it is in the database)', { skip: !NODE_SQLITE }, async () => {
+    const dir = await tmp();
+    try {
+      const env = await goSqlite(dir, 'node:sqlite');
+      await fs.mkdir(path.join(dir, 's'), { recursive: true });
+      await fs.writeFile(path.join(dir, 's/t.json'), JSON.stringify({ version: 2, records: {}, scopes: {} }));
+      const t = await call(triage, ['visit', '--session', 'x', '--state', 's/t.json'], dir, env, visitOf(2));
+      assert.equal(t.code, 1);
+      assert.match(t.err, /triage state is corrupt: unsupported version 2/);
+      await fs.writeFile(path.join(dir, 's/l.json'), JSON.stringify({ version: 9, entries: [] }));
+      const l = await call(noise, ['accept', '--id', 'a', '--reason', 'r', '--ledger', 's/l.json'], dir, env);
+      assert.equal(l.code, 1);
+      assert.match(l.err, /ledger version 9 is newer/);
+      const st = await call(db, ['status'], dir, env);
+      assert.equal(st.out.rows.triage + st.out.rows.noise_ledger, 0, 'nothing was stored');
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('the default triage path through a symbolic link is refused (exit 2) on sqlite too', { skip: !NODE_SQLITE }, async () => {
+    const dir = await tmp(); const elsewhere = await tmp();
+    try {
+      const env = await goSqlite(dir, 'node:sqlite');
+      await fs.symlink(path.join(elsewhere, 'triage.json'), path.join(dir, '.claude/kit/triage.json'));
+      const r = await call(triage, ['list'], dir, env);
+      assert.equal(r.code, 2);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); await fs.rm(elsewhere, { recursive: true, force: true }); }
+  });
+
+  it('parallel triage visits and ledger accepts across processes are all kept', { skip: !NODE_SQLITE }, async () => {
+    const dir = await tmp();
+    try {
+      const env = await goSqlite(dir, 'node:sqlite');
+      const procs = await Promise.all([
+        ...[0, 1, 2, 3].map((i) => cli(['triage', 'visit', '--session', `p${i}`], dir, env, JSON.stringify({ enabled: ['r'], violations: [{ scope: `f${i}.js`, rule: 'r', source: 'auto' }] }))),
+        ...[0, 1, 2, 3].map((i) => cli(['noise-ledger', 'accept', '--id', `n${i}`, '--reason', 'parallel'], dir, env))
+      ]);
+      assert.deepEqual(procs.map((p) => p.code), [0, 0, 0, 0, 0, 0, 0, 0], procs.map((p) => p.err).join(''));
+      assert.equal((await call(triage, ['list'], dir, env)).out.records.length, 4);
+      const st = await call(db, ['status'], dir, env);
+      assert.equal(st.out.rows.noise_ledger, 4);
+      assert.equal(st.out.rows.triage_scopes, 4);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+});

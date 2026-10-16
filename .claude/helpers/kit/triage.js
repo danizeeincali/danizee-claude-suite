@@ -46,6 +46,10 @@
  * STATE  default `.claude/kit/triage.json`, `--state` overrides (relative to cwd). Written by temp file + rename; a
  * visit validates all input before changing anything. visit and decide hold the shared state lock (./state-lock.js: `<state>.lock`, heartbeat while
  * the work runs, bounded wait) across load..save, so parallel writers all keep their writes; list reads without a lock. A leading UTF-8 BOM in input and state is ignored.
+ * With the optional SQLite store (./store.js, `db init`) the records and scopes live in the `triage` and `triage_scopes`
+ * tables, keyed by the state path as the stream (so per-stream `--state` files stay apart in one database; a state not
+ * in the database yet is read from its file), each visit or decide in one BEGIN IMMEDIATE transaction; flags, output
+ * and exit codes are the same as on the JSON file (the symbolic-link refusal of the default path included).
  * Exit codes: 0 done, 1 invalid input or corrupt state, 2 refused: the default state path goes through a symbolic link.
  * Built from ideas audited by /w-bbs (run 2026-10-15-bugpatrol); no foreign code.
  */
@@ -53,7 +57,8 @@ import crypto from 'crypto';
 import fs from 'fs/promises';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
-import { withStateLock, readJsonState, writeJsonAtomic } from './state-lock.js';
+import { readJsonState, writeJsonAtomic } from './state-lock.js';
+import { readDoc, updateDoc } from './store.js';
 
 export const verb = 'triage';
 export const usage = 'cli.js triage visit --session <id> [--in <file>] [--state <path>]  |  triage decide <fingerprint> --as filed|dismissed|accepted [--issue <ref>]  |  triage list [--status <s>]   '
@@ -135,9 +140,10 @@ function validateState(s) {
   return s;
 }
 
-export async function loadState(file) {
+/** Load and check the state. `read(opts)` is the store's reader (./store.js); the JSON file when not given. */
+export async function loadState(file, read = (opts) => readJsonState(file, opts)) {
   let parsed;
-  try { parsed = await readJsonState(file, { fallback: null }); } catch (e) {
+  try { parsed = await read({ fallback: null }); } catch (e) {
     if (e instanceof KitExit) throw invalid(`triage state ${file} is corrupt or unreadable: ${e.message}`);
     throw e;
   }
@@ -159,8 +165,8 @@ async function guardDefaultState(cwd) {
   }
 }
 
-export async function saveState(file, state) {
-  try { await writeJsonAtomic(file, state); } catch (e) {
+export async function saveState(file, state, write = (v) => writeJsonAtomic(file, v)) {
+  try { await write(state); } catch (e) {
     if (e instanceof KitExit) throw invalid(`cannot write triage state ${file}: ${e.message}`);
     throw e;
   }
@@ -387,10 +393,10 @@ export async function run(args, io = {}) {
     if (!str(f.session)) throw invalid('--session <id> is required');
     const input = validateVisitInput(await readInput(f, io, cwd));
     const file = await stateFile(f);
-    const report = await withStateLock(file, async () => {
-      const state = await loadState(file);
+    const report = await updateDoc(io, 'triage', file, async ({ load, save }) => {
+      const state = await loadState(file, load);
       const rep = visit(state, f.session.trim(), input);
-      await saveState(file, state);
+      await saveState(file, state, save);
       return rep;
     }, io.lockOpts);
     return { session: f.session.trim(), scopes_visited: [...new Set([...input.scopes, ...input.violations.map((x) => normalizeScope(x.scope))])].sort(), ...report, state: file };
@@ -403,10 +409,10 @@ export async function run(args, io = {}) {
     if (f.issue !== undefined && f.as !== 'filed') throw invalid('--issue only goes with --as filed');
     if (f.issue !== undefined && !str(f.issue)) throw invalid('--issue needs a reference');
     const file = await stateFile(f);
-    return withStateLock(file, async () => {
-      const state = await loadState(file);
+    return updateDoc(io, 'triage', file, async ({ load, save }) => {
+      const state = await loadState(file, load);
       const res = decide(state, f.pos[0], f.as, f.issue && f.issue.trim());
-      await saveState(file, state);
+      await saveState(file, state, save);
       return res;
     }, io.lockOpts);
   }
@@ -414,7 +420,8 @@ export async function run(args, io = {}) {
     const f = parse(rest, ['status', 'state'], false);
     if (f.help) return { usage };
     if (f.status !== undefined && !STATUSES.includes(f.status)) throw invalid(`--status must be one of ${STATUSES.join(', ')}`);
-    const state = await loadState(await stateFile(f));
+    const file = await stateFile(f);
+    const state = await loadState(file, (opts) => readDoc(io, 'triage', file, opts));
     const records = Object.values(state.records).filter((r) => !f.status || r.status === f.status)
       .map((r) => ({ fingerprint: r.fingerprint, scope: r.scope, rule: r.rule, status: r.status, issue: r.issue, occurrences: r.occurrences, absent_visits: r.absent_visits, agent_sourced: !!r.agent, members: r.members }))
       .sort((a, b) => (a.fingerprint < b.fingerprint ? -1 : 1));
