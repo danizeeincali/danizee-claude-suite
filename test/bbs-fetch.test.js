@@ -16,7 +16,7 @@ import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import {
   EgressRefused, isPrivateAddress, isForbiddenHost, checkHost, hostOfRef,
-  fetchUrl, extractLinks, cloneRepo, fetchRun, egressSummary, egressLine
+  fetchUrl, extractLinks, cloneRepo, fetchRun, egressSummary, egressLine, isSourcePath, sparsePattern
 } from '../src/lib/bbs/fetch.js';
 import { intake } from '../src/lib/bbs/intake.js';
 import { readJson, readJsonl } from '../src/lib/bbs/store.js';
@@ -284,6 +284,7 @@ describe('fetch — cloneRepo', () => {
     const git = (args, cwd, env) => {
       calls.push({ args, cwd, env });
       if (args[0] === 'clone') return '';
+      if (args.includes('ls-tree')) return '';
       if (args.includes('rev-parse')) return 'abcdef1234567890abcdef1234567890abcdef12\n';
       throw new Error('unexpected ' + args.join(' '));
     };
@@ -304,7 +305,11 @@ describe('fetch — cloneRepo', () => {
     assert.equal(calls[0].env?.GIT_DIR, undefined);
     // the plain runner names the clone with --git-dir and runs from its parent folder, never inside the clone
     assert.deepEqual(calls[1].args, ['--git-dir', path.join(dest, '.git'), 'rev-parse', 'HEAD']);
+    assert.deepEqual(calls[2].args, ['--git-dir', path.join(dest, '.git'), 'ls-tree', '-r', '-z', '--name-only', 'HEAD']);
     assert.equal(calls[1].cwd, path.dirname(dest));
+    assert.equal(calls[2].cwd, path.dirname(dest));
+    assert.ok(clone.includes('--filter=blob:none') && clone.includes('--no-checkout'), 'trees only; blobs come with the source-only checkout');
+    assert.ok(clone.indexOf('--filter=blob:none') < clone.indexOf('--'));
     assert.equal(log.length, 1);
     assert.equal(log[0].kind, 'git');
     assert.equal(log[0].host, 'github.com');
@@ -331,12 +336,13 @@ describe('fetch — cloneRepo', () => {
       const st = await fs.stat(env.HOME);
       seen.push({ args, home: env.HOME, xdg: env.XDG_CONFIG_HOME, isDir: st.isDirectory(), entries: await fs.readdir(env.HOME) });
       if (args[0] === 'clone') return '';
+      if (args.includes('ls-tree')) return '';
       if (args.includes('rev-parse')) return 'abcdef1234567890abcdef1234567890abcdef12\n';
       throw new Error('unexpected ' + args.join(' '));
     };
     const dest = path.join(os.tmpdir(), `bbs-clone-home-${Date.now()}`);
     await cloneRepo('https://github.com/a/b.git', dest, { git, lookup: publicLookup, onEgress: () => {} });
-    assert.equal(seen.length, 2);
+    assert.equal(seen.length, 3);
     for (const s of seen) {
       assert.ok(typeof s.home === 'string' && s.home.length > 0, 'HOME is set');
       assert.ok(typeof s.xdg === 'string' && s.xdg.length > 0, 'XDG_CONFIG_HOME is set');
@@ -345,7 +351,8 @@ describe('fetch — cloneRepo', () => {
       assert.ok(s.isDir, 'the scratch dir exists during the git call');
       assert.deepEqual(s.entries, [], 'the scratch dir is empty (no gitconfig)');
     }
-    assert.equal(seen[0].home, seen[1].home, 'one scratch dir for clone and rev-parse');
+    assert.equal(seen[0].home, seen[1].home, 'one scratch dir for clone, ls-tree and rev-parse');
+    assert.equal(seen[0].home, seen[2].home);
     await assert.rejects(() => fs.stat(seen[0].home), { code: 'ENOENT' }, 'the scratch dir is removed after the clone');
     // the r1-r2 env guarantees still hold alongside
     const env = await (async () => { let e; await cloneRepo('https://github.com/a/b.git', dest + '-2', { git: (a, c, en) => { e = en; return a[0] === 'clone' ? '' : 'abcdef1234567890abcdef1234567890abcdef12'; }, lookup: publicLookup, onEgress: () => {} }); return e; })();
@@ -467,6 +474,60 @@ describe('fetch — cloneRepo', () => {
     } finally {
       await fs.rm(base, { recursive: true, force: true });
     }
+  });
+
+  it('source only: fetches the blobs of source files and leaves media, fonts, archives, binaries, minified bundles and lockfiles on the server', async () => {
+    const tree = ['src/index.ts', 'README.md', 'docs/a b/[x]#!.md', 'Makefile', 'assets/hero.png', 'assets/demo.MP4', 'fonts/inter.woff2',
+      'package-lock.json', 'pnpm-lock.yaml', 'dist/app.min.js', 'dist/app.js.map', 'vendor/tool.wasm', 'release.zip', '.gitignore'];
+    const calls = [];
+    let sparse;
+    const git = async (args, cwd) => {
+      calls.push({ args, cwd });
+      const dest = args[args.length - 1];
+      if (args[0] === 'clone') { fsSync.mkdirSync(path.join(dest, '.git'), { recursive: true }); return ''; }
+      if (args.includes('ls-tree')) return tree.join('\0') + '\0';
+      if (args.includes('read-tree')) {
+        const gd = args[args.indexOf('--git-dir') + 1];
+        sparse = await fs.readFile(path.join(gd, 'info', 'sparse-checkout'), 'utf-8');
+        return '';
+      }
+      return 'abcdef1234567890abcdef1234567890abcdef12\n';
+    };
+    const base = await fs.mkdtemp(path.join(os.tmpdir(), 'bbs-clone-src-'));
+    try {
+      const log = [];
+      const dest = path.join(base, 'repo');
+      const r = await cloneRepo('https://github.com/a/b.git', dest, { git, lookup: publicLookup, onEgress: (x) => log.push(x) });
+      assert.deepEqual(sparse.trim().split('\n'), ['/src/index.ts', '/README.md', '/docs/a\\ b/\\[x\\]\\#\\!.md', '/Makefile', '/.gitignore']);
+      assert.equal(r.kept, 5);
+      assert.equal(r.skipped, 9);
+      assert.equal(log[0].files_kept, 5);
+      assert.equal(log[0].files_skipped, 9);
+      const rt = calls.find(c => c.args.includes('read-tree'));
+      assert.equal(rt.cwd, base, 'read-tree runs from the parent, never inside the clone');
+      for (const want of ['core.sparseCheckout=true', 'core.sparseCheckoutCone=false', 'core.hooksPath=/dev/null']) {
+        assert.ok(rt.args.includes(want), `read-tree sets -c ${want}`);
+      }
+      assert.deepEqual(rt.args.slice(-2), ['-mu', 'HEAD']);
+      assert.equal(rt.args[rt.args.indexOf('--work-tree') + 1], dest);
+      assert.equal(log[0].bytes_in, 0, 'the sparse list we wrote is not egress');
+    } finally {
+      await fs.rm(base, { recursive: true, force: true });
+    }
+  });
+
+  it('source only: a tree with no source files checks nothing out', async () => {
+    const calls = [];
+    const git = (args) => { calls.push(args); return args[0] === 'clone' ? '' : args.includes('ls-tree') ? 'a.png\0b.woff\0' : 'abcdef1234567890abcdef1234567890abcdef12\n'; };
+    const r = await cloneRepo('https://github.com/a/b.git', path.join(os.tmpdir(), `bbs-clone-none-${Date.now()}`), { git, lookup: publicLookup, onEgress: () => {} });
+    assert.deepEqual([r.kept, r.skipped], [0, 2]);
+    assert.ok(!calls.some(a => a.includes('read-tree')));
+  });
+
+  it('isSourcePath and sparsePattern', () => {
+    for (const p of ['a.ts', 'x/Dockerfile', 'LICENSE', '.env.example', 'a.min.ts', 'docs/x.mdx']) assert.ok(isSourcePath(p), p);
+    for (const p of ['x/Y.PNG', 'yarn.lock', 'Cargo.lock', 'a/b.min.css', 'm.gguf', 'go.sum']) assert.ok(!isSourcePath(p), p);
+    assert.equal(sparsePattern('a/*b?.md'), '/a/\\*b\\?.md');
   });
 
   it('refuses a private clone host before running git, and never executes anything from the clone', async () => {

@@ -391,7 +391,10 @@ describe('safe-git — caller: bbs fetch rev-parse of the fetched clone', () => 
     const dest = path.join(root, 'clone-weird');
     const markers = path.join(root, 'clone-weird-markers');
     let h;
+    let readTree = 0;
     const git = async (args) => {
+      // the source-only checkout: the stand-in clone already has its files, so read-tree only counts
+      if (args.includes('read-tree')) { readTree++; return ''; }
       if (args[0] !== 'clone') throw new Error('unexpected');
       await fs.mkdir(dest);
       sh(dest, ['init', '-q', '.']);
@@ -408,6 +411,7 @@ describe('safe-git — caller: bbs fetch rev-parse of the fetched clone', () => 
     assert.equal(r.sha, sh(dest, ['rev-parse', 'HEAD']).stdout.trim());
     assert.equal(await exists(dest), true, 'the clone is kept');
     assert.deepEqual(await fs.readdir(markers), [], 'nothing ran during the fetch');
+    assert.equal(readTree, 1, 'ls-tree went through safe-git; only read-tree used the runner');
     await assertHiddenDriverNeverRuns(dest, h);
   });
 

@@ -3,6 +3,15 @@
 Versions 4.2.0 and 4.3.0 were set in `package.json` but never published to npm,
 so 4.4.0 is the first release after 4.1.0 and carries all three.
 
+## Unreleased
+
+### Changed
+- `/w-bbs` fetch clones source files only: commit and trees first, then just the blobs of
+  code and prose files. Media, fonts, archives, binaries, minified bundles and lockfiles
+  stay on the server, so a large repository fits the 20 MB egress cap (a 278 MB repository
+  came down as 4.7 MB). HEAD is read through the hardened reader before anything is
+  written; the egress row records `files_kept` and `files_skipped`.
+
 ## 4.4.0 — 2026-10-10
 
 ### Added
