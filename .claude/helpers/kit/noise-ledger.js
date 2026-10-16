@@ -22,7 +22,7 @@
  * Dates must be real YYYY-MM-DD days. Time comes from `--now` (a date, or an ISO time: with Z or an offset the UTC day is used) or the clock. `accept` refuses a
  * past expiry. Unknown entry and top-level fields are preserved on rewrite; a ledger whose `version` is newer than 1 is refused (exit 1). A missing default ledger is empty; a missing `--ledger` is an error for apply, empty for accept.
  *
- * After accept and after every prune, the optional local index (./store.js, `db init`) is updated, best effort:
+ * After accept and after a prune that changed the file, the optional local index (./store.js, `db init`) is updated, best effort:
  * the ledger file stays the only store, and output and exit codes never depend on the index.
  *
  * Exit codes: 0 done (findings or not), 1 invalid input or broken ledger.
@@ -270,5 +270,5 @@ export async function run(args, io = {}) {
     const pruned = expired(ledger);
     if (pruned.length) await writeJsonAtomic(ledgerFile, { ...ledger, entries: ledger.entries.filter((e) => !isExpired(e, day)) });
     return { ledger: rel, date: day, pruned, remaining: ledger.entries.length - pruned.length };
-  }, io.lockOpts).then(indexed(io, 'noise-ledger', ledgerFile));
+  }, io.lockOpts).then((r) => (r.pruned.length ? indexed(io, 'noise-ledger', ledgerFile)(r) : r));
 }

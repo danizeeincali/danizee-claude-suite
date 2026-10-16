@@ -223,20 +223,20 @@ export function absolutePathEntries(value, { delimiter = path.delimiter, isAbsol
 const gitPathCache = new Map();
 
 /**
- * The absolute path of the git program, found by scanning only the absolute entries of env.PATH (on Windows with each
- * PATHEXT extension). Never a bare name: a bare 'git' is looked up in the child's cwd on Windows, and through an
- * empty or relative PATH entry on POSIX, so a git committed to the repository being read would run. Cached per
- * PATH/PATHEXT. KitExit 1 when no git is found.
+ * The absolute path of program `name` (git, gh), found by scanning only the absolute entries of env.PATH (on Windows
+ * with each PATHEXT extension). Never a bare name: a bare name is looked up in the child's cwd on Windows, and through
+ * an empty or relative PATH entry on POSIX, so a program committed to the repository being read would run. Cached per
+ * name and PATH/PATHEXT. null when there is none.
  */
-export function resolveGit(env = process.env) {
+export function resolveProgram(name, env = process.env) {
   const win = process.platform === 'win32';
   const pathValue = envGet(env, 'PATH') ?? '';
   const exts = win ? String(envGet(env, 'PATHEXT') || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean) : [''];
-  const key = `${pathValue}\0${exts.join(';')}`;
+  const key = `${name}\0${pathValue}\0${exts.join(';')}`;
   if (gitPathCache.has(key)) return gitPathCache.get(key);
   for (const dir of absolutePathEntries(pathValue)) {
     for (const ext of exts) {
-      const file = path.join(dir, `git${ext.toLowerCase()}`);
+      const file = path.join(dir, `${name}${ext.toLowerCase()}`);
       try {
         if (!fsSync.statSync(file).isFile()) continue;
         if (!win) fsSync.accessSync(file, fsSync.constants.X_OK);
@@ -245,7 +245,14 @@ export function resolveGit(env = process.env) {
       return file;
     }
   }
-  throw new KitExit('cannot run git: no git program in any absolute PATH entry (empty and relative entries are not searched)', 1);
+  return null;
+}
+
+/** resolveProgram('git'); KitExit 1 when no git is found. */
+export function resolveGit(env = process.env) {
+  const file = resolveProgram('git', env);
+  if (!file) throw new KitExit('cannot run git: no git program in any absolute PATH entry (empty and relative entries are not searched)', 1);
+  return file;
 }
 
 /** The git subcommand in an argv that may start with `-c key=value` pairs (for messages). */

@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { run as db } from '../src/lib/kit/db.js';
 import { run as reflect } from '../src/lib/kit/reflect.js';
-import { indexPaths, indexCheck, withIndex, nodeSqliteSupport, projectKey } from '../src/lib/kit/store.js';
+import { indexPaths, indexCheck, withIndex, nodeSqliteSupport, projectKey, MAX_FILE_BYTES, MAX_FILE_RECORDS, OPEN_BUDGET, fullReason } from '../src/lib/kit/store.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const CLI = path.join(HERE, '..', 'src', 'lib', 'kit', 'cli.js');
@@ -701,6 +701,121 @@ describe('the index reads only regular files, bounded, never through a link (rev
         }
       }
       assert.ok(!fs.existsSync(path.join(dir, 'inside')));
+    } finally { rm(dir); }
+  });
+});
+
+describe('the cost of indexing is bounded (review wt-2a-1, wt-2b L1 / L2)', () => {
+  const status = async (dir) => { const st = await call(db, ['status'], dir); assert.equal(st.code, 0, st.err); return st.out; };
+  const save = (dir, text) => cli(['reflect', 'lessons', 'save', '--role', 'r', '--session', 's', '--text', text], dir);
+  /** Rows as they are, without the refresh an open does first. */
+  const peek = (dir, sql) => withIndex({ cwd: dir, env: ENV }, (d) => d.all(sql), { refresh: false });
+  const rec = (n) => JSON.stringify({ version: 1, records: Object.fromEntries(Array.from({ length: n }, (_, i) => [`k${i}`, { scope: 'a.js', rule: 'r', status: 'open' }])) });
+  const marathonFiles = (out) => out.files.filter((f) => f.file.includes(`${path.sep}marathon${path.sep}`));
+
+  it('large pulled marathon files: a verb write returns quickly, indexes its own file and at most one open\'s budget; the rest are pending and later opens (or db rebuild) do them', { skip, timeout: 180000 }, async () => {
+    const dir = tmp();
+    try {
+      assert.equal((await call(db, ['init'], dir)).code, 0);
+      const m = path.join(fs.realpathSync(dir), '.claude', 'marathon');
+      const per = MAX_FILE_RECORDS - 1000;
+      const text = rec(per);
+      const runs = Array.from({ length: 12 }, (_, i) => `r${String(i).padStart(2, '0')}`);
+      for (const r of runs) { fs.mkdirSync(path.join(m, r), { recursive: true }); fs.writeFileSync(path.join(m, r, 'triage.json'), text); }
+      // over the byte cap (sparse, 64 MB): never read
+      fs.mkdirSync(path.join(m, 'rbig'));
+      fs.writeFileSync(path.join(m, 'rbig', 'triage.json'), '');
+      fs.truncateSync(path.join(m, 'rbig', 'triage.json'), 64 * 1024 * 1024);
+      // over the record cap: not indexed
+      fs.mkdirSync(path.join(m, 'rmany'));
+      fs.writeFileSync(path.join(m, 'rmany', 'triage.json'), rec(MAX_FILE_RECORDS + 1));
+
+      const t0 = Date.now();
+      const r = await save(dir, 'Run the linter before every commit.');
+      const ms = Date.now() - t0;
+      assert.equal(r.code, 0, r.err);
+      assert.equal(r.err, '');
+      assert.equal(JSON.parse(r.out).saved, true);
+      assert.ok(ms < 5000, `the verb write took ${ms} ms`);
+      const [after] = await peek(dir, 'SELECT (SELECT COUNT(*) FROM lessons) AS l, (SELECT COUNT(*) FROM triage) AS t');
+      assert.equal(after.l, 1, 'the written file is indexed first');
+      assert.ok(after.t > 0 && after.t <= OPEN_BUDGET.rows, `one open indexed ${after.t} rows`);
+
+      // db status: what is left is pending, with a note; each open does at most its budget
+      let out = await status(dir);
+      assert.ok(out.pending.length > 0);
+      assert.ok(out.notes.some((n) => /new or changed files are not indexed yet/.test(n)), JSON.stringify(out.notes));
+      assert.ok(out.rows.triage <= 2 * OPEN_BUDGET.rows);
+      assert.equal(out.skipped.find((x) => x.file === path.join(m, 'rbig', 'triage.json')).reason, `larger than ${MAX_FILE_BYTES} bytes`);
+      let n = 0;
+      while (out.pending && n++ < 20) out = await status(dir);
+      assert.equal(out.pending, undefined, 'later opens pick up the rest');
+      assert.equal(out.rows.triage, runs.length * per);
+      assert.equal(out.skipped.find((x) => x.file === path.join(m, 'rmany', 'triage.json')).reason, `more than ${MAX_FILE_RECORDS} records`);
+      // nothing changed: an open reads nothing and leaves nothing pending
+      const t1 = Date.now();
+      out = await status(dir);
+      assert.equal(out.pending, undefined);
+      assert.ok(Date.now() - t1 < 5000);
+
+      // db rebuild is not limited by the budget: all at once
+      const rb = await call(db, ['rebuild'], dir);
+      assert.equal(rb.code, 0, rb.err);
+      assert.equal(rb.out.rows.triage, runs.length * per);
+      assert.equal(rb.out.pending, undefined);
+
+      // the project's row cap (lowered here): files past it are skipped with that reason and a note
+      const capped = await db(['rebuild'], { cwd: dir, env: ENV, indexLimits: { maxRows: 50000 } });
+      const full = capped.skipped.filter((x) => x.reason === fullReason(50000));
+      assert.equal(full.length, runs.length - 2);
+      assert.equal(capped.rows.triage, 2 * per);
+      assert.ok(capped.notes.includes(`${runs.length - 2} files are not indexed: the index holds at most 50000 rows per project`), JSON.stringify(capped.notes));
+    } finally { rm(dir); }
+  });
+
+  it('a same-size in-place rewrite within the timestamp tick of the recorded read is re-read on the next open (L2)', { skip, timeout: 60000 }, async () => {
+    const dir = tmp();
+    try {
+      assert.equal((await call(db, ['init'], dir)).code, 0);
+      assert.equal((await save(dir, 'Run the linter before every commit.')).code, 0);
+      const file = path.join(dir, LESSONS);
+      const T = Math.floor(Date.now() / 1000);
+      fs.utimesSync(file, T, T);
+      assert.deepEqual(await lessonIds(dir), ['L1']);
+      const text = read(dir, LESSONS);
+      const fd = fs.openSync(file, 'r+');
+      fs.writeSync(fd, text.replace('"L1"', '"L9"'), 0);
+      fs.closeSync(fd);
+      fs.utimesSync(file, T, T);
+      assert.deepEqual(await lessonIds(dir), ['L9'], 'the recorded stat was too close to its read to trust');
+    } finally { rm(dir); }
+  });
+
+  it('the marathon cap holds for files already indexed: one pushed past the first 200 is dropped, and db rebuild agrees with the note (L1)', { skip, timeout: 120000 }, async () => {
+    const dir = tmp();
+    try {
+      assert.equal((await call(db, ['init'], dir)).code, 0);
+      const m = path.join(fs.realpathSync(dir), '.claude', 'marathon');
+      for (let i = 0; i < 205; i++) {
+        fs.mkdirSync(path.join(m, `s${String(i).padStart(3, '0')}`), { recursive: true });
+        fs.writeFileSync(path.join(m, `s${String(i).padStart(3, '0')}`, 'triage.json'), rec(1));
+      }
+      let out = await status(dir);
+      assert.equal(marathonFiles(out).length, 200);
+      assert.ok(marathonFiles(out).some((f) => f.file === path.join(m, 's199', 'triage.json')));
+      // a run folder that sorts first pushes s199 past the cap
+      fs.mkdirSync(path.join(m, 'a000'));
+      fs.writeFileSync(path.join(m, 'a000', 'triage.json'), rec(1));
+      out = await status(dir);
+      assert.equal(marathonFiles(out).length, 200);
+      assert.equal(out.rows.triage, 200);
+      assert.ok(!out.files.some((f) => f.file === path.join(m, 's199', 'triage.json')), 'dropped: beyond the cap');
+      assert.deepEqual(out.notes, ['6 .claude/marathon/<run>/triage*.json files beyond the first 200 are not indexed']);
+      const rb = await call(db, ['rebuild'], dir);
+      assert.equal(rb.code, 0, rb.err);
+      assert.equal(marathonFiles(rb.out).length, 200);
+      assert.equal(rb.out.rows.triage, 200);
+      assert.deepEqual(rb.out.notes, ['6 .claude/marathon/<run>/triage*.json files beyond the first 200 are not indexed']);
     } finally { rm(dir); }
   });
 });

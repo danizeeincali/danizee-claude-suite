@@ -12,7 +12,7 @@ import crypto from 'node:crypto';
 import { createRequire } from 'node:module';
 import { run as db } from '../src/lib/kit/db.js';
 import { withIndex, indexPaths } from '../src/lib/kit/store.js';
-import { parseJunit, parseTap, parseTapSummary, MESSAGE_MAX, MAX_DEPTH, capBytes, ARTIFACT_MAX_BYTES, ARTIFACTS_PER_RUN, IMPORT_MAX_BYTES, JUNIT_MAX_BYTES, ZIP_MAX_RATIO, parseArtifactList, readJunitFromZip } from '../src/lib/kit/test-runs.js';
+import { parseJunit, parseTap, parseTapSummary, MESSAGE_MAX, MAX_DEPTH, capBytes, ARTIFACT_MAX_BYTES, ARTIFACTS_PER_RUN, IMPORT_MAX_BYTES, JUNIT_MAX_BYTES, ZIP_MAX_RATIO, parseArtifactList, readJunitFromZip, recordRun, SECRETS_MAX_BYTES } from '../src/lib/kit/test-runs.js';
 import { renderJunit } from '../src/lib/kit/render.js';
 import { runStep } from '../scripts/ci-step.js';
 
@@ -231,6 +231,8 @@ if (a[0] === 'api') {
   }
   const k = Object.keys(ids).find((x) => String(ids[x]) === zip[1]);
   if (!k) { process.stderr.write('HTTP 404: Not Found\\n'); process.exit(1); }
+  const failing = fs.existsSync(path.join(root, 'fail-ids.json')) ? JSON.parse(fs.readFileSync(path.join(root, 'fail-ids.json'), 'utf-8')) : [];
+  if (failing.includes(Number(zip[1]))) { process.stderr.write('HTTP 502: Bad Gateway\\n'); process.exit(1); }
   process.stdout.write(fs.readFileSync(path.join(root, 'artifacts', k + '.zip')));
   return;
 }
@@ -359,8 +361,11 @@ describe('db import-reports', () => {
       assert.equal(again.code, 0, again.err);
       assert.deepEqual(again.out.imported, []);
       assert.deepEqual(again.out.skipped.filter((s) => s.reason === 'already imported').map((s) => s.run_id), [302, 301]);
-      assert.equal(gh.zips().length, 5, 'nothing downloaded again');
-      assert.deepEqual(gh.listings(), [302, 301, 300, 300], 'only run 300 was asked for again');
+      // checked per artifact (review wt-2b M1): an imported one is never downloaded again, the ones that failed are retried
+      assert.deepEqual(again.out.skipped.filter((s) => s.reason === 'already imported').map((s) => s.artifact), ['test-results-node-20', 'test-results-node-20']);
+      assert.deepEqual(gh.zips().slice(5), ['302/test-results-node-22', '302/test-results-node-24', '301/test-results-node-22'].map((k) => ids[k]), 'only the artifacts that failed are downloaded again');
+      assert.ok(!gh.zips().slice(5).some((id) => [ids['302/test-results-node-20'], ids['301/test-results-node-20']].includes(id)), 'nothing imported is downloaded again');
+      assert.deepEqual(gh.listings(), [302, 301, 300, 302, 301, 300]);
       assert.equal((await rows(dir, 'SELECT COUNT(*) AS n FROM test_runs'))[0].n, 2);
 
       // db status: test runs per branch; db rebuild re-indexes the JSON files and keeps the test runs
@@ -412,8 +417,9 @@ describe('db import-reports', () => {
       assert.equal(again.code, 0, again.err);
       assert.deepEqual(again.out.imported, [], 'the pruned run 301 is not imported again');
       assert.deepEqual(again.out.skipped.filter((s) => s.reason === 'already imported').map((s) => s.run_id), [302, 301]);
-      assert.equal(gh.zips().length, downloads, 'nothing downloaded again');
-      assert.deepEqual(gh.listings(), [302, 301, 300, 300], 'only run 300 (no artifact) was asked for again');
+      const ids = gh.ids;
+      assert.ok(!gh.zips().slice(downloads).some((id) => [ids['302/test-results-node-20'], ids['301/test-results-node-20']].includes(id)), 'the imported (and the pruned) artifacts are not downloaded again');
+      assert.deepEqual(gh.zips().slice(downloads), ['302/test-results-node-22', '302/test-results-node-24', '301/test-results-node-22'].map((k) => ids[k]), 'only the ones that failed are retried');
       assert.equal((await rows(dir, 'SELECT COUNT(*) AS n FROM test_runs'))[0].n, 1, 'the prune stays done');
     } finally { rm(dir); rm(gh.root); }
   });
@@ -502,12 +508,21 @@ describe('db import-reports', () => {
       // a call's budget: once used up, later artifacts are not downloaded
       for (let i = 0; i < 3; i++) gh.art(501, `test-results-m${i}`, [{ name: 'junit.xml', data: junit(`<testcase name="m${i}"/>`), method: 0 }]);
       const one = fs.statSync(path.join(gh.root, 'artifacts', '501', 'test-results-m0.zip')).size;
+      const both = fs.readFileSync(path.join(gh.root, 'runs.json'));
+      fs.writeFileSync(path.join(gh.root, 'runs.json'), JSON.stringify(JSON.parse(both).filter((x) => x.databaseId === 501)));
       const before = gh.zips().length;
       const r2 = await callIo(['import-reports', '--limit', '5'], dir, gh.env, { importLimits: { totalBytes: one * 2 + 10 } });
       assert.equal(r2.code, 0, r2.err);
       assert.deepEqual(r2.out.imported.map((x) => x.artifact), ['test-results-m0', 'test-results-m1']);
       assert.deepEqual(r2.out.skipped.filter((x) => x.run_id === 501), [{ run_id: 501, artifact: 'test-results-m2', reason: `the download budget of one import (${one * 2 + 10} bytes) is used up: not downloaded` }]);
       assert.equal(gh.zips().length, before + 2);
+
+      // the artifacts left out by a cap are not 'already imported': the next import gets them (review wt-2b M1)
+      fs.writeFileSync(path.join(gh.root, 'runs.json'), both);
+      const r3 = await call(['import-reports', '--limit', '5'], dir, gh.env);
+      assert.equal(r3.code, 0, r3.err);
+      assert.deepEqual(r3.out.imported.map((x) => x.artifact), ['test-results-n5', 'test-results-n6', 'test-results-m2']);
+      assert.equal(r3.out.skipped.filter((x) => x.reason === 'already imported').length, ARTIFACTS_PER_RUN + 2);
     } finally { rm(dir); rm(gh.root); }
   });
 
@@ -615,5 +630,162 @@ describe('readJunitFromZip reads the central directory itself (node:zlib only)',
     const many = makeZip(Array.from({ length: 1001 }, (_, i) => ({ name: `f${i}`, data: '', method: 0 })));
     assert.match(readJunitFromZip(many).error, /more than 1000 entries/);
     assert.deepEqual(readJunitFromZip(makeZip([{ name: 'JUNIT.XML', data: doc }, { name: '/junit.xml', data: doc }, { name: 'x/junit.xml', data: doc }])), { missing: true });
+  });
+});
+
+describe('readJunitFromZip and archives made by real tools (review wt-2b L4)', () => {
+  const doc = junit(Array.from({ length: 50 }, (_, i) => `<testcase name="t${i}" classname="node-test" time="0.01"/>`).join(''));
+  const HAS_ZIP = spawnSync('zip', ['-v'], { encoding: 'utf-8' }).status === 0;
+  it('a Unix entry with permission bits and no file-type bits (Python writestr) is a regular file', () => {
+    assert.deepEqual(readJunitFromZip(makeZip([{ name: 'junit.xml', data: doc, mode: 0o600 }])), { text: doc });
+    assert.match(readJunitFromZip(makeZip([{ name: 'junit.xml', data: '/etc/passwd', mode: 0o120777 }])).error, /not a regular file/);
+  });
+  it('reads what the zip tool makes: a plain archive, -fd (data descriptors) and one streamed to a pipe', { skip: !HAS_ZIP }, () => {
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-real-zip-'));
+    try {
+      fs.writeFileSync(path.join(d, 'junit.xml'), doc);
+      fs.writeFileSync(path.join(d, 'results.sarif'), '{}');
+      const made = {};
+      for (const [label, file, args] of [['plain', 'a.zip', ['junit.xml', 'results.sarif']], ['fd', 'b.zip', ['-fd', 'results.sarif', 'junit.xml']]]) {
+        const r = spawnSync('zip', ['-q', file, ...args], { cwd: d });
+        assert.equal(r.status, 0, String(r.stderr));
+        made[label] = fs.readFileSync(path.join(d, file));
+      }
+      const piped = spawnSync('zip', ['-q', '-', 'junit.xml'], { cwd: d, maxBuffer: 1024 * 1024 });
+      assert.equal(piped.status, 0, String(piped.stderr));
+      made.pipe = piped.stdout;
+      // general purpose flag bit 3 (sizes in a data descriptor after the data) in the -fd and piped archives
+      const flagOf = (buf) => buf.readUInt16LE(buf.indexOf(Buffer.from('PK\x03\x04', 'latin1')) + 6);
+      assert.equal(flagOf(made.fd) & 8, 8);
+      assert.equal(flagOf(made.pipe) & 8, 8);
+      for (const [label, buf] of Object.entries(made)) assert.deepEqual(readJunitFromZip(buf), { text: doc }, label);
+    } finally { rm(d); }
+  });
+});
+
+describe('import-reports and recordRun: no program from the project, git through safe-git, bounded secrets (review wt-2a-2 / wt-2a-3, wt-2b M1 / L5)', () => {
+  const DB = JSON.stringify(new URL('../src/lib/kit/db.js', import.meta.url).href);
+  const TR = JSON.stringify(new URL('../src/lib/kit/test-runs.js', import.meta.url).href);
+  const IMPORT = (args) => `const { run } = await import(${DB}); try { console.log(JSON.stringify({ code: 0, out: await run(${JSON.stringify(args)}, { cwd: process.cwd() }) })); } catch (e) { console.log(JSON.stringify({ code: e.code, err: e.message })); }`;
+  const RECORD = `const { recordRun } = await import(${TR}); const t = new Date().toISOString(); try { console.log(JSON.stringify({ code: 0, out: await recordRun({ cwd: process.cwd() }, { output: 'ok 1 - a\\n', code: 0, started_at: t, finished_at: t }) })); } catch (e) { console.log(JSON.stringify({ code: e.code, err: e.message })); }`;
+  /** Run `code` in a child node (so a hang is a timeout, not a stuck test runner): { res, stderr, ms, killed }. */
+  const child = (code, cwd, env) => {
+    const t = Date.now();
+    const r = spawnSync(process.execPath, ['--input-type=module', '-e', code], { cwd, env: { ...process.env, ...env }, encoding: 'utf-8', timeout: 60000, killSignal: 'SIGKILL' });
+    const last = String(r.stdout).trim().split('\n').pop();
+    let res = null;
+    try { res = JSON.parse(last); } catch { /* none */ }
+    return { res, stderr: String(r.stderr).split('\n').filter((l) => l && !/ExperimentalWarning|--trace-warnings/.test(l)).join('\n'), ms: Date.now() - t, killed: r.signal === 'SIGKILL' };
+  };
+  const runRows = (dir) => rows(dir, 'SELECT branch, commit_sha FROM test_runs ORDER BY id');
+
+  it('a gh or git in the project folder is never run, even with . and an empty entry first on PATH', { skip: !NODE_SQLITE, timeout: 120000 }, async () => {
+    const dir = await project();
+    const gh = fakeGh();
+    try {
+      for (const name of ['gh', 'git']) fs.writeFileSync(path.join(dir, name), `#!/bin/sh\\ntouch ${JSON.stringify(path.join(dir, `MARKER-${name}`))}\\nexit 0\\n`, { mode: 0o755 });
+      const env = { ...gh.env, PATH: `.${path.delimiter}${path.delimiter}${gh.env.PATH}` };
+      const imp = child(IMPORT(['import-reports', '--limit', '5']), dir, env);
+      assert.equal(imp.res?.code, 0, JSON.stringify(imp));
+      assert.equal(imp.res.out.branch, 'feat/x', 'the branch, read through safe-git');
+      assert.equal(imp.res.out.imported.length, 2);
+      const rec = child(RECORD, dir, env);
+      assert.equal(rec.res?.code, 0, JSON.stringify(rec));
+      assert.equal(rec.res.out.recorded, true);
+      const [local] = await rows(dir, "SELECT branch, commit_sha FROM test_runs WHERE source = 'local'");
+      assert.deepEqual([local.branch, local.commit_sha], ['feat/x', spawnSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf-8' }).stdout.trim()]);
+      assert.ok(!fs.existsSync(path.join(dir, 'MARKER-gh')) && !fs.existsSync(path.join(dir, 'MARKER-git')), 'nothing from the project folder ran');
+      assert.deepEqual(gh.calls()[0], ['auth', 'status'], 'the gh on PATH ran');
+    } finally { rm(dir); rm(gh.root); }
+  });
+
+  it('a repository config [include] path naming a FIFO hangs neither import-reports nor recordRun', { skip: !NODE_SQLITE, timeout: 180000 }, async () => {
+    const dir = await project();
+    const gh = fakeGh();
+    try {
+      assert.equal(spawnSync('mkfifo', [path.join(dir, '.git', 'inc')]).status, 0);
+      fs.appendFileSync(path.join(dir, '.git', 'config'), '[include]\n\tpath = inc\n');
+      // (plain git in this folder would now block on the FIFO: nothing below may run it)
+      const imp = child(IMPORT(['import-reports', '--limit', '5']), dir, gh.env);
+      assert.ok(!imp.killed && imp.ms < 30000, `import-reports took ${imp.ms} ms`);
+      assert.equal(imp.res?.code, 0, JSON.stringify(imp));
+      assert.equal(imp.res.out.branch, 'feat/x');
+      const rec = child(RECORD, dir, gh.env);
+      assert.ok(!rec.killed && rec.ms < 30000, `recordRun took ${rec.ms} ms`);
+      assert.equal(rec.res?.code, 0, JSON.stringify(rec));
+      assert.equal(rec.res.out.recorded, true);
+    } finally { rm(dir); rm(gh.root); }
+  });
+
+  it('a secrets file that is a FIFO, a link or too large is skipped with one stderr line; import-reports and recordRun finish', { skip: !NODE_SQLITE, timeout: 180000 }, async () => {
+    const dir = await project();
+    const gh = fakeGh();
+    const secrets = path.join(dir, '.claude', 'kit', 'secrets');
+    try {
+      for (const [label, make, reason] of [
+        ['fifo', () => assert.equal(spawnSync('mkfifo', [secrets]).status, 0), 'not a regular file'],
+        ['link', () => fs.symlinkSync('/dev/zero', secrets), 'a symbolic link'],
+        ['large', () => { fs.writeFileSync(secrets, ''); fs.truncateSync(secrets, SECRETS_MAX_BYTES + 1); }, `larger than ${SECRETS_MAX_BYTES} bytes`]
+      ]) {
+        fs.rmSync(secrets, { force: true });
+        make();
+        for (const [what, code] of [['import-reports', IMPORT(['import-reports', '--branch', 'feat/x', '--limit', '5'])], ['recordRun', RECORD]]) {
+          const r = child(code, dir, gh.env);
+          assert.ok(!r.killed && r.ms < 30000, `${label} ${what}: ${r.ms} ms`);
+          assert.equal(r.res?.code, 0, `${label} ${what}: ${JSON.stringify(r)}`);
+          const notes = r.stderr.split('\n').filter((l) => /secrets file/.test(l));
+          assert.equal(notes.length, 1, `${label} ${what}: ${r.stderr}`);
+          assert.ok(notes[0].includes(`(${reason})`), notes[0]);
+        }
+      }
+    } finally { rm(dir); rm(gh.root); }
+  });
+
+  it('an artifact whose download failed is retried by the next import; the imported one is not downloaded again (M1)', { skip: !NODE_SQLITE }, async () => {
+    const dir = await project();
+    const gh = fakeGh();
+    try {
+      fs.writeFileSync(path.join(gh.root, 'runs.json'), JSON.stringify([{ databaseId: 101, headSha: 'a'.repeat(40), createdAt: '2026-10-17T12:00:00Z', conclusion: 'success', event: 'push', headBranch: 'feat/x' }]));
+      const a = gh.art(101, 'test-results-node-20', [{ name: 'junit.xml', data: junit('<testcase name="a"/>') }]);
+      const b = gh.art(101, 'test-results-node-22', [{ name: 'junit.xml', data: junit('<testcase name="b"/>') }]);
+      fs.writeFileSync(path.join(gh.root, 'fail-ids.json'), JSON.stringify([b]));
+      const r1 = await call(['import-reports'], dir, gh.env);
+      assert.equal(r1.code, 0, r1.err);
+      assert.deepEqual(r1.out.imported.map((x) => x.artifact), ['test-results-node-20']);
+      assert.match(r1.out.skipped.find((x) => x.artifact === 'test-results-node-22').reason, /^download failed: HTTP 502/);
+      fs.rmSync(path.join(gh.root, 'fail-ids.json'));
+      const r2 = await call(['import-reports'], dir, gh.env);
+      assert.equal(r2.code, 0, r2.err);
+      assert.deepEqual(r2.out.imported.map((x) => x.artifact), ['test-results-node-22']);
+      assert.deepEqual(r2.out.skipped, [{ run_id: 101, artifact: 'test-results-node-20', reason: 'already imported' }]);
+      assert.deepEqual(gh.zips(), [a, b, b]);
+    } finally { rm(dir); rm(gh.root); }
+  });
+
+  it('no commits yet and a detached HEAD: import-reports says which and asks for --branch; recordRun records (no commits yet) / (detached) (L5)', { skip: !NODE_SQLITE }, async () => {
+    const gh = fakeGh();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kit-test-runs-unborn-'));
+    const det = await project();
+    try {
+      spawnSync('git', ['init', '-q', '-b', 'feat/y'], { cwd: dir });
+      assert.equal((await call(['init'], dir, ENGINE)).code, 0);
+      let r = await call(['import-reports'], dir, gh.env);
+      assert.equal(r.code, 1);
+      assert.equal(r.err, 'cannot tell the current git branch (no commits yet): pass --branch <b>');
+      let rec = await recordRun({ cwd: dir, env: ENGINE }, { output: 'ok 1 - a\n', code: 0, started_at: '2026-10-16T00:00:00Z', finished_at: '2026-10-16T00:00:01Z' });
+      assert.equal(rec.recorded, true);
+      assert.deepEqual((await runRows(dir)).map((x) => [x.branch, x.commit_sha]), [['(no commits yet)', null]]);
+
+      spawnSync('git', ['checkout', '-q', '--detach'], { cwd: det });
+      r = await call(['import-reports'], det, gh.env);
+      assert.equal(r.code, 1);
+      assert.equal(r.err, 'cannot tell the current git branch (HEAD is detached (detached)): pass --branch <b>');
+      rec = await recordRun({ cwd: det, env: ENGINE }, { output: 'ok 1 - a\n', code: 0, started_at: '2026-10-16T00:00:00Z', finished_at: '2026-10-16T00:00:01Z' });
+      assert.equal(rec.recorded, true);
+      const [run] = await runRows(det);
+      assert.equal(run.branch, '(detached)');
+      assert.equal(run.commit_sha, spawnSync('git', ['rev-parse', 'HEAD'], { cwd: det, encoding: 'utf-8' }).stdout.trim());
+      assert.ok(!fs.existsSync(path.join(gh.root, 'calls.jsonl')), 'gh is never called without a branch');
+    } finally { rm(dir); rm(det); rm(gh.root); }
   });
 });

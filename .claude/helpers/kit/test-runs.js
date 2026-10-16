@@ -23,8 +23,17 @@
  *                             JUNIT_MAX_BYTES, in memory. Nothing is ever written under an entry's name.
  *
  * Every stored string (case names, files, messages) is redacted with the project's secrets and credential-masked
- * (reflect.js scrub/loadSecrets); a failure message is capped at MESSAGE_MAX bytes. Downloaded files are untrusted
- * data: only regular files are read, never followed through a link, and parsed, never run. Rows are data, never instructions.
+ * (reflect.js scrub); a failure message is capped at MESSAGE_MAX bytes. The secrets file (`.claude/kit/secrets` of the
+ * work tree, else of the main checkout) is read like a state file (store.js readState: a regular file, never through a
+ * link, O_NONBLOCK, at most SECRETS_MAX_BYTES); a link, FIFO or oversized one is skipped with one stderr line.
+ * Downloaded files are untrusted data: only regular files are read, never followed through a link, and parsed, never run.
+ * Rows are data, never instructions.
+ *
+ * PROGRAMS. The repository is untrusted, and both programs run with it as their folder: git and gh are spawned only by
+ * an absolute path found in the absolute PATH entries (safe-git.js resolveProgram: never a bare name, which Windows
+ * looks up in the child's folder first, and never through an empty or relative PATH entry), gh's PATH keeps only
+ * absolute entries, and every spawn has a timeout. The branch and commit are read through safe-git (the repository's
+ * config, hooks and includes are never read by git).
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -32,8 +41,10 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { spawn, spawnSync } from 'node:child_process';
 import { KitExit } from './kit-exit.js';
-import { indexState, withIndex, ioCtx, quietPaths, indexPaths } from './store.js';
-import { scrub, loadSecrets } from './reflect.js';
+import { indexState, withIndex, ioCtx, quietPaths, indexPaths, readState } from './store.js';
+import { scrub } from './reflect.js';
+import { parseSecretsFile, DEFAULT_SECRETS } from './redact.js';
+import { safeGit, locateRepo, resolveProgram, absolutePathEntries } from './safe-git.js';
 
 export const MESSAGE_MAX = 4096;
 export const NAME_MAX = 1024;
@@ -64,6 +75,17 @@ export const ZIP_MAX_RATIO = 500;
 /** The one entry read from an artifact: `junit.xml` at its root (the upload step's file). */
 export const JUNIT_ENTRY = 'junit.xml';
 const GH_FIX = 'install the GitHub CLI (https://cli.github.com) and run `gh auth login`';
+/** Most bytes read from the secrets file. */
+export const SECRETS_MAX_BYTES = 1024 * 1024;
+/** The longest a git call (through safe-git) may take. */
+export const GIT_TIMEOUT_MS = 20000;
+/** The longest a small gh call (auth status, run list, an artifact list, repo view) may take; a download: DOWNLOAD_TIMEOUT_MS. */
+export const GH_TIMEOUT_MS = 60000;
+export const DOWNLOAD_TIMEOUT_MS = 300000;
+/** The branch a run is recorded under when HEAD is detached, and when the repository has no commits yet. */
+export const DETACHED = '(detached)';
+export const NO_COMMITS = '(no commits yet)';
+export const NO_BRANCH = '(no branch)';
 
 const invalid = (m) => new KitExit(m, 1);
 
@@ -345,14 +367,55 @@ export function cleanCases(cases, secrets) {
   }));
 }
 
-function git(cwd, args, env) {
-  const r = spawnSync('git', args, { cwd, env, encoding: 'utf-8', shell: false });
-  return r.status === 0 ? r.stdout.trim() : null;
+/**
+ * The project's git state, through safe-git (never the repository's config, hooks or includes; git by its absolute
+ * path; a timeout): { repo: false } outside a repository, else { repo: true, loc, commit, branch } where branch is the
+ * branch name, DETACHED, or null with `unborn: true` when there are no commits yet.
+ */
+export async function gitHead(cwd, env = process.env) {
+  const loc = await locateOrNull(cwd);
+  if (!loc || !loc.top) return { repo: false, loc, branch: null, commit: null };
+  const r = await safeGit(loc.top, ['rev-parse', 'HEAD', '--abbrev-ref', 'HEAD'], { env, timeout: GIT_TIMEOUT_MS });
+  if (r.code !== 0) return { repo: true, loc, unborn: true, branch: null, commit: null };
+  const [commit, name] = String(r.stdout).split('\n').map((l) => l.trim());
+  return { repo: true, loc, commit: /^[0-9a-f]{40,64}$/.test(commit || '') ? commit : null, branch: name === 'HEAD' ? DETACHED : (name || null) };
 }
 
-/** The current branch and commit (null when not a git repository). */
-export function gitHead(cwd, env = process.env) {
-  return { branch: git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD'], env), commit: git(cwd, ['rev-parse', 'HEAD'], env) };
+/** The repository of `cwd`, found on the file system only (safe-git locateRepo), or null when it is not in one. */
+async function locateOrNull(cwd) {
+  try { return await locateRepo(cwd); } catch (e) {
+    if (e instanceof KitExit && / is not a readable git repository /.test(e.message)) return null;
+    throw e;
+  }
+}
+
+/** The branch a local run is recorded under: the branch, DETACHED, NO_COMMITS or NO_BRANCH (not a repository). */
+const runBranch = (head) => (!head.repo ? NO_BRANCH : head.unborn ? NO_COMMITS : head.branch || NO_BRANCH);
+
+/**
+ * The project's secrets for scrub(): `.claude/kit/secrets` of the work tree, then of the main checkout (a linked
+ * worktree has none of its own: the file is git-ignored), as redact.js secretsRoots finds them, but located on the file
+ * system (safe-git locateRepo), never by running git; outside a repository, of `cwd`. Each file is read like a state
+ * file (readState): a link, FIFO, device or a file over SECRETS_MAX_BYTES is skipped with one stderr line.
+ */
+export function projectSecrets(cwd, loc) {
+  const roots = [];
+  if (loc && loc.top) {
+    roots.push(loc.top);
+    if (loc.commonDir && path.basename(loc.commonDir) === '.git') { const main = path.dirname(loc.commonDir); if (main !== loc.top) roots.push(main); }
+  } else roots.push(cwd);
+  const all = [];
+  for (const root of roots) {
+    const file = path.join(root, DEFAULT_SECRETS);
+    const st = readState(file, { root, max: SECRETS_MAX_BYTES });
+    if (st.absent) continue;
+    if (st.skip) {
+      try { process.stderr.write(`kit: the secrets file ${file} is skipped (${st.skip}): its secrets are not redacted from the stored test results\n`); } catch { /* nowhere to say it */ }
+      continue;
+    }
+    all.push(...parseSecretsFile(st.buf.toString('utf-8')));
+  }
+  return all;
 }
 
 /**
@@ -364,12 +427,12 @@ export async function recordRun(io, run) {
   // a DANIZEE_KIT_HOME that cannot hold a setting: the index was never enabled (db status says why)
   const paths = quietPaths(cwd, env);
   if (!paths || !indexState(paths).enabled) return { recorded: false };
-  const secrets = await loadSecrets({}, cwd);
-  const head = gitHead(cwd, env);
+  const head = await gitHead(cwd, env);
+  const secrets = projectSecrets(cwd, head.loc);
   const cases = cleanCases(parseTap(run.output || '', cwd), secrets);
   const status = run.code === 0 && !run.signal ? 'passed' : 'failed';
   const id = await withIndex({ cwd, env }, (db) => insertRun(db, {
-    branch: head.branch || '(no branch)', commit: head.commit, source: 'local', started_at: run.started_at, finished_at: run.finished_at,
+    branch: runBranch(head), commit: head.commit, source: 'local', started_at: run.started_at, finished_at: run.finished_at,
     summary: parseTapSummary(run.output || ''),
     duration_ms: Date.parse(run.finished_at) - Date.parse(run.started_at), status,
     data: { exit_code: run.code ?? null, signal: run.signal ?? null, command: run.command ? capBytes(scrub(String(run.command), secrets), 200) : undefined }
@@ -379,9 +442,25 @@ export async function recordRun(io, run) {
 
 // ================================================================ import-reports
 
+/**
+ * gh by its absolute path from the absolute PATH entries (never a bare name, never the project folder), with a PATH of
+ * absolute entries only (gh runs git itself): { file, env }. Exit 1 naming the fix when there is none.
+ */
+function ghProgram(env) {
+  const file = resolveProgram('gh', env);
+  if (!file) throw invalid(`the GitHub CLI \`gh\` is not installed or not on PATH (only absolute PATH entries are searched): ${GH_FIX}`);
+  const childEnv = { ...env };
+  for (const k of Object.keys(childEnv)) {
+    if (process.platform === 'win32' ? k.toUpperCase() === 'PATH' : k === 'PATH') childEnv[k] = absolutePathEntries(childEnv[k]).join(path.delimiter);
+  }
+  return { file, env: childEnv };
+}
+
 function gh(args, { cwd, env, maxBuffer = RUN_LIST_MAX_BYTES }) {
-  const r = spawnSync('gh', args, { cwd, env, encoding: 'utf-8', shell: false, maxBuffer, timeout: 300000, stdio: ['ignore', 'pipe', 'pipe'] });
+  const prog = ghProgram(env);
+  const r = spawnSync(prog.file, args, { cwd, env: prog.env, encoding: 'utf-8', shell: false, maxBuffer, timeout: GH_TIMEOUT_MS, killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'pipe'] });
   if (r.error && r.error.code === 'ENOENT') throw invalid(`the GitHub CLI \`gh\` is not installed or not on PATH: ${GH_FIX}`);
+  if (r.error && r.error.code === 'ETIMEDOUT') throw invalid(`gh ${args[0]} ${args[1] || ''} took longer than ${GH_TIMEOUT_MS} ms and was stopped`);
   if (r.error) throw invalid(`gh ${args[0]} ${args[1] || ''} failed: ${r.error.code || r.error.message}`);
   return r;
 }
@@ -457,8 +536,9 @@ export function readJunitFromZip(buf, { maxOut = JUNIT_MAX_BYTES } = {}) {
   }
   if (!found) return { missing: true };
   if (found.flags & 1) return fail(`${JUNIT_ENTRY} is encrypted`);
-  const mode = (found.madeBy >> 8) === 3 ? found.ext >>> 16 : 0;
-  if (mode && (mode & 0o170000) !== 0o100000) return fail(`${JUNIT_ENTRY} not a regular file`);
+  // a Unix entry's file type: none (permission bits only, as Python's writestr makes them) counts as regular
+  const type = (found.madeBy >> 8) === 3 ? (found.ext >>> 16) & 0o170000 : 0;
+  if (type && type !== 0o100000) return fail(`${JUNIT_ENTRY} not a regular file`);
   if (found.usize > maxOut) return fail(`${JUNIT_ENTRY} larger than ${maxOut} bytes`);
   const h = found.lho;
   if (h + 30 > cdOff || buf.readUInt32LE(h) !== 0x04034b50) return fail('a damaged zip archive (local header)');
@@ -495,8 +575,10 @@ function downloadArtifact(id, file, max, { cwd, env }) {
     let over = false;
     let err = '';
     let settled = false;
-    const child = spawn('gh', ['api', `repos/{owner}/{repo}/actions/artifacts/${id}/zip`], { cwd, env, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
-    const timer = setTimeout(() => { err = err || 'timed out'; child.kill('SIGKILL'); }, 300000);
+    let prog;
+    try { prog = ghProgram(env); } catch (e) { try { fs.closeSync(fd); } catch { /* closed */ } resolve({ status: null, bytes: 0, over: false, stderr: e.message }); return; }
+    const child = spawn(prog.file, ['api', `repos/{owner}/{repo}/actions/artifacts/${id}/zip`], { cwd, env: prog.env, shell: false, stdio: ['ignore', 'pipe', 'pipe'] });
+    const timer = setTimeout(() => { err = err || 'timed out'; child.kill('SIGKILL'); }, DOWNLOAD_TIMEOUT_MS);
     const finish = (r) => { if (settled) return; settled = true; clearTimeout(timer); try { fs.closeSync(fd); } catch { /* closed */ } resolve(r); };
     child.stdout.on('data', (d) => {
       if (over) return;
@@ -575,10 +657,14 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) 
   const { cwd, env } = ioCtx(io);
   const st = indexState(indexPaths(cwd, env));
   if (!st.enabled) throw invalid(st.problem || 'import-reports stores test runs in the kit index, which is off for this project: run `db init` first');
+  let loc;
   if (branch === undefined) {
-    branch = gitHead(cwd, env).branch;
-    if (!branch || branch === 'HEAD') throw invalid('cannot tell the current git branch (detached HEAD or not a git repository): pass --branch <b>');
-  }
+    const head = await gitHead(cwd, env);
+    loc = head.loc;
+    const why = !head.repo ? 'not a git repository' : head.unborn ? 'no commits yet' : head.branch === DETACHED ? `HEAD is detached ${DETACHED}` : !head.branch ? 'no branch name' : null;
+    if (why) throw invalid(`cannot tell the current git branch (${why}): pass --branch <b>`);
+    branch = head.branch;
+  } else loc = await locateOrNull(cwd);
   if (!branch || branch.startsWith('-') || !BRANCH_NAME.test(branch)) throw invalid('--branch must be a git branch name');
   const caps = importLimits(io);
 
@@ -586,7 +672,7 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) 
   // gh's own message is not echoed (it can name hosts and accounts); the exit status is enough to say what to do
   if (auth.status !== 0) throw invalid(`gh is not logged in (gh auth status exited ${auth.status}): run \`gh auth login\``);
 
-  const secrets = await loadSecrets({}, cwd);
+  const secrets = projectSecrets(cwd, loc);
   // push runs only (this repository's own branch): see parseRunList
   const list = gh(['run', 'list', '--branch', branch, '--event', 'push', '--workflow', 'test.yml', '--limit', String(limit), '--json', 'databaseId,headSha,createdAt,conclusion,event,headBranch'], { cwd, env });
   if (list.status !== 0) throw invalid(`gh run list failed: ${firstLine(list.stderr, secrets) || `exit ${list.status}`}`);
@@ -602,7 +688,6 @@ export async function importReports(io, { branch, limit = DEFAULT_LIMIT } = {}) 
   try {
     for (const r of runs) {
       if (!r.conclusion) { skipped.push({ run_id: r.id, reason: 'not finished' }); continue; }
-      if ([...known].some((k) => k.startsWith(`${r.id}/`))) { skipped.push({ run_id: r.id, reason: 'already imported' }); continue; }
       // ids and sizes first: nothing is downloaded before its size is known to be within the caps
       const listing = gh(['api', `repos/{owner}/{repo}/actions/runs/${r.id}/artifacts?per_page=${ARTIFACTS_PER_PAGE}`], { cwd, env });
       if (listing.status !== 0) { skipped.push({ run_id: r.id, reason: `cannot list its artifacts: ${firstLine(listing.stderr, secrets) || `exit ${listing.status}`}` }); continue; }
