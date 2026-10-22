@@ -86,6 +86,7 @@ program
       console.log('  2. Review the generated WORKFLOW-SHORTCUTS.md');
       console.log('  3. Try a workflow: ' + chalk.yellow('/w-tdd-swarm [feature]') + ' or ' + chalk.yellow('"Full TDD Swarm on [feature]"'));
       console.log('  4. For a run that lasts days: ' + chalk.yellow('/w-marathon [finish line]') + ' (alias ' + chalk.yellow('/mt') + ')');
+      console.log('  5. For a run that stops on the clock: ' + chalk.yellow('/w-marathon-times 5h [work]') + ' (alias ' + chalk.yellow('/mtt') + ') or a bug hunt ' + chalk.yellow('/w-bug-hunt 12pm PST [scope]') + ' (alias ' + chalk.yellow('/bh') + ')');
       if (options.withPm) {
         console.log('\n' + chalk.cyan('PM Module:'));
         console.log('  ' + chalk.yellow('/w-cos') + ' — Daily standup');

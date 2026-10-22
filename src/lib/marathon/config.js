@@ -32,6 +32,10 @@ export const DEFAULT_CONFIG = {
     reviewers_per_round: 1,
     categories: ['correctness', 'security', 'accessibility', 'performance', 'facts', 'test-quality', 'process', 'docs', 'other']
   },
+  // Timed runs (/w-marathon-times, /w-bug-hunt): the deadline is the stop condition. The last
+  // wrap_up_pct of the run (clamped to [min, max] minutes) starts nothing new. timezone is used
+  // when a clock time names none (null = the machine's zone, reported as assumed).
+  timed: { wrap_up_pct: 10, wrap_up_min_minutes: 10, wrap_up_max_minutes: 60, timezone: null },
   bc: { prune_below_pct: 50, clear_above_pct: 80, context_window: 1000000, push: false },
   paths: { runs: '.claude/marathon', memory: 'docs/solutions' }
 };

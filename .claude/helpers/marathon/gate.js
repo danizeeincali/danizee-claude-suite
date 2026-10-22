@@ -25,7 +25,7 @@ const TOLERANCE_KEYS = [...SEVERITIES, 'passes_in_a_row'];
 /**
  * Every source a finish line may name.
  */
-export const SOURCE_PATTERN = /^(runs\.streak:(unit|e2e|build)|reviews\.streak|reviews\.latest\.(high|medium|low)|findings\.open:(high|medium|low)|helpers\.over_budget|checklist:[A-Za-z0-9_-]+|measure:[A-Za-z0-9_-]+)$/;
+export const SOURCE_PATTERN = /^(runs\.streak:(unit|e2e|build)|reviews\.streak|reviews\.count|reviews\.latest\.(high|medium|low)|findings\.open:(high|medium|low)|helpers\.over_budget|checklist:[A-Za-z0-9_-]+|measure:[A-Za-z0-9_-]+)$/;
 
 const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 function show(v) {
@@ -128,7 +128,7 @@ export function validateFinishLine(finishLine) {
       errors.push(`${name}: a line cannot be both scope "run" and owned by stream "${line.stream}"`);
     }
     if (typeof line.source !== 'string' || !SOURCE_PATTERN.test(line.source)) {
-      errors.push(`${name}: source ${show(line.source)} is not a known source (runs.streak:<unit|e2e|build>, reviews.streak, reviews.latest.<sev>, findings.open:<sev>, helpers.over_budget, checklist:<id>, measure:<id>)`);
+      errors.push(`${name}: source ${show(line.source)} is not a known source (runs.streak:<unit|e2e|build>, reviews.streak, reviews.count, reviews.latest.<sev>, findings.open:<sev>, helpers.over_budget, checklist:<id>, measure:<id>)`);
     }
     const v = line.value;
     if (!(v === null || typeof v === 'boolean' || Number.isFinite(v))) {
@@ -206,6 +206,9 @@ export function resolveSource(source, ctx = {}) {
   }
   if (src === 'reviews.streak') {
     return { found: true, value: reviewStreak(reviews) };
+  }
+  if (src === 'reviews.count') {
+    return { found: true, value: reviews.length };
   }
   if (src.startsWith('reviews.latest.')) {
     const sev = src.slice('reviews.latest.'.length);
