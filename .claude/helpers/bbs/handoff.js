@@ -578,7 +578,7 @@ async function buildHandoffLocked(projectDir, runDir, { run, now, force, maratho
     try {
       await fs.stat(marathonCliPath);
     } catch {
-      throw new Error(`marathon helpers are absent (${cfg.paths.marathon_cli}) — install the suite (npx danizee-claude-suite init)`);
+      throw new Error(`marathon helpers are absent (${cfg.paths.marathon_cli}) — install the suite (npx github:danizeeincali/danizee-claude-suite init)`);
     }
     mcfg = await loadMarathonConfig(projectDir);
     runsRoot = path.resolve(projectDir, mcfg.paths.runs);

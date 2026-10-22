@@ -186,17 +186,17 @@ export async function profileChecks(profile, { cwd, env, nodeVersion }) {
   const rows = [
     checkNode(nodeVersion),
     await checkBin('git', { env, cwd, fatal: true, fix: 'Install git and make sure it is on PATH.' }),
-    await f('.claude/helpers/kit/cli.js', 'Install the suite in this project: run npx danizee-claude-suite init (or update for an existing install).')
+    await f('.claude/helpers/kit/cli.js', 'Install the suite in this project: run npx github:danizeeincali/danizee-claude-suite init (or update for an existing install).')
   ];
   if (profile === 'marathon') {
     rows.push(
-      await f('.claude/helpers/marathon/cli.js', 'Install the suite in this project: run npx danizee-claude-suite init (or update for an existing install).'),
+      await f('.claude/helpers/marathon/cli.js', 'Install the suite in this project: run npx github:danizeeincali/danizee-claude-suite init (or update for an existing install).'),
       await checkJson('.claude/marathon.json', { cwd, fatal: true, fix: 'Create .claude/marathon.json as valid JSON (see /w-marathon).' }),
       await checkGitTree(cwd, true),
       await checkBin('claude', { env, fatal: false, fix: 'Optional: install the claude CLI to run background agents.' })
     );
   } else if (profile === 'bbs') {
-    rows.push(await f('.claude/helpers/bbs/cli.js', 'Install the suite in this project: run npx danizee-claude-suite init (or update for an existing install).'));
+    rows.push(await f('.claude/helpers/bbs/cli.js', 'Install the suite in this project: run npx github:danizeeincali/danizee-claude-suite init (or update for an existing install).'));
   } else if (profile === 'review') {
     rows.push(
       await checkBin('gh', { env, fatal: false, fix: 'Optional: install the GitHub CLI (gh) to read pull requests.' }),

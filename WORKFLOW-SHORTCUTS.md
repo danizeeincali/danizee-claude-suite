@@ -1057,7 +1057,7 @@ Claude: Stored as project/bugs/[auto-named] + created docs/solutions/bugs/[name]
 
 Two suite hooks make automatic compaction behave the same way: `PreCompact` stamps the status file and records the compaction, `SessionStart(compact)` prints the resume line and the active stream's row.
 
-**Configure per project, install once:** a project names its status, kickoff and rules files in `.claude/bc.json`; `npx danizee-claude-suite install-user` puts one `/bc` and its hooks in `~/.claude` for every project.
+**Configure per project, install once:** a project names its status, kickoff and rules files in `.claude/bc.json`; `npx github:danizeeincali/danizee-claude-suite install-user` puts one `/bc` and its hooks in `~/.claude` for every project.
 
 ---
 

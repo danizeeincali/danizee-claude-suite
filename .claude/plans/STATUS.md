@@ -8,14 +8,14 @@
 | CI | `.github/workflows/test.yml` | — | `npm test` on Node 20 and 22, green on PR #7 | — | — |
 | Marathon core follow-up RC-D010 (`scope` on finish-line lines) | `src/lib/marathon/gate.js`, `test/marathon-gate-scope.test.js` | `.claude/ralph-candidates.md` | done 2026-10-09 | — | — |
 | Stream worktrees | `../claude-suite-<stream>` | — | removed; merged branches deleted | — | — |
-| Package version | `package.json` | — | 4.5.0 bumped (release PR; 4.4.0 was never published, npm latest is 4.1.0) | owner runs `npm publish` after merge | — |
+| Package version | `package.json` | — | 4.6.0; releases are tags plus GitHub releases (`.github/workflows/release.yml`), no npm (npm stays at 4.1.0) | push tag `v4.6.0` after the release PR merges | — |
 
 ## Open for the owner
 - PR #7 (first real /w-bbs run fixes + CI) is a draft: review and merge.
 - Start the OpenQodex build: `/w-marathon --resume 2026-10-10-bbs-openqodex-2`.
 - RC-D037 and RC-D038 (map candidates, egress line for a model-calling power) need a call.
 - `pushed` — the only open finish-line line of run 2026-10-07-bbs; `/bcp` is the go.
-- `npm publish` of 4.4.0 — owner publishes from their machine after the release PR merges.
+- Tag `v4.6.0` on main after the release PR merges; the release workflow creates the GitHub release.
 
 ## Where the lessons live
 - Per-stream write-ups: `docs/solutions/features/bbs-*-stream.md`
