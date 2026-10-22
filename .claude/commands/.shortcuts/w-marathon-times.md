@@ -10,7 +10,7 @@ Timed marathon — the machinery of `/w-marathon` (state in files, one worktree 
 /mtt                                 (alias)
 ```
 
-`<time>` is either a **duration** counted from the moment you say "Nothing, go." (`5h`, `90m`, `1h30m`, `2.5 hours`) or a **clock time with a zone** (`12pm PST`, `17:30 Europe/London`, `tomorrow 9am ET`, `2026-10-23 08:00 UTC`). Both are read by the same script. US zone names mean the zone's wall clock: `12pm PST` in October is noon Pacific (PDT). A clock time already past today rolls to tomorrow, and the script says so. At most seven days.
+`<time>` is either a **duration** counted from the moment you say "Nothing, go." (`5h`, `90m`, `1h30m`, `2.5 hours`) or a **clock time with a zone** (`12pm PST`, `17:30 Europe/London`, `tomorrow 9am ET`, `2026-10-23 08:00 UTC`). Both are read by the same script, and the time is the leading words of the arguments: `cli.js deadline split <arguments>` returns the `time` and the `rest` (the work). US zone names mean the zone's wall clock: `12pm PST` in October is noon Pacific (PDT). A clock time already past today rolls to tomorrow, and the script says so. At most seven days.
 
 ## How it differs from /w-marathon
 
@@ -24,9 +24,10 @@ Timed marathon — the machinery of `/w-marathon` (state in files, one worktree 
 Every judgment about time is a script, like every count and budget in `/w-marathon`:
 
 ```
-node .claude/helpers/marathon/cli.js deadline parse <time>   # what the time means now; no run needed
-node .claude/helpers/marathon/cli.js deadline set <time>     # fix the run's deadline (once; --replace moves it, the start stays)
-node .claude/helpers/marathon/cli.js deadline                # exit 0 keep working · exit 2 wrap-up time or time is up · exit 1 no deadline or broken
+node .claude/helpers/marathon/cli.js deadline split <arguments>  # the time at the start of the arguments, and the rest; no run needed
+node .claude/helpers/marathon/cli.js deadline parse <time>       # what the time means now; no run needed
+node .claude/helpers/marathon/cli.js deadline set <time>         # fix the run's deadline (once; --replace moves it, the start stays)
+node .claude/helpers/marathon/cli.js deadline                    # exit 0 keep working · exit 2 wrap-up time or time is up · exit 3 run finished · exit 1 no deadline or broken
 ```
 
 `deadline` prints `phase` (`work`, `wrap_up`, `over`), `remaining`, `work_minutes_left` and `wrap_up_at`. The wrap-up reserve is the last 10% of the run, at least 10 and at most 60 minutes (`timed` in `.claude/marathon.json`; `--wrap-up <minutes>` on `deadline set` overrides it). Never compute time left in chat.
@@ -50,7 +51,7 @@ Use TaskCreate NOW to create todos for ALL phases:
 
 ## Rules
 
-- **Run `cli.js deadline` before every step and before every fan-out, beside `cli.js budget`.** Exit 2 → go to CHECKPOINT 5 (Wrap-up). **Never start a helper, a review, a fix round or a new stream after a `deadline` exit 2.** Exit 1 → the deadline is missing or broken: fix it with `deadline set`, rerun, do not spawn.
+- **Run `cli.js deadline` before every step and before every fan-out, beside `cli.js budget`.** Exit 2 → go to CHECKPOINT 5 (Wrap-up). **Never start a helper, a review, a fix round or a new stream after a `deadline` exit 2.** Exit 3 → the run is finished: stop. Exit 1 → the deadline is missing or broken: fix it with `deadline set <time> --replace`, rerun, do not spawn.
 - **NEVER spawn a helper after any non-zero exit from `cli.js budget`** — the `/w-marathon` budget rule, unchanged.
 - **Fit the step to the clock.** Before a step, compare its size with `work_minutes_left`. A step that will not fit is split, or a smaller item is taken; a half-built change is never merged.
 - **The clock never excuses broken code.** Everything committed on a stream branch has green tests. Unfinished work stays on its branch with a `next=` note.
@@ -77,7 +78,7 @@ As /w-marathon CHECKPOINT 0: memory, `docs/solutions/`, past runs under `.claude
 
 ### ⛔ CHECKPOINT 1: Interview (HIL — once, short: the clock has not started)
 
-First read the time: `cli.js deadline parse <time>` (the time from the arguments, else ask for it). Show `deadline_local`, the minutes and the wrap-up reserve; say so when `rolled` (it moved to tomorrow) or `zone_assumed` (no zone was given: the machine's zone was used). One question at a time with AskUserQuestion, with a default offered for each:
+First read the time: `cli.js deadline split <the arguments>` gives the `time` and the `rest` (the work); with no time at the start, ask for one and read it with `cli.js deadline parse <time>`. Show `deadline_local`, the minutes and the wrap-up reserve; say so when `rolled` (it moved to tomorrow) or `zone_assumed` (no zone was given: the machine's zone was used). One question at a time with AskUserQuestion, with a default offered for each:
 
 1. **Time:** the parsed deadline above — right?
 2. **Backlog:** the work in priority order. Each item becomes a stream; the first one starts first.
@@ -101,7 +102,7 @@ End with: "What did I forget to ask about?"
 **USER GATE:** AskUserQuestion — "Kickoff written (printed above). The clock starts when you say go. Nothing, go?"
 Options: ["Nothing, go.", "Change the time", "Change the backlog"]
 
-On "Nothing, go.": **`cli.js deadline set <time>`** — the clock starts now for a duration — print its `deadline_local` and `wrap_up_at`, then commit the run dir (`git add .claude/marathon && git commit -m "marathon(<run-id>): timed kickoff"`).
+On "Nothing, go.": **`cli.js deadline set`** — for a duration pass the duration, so the clock starts now; for a clock time pass the `absolute` value the parse printed (`2026-10-22 19:00 UTC`), so the deadline the owner approved cannot roll to tomorrow while you talked. If it refuses because that time has passed, ask for a new time. Print its `deadline_local` and `wrap_up_at`, then commit the run dir (`git add .claude/marathon && git commit -m "marathon(<run-id>): timed kickoff"`).
 
 ---
 
@@ -117,7 +118,7 @@ As /w-marathon CHECKPOINT 3 (doctor, `cli.js wake --cron` → CronCreate, `cli.j
 
 Take the `active` stream, else the first `queued` one. Update the stream row after every step (`cli.js stream <name> phase=<phase> next="<the next step>"`) and commit `.claude/marathon/`.
 
-**4.0 Clock — before every step.** `cli.js deadline`. Exit 0 → go on, and size the step to `work_minutes_left`. **Exit 2 → CHECKPOINT 5. Do not spawn.** Exit 1 → fix the deadline, do not spawn.
+**4.0 Clock — before every step.** `cli.js deadline`. Exit 0 → go on, and size the step to `work_minutes_left`. **Exit 2 → CHECKPOINT 5. Do not spawn.** Exit 3 → the run is finished: stop. Exit 1 → fix the deadline, do not spawn.
 
 **4.1 Budget and 4.1a shared helper allowance** — as /w-marathon.
 
@@ -145,14 +146,14 @@ Light check-ins: "How's it going?" gets `cli.js status` (it shows the deadline l
 
 Reached on a `deadline` exit 2, a `budget` exit 2, or a finished backlog with "stop early".
 
+**After a `budget` exit 2** the run is PAUSED and no helper may start, so there is no `/bc` and no `cli.js finish`: the lead commits the green work, writes `wrap-up.md` itself (steps 2 and 3 below), deletes the in-session wake-up and says the run is paused. While time is left, the owner raises the limit, runs `cli.js unpause` and `/w-marathon-times --resume <run-id>` continues; once the deadline has passed, the resume goes straight to this wrap-up. Otherwise:
+
 1. **Start nothing new.** In `wrap_up`, let a helper already running finish and record it. In `over` (time is up), stop any helper still running (TaskStop), record it with `outcome=red`, and keep only what is green.
 2. For each stream not done: commit its green work in its worktree and set `cli.js stream <name> next="<what is left>"`; never merge it half-done.
 3. Write `.claude/marathon/<run-id>/wrap-up.md` from `cli.js status` and `cli.js gate` JSON (never from memory): the deadline and the time used; streams done and not done, with what is left; findings still open by severity; waiting on human; tokens used (`cli.js model-stats`); and a ready line to continue in a new run: `/mtt <time> <what is left>`, or `/mt <finish line>` to finish it against a review bar.
 4. `cli.js page` (publish `page.html` with the Artifact tool when in the desktop app; otherwise say where it is).
 5. `/bc` for every stream touched (CHECKPOINT 6), then `cli.js finish`, then delete the in-session wake-up (CronList → CronDelete).
 6. Print the wrap-up summary: done, not done, open findings, waiting on you.
-
-A budget exit 2 also leaves the run PAUSED as in /w-marathon; say so and that `cli.js unpause` plus `--resume` continues while time is left.
 
 ---
 

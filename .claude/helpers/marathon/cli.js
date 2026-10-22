@@ -43,7 +43,7 @@ import { renderPage } from './page.js';
 import { readStreams, setStream, readHandoff, stampHandoff, renderStatus } from './status.js';
 import { checkShadowing } from './shadow.js';
 import { classifyBuild, modelFor, nextTier, modelStats } from './routing.js';
-import { parseTimeSpec, wrapUpMinutes, deadlineState, deadlineLine } from './deadline.js';
+import { parseTimeSpec, splitTimeSpec, wrapUpMinutes, deadlineState, deadlineLine, MAX_MINUTES } from './deadline.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Where the session was launched: transcripts are keyed by this, not by the resolved state dir.
@@ -271,13 +271,20 @@ const COMMANDS = ['w-marathon', 'w-marathon-times', 'w-bug-hunt'];
 const MODES = ['marathon', 'timed'];
 const commandOf = (meta) => (COMMANDS.includes(meta?.command) ? meta.command : 'w-marathon');
 
+/**
+ * The run's deadline.json: null when there is none, the parsed row, or { error, start? } when it
+ * is unreadable. A broken file never throws here — every verb would then fail, including the
+ * `deadline set --replace` that repairs it. Whoever acts on the clock refuses a broken one.
+ */
 async function readDeadline(runDir) {
   const raw = await readIfExists(path.join(runDir, 'deadline.json'));
   if (raw === null) return null;
+  const hint = 'set it again with cli.js deadline set <time> --replace';
   let d;
-  try { d = JSON.parse(raw); } catch { fail(`deadline.json in ${runDir} is not valid JSON — set it again with cli.js deadline set <time> --replace`); }
-  if (!d || typeof d.deadline !== 'string' || !Number.isFinite(Date.parse(d.deadline)) || !Number.isFinite(Date.parse(d.start))) {
-    fail(`deadline.json in ${runDir} has no valid start and deadline — set it again with cli.js deadline set <time> --replace`);
+  try { d = JSON.parse(raw); } catch { return { error: `deadline.json is not valid JSON — ${hint}` }; }
+  const start = d && typeof d.start === 'string' && Number.isFinite(Date.parse(d.start)) ? d.start : undefined;
+  if (!d || typeof d.deadline !== 'string' || !Number.isFinite(Date.parse(d.deadline)) || !start) {
+    return { error: `deadline.json has no valid start and deadline — ${hint}`, start };
   }
   return d;
 }
@@ -311,6 +318,7 @@ function nextForHuman({ runId, meta, gate, streams, paused, deadline = null }) {
   if (meta?.finished) return `Run is finished. Start a new one with /${cmd} ${meta?.mode === 'timed' ? '<time>' : '<finish line>'}.`;
   if (paused) return `PAUSED — raise ceiling_pct / run_token_budget in .claude/marathon.json or wait for the allowance, then \`cli.js unpause\` (or \`cli.js budget --usage-pct <fresh reading>\`) and /${cmd} --resume ${runId}.`;
   if (meta?.mode === 'timed' && !deadline) return `Timed run with no deadline yet — \`cli.js deadline set <time>\` (5h, 90m or 12pm PST), then /${cmd} --resume ${runId}.`;
+  if (deadline?.phase === 'broken') return `Fix the deadline: ${deadline.error}, then /${cmd} --resume ${runId}.`;
   if (deadline && deadline.phase !== 'work') {
     return `${deadline.phase === 'over' ? 'Time is up' : `Wrap-up time (${deadline.remaining} left)`}: start nothing new, finish the step in hand, write the wrap-up report, /bc, then \`cli.js finish\` — /${cmd} --resume ${runId}.${waiting}`;
   }
@@ -343,7 +351,9 @@ async function gather(projectDir, flags, { usagePctFlag } = {}) {
   const paused = meta?.paused || null;
   const handoff = await readHandoff(ctx.runDir);
   const deadlineFile = await readDeadline(ctx.runDir);
-  const deadline = deadlineFile ? { ...deadlineState(deadlineFile), line: deadlineLine(deadlineFile) } : null;
+  const deadline = !deadlineFile ? null
+    : deadlineFile.error ? { phase: 'broken', error: deadlineFile.error, line: `Deadline: ⚠ ${deadlineFile.error}` }
+    : { ...deadlineState(deadlineFile), line: deadlineLine(deadlineFile) };
   const stream = streamFlag(flags);
   if (stream && !streams.some(s => s.name === stream)) fail(`--stream ${stream}: no such stream in this run`);
 
@@ -381,7 +391,7 @@ async function writeStatus(g) {
   const owned = escapes(g.store.findings);
   // Per-stream escapes and gates come from the ledger, never from a hand-kept counter on the row.
   const streams = g.streams.map(s => ({ ...s, escapes: owned.filter(f => f.stream === s.name).length, gate: g.streamGates[s.name] }));
-  const timeUp = !g.meta?.finished && g.deadline && g.deadline.phase !== 'work' ? (g.deadline.phase === 'over' ? 'TIME UP — wrap up and finish' : 'WRAP-UP — start nothing new') : null;
+  const timeUp = !g.meta?.finished && g.deadline && (g.deadline.phase === 'wrap_up' || g.deadline.phase === 'over') ? (g.deadline.phase === 'over' ? 'TIME UP — wrap up and finish' : 'WRAP-UP — start nothing new') : null;
   const state = g.meta?.finished ? 'FINISHED' : g.paused ? 'PAUSED (budget)' : timeUp || undefined;
   let md = renderStatus({
     runId: g.runId, config: g.config, gate: g.gate, budget: g.budget, score: g.score,
@@ -914,9 +924,16 @@ async function verbResume(projectDir, flags) {
       if (m !== null && Date.now() - m < idleMin * 60_000) return;
     }
   }
-  let line = resumeLine({ runId: ctx.runId, runDirRel: ctx.runDirRel, activeStream: active, nextQueued, blocked, allDone, isolation: meta?.isolation || 'worktree', plain: !!flags.plain, command: commandOf(meta) });
+  const timed = meta?.mode === 'timed';
+  if (timed && meta?.finished) {
+    out(`Run ${ctx.runId} is finished. Start a new one with /${commandOf(meta)} <time>.`);
+    return;
+  }
+  let line = resumeLine({ runId: ctx.runId, runDirRel: ctx.runDirRel, activeStream: active, nextQueued, blocked, allDone, isolation: meta?.isolation || 'worktree', plain: !!flags.plain, command: commandOf(meta), timed });
   const d = await readDeadline(ctx.runDir);
-  if (d) {
+  if (d?.error) {
+    line += ` ${d.error}; do not start a step until it is fixed.`;
+  } else if (d) {
     const st = deadlineState(d);
     if (st.phase !== 'work') {
       // Past the wrap-up point the only next step is the wrap-up, whatever stream is next.
@@ -1056,16 +1073,21 @@ async function verbStream(projectDir, flags, positional) {
 
 /**
  * deadline parse <time>   — read a time spec, no run needed (shows what "12pm PST" means now)
- * deadline set <time>     — fix the run's deadline (once; --replace to move it, the start stays)
- * deadline [check]        — exit 0: keep working · exit 2: wrap-up time or time is up · exit 1: no deadline / broken
+ * deadline split <args>   — the time at the start of command arguments, and the rest ("12pm PST checkout flow")
+ * deadline set <time>     — fix a timed run's deadline (once; --replace to move it, the start stays)
+ * deadline [check]        — exit 0: keep working · exit 2: wrap-up time or time is up · exit 3: run finished ·
+ *                           exit 1: no deadline / broken
  */
 async function verbDeadline(projectDir, flags, positional) {
   const words = positional.filter(p => typeof p === 'string');
-  const sub = ['parse', 'set', 'check'].includes(words[0]) ? words.shift() : 'check';
+  const sub = ['parse', 'split', 'set', 'check'].includes(words[0]) ? words.shift() : 'check';
+  // --replace is a switch: a word right after it belongs to the time ("--replace 12pm PST").
+  if (typeof flags.replace === 'string') { words.unshift(flags.replace); flags.replace = true; }
   const spec = words.join(' ');
   const config = await loadConfig(projectDir);
+  const opts = { defaultZone: config.timed?.timezone || null };
   const parse = () => {
-    try { return parseTimeSpec(spec, { defaultZone: config.timed?.timezone || null }); }
+    try { return parseTimeSpec(spec, opts); }
     catch (err) { fail(`deadline: ${err.message}`); }
   };
   if (sub === 'parse') {
@@ -1073,28 +1095,51 @@ async function verbDeadline(projectDir, flags, positional) {
     out({ ...p, wrap_up_minutes: wrapUpMinutes(p.minutes, config.timed) });
     return;
   }
+  if (sub === 'split') {
+    let r;
+    try { r = splitTimeSpec(spec, opts); } catch (err) { fail(`deadline: no time at the start of "${spec}" — ${err.message}`); }
+    out({ time: r.time, rest: r.rest, ...r.parsed, wrap_up_minutes: wrapUpMinutes(r.parsed.minutes, config.timed) });
+    return;
+  }
   const ctx = await loadRun(projectDir, flags);
+  const meta = metaOf(await readStreams(ctx.runDir));
   const file = path.join(ctx.runDir, 'deadline.json');
   if (sub === 'set') {
+    if (meta?.finished) fail(`deadline: run ${ctx.runId} is finished — start a new run with /${commandOf(meta)} <time>`);
+    if (meta?.mode !== 'timed') fail(`deadline: run ${ctx.runId} is not a timed run — a deadline belongs to a run made with cli.js init <slug> --mode timed`);
     const existing = await readDeadline(ctx.runDir);
-    if (existing && !flags.replace) fail(`deadline: run ${ctx.runId} already has a deadline (${existing.deadline_local}) — pass --replace to move it`);
+    if (existing && !flags.replace) {
+      fail(`deadline: run ${ctx.runId} already has a deadline${existing.error ? ` (${existing.error})` : ` (${existing.deadline_local})`} — pass --replace to move it`);
+    }
     const p = parse();
-    let wrap = wrapUpMinutes(p.minutes, config.timed);
+    // Moving the deadline keeps the original start, so elapsed time stays honest; the cap and the
+    // wrap-up reserve are then measured from that start, not from now.
+    const start = existing?.start || p.start;
+    const total = Math.round((Date.parse(p.deadline) - Date.parse(start)) / 60_000);
+    if (total > MAX_MINUTES) fail(`deadline: ${p.deadline_local} is over 7 days after the run started (${start}) — the in-session wake-up expires after seven days; start a new run`);
+    let wrap = wrapUpMinutes(total, config.timed);
     if (flags['wrap-up'] !== undefined) {
       const n = Number(flags['wrap-up']);
-      if (!Number.isInteger(n) || n < 0 || n >= p.minutes) fail(`--wrap-up ${flags['wrap-up']}: minutes, a whole number ≥ 0 and under the run's ${p.minutes}`);
+      if (!Number.isInteger(n) || n < 0 || n >= p.minutes) fail(`--wrap-up ${flags['wrap-up']}: minutes, a whole number ≥ 0 and under the ${p.minutes} minutes left`);
       wrap = n;
     }
-    // Moving the deadline keeps the original start, so elapsed time stays honest.
-    const d = { ...p, start: existing?.start || p.start, wrap_up_minutes: wrap, set_at: new Date().toISOString(), ...(existing ? { replaced: existing.deadline } : {}) };
+    const d = { ...p, start, minutes: total, minutes_from_set: p.minutes, wrap_up_minutes: wrap, set_at: new Date().toISOString(),
+      ...(existing && !existing.error ? { replaced: existing.deadline } : {}) };
     await fs.writeFile(file, JSON.stringify(d, null, 2) + '\n', 'utf-8');
-    await setStream(ctx.runDir, '_meta', { state: 'meta', mode: 'timed' });
     await refresh(projectDir, flags);
     out({ runId: ctx.runId, ...d, ...deadlineState(d) });
     return;
   }
+  if (words.length) fail(`deadline: "${spec}" is not a subcommand — use deadline parse|split|set <time>, or deadline (check) with no words`);
+  if (meta?.finished) {
+    // A finished run has nothing to wrap up: exit 3 says stop, never "wrap up again".
+    out({ runId: ctx.runId, finished: meta.finished, phase: 'finished' });
+    process.exitCode = 3;
+    return;
+  }
   const d = await readDeadline(ctx.runDir);
   if (!d) fail(`deadline: run ${ctx.runId} has no deadline — cli.js deadline set <time> (5h, 90m, 12pm PST)`);
+  if (d.error) fail(`deadline: ${d.error}`);
   const st = deadlineState(d);
   out({ runId: ctx.runId, spec: d.spec, ...st, wrap_up_minutes: d.wrap_up_minutes });
   if (st.phase !== 'work') process.exitCode = 2;

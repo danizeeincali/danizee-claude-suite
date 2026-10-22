@@ -88,15 +88,21 @@ function offsetMsAt(ms, tz) {
   return Date.UTC(p.y, p.mo - 1, p.d, p.h, p.mi, p.s) - Math.floor(ms / 1000) * 1000;
 }
 
-/** A wall-clock time in a zone → epoch ms. A time inside a spring-forward gap lands just after it. */
+/**
+ * A wall-clock time in a zone → epoch ms. In a fall-back overlap the first occurrence wins; a
+ * time inside a spring-forward gap (02:30 on the night clocks jump to 03:00) lands just after it.
+ */
 export function zonedToUtc({ y, mo, d, h, mi }, where) {
   const guess = Date.UTC(y, mo - 1, d, h, mi);
   if (where.offsetMin !== undefined) return guess - where.offsetMin * 60_000;
   const off = offsetMsAt(guess, where.zone);
-  let t = guess - off;
+  const t = guess - off;
   const off2 = offsetMsAt(t, where.zone);
-  if (off2 !== off) t = guess - off2;
-  return t;
+  if (off2 === off) return t;
+  const t2 = guess - off2;
+  const p = partsIn(t2, where.zone);
+  // t2 shows the asked wall time → it is right; otherwise the time does not exist and t is past the gap.
+  return p.h === h && p.mi === mi ? t2 : t;
 }
 
 function todayIn(nowMs, where) {
@@ -180,13 +186,17 @@ export function parseTimeSpec(spec, { now = Date.now(), defaultZone = null } = {
     const deadline = nowMs + dur * 60_000;
     const where = { zone: defaultZone && validZone(defaultZone) ? defaultZone : systemZone() };
     return { spec: raw, kind: 'duration', start: new Date(nowMs).toISOString(), deadline: new Date(deadline).toISOString(),
-      minutes: dur, zone: where.zone, zone_assumed: false, rolled: false, deadline_local: formatIn(deadline, where) };
+      minutes: dur, zone: where.zone, zone_assumed: false, rolled: false, deadline_local: formatIn(deadline, where), absolute: absoluteSpec(deadline) };
   }
 
   let tokens = raw.replace(/^(until|till|til|by|at)\s+/i, '').split(' ');
-  // Zone: the last token, or "UTC +2" style split in two.
+  // Zone: the last token, or "UTC +2" written as two tokens.
   let where = null;
-  if (tokens.length > 1) {
+  if (tokens.length > 2 && /^(UTC|GMT)$/i.test(tokens[tokens.length - 2]) && /^[+-]\d{1,2}(:?\d{2})?$/.test(tokens[tokens.length - 1])) {
+    where = parseZone(tokens[tokens.length - 2] + tokens[tokens.length - 1]);
+    if (where) tokens = tokens.slice(0, -2);
+  }
+  if (!where && tokens.length > 1) {
     where = parseZone(tokens[tokens.length - 1]);
     if (where) tokens = tokens.slice(0, -1);
   }
@@ -236,7 +246,29 @@ export function parseTimeSpec(spec, { now = Date.now(), defaultZone = null } = {
   if (minutes < MIN_MINUTES) throw new Error(`"${raw}" is under ${MIN_MINUTES} minute away`);
   if (minutes > MAX_MINUTES) throw new Error(`"${raw}" is over 7 days away — the in-session wake-up expires after seven days; split the run`);
   return { spec: raw, kind: 'clock', start: new Date(nowMs).toISOString(), deadline: new Date(ms).toISOString(), minutes,
-    zone: where.zone ?? where.label, zone_assumed: zoneAssumed, rolled, deadline_local: formatIn(ms, where) };
+    zone: where.zone ?? where.label, zone_assumed: zoneAssumed, rolled, deadline_local: formatIn(ms, where), absolute: absoluteSpec(ms) };
+}
+
+/** The deadline as a spec that always means the same instant: "2026-10-22 19:00 UTC". */
+export function absoluteSpec(ms) {
+  return new Date(ms).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
+}
+
+/**
+ * Split command arguments into the time and the rest: the longest leading run of words (at
+ * most six) that parses as a time. "12pm PST checkout flow" → { time: "12pm PST", rest: "checkout flow" }.
+ * Throws when no leading words parse.
+ */
+export function splitTimeSpec(text, opts = {}) {
+  const words = String(text ?? '').trim().split(/\s+/).filter(Boolean);
+  let lastError = null;
+  for (let n = Math.min(6, words.length); n >= 1; n--) {
+    try {
+      const parsed = parseTimeSpec(words.slice(0, n).join(' '), opts);
+      return { time: parsed.spec, rest: words.slice(n).join(' '), parsed };
+    } catch (err) { if (!lastError || n === 1) lastError = err; }
+  }
+  throw lastError || new Error('no time given — use a duration (5h, 90m, 1h30m) or a clock time with a zone (12pm PST)');
 }
 
 /**

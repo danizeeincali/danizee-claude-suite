@@ -256,9 +256,10 @@ reviewed, and the run ends with `bug-hunt-report.md`.
 The time is read by a script, never in chat:
 
 ```
+node .claude/helpers/marathon/cli.js deadline split <args>   # the time at the start of the arguments, and the rest
 node .claude/helpers/marathon/cli.js deadline parse <time>   # 5h, 90m, 1h30m, 12pm PST, tomorrow 9am ET, 17:30 Europe/London
-node .claude/helpers/marathon/cli.js deadline set <time>     # once per run; --replace moves it, the start stays
-node .claude/helpers/marathon/cli.js deadline                # exit 0 keep working, exit 2 wrap-up time or time is up
+node .claude/helpers/marathon/cli.js deadline set <time>     # once per timed run; --replace moves it, the start stays
+node .claude/helpers/marathon/cli.js deadline                # exit 0 keep working, 2 wrap-up time or time is up, 3 finished
 ```
 
 A duration starts when you say "Nothing, go." A clock time that is already past today rolls to

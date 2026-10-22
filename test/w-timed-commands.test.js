@@ -35,7 +35,7 @@ for (const [name, alias] of [['w-marathon-times', 'mtt'], ['w-bug-hunt', 'bh']])
       assert.match(c(), /5h/);
       assert.match(c(), /12pm PST/);
       assert.match(c(), /cli\.js deadline parse <time>/);
-      assert.match(c(), /cli\.js deadline set <time>/);
+      assert.match(c(), /deadline set/);
       assert.match(c(), /--mode timed/);
     });
 
@@ -45,6 +45,12 @@ for (const [name, alias] of [['w-marathon-times', 'mtt'], ['w-bug-hunt', 'bh']])
       assert.match(c(), /Wrap-up/);
       assert.match(c(), /cli\.js finish/);
       assert.match(c(), /--replace/);
+      assert.match(c(), /Exit 3/);
+    });
+
+    it('splits the time from the arguments and sets a clock time by its absolute form', () => {
+      assert.match(c(), /cli\.js deadline split/);
+      assert.match(c(), /`absolute`/);
     });
 
     it('keeps the marathon guard rails', () => {
@@ -77,6 +83,10 @@ describe('/w-marathon-times specifics', () => {
     assert.match(c(), /If the backlog runs out/);
     assert.match(c(), /wrap-up\.md/);
   });
+
+  it('a budget stop leaves the run paused: no helpers, no /bc, no finish', () => {
+    assert.match(c(), /After a `budget` exit 2\*\* the run is PAUSED and no helper may start, so there is no `\/bc` and no `cli\.js finish`/);
+  });
 });
 
 describe('/w-bug-hunt specifics', () => {
@@ -95,6 +105,12 @@ describe('/w-bug-hunt specifics', () => {
     assert.match(c(), /leads\.md/);
     assert.match(c(), /found_by=hunter/);
     assert.match(c(), /--init|init bh-<slug> --mode timed --command w-bug-hunt/);
+  });
+
+  it('report-only and unfixable bugs never pin the hunt to one area', () => {
+    assert.match(c(), /remove the `open_high` line from `finish-line\.json`/);
+    assert.match(c(), /record run kind=unit status=green stream=<area>/);
+    assert.match(c(), /state=blocked next="unfixed: <bug titles>"/);
   });
 
   it('uses the suite workflows and ends with a report', () => {

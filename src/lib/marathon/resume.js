@@ -16,7 +16,7 @@ const cell = (v) => oneLine(v).replace(/\|/g, '\\|');
  * through the CLI and take its first step. With neither (nothing queued, or
  * allDone: true) it says every stream is done and points at the gate.
  */
-export function resumeLine({ runId, runDirRel, activeStream, nextQueued = null, blocked = [], allDone = false, isolation = 'worktree', plain = false, command = 'w-marathon' }) {
+export function resumeLine({ runId, runDirRel, activeStream, nextQueued = null, blocked = [], allDone = false, isolation = 'worktree', plain = false, command = 'w-marathon', timed = false }) {
   const cmd = `/${oneLine(command) || 'w-marathon'}`;
   if (!activeStream) {
     if (nextQueued && !allDone) {
@@ -32,6 +32,9 @@ export function resumeLine({ runId, runDirRel, activeStream, nextQueued = null, 
     if (blocked.length) {
       const list = blocked.map(s => `${oneLine(s.name)} — ${oneLine(s.next) || 'see its row'}`).join('; ');
       return `No active stream in ${runId}; every remaining stream is blocked: ${list}. Unblock one and set it active, then ${cmd} --resume ${runId} (or ${cmd} --status to inspect).`;
+    }
+    if (timed) {
+      return `No active stream in ${runId} and nothing queued — all streams are done with time left. Follow the run-out rule in kickoff.md: queue more work (\`cli.js stream <name> state=queued\`) and ${cmd} --resume ${runId}, or go to the wrap-up and \`cli.js finish\`.`;
     }
     return `No active stream in ${runId} and nothing queued — all streams are done. Run \`cli.js gate\`; if the build gate is met run \`cli.js finish\`, otherwise reopen the stream that owns the failing line (or ${cmd} --status to inspect).`;
   }

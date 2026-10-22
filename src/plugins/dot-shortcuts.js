@@ -5094,7 +5094,7 @@ Timed marathon — the machinery of \`/w-marathon\` (state in files, one worktre
 /mtt                                 (alias)
 \`\`\`
 
-\`<time>\` is either a **duration** counted from the moment you say "Nothing, go." (\`5h\`, \`90m\`, \`1h30m\`, \`2.5 hours\`) or a **clock time with a zone** (\`12pm PST\`, \`17:30 Europe/London\`, \`tomorrow 9am ET\`, \`2026-10-23 08:00 UTC\`). Both are read by the same script. US zone names mean the zone's wall clock: \`12pm PST\` in October is noon Pacific (PDT). A clock time already past today rolls to tomorrow, and the script says so. At most seven days.
+\`<time>\` is either a **duration** counted from the moment you say "Nothing, go." (\`5h\`, \`90m\`, \`1h30m\`, \`2.5 hours\`) or a **clock time with a zone** (\`12pm PST\`, \`17:30 Europe/London\`, \`tomorrow 9am ET\`, \`2026-10-23 08:00 UTC\`). Both are read by the same script, and the time is the leading words of the arguments: \`cli.js deadline split <arguments>\` returns the \`time\` and the \`rest\` (the work). US zone names mean the zone's wall clock: \`12pm PST\` in October is noon Pacific (PDT). A clock time already past today rolls to tomorrow, and the script says so. At most seven days.
 
 ## How it differs from /w-marathon
 
@@ -5108,9 +5108,10 @@ Timed marathon — the machinery of \`/w-marathon\` (state in files, one worktre
 Every judgment about time is a script, like every count and budget in \`/w-marathon\`:
 
 \`\`\`
-node .claude/helpers/marathon/cli.js deadline parse <time>   # what the time means now; no run needed
-node .claude/helpers/marathon/cli.js deadline set <time>     # fix the run's deadline (once; --replace moves it, the start stays)
-node .claude/helpers/marathon/cli.js deadline                # exit 0 keep working · exit 2 wrap-up time or time is up · exit 1 no deadline or broken
+node .claude/helpers/marathon/cli.js deadline split <arguments>  # the time at the start of the arguments, and the rest; no run needed
+node .claude/helpers/marathon/cli.js deadline parse <time>       # what the time means now; no run needed
+node .claude/helpers/marathon/cli.js deadline set <time>         # fix the run's deadline (once; --replace moves it, the start stays)
+node .claude/helpers/marathon/cli.js deadline                    # exit 0 keep working · exit 2 wrap-up time or time is up · exit 3 run finished · exit 1 no deadline or broken
 \`\`\`
 
 \`deadline\` prints \`phase\` (\`work\`, \`wrap_up\`, \`over\`), \`remaining\`, \`work_minutes_left\` and \`wrap_up_at\`. The wrap-up reserve is the last 10% of the run, at least 10 and at most 60 minutes (\`timed\` in \`.claude/marathon.json\`; \`--wrap-up <minutes>\` on \`deadline set\` overrides it). Never compute time left in chat.
@@ -5134,7 +5135,7 @@ Use TaskCreate NOW to create todos for ALL phases:
 
 ## Rules
 
-- **Run \`cli.js deadline\` before every step and before every fan-out, beside \`cli.js budget\`.** Exit 2 → go to CHECKPOINT 5 (Wrap-up). **Never start a helper, a review, a fix round or a new stream after a \`deadline\` exit 2.** Exit 1 → the deadline is missing or broken: fix it with \`deadline set\`, rerun, do not spawn.
+- **Run \`cli.js deadline\` before every step and before every fan-out, beside \`cli.js budget\`.** Exit 2 → go to CHECKPOINT 5 (Wrap-up). **Never start a helper, a review, a fix round or a new stream after a \`deadline\` exit 2.** Exit 3 → the run is finished: stop. Exit 1 → the deadline is missing or broken: fix it with \`deadline set <time> --replace\`, rerun, do not spawn.
 - **NEVER spawn a helper after any non-zero exit from \`cli.js budget\`** — the \`/w-marathon\` budget rule, unchanged.
 - **Fit the step to the clock.** Before a step, compare its size with \`work_minutes_left\`. A step that will not fit is split, or a smaller item is taken; a half-built change is never merged.
 - **The clock never excuses broken code.** Everything committed on a stream branch has green tests. Unfinished work stays on its branch with a \`next=\` note.
@@ -5161,7 +5162,7 @@ As /w-marathon CHECKPOINT 0: memory, \`docs/solutions/\`, past runs under \`.cla
 
 ### ⛔ CHECKPOINT 1: Interview (HIL — once, short: the clock has not started)
 
-First read the time: \`cli.js deadline parse <time>\` (the time from the arguments, else ask for it). Show \`deadline_local\`, the minutes and the wrap-up reserve; say so when \`rolled\` (it moved to tomorrow) or \`zone_assumed\` (no zone was given: the machine's zone was used). One question at a time with AskUserQuestion, with a default offered for each:
+First read the time: \`cli.js deadline split <the arguments>\` gives the \`time\` and the \`rest\` (the work); with no time at the start, ask for one and read it with \`cli.js deadline parse <time>\`. Show \`deadline_local\`, the minutes and the wrap-up reserve; say so when \`rolled\` (it moved to tomorrow) or \`zone_assumed\` (no zone was given: the machine's zone was used). One question at a time with AskUserQuestion, with a default offered for each:
 
 1. **Time:** the parsed deadline above — right?
 2. **Backlog:** the work in priority order. Each item becomes a stream; the first one starts first.
@@ -5185,7 +5186,7 @@ End with: "What did I forget to ask about?"
 **USER GATE:** AskUserQuestion — "Kickoff written (printed above). The clock starts when you say go. Nothing, go?"
 Options: ["Nothing, go.", "Change the time", "Change the backlog"]
 
-On "Nothing, go.": **\`cli.js deadline set <time>\`** — the clock starts now for a duration — print its \`deadline_local\` and \`wrap_up_at\`, then commit the run dir (\`git add .claude/marathon && git commit -m "marathon(<run-id>): timed kickoff"\`).
+On "Nothing, go.": **\`cli.js deadline set\`** — for a duration pass the duration, so the clock starts now; for a clock time pass the \`absolute\` value the parse printed (\`2026-10-22 19:00 UTC\`), so the deadline the owner approved cannot roll to tomorrow while you talked. If it refuses because that time has passed, ask for a new time. Print its \`deadline_local\` and \`wrap_up_at\`, then commit the run dir (\`git add .claude/marathon && git commit -m "marathon(<run-id>): timed kickoff"\`).
 
 ---
 
@@ -5201,7 +5202,7 @@ As /w-marathon CHECKPOINT 3 (doctor, \`cli.js wake --cron\` → CronCreate, \`cl
 
 Take the \`active\` stream, else the first \`queued\` one. Update the stream row after every step (\`cli.js stream <name> phase=<phase> next="<the next step>"\`) and commit \`.claude/marathon/\`.
 
-**4.0 Clock — before every step.** \`cli.js deadline\`. Exit 0 → go on, and size the step to \`work_minutes_left\`. **Exit 2 → CHECKPOINT 5. Do not spawn.** Exit 1 → fix the deadline, do not spawn.
+**4.0 Clock — before every step.** \`cli.js deadline\`. Exit 0 → go on, and size the step to \`work_minutes_left\`. **Exit 2 → CHECKPOINT 5. Do not spawn.** Exit 3 → the run is finished: stop. Exit 1 → fix the deadline, do not spawn.
 
 **4.1 Budget and 4.1a shared helper allowance** — as /w-marathon.
 
@@ -5229,14 +5230,14 @@ Light check-ins: "How's it going?" gets \`cli.js status\` (it shows the deadline
 
 Reached on a \`deadline\` exit 2, a \`budget\` exit 2, or a finished backlog with "stop early".
 
+**After a \`budget\` exit 2** the run is PAUSED and no helper may start, so there is no \`/bc\` and no \`cli.js finish\`: the lead commits the green work, writes \`wrap-up.md\` itself (steps 2 and 3 below), deletes the in-session wake-up and says the run is paused. While time is left, the owner raises the limit, runs \`cli.js unpause\` and \`/w-marathon-times --resume <run-id>\` continues; once the deadline has passed, the resume goes straight to this wrap-up. Otherwise:
+
 1. **Start nothing new.** In \`wrap_up\`, let a helper already running finish and record it. In \`over\` (time is up), stop any helper still running (TaskStop), record it with \`outcome=red\`, and keep only what is green.
 2. For each stream not done: commit its green work in its worktree and set \`cli.js stream <name> next="<what is left>"\`; never merge it half-done.
 3. Write \`.claude/marathon/<run-id>/wrap-up.md\` from \`cli.js status\` and \`cli.js gate\` JSON (never from memory): the deadline and the time used; streams done and not done, with what is left; findings still open by severity; waiting on human; tokens used (\`cli.js model-stats\`); and a ready line to continue in a new run: \`/mtt <time> <what is left>\`, or \`/mt <finish line>\` to finish it against a review bar.
 4. \`cli.js page\` (publish \`page.html\` with the Artifact tool when in the desktop app; otherwise say where it is).
 5. \`/bc\` for every stream touched (CHECKPOINT 6), then \`cli.js finish\`, then delete the in-session wake-up (CronList → CronDelete).
 6. Print the wrap-up summary: done, not done, open findings, waiting on you.
-
-A budget exit 2 also leaves the run PAUSED as in /w-marathon; say so and that \`cli.js unpause\` plus \`--resume\` continues while time is left.
 
 ---
 
@@ -5308,7 +5309,7 @@ Time-boxed bug hunt. Give it a time and, if you like, a scope; it sends parallel
 /bh                                          (alias)
 \`\`\`
 
-\`<time>\` is a duration counted from "Nothing, go." (\`5h\`, \`90m\`, \`1h30m\`) or a clock time with a zone (\`12pm PST\`, \`17:30 Europe/London\`, \`tomorrow 9am ET\`), read by \`node .claude/helpers/marathon/cli.js deadline parse <time>\`. The scope is paths, a feature or a flow (\`src/api\`, "checkout flow"); none means the whole repository, hottest code first.
+\`<time>\` is a duration counted from "Nothing, go." (\`5h\`, \`90m\`, \`1h30m\`) or a clock time with a zone (\`12pm PST\`, \`17:30 Europe/London\`, \`tomorrow 9am ET\`), read by \`node .claude/helpers/marathon/cli.js deadline split <arguments>\`, which returns the \`time\` (the leading words) and the \`rest\` (the scope). The scope is paths, a feature or a flow (\`src/api\`, "checkout flow"); none means the whole repository, hottest code first.
 
 **A bug counts only when it is proved:** a test (or a scripted repro) that fails on the current code for the stated reason, twice the same way. A claim without that is a **lead**: listed in the report, never fixed, never counted.
 
@@ -5343,7 +5344,7 @@ Use TaskCreate NOW to create todos for ALL phases:
 
 ## Rules
 
-- **\`cli.js deadline\` before every round and every fan-out, beside \`cli.js budget\`.** Exit 2 → CHECKPOINT 5. Never start a hunter, a verifier, a fix or a new area after it. Any non-zero \`budget\` exit → do not spawn.
+- **\`cli.js deadline\` before every round and every fan-out, beside \`cli.js budget\`.** Exit 2 → CHECKPOINT 5; exit 3 → the run is finished, stop; exit 1 → fix the deadline (\`deadline set <time> --replace\`). Never start a hunter, a verifier, a fix or a new area after it. Any non-zero \`budget\` exit → do not spawn.
 - **Hunters and verifiers are read-only.** They never edit a file and return JSON rows only. Only the prover and the fixer edit, inside the area's worktree.
 - **The verifier is never the hunter.** It sees the claim and the code, not who made the claim or why it was found.
 - **A bug is proved by a program, not a model.** The repro must fail twice the same way (the replay gate decides). A repro that passes, or fails differently on the second run, is a lead.
@@ -5377,7 +5378,7 @@ If invoked with \`--resume\` or \`--status\`, skip to those sections at the bott
 
 ### ⛔ CHECKPOINT 1: Interview (HIL — once; offer every default in one pass)
 
-Read the time first: \`cli.js deadline parse <time>\`; show \`deadline_local\`, the minutes and the wrap-up reserve, and say so when it \`rolled\` to tomorrow or the zone was \`zone_assumed\`. Then AskUserQuestion, one question at a time, each with its default:
+Read the time first: drop the flags (\`--report-only\`), then \`cli.js deadline split <the rest of the arguments>\` gives the \`time\` and the \`rest\` (the scope); with no time at the start, ask for one and read it with \`cli.js deadline parse <time>\`. Show \`deadline_local\`, the minutes and the wrap-up reserve, and say so when it \`rolled\` to tomorrow or the zone was \`zone_assumed\`. Then AskUserQuestion, one question at a time, each with its default:
 
 1. **Time:** the parsed deadline — right?
 2. **Scope:** the areas to hunt (default: the scope given, else the top-level code folders ranked by churn).
@@ -5393,14 +5394,14 @@ Read the time first: \`cli.js deadline parse <time>\`; show \`deadline_local\`, 
 ### ⛔ CHECKPOINT 2: Kickoff (HIL — the last question)
 
 1. \`node .claude/helpers/marathon/cli.js init bh-<slug> --mode timed --command w-bug-hunt\` → a timed run with the timed finish line (per area: last unit run green, one review held, no open high finding).
-2. \`kickoff.md\`: the answers above, the round budget, and **Done means:** "the deadline; every proved bug either fixed with its test green or listed open with its repro".
+2. \`kickoff.md\`: the answers above, the round budget, and **Done means:** "the deadline; every proved bug either fixed with its test green or listed open with its repro". With \`--report-only\`, remove the \`open_high\` line from \`finish-line.json\`: open bugs are what a report-only hunt delivers, so they must not hold an area open.
 3. One stream per area, hottest first: \`cli.js stream <area> state=queued plan="<paths>" next="hunt round 1"\`.
 4. Print \`kickoff.md\` and \`cli.js status\`.
 
 **USER GATE:** AskUserQuestion — "Hunt plan written (printed above). The clock starts when you say go. Nothing, go?"
 Options: ["Nothing, go.", "Change the time", "Change the areas"]
 
-On "Nothing, go.": \`cli.js deadline set <time>\`, print \`deadline_local\`, commit the run dir.
+On "Nothing, go.": \`cli.js deadline set\` with the duration (the clock starts now) or, for a clock time, the \`absolute\` value the parse printed (so the approved deadline cannot roll to tomorrow; if it has passed, ask for a new time). Print \`deadline_local\`, commit the run dir.
 
 ---
 
@@ -5416,7 +5417,7 @@ As \`/w-marathon\` CHECKPOINT 3 (doctor, \`cli.js wake --cron\` → CronCreate, 
 
 Take the \`active\` area, else the first \`queued\` one. Update its row after every step (\`cli.js stream <area> phase=<step> next="<next step>"\`) and commit \`.claude/marathon/\`.
 
-**4.0 Clock.** \`cli.js deadline\`. Exit 2 → CHECKPOINT 5. Exit 0 → go on; keep \`work_minutes_left\` in mind for the size of the round.
+**4.0 Clock.** \`cli.js deadline\`. Exit 2 → CHECKPOINT 5. Exit 3 → finished, stop. Exit 0 → go on; keep \`work_minutes_left\` in mind for the size of the round.
 
 **4.1 Budget** and the shared helper allowance, as \`/w-marathon\` 4.1 and 4.1a.
 
@@ -5450,14 +5451,14 @@ Without the Workflow tool, spawn the hunters as parallel Agent calls and each ve
 **4.5 Prove.** For each candidate rated \`real\` or \`unsure\`, highest severity first, while \`cli.js deadline\` says \`work\`:
 1. In the area's worktree, write the smallest test that shows the bug (a prover routed with \`cli.js route hasContract=true hasFailingTests=false files=1 category=<c>\`).
 2. Run it twice. Put both runs in a replay-gate file (\`decided_by: "replay"\`, \`outcome: "fail"\` when the test failed for the stated reason) and run \`node .claude/helpers/kit/cli.js replay-gate --file <printed dir>/gate.json\`. A \`blocking\` verdict means a program saw the bug twice the same way: **proved**. \`untested\` (the runs disagreed) is a flake: a lead. A test that passes is a lead. With no kit, two identical red runs prove it.
-3. Proved: \`cli.js record run kind=unit status=red stream=<area>\` and \`cli.js record finding stream=<area> severity=<s> category=<correctness|security|performance|other> file=<f> line=<n> title="<title>" detail="repro: <test path>" found_by=hunter\`. In fix mode the test is committed together with its fix (4.6). A proved bug that stays unfixed (\`--report-only\`, or no time left) is committed as an expected failure the runner reports, such as node:test \`{ todo }\`, vitest \`it.fails\` or pytest \`xfail(strict=True)\`, never a plain skip, so every commit on the area branch keeps the suite green.
+3. Proved: \`cli.js record run kind=unit status=red stream=<area>\` and \`cli.js record finding stream=<area> severity=<s> category=<correctness|security|performance|other> file=<f> line=<n> title="<title>" detail="repro: <test path>" found_by=hunter\`. In fix mode the test is committed together with its fix (4.6). A proved bug that stays unfixed (\`--report-only\`, or no time left) is committed as an expected failure the runner reports, such as node:test \`{ todo }\`, vitest \`it.fails\` or pytest \`xfail(strict=True)\`, never a plain skip, so every commit on the area branch keeps the suite green. Run the suite after that commit and record it (\`cli.js record run kind=unit status=green stream=<area>\`), so the area's last unit run reflects the branch.
 4. Leads go to \`.claude/marathon/<run-id>/leads.md\`, one line each with why it was not proved.
 
 **4.6 Fix** (skip with \`--report-only\`). Proved bugs by severity, each only while \`cli.js deadline\` says \`work\`: a fixer in the worktree makes the repro green with the smallest change, then the full suite runs green. A root cause that is not clear gets \`/w-debug\`'s diagnose steps first. Close each with the fix checks and \`record finding-fixed\` exactly as \`/w-marathon\` 4.7, and commit \`fix(<area>): <title>\` with its test.
 
 **4.7 Review.** One fresh \`opus\` reviewer over the area's diff, as \`/w-marathon\` 4.5 (\`cli.js review-brief --stream <area>\`, kit analysis, \`record review\`, its findings, \`review-writeup\`, the receipt). The reviewer also checks that every new test fails without its fix. High findings → back to 4.6.
 
-**4.8 Gate.** The scrub, then \`cli.js gate --stream <area>\`, as \`/w-marathon\` 4.8. Exit 0 → \`cli.js stream <area> state=done\`, \`/bc\`, next area. Exit 1 → back to 4.0.
+**4.8 Gate.** The scrub, then \`cli.js gate --stream <area>\`, as \`/w-marathon\` 4.8. Exit 0 → \`cli.js stream <area> state=done\`, \`/bc\`, next area. Exit 1 → back to 4.0, unless the only failing line is \`open_high\` and every open high bug has had its fixer climb the model ladder without a green fix: then \`cli.js stream <area> state=blocked next="unfixed: <bug titles>"\`, list those bugs in the report and take the next area, so one stubborn bug never holds the hunt in one place.
 
 **When every area is done and time is left:** queue a second round over the areas with the most proved bugs (bugs cluster), with the angles not yet run there. **Two rounds in a row that prove nothing** mean the hunt has run dry: say so and go to CHECKPOINT 5.
 

@@ -17,7 +17,7 @@ so 4.5.0 is the first release after 4.1.0 and carries all four.
   only when a test fails twice the same way (replay gate), anything else is a lead. Proved bugs
   are fixed while time allows (`--report-only` skips fixes), each area gets one review, and the
   run ends with `bug-hunt-report.md`.
-- Marathon CLI: `deadline parse|set|check` (exit 2 at the wrap-up point), `init --mode timed
+- Marathon CLI: `deadline split|parse|set|check` (exit 2 at the wrap-up point, 3 once finished), `init --mode timed
   --command <w-marathon-times|w-bug-hunt>`, the `reviews.count` finish-line source, a deadline
   line in `status.md`, and resume lines and wake-up prompts that name the run's own command and
   send a session past the deadline to the wrap-up. New `timed` block in `marathon.json`

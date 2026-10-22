@@ -11,7 +11,7 @@
 export function cronSpec({ runId, runDirRel, schedule = '17,47 * * * *', command = 'w-marathon', timed = false }) {
   // A timed run checks the clock first: past the wrap-up point nothing new starts.
   const clock = timed
-    ? ` Then run \`node .claude/helpers/marathon/cli.js deadline --run ${runId}\`: exit 2 means wrap-up time or time is up — start nothing new, finish the step in hand, write the wrap-up report, run /bc and \`cli.js finish\` (the /${command} wrap-up checkpoint), and stop. Exit 0: go on.`
+    ? ` If the run is PAUSED or FINISHED, stop. Then run \`node .claude/helpers/marathon/cli.js deadline --run ${runId}\`: exit 3 means the run is finished — stop; exit 2 means wrap-up time or time is up — start nothing new, finish the step in hand, write the wrap-up report, run /bc and \`cli.js finish\` (the /${command} wrap-up checkpoint), and stop. Exit 0: go on.`
     : '';
   return {
     schedule,
