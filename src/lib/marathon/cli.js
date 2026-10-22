@@ -43,7 +43,7 @@ import { renderPage } from './page.js';
 import { readStreams, setStream, readHandoff, stampHandoff, renderStatus } from './status.js';
 import { checkShadowing } from './shadow.js';
 import { classifyBuild, modelFor, nextTier, modelStats } from './routing.js';
-import { parseTimeSpec, splitTimeSpec, wrapUpMinutes, deadlineState, deadlineLine, MAX_MINUTES } from './deadline.js';
+import { parseTimeSpec, splitTimeSpec, parseZone, formatIn, wrapUpMinutes, deadlineState, deadlineLine, MAX_MINUTES } from './deadline.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Where the session was launched: transcripts are keyed by this, not by the resolved state dir.
@@ -454,10 +454,13 @@ const DEFAULT_LINES = [
 async function verbInit(projectDir, flags, positional) {
   const slug = positional[0];
   if (!slug || typeof slug !== 'string') fail('usage: cli.js init <slug> [--run <id>] [--isolation worktree|folder] [--mode marathon|timed] [--command w-marathon|w-marathon-times|w-bug-hunt]');
-  const mode = str(flags.mode) || 'marathon';
+  const TIMED_COMMANDS = ['w-marathon-times', 'w-bug-hunt'];
+  // A timed command implies a timed run; a marathon run never names a timed command.
+  const mode = str(flags.mode) || (TIMED_COMMANDS.includes(flags.command) ? 'timed' : 'marathon');
   if (!MODES.includes(mode)) fail(`--mode ${flags.mode}: must be ${MODES.join(' or ')}`);
   const command = str(flags.command) || (mode === 'timed' ? 'w-marathon-times' : 'w-marathon');
   if (!COMMANDS.includes(command)) fail(`--command ${flags.command}: must be one of ${COMMANDS.join(', ')}`);
+  if ((mode === 'timed') !== TIMED_COMMANDS.includes(command)) fail(`--command ${command} does not go with --mode ${mode}`);
   const config = await loadConfig(projectDir);
   const runId = flags.run || `${today()}-${slug.replace(/[^a-z0-9-]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase()}`;
   if (!RUN_ID.test(String(runId))) fail(`invalid run id "${runId}" — letters, digits and dashes only`);
@@ -935,7 +938,10 @@ async function verbResume(projectDir, flags) {
     line += ` ${d.error}; do not start a step until it is fixed.`;
   } else if (d) {
     const st = deadlineState(d);
-    if (st.phase !== 'work') {
+    if (meta?.paused) {
+      // A paused run starts no helper: the wrap-up (/bc, finish) waits for unpause.
+      line = `Run ${ctx.runId} is PAUSED (budget): start nothing. Raise the limit, run \`cli.js unpause\`, then /${commandOf(meta)} --resume ${ctx.runId}${st.phase === 'work' ? '' : ` — the deadline has passed (${d.deadline_local}), so the resume goes straight to the wrap-up`}.`;
+    } else if (st.phase !== 'work') {
       // Past the wrap-up point the only next step is the wrap-up, whatever stream is next.
       line = `Run /${commandOf(meta)} --resume ${ctx.runId} to load the protocol and go to its wrap-up checkpoint: ${st.phase === 'over' ? 'time is up' : `wrap-up time, ${st.remaining} left`} (${d.deadline_local}). Start nothing new — finish the step in hand${active ? ` on stream "${active.name}"` : ''}, write the wrap-up report, run /bc, then \`cli.js finish\`.`;
     } else {
@@ -1078,12 +1084,27 @@ async function verbStream(projectDir, flags, positional) {
  * deadline [check]        — exit 0: keep working · exit 2: wrap-up time or time is up · exit 3: run finished ·
  *                           exit 1: no deadline / broken
  */
-async function verbDeadline(projectDir, flags, positional) {
-  const words = positional.filter(p => typeof p === 'string');
+// Flags of the deadline verb; every other word is the time or the work, kept verbatim.
+const DEADLINE_VALUE_FLAGS = new Set(['--run', '--project', '--wrap-up', '--zone', '--text-file']);
+
+async function verbDeadline(projectDir, flags) {
+  // The words are read from argv directly: parseArgs would drop a "retry=3" or eat a "--verbose"
+  // from the owner's work text, and the split must hand that text back unchanged.
+  const raw = process.argv.slice(3);
+  const words = [];
+  for (let i = 0; i < raw.length; i++) {
+    if (DEADLINE_VALUE_FLAGS.has(raw[i])) { i++; continue; }
+    if (raw[i] === '--replace') continue;
+    words.push(raw[i]);
+  }
+  const replace = raw.includes('--replace');
   const sub = ['parse', 'split', 'set', 'check'].includes(words[0]) ? words.shift() : 'check';
-  // --replace is a switch: a word right after it belongs to the time ("--replace 12pm PST").
-  if (typeof flags.replace === 'string') { words.unshift(flags.replace); flags.replace = true; }
-  const spec = words.join(' ');
+  let spec = words.join(' ');
+  if (str(flags['text-file'])) {
+    if (spec) fail('deadline: give the time either as words or with --text-file, not both');
+    spec = (await readIfExists(path.resolve(flags['text-file']), null))?.trim();
+    if (spec === undefined || spec === null) fail(`deadline: cannot read --text-file ${flags['text-file']}`);
+  }
   const config = await loadConfig(projectDir);
   const opts = { defaultZone: config.timed?.timezone || null };
   const parse = () => {
@@ -1108,22 +1129,33 @@ async function verbDeadline(projectDir, flags, positional) {
     if (meta?.finished) fail(`deadline: run ${ctx.runId} is finished — start a new run with /${commandOf(meta)} <time>`);
     if (meta?.mode !== 'timed') fail(`deadline: run ${ctx.runId} is not a timed run — a deadline belongs to a run made with cli.js init <slug> --mode timed`);
     const existing = await readDeadline(ctx.runDir);
-    if (existing && !flags.replace) {
+    if (existing && !replace) {
       fail(`deadline: run ${ctx.runId} already has a deadline${existing.error ? ` (${existing.error})` : ` (${existing.deadline_local})`} — pass --replace to move it`);
     }
-    const p = parse();
+    let p = parse();
+    if (str(flags.zone)) {
+      // Show the deadline in the zone the owner gave, even when it was set by its absolute UTC form.
+      const where = parseZone(flags.zone);
+      if (!where) fail(`--zone ${flags.zone}: not a time zone (PST, America/Los_Angeles, UTC+2)`);
+      p = { ...p, zone: where.zone ?? where.label, deadline_local: formatIn(Date.parse(p.deadline), where) };
+    }
     // Moving the deadline keeps the original start, so elapsed time stays honest; the cap and the
     // wrap-up reserve are then measured from that start, not from now.
     const start = existing?.start || p.start;
     const total = Math.round((Date.parse(p.deadline) - Date.parse(start)) / 60_000);
     if (total > MAX_MINUTES) fail(`deadline: ${p.deadline_local} is over 7 days after the run started (${start}) — the in-session wake-up expires after seven days; start a new run`);
     let wrap = wrapUpMinutes(total, config.timed);
+    let override = false;
     if (flags['wrap-up'] !== undefined) {
       const n = Number(flags['wrap-up']);
       if (!Number.isInteger(n) || n < 0 || n >= p.minutes) fail(`--wrap-up ${flags['wrap-up']}: minutes, a whole number ≥ 0 and under the ${p.minutes} minutes left`);
       wrap = n;
+      override = true;
+    } else if (existing?.wrap_up_override && Number.isInteger(existing.wrap_up_minutes) && existing.wrap_up_minutes < p.minutes) {
+      wrap = existing.wrap_up_minutes;   // the owner's own reserve survives a moved deadline
+      override = true;
     }
-    const d = { ...p, start, minutes: total, minutes_from_set: p.minutes, wrap_up_minutes: wrap, set_at: new Date().toISOString(),
+    const d = { ...p, start, minutes: total, minutes_from_set: p.minutes, wrap_up_minutes: wrap, ...(override ? { wrap_up_override: true } : {}), set_at: new Date().toISOString(),
       ...(existing && !existing.error ? { replaced: existing.deadline } : {}) };
     await fs.writeFile(file, JSON.stringify(d, null, 2) + '\n', 'utf-8');
     await refresh(projectDir, flags);

@@ -30,7 +30,7 @@ node .claude/helpers/marathon/cli.js deadline set <time>         # fix the run's
 node .claude/helpers/marathon/cli.js deadline                    # exit 0 keep working · exit 2 wrap-up time or time is up · exit 3 run finished · exit 1 no deadline or broken
 ```
 
-`deadline` prints `phase` (`work`, `wrap_up`, `over`), `remaining`, `work_minutes_left` and `wrap_up_at`. The wrap-up reserve is the last 10% of the run, at least 10 and at most 60 minutes (`timed` in `.claude/marathon.json`; `--wrap-up <minutes>` on `deadline set` overrides it). Never compute time left in chat.
+Every call after the kickoff names the run with `--run <run-id>`: after `cli.js finish` there is no ACTIVE run to fall back on. `deadline` prints `phase` (`work`, `wrap_up`, `over`), `remaining`, `work_minutes_left` and `wrap_up_at`. The wrap-up reserve is the last 10% of the run, at least 10 and at most 60 minutes (`timed` in `.claude/marathon.json`; `--wrap-up <minutes>` on `deadline set` overrides it). Never compute time left in chat.
 
 ---
 
@@ -78,7 +78,7 @@ As /w-marathon CHECKPOINT 0: memory, `docs/solutions/`, past runs under `.claude
 
 ### ⛔ CHECKPOINT 1: Interview (HIL — once, short: the clock has not started)
 
-First read the time: `cli.js deadline split <the arguments>` gives the `time` and the `rest` (the work); with no time at the start, ask for one and read it with `cli.js deadline parse <time>`. Show `deadline_local`, the minutes and the wrap-up reserve; say so when `rolled` (it moved to tomorrow) or `zone_assumed` (no zone was given: the machine's zone was used). One question at a time with AskUserQuestion, with a default offered for each:
+The arguments are the owner's words: write them to a file with the Write tool and pass `--text-file <file>` (never inside a shell argument). First read the time: `cli.js deadline split --text-file <file>` gives the `time` and the `rest` (the work); with no time at the start, ask for one and read it with `cli.js deadline parse <time>`. Show `deadline_local`, the minutes and the wrap-up reserve; say so when `rolled` (it moved to tomorrow) or `zone_assumed` (no zone was given: the machine's zone was used). One question at a time with AskUserQuestion, with a default offered for each:
 
 1. **Time:** the parsed deadline above — right?
 2. **Backlog:** the work in priority order. Each item becomes a stream; the first one starts first.
@@ -102,7 +102,7 @@ End with: "What did I forget to ask about?"
 **USER GATE:** AskUserQuestion — "Kickoff written (printed above). The clock starts when you say go. Nothing, go?"
 Options: ["Nothing, go.", "Change the time", "Change the backlog"]
 
-On "Nothing, go.": **`cli.js deadline set`** — for a duration pass the duration, so the clock starts now; for a clock time pass the `absolute` value the parse printed (`2026-10-22 19:00 UTC`), so the deadline the owner approved cannot roll to tomorrow while you talked. If it refuses because that time has passed, ask for a new time. Print its `deadline_local` and `wrap_up_at`, then commit the run dir (`git add .claude/marathon && git commit -m "marathon(<run-id>): timed kickoff"`).
+On "Nothing, go.": **`cli.js deadline set`** — for a duration pass the duration, so the clock starts now; for a clock time pass the `absolute` value the parse printed (`2026-10-22 19:00 UTC`) with `--zone <the zone the parse printed>` so status lines show the owner's own zone, so the deadline the owner approved cannot roll to tomorrow while you talked. If it refuses because that time has passed, ask for a new time. Print its `deadline_local` and `wrap_up_at`, then commit the run dir (`git add .claude/marathon && git commit -m "marathon(<run-id>): timed kickoff"`).
 
 ---
 
@@ -118,7 +118,7 @@ As /w-marathon CHECKPOINT 3 (doctor, `cli.js wake --cron` → CronCreate, `cli.j
 
 Take the `active` stream, else the first `queued` one. Update the stream row after every step (`cli.js stream <name> phase=<phase> next="<the next step>"`) and commit `.claude/marathon/`.
 
-**4.0 Clock — before every step.** `cli.js deadline`. Exit 0 → go on, and size the step to `work_minutes_left`. **Exit 2 → CHECKPOINT 5. Do not spawn.** Exit 3 → the run is finished: stop. Exit 1 → fix the deadline, do not spawn.
+**4.0 Clock — before every step.** `cli.js deadline --run <run-id>`. Exit 0 → go on, and size the step to `work_minutes_left`. **Exit 2 → CHECKPOINT 5. Do not spawn.** Exit 3 → the run is finished: stop. Exit 1 → fix the deadline, do not spawn.
 
 **4.1 Budget and 4.1a shared helper allowance** — as /w-marathon.
 

@@ -126,6 +126,18 @@ describe('deadline — daylight saving, offsets and splitting', () => {
     assert.equal(r.deadline, '2026-11-01T08:30:00.000Z'); // 01:30 PDT
   });
 
+  it('east of UTC too: a Berlin gap time lands after the gap, an overlap time takes its first occurrence', () => {
+    assert.equal(parseTimeSpec('2026-03-29 02:30 Europe/Berlin', { now: Date.parse('2026-03-28T12:00:00Z') }).deadline, '2026-03-29T01:30:00.000Z'); // 03:30 CEST
+    assert.equal(parseTimeSpec('2026-10-25 02:30 Europe/Berlin', { now: Date.parse('2026-10-24T12:00:00Z') }).deadline, '2026-10-25T00:30:00.000Z'); // 02:30 CEST
+  });
+
+  it('"and" joins two durations only as a word between them', () => {
+    assert.equal(parseDuration('1h and 30m'), 90);
+    assert.equal(parseDuration('5h and'), null);
+    assert.equal(parseDuration('and5h'), null);
+    assert.equal(splitTimeSpec('5h and the CSV export', { now: NOW }).rest, 'and the CSV export');
+  });
+
   it('reads "UTC +2" written as two words', () => {
     assert.equal(parseTimeSpec('11pm UTC +2', { now: NOW }).deadline, '2026-10-22T21:00:00.000Z');
   });
@@ -184,6 +196,7 @@ describe('wake and resume name the run command', () => {
     assert.match(p, /\/w-bug-hunt/);
     assert.match(p, /cli\.js deadline --run r1/);
     assert.match(p, /exit 2/);
+    assert.match(p, /Exit 1 \(no deadline, or a broken one\): start no step and spawn nothing/);
   });
 
   it('a plain marathon prompt is unchanged in substance', () => {
@@ -317,6 +330,30 @@ describe('cli — a timed run', () => {
     assert.ok(r.json.minutes >= 180 && r.json.minutes_from_set === 180, JSON.stringify(r.json));
   });
 
+  it('deadline split keeps the work text verbatim, from words or a text file', async () => {
+    const r = run(dir, ['deadline', 'split', '5h', 'fix', 'retry=3', 'handling', 'and', 'the', '--verbose', 'flag']);
+    assert.equal(r.code, 0, r.err);
+    assert.equal(r.json.rest, 'fix retry=3 handling and the --verbose flag');
+    const f = path.join(dir, 'args.txt');
+    await fs.writeFile(f, '12pm PST fix retry=3 --run other in checkout\n');
+    const t = run(dir, ['deadline', 'split', '--text-file', f]);
+    assert.equal(t.code, 0, t.err);
+    assert.equal(t.json.time, '12pm PST');
+    assert.equal(t.json.rest, 'fix retry=3 --run other in checkout');
+  });
+
+  it('--zone shows an absolute deadline in the owner\'s zone; an own wrap-up reserve survives --replace', () => {
+    const r = run(dir, ['deadline', 'set', '2099-01-01', '20:00', 'UTC', '--replace', '--zone', 'PST']);
+    assert.equal(r.code, 1, 'over 7 days is still refused');
+    const ok = run(dir, ['deadline', 'set', '2h', '--replace', '--wrap-up', '7']);
+    assert.equal(ok.code, 0, ok.err);
+    const moved = run(dir, ['deadline', 'set', ok.json.absolute.split(' ')[0], ok.json.absolute.split(' ')[1], 'UTC', '--replace', '--zone', 'America/Los_Angeles']);
+    assert.equal(moved.code, 0, moved.err);
+    assert.equal(moved.json.wrap_up_minutes, 7);
+    assert.equal(moved.json.zone, 'America/Los_Angeles');
+    assert.match(moved.json.deadline_local, /P[DS]T/);
+  });
+
   it('deadline split needs no run', () => {
     const r = run(dir, ['deadline', 'split', '12pm', 'PST', 'checkout', 'flow']);
     assert.equal(r.code, 0, r.err);
@@ -341,6 +378,31 @@ describe('cli — a timed run', () => {
     assert.equal(c.json.phase, 'finished');
     assert.equal(run(dir, ['deadline', 'set', '1h', '--replace', '--run', id]).code, 1);
     assert.match(run(dir, ['resume', '--run', id]).out, /is finished/);
+  });
+
+  it('a timed command implies a timed run; a mismatched pair is refused', () => {
+    const r = run(dir, ['init', 'implied', '--command', 'w-marathon-times', '--isolation', 'folder']);
+    assert.equal(r.code, 0, r.err);
+    assert.equal(r.json.mode, 'timed');
+    assert.equal(run(dir, ['init', 'bad', '--mode', 'marathon', '--command', 'w-bug-hunt']).code, 1);
+  });
+
+  it('a paused run past its deadline resumes as paused, not as a wrap-up with helpers', async () => {
+    const id = run(dir, ['init', 'paused', '--mode', 'timed', '--isolation', 'folder']).json.runId;
+    assert.equal(run(dir, ['deadline', 'set', '1h', '--run', id]).code, 0);
+    const rd = path.join(dir, '.claude', 'marathon', id);
+    const f = path.join(rd, 'deadline.json');
+    const d = JSON.parse(await fs.readFile(f, 'utf-8'));
+    d.deadline = new Date(Date.now() - 60_000).toISOString();
+    await fs.writeFile(f, JSON.stringify(d));
+    const sf = path.join(rd, 'streams.json');
+    const st = JSON.parse(await fs.readFile(sf, 'utf-8'));
+    const meta = st.streams.find(x => x.name === '_meta');
+    meta.paused = { reason: 'test', ts: new Date().toISOString() };
+    await fs.writeFile(sf, JSON.stringify(st));
+    const out = run(dir, ['resume', '--plain', '--run', id]).out;
+    assert.match(out, /PAUSED \(budget\): start nothing/);
+    assert.match(out, /the deadline has passed/);
   });
 
   it('a /w-marathon run refuses a deadline', () => {

@@ -49,7 +49,9 @@ for (const [name, alias] of [['w-marathon-times', 'mtt'], ['w-bug-hunt', 'bh']])
     });
 
     it('splits the time from the arguments and sets a clock time by its absolute form', () => {
-      assert.match(c(), /cli\.js deadline split/);
+      assert.match(c(), /cli\.js deadline split --text-file <file>/);
+      assert.match(c(), /--zone <the zone the parse printed>/);
+      assert.match(c(), /cli\.js deadline --run <run-id>/);
       assert.match(c(), /`absolute`/);
     });
 
@@ -98,6 +100,8 @@ describe('/w-bug-hunt specifics', () => {
     assert.match(c(), /model: 'opus'/);
     assert.match(c(), /read-only/i);
     assert.match(c(), /The verifier is never the hunter/);
+    assert.match(c(), /r && Array\.isArray\(r\.rows\)/, 'a lost hunter never crashes the round');
+    assert.match(c(), /found\.flat\(\)\.filter\(Boolean\)/);
   });
 
   it('counts a bug only when a program proves it twice; the rest are leads', () => {

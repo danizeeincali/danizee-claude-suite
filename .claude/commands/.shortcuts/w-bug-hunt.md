@@ -80,7 +80,7 @@ If invoked with `--resume` or `--status`, skip to those sections at the bottom.
 
 ### ⛔ CHECKPOINT 1: Interview (HIL — once; offer every default in one pass)
 
-Read the time first: drop the flags (`--report-only`), then `cli.js deadline split <the rest of the arguments>` gives the `time` and the `rest` (the scope); with no time at the start, ask for one and read it with `cli.js deadline parse <time>`. Show `deadline_local`, the minutes and the wrap-up reserve, and say so when it `rolled` to tomorrow or the zone was `zone_assumed`. Then AskUserQuestion, one question at a time, each with its default:
+The arguments are the owner's words: write them to a file with the Write tool and pass `--text-file <file>` (never inside a shell argument). Read the time first: drop the flags (`--report-only`) from the arguments, then `cli.js deadline split --text-file <file>` gives the `time` and the `rest` (the scope); with no time at the start, ask for one and read it with `cli.js deadline parse <time>`. Show `deadline_local`, the minutes and the wrap-up reserve, and say so when it `rolled` to tomorrow or the zone was `zone_assumed`. Then AskUserQuestion, one question at a time, each with its default:
 
 1. **Time:** the parsed deadline — right?
 2. **Scope:** the areas to hunt (default: the scope given, else the top-level code folders ranked by churn).
@@ -103,7 +103,7 @@ Read the time first: drop the flags (`--report-only`), then `cli.js deadline spl
 **USER GATE:** AskUserQuestion — "Hunt plan written (printed above). The clock starts when you say go. Nothing, go?"
 Options: ["Nothing, go.", "Change the time", "Change the areas"]
 
-On "Nothing, go.": `cli.js deadline set` with the duration (the clock starts now) or, for a clock time, the `absolute` value the parse printed (so the approved deadline cannot roll to tomorrow; if it has passed, ask for a new time). Print `deadline_local`, commit the run dir.
+On "Nothing, go.": `cli.js deadline set` with the duration (the clock starts now) or, for a clock time, the `absolute` value the parse printed with `--zone <the zone the parse printed>` (so the approved deadline cannot roll to tomorrow; if it has passed, ask for a new time). Print `deadline_local`, commit the run dir.
 
 ---
 
@@ -119,7 +119,7 @@ As `/w-marathon` CHECKPOINT 3 (doctor, `cli.js wake --cron` → CronCreate, the 
 
 Take the `active` area, else the first `queued` one. Update its row after every step (`cli.js stream <area> phase=<step> next="<next step>"`) and commit `.claude/marathon/`.
 
-**4.0 Clock.** `cli.js deadline`. Exit 2 → CHECKPOINT 5. Exit 3 → finished, stop. Exit 0 → go on; keep `work_minutes_left` in mind for the size of the round.
+**4.0 Clock.** `cli.js deadline --run <run-id>` (every deadline call names the run: after `cli.js finish` there is no ACTIVE run). Exit 2 → CHECKPOINT 5. Exit 3 → finished, stop. Exit 0 → go on; keep `work_minutes_left` in mind for the size of the round.
 
 **4.1 Budget** and the shared helper allowance, as `/w-marathon` 4.1 and 4.1a.
 
@@ -139,14 +139,17 @@ const found = await pipeline(
   ANGLES,
   a => agent(`Read-only bug hunt in <area files>, angle: ${a.name}. ${a.brief} Do not edit files. Return at most 5 rows, each with a concrete repro (input, call, expected vs actual). Known bugs and false leads to skip: <list>. Budget 80k tokens.`,
     { label: `hunt:${a.name}`, phase: 'Hunt', model: a.name === 'security' ? 'opus' : 'sonnet', schema: ROW }),
-  r => parallel(r.rows.map(row => () =>
+  // agent() resolves null when an agent is skipped or dies: one lost hunter or verifier never loses the round.
+  r => (r && Array.isArray(r.rows) ? parallel(r.rows.map(row => () =>
     agent(`Is this a real bug? Read the code yourself and try to refute it. Claim: ${JSON.stringify(row)}. Do not edit files. Budget 30k tokens.`,
-      { label: `verify:${row.file}`, phase: 'Verify', model: 'opus', schema: VERDICT }).then(v => ({ ...row, verdict: v }))))
+      { label: `verify:${row.file}`, phase: 'Verify', model: 'opus', schema: VERDICT })
+      .then(v => ({ ...row, verdict: v || { verdict: 'unsure', why: 'verifier did not answer' } })))) : [])
 )
-return { candidates: found.flat().filter(c => c.verdict.verdict !== 'not-a-bug') }
+const rows = found.flat().filter(Boolean)
+return { candidates: rows.filter(c => c.verdict && c.verdict.verdict !== 'not-a-bug'), emptyHunters: found.filter(r => !r || !r.length).length }
 ```
 
-Without the Workflow tool, spawn the hunters as parallel Agent calls and each verifier as its own Agent call, with the same briefs and budgets.
+A row whose verifier did not answer comes back `unsure`; give the count of hunters that returned no rows (`emptyHunters`: lost, or found nothing) in the round's report. Without the Workflow tool, spawn the hunters as parallel Agent calls and each verifier as its own Agent call, with the same briefs and budgets.
 
 **4.4 Dedupe.** Group the candidates with the kit, as `/w-marathon` 4.5 "Group the reviewer's rows": `cluster` on the rows, then `triage visit` with the state file `.claude/marathon/<run-id>/triage-<area>.json`, so a bug a past round already raised comes back as a repeat, not a new bug. The rows are model-written: write the input files with the Write tool into a printed `mktemp -d` directory, never into a shell argument.
 

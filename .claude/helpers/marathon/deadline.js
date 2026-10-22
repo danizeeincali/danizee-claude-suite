@@ -39,16 +39,27 @@ function unitMinutes(u) {
 export function parseDuration(text) {
   const s = String(text ?? '').trim().replace(/^for\s+/i, '');
   if (!s) return null;
-  const re = /(\d+(?:\.\d+)?)\s*([a-z]+)/gi;
+  // Groups of <number><unit>, separated by spaces, a comma or the word "and" — between two groups only.
+  const parts = s.split(/\s*,\s*|\s+and\s+|\s+/i).filter(Boolean);
   let total = 0;
-  let consumed = '';
-  let m;
-  while ((m = re.exec(s)) !== null) {
-    if (!UNIT.test(m[2])) return null;
-    total += Number(m[1]) * unitMinutes(m[2]);
-    consumed += m[0];
+  let groups = 0;
+  for (let i = 0; i < parts.length; i++) {
+    if (/^\d+(\.\d+)?$/.test(parts[i]) && i + 1 < parts.length && UNIT.test(parts[i + 1])) {
+      total += Number(parts[i]) * unitMinutes(parts[i + 1]);   // "2.5 hours"
+      groups++;
+      i++;
+      continue;
+    }
+    // One word may hold several groups: "1h30m".
+    const found = [...parts[i].matchAll(/(\d+(?:\.\d+)?)([a-z]+)/gi)];
+    if (!found.length || found.map(f => f[0]).join('') !== parts[i]) return null;
+    for (const f of found) {
+      if (!UNIT.test(f[2])) return null;
+      total += Number(f[1]) * unitMinutes(f[2]);
+      groups++;
+    }
   }
-  if (!consumed || consumed.replace(/\s+/g, '') !== s.replace(/\s+|,|and/gi, '')) return null;
+  if (!groups || /^and\b|\band$|^,|,$/i.test(s)) return null;
   return Math.round(total);
 }
 
@@ -95,14 +106,12 @@ function offsetMsAt(ms, tz) {
 export function zonedToUtc({ y, mo, d, h, mi }, where) {
   const guess = Date.UTC(y, mo - 1, d, h, mi);
   if (where.offsetMin !== undefined) return guess - where.offsetMin * 60_000;
-  const off = offsetMsAt(guess, where.zone);
-  const t = guess - off;
-  const off2 = offsetMsAt(t, where.zone);
-  if (off2 === off) return t;
-  const t2 = guess - off2;
-  const p = partsIn(t2, where.zone);
-  // t2 shows the asked wall time → it is right; otherwise the time does not exist and t is past the gap.
-  return p.h === h && p.mi === mi ? t2 : t;
+  // The zone's offsets a day either side cover both sides of any transition, east or west of UTC.
+  const offsets = [...new Set([offsetMsAt(guess - 86_400_000, where.zone), offsetMsAt(guess + 86_400_000, where.zone), offsetMsAt(guess, where.zone)])];
+  const candidates = offsets.map(o => guess - o).sort((a, b) => a - b);
+  const exact = candidates.filter(t => { const p = partsIn(t, where.zone); return p.y === y && p.mo === mo && p.d === d && p.h === h && p.mi === mi; });
+  if (exact.length) return exact[0];                 // overlap: the first occurrence
+  return candidates[candidates.length - 1];          // gap: the time does not exist; land just after it
 }
 
 function todayIn(nowMs, where) {
