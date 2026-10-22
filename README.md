@@ -16,6 +16,8 @@ The five commands that do most of the work. Each short form is an alias for its 
 | `/bcp` | `/w-background-compound --push` | Everything `/bc` does, then pushes the branch and, when not on main, merges it to main. This is the owner's go. [More](#compaction-hooks-and-bc-vs-bcp) |
 | `/bc` | `/w-background-compound` | A background agent writes up the session's lessons while the lead writes a handoff, measures the context and hands you a ready-to-run prune line (`/compact` keep-list or `/clear` plus resume). Commits, never pushes. |
 
+Two time-boxed commands sit beside them: `/mtt` (`/w-marathon-times`) works a backlog until a deadline instead of a review bar, and `/bh` (`/w-bug-hunt`) hunts for bugs until a deadline. Both take a duration (`5h`, `90m`) or a clock time with a zone (`12pm PST`). [More](#timed-runs--mtt-and-bh)
+
 ## Installation
 
 ```bash
@@ -60,6 +62,8 @@ The second time you solve a similar problem, it's faster because the workflow fi
 | `/pt` | Alias for `/w-plan-tdd-swarm` (mobile-friendly shorthand) |
 | `/w-marathon` | Days-long run with a finish line — status file, wake-up timer, hard cost ceiling |
 | `/mt` | Alias for `/w-marathon` (mobile-friendly shorthand) |
+| `/w-marathon-times` | Timed marathon — works a backlog until a deadline (`5h`, `12pm PST`), then wraps up |
+| `/mtt` | Alias for `/w-marathon-times` (mobile-friendly shorthand) |
 | `/w-bbs` | Beg, borrow, steal — absorb a power from an outside source: intake, fetch, inventory, map, verdict gate, hand-off to a marathon run |
 | `/bbs` | Alias for `/w-bbs` (mobile-friendly shorthand) |
 | `/w-swarm` | Parallel agents (coder, tester, reviewer) |
@@ -74,6 +78,8 @@ The second time you solve a similar problem, it's faster because the workflow fi
 | `/w-fix` | Quick fix — investigate → TDD fix → verify |
 | `/w-debug` | Deep debug — hypothesis → diagnose → TDD fix |
 | `/w-hotfix` | Critical production fix — isolated branch + security review |
+| `/w-bug-hunt` | Time-boxed bug hunt — parallel hunters in a workflow, a verifier per claim, every bug proved by a failing test, fixes, report |
+| `/bh` | Alias for `/w-bug-hunt` (mobile-friendly shorthand) |
 
 ### Reviews & Audits
 
@@ -160,7 +166,7 @@ build gate is met), `budget` (**exit 2 = ceiling or budget hit, exit 1 = invalid
 state; either way, no spawn**), `record run|review|finding|finding-fixed|helper|helper-done|measure|
 compaction|escape`, `repair`, `unpause`, `stream`, `route`, `model-stats`, `promote`, `seen-twice`,
 `review-brief`, `review-writeup`, `handoff`, `resume`, `keeplist`, `context`, `wake`, `page`,
-`finish`, `shadow-check`. Every verb takes `--run <id>`; without it the ACTIVE run is used.
+`finish`, `shadow-check`, `deadline`. Every verb takes `--run <id>`; without it the ACTIVE run is used.
 
 **Everything fails closed.** `finish-line.json` is schema-checked (owner `build|human`, op
 `is|at_least|at_most`, type `bool|number|percent`, a known source; `passes_in_a_row` must agree
@@ -228,6 +234,39 @@ quiet while a live session has written `status.md` in the last 45 minutes, and i
 run is PAUSED or finished. It runs headless, so it stops at the first Bash command not in
 `permissions.allow` — the installer allows the helper CLI itself; allow your project's test and
 build commands before relying on it unattended.
+
+### Timed runs — /mtt and /bh
+
+`/w-marathon-times` (alias `/mtt`) is a marathon that stops on the clock. Give it a time and a
+backlog: `/mtt 5h <the work>` or `/mtt 12pm PST <the work>`. It works the backlog in order, one
+worktree per stream, with the same budget ceiling, wake-up and fresh reviewers as `/mt`, but a
+stream is done when its last unit run is green, it has had one review and no high finding is open
+(the timed finish line, `reviews.count` ≥ 1 instead of a clean streak). In the last 10% of the run
+(at least 10, at most 60 minutes) it starts nothing new, finishes the step in hand, writes
+`wrap-up.md` from the scripts' output, runs `/bc` and finishes.
+
+`/w-bug-hunt` (alias `/bh`) is a timed run whose streams are hunt areas: `/bh 5h src/api` or
+`/bh 12pm PST checkout flow`. Each round is a Workflow that fans read-only hunters out over the
+area (one per angle: correctness, input validation, error handling, state and concurrency,
+security, performance) and sends every claim to a separate verifier. A bug counts only when a
+test fails on the current code twice the same way (the kit's replay gate decides); anything else
+is a lead. Proved bugs are fixed while time allows (`--report-only` skips fixes), each fix is
+reviewed, and the run ends with `bug-hunt-report.md`.
+
+The time is read by a script, never in chat:
+
+```
+node .claude/helpers/marathon/cli.js deadline split <args>   # the time at the start of the arguments, and the rest
+node .claude/helpers/marathon/cli.js deadline parse <time>   # 5h, 90m, 1h30m, 12pm PST, tomorrow 9am ET, 17:30 Europe/London
+node .claude/helpers/marathon/cli.js deadline set <time>     # once per timed run; --replace moves it, the start stays
+node .claude/helpers/marathon/cli.js deadline                # exit 0 keep working, 2 wrap-up time or time is up, 3 finished
+```
+
+A duration starts when you say "Nothing, go." A clock time that is already past today rolls to
+tomorrow and says so; `PST`, `PT` and `PDT` all mean Pacific wall-clock time. A time without a zone
+uses `timed.timezone` from `.claude/marathon.json`, else the machine's zone, and is reported as
+assumed. `status.md` shows the deadline, and the resume line and wake-up prompt send a session
+past the deadline straight to the wrap-up.
 
 ### Beg, borrow, steal — absorb a power from an outside source
 

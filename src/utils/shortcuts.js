@@ -184,6 +184,8 @@ Use the \`/w-\` prefix for quick workflow invocation:
 | \`/w-tdd-swarm [feature]\` | Full TDD + Swarm + Review combined (recommended) |
 | \`/w-plan-tdd-swarm [idea]\` | Deep interview → refine idea → TDD Swarm |
 | \`/w-marathon [finish line]\` | Days-long run with a finish line: status file, wake-up, hard ceiling (alias \`/mt\`) |
+| \`/w-marathon-times <time> [work]\` | Timed marathon: works a backlog until a deadline (5h, 12pm PST), then wraps up (alias \`/mtt\`) |
+| \`/w-bug-hunt <time> [scope]\` | Time-boxed bug hunt: parallel hunters, a verifier per claim, every bug proved by a failing test (alias \`/bh\`) |
 | \`/w-bbs [source]\` | Absorb a power from an outside source: intake, fetch, inventory, map, verdict gate, hand-off to a marathon run (alias \`/bbs\`) |
 | \`/w-background-compound\` | Background write-up + handoff + prune line; commits, never pushes (alias \`/bc\`) |
 | \`/bcp\` | Same as \`/bc\` with \`--push\`: commit, push and merge |
@@ -568,6 +570,36 @@ mcp__claude-flow__memory_usage { action: "store", key: "project/ideas/[idea]" }
 **Example:**
 \`\`\`
 /w-marathon Ship /bbs in the suite. Two clean reviews per stream, six green e2e runs, under 10M tokens.
+\`\`\`
+
+---
+
+### Timed marathon — a run that stops on the clock
+
+**Say:** "Work on this until 12pm PST" or "Spend five hours on this backlog"
+**Slash:** \`/w-marathon-times <time> [work]\` · \`/mtt\` · \`/w-marathon-times --resume\` · \`/w-marathon-times --status\`
+
+**What it does:** The marathon machinery (state in files, a worktree per stream, wake-up, budget ceiling, fresh reviewers) with a deadline as the stop condition instead of a review bar. A stream is done when its last unit run is green, it has had one review and no high finding is open. The last 10% of the run (10 to 60 minutes) is the wrap-up: nothing new starts, the step in hand finishes, \`wrap-up.md\` is written from the scripts' output, then \`/bc\` and \`cli.js finish\`.
+
+**Time:** a duration counted from "Nothing, go." (\`5h\`, \`90m\`, \`1h30m\`) or a clock time with a zone (\`12pm PST\`, \`tomorrow 9am ET\`, \`17:30 Europe/London\`), read by \`cli.js deadline parse|set\`; \`cli.js deadline\` exits 2 at the wrap-up point.
+
+**Example:**
+\`\`\`
+/mtt 5h Clear the API backlog: pagination on /orders, webhook retries, then the CSV export bug
+\`\`\`
+
+---
+
+### Bug hunt — time-boxed
+
+**Say:** "Hunt for bugs in src/api for five hours" or "Bug hunt until noon Pacific"
+**Slash:** \`/w-bug-hunt <time> [scope]\` · \`/bh\` · \`--report-only\` · \`--resume\` · \`--status\`
+
+**What it does:** A timed run whose streams are hunt areas. Each round is a Workflow: read-only hunters fan out over the area, one per angle (correctness, input validation, error handling, state and concurrency, security, performance), and every claim goes to a separate verifier. A bug counts only when a test fails on the current code twice the same way (the replay gate decides); anything else is a lead. Proved bugs are fixed while time allows (\`/w-fix\` pattern, \`/w-debug\` for unclear root causes), each area gets one fresh review, and the run ends with \`bug-hunt-report.md\`.
+
+**Example:**
+\`\`\`
+/bh 12pm PST checkout flow
 \`\`\`
 
 ---

@@ -8,10 +8,14 @@
  * prompt sends the session through the CLI for every state change, so a
  * wake-up never hand-edits status.md and never stalls between streams.
  */
-export function cronSpec({ runId, runDirRel, schedule = '17,47 * * * *' }) {
+export function cronSpec({ runId, runDirRel, schedule = '17,47 * * * *', command = 'w-marathon', timed = false }) {
+  // A timed run checks the clock first: past the wrap-up point nothing new starts.
+  const clock = timed
+    ? ` If the run is PAUSED or FINISHED, stop. Then run \`node .claude/helpers/marathon/cli.js deadline --run ${runId}\`: exit 3 means the run is finished — stop; exit 2 means wrap-up time or time is up — start nothing new, finish the step in hand, write the wrap-up report, run /bc and \`cli.js finish\` (the /${command} wrap-up checkpoint), and stop. Exit 1 (no deadline, or a broken one): start no step and spawn nothing — fix it with \`cli.js deadline set <time> --replace --run ${runId}\` if the kickoff names the time, else stop and tell the owner. Exit 0: go on.`
+    : '';
   return {
     schedule,
-    prompt: `Marathon wake-up for run ${runId}: run \`node .claude/helpers/marathon/cli.js status --run ${runId}\` and read ${runDirRel}/status.md. If a stream is active, take its next step. If none is active but a stream is queued, create its worktree (\`git worktree add ../<repo>-<name> -b marathon/${runId}/<name>\`), activate it with \`cli.js stream <name> state=active isolation=<path>\` and take its first step. Record every step with cli.js — never edit status.md by hand. If no stream is left, run \`cli.js gate\`: exit 0 → \`cli.js finish\`; exit 1 → reopen the stream that owns the failing line and continue. If the run is PAUSED or FINISHED, stop.`
+    prompt: `Marathon wake-up for run ${runId} (/${command}): run \`node .claude/helpers/marathon/cli.js status --run ${runId}\` and read ${runDirRel}/status.md.${clock} If a stream is active, take its next step. If none is active but a stream is queued, create its worktree (\`git worktree add ../<repo>-<name> -b marathon/${runId}/<name>\`), activate it with \`cli.js stream <name> state=active isolation=<path>\` and take its first step. Record every step with cli.js — never edit status.md by hand. ${timed ? 'If no stream is left, follow the "Next for you" line in status.md: queue more work from the kickoff\'s backlog, or wrap up when the kickoff says stop early.' : 'If no stream is left, run \`cli.js gate\`: exit 0 → \`cli.js finish\`; exit 1 → reopen the stream that owns the failing line and continue.'} If the run is PAUSED or FINISHED, stop.`
   };
 }
 

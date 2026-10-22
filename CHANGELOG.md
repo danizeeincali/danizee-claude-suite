@@ -6,6 +6,22 @@ so 4.5.0 is the first release after 4.1.0 and carries all four.
 ## 4.5.0 — 2026-10-16
 
 ### Added
+- **`/w-marathon-times` (`/mtt`)**: a marathon that stops on the clock instead of a review
+  bar. Give it a duration (`5h`, `90m`, `1h30m`) or a clock time with a zone (`12pm PST`,
+  `tomorrow 9am ET`); it works a backlog stream by stream until the wrap-up point (the last 10%,
+  10 to 60 minutes), then finishes the step in hand, writes `wrap-up.md`, runs `/bc` and finishes.
+  A stream is done when its last unit run is green, it has had one review and no high finding
+  is open.
+- **`/w-bug-hunt` (`/bh`)**: a time-boxed bug hunt on the timed marathon. Each round is a
+  Workflow of read-only hunters (one per angle) with a separate verifier per claim; a bug counts
+  only when a test fails twice the same way (replay gate), anything else is a lead. Proved bugs
+  are fixed while time allows (`--report-only` skips fixes), each area gets one review, and the
+  run ends with `bug-hunt-report.md`.
+- Marathon CLI: `deadline split|parse|set|check` (exit 2 at the wrap-up point, 3 once finished), `init --mode timed
+  --command <w-marathon-times|w-bug-hunt>`, the `reviews.count` finish-line source, a deadline
+  line in `status.md`, and resume lines and wake-up prompts that name the run's own command and
+  send a session past the deadline to the wrap-up. New `timed` block in `marathon.json`
+  (wrap-up reserve, default time zone).
 - **Most-used commands** at the top of the README: `/mt`, `/pt`, `/bbs`, `/bcp` and `/bc`
   with their long forms and what each does.
 - **Review kit** (`node .claude/helpers/kit/cli.js <verb>`): 24 zero-dependency verbs
