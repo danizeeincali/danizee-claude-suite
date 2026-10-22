@@ -1,9 +1,12 @@
 # Changelog
 
-Versions 4.2.0, 4.3.0 and 4.4.0 were set in `package.json` but never published to npm,
-so 4.5.0 is the first release after 4.1.0 and carries all four.
+Releases are version tags with a GitHub release; the suite is no longer published to npm
+(npm stays at 4.1.0). Versions 4.2.0 to 4.5.0 were set in `package.json` but never published
+or tagged, so 4.6.0 is the first release after 4.1.0 and carries all of them.
 
-## 4.5.0 — 2026-10-16
+## 4.6.0 — 2026-10-22
+
+The first GitHub release. It also carries 4.2.0 to 4.5.0 below, which were never published.
 
 ### Added
 - **`/w-marathon-times` (`/mtt`)**: a marathon that stops on the clock instead of a review
@@ -17,11 +20,25 @@ so 4.5.0 is the first release after 4.1.0 and carries all four.
   only when a test fails twice the same way (replay gate), anything else is a lead. Proved bugs
   are fixed while time allows (`--report-only` skips fixes), each area gets one review, and the
   run ends with `bug-hunt-report.md`.
-- Marathon CLI: `deadline split|parse|set|check` (exit 2 at the wrap-up point, 3 once finished), `init --mode timed
-  --command <w-marathon-times|w-bug-hunt>`, the `reviews.count` finish-line source, a deadline
+- Marathon CLI: `deadline split|parse|set|check` (exit 2 at the wrap-up point, 3 once finished),
+  `init --mode timed --command <w-marathon-times|w-bug-hunt>`, the `reviews.count` finish-line source, a deadline
   line in `status.md`, and resume lines and wake-up prompts that name the run's own command and
   send a session past the deadline to the wrap-up. New `timed` block in `marathon.json`
   (wrap-up reserve, default time zone).
+- A release workflow (`.github/workflows/release.yml`): pushing a tag `vX.Y.Z` that matches
+  `package.json` creates the GitHub release with this file's section as its notes.
+
+### Changed
+- **No more npm releases.** Install and update from GitHub with
+  `npx github:danizeeincali/danizee-claude-suite <command>` (append `#vX.Y.Z` for a tagged
+  release) or from a local checkout with `node bin/cli.js <command> --path <project>`. The
+  README, the CLI's hints, the doctor and the `/bc` docs say so; `package.json` is marked
+  `private` so it cannot be published by accident, and `.npmignore` is gone.
+- `danizee-claude-suite --version` prints the package version instead of a fixed `1.0.0`.
+
+## 4.5.0 — 2026-10-16 (unpublished)
+
+### Added
 - **Most-used commands** at the top of the README: `/mt`, `/pt`, `/bbs`, `/bcp` and `/bc`
   with their long forms and what each does.
 - **Review kit** (`node .claude/helpers/kit/cli.js <verb>`): 24 zero-dependency verbs

@@ -1,6 +1,6 @@
 # Danizee Claude Suite
 
-[![npm version](https://badge.fury.io/js/danizee-claude-suite.svg)](https://www.npmjs.com/package/danizee-claude-suite)
+[![Latest release](https://img.shields.io/github/v/release/danizeeincali/danizee-claude-suite)](https://github.com/danizeeincali/danizee-claude-suite/releases)
 
 Unified workflow shortcuts for Claude Code that **compound knowledge** — each task makes future tasks easier.
 
@@ -20,17 +20,27 @@ Two time-boxed commands sit beside them: `/mtt` (`/w-marathon-times`) works a ba
 
 ## Installation
 
+The suite is released on GitHub (tags and [releases](https://github.com/danizeeincali/danizee-claude-suite/releases)),
+not on npm. `npx` installs it straight from the repository, using your own git access:
+
 ```bash
-npx danizee-claude-suite init
+npx github:danizeeincali/danizee-claude-suite init           # latest main
+npx github:danizeeincali/danizee-claude-suite#v4.6.0 init    # a tagged release
+```
+
+Or from a local checkout:
+
+```bash
+node ~/code/claude-suite/bin/cli.js init --path <project>    # update, check and uninstall take --path too
 ```
 
 Options:
 
 ```bash
-npx danizee-claude-suite init --force         # Overwrite existing files
-npx danizee-claude-suite init --with-pm       # Include PM workflows
-npx danizee-claude-suite init --without-cookbook  # Skip Agent Cookbook
-npx danizee-claude-suite init --dry-run       # Preview without writing
+npx github:danizeeincali/danizee-claude-suite init --force         # Overwrite existing files
+npx github:danizeeincali/danizee-claude-suite init --with-pm       # Include PM workflows
+npx github:danizeeincali/danizee-claude-suite init --without-cookbook  # Skip Agent Cookbook
+npx github:danizeeincali/danizee-claude-suite init --dry-run       # Preview without writing
 ```
 
 ## Requirements
@@ -362,8 +372,8 @@ with neither a `bc.json` nor a status file the hooks do nothing. Registration is
 ### One `/bc` for every project
 
 ```bash
-npx danizee-claude-suite install-user     # /bc, /bcp, /w-background-compound, helper and hooks into ~/.claude
-npx danizee-claude-suite uninstall-user   # removes only the suite's pieces
+npx github:danizeeincali/danizee-claude-suite install-user     # /bc, /bcp, /w-background-compound, helper and hooks into ~/.claude
+npx github:danizeeincali/danizee-claude-suite uninstall-user   # removes only the suite's pieces
 ```
 
 `install-user` ships `/bc` once, at user level, with the hooks registered in
@@ -484,7 +494,7 @@ done
 Adds 34 additional workflows for project management:
 
 ```bash
-npx danizee-claude-suite init --with-pm
+npx github:danizeeincali/danizee-claude-suite init --with-pm
 ```
 
 Requires `npm install better-sqlite3` for the SQLite database.
@@ -520,10 +530,10 @@ sed -i '' 's/TodoWrite/TaskCreate/g' .claude/commands/.shortcuts/*.md
 ## CLI Commands
 
 ```bash
-npx danizee-claude-suite init          # Install suite
-npx danizee-claude-suite check         # Verify installation
-npx danizee-claude-suite update        # Update workflows (preserves data)
-npx danizee-claude-suite uninstall     # Remove suite
+npx github:danizeeincali/danizee-claude-suite init          # Install suite
+npx github:danizeeincali/danizee-claude-suite check         # Verify installation
+npx github:danizeeincali/danizee-claude-suite update        # Update workflows (preserves data)
+npx github:danizeeincali/danizee-claude-suite uninstall     # Remove suite
 ```
 
 | Flag | Description |

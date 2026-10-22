@@ -42,7 +42,7 @@ function printShadowing(shadowing = []) {
 program
   .name('danizee-claude-suite')
   .description('Unified workflow shortcuts for Claude Code with knowledge compounding')
-  .version('1.0.0');
+  .version(JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version);
 
 program
   .command('init')
@@ -140,7 +140,7 @@ program
       printShadowing(status.shadowing);
 
       if (!status.installed) {
-        console.log('\n' + chalk.yellow('Run `npx danizee-claude-suite init` to install.'));
+        console.log('\n' + chalk.yellow('Run `npx github:danizeeincali/danizee-claude-suite init` to install.'));
       }
 
       // Preflight doctor: named checks, fatal ones block (exit 4), advisory ones only warn.

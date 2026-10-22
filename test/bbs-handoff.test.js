@@ -952,7 +952,7 @@ describe('handoff — review r5 regressions', () => {
     try {
       await makeHarness(d);
       const r = await decided(d, 'r5h', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
-      await assert.rejects(() => buildHandoff(d, { run: r.runId, now, marathon: true }), /marathon helpers are absent \(\.claude\/helpers\/marathon\/cli\.js\) — install the suite \(npx danizee-claude-suite init\)/);
+      await assert.rejects(() => buildHandoff(d, { run: r.runId, now, marathon: true }), /marathon helpers are absent \(\.claude\/helpers\/marathon\/cli\.js\) — install the suite \(npx github:danizeeincali\/danizee-claude-suite init\)/);
     } finally { await fs.rm(d, { recursive: true, force: true }); }
     const r = await decided(dir, 'r5fin', [power()], { 'drift-monitor': 'missing' }, { 'drift-monitor': 'rebuild' });
     const first = await buildHandoff(dir, { run: r.runId, now, marathon: true });
