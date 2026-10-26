@@ -199,8 +199,14 @@ async function readInput(file, io) {
 export async function resolvePlaywright(cwd = process.cwd()) {
   try {
     const req = createRequire(path.join(path.resolve(cwd), 'noop.js'));
-    const mod = await import(pathToFileURL(req.resolve('playwright')).href);
-    return mod && mod.chromium ? mod : (mod && mod.default && mod.default.chromium ? mod.default : null);
+    for (const name of ['playwright', '@playwright/test', 'playwright-core']) {
+      try {
+        const mod = await import(pathToFileURL(req.resolve(name)).href);
+        const found = mod && mod.chromium ? mod : (mod && mod.default && mod.default.chromium ? mod.default : null);
+        if (found) return found;
+      } catch { /* try the next package */ }
+    }
+    return null;
   } catch { return null; }
 }
 
@@ -233,8 +239,13 @@ export async function capture(o, io = {}) {
     }
     const ctx = await browser.newContext({ viewport: { width: o.width, height: o.height }, deviceScaleFactor: o.scale, serviceWorkers: 'block' });
     if (typeof ctx.routeWebSocket !== 'function') return { captured: 0, reason: OLD_PLAYWRIGHT, exit: 4 };
-    await ctx.route('**/*', routeRequest);
-    await ctx.routeWebSocket(/.*/, routeSocket);
+    const blocked = new Set();
+    const note = (u, isLocal) => {
+      if (isLocal) return;
+      try { const x = new URL(u); if (blocked.size < 50) blocked.add(x.protocol + '//' + x.host); } catch { if (blocked.size < 50) blocked.add('(unparseable url)'); }
+    };
+    await ctx.route('**/*', (route) => { note(route.request().url(), isLocalUrl(route.request().url())); return routeRequest(route); });
+    await ctx.routeWebSocket(/.*/, (ws) => { note(ws.url(), isLocalWs(ws.url())); return routeSocket(ws); });
     const page = await ctx.newPage();
     if (!page.clock) return { captured: 0, reason: OLD_PLAYWRIGHT, exit: 4 };
     await page.clock.install({ time: 0 });
@@ -251,11 +262,12 @@ export async function capture(o, io = {}) {
     const files = [];
     const total = o.warmup + o.frames;
     for (let g = 0; g < total; g++) {
-      if (g > 0) await page.clock.runFor(p.steps_ms[g - 1]);
+      const step = async (what, fn) => { try { return await fn(); } catch (e) { if (e instanceof KitExit) throw e; throw bad(`frame ${g + 1} of ${total}: ${what} failed: ${String(e && e.message).split('\n')[0]}`); } };
+      if (g > 0) await step('advancing the clock', () => page.clock.runFor(p.steps_ms[g - 1]));
       const t = frameTime(g, o.fps);
       // Pause every animation inside one evaluation, seeked to t minus the frame time it was first seen at (animations
       // present at load start at 0), so one that starts later is not jumped ahead to the global time.
-      await page.evaluate((ms) => {
+      await step('pausing animations', () => page.evaluate((ms) => {
         const key = Symbol.for('frame-capture.start');
         const start = globalThis[key] || (globalThis[key] = new WeakMap());
         for (const a of document.getAnimations()) {
@@ -263,11 +275,11 @@ export async function capture(o, io = {}) {
           a.pause();
           a.currentTime = ms - start.get(a);
         }
-      }, t);
+      }, t));
       if (g < o.warmup) continue;
       const k = g - o.warmup;
       const name = `frame-${String(k + 1).padStart(5, '0')}.png`;
-      const png = await page.screenshot({ type: 'png' });
+      const png = await step('the screenshot', () => page.screenshot({ type: 'png', timeout: 10000 }));
       await writeAtomic(path.join(out, name), png);
       files.push(name);
     }
@@ -282,7 +294,7 @@ export async function capture(o, io = {}) {
       frames: p.frames.map((f, i) => ({ ...f, file: files[i] })),
     };
     await writeAtomic(path.join(out, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
-    return { captured: files.length, out, manifest: path.join(out, 'manifest.json'), mean_fps: p.mean_fps };
+    return { captured: files.length, out, manifest: path.join(out, 'manifest.json'), mean_fps: p.mean_fps, blocked_origins: [...blocked].sort() };
   } finally {
     if (browser) await browser.close().catch(() => {});
   }

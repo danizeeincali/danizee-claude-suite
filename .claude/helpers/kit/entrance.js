@@ -17,7 +17,7 @@
  * Built from ideas audited by /w-bbs (run 2026-10-26-ai-design-skills); no foreign code.
  */
 import fs from 'fs/promises';
-import { constants as fsConstants } from 'fs';
+import { constants as fsConstants, fstatSync } from 'fs';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
 
@@ -56,7 +56,7 @@ function noUnknown(o, allowed, where) {
   for (const k of Object.keys(o)) if (!allowed.includes(k)) throw bad(`unknown key "${k}" in ${where} (allowed: ${allowed.join(', ')})`);
 }
 
-function checkState(state, kind, where) {
+function checkState(state, kind, where, isTo) {
   if (!isObj(state)) throw bad(`${where} must be an object`);
   noUnknown(state, STATE_KEYS, where);
   const grow = CATALOGUE[kind].grow;
@@ -65,7 +65,7 @@ function checkState(state, kind, where) {
     if (k === 'opacity' && (v < 0 || v > 1)) throw bad(`${where}.opacity must be between 0 and 1`);
     if (k === 'blur' && v < 0) throw bad(`${where}.blur must be 0 or more`);
     if (k.startsWith('scale')) {
-      if (k === grow ? v < 0 : v <= 0) throw bad(`${where}.${k} must be above 0${grow ? ` (only ${grow} may be 0 on a ${kind})` : ' (a scale of 0 is only allowed on the grow axis of bar, rule and chart)'}`);
+      if (k === grow && isTo ? v <= 0 : k === grow ? v < 0 : v <= 0) throw bad(`${where}.${k} must be above 0${grow ? (isTo ? ` (a ${kind} must end visible; ${grow} may be 0 only in override.from)` : ` (only ${grow} may be 0 on a ${kind})`) : ' (a scale of 0 is only allowed on the grow axis of bar, rule and chart)'}`);
     }
   }
   return state;
@@ -98,7 +98,7 @@ export function normalize(input) {
       if (!isObj(g.override)) throw bad(`${where}.override must be an object`);
       noUnknown(g.override, OVERRIDE_KEYS, `${where}.override`);
       if (g.override.from !== undefined) from = { ...from, ...checkState(g.override.from, g.kind, `${where}.override.from`) };
-      if (g.override.to !== undefined) to = { ...to, ...checkState(g.override.to, g.kind, `${where}.override.to`) };
+      if (g.override.to !== undefined) to = { ...to, ...checkState(g.override.to, g.kind, `${where}.override.to`, true) };
     }
     return { id: g.id, kind: g.kind, order: g.order, covered: g.covered === true, items: g.items || 0, from, to, mid: cat.mid };
   });
@@ -199,6 +199,9 @@ async function readFileBounded(file, cwd) {
   try {
     const st = await fh.stat();
     if (!st.isFile()) throw bad(`--file ${file} is not a regular file`);
+    let s0 = null;
+    try { s0 = fstatSync(0, { bigint: true }); } catch { /* no stdin */ }
+    if (s0 && s0.ino !== 0n && s0.dev === BigInt(st.dev) && s0.ino === BigInt(st.ino)) throw bad(`--file ${file} is not a regular file (it is the same file as standard input)`);
     const buf = Buffer.alloc(MAX_BYTES + 1);
     let n = 0;
     while (n < buf.length) {

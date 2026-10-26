@@ -461,3 +461,73 @@ describe('frame-capture capture review r2', () => {
     assert.equal(b.rec.closed, true);
   });
 });
+
+describe('frame-capture integration fixes (group D)', () => {
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fc-d-')); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+  const mk = (pageOver = {}) => {
+    const rec = {};
+    const page = {
+      clock: { install: async () => {}, pauseAt: async () => {}, runFor: async () => {} },
+      goto: async () => ({ ok: () => true, status: () => 200 }),
+      evaluate: async () => {},
+      screenshot: async () => Buffer.from('PNG'),
+      ...pageOver,
+    };
+    const ctx = { route: async (p, h) => { rec.route = h; }, routeWebSocket: async (p, h) => { rec.ws = h; }, newPage: async () => page };
+    const pw = { chromium: { launch: async () => ({ newContext: async () => ctx, close: async () => { rec.closed = true; } }) } };
+    return { rec, pw };
+  };
+  const cap = (pw, extra = []) => run(['capture', '--url', 'file:///tmp/x.html', '--out', path.join(dir, 'o' + Math.random().toString(36).slice(2)), '--fps', '30', ...(extra.includes('--frames') ? [] : ['--frames', '3']), ...extra], { cwd: dir, resolvePlaywright: async () => pw });
+
+  it('a failing or stalled per-frame call becomes a one-line exit 1 naming the frame', async () => {
+    for (const [what, over] of [
+      ['screenshot', { screenshot: async () => { throw new Error('Timeout 30000ms exceeded.\n  - waiting for fonts'); } }],
+      ['evaluate', { evaluate: async () => { throw new Error('Target closed'); } }],
+      ['runFor', { clock: { install: async () => {}, pauseAt: async () => {}, runFor: async () => { throw new Error('clock gone'); } } }],
+    ]) {
+      const { rec, pw } = mk(over);
+      await assert.rejects(cap(pw), (e) => e instanceof KitExit && e.code === 1 && /frame \d+ of 3/.test(e.message) && !e.message.includes('\n'), what);
+      assert.equal(rec.closed, true);
+    }
+  });
+
+  it('reports the blocked non-local origins in the result', async () => {
+    const { rec, pw } = mk({
+      screenshot: async () => {
+        await rec.route({ request: () => ({ url: () => 'https://cdn.blocked.invalid/a.png?x=1' }), continue: async () => {}, abort: async () => {} });
+        await rec.route({ request: () => ({ url: () => 'http://127.0.0.1:9/ok.css' }), continue: async () => {}, abort: async () => {} });
+        await rec.ws({ url: () => 'wss://sock.blocked.invalid/s', connectToServer: () => {}, close: async () => {} });
+        return Buffer.from('PNG');
+      },
+    });
+    const r = await cap(pw, ['--frames', '2']);
+    assert.deepEqual(r.blocked_origins, ['https://cdn.blocked.invalid', 'wss://sock.blocked.invalid']);
+    const clean = await cap(mk().pw, ['--frames', '2']);
+    assert.deepEqual(clean.blocked_origins, []);
+  });
+
+  // A stand-in `playwright` without a chromium, so a globally installed one cannot answer first.
+  const stub = async (proj) => {
+    const d = path.join(proj, 'node_modules', 'playwright');
+    await fs.mkdir(d, { recursive: true });
+    await fs.writeFile(path.join(d, 'package.json'), JSON.stringify({ name: 'playwright', version: '1.0.0', main: 'index.js' }));
+    await fs.writeFile(path.join(d, 'index.js'), 'module.exports = {};\n');
+  };
+  it('falls back to @playwright/test and playwright-core when playwright is not installed', async () => {
+    for (const name of ['@playwright/test', 'playwright-core']) {
+      const proj = path.join(dir, 'proj-' + name.replace(/\W/g, '_'));
+      const nm = path.join(proj, 'node_modules', ...name.split('/'));
+      await fs.mkdir(nm, { recursive: true });
+      await stub(proj);
+      await fs.writeFile(path.join(nm, 'package.json'), JSON.stringify({ name, version: '1.0.0', main: 'index.js' }));
+      await fs.writeFile(path.join(nm, 'index.js'), "module.exports = { chromium: { marker: '" + name + "' } };\n");
+      const mod = await resolvePlaywright(proj);
+      assert.ok(mod && mod.chromium && mod.chromium.marker === name, name);
+    }
+    const empty = path.join(dir, 'empty');
+    await stub(empty);
+    assert.equal(await resolvePlaywright(empty), null);
+  });
+});
