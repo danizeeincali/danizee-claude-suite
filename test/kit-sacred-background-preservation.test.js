@@ -366,7 +366,7 @@ describe('bg-fill — review r2 fixes', () => {
   it('css refuses a non-finite or exponent length with exit 1 naming the field', () => {
     assert.throws(() => cssFor({ ...base, scale_mode: 'TILE', image: { w: 1e300, h: 1 }, tile_scale: 1e10 }), exit1(/image\.w \* tile_scale/));
     assert.throws(() => cssFor({ ...base, scale_mode: 'CROP', container: { w: 1e30, h: 5 }, transform: [[1, 0, 0], [0, 1, 0]] }), exit1(/container\.w/));
-    assert.throws(() => cssFor({ ...base, scale_mode: 'CROP', transform: [[1e-300, 0, 1e300], [0, 1, 0]] }), exit1(/out of range/));
+    assert.throws(() => cssFor({ ...base, scale_mode: 'CROP', transform: [[1e-8, 0, 1e12], [0, 1, 0]] }), exit1(/out of range/));
     assert.equal(cssFor({ ...base, scale_mode: 'TILE', tile_scale: 2 }).css['background-size'], '800px 600px');
   });
   it('sees background swaps behind :is() and :where() wrappers', () => {
