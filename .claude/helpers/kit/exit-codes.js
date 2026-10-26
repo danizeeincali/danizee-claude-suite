@@ -53,7 +53,7 @@ export const CLASSES = freeze({
 export const INFRA_FLOOR = 128;
 
 /** Verbs whose exit 2 is a product verdict (checked against each verb's usage text); every other 2 is a non-blocking refusal. */
-export const PRODUCT_JUDGES = freeze(['push-gate', 'scrub']);
+export const PRODUCT_JUDGES = freeze(['push-gate', 'scrub', 'bg-fill']);
 
 const REFUSAL = freeze({ class: 'precondition', description: 'The verb refused the call (exit 2): an argument, a size or count limit, an unsafe path or repository state. Nothing was judged about the product, so it never blocks; change the call or the environment. Only the product judges (see product_judges) use 2 as a verdict.' });
 const SHELL = freeze({
