@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "openedAt": 1793048692859,
+  "limits": {
+    "steps": 200,
+    "cost": 1500000,
+    "timeMs": null
+  },
+  "spent": {
+    "steps": 58,
+    "cost": 462389
+  },
+  "clock": {
+    "depth": 0,
+    "startedAt": null,
+    "elapsedMs": 1497231
+  },
+  "helpers": {
+    "7a0303c4-2137-4c06-a401-98c78463dcfe": {
+      "steps": 10,
+      "cost": 88548,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "d211465a-6c7d-43ac-b4eb-12cc4f565b05": {
+      "steps": 13,
+      "cost": 77976,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "dd003938-d3e7-48d0-8ab4-42485e09cbe3": {
+      "steps": 9,
+      "cost": 83713,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "27bd4b00-9313-4a25-82c6-7a73d6c7b091": {
+      "steps": 9,
+      "cost": 79739,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "ca4f62c6-6db6-4ee9-9ce3-da37770c6ecb": {
+      "steps": 7,
+      "cost": 52892,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "64652611-9e71-42fb-b695-b335c891ec02": {
+      "steps": 10,
+      "cost": 79521,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    }
+  }
+}

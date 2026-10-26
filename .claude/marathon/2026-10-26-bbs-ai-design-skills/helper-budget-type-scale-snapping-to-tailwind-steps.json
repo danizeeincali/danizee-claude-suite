@@ -2,7 +2,7 @@
   "version": 1,
   "openedAt": 1793046740270,
   "limits": {
-    "steps": 40,
+    "steps": 200,
     "cost": 1500000,
     "timeMs": null
   },
@@ -64,5 +64,13 @@
         "cost": 0
       }
     }
-  }
+  },
+  "raised": [
+    {
+      "from": 40,
+      "to": 200,
+      "ts": "2026-10-26T22:19:10.717Z",
+      "by": "owner decision 2026-10-26"
+    }
+  ]
 }

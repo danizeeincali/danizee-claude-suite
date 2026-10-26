@@ -1,0 +1,17 @@
+# Review b6a3091e-b561-4bd3-b739-268fcc9eb032 — sacred-background-preservation, round 2
+
+- Commit: d452a4a
+- Angle: correctness
+- Result: pass
+- 5 findings
+
+## Medium (2)
+
+- **checkSelector refuses valid selectors that use '\>' or a backslash escape** — `src/lib/kit/bg-fill.js:57` (correctness): The character blacklist /\[{};\<\>\\\u0000-\u001f\]/ includes '\>' (the child combinator) and '\\' (CSS escapes, as in Tailwind classes like .md\\:bg-cover). So \`guard --selector ".page \> .hero"\` and \`--selector ".md\\:bg"\` both exit 1 with 'contains a character that cannot appear in a selector', and \`css\` refuses the same selectors (checked with guard() and cssFor()). Both are valid selectors on a normal path. matchSelector's own doc comment uses \`.page \> .hero\` as an example, and the tests use '\>' only inside the CSS, never in --selector, so nothing catches the refusal. The judge cannot be run on these background elements at all. — fix: Drop '\>' and '\\' from the blacklist (keep { } ; \< and control characters, and add '/\*' for raw\_css; see the separate row). Add tests that \`--selector '.page \> .hero'\` and an escaped class are accepted and judged.
+- **guard passes (exit 0) when --selector matches no rule or is malformed** — `src/lib/kit/bg-fill.js:449` (correctness): If no rule matches the target, \`applied\` is empty and guard returns pass:true, exit 0. So a typo (\`--selector .bgg\` against CSS for .bg with \`.bg:hover{background:#000}\`) or a malformed selector that survives checkSelector (for example a trailing combinator) gives a clean verdict from a blocking judge, and the reader is not told that nothing was checked. A judge that vacuously passes on a mistaken call is a failure path handled as success. — fix: When no rule in the CSS selects the target, either exit 1 ('no rule selects \<sel\>') or return a \`matched: 0\` field and make the caller treat it as not judged. Add a test with a misspelled selector.
+
+## Low (3)
+
+- **A selector containing '/\*' turns raw\_css into a comment** — `src/lib/kit/bg-fill.js:93` (correctness): checkSelector allows '/' and '\*', so selector \`.bg /\*\` produces raw\_css \`.bg /\* {\n background-size: cover; ... }\` (checked). The emitted rule is swallowed by an unclosed comment, and the stylesheet it is pasted into breaks with no error. — fix: Refuse '/\*' and '\*/' in checkSelector, or refuse any selector whose mask() differs from itself outside strings.
+- **css emits Infinity or exponent lengths instead of refusing** — `src/lib/kit/bg-fill.js:43` (correctness): num() is String(Math.round(n\*1e4)/1e4) with no range check. TILE with image.w 1e300 and tile\_scale 1e10 gives \`background-size: Infinitypx ...\`, and CROP with container.w 1e30 gives \`1e+30px\` (checked). Both are invalid CSS, returned with exit 0 instead of the contract's exit 1 for invalid input. — fix: After computing each length, refuse a non-finite result or abs(value) \>= 1e21 with KitExit 1 naming the field (or cap the dims at a sane maximum).
+- **Background swaps behind :is()/:where() wrappers are missed** — `src/lib/kit/bg-fill.js:377` (correctness): matchSelector compares compounds by string prefix, so \`.bg{background:url(a.jpg)} :is(.bg):hover{background:#000}\` returns pass:true (checked), even though the rule replaces the image on hover. :is()/:where() are common in modern and generated CSS. — fix: Before matching, expand a compound made only of :is(...)/:where(...) into its argument list (or treat a target that appears inside one as a conditional hit), and add a test.

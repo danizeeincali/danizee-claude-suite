@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "openedAt": 1793048692236,
+  "limits": {
+    "steps": 200,
+    "cost": 1500000,
+    "timeMs": null
+  },
+  "spent": {
+    "steps": 33,
+    "cost": 284746
+  },
+  "clock": {
+    "depth": 0,
+    "startedAt": null,
+    "elapsedMs": 628301
+  },
+  "helpers": {
+    "c6e56d9b-4597-44d0-8fb2-496d226f1cdd": {
+      "steps": 7,
+      "cost": 78497,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "ea31ef16-dc38-4e2f-966e-7c96f6381526": {
+      "steps": 13,
+      "cost": 81946,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "ec274489-2eb0-4698-a93f-99ced2811f45": {
+      "steps": 4,
+      "cost": 49673,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "8ac341a6-b59e-4cab-ba46-d8ac3e17ccaa": {
+      "steps": 9,
+      "cost": 74630,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    }
+  }
+}

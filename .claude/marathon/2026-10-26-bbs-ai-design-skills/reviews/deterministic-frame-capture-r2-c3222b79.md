@@ -1,0 +1,16 @@
+# Review c3222b79-607a-403e-b615-7f39488adf88 — deterministic-frame-capture, round 2
+
+- Commit: 5137c5c
+- Angle: correctness
+- Result: pass
+- 4 findings
+
+## Medium (2)
+
+- **HTTP error page is captured and reported as success** — `src/lib/kit/frame-capture.js:239` (correctness): The response from page.goto(href) is never checked. A --url on the local dev server that answers 404 or 500 (a wrong path or a broken build) is screenshotted frame by frame, gets a manifest, and exits 0 with captured:N. I reproduced it with real playwright: http://127.0.0.1:\<port\>/404 returned {captured:2,...} and exit 0. A design loop gets frames of an error page with nothing telling it something went wrong, and no test covers navigation failure. — fix: Keep the goto response. When it is non-null and !response.ok(), throw KitExit(\`page returned HTTP ${status}\`, 1) before any frame is written. Map a rejected goto (net::ERR\_\*) to KitExit 1 naming the URL. Add a test for each case.
+- **A capture that fails partway leaves the old manifest beside a mix of old and new frames** — `src/lib/kit/frame-capture.js:260` (correctness): New frames overwrite frame-00001..k one at a time. Stale frames are removed, and manifest.json is rewritten, only after every frame succeeds (lines 263-273). If a screenshot or write fails at frame k (page crash, disk full, timeout) in an --out that holds an earlier run, the folder keeps the earlier manifest.json while frames 1..k come from the new run and the rest from the old one. seam then checks that stale manifest and reports a clean loop for a sequence that mixes two captures. — fix: Unlink \<out\>/manifest.json (and any stale frame-\*.png) before the first frame is written, so a failed run leaves no manifest. Add a test where the fake screenshot throws on frame 2 of a second capture.
+
+## Low (2)
+
+- **Failed navigation leaves an empty --out and surfaces a raw Playwright error** — `src/lib/kit/frame-capture.js:226` (correctness): --out is created before the browser starts. When goto rejects (net::ERR\_FILE\_NOT\_FOUND for a missing file:// page, ERR\_CONNECTION\_REFUSED or ERR\_UNSAFE\_PORT for a local server) the PlaywrightError, which is not a KitExit, falls through to cli.js's generic handler. The result is exit 1 with a multi-line Playwright message, and an empty output directory is left behind (reproduced: o3 and o4 were left in place). — fix: Create --out only after the page has loaded, or remove it if this run created it and the run fails. Wrap goto failures in a KitExit 1 with a one-line message.
+- **Playwright too old for clock or routeWebSocket fails as exit 1 TypeError, not the exit 4 precondition** — `src/lib/kit/frame-capture.js:235` (other): page.clock needs Playwright 1.45 and ctx.routeWebSocket needs 1.48. A project that resolves an older playwright gets 'ctx.routeWebSocket is not a function' (or 'page.clock' undefined) as exit 1 broken state. A missing launcher is classed as exit 4, and the reason here is the same kind of precondition. The failure still fails closed, so egress is not affected. — fix: In capture, after resolving playwright, check that typeof BrowserContext.routeWebSocket and page.clock exist (or check the version), and return {captured:0, reason:'playwright \>= 1.48 required', exit:4}.
