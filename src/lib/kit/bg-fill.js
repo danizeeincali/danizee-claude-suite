@@ -596,7 +596,7 @@ export function guard(cssText, selector) {
         if (a.conditional) {
           // Turning a fixed (parallax) background off for people who asked for less motion is the one allowed change.
           if (base === 'background-attachment' && /^scroll(\s*,\s*scroll)*$/i.test(value.replace(/\s*!important\s*$/i, '').trim())
-            && a.rule.atStack.length && a.rule.atStack.every(x => /^@media\b/i.test(x) && /\(\s*prefers-reduced-motion\s*:\s*reduce\s*\)/i.test(x))) continue;
+            && a.rule.atStack.length && a.rule.atStack.every(x => /^@media\s+(?:(?:only\s+)?screen\s+and\s+)?\(\s*prefers-reduced-motion\s*:\s*reduce\s*\)(?:\s+and\s+\([^(),]*\))*\s*$/i.test(x))) continue;
           if (flatReplacement(base, value)) add(line, prop, `the background image is replaced by a flat colour or none ${a.where}`);
           else add(line, prop, `the background is changed ${a.where}; it must stay exactly as designed`);
         } else if (!cascade.has(a)) {

@@ -197,11 +197,11 @@ async function readFileBounded(file, cwd) {
   if (banned(real)) throw bad(`--file ${file} is not a regular file (device and /proc paths are refused)`);
   const fh = await fs.open(real, fsConstants.O_RDONLY | fsConstants.O_NONBLOCK).catch(e => { throw bad(`cannot read ${p}: ${e.code || e.message}`); });
   try {
-    const st = await fh.stat();
+    const st = await fh.stat({ bigint: true });
     if (!st.isFile()) throw bad(`--file ${file} is not a regular file`);
     let s0 = null;
     try { s0 = fstatSync(0, { bigint: true }); } catch { /* no stdin */ }
-    if (s0 && s0.ino !== 0n && s0.dev === BigInt(st.dev) && s0.ino === BigInt(st.ino)) throw bad(`--file ${file} is not a regular file (it is the same file as standard input)`);
+    if (s0 && s0.ino !== 0n && s0.dev === st.dev && s0.ino === st.ino) throw bad(`--file ${file} is not a regular file (it is the same file as standard input)`);
     const buf = Buffer.alloc(MAX_BYTES + 1);
     let n = 0;
     while (n < buf.length) {

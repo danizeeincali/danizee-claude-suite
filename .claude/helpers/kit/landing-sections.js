@@ -3,7 +3,7 @@
  * Pure and read-only: it never writes and never touches the network.
  *
  *   landing-sections plan                       → { sections: [{ id, label, above_fold, must }] }
- *   landing-sections check [--file <spec.md|page.html>]   (or the text on stdin, at most 8 MiB)
+ *   landing-sections check [--file <spec.md|page.html>] [--format md|html]   (or the text on stdin, at most 8 MiB)
  *                                               → { found, missing, out_of_order, cta }
  *
  * The order: the hero above the fold (headline with outcome and audience, subheadline, one primary CTA, one proof
@@ -21,7 +21,7 @@
  * Built from ideas audited by /w-bbs (run 2026-10-26-ai-design-skills); no foreign code.
  */
 import fs from 'fs/promises';
-import { constants as fsc } from 'fs';
+import { constants as fsc, fstatSync } from 'fs';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
 
@@ -80,6 +80,15 @@ export function planSections() {
 const decode = s => s.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#0*39;/g, "'");
 
 /** Hits are { id, start, end, level?, name } in document order, `end` being where the section's text stops. */
+/** Strip a CommonMark closing '#' sequence (preceded by a space or tab) with a backward walk: linear time. */
+function headingName(raw) {
+  const t = raw.trimEnd();
+  let j = t.length;
+  while (j > 0 && t[j - 1] === '#') j--;
+  if (j < t.length && (j === 0 || t[j - 1] === ' ' || t[j - 1] === '\t')) return t.slice(0, j).trimEnd();
+  return t;
+}
+
 function scanMarkdown(text) {
   const lines = text.split('\n');
   const heads = [];
@@ -91,7 +100,7 @@ function scanMarkdown(text) {
       else if (f[1][0] === fence) fence = null;
     } else if (!fence) {
       const m = /^ {0,3}(#{1,6})[ \t]+(.*)$/.exec(line);
-      if (m) heads.push({ level: m[1].length, name: m[2].trimEnd().replace(/#+$/, '').trimEnd(), start: offset, bodyStart: offset + line.length + 1 });
+      if (m) heads.push({ level: m[1].length, name: headingName(m[2]), start: offset, bodyStart: offset + line.length + 1 });
     }
     offset += line.length + 1;
   }
@@ -206,7 +215,11 @@ async function openRegular(p) {
   if (PROTECTED.test(p) || PROTECTED.test(real)) throw bad(`${p} is not a regular file (paths under /dev and /proc are refused)`);
   const fh = await fs.open(p, fsc.O_RDONLY | fsc.O_NONBLOCK);
   try {
-    if (!(await fh.stat()).isFile()) throw bad(`${p} is not a regular file`);
+    const st = await fh.stat({ bigint: true });
+    if (!st.isFile()) throw bad(`${p} is not a regular file`);
+    let s0 = null;
+    try { s0 = fstatSync(0, { bigint: true }); } catch { /* no stdin */ }
+    if (s0 && s0.ino !== 0n && s0.dev === st.dev && s0.ino === st.ino) throw bad(`${p} is not a regular file (it is the same file as standard input)`);
     const buf = Buffer.alloc(MAX_BYTES + 1);
     let n = 0;
     while (n < buf.length) {
@@ -230,7 +243,7 @@ function sniff(text) {
     if (e < 0) { i = text.length; break; }
     i = e + 3;
   }
-  return /^<(!doctype|html|head|body|div|section|header|main|nav|footer|article|aside|h[1-6]|p|ul|style|script)\b/i.test(text.slice(i, i + 64)) ? 'html' : 'md';
+  return /^<(!doctype\b|[a-z][a-z0-9-]*)/i.test(text.slice(i, i + 64)) ? 'html' : 'md';
 }
 
 export async function run(args, io) {
@@ -240,14 +253,20 @@ export async function run(args, io) {
     return planSections();
   }
   if (cmd !== 'check') throw bad(`first argument must be plan or check\n${usage}`);
-  let file;
+  let file, format;
   while (rest.length) {
     const a = rest.shift();
-    if (a !== '--file') throw bad(`unexpected argument "${a}"\n${usage}`);
-    if (!rest.length || rest[0].startsWith('--')) throw bad('--file needs a value');
-    if (file !== undefined) throw bad('--file given more than once');
-    file = rest.shift();
-    if (!file) throw bad('--file needs a non-empty value');
+    if (a !== '--file' && a !== '--format') throw bad(`unexpected argument "${a}"\n${usage}`);
+    if (!rest.length || rest[0].startsWith('--')) throw bad(`${a} needs a value`);
+    if (a === '--file') {
+      if (file !== undefined) throw bad('--file given more than once');
+      file = rest.shift();
+      if (!file) throw bad('--file needs a non-empty value');
+    } else {
+      if (format !== undefined) throw bad('--format given more than once');
+      format = rest.shift();
+      if (format !== 'md' && format !== 'html') throw bad('--format must be md or html');
+    }
   }
   const cwd = io.cwd || process.cwd();
   let text;
@@ -267,5 +286,5 @@ export async function run(args, io) {
   text = text.replace(/^﻿/, '').replace(/\r\n?/g, '\n');
   if (!text.trim()) throw bad('no input: pass a markdown spec or HTML page on stdin or --file');
   if (text.includes('\0')) throw bad('input looks binary (contains NUL bytes)');
-  return checkText(text, sniff(text));
+  return checkText(text, format || sniff(text));
 }
