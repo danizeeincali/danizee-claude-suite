@@ -27,4 +27,22 @@ describe('word-reveal — packaged end to end', () => {
     assert.equal(pkg.kit(['word-reveal', 'emit']).code, 1);
     assert.deepEqual(pkg.egress(), []);
   });
+
+  it('reads the same input from stdin and --text-file / --file, and caps stdin in bytes', () => {
+    fs.writeFileSync(path.join(pkg.dir, 'same.txt'), 'Ship <it> now');
+    const viaFile = pkg.kit(['word-reveal', 'emit', '--text-file', 'same.txt']);
+    const viaStdin = pkg.kit(['word-reveal', 'emit'], 'Ship <it> now');
+    assert.equal(viaStdin.code, 0);
+    assert.equal(viaStdin.out, viaFile.out);
+    assert.ok(viaStdin.out.includes('<span class="wr-sr">Ship &lt;it&gt; now</span><span aria-hidden="true">'));
+    fs.writeFileSync(path.join(pkg.dir, 'sc.js'), "addEventListener('scroll', f);");
+    const lf = pkg.kit(['word-reveal', 'lint', '--file', 'sc.js']);
+    const ls = pkg.kit(['word-reveal', 'lint'], "addEventListener('scroll', f);");
+    assert.equal(lf.json.findings.length, 1);
+    assert.deepEqual(ls.json, lf.json);
+    const over = pkg.kit(['word-reveal', 'emit'], '€'.repeat(Math.floor(8 * 1024 * 1024 / 3) + 1));
+    assert.equal(over.code, 1);
+    assert.equal(pkg.kit(['word-reveal', 'emit', '--text-file', 'same.txt', '--text-file', 'same.txt']).code, 1);
+    assert.equal(pkg.kit(['word-reveal', 'emit', '--text-file', '']).code, 1);
+  });
 });
