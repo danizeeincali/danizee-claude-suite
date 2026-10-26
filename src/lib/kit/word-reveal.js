@@ -9,13 +9,16 @@
  * starts at the muted opacity; once the block crosses the trigger line (a fraction of the viewport height measured
  * from the top) an IntersectionObserver fires once and the words switch on in reading order, `stagger` ms apart, each
  * fading on the shared easing curve. Under prefers-reduced-motion (or with no IntersectionObserver) every word shows
- * at once. There is no scroll listener. The text is HTML-escaped; the numeric options are validated and the easing
- * may not contain ; { } < > (it lands inside a style block). Invalid input is KitExit 1.
+ * at once. There is no scroll listener. Each fragment's script drives only its own <p>. The text is HTML-escaped; the
+ * numeric options are validated (stagger-ms at most 10000) and the easing must be a whitelisted CSS timing function
+ * (it lands inside a style block). Invalid input is KitExit 1.
+ * For HTML input (first non-blank character "<") lint reads only <script> contents; <!-- --> comments are dropped.
  * lint is advisory (exit 0): each addEventListener('scroll' ...) whose handler has no requestAnimationFrame or
  * throttle/debounce is a finding.
  * Built from ideas audited by /w-bbs (run 2026-10-26-ai-design-skills); no foreign code.
  */
 import fs from 'fs/promises';
+import { constants as FS } from 'fs';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
 
@@ -25,11 +28,25 @@ export const usage = 'cli.js word-reveal emit [--text-file <f>] [--muted 0.25] [
 export const DEFAULTS = { muted: 0.25, staggerMs: 60, trigger: 0.6, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' };
 const MAX_BYTES = 8 * 1024 * 1024;
 const MAX_WORDS = 5000;
+const MAX_STAGGER_MS = 10000; // 5000 words x 10 s stays far below the 2^31-1 ms setTimeout limit
 const bad = m => new KitExit(m, 1);
 
 /** Escape text for HTML element content and attribute values. */
 export function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+const EASE_KEYWORDS = new Set(['ease', 'linear', 'ease-in', 'ease-out', 'ease-in-out', 'step-start', 'step-end']);
+const NUM = '[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?';
+const STOP = `${NUM}(?:\\s+${NUM}%){0,2}`;
+const CUBIC_RE = new RegExp(`^cubic-bezier\\(\\s*${NUM}(?:\\s*,\\s*${NUM}){3}\\s*\\)$`, 'i');
+const STEPS_RE = /^steps\(\s*[1-9]\d*\s*(?:,\s*(?:jump-start|jump-end|jump-none|jump-both|start|end)\s*)?\)$/i;
+const LINEAR_RE = new RegExp(`^linear\\(\\s*${STOP}(?:\\s*,\\s*${STOP})*\\s*\\)$`, 'i');
+
+/** True only for a CSS easing keyword, cubic-bezier(n,n,n,n), steps(n[, position]) or linear(stops). */
+export function isEasing(s) {
+  if (typeof s !== 'string' || s.length > 1000) return false;
+  return EASE_KEYWORDS.has(s.toLowerCase()) || CUBIC_RE.test(s) || STEPS_RE.test(s) || LINEAR_RE.test(s);
 }
 
 /** Validate options and fill defaults; returns { muted, staggerMs, trigger, easing }. */
@@ -44,13 +61,13 @@ export function normalizeOptions(o = {}) {
   if (muted < 0 || muted > 1) throw bad('muted must be between 0 and 1');
   const staggerMs = num('stagger-ms', o.staggerMs, DEFAULTS.staggerMs);
   if (staggerMs < 0) throw bad('stagger-ms must be 0 or more');
+  if (staggerMs > MAX_STAGGER_MS) throw bad(`stagger-ms must be at most ${MAX_STAGGER_MS}`);
   const trigger = num('trigger', o.trigger, DEFAULTS.trigger);
   if (trigger < 0 || trigger > 1) throw bad('trigger must be between 0 and 1');
   let easing = o.easing === undefined ? DEFAULTS.easing : o.easing;
   if (typeof easing !== 'string' || !easing.trim()) throw bad('easing must be a non-empty CSS timing function');
-  if (/[;{}<>]/.test(easing)) throw bad('easing must not contain ; { } < or >');
-  if (/[\u0000-\u001f]/.test(easing)) throw bad('easing must not contain control characters');
   easing = easing.trim();
+  if (!isEasing(easing)) throw bad('easing is not allowed: use ease, linear, ease-in, ease-out, ease-in-out, step-start, step-end, cubic-bezier(n, n, n, n), steps(n[, position]) or linear(stops)');
   return { muted, staggerMs, trigger, easing };
 }
 
@@ -79,15 +96,20 @@ export function emitFragment(text, options = {}) {
   const js = [
     '(function(){',
     `var STAGGER=${staggerMs},MARGIN=${JSON.stringify(rootMargin)};`,
-    'var roots=document.querySelectorAll("[data-word-reveal]");',
+    // This fragment's own <p>: the nearest earlier sibling of this <script> with data-word-reveal; without currentScript,
+    // the first block no script has claimed yet. Other taglines on the page are left alone.
+    'var me=document.currentScript,root=null,el=me&&me.previousElementSibling;',
+    'while(el){if(el.hasAttribute&&el.hasAttribute("data-word-reveal")){root=el;break;}el=el.previousElementSibling;}',
+    'if(!root){var rs=document.querySelectorAll("[data-word-reveal]");for(var q=0;q<rs.length;q++){if(!rs[q].__wr){root=rs[q];break;}}}',
+    'if(!root||root.__wr)return;root.__wr=1;',
     'var reduce=typeof matchMedia==="function"&&matchMedia("(prefers-reduced-motion: reduce)").matches;',
     'function on(w){w.classList.add("wr-on");}',
     'function all(p){var ws=p.querySelectorAll(".wr-w");for(var i=0;i<ws.length;i++)on(ws[i]);}',
     'function seq(p){var ws=p.querySelectorAll(".wr-w");for(var i=0;i<ws.length;i++){(function(w,d){if(d>0)setTimeout(function(){on(w);},d);else on(w);})(ws[i],i*STAGGER);}}',
     'function passed(e){var r=e.boundingClientRect;if(!r)return false;var rb=e.rootBounds;return r.top<(rb?rb.top:0);}',
-    'if(reduce||typeof IntersectionObserver!=="function"){for(var k=0;k<roots.length;k++)all(roots[k]);return;}',
+    'if(reduce||typeof IntersectionObserver!=="function"){all(root);return;}',
     'var io=new IntersectionObserver(function(es){for(var j=0;j<es.length;j++){if(es[j].isIntersecting||passed(es[j])){io.unobserve(es[j].target);seq(es[j].target);}}},{rootMargin:MARGIN,threshold:0});',
-    'for(var m=0;m<roots.length;m++){roots[m].classList.add("wr-js");io.observe(roots[m]);}',
+    'root.classList.add("wr-js");io.observe(root);',
     '})();'
   ].join('\n');
   return `<p class="wr" data-word-reveal><span class="wr-sr">${sentence}</span><span aria-hidden="true">${spans}</span></p>\n<style>\n${css}\n</style>\n<script>\n${js}\n</script>\n`;
@@ -133,11 +155,45 @@ function matchMap(src) {
 
 function lowerBound(arr, x) { let lo = 0, hi = arr.length; while (lo < hi) { const m = (lo + hi) >> 1; if (arr[m] < x) lo = m + 1; else hi = m; } return lo; }
 
+const isHtml = s => /^﻿?\s*</.test(s);
+
+/**
+ * HTML input: keep only the contents of <script> elements and blank everything else (markup, text, <!-- --> comments)
+ * with spaces, so offsets and line numbers stay. One forward pass; every indexOf starts past the previous one.
+ */
+export function scriptsOnly(src) {
+  const lower = src.replace(/[A-Z]+/g, t => t.toLowerCase()); // ASCII only: same length as src
+  const findScript = from => {
+    for (let k = lower.indexOf('<script', from); k >= 0; k = lower.indexOf('<script', k + 1)) if (/[\s>/]/.test(lower[k + 7] || '')) return k;
+    return -1;
+  };
+  const ranges = [];
+  let i = 0, c = -2, s = -2;
+  while (i < src.length) {
+    if (c !== -1 && c < i) c = lower.indexOf('<!--', i);
+    if (s !== -1 && s < i) s = findScript(i);
+    if (s < 0 && c < 0) break;
+    if (c >= 0 && (s < 0 || c < s)) { const e = lower.indexOf('-->', c + 4); i = e < 0 ? src.length : e + 3; continue; }
+    const gt = lower.indexOf('>', s + 7);
+    if (gt < 0) break;
+    const end = lower.indexOf('</script', gt + 1);
+    ranges.push([gt + 1, end < 0 ? src.length : end]);
+    i = end < 0 ? src.length : end + 8;
+  }
+  const sp = t => t.replace(/[^\n]/g, ' ');
+  const out = [];
+  let last = 0;
+  for (const [a, b] of ranges) { out.push(sp(src.slice(last, a)), src.slice(a, b)); last = b; }
+  out.push(sp(src.slice(last)));
+  return out.join('');
+}
+
 /** Findings for scroll listeners without frame throttling. Comments and strings are ignored; linear in the input. */
 export function lintScroll(src) {
   const findings = [];
-  const noC = blank(src, false);       // comments blanked, strings kept (to see 'scroll')
-  const clean = blank(src, true);      // comments and string contents blanked
+  const code = isHtml(src) ? scriptsOnly(src) : src; // HTML: only <script> contents are code
+  const noC = blank(code, false);      // comments blanked, strings kept (to see 'scroll')
+  const clean = blank(code, true);     // comments and string contents blanked
   const close = matchMap(clean);
   const calls = [];
   CALL_RE.lastIndex = 0;
@@ -145,6 +201,9 @@ export function lintScroll(src) {
   const hasCall = (a, b) => { const k = lowerBound(calls, a); return k < calls.length && calls[k] < b; };
   const nl = [];
   for (let i = src.indexOf('\n'); i >= 0; i = src.indexOf('\n', i + 1)) nl.push(i);
+  const wrapped = new Set();           // const h = throttle(...) / debounce(...): throttled at its definition
+  const wrapRe = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:[A-Za-z_$][\w$]*\s*\.\s*)?(?:requestAnimationFrame|rAF|throttle|debounce)\s*\(/gi;
+  for (let w; (w = wrapRe.exec(clean));) wrapped.add(w[1]);
   const defs = new Map();
   const defRe = /function\s+([A-Za-z_$][\w$]*)\s*\([^)]{0,500}\)\s*\{|(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=[^;{]{0,300}?(?:=>|function[^{]{0,300})\s*\{/g;
   for (let d; (d = defRe.exec(clean));) {
@@ -165,7 +224,8 @@ export function lintScroll(src) {
       const idRe = /\s*([A-Za-z_$][\w$]*)\s*[,)]/y;
       idRe.lastIndex = hs;
       const id = idRe.exec(clean);
-      if (id && defs.has(id[1])) { const [a, b] = defs.get(id[1]); throttled = hasCall(a, b); }
+      if (id && wrapped.has(id[1])) throttled = true;
+      else if (id && defs.has(id[1])) { const [a, b] = defs.get(id[1]); throttled = hasCall(a, b); }
     }
     if (!throttled) {
       const k = lowerBound(nl, m.index);          // newlines before the hit
@@ -206,11 +266,12 @@ function parse(args) {
 /** Regular file only, read with a bounded read of at most MAX_BYTES + 1 bytes. */
 async function readFileCapped(cwd, file, label) {
   const p = path.resolve(cwd, file);
-  let st;
-  try { st = await fs.stat(p); } catch (e) { throw bad(`cannot read ${label} ${p}: ${e.code || e.message}`); }
-  if (!st.isFile()) throw bad(`${label} ${p} is not a regular file`);
+  const special = q => /^\/(?:dev|proc)(?:\/|$)/.test(q);
+  let real = p;
+  try { real = await fs.realpath(p); } catch { /* a missing path is reported by open */ }
+  if (special(p) || special(real)) throw bad(`${label} ${p} is not a regular file (paths under /dev/ and /proc/ are refused)`);
   let h;
-  try { h = await fs.open(p, 'r'); } catch (e) { throw bad(`cannot read ${label} ${p}: ${e.code || e.message}`); }
+  try { h = await fs.open(p, FS.O_RDONLY | FS.O_NONBLOCK); } catch (e) { throw bad(`cannot read ${label} ${p}: ${e.code || e.message}`); }
   try {
     if (!(await h.stat()).isFile()) throw bad(`${label} ${p} is not a regular file`);
     const buf = Buffer.alloc(Math.min(MAX_BYTES + 1, 1 << 16));

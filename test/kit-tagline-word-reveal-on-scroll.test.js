@@ -306,3 +306,96 @@ describe('run — input reading', () => {
     });
   });
 });
+
+/** Several emitted fragments on one fake page: each <p>, <style> and <script> are siblings in document order. */
+function page(fragments, { currentScript = true } = {}) {
+  const timers = [], observers = [], roots = [], scripts = [];
+  class IO {
+    constructor(cb, opts) { this.cb = cb; this.opts = opts; this.observed = []; observers.push(this); }
+    observe(t) { this.observed.push(t); }
+    unobserve() {}
+    fire(target) { this.cb([{ target, isIntersecting: true }]); }
+  }
+  const mk = attr => { const set = new Set(); return { hasAttribute: a => a === attr, classList: { add: c => set.add(c), contains: c => set.has(c) }, previousElementSibling: null }; };
+  let prev = null;
+  for (const f of fragments) {
+    const p = mk('data-word-reveal');
+    p.words = [...f.matchAll(/<span class="wr-w">/g)].map(() => mk(null));
+    p.querySelectorAll = sel => (sel === '.wr-w' ? p.words : []);
+    const style = mk(null), script = mk(null);
+    script.code = /<script>\n([\s\S]*?)\n<\/script>/.exec(f)[1];
+    p.previousElementSibling = prev; style.previousElementSibling = p; script.previousElementSibling = style; prev = script;
+    roots.push(p); scripts.push(script);
+  }
+  const document = { currentScript: null, querySelectorAll: sel => (sel === '[data-word-reveal]' ? roots : []) };
+  const ctx = vm.createContext({ document, matchMedia: () => ({ matches: false }), setTimeout: (fn, ms) => { timers.push({ fn, ms }); }, IntersectionObserver: IO });
+  for (const s of scripts) { document.currentScript = currentScript ? s : null; vm.runInContext(s.code, ctx); }
+  document.currentScript = null;
+  return { roots, observers, timers, lit: p => p.words.map(w => w.classList.contains('wr-on')) };
+}
+
+describe('review r2 fixes', () => {
+  it('refuses an easing outside the whitelist: a quote, /*, an unbalanced ( and a backslash', () => {
+    for (const e of ['ease"', "ease'", 'ease /*', 'cubic-bezier(0.2', 'ease\\', 'cubic-bezier(0.2,1,0.3,1))', 'ease-in garbage', 'url(x)', 'steps(4, sideways)', 'cubic-bezier(a,b,c,d)', 'linear(0,', 'ease\u0001']) {
+      exit(() => normalizeOptions({ easing: e }));
+      exit(() => emitFragment('a b', { easing: e }));
+    }
+    for (const e of ['ease', 'linear', 'ease-in', 'ease-out', 'ease-in-out', 'step-start', 'step-end', 'cubic-bezier(0.22, 1, 0.36, 1)', 'cubic-bezier(.1,-.5,.9,1.5)', 'steps(4)', 'steps(4, jump-end)', 'steps(3,end)', 'linear(0, 0.25 75%, 1)', 'linear(0 0%, 1 100%)']) {
+      assert.equal(normalizeOptions({ easing: e }).easing, e);
+    }
+  });
+  it('run exits 1 for the easings the review confirmed', async () => {
+    const io = () => ({ cwd: os.tmpdir(), stdinIsTTY: false, stdinBytes: async () => Buffer.from('a b') });
+    for (const e of ['ease"', 'ease /*', 'cubic-bezier(0.2', 'ease\\']) {
+      await assert.rejects(run(['emit', '--easing', e], io()), x => x instanceof KitExit && x.code === 1, e);
+    }
+  });
+  for (const currentScript of [true, false]) {
+    it(`each fragment's script drives only its own tagline (currentScript ${currentScript ? 'set' : 'missing'})`, () => {
+      const pg = page([emitFragment('one two three', { staggerMs: 40, trigger: 0.5 }), emitFragment('four five six', { staggerMs: 100, trigger: 0.9 })], { currentScript });
+      const [a, b] = pg.roots;
+      assert.equal(pg.observers.length, 2);
+      assert.deepEqual(pg.observers[0].observed, [a]);
+      assert.deepEqual(pg.observers[1].observed, [b]);
+      assert.equal(pg.observers[0].opts.rootMargin, '0px 0px -50% 0px');
+      assert.equal(pg.observers[1].opts.rootMargin, '0px 0px -10% 0px');
+      pg.observers[0].fire(a);
+      assert.deepEqual(pg.timers.map(t => t.ms), [40, 80]);
+      pg.timers.forEach(t => t.fn());
+      assert.deepEqual(pg.lit(a), [true, true, true]);
+      assert.deepEqual(pg.lit(b), [false, false, false]);
+    });
+  }
+  it('passes a handler throttled or debounced at its definition', () => {
+    assert.deepEqual(lintScroll("const onScroll = throttle(update, 100);\naddEventListener('scroll', onScroll);").findings, []);
+    assert.deepEqual(lintScroll("const onScroll = debounce(() => { update(); }, 100);\naddEventListener('scroll', onScroll);").findings, []);
+    assert.deepEqual(lintScroll("let h = _.throttle(() => go(), 50);\nwindow.addEventListener('scroll', h, { passive: true });").findings, []);
+    assert.equal(lintScroll("const onScroll = makeHandler(update);\naddEventListener('scroll', onScroll);").findings.length, 1);
+  });
+  it('lints only <script> contents of an HTML page and drops <!-- --> comments', () => {
+    assert.deepEqual(lintScroll("<p>Don't</p><script>addEventListener('scroll',()=>requestAnimationFrame(f))</script>").findings, []);
+    const r = lintScroll("<!-- <script>addEventListener('scroll', f)</script> -->\n<script>addEventListener('scroll', g)</script>\n<p>addEventListener('scroll', h)</p>");
+    assert.deepEqual(r.findings.map(f => [f.line, f.text]), [[2, "<script>addEventListener('scroll', g)</script>"]]);
+    assert.equal(lintScroll("<SCRIPT type=module>\naddEventListener('scroll', k);\n</SCRIPT>").findings.length, 1);
+  });
+  it('caps stagger-ms at 10000', () => {
+    exit(() => normalizeOptions({ staggerMs: 10001 }));
+    exit(() => normalizeOptions({ staggerMs: '1e9' }));
+    assert.equal(normalizeOptions({ staggerMs: 10000 }).staggerMs, 10000);
+  });
+  it('refuses paths under /dev/ and /proc/ before opening them', async () => {
+    for (const f of ['/dev/stdin', '/dev/zero', '/proc/self/status']) {
+      await assert.rejects(run(['lint', '--file', f], { cwd: os.tmpdir() }), e => e instanceof KitExit && e.code === 1 && /regular file/.test(e.message), f);
+    }
+  });
+  const fast = (name, src) => it(`finishes about 2 MB of adversarial HTML in under 2 s: ${name}`, () => {
+    const t = Date.now();
+    lintScroll(src);
+    assert.ok(Date.now() - t < 2000, `${name} took ${Date.now() - t} ms`);
+  });
+  const MB2 = 2 * 1024 * 1024;
+  fast('unclosed comments', '<!--'.repeat(MB2 / 4));
+  fast('unclosed script tags', '<script x'.repeat(Math.ceil(MB2 / 9)));
+  fast('script lookalikes', '<scripts>'.repeat(Math.ceil(MB2 / 9)));
+  fast('many short scripts', "<script>addEventListener('scroll', f);</script>\n".repeat(Math.ceil(MB2 / 48)));
+});

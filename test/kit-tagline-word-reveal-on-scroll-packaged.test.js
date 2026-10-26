@@ -25,6 +25,10 @@ describe('word-reveal — packaged end to end', () => {
     assert.equal(pkg.kit(['word-reveal', 'emit', '--text-file', 'tag.txt', '--muted', '2']).code, 1);
     assert.equal(pkg.kit(['word-reveal', 'emit', '--text-file', 'tag.txt', '--easing', 'a;b']).code, 1);
     assert.equal(pkg.kit(['word-reveal', 'emit']).code, 1);
+    for (const e of ['ease"', 'ease /*', 'cubic-bezier(0.2', 'ease\\']) assert.equal(pkg.kit(['word-reveal', 'emit', '--text-file', 'tag.txt', '--easing', e]).code, 1, e);
+    assert.equal(pkg.kit(['word-reveal', 'emit', '--text-file', 'tag.txt', '--stagger-ms', '1e9']).code, 1);
+    fs.writeFileSync(path.join(pkg.dir, 'min.html'), "<p>Don't</p><script>addEventListener('scroll',()=>requestAnimationFrame(f))</script>");
+    assert.equal(pkg.kit(['word-reveal', 'lint', '--file', 'min.html']).json.findings.length, 0);
     assert.deepEqual(pkg.egress(), []);
   });
 
