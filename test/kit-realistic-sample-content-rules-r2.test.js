@@ -65,4 +65,22 @@ describe('sample-content review r2', () => {
       assert.equal((await run(['lint', '--file', 'ok.md'], io(dir))).findings.length, 1);
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
+
+  it('r3: UTF-16 input is decoded by BOM, not read as NUL-interleaved UTF-8', async () => {
+    const text = 'Lorem ipsum dolor. Acme Corp is revolutionary.';
+    const le = Buffer.concat([Buffer.from([0xFF, 0xFE]), Buffer.from(text, 'utf16le')]);
+    const be = Buffer.from(le.subarray(2)).swap16();
+    const u8 = await run(['lint'], { stdinBytes: async () => Buffer.from(text), stdinIsTTY: false, env: {} });
+    for (const b of [le, Buffer.concat([Buffer.from([0xFE, 0xFF]), be])]) {
+      const r = await run(['lint'], { stdinBytes: async () => b, stdinIsTTY: false, env: {} });
+      assert.ok(r.findings.length > 0);
+      assert.deepEqual(r.findings, u8.findings);
+    }
+  });
+
+  it('r3: CR-only line endings give per-line numbers and see headings', async () => {
+    const r = await run(['lint'], { stdinBytes: async () => Buffer.from('Intro\r\rLorem ipsum here\r# Get Started With Us\r'), stdinIsTTY: false, env: {} });
+    assert.equal(r.findings.find(f => f.rule === 'lorem').line, 3);
+    assert.ok(r.findings.some(f => f.line === 4 && /title|case/i.test(f.rule)));
+  });
 });

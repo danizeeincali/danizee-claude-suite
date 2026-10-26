@@ -48,5 +48,6 @@ describe('word-reveal — packaged end to end', () => {
     assert.equal(over.code, 1);
     assert.equal(pkg.kit(['word-reveal', 'emit', '--text-file', 'same.txt', '--text-file', 'same.txt']).code, 1);
     assert.equal(pkg.kit(['word-reveal', 'emit', '--text-file', '']).code, 1);
+    assert.deepEqual(pkg.egress(), []);
   });
 });
