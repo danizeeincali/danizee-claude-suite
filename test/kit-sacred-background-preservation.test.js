@@ -199,3 +199,138 @@ describe('bg-fill input reading', () => {
     });
   });
 });
+
+describe('bg-fill guard — review r1', () => {
+  const g = (css, sel = '.bg') => guard(css, sel);
+  it('flags a flat colour or changed background in an ancestor-qualified or repeated rule', () => {
+    for (const css of [
+      '.bg { background: url(a.jpg); }\n.dark .bg { background: #000; }',
+      '.bg { background: url(a.jpg); }\nbody.dark .bg { background: #000; }',
+      '.bg { background: url(a.jpg); }\n#app .bg { background-image: none; }',
+      '.bg { background: url(a.jpg); }\n.bg { background: none; }',
+      '.bg { background: url(a.jpg); }\n.bg { background: #000; }',
+    ]) {
+      const r = g(css);
+      assert.equal(r.exit, 2, css);
+      assert.equal(r.violations[0].line, 2, css);
+      assert.match(r.violations[0].why, /flat colour/, css);
+    }
+    const ch = g('.bg { background-image: url(a.jpg); background-position: 0 0; }\n.theme-x .bg { background-position: 50% 0; }\n.bg { background-image: url(b.jpg); }');
+    assert.equal(ch.exit, 2);
+    assert.deepEqual(ch.violations.map(v => [v.line, v.property]), [[2, 'background-position'], [3, 'background-image']]);
+    const before = g('.dark .bg { background: #000; }\n.bg { background: url(a.jpg); }');
+    assert.equal(before.exit, 2);
+    assert.equal(before.violations[0].line, 1);
+    // restating the same design, or splitting it over two plain rules, is not a change
+    assert.equal(g('.bg { background-image: url(a.jpg); }\n.bg { background-image: url(a.jpg); background-size: cover; }').pass, true);
+    assert.equal(g('body .bg { background-image: url(a.jpg); background-size: cover; }').pass, true);
+  });
+  it('flags vendor-prefixed backdrop-filter, filter, transitions and keyframes', () => {
+    for (const css of [
+      '.bg { -webkit-backdrop-filter: blur(8px); }',
+      '.bg { -webkit-filter: blur(8px); }',
+      '.bg { transition: -webkit-filter 1s; }',
+      '.bg { transition-property: -webkit-backdrop-filter; }',
+      '@keyframes k { to { -webkit-filter: blur(2px); } }\n.bg { animation: k 1s; }',
+      '@-webkit-keyframes k { to { -webkit-backdrop-filter: blur(2px); } }\n.bg { -webkit-animation: k 1s; }',
+      '.bg { background: url(a.jpg); }\n.bg:hover { -webkit-background-size: 10px; }',
+    ]) assert.equal(g(css).exit, 2, css);
+    assert.equal(g('.bg { -webkit-backdrop-filter: blur(8px); }').violations[0].property, '-webkit-backdrop-filter');
+    assert.match(g('.bg { -webkit-backdrop-filter: blur(8px); }').violations[0].why, /sibling/);
+    assert.equal(g('.bg { -webkit-filter: none; -webkit-transition: opacity 1s; }').pass, true);
+  });
+  it('matches a target with an ancestor on compound boundaries', () => {
+    const t = '.page .hero';
+    assert.equal(g('.hero:hover { background: none; }', t).exit, 2);
+    assert.equal(g('.page > .hero:hover { background: none; }', t).exit, 2);
+    assert.equal(g('body .page .hero:focus { background-position: 1px 0; }', t).exit, 2);
+    assert.equal(g('div.page .hero:hover { background: none; }', t).exit, 2);
+    assert.equal(g('.subpage .hero:hover { background: none; }', 'page .hero').pass, true);
+    assert.equal(g('.other .hero:hover { background: none; }', t).pass, true);
+    assert.equal(g('.page .hero { background: url(a.jpg); }', t).pass, true);
+  });
+  it('matches quoted @keyframes names and animation names', () => {
+    for (const css of [
+      '@keyframes "pan" { to { background-position: 9px 0; } }\n.bg { animation: "pan" 3s; }',
+      '@keyframes pan { to { background-position: 9px 0; } }\n.bg { animation-name: \'pan\'; }',
+      '@keyframes "pan" { to { background-position: 9px 0; } }\n.bg { animation: pan 3s; }',
+    ]) {
+      const r = g(css);
+      assert.equal(r.exit, 2, css);
+      assert.equal(r.violations[0].property, 'background-position');
+      assert.match(r.violations[0].why, /@keyframes pan\b/);
+    }
+    assert.equal(g('@keyframes "pan" { to { background-position: 9px 0; } }\n.bg { animation: "other" 3s; }').pass, true);
+  });
+  it('refuses nesting deeper than the cap with exit 1', () => {
+    assert.throws(() => g('a{'.repeat(300)), (e) => e instanceof KitExit && e.code === 1 && /nest/.test(e.message));
+    assert.ok([0, 2].includes(g('a{'.repeat(200) + '.bg{filter:blur(1px)}' + '}'.repeat(200)).exit));
+  });
+  it('reports each keyframes declaration once however many rules use it', () => {
+    const css = '@keyframes k { to { background-position: 1px 0; } }\n' + '.bg { animation: k 1s; }\n'.repeat(50);
+    assert.deepEqual(g(css).violations.map(v => v.line), [1]);
+  });
+});
+
+describe('bg-fill guard — timing on about 2 MB of adversarial input', () => {
+  const N = 2 * 1024 * 1024;
+  const within2s = (name, css, sel = '.bg') => {
+    assert.ok(css.length >= N * 0.9, `${name} input is ${css.length} chars`);
+    const t0 = process.hrtime.bigint();
+    let exit;
+    try { exit = guard(css, sel).exit; } catch (e) { assert.ok(e instanceof KitExit && e.code === 1, `${name}: ${e}`); exit = 1; }
+    const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+    assert.ok([0, 1, 2].includes(exit), name);
+    assert.ok(ms < 2000, `${name} took ${ms.toFixed(0)} ms`);
+  };
+  it('deeply nested or unclosed braces', () => {
+    within2s('a{', 'a{'.repeat(N / 2));
+    within2s('a{} nested 200', ('a{'.repeat(200) + '}'.repeat(200)).repeat(Math.ceil(N / 600)));
+    within2s('a{b:c; nested 200', ('a,b{b:c;'.repeat(200) + '}'.repeat(200)).repeat(Math.ceil(N / 1800)));
+    within2s('.bg{ nested 200', ('.bg:hover{background:none;'.repeat(200) + '}'.repeat(200)).repeat(Math.ceil(N / 5400)));
+  });
+  it('repeated animation and keyframes', () => {
+    const frames = Array.from({ length: 30000 }, (_, i) => `${i % 100}%{background-position:${i}px 0}`).join('');
+    within2s('anim x frames', '.bg{animation:k}\n'.repeat(30000) + `@keyframes k{${frames}}` + '.bg{animation:k}'.repeat(Math.ceil((N - 1500000) / 16)));
+    within2s('many keyframes', '@keyframes k{to{filter:blur(1px)}}'.repeat(N / 34) + '.bg{animation:k}');
+  });
+  it('unclosed url( and quotes', () => {
+    within2s('url(', '.bg{background:url(a '.repeat(N / 22));
+    within2s('quotes', '.bg{content:"a\n'.repeat(N / 16));
+    within2s('comments', '.bg{/*'.repeat(N / 6));
+  });
+});
+
+describe('bg-fill --file is checked on the open handle', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bgfill-fh-'));
+  process.on('exit', () => fs.rmSync(dir, { recursive: true, force: true }));
+  it('refuses paths under /proc and /dev even when they look like regular files', async () => {
+    assert.ok(fs.statSync('/proc/self/status').isFile());
+    await rejects1(run(['guard', '--file', '/proc/self/status', '--selector', '.bg'], { cwd: dir }));
+    await rejects1(run(['guard', '--file', '/dev/null', '--selector', '.bg'], { cwd: dir }));
+    const link = path.join(dir, 'proc-link');
+    fs.symlinkSync('/proc/self/status', link);
+    await rejects1(run(['guard', '--file', link, '--selector', '.bg'], { cwd: dir }));
+  });
+  it('does not stat the path and then reopen it: a swap to a FIFO after the check cannot block or slip through', { timeout: 10000 }, async () => {
+    const { spawnSync } = await import('child_process');
+    const fsp = (await import('fs/promises')).default;
+    const f = path.join(dir, 'swap.css');
+    fs.writeFileSync(f, '.bg { filter: blur(1px); }');
+    const realStat = fsp.stat;
+    let unblock;
+    fsp.stat = async (p, ...rest) => {
+      const st = await realStat.call(fsp, p, ...rest);
+      if (path.resolve(String(p)) === f) {
+        fs.rmSync(f);
+        if (spawnSync('mkfifo', [f]).status === 0) unblock = setTimeout(() => { try { fs.closeSync(fs.openSync(f, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK)); } catch {} }, 1500);
+      }
+      return st;
+    };
+    try {
+      const r = await run(['guard', '--file', f, '--selector', '.bg'], { cwd: dir });
+      assert.equal(r.exit, 2);
+      assert.equal(r.violations[0].property, 'filter');
+    } finally { fsp.stat = realStat; clearTimeout(unblock); }
+  });
+});

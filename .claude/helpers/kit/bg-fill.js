@@ -17,13 +17,16 @@
  * on any of those (or on `all`, which includes implicit all); a hover/focus/active state, extra qualifier or media/supports
  * rule that changes the background (a flat colour or `none` in place of the image is called out); `filter` on the background
  * element; `backdrop-filter` on the background element itself (a frosted panel must be a sibling layer, so its backdrop
- * filter can see the photo). Rules for other selectors are ignored. Comments and strings are masked before parsing, and nested
+ * filter can see the photo). The first unconditional rule that sets the background is the design; a later rule or an
+ * ancestor-qualified rule (`.dark .bg`) that changes a background property is a violation. Vendor prefixes (-webkit-filter)
+ * are checked as the plain property. Rules for other selectors are ignored. Nesting deeper than 256 blocks exits 1. Comments and strings are masked before parsing, and nested
  * CSS and selector lists are understood.
  *
- * Input: a regular file (--file, at most 8 MiB, bounded read) or stdin (counted in bytes); empty or repeated flags exit 1.
+ * Input: a regular file (--file, opened non-blocking and checked on the handle, never under /dev or /proc; at most 8 MiB, bounded read) or stdin (counted in bytes); empty or repeated flags exit 1.
  * Built from ideas audited by /w-bbs (run 2026-10-26-ai-design-skills); no foreign code.
  */
 import fs from 'fs/promises';
+import { constants as fsConstants } from 'fs';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
 
@@ -93,8 +96,8 @@ export function cssFor(input) {
 
 // ---------- css parsing (for guard) ----------
 
-/** Blank out comments and string contents, keeping every offset and newline so line numbers stay true. */
-export function mask(src) {
+/** Blank out comments and string contents (only comments with keepStrings), keeping every offset and newline so line numbers stay true. */
+export function mask(src, keepStrings = false) {
   const out = src.split('');
   const n = src.length;
   const blank = (from, to) => { for (let k = from; k < to; k++) if (out[k] !== '\n') out[k] = ' '; };
@@ -108,11 +111,13 @@ export function mask(src) {
     } else if (ch === '"' || ch === "'") {
       let j = i + 1;
       while (j < n && src[j] !== ch && src[j] !== '\n') j += src[j] === '\\' ? 2 : 1;
-      blank(i + 1, Math.min(j, n)); i = j + 1;
+      if (!keepStrings) blank(i + 1, Math.min(j, n));
+      i = j + 1;
     } else if ((ch === 'u' || ch === 'U') && /^url\(\s*[^\s"')]/i.test(src.slice(i, i + 20)) && !/[\w-]/.test(src[i - 1] || '')) {
       const close = src.indexOf(')', i);
       const stop = close < 0 ? n : close;
-      blank(i + 4, stop); i = stop + 1;
+      if (!keepStrings) blank(i + 4, stop);
+      i = stop + 1;
     } else i++;
   }
   return out.join('');
@@ -128,13 +133,21 @@ function lineIndex(src) {
   };
 }
 
-function matchBrace(src, open, end) {
-  let depth = 0;
-  for (let i = open; i < end; i++) {
-    if (src[i] === '{') depth++;
-    else if (src[i] === '}' && --depth === 0) return i;
+export const MAX_NESTING = 256;
+
+/** One forward pass with an explicit stack: close[i] is the matching '}' of the '{' at i (src.length when unclosed). */
+function braceMap(src) {
+  const close = new Map();
+  const stack = [];
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i];
+    if (ch === '{') {
+      stack.push(i);
+      if (stack.length > MAX_NESTING) throw bad(`CSS is nested more than ${MAX_NESTING} blocks deep`);
+    } else if (ch === '}' && stack.length) close.set(stack.pop(), i);
   }
-  return end;
+  for (const o of stack) close.set(o, src.length);
+  return close;
 }
 
 function splitTop(s, sep = ',') {
@@ -151,12 +164,21 @@ function splitTop(s, sep = ',') {
 
 const CONDITIONAL_AT = new Set(['media', 'supports', 'container', 'scope', 'document', 'starting-style']);
 const TRANSPARENT_AT = new Set(['layer']);
+/** Bounds on nested-selector expansion so a selector list nested many times cannot blow up the work. */
+const MAX_SELECTORS_PER_RULE = 4096;
+const MAX_SELECTOR_CHARS = 32 * 1024 * 1024;
+
+const unquote = (s) => s.replace(/^(["'])([^]*)\1$/, '$2');
 
 export function parseCss(raw) {
   const src = mask(raw);
+  const text = mask(raw, true);
   const lineAt = lineIndex(src);
+  const closeOf = braceMap(src);
   const rules = [];
   const keyframes = [];
+  let selectorChars = 0;
+  const end = (open, to) => Math.min(closeOf.get(open), to);
 
   const decl = (from, to) => {
     const seg = src.slice(from, to);
@@ -165,7 +187,9 @@ export function parseCss(raw) {
     const prop = seg.slice(0, idx).trim().toLowerCase();
     if (!/^-?[a-z][a-z-]*$/.test(prop)) return null;
     const lead = seg.length - seg.trimStart().length;
-    return { prop, value: seg.slice(idx + 1).replace(/!\s*important/i, '').trim(), line: lineAt(from + lead) };
+    const after = seg.slice(idx + 1);
+    const vlead = after.length - after.trimStart().length;
+    return { prop, value: after.replace(/!\s*important/i, '').trim(), line: lineAt(from + lead), vfrom: from + idx + 1 + vlead };
   };
 
   function frameDecls(from, to) {
@@ -177,31 +201,43 @@ export function parseCss(raw) {
     return ds;
   }
 
-  function atBlock(prelude, bs, be, atStack, parents) {
+  function keyframesName(preFrom, preTo) {
+    const seg = src.slice(preFrom, preTo);
+    const m = /@(?:-[a-z]+-)?keyframes\b\s*/i.exec(seg);
+    if (!m) return '';
+    const at = preFrom + m.index + m[0].length;
+    const masked = src.slice(at, preTo).trim();
+    return /^["']/.test(masked) ? unquote(text.slice(at, preTo).trim()) : masked;
+  }
+
+  function atBlock(prelude, preFrom, preTo, bs, be, atStack, parents) {
     const m = /^@(-[a-z]+-)?([\w-]+)\s*([^]*)$/i.exec(prelude);
     if (!m) return;
     const name = m[2].toLowerCase();
     if (name === 'keyframes') {
       const frames = [];
-      let i = bs, pre = bs;
+      let i = bs;
       while (i < be) {
-        if (src[i] === '{') { const close = matchBrace(src, i, be); frames.push({ decls: frameDecls(i + 1, close) }); i = close + 1; pre = i; } else i++;
+        if (src[i] === '{') { const close = end(i, be); frames.push({ decls: frameDecls(i + 1, close) }); i = close + 1; } else i++;
       }
-      keyframes.push({ name: m[3].trim(), frames });
+      keyframes.push({ name: keyframesName(preFrom, preTo), frames });
     } else if (CONDITIONAL_AT.has(name) || TRANSPARENT_AT.has(name)) {
       const stack = TRANSPARENT_AT.has(name) ? atStack : [...atStack, prelude];
       if (parents) ruleBody(bs, be, parents, stack); else walk(bs, be, stack);
     }
   }
 
-  function block(prelude, bs, be, atStack, parents) {
-    const p = prelude.trim().replace(/\s+/g, ' ');
+  function block(preFrom, preTo, bs, be, atStack, parents) {
+    const p = src.slice(preFrom, preTo).trim().replace(/\s+/g, ' ');
     if (!p) return;
-    if (p.startsWith('@')) return atBlock(p, bs, be, atStack, parents);
+    if (p.startsWith('@')) return atBlock(p, preFrom, preTo, bs, be, atStack, parents);
     let sels = splitTop(p);
     if (parents) {
+      if (parents.length * sels.length > MAX_SELECTORS_PER_RULE) throw bad(`a nested rule expands to more than ${MAX_SELECTORS_PER_RULE} selectors`);
       sels = parents.flatMap(par => sels.map(s => (s.includes('&') ? s.replace(/&/g, par) : `${par} ${s}`)));
     }
+    for (const s of sels) selectorChars += s.length;
+    if (selectorChars > MAX_SELECTOR_CHARS) throw bad(`nested selectors expand to more than ${MAX_SELECTOR_CHARS} characters`);
     ruleBody(bs, be, sels, atStack);
   }
 
@@ -210,7 +246,7 @@ export function parseCss(raw) {
     let i = from, start = from;
     while (i < to) {
       if (src[i] === ';') { const d = decl(start, i); if (d) decls.push(d); i++; start = i; }
-      else if (src[i] === '{') { const close = matchBrace(src, i, to); block(src.slice(start, i), i + 1, close, atStack, selectors); i = close + 1; start = i; }
+      else if (src[i] === '{') { const close = end(i, to); block(start, i, i + 1, close, atStack, selectors); i = close + 1; start = i; }
       else i++;
     }
     if (start < to) { const d = decl(start, to); if (d) decls.push(d); }
@@ -220,14 +256,14 @@ export function parseCss(raw) {
   function walk(from, to, atStack) {
     let i = from, start = from;
     while (i < to) {
-      if (src[i] === '{') { const close = matchBrace(src, i, to); block(src.slice(start, i), i + 1, close, atStack, null); i = close + 1; start = i; }
+      if (src[i] === '{') { const close = end(i, to); block(start, i, i + 1, close, atStack, null); i = close + 1; start = i; }
       else if (src[i] === ';') { i++; start = i; }
       else i++;
     }
   }
 
   walk(0, src.length, []);
-  return { rules, keyframes };
+  return { rules, keyframes, src, text };
 }
 
 // ---------- selector matching ----------
@@ -245,26 +281,63 @@ function lastCompound(s) {
   return { head: '', last: s };
 }
 
-const PSEUDO_CLASS = /(^|[^:]):(?!root\b)[a-z-]+/i;
+/** The compounds of a selector head, combinators dropped, split only outside () and []. */
+function compounds(head) {
+  const out = [];
+  let depth = 0, cur = '';
+  for (const ch of head) {
+    if (ch === '(' || ch === '[') depth++;
+    else if (ch === ')' || ch === ']') depth = Math.max(0, depth - 1);
+    if (depth === 0 && ch === ' ') { if (cur && !/^[>+~]$/.test(cur)) out.push(cur); cur = ''; } else cur += ch;
+  }
+  if (cur && !/^[>+~]$/.test(cur)) out.push(cur);
+  return out;
+}
 
-/** null when `part` does not select the target element; else { conditional } (a state or extra qualifier beyond the target). */
-export function matchSelector(part, target) {
-  const p = normSel(part), t = normSel(target);
-  if (!p || !t) return null;
-  const T = lastCompound(t), P = lastCompound(p);
-  let lastP = P.last;
-  const tryMatch = (cand) => {
-    if (!cand.startsWith(T.last)) return null;
-    const rest = cand.slice(T.last.length);
+/** null when compound `cand` does not select what compound `want` selects; else the extra qualifier text ('' when equal). */
+function covers(cand, want) {
+  const tryMatch = (c) => {
+    if (!c.startsWith(want)) return null;
+    const rest = c.slice(want.length);
     if (rest && /^[\w-]/.test(rest)) return null;
     if (rest.includes('::')) return null;
     return rest;
   };
-  let rest = tryMatch(lastP);
-  if (rest === null && /^[.#[]/.test(T.last)) rest = tryMatch(lastP.replace(/^[a-z][\w-]*/i, ''));
+  let rest = tryMatch(cand);
+  if (rest === null && /^[.#[]/.test(want)) rest = tryMatch(cand.replace(/^[a-z][\w-]*/i, ''));
+  return rest;
+}
+
+const PSEUDO_CLASS = /(^|[^:]):(?!root\b)[a-z-]+/i;
+
+/**
+ * null when `part` does not select the target element; else { conditional, qualified }.
+ * The last compounds are compared first. The heads (ancestors) are compared compound by compound, ignoring combinators:
+ * a rule whose ancestors end with the target's ancestors applies (qualified when it adds ancestors or qualifiers), and so
+ * does a rule whose ancestors are a less specific subsequence of the target's (e.g. `.hero` or `.page > .hero` for `.page .hero`).
+ */
+export function matchSelector(part, target) {
+  const p = normSel(part), t = normSel(target);
+  if (!p || !t) return null;
+  const T = lastCompound(t), P = lastCompound(p);
+  const rest = covers(P.last, T.last);
   if (rest === null) return null;
-  if (T.head && !(P.head === T.head || P.head.endsWith(` ${T.head}`) || P.head.endsWith(T.head) )) return null;
-  return { conditional: rest !== '' || PSEUDO_CLASS.test(p) };
+  const Pc = compounds(P.head), Tc = compounds(T.head);
+  let qualified = null;
+  if (Pc.length >= Tc.length) {
+    const off = Pc.length - Tc.length;
+    let extra = off > 0;
+    let ok = true;
+    for (let k = 0; k < Tc.length && ok; k++) { const r = covers(Pc[off + k], Tc[k]); if (r === null) ok = false; else if (r) extra = true; }
+    if (ok) qualified = extra;
+  }
+  if (qualified === null) {
+    let k = 0;
+    for (const c of Tc) if (k < Pc.length && covers(c, Pc[k]) !== null) k++;
+    if (k === Pc.length) qualified = false;
+  }
+  if (qualified === null) return null;
+  return { conditional: rest !== '' || PSEUDO_CLASS.test(p), qualified };
 }
 
 // ---------- guard ----------
@@ -274,16 +347,18 @@ const FILTER_PROPS = new Set(['filter', 'backdrop-filter']);
 const TOUCHED = new Set([...BG_PROPS, ...FILTER_PROPS, 'all']);
 const TIME = /^[-+]?[\d.]+m?s$/i;
 const EASING = /^(ease|ease-in|ease-out|ease-in-out|linear|step-start|step-end|cubic-bezier\(.*\)|steps\(.*\)|normal|allow-discrete)$/i;
+/** The property name without a vendor prefix: -webkit-backdrop-filter is checked as backdrop-filter. */
+export const unprefixed = (prop) => prop.toLowerCase().replace(/^-(webkit|moz|ms|o)-/, '');
 
 function transitionProps(prop, value) {
   const items = splitTop(value);
   const props = [];
   for (const item of items) {
     const tokens = item.split(/\s+(?![^(]*\))/).filter(Boolean);
-    if (prop === 'transition-property') { props.push(...tokens.map(t => t.toLowerCase())); continue; }
+    if (prop === 'transition-property') { props.push(...tokens.map(unprefixed)); continue; }
     if (tokens.length === 1 && tokens[0].toLowerCase() === 'none') continue;
     const named = tokens.filter(t => !TIME.test(t) && !EASING.test(t) && !/^[\d.]+$/.test(t));
-    props.push(named.length ? named[0].toLowerCase() : 'all');
+    props.push(named.length ? unprefixed(named[0]) : 'all');
   }
   return props;
 }
@@ -295,47 +370,77 @@ function flatReplacement(prop, value) {
   return false;
 }
 
+const normValue = (v) => v.replace(/\s+/g, ' ').trim().toLowerCase();
+
 export function guard(cssText, selector) {
   const target = checkSelector(selector, '--selector');
   const targets = splitTop(target);
-  const { rules, keyframes } = parseCss(cssText);
+  const { rules, keyframes, src, text } = parseCss(cssText);
+  const original = (d) => text.slice(d.vfrom, d.vfrom + d.value.length);
   const violations = [];
   const seen = new Set();
   const add = (line, property, why) => {
     const key = `${line}|${property}|${why}`;
     if (!seen.has(key)) { seen.add(key); violations.push({ line, property, why }); }
   };
-  const animNames = [];
-  const kfNames = new Set(keyframes.map(k => k.name));
+  const kfByName = new Map();
+  for (const k of keyframes) { if (!kfByName.has(k.name)) kfByName.set(k.name, []); kfByName.get(k.name).push(k); }
+  const usedNames = new Set();
 
+  // Pass 1: which rules apply, and how.
+  const applied = [];
   for (const rule of rules) {
     const hits = [];
     for (const s of rule.selectors) for (const t of targets) { const m = matchSelector(s, t); if (m) hits.push(m); }
     if (!hits.length) continue;
     const conditionalAt = rule.atStack.length > 0;
     const conditional = conditionalAt || hits.every(h => h.conditional);
-    const where = conditionalAt ? `inside ${rule.atStack[rule.atStack.length - 1]}` : 'in a state or qualified rule';
-    for (const d of rule.decls) {
+    const qualified = !conditional && hits.filter(h => !h.conditional).every(h => h.qualified);
+    const bg = rule.decls.filter(d => BG_PROPS.has(unprefixed(d.prop)));
+    applied.push({ rule, conditional, qualified, bg, where: conditionalAt ? `inside ${rule.atStack[rule.atStack.length - 1]}` : 'in a state or qualified rule' });
+  }
+  // The design is the first unconditional rule that sets the background, preferring one without extra ancestors.
+  const design = applied.find(a => !a.conditional && !a.qualified && a.bg.length) || applied.find(a => !a.conditional && a.bg.length);
+  const designValues = new Map();
+  if (design) for (const d of design.bg) designValues.set(unprefixed(d.prop), normValue(original(d)));
+
+  for (const a of applied) {
+    for (const d of a.rule.decls) {
       const { prop, value, line } = d;
-      if (prop === 'backdrop-filter' && !/^none$/i.test(value)) add(line, prop, 'backdrop-filter on the background element itself; put the frosted panel on a sibling layer so its backdrop filter can see the photo');
-      else if (prop === 'filter' && !/^none$/i.test(value)) add(line, prop, 'filter on the background element alters the photo; leave the background exactly as designed');
-      if (BG_PROPS.has(prop) && conditional) {
-        if (flatReplacement(prop, value)) add(line, prop, `the background image is replaced by a flat colour or none ${where}`);
-        else add(line, prop, `the background is changed ${where}; it must stay exactly as designed`);
+      const base = unprefixed(prop);
+      if (base === 'backdrop-filter' && !/^none$/i.test(value)) add(line, prop, 'backdrop-filter on the background element itself; put the frosted panel on a sibling layer so its backdrop filter can see the photo');
+      else if (base === 'filter' && !/^none$/i.test(value)) add(line, prop, 'filter on the background element alters the photo; leave the background exactly as designed');
+      if (BG_PROPS.has(base)) {
+        if (a.conditional) {
+          if (flatReplacement(base, value)) add(line, prop, `the background image is replaced by a flat colour or none ${a.where}`);
+          else add(line, prop, `the background is changed ${a.where}; it must stay exactly as designed`);
+        } else if (a !== design) {
+          const where = a.qualified ? 'in an ancestor-qualified rule' : 'in a later rule for the same selector';
+          const known = designValues.get(base);
+          const shorthandReset = base === 'background' && known === undefined && designValues.size > 0;
+          const changed = known !== undefined ? known !== normValue(original(d)) : (a.qualified || shorthandReset);
+          if (flatReplacement(base, value) && (changed || known === undefined)) add(line, prop, `the background image is replaced by a flat colour or none ${where}`);
+          else if (changed) add(line, prop, `the background is changed ${where}; it must stay exactly as designed`);
+        }
       }
-      if (prop === 'transition' || prop === 'transition-property') {
-        const hit = transitionProps(prop, value).filter(p => TOUCHED.has(p));
+      if (base === 'transition' || base === 'transition-property') {
+        const hit = transitionProps(base, value).filter(p => TOUCHED.has(p));
         if (hit.length) add(line, prop, `transition on ${[...new Set(hit)].join(', ')} would animate the background`);
       }
-      if (prop === 'animation' || prop === 'animation-name') {
-        for (const tok of value.split(/[\s,]+/)) if (kfNames.has(tok)) animNames.push({ name: tok, line });
+      if (base === 'animation' || base === 'animation-name') {
+        const mv = src.slice(d.vfrom, d.vfrom + value.length);
+        for (const m of mv.matchAll(/"[^"]*"|'[^']*'|[^\s,]+/g)) {
+          const tok = /^["']/.test(m[0]) ? unquote(text.slice(d.vfrom + m.index, d.vfrom + m.index + m[0].length)) : m[0];
+          if (kfByName.has(tok)) usedNames.add(tok);
+        }
       }
     }
   }
-  for (const { name } of animNames) {
-    for (const kf of keyframes.filter(k => k.name === name)) {
+  for (const name of usedNames) {
+    for (const kf of kfByName.get(name)) {
       for (const f of kf.frames) for (const d of f.decls) {
-        if (BG_PROPS.has(d.prop) || FILTER_PROPS.has(d.prop)) add(d.line, d.prop, `@keyframes ${name}, used by ${target}, animates ${d.prop}`);
+        const base = unprefixed(d.prop);
+        if (BG_PROPS.has(base) || FILTER_PROPS.has(base)) add(d.line, d.prop, `@keyframes ${name}, used by ${target}, animates ${d.prop}`);
       }
     }
   }
@@ -371,13 +476,21 @@ function parseArgs(args) {
   return { sub, flags };
 }
 
+const DEVICE_ROOTS = ['/dev/', '/proc/'];
+const underDevice = (p) => DEVICE_ROOTS.some(r => p === r.slice(0, -1) || p.startsWith(r));
+
+/** Open first (non-blocking, so a FIFO cannot hang the open), then check the open handle: a regular file, at most MAX bytes. */
 async function readFileBounded(file, cwd) {
   const p = path.resolve(cwd, file);
-  const st = await fs.stat(p).catch((e) => { throw bad(`cannot read ${p}: ${e.code || e.message}`); });
-  if (!st.isFile()) throw bad(`${p} is not a regular file`);
-  if (st.size > MAX) throw bad(`${p} is larger than ${MAX} bytes`);
-  const fh = await fs.open(p, 'r').catch((e) => { throw bad(`cannot read ${p}: ${e.code || e.message}`); });
+  const fail = (e) => { throw bad(`cannot read ${p}: ${e.code || e.message}`); };
+  if (underDevice(p)) throw bad(`${p} is under /dev or /proc; pass a regular file`);
+  const real = await fs.realpath(p).catch(fail);
+  if (underDevice(real)) throw bad(`${p} resolves to ${real}, under /dev or /proc; pass a regular file`);
+  const fh = await fs.open(p, fsConstants.O_RDONLY | fsConstants.O_NONBLOCK).catch(fail);
   try {
+    const st = await fh.stat();
+    if (!st.isFile()) throw bad(`${p} is not a regular file`);
+    if (st.size > MAX) throw bad(`${p} is larger than ${MAX} bytes`);
     const buf = Buffer.alloc(Math.min(st.size, MAX) + 1);
     let n = 0;
     while (n < buf.length) {
