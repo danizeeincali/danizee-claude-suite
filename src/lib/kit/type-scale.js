@@ -54,7 +54,6 @@ export function snap(value, { rootPx = 16 } = {}) {
   return { step: hit.step, size_px: hit.size_px, line_height_px: hit.line_height_px, changed: Math.abs(hit.size_px - px) > EPS };
 }
 
-const lineAt = (text, idx) => { let n = 1; for (let i = 0; i < idx; i++) if (text.charCodeAt(i) === 10) n++; return n; };
 // Blank out comments but keep newlines so line numbers survive.
 const stripComments = css => css.replace(/\/\*[\s\S]*?(\*\/|$)/g, m => m.replace(/[^\n]/g, ' '));
 
@@ -64,18 +63,18 @@ export function auditCss(text, { rootPx = 16 } = {}) {
   checkRoot(rootPx);
   const src = stripComments(text.replace(/^﻿/, ''));
   const hits = [];
-  const decl = /(^|[;{\s])font-size\s*:\s*([^;}\n]*)/gi;
+  const decl = /(^|[;{\s"'])font-size\s*:\s*([^;}\n"']*)/gi;
   for (let m; (m = decl.exec(src));) hits.push({ idx: m.index + m[1].length, from: m[2].replace(/!\s*important\s*$/i, '').trim() });
   const cls = /(?<![\w-])text-\[([^\]\s]*)\]/g;
   for (let m; (m = cls.exec(src));) hits.push({ idx: m.index, from: m[0], value: m[1], arbitrary: true });
   hits.sort((a, b) => a.idx - b.idx);
   const changes = [], skipped = [];
-  let onScale = 0;
+  let onScale = 0, line = 1, pos = 0; // hits are sorted, so count newlines once, incrementally
   for (const h of hits) {
-    const line = lineAt(src, h.idx);
-    const value = h.arbitrary ? h.value : h.from;
+    for (let i = src.indexOf('\n', pos); i !== -1 && i < h.idx; i = src.indexOf('\n', pos)) { line++; pos = i + 1; }
+    const value = h.arbitrary ? h.value.replace(/^length:/i, '') : h.from;
     if (!/^(\d*\.?\d+)(px|rem)$/i.test(value)) {
-      // Arbitrary classes such as text-[#fff] or text-[length:...] that are not sizes are not font sizes; only report var()/calc() forms.
+      // Arbitrary classes such as text-[#fff] are colours, not font sizes (text-[length:15px] is a size and is handled above); only report var()/calc() forms.
       if (h.arbitrary && !/^(var|calc|clamp|min|max)\(/i.test(value) && !/%$/.test(value)) continue;
       skipped.push({ line, value: h.from, reason: /^(var|calc|clamp|min|max)\(/i.test(value) ? 'dynamic value' : /%$/.test(value) ? 'percentage' : 'not a px or rem size' });
       continue;
@@ -98,7 +97,10 @@ function parse(args) {
     const k = a.slice(2);
     if (!VALUE.includes(k)) throw bad(`unknown flag --${k} (allowed: ${VALUE.map(f => `--${f}`).join(', ')})`);
     if (!rest.length || rest[0].startsWith('--')) throw bad(`--${k} needs a value`);
-    flags[k] = rest.shift();
+    if (flags[k] !== undefined) throw bad(`--${k} given more than once`);
+    const v = rest.shift();
+    if (v === '') throw bad(`--${k} needs a non-empty value`);
+    flags[k] = v;
   }
   if (sub === 'snap' && flags.file !== undefined) throw bad('--file only applies to audit');
   if (sub === 'audit' && flags.size !== undefined) throw bad('--size only applies to snap');
@@ -117,21 +119,33 @@ export async function run(args, io) {
     return snap(flags.size, { rootPx });
   }
   const cwd = io.cwd || process.cwd();
-  let raw;
-  if (flags.file) {
+  let buf;
+  if (flags.file !== undefined) {
     const file = path.resolve(cwd, flags.file);
+    let fh;
     try {
       const st = await fs.stat(file);
-      if (!st.isFile()) throw Object.assign(new Error('not a file'), { code: 'ENOTFILE' });
+      if (!st.isFile()) throw bad(`${file} is not a regular file`);
       if (st.size > MAX_BYTES) throw bad('input is larger than 8 MiB');
-      raw = await fs.readFile(file, 'utf-8');
+      fh = await fs.open(file, 'r');
+      const b = Buffer.alloc(MAX_BYTES + 1);
+      let n = 0;
+      for (;;) {
+        const { bytesRead } = await fh.read(b, n, b.length - n, null);
+        if (!bytesRead) break;
+        n += bytesRead;
+        if (n >= b.length) break;
+      }
+      buf = b.subarray(0, n);
     } catch (e) {
       if (e instanceof KitExit) throw e;
       throw bad(`cannot read ${file}: ${e.code || e.message}`);
-    }
-  } else raw = await io.stdin();
-  raw = String(raw);
-  if (Buffer.byteLength(raw) > MAX_BYTES) throw bad('input is larger than 8 MiB');
+    } finally { if (fh) await fh.close().catch(() => {}); }
+  } else {
+    buf = typeof io.stdinBytes === 'function' ? await io.stdinBytes({ maxBytes: MAX_BYTES + 1 }) : Buffer.from(String(await io.stdin()), 'utf-8');
+  }
+  if (buf.length > MAX_BYTES) throw bad('input is larger than 8 MiB');
+  const raw = buf.toString('utf-8');
   if (!raw.trim()) throw bad('no input: pass CSS on stdin or --file');
   return auditCss(raw, { rootPx });
 }

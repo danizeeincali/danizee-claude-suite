@@ -9,6 +9,7 @@ import * as ts from '../src/lib/kit/type-scale.js';
 const { SCALE, snap, parseSize, auditCss, run } = ts;
 const exit = fn => assert.throws(fn, e => e instanceof KitExit && e.code === 1);
 const io = (cwd, stdin = '') => ({ cwd, stdin: async () => stdin, stdinIsTTY: false, env: {} });
+const ioBytes = (cwd, stdin = '', seen = []) => ({ cwd, stdin: async () => { throw new Error('stdin() must not be used'); }, stdinBytes: async o => { seen.push(o); return Buffer.from(stdin, 'utf-8'); }, stdinIsTTY: false, env: {} });
 
 describe('scale data', () => {
   it('is the Tailwind default scale', () => {
@@ -105,5 +106,64 @@ describe('run', () => {
       }
       await assert.rejects(() => run(['audit'], io(dir, '')), e => e instanceof KitExit && e.code === 1);
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe('review r1 fixes', () => {
+  it('finds inline style font-size in markup', () => {
+    const a = auditCss('<p style="font-size:15px">x</p>');
+    assert.deepEqual(a.changes.map(c => [c.line, c.from, c.to_step]), [[1, '15px', 'sm']]);
+    const b = auditCss("<p style='a:b;font-size:15px'>x</p>");
+    assert.deepEqual(b.changes.map(c => c.to_step), ['sm']);
+    const c = auditCss('<p style="color:red;font-size:15px">x</p>');
+    assert.equal(c.changes.length, 1);
+    assert.deepEqual(c.skipped, []);
+  });
+  it('counts lines in linear time', () => {
+    const n = 40000;
+    const text = Array.from({ length: n }, () => 'a{font-size:15px}').join('\n');
+    const t = Date.now();
+    const r = auditCss(text);
+    assert.equal(r.changes.length, n);
+    assert.equal(r.changes[n - 1].line, n);
+    assert.ok(Date.now() - t < 3000, 'audit of 40k declarations must be fast');
+  });
+  it('line numbers stay right across blank lines and comments', () => {
+    const r = auditCss('/* a\nb */\n\n.x{font-size:15px}\n.y{\n font-size: 13px }');
+    assert.deepEqual(r.changes.map(c => c.line), [4, 6]);
+  });
+  it('treats text-[length:15px] as a size', () => {
+    const r = auditCss('<i class="text-[length:15px] text-[length:16px] text-[length:var(--s)] text-[#fff]">');
+    assert.deepEqual(r.changes.map(c => [c.from, c.to_step]), [['text-[length:15px]', 'sm']]);
+    assert.equal(r.on_scale, 1);
+    assert.equal(r.skipped.length, 1);
+    assert.equal(r.skipped[0].reason, 'dynamic value');
+  });
+  it('reads stdin with stdinBytes and a byte cap (happy path)', async () => {
+    const seen = [];
+    const r = await run(['audit'], ioBytes('/tmp', 'a{font-size:15px}', seen));
+    assert.equal(r.changes.length, 1);
+    assert.deepEqual(seen, [{ maxBytes: 8 * 1024 * 1024 + 1 }]);
+  });
+  it('rejects over-cap multibyte stdin counted in bytes', async () => {
+    const text = 'é'.repeat(4 * 1024 * 1024 + 1); // 4M+1 chars, 8M+2 bytes
+    assert.ok(text.length < 8 * 1024 * 1024);
+    await assert.rejects(() => run(['audit'], ioBytes('/tmp', text)), e => e instanceof KitExit && e.code === 1 && /8 MiB/.test(e.message));
+  });
+  it('--file is read in bytes with the same cap and must be a regular file', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'kit-ts-'));
+    try {
+      await fs.writeFile(path.join(dir, 'big.css'), 'é'.repeat(4 * 1024 * 1024 + 1));
+      await assert.rejects(() => run(['audit', '--file', 'big.css'], ioBytes(dir)), e => e instanceof KitExit && e.code === 1);
+      await fs.mkdir(path.join(dir, 'd.css'));
+      await assert.rejects(() => run(['audit', '--file', 'd.css'], ioBytes(dir)), e => e instanceof KitExit && e.code === 1 && /regular file/.test(e.message));
+      await fs.writeFile(path.join(dir, 'ok.css'), 'a{font-size:15px}');
+      assert.equal((await run(['audit', '--file', 'ok.css'], ioBytes(dir))).changes.length, 1);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+  it('refuses empty and repeated flags, never falling back to stdin', async () => {
+    for (const args of [['audit', '--file', ''], ['snap', '--size', ''], ['audit', '--root-px', ''], ['snap', '--size', '1', '--size', '2'], ['audit', '--file', 'a', '--file', 'b'], ['audit', '--root-px', '16', '--root-px', '16']]) {
+      await assert.rejects(() => run(args, ioBytes('/tmp', 'a{font-size:15px}')), e => e instanceof KitExit && e.code === 1, args.join(' '));
+    }
   });
 });

@@ -24,4 +24,21 @@ describe('type-scale — packaged end to end', () => {
     assert.equal(pkg.kit(['type-scale', 'audit', '--file', 'nope.css']).code, 1);
     assert.deepEqual(pkg.egress(), []);
   });
+
+  it('reads the same input from stdin and --file, refuses FIFO-ish and empty flags', () => {
+    const css = '<p style="font-size:15px">x</p>\n';
+    fs.writeFileSync(path.join(pkg.dir, 'b.html'), css);
+    const f = pkg.kit(['type-scale', 'audit', '--file', 'b.html']);
+    const s = pkg.kit(['type-scale', 'audit'], css);
+    assert.equal(f.code, 0); assert.equal(s.code, 0);
+    assert.equal(f.json.changes.length, 1);
+    assert.deepEqual(s.json, f.json);
+    assert.equal(pkg.kit(['type-scale', 'audit', '--file', ''], css).code, 1);
+    assert.equal(pkg.kit(['type-scale', 'audit', '--file', 'b.html', '--file', 'b.html']).code, 1);
+    assert.equal(pkg.kit(['type-scale', 'audit', '--file', '.']).code, 1);
+    assert.equal(pkg.kit(['type-scale', 'audit', '--file', '/dev/null']).code, 1);
+    const big = pkg.kit(['type-scale', 'audit'], 'é'.repeat(4 * 1024 * 1024 + 1));
+    assert.equal(big.code, 1);
+    assert.match(big.err, /8 MiB/);
+  });
 });
