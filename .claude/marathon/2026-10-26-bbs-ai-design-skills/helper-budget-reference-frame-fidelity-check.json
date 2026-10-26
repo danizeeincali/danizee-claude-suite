@@ -7,13 +7,13 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 11,
-    "cost": 93591
+    "steps": 29,
+    "cost": 177254
   },
   "clock": {
     "depth": 1,
-    "startedAt": 1793047644558,
-    "elapsedMs": 502162
+    "startedAt": 1793048066509,
+    "elapsedMs": 906581
   },
   "helpers": {
     "0169896a-5898-4904-bb82-f21e9ed22480": {
@@ -29,6 +29,18 @@
       }
     },
     "6eb23a88-94dc-442a-b9a2-9ac44789b4e7": {
+      "steps": 18,
+      "cost": 83663,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "db54213b-ce8a-40a3-957e-c8c9726cfc27": {
       "steps": 0,
       "cost": 0,
       "ok": 0,

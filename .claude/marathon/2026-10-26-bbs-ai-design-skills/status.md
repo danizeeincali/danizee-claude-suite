@@ -1,9 +1,9 @@
 # Marathon 2026-10-26-bbs-ai-design-skills
 
 - State: RUNNING
-- Budget: 2,650,480 / 14,000,000 tokens
+- Budget: 2,809,143 / 14,000,000 tokens
 - Allowance: unknown (ceiling 100%)
-- Gate (run-wide, all streams): 1/2 clean reviews — build gate not met, full gate not met
+- Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
 - Next for you: Continue stream "type-scale-snapping-to-tailwind-steps" (next: build the verb per contracts.md, tests green) — /w-marathon --resume 2026-10-26-bbs-ai-design-skills.
 
@@ -69,7 +69,7 @@
 | layer-export-placement-math: clean reviews in a row | build | failing | 0 | at_least 2 |
 | layer-export-placement-math: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | layer-export-placement-math: packaged check passes | build | failing | — | is true |
-| sacred-background-preservation: green unit runs in a row | build | failing | 0 | at_least 1 |
+| sacred-background-preservation: green unit runs in a row | build | met | 1 | at_least 1 |
 | sacred-background-preservation: zero egress in the packaged check | build | failing | — | is true |
 | sacred-background-preservation: clean reviews in a row | build | failing | 0 | at_least 2 |
 | sacred-background-preservation: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
@@ -90,9 +90,9 @@
 | deterministic-frame-capture: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | deterministic-frame-capture: packaged check passes | build | failing | — | is true |
 | The owner was told what they got: delivered.md lists every power, wired, with its command | build | failing | — | is true |
-| Clean reviews in a row | build | failing | 1 | at_least 2 |
-| High findings in the latest review | build | met | 0 | at_most 0 |
-| Open high findings | build | met | 0 | at_most 0 |
+| Clean reviews in a row | build | failing | 0 | at_least 2 |
+| High findings in the latest review | build | failing | 2 | at_most 0 |
+| Open high findings | build | failing | 2 | at_most 0 |
 
 ## Waiting on human
 

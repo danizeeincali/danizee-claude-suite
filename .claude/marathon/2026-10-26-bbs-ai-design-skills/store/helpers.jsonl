@@ -52,3 +52,7 @@
 {"role":"build","model":"sonnet","stream":"entrance-choreography-kinds","budget":150000,"event":"spawn","id":"d7bfd30b-ad03-4707-a2ab-59e5775cac20","ts":"2026-10-26T20:52:36.015Z"}
 {"role":"review","model":"opus","stream":"layer-export-placement-math","budget":150000,"event":"spawn","id":"f1de710f-a5d8-49e4-aed9-9888fe13da12","ts":"2026-10-26T20:52:36.421Z"}
 {"helper_id":"ec9355ec-6183-4468-99e3-be7458963ff2","tokens":70104,"outcome":"green","event":"done","id":"a47bdcf0-6da4-4403-b5a2-ef9feb522b00","ts":"2026-10-26T20:52:48.273Z"}
+{"helper_id":"6eb23a88-94dc-442a-b9a2-9ac44789b4e7","tokens":83663,"outcome":"green","event":"done","id":"9eebe24a-a73a-4109-91aa-76e0be54dd4e","ts":"2026-10-26T20:54:08.851Z"}
+{"helper_id":"fce91f9a-8a71-486b-aa9e-22398c4bbbe3","tokens":75000,"outcome":"green","event":"done","id":"d8965a70-a2da-4915-abf4-514adb72a70e","ts":"2026-10-26T20:54:11.987Z"}
+{"role":"fix","model":"opus","stream":"reference-frame-fidelity-check","budget":150000,"event":"spawn","id":"db54213b-ce8a-40a3-957e-c8c9726cfc27","ts":"2026-10-26T20:54:26.241Z"}
+{"role":"review","model":"opus","stream":"sacred-background-preservation","budget":150000,"event":"spawn","id":"64bb796d-f36b-47be-8cbd-a89880e8a188","ts":"2026-10-26T20:54:26.607Z"}
