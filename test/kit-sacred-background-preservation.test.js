@@ -295,6 +295,10 @@ describe('bg-fill guard — timing on about 2 MB of adversarial input', () => {
     within2s('anim x frames', '.bg{animation:k}\n'.repeat(30000) + `@keyframes k{${frames}}` + '.bg{animation:k}'.repeat(Math.ceil((N - 1500000) / 16)));
     within2s('many keyframes', '@keyframes k{to{filter:blur(1px)}}'.repeat(N / 34) + '.bg{animation:k}');
   });
+  it('transition and transition-property values with many spaces', () => {
+    within2s('transition spaces', '.bg{background:url(a.jpg)} .bg{transition:' + 'a '.repeat(N / 2) + '}');
+    within2s('transition-property spaces', '.bg{background:url(a.jpg)} .bg{transition-property:' + 'a '.repeat(N / 2) + '}');
+  });
   it('unclosed url( and quotes', () => {
     within2s('url(', '.bg{background:url(a '.repeat(N / 22));
     within2s('quotes', '.bg{content:"a\n'.repeat(N / 16));

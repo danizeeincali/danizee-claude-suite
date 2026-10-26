@@ -392,12 +392,27 @@ const isBg = (base) => base === 'background' || base.startsWith('background-') |
 const touched = (base) => isBg(base) || FILTER_PROPS.has(base);
 const isHack = (prop) => /^[*_]/.test(prop);
 
+/** Whitespace-separated tokens, not splitting inside parentheses: one forward walk, linear in the value. */
+function splitWs(s) {
+  const out = [];
+  let depth = 0, start = -1;
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
+    if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    if (depth === 0 && /\s/.test(ch)) { if (start >= 0) { out.push(s.slice(start, i)); start = -1; } }
+    else if (start < 0) start = i;
+  }
+  if (start >= 0) out.push(s.slice(start));
+  return out;
+}
+
 function transitionProps(prop, value) {
   const items = splitTop(value);
   const props = [];
   for (const item of items) {
-    const tokens = item.split(/\s+(?![^(]*\))/).filter(Boolean);
-    if (prop === 'transition-property') { props.push(...tokens.map(unprefixed)); continue; }
+    const tokens = splitWs(item);
+    if (prop === 'transition-property') { for (const t of tokens) props.push(unprefixed(t)); continue; }
     if (tokens.length === 1 && tokens[0].toLowerCase() === 'none') continue;
     const named = tokens.filter(t => !TIME.test(t) && !EASING.test(t) && !/^[\d.]+$/.test(t));
     props.push(named.length ? unprefixed(named[0]) : 'all');
