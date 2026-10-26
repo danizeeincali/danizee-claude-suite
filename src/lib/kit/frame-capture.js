@@ -243,7 +243,7 @@ export async function capture(o, io = {}) {
     try { resp = await page.goto(href); } catch (e) {
       throw bad(`could not load ${href}: ${String(e && e.message).split('\n')[0]}`);
     }
-    if (resp && !resp.ok()) throw bad(`page returned HTTP ${resp.status()}`);
+    if (resp && typeof resp.ok === 'function' && !resp.ok()) throw bad(`page returned HTTP ${resp.status()}`);
     await fs.mkdir(out, { recursive: true });
     // A run that fails partway must not leave an earlier manifest beside a mix of frames.
     await fs.rm(path.join(out, 'manifest.json'), { force: true });
