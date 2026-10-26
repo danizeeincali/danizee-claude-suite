@@ -265,14 +265,17 @@ describe('entrance: run input', () => {
       const inp = path.join(dir, 'in.json');
       await fs.writeFile(inp, JSON.stringify({ groups: [{ id: 'a', kind: 'card', order: 0 }] }));
       const mod = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/lib/kit/entrance.js');
-      const fd = (await fs.open(inp, 'r')).fd;
-      for (const target of ['/dev/stdin', '/proc/self/fd/0']) {
+      const handle = await fs.open(inp, 'r');
+      const fd = handle.fd;
+      await fs.symlink('/proc/self/fd/0', path.join(dir, 'link.json'));
+      for (const target of ['/dev/stdin', '/proc/self/fd/0', path.join(dir, 'link.json')]) {
         const script = `import(${JSON.stringify(mod)}).then(m => m.run(['--file', ${JSON.stringify(target)}], { cwd: '/', stdinIsTTY: false }))` +
           '.then(() => process.exit(0), e => { console.error(e.message); process.exit(e.code === 1 ? 1 : 9); });';
         const r = spawnSync(process.execPath, ['--input-type=module', '-e', script], { stdio: [fd, 'pipe', 'pipe'], encoding: 'utf-8', timeout: 10000 });
         assert.equal(r.status, 1, `${target}: ${r.status} ${r.stderr}`);
         assert.match(r.stderr, /regular file/);
       }
+      await handle.close();
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
   it('--file refuses a FIFO without hanging', async () => {
@@ -302,4 +305,12 @@ describe('entrance: run input', () => {
       await rejects(() => run(['--file', 'big.json'], io('', { cwd: dir })), /larger than/);
     } finally { proto.stat = orig; fs.stat = origPathStat; await fs.rm(dir, { recursive: true, force: true }); }
   });
+
+describe('entrance integration fixes (group D)', () => {
+  it('an override cannot end a grow kind at scale 0; the 0 is allowed only in override.from', () => {
+    throws1(() => P([g('b', 'bar', 0, { override: { to: { scaleX: 0 } } })]), /override\.to\.scaleX/);
+    throws1(() => P([g('c', 'chart', 0, { override: { to: { scaleY: 0 } } })]), /override\.to\.scaleY/);
+    assert.ok(P([g('b', 'bar', 0, { override: { from: { scaleX: 0 } } })]));
+  });
+});
 });

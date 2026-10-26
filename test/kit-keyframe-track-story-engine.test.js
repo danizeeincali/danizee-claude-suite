@@ -283,3 +283,43 @@ describe('keyframes review r1 fixes', () => {
     assert.equal(check(spec([story({ sentence: 'It pulses. Then it stops.' })])).ok, false);
   });
 });
+
+describe('keyframes integration fixes (group D)', () => {
+  const load = async (name) => {
+    const f = path.join(dir, name);
+    await fs.writeFile(f, emitModule());
+    return import(pathToFileURL(f).href);
+  };
+  it('check and sample refuse a terminal stdin instead of blocking', async () => {
+    for (const sub of [['check'], ['sample', '--at', '5']]) {
+      await exit1(run(sub, { cwd: dir, stdinIsTTY: true, stdinBytes: () => new Promise(() => {}), stdin: () => new Promise(() => {}) }), /terminal/);
+    }
+  });
+  it('the emitted createLoop throws when loop_ms is missing or invalid', async () => {
+    const m = await load('engine-loopms.mjs');
+    const st = [{ id: 'a', tracks: { x: [{ t: 0, v: 0 }, { t: 100, v: 0 }] } }];
+    for (const bad of [undefined, 0, -5, NaN, '100', Infinity]) assert.throws(() => m.createLoop(st, { loop_ms: bad, raf: null }), /loop_ms/, String(bad));
+    assert.throws(() => m.createLoop(st), /loop_ms/);
+  });
+  it('a story id or property named __proto__ survives in sample output and createLoop.read', async () => {
+    const body = spec([story({ id: '__proto__', tracks: { ['__proto__']: [{ t: 0, v: 1 }, { t: 2000, v: 1 }] } })]);
+    const text = JSON.stringify(body).replace('"__proto__":[', '"__proto__":[');
+    const r = await run(['sample', '--at', '10'], io(text));
+    assert.deepEqual(Object.keys(r.values), ['__proto__']);
+    assert.deepEqual(Object.keys(r.values['__proto__']), ['__proto__']);
+    assert.match(JSON.stringify(r), /"__proto__":\{"__proto__":1\}/);
+    const m = await load('engine-proto.mjs');
+    const got = m.createLoop(JSON.parse(text).stories, { loop_ms: 2000, raf: null }).read(10);
+    assert.deepEqual(Object.keys(got), ['__proto__']);
+    assert.deepEqual(Object.keys(got['__proto__']), ['__proto__']);
+  });
+  it('createLoop can restart after onFrame throws', async () => {
+    const m = await load('engine-throw.mjs');
+    const loop = m.createLoop([{ id: 'a', tracks: { x: [{ t: 0, v: 0 }, { t: 100, v: 10 }] } }], { loop_ms: 100, now: () => 0, raf: () => 1, caf: () => {} });
+    assert.throws(() => loop.start(() => { throw new Error('boom'); }), /boom/);
+    const seen = [];
+    loop.start(v => seen.push(v.a.x));
+    assert.equal(seen.length, 1);
+    loop.stop();
+  });
+});

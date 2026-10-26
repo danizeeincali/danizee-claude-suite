@@ -101,6 +101,7 @@ function evaluate(track, t, loop_ms) {
 function createLoop(stories, opts) {
   opts = opts || {};
   const L = opts.loop_ms;
+  if (typeof L !== 'number' || !Number.isFinite(L) || L <= 0) throw new Error('createLoop needs opts.loop_ms, a positive number of milliseconds');
   const now = opts.now || (() => performance.now());
   const raf = opts.raf || (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null);
   const caf = opts.caf || (typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame : null);
@@ -114,8 +115,8 @@ function createLoop(stories, opts) {
     for (const s of stories) {
       const local = at + (s.offset_ms || 0);
       const vals = {};
-      for (const prop of Object.keys(s.tracks)) vals[prop] = evaluate(s.tracks[prop], local, L);
-      out[s.id] = vals;
+      for (const prop of Object.keys(s.tracks)) Object.defineProperty(vals, prop, { value: evaluate(s.tracks[prop], local, L), enumerable: true, writable: true, configurable: true });
+      Object.defineProperty(out, s.id, { value: vals, enumerable: true, writable: true, configurable: true });
     }
     return out;
   };
@@ -125,7 +126,9 @@ function createLoop(stories, opts) {
     t0 = now();
     const frame = () => {
       if (!running) return;
-      if (onFrame) onFrame(read());
+      if (onFrame) {
+        try { onFrame(read()); } catch (e) { running = false; handle = null; throw e; }
+      }
       if (raf) handle = raf(frame);
     };
     frame();
@@ -196,6 +199,7 @@ async function readFileBounded(file, cwd) {
 
 async function readInput(flags, io) {
   if (flags.file !== undefined) return parseJson(await readFileBounded(flags.file, io.cwd || process.cwd()), `--file ${flags.file}`);
+  if (io.stdinIsTTY) throw bad('no input: stdin is a terminal; pass the keyframes JSON on stdin or with --file');
   let buf;
   if (typeof io.stdinBytes === 'function') buf = await io.stdinBytes({ maxBytes: MAX_BYTES + 1 });
   else buf = Buffer.from(String(await io.stdin({ maxBytes: MAX_BYTES + 1 })), 'utf-8');
@@ -339,8 +343,8 @@ export function sample(input, at) {
       const tr = s.tracks[prop];
       for (let i = 1; i < tr.length; i++) if (!(tr[i].t > tr[i - 1].t)) throw bad(`story "${s.id}" track "${prop}": keyframe times must be strictly increasing (keyframe ${i} t=${tr[i].t} is not after t=${tr[i - 1].t}); run check`);
     }
-    for (const prop of Object.keys(s.tracks)) vals[prop] = evaluate(s.tracks[prop], at + s.offset_ms, loop_ms);
-    values[s.id] = vals;
+    for (const prop of Object.keys(s.tracks)) Object.defineProperty(vals, prop, { value: evaluate(s.tracks[prop], at + s.offset_ms, loop_ms), enumerable: true, writable: true, configurable: true });
+    Object.defineProperty(values, s.id, { value: vals, enumerable: true, writable: true, configurable: true });
   }
   return { at_ms: at, loop_ms, values };
 }
