@@ -20,6 +20,7 @@
  * Built from ideas audited by /w-bbs (run 2026-10-26-ai-design-skills); no foreign code.
  */
 import fs from 'fs/promises';
+import { constants as FS } from 'fs';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
 
@@ -56,12 +57,18 @@ const HYPE = {
 const HYPE_RE = new RegExp(`(?<![\\w-])(${Object.keys(HYPE).sort((a, b) => b.length - a.length).map(w => w.replace(/-/g, '[-\\u2011]')).join('|')})(?![\\w-])`, 'gi');
 
 const SMALL = new Set(['a', 'an', 'the', 'and', 'or', 'but', 'nor', 'of', 'to', 'in', 'on', 'at', 'by', 'for', 'with', 'from', 'as', 'is', 'vs', 'via', 'into', 'over', 'per', 'up']);
-const NEXT_STEP = /\b(try|retry|check|contact|please|refresh|reload|go back|click|select|choose|ensure|make sure|see|wait|add|enter|sign in|log in|reconnect|restart|use)\b/i;
+const NEXT_STEP = /\b(?:try (?:again|later|once more|reloading|a different)|retry|check (?:your|the|that|and)|contact|refresh|reload|go back|click|tap|select|choose|ensure|make sure|wait|reconnect|restart|(?:sign|log) in again|please (?:try|check|contact|refresh|reload|retry|wait|restart|reconnect|sign|log|go))\b/i;
+const MAX_DEPTH = 512;
 const MONTHS = 'Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?';
 const DATE_RE = new RegExp(`\\b(\\d{4}-\\d{2}-\\d{2}|(?:${MONTHS})\\.? \\d{1,2}(?:st|nd|rd|th)?,? \\d{4}|\\d{1,2}(?:st|nd|rd|th)? (?:${MONTHS})\\.?,? \\d{4}|\\d{1,2}/\\d{1,2}/\\d{2,4})\\b`, 'gi');
 
 const snip = s => { const t = s.replace(/\s+/g, ' ').trim(); return t.length > 120 ? t.slice(0, 117) + '...' : t; };
-const lineOf = (text, idx) => { let n = 1; for (let i = 0; i < idx; i++) if (text.charCodeAt(i) === 10) n++; return n; };
+/** Newline offsets computed once per text; the returned function maps an index to a 1-based line by binary search. */
+const lineIndex = text => {
+  const nl = [];
+  for (let i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) nl.push(i);
+  return idx => { let lo = 0, hi = nl.length; while (lo < hi) { const mid = (lo + hi) >> 1; if (nl[mid] < idx) lo = mid + 1; else hi = mid; } return lo + 1; };
+};
 const blank = s => s.replace(/[^\n]/g, ' ');
 
 /** Words that make a heading Title Case: capitalised plain words (not acronyms, not camel-case like GitHub). */
@@ -82,20 +89,49 @@ export function isTitleCase(raw) {
 
 /** Strip scripts, styles and tags from HTML, keeping every newline so line numbers hold. */
 export function htmlToText(html) {
-  return html
-    .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, blank)
-    .replace(/<!--[\s\S]*?-->/g, blank)
-    .replace(/<[^>]*>/g, blank);
+  const n = html.length;
+  let out = '', last = 0, pos = html.indexOf('<');
+  const cut = (from, to) => { out += html.slice(last, from) + blank(html.slice(from, to)); last = to; };
+  const styleClose = /<\/(script|style)\s*>/gi;
+  while (pos >= 0 && pos < n) {
+    let end = -1;
+    const m = /^<(script|style)\b/i.exec(html.slice(pos, pos + 10));
+    if (m) {
+      styleClose.lastIndex = pos;
+      let c;
+      while ((c = styleClose.exec(html)) && c[1].toLowerCase() !== m[1].toLowerCase());
+      end = c ? c.index + c[0].length : n; // unclosed: blank to the end once and stop
+    } else if (html.startsWith('<!--', pos)) {
+      const c = html.indexOf('-->', pos + 4);
+      end = c < 0 ? n : c + 3;
+    } else {
+      const gt = html.indexOf('>', pos + 1);
+      if (gt < 0) break; // no later '>' anywhere: no more tags
+      end = gt + 1;
+    }
+    cut(pos, end);
+    pos = end >= n ? -1 : html.indexOf('<', end);
+  }
+  return out + html.slice(last);
 }
 
 function headings(text, isHtml) {
   const out = []; // { idx, text }
   if (isHtml) {
-    const re = /<(h[1-6]|button|a)\b([^>]*)>([\s\S]*?)<\/\1\s*>/gi;
+    const open = /<(h[1-6]|button|a)\b([^<>]*)>/gi;
+    const closers = new Map(); // tag -> regex, or null once a scan found no closer anywhere later
     let m;
-    while ((m = re.exec(text))) {
-      if (m[1].toLowerCase() === 'a' && !/class\s*=\s*["'][^"']*btn[^"']*["']/i.test(m[2])) continue;
-      out.push({ idx: m.index, text: m[3].replace(/<[^>]*>/g, ' ') });
+    while ((m = open.exec(text))) {
+      const tag = m[1].toLowerCase();
+      if (tag === 'a' && !/class\s*=\s*["'][^"']*btn[^"']*["']/i.test(m[2])) continue;
+      if (!closers.has(tag)) closers.set(tag, new RegExp(`<\\/${tag}\\s*>`, 'gi'));
+      const cre = closers.get(tag);
+      if (!cre) continue;
+      cre.lastIndex = open.lastIndex;
+      const c = cre.exec(text);
+      if (!c) { closers.set(tag, null); continue; }
+      out.push({ idx: m.index, text: text.slice(open.lastIndex, c.index).replace(/<[^<>]*>/g, ' ') });
+      open.lastIndex = c.index + c[0].length;
     }
   }
   let off = 0, fence = false;
@@ -114,8 +150,10 @@ function headings(text, isHtml) {
 export function lintText(text, { rules = RULES, isHtml = false } = {}) {
   const on = new Set(rules);
   const findings = [];
-  const add = (rule, idx, t, hint, src) => findings.push({ rule, line: lineOf(src, idx), text: snip(t), hint });
-  const body = (isHtml ? htmlToText(text) : text).replace(/https?:\/\/[^\s)>"']+/g, blank).replace(/\]\([^)\n]*\)/g, blank);
+  const body = (isHtml ? htmlToText(text) : text).replace(/https?:\/\/[^\s)>"']+/g, blank).replace(/\]\([^)\n]{0,2000}\)/g, blank);
+  const lineBody = lineIndex(body);
+  let lineText;
+  const add = (rule, idx, t, hint, src) => findings.push({ rule, line: src === body ? lineBody(idx) : (lineText ||= lineIndex(text))(idx), text: snip(t), hint });
   const scan = (rule, re, hintFor, test) => {
     if (!on.has(rule)) return;
     re.lastIndex = 0;
@@ -174,7 +212,8 @@ export function lintText(text, { rules = RULES, isHtml = false } = {}) {
       const end = m.index + m[0].length;
       const nl1 = body.indexOf('\n', end);
       const nl2 = nl1 < 0 ? -1 : body.indexOf('\n', nl1 + 1);
-      const rest = body.slice(end, nl2 < 0 ? undefined : nl2);
+      const from = end; // only imperative phrases count, so words that describe the failure are not a next step
+      const rest = body.slice(from, nl2 < 0 ? undefined : nl2);
       if (!NEXT_STEP.test(rest)) add('vague-error', m.index, m[0], 'Say what failed and what to do next, e.g. "We couldn\'t save your changes. Check your connection and try again."', body);
     }
   }
@@ -205,24 +244,25 @@ export function lintJson(raw, data, opts) {
     i++;
     return { tok: raw.slice(start, i), line: startLine };
   };
-  const value = () => {
+  const value = depth => {
+    if (depth > MAX_DEPTH) throw bad(`input JSON is nested too deeply (over ${MAX_DEPTH} levels)`);
     ws();
     const c = raw[i];
     if (c === '"') {
       const { tok, line: at } = str();
-      for (const f of lintText(JSON.parse(tok), { ...opts, isHtml: /<\/?[a-z][^>]*>/i.test(JSON.parse(tok)) })) findings.push({ ...f, line: at });
+      for (const f of lintText(JSON.parse(tok), { ...opts, isHtml: /<\/?[a-z][^<>]*>/i.test(JSON.parse(tok)) })) findings.push({ ...f, line: at });
     } else if (c === '[' || c === '{') {
       const obj = c === '{';
       i++; ws();
       while (i < n && raw[i] !== (obj ? '}' : ']')) {
         if (obj) { ws(); str(); ws(); i++; } // key, then ':'
-        value(); ws();
+        value(depth + 1); ws();
         if (raw[i] === ',') { i++; ws(); }
       }
       i++;
     } else while (i < n && !/[\s,\]}]/.test(raw[i])) i++;
   };
-  value();
+  value(0);
   return findings.sort((a, b) => a.line - b.line);
 }
 
@@ -277,11 +317,19 @@ export function lint(raw, { rules = RULES, name = '', format } = {}) {
   return { findings, counts, format: fmt };
 }
 
+const DEVICE_PATH = /^\/(?:dev|proc)(?:\/|$)/;
+
 async function readBounded(file) {
+  let real;
+  try { real = await fs.realpath(file); } catch (e) { throw bad(`cannot read ${file}: ${e.code || e.message}`); }
+  if (DEVICE_PATH.test(file) || DEVICE_PATH.test(real)) throw bad(`${file} is not a regular file (devices and /proc are refused)`);
   let fh;
-  try { fh = await fs.open(file, 'r'); } catch (e) { throw bad(`cannot read ${file}: ${e.code || e.message}`); }
+  try { fh = await fs.open(file, FS.O_RDONLY | FS.O_NONBLOCK); } catch (e) { throw bad(`cannot read ${file}: ${e.code || e.message}`); }
   try {
-    const buf = Buffer.alloc(MAX_BYTES + 1);
+    const st = await fh.stat();
+    if (!st.isFile()) throw bad(`${file} is not a file`);
+    if (st.size > MAX_BYTES) throw bad('input is over 8 MiB');
+    const buf = Buffer.alloc(Math.min(st.size, MAX_BYTES) + 1);
     let n = 0;
     while (n < buf.length) {
       const { bytesRead } = await fh.read(buf, n, buf.length - n, null);
@@ -289,7 +337,7 @@ async function readBounded(file) {
       n += bytesRead;
     }
     return buf.subarray(0, n);
-  } catch (e) { throw bad(`cannot read ${file}: ${e.code || e.message}`); } finally { await fh.close(); }
+  } catch (e) { if (e instanceof KitExit) throw e; throw bad(`cannot read ${file}: ${e.code || e.message}`); } finally { await fh.close(); }
 }
 
 export async function run(args, io) {
@@ -300,10 +348,6 @@ export async function run(args, io) {
   let buf;
   if (flags.file !== undefined) {
     const file = path.resolve(cwd, flags.file);
-    let st;
-    try { st = await fs.stat(file); } catch (e) { throw bad(`cannot read ${file}: ${e.code || e.message}`); }
-    if (!st.isFile()) throw bad(`${file} is not a file`);
-    if (st.size > MAX_BYTES) throw bad('input is over 8 MiB');
     buf = await readBounded(file);
   } else {
     if (io.stdinIsTTY) throw bad('no input: pass --file <f> or text on stdin');
