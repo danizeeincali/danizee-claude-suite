@@ -142,3 +142,26 @@ describe('run', () => {
     await assert.rejects(run(['assume'], io(multi.toString('utf-8'))), e => e.code === 1 && /8 MiB/.test(e.message));
   });
 });
+
+describe('integration fixes (carried findings)', () => {
+  it('refuses /proc paths on the open handle, naming /proc', async () => {
+    await assert.rejects(run(['assume', '--file', '/proc/self/status'], io('', os.tmpdir())), e => e instanceof KitExit && e.code === 1 && /\/proc/.test(e.message));
+  });
+  it('a JSON parse error keeps its reason', async () => {
+    await assert.rejects(run(['assume'], io('{"kind": "landing",', os.tmpdir())), e => e.code === 1 && /not valid JSON: \S/.test(e.message) && !/not valid JSON$/.test(e.message));
+  });
+  it('refusals name their cause, not only the exit code', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'db-msg-'));
+    try {
+      await assert.rejects(run(['assume', '--file', dir], io('', dir)), e => e.code === 1 && /regular file/.test(e.message));
+      await assert.rejects(run(['assume', '--file', 'nope.json'], io('', dir)), e => e.code === 1 && /cannot read .*nope\.json: ENOENT/.test(e.message));
+      await assert.rejects(run(['assume'], io('  ', dir)), e => e.code === 1 && /no input/.test(e.message));
+      await assert.rejects(run(['assume'], io('{"kind":"x"}', dir)), e => e.code === 1 && /kind must be one of/.test(e.message));
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+  it('handles a 2 MB adversarial answer list in under 2 s', async () => {
+    const t0 = Date.now();
+    await run(['questions'], io(JSON.stringify({ kind: 'landing', answers: { proof: Array(200000).fill('x'.repeat(8)) } }), os.tmpdir()));
+    assert.ok(Date.now() - t0 < 2000);
+  });
+});

@@ -21,6 +21,7 @@
  * Built from ideas audited by /w-bbs (run 2026-10-26-ai-design-skills); no foreign code.
  */
 import fs from 'fs/promises';
+import { constants as fsc } from 'fs';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
 
@@ -89,8 +90,8 @@ function scanMarkdown(text) {
       if (!fence) fence = f[1][0];
       else if (f[1][0] === fence) fence = null;
     } else if (!fence) {
-      const m = /^ {0,3}(#{1,6})[ \t]+(.*?)[ \t]*#*[ \t]*$/.exec(line);
-      if (m) heads.push({ level: m[1].length, name: m[2], start: offset, bodyStart: offset + line.length + 1 });
+      const m = /^ {0,3}(#{1,6})[ \t]+(.*)$/.exec(line);
+      if (m) heads.push({ level: m[1].length, name: m[2].trimEnd().replace(/#+$/, '').trimEnd(), start: offset, bodyStart: offset + line.length + 1 });
     }
     offset += line.length + 1;
   }
@@ -108,12 +109,12 @@ function scanMarkdown(text) {
 function mdLabels(body) {
   const out = [];
   const withoutCode = body.replace(/^ {0,3}(`{3,}|~{3,})[\s\S]*?(^ {0,3}\1.*$|$(?![\s\S]))/gm, '');
-  for (const m of withoutCode.matchAll(/(^|[^!])\[([^\]\n]+)\]\([^)\n]*\)/g)) out.push(m[2]);
+  for (const m of withoutCode.matchAll(/(^|[^!])\[([^\]\n[]{1,300})\]\([^)\n]{0,2000}\)/g)) out.push(m[2]);
   for (const m of withoutCode.matchAll(/^[ \t>*-]*(?:primary |main )?(?:cta|button)[ \t]*:[ \t]*(.+)$/gim)) out.push(m[1]);
   return out.map(norm).filter(Boolean);
 }
 
-const TAG = /<([a-zA-Z][\w:-]*)((?:[^>"']|"[^"]*"|'[^']*')*)>/g;
+const TAG = /<([a-zA-Z][\w:-]*)((?:[^<>"']|"[^"]*"|'[^']*')*)>/g;
 const ATTR = /([^\s=/"'<>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
 
 function attrs(src) {
@@ -130,7 +131,7 @@ function scanHtml(raw) {
   const blank = s => s.replace(/[^\n]/g, ' ');
   const text = raw
     .replace(/<!--[\s\S]*?(-->|$)/g, blank)
-    .replace(/(<(script|style)\b[^>]*>)([\s\S]*?)(<\/\2\s*>|$)/gi, (_, open, _n, body, close) => open + blank(body) + close);
+    .replace(/(<(script|style)\b[^<>]*>)([\s\S]*?)(<\/\2\s*>|$)/gi, (_, open, _n, body, close) => open + blank(body) + close);
   const hits = [];
   for (const m of text.matchAll(TAG)) {
     const a = attrs(m[2]);
@@ -141,12 +142,31 @@ function scanHtml(raw) {
   return hits;
 }
 
+// Linear: an opener without a closer is skipped, and no closer anywhere after it means none for later openers either.
 function htmlLabels(body) {
   const out = [];
-  for (const m of body.matchAll(/<(a|button)\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/\1\s*>/gi)) {
-    const a = attrs(m[2]);
-    const isCta = m[1].toLowerCase() === 'button' || /\b(btn|button|cta)\b/i.test(a.class || '') || 'data-cta' in a;
-    if (isCta) out.push(norm(decode(m[3].replace(/<[^>]*>/g, ' '))));
+  const lower = body.toLowerCase();
+  const noCloser = { a: false, button: false };
+  const open = /<(a|button)\b/gi;
+  const tagAt = new RegExp(TAG.source, 'y');
+  for (let o; (o = open.exec(body));) {
+    const name = o[1].toLowerCase();
+    if (noCloser[name]) continue;
+    tagAt.lastIndex = o.index;
+    const t = tagAt.exec(body);
+    if (!t) continue;
+    const from = t.index + t[0].length;
+    let close = -1, endAt = -1;
+    for (let k = lower.indexOf('</' + name, from); k !== -1; k = lower.indexOf('</' + name, k + 1)) {
+      let e = k + 2 + name.length;
+      while (e < lower.length && /\s/.test(lower[e])) e++;
+      if (lower[e] === '>') { close = k; endAt = e + 1; break; }
+    }
+    if (close < 0) { noCloser[name] = true; continue; }
+    open.lastIndex = endAt;
+    const a = attrs(t[2]);
+    const isCta = name === 'button' || /\b(btn|button|cta)\b/i.test(a.class || '') || 'data-cta' in a;
+    if (isCta) out.push(norm(decode(body.slice(from, close).replace(/<[^<>]*>/g, ' '))));
   }
   return out.filter(Boolean);
 }
@@ -178,8 +198,39 @@ export function checkText(text, type = 'md') {
 
 const bad = m => new KitExit(m, 1);
 
+const PROTECTED = /^\/(dev|proc)(\/|$)/;
+/** Open on the handle (O_RDONLY | O_NONBLOCK), require a regular file via fh.stat(), refuse /dev and /proc, bounded read. */
+async function openRegular(p) {
+  let real = p;
+  try { real = await fs.realpath(p); } catch { /* open reports it */ }
+  if (PROTECTED.test(p) || PROTECTED.test(real)) throw bad(`${p} is not a regular file (paths under /dev and /proc are refused)`);
+  const fh = await fs.open(p, fsc.O_RDONLY | fsc.O_NONBLOCK);
+  try {
+    if (!(await fh.stat()).isFile()) throw bad(`${p} is not a regular file`);
+    const buf = Buffer.alloc(MAX_BYTES + 1);
+    let n = 0;
+    while (n < buf.length) {
+      const { bytesRead } = await fh.read(buf, n, buf.length - n, null);
+      if (!bytesRead) break;
+      n += bytesRead;
+    }
+    if (n > MAX_BYTES) throw bad(`${p} is larger than 8 MiB`);
+    return buf.subarray(0, n);
+  } finally { await fh.close().catch(() => {}); }
+}
+
+
+// Decided from the text alone (never the file extension), so stdin and --file agree: leading comments are skipped.
 function sniff(text) {
-  return /^\s*<(!doctype|html|body|div|section|header|main|nav|h[1-6])\b/i.test(text) ? 'html' : 'md';
+  let i = 0;
+  for (;;) {
+    while (i < text.length && /\s/.test(text[i])) i++;
+    if (!text.startsWith('<!--', i)) break;
+    const e = text.indexOf('-->', i + 4);
+    if (e < 0) { i = text.length; break; }
+    i = e + 3;
+  }
+  return /^<(!doctype|html|head|body|div|section|header|main|nav|footer|article|aside|h[1-6]|p|ul|style|script)\b/i.test(text.slice(i, i + 64)) ? 'html' : 'md';
 }
 
 export async function run(args, io) {
@@ -199,26 +250,15 @@ export async function run(args, io) {
     if (!file) throw bad('--file needs a non-empty value');
   }
   const cwd = io.cwd || process.cwd();
-  let text, type;
+  let text;
   if (file !== undefined) {
     const p = path.resolve(cwd, file);
     try {
-      const st = await fs.stat(p);
-      if (!st.isFile()) throw bad(`${p} is not a file`);
-      if (st.size > MAX_BYTES) throw bad(`${p} is larger than 8 MiB`);
-      const fh = await fs.open(p, 'r');
-      try {
-        const buf = Buffer.alloc(MAX_BYTES + 1);
-        const { bytesRead } = await fh.read(buf, 0, MAX_BYTES + 1, 0);
-        if (bytesRead > MAX_BYTES) throw bad(`${p} is larger than 8 MiB`);
-        text = buf.subarray(0, bytesRead).toString('utf-8');
-      } finally { await fh.close(); }
+      text = (await openRegular(p)).toString('utf-8');
     } catch (e) {
       if (e instanceof KitExit) throw e;
       throw bad(`cannot read ${p}: ${e.code || e.message}`);
     }
-    const ext = path.extname(p).toLowerCase();
-    type = ext === '.html' || ext === '.htm' ? 'html' : ext === '.md' || ext === '.markdown' || ext === '.txt' ? 'md' : null;
   } else {
     const buf = Buffer.from(await (typeof io.stdinBytes === 'function' ? io.stdinBytes({ maxBytes: MAX_BYTES + 1 }) : io.stdin({ maxBytes: MAX_BYTES + 1 })));
     if (buf.length > MAX_BYTES) throw bad('input is larger than 8 MiB');
@@ -227,5 +267,5 @@ export async function run(args, io) {
   text = text.replace(/^﻿/, '').replace(/\r\n?/g, '\n');
   if (!text.trim()) throw bad('no input: pass a markdown spec or HTML page on stdin or --file');
   if (text.includes('\0')) throw bad('input looks binary (contains NUL bytes)');
-  return checkText(text, type || sniff(text));
+  return checkText(text, sniff(text));
 }
