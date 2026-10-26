@@ -31,12 +31,12 @@
     },
     {
       "name": "type-scale-snapping-to-tailwind-steps",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/type-scale-snapping-to-tailwind-steps.md",
-      "next": "build the verb per contracts.md, tests green",
+      "next": "r2 findings carried to integration (carried.md)",
       "tasks": [],
       "isolation": "/home/claude/danizee-claude-suite-type-scale-snapping-to-tailwind-steps",
-      "phase": "build",
+      "phase": "done",
       "base": "36c97933e6aece2e0c7d568f88ca384b53a86098"
     },
     {

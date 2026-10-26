@@ -17,3 +17,7 @@ open findings below; the integration stream fixes them before it wires the verb,
 - Open from r2: quadratic lineOf (medium), vague-error accepts description words as a next step (medium), unclosed
   tag regexes quadratic (low), deep JSON nesting overflows the walker (low). The integration stream fixes these and
   runs the stream's second clean review before wiring the verb.
+
+## type-scale-snapping-to-tailwind-steps (r1 and r2 passed, gate met; r2 findings open)
+- One zero or overflowing size aborts the whole audit (medium); unclosed `text-[` openers make the class scan
+  quadratic (medium); audit at a TTY waits forever (low).

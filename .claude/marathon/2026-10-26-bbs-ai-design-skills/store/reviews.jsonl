@@ -10,3 +10,6 @@
 {"stream":"reference-frame-fidelity-check","counts":{"high":2,"medium":2,"low":4},"angle":"r1","tokens":83663,"pass":false,"round":1,"commit":"322a09c","id":"7aac4aeb-9458-4d0f-96fd-4d5ae5f805b5","ts":"2026-10-26T20:54:07.363Z"}
 {"stream":"layer-export-placement-math","counts":{"high":0,"medium":1,"low":2},"angle":"r1","tokens":79193,"pass":true,"round":1,"commit":"227cf7d","id":"53b90ef0-3c57-48ba-89b2-34e5c3eef2e6","ts":"2026-10-26T20:55:00.977Z"}
 {"stream":"context-split-showcase-or-website","counts":{"high":0,"medium":1,"low":1},"angle":"r2","tokens":70782,"pass":true,"round":2,"commit":"498ec58","id":"55588525-a6d1-476c-b849-a30a5f588e17","ts":"2026-10-26T20:57:41.197Z"}
+{"stream":"sacred-background-preservation","counts":{"high":1,"medium":5,"low":2},"angle":"r1","tokens":81566,"pass":false,"round":1,"commit":"7544311","id":"79f3686a-6e8e-4cdd-983d-e16fac3f6c16","ts":"2026-10-26T20:59:44.434Z"}
+{"stream":"type-scale-snapping-to-tailwind-steps","counts":{"high":0,"medium":2,"low":1},"angle":"r2","tokens":81135,"pass":true,"round":2,"commit":"9295885","id":"d1468671-7360-4ef2-ac9e-40e0ad3765e7","ts":"2026-10-26T20:59:46.152Z"}
+{"stream":"entrance-choreography-kinds","counts":{"high":0,"medium":1,"low":2},"angle":"r1","tokens":63388,"pass":true,"round":1,"commit":"202cadd","id":"28b992b3-95f2-4dd9-a573-f9df0ea6a4bf","ts":"2026-10-26T21:00:19.985Z"}

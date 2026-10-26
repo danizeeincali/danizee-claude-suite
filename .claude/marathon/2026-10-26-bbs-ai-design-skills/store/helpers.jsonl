@@ -61,3 +61,9 @@
 {"role":"review","model":"opus","stream":"entrance-choreography-kinds","budget":150000,"event":"spawn","id":"44b59b4f-dfed-4c5f-a1a2-de2236a535db","ts":"2026-10-26T20:57:29.831Z"}
 {"role":"fix","model":"sonnet","stream":"layer-export-placement-math","budget":150000,"event":"spawn","id":"be79accc-0d8b-44b1-84bd-b6c099c4250b","ts":"2026-10-26T20:57:30.358Z"}
 {"helper_id":"6dd71a93-8096-48a4-b99c-4112ef59308b","tokens":70782,"outcome":"green","event":"done","id":"fe3ec3a6-a007-490f-a780-3fd3c2f24992","ts":"2026-10-26T20:57:41.998Z"}
+{"helper_id":"be79accc-0d8b-44b1-84bd-b6c099c4250b","tokens":57071,"outcome":"green","event":"done","id":"819704bd-084f-4ba1-ac42-860774ae4b69","ts":"2026-10-26T20:59:28.224Z"}
+{"role":"review","model":"opus","stream":"layer-export-placement-math","budget":150000,"event":"spawn","id":"e6d4bff3-c657-4be9-b9dd-9b48fbb54787","ts":"2026-10-26T20:59:31.969Z"}
+{"helper_id":"64bb796d-f36b-47be-8cbd-a89880e8a188","tokens":81566,"outcome":"green","event":"done","id":"7ec6838c-5d3b-43fd-92a8-406db1361b0c","ts":"2026-10-26T20:59:45.788Z"}
+{"helper_id":"c42f32e6-38f4-4832-a1ce-0cd728249990","tokens":81135,"outcome":"green","event":"done","id":"dbe0f067-db18-425e-be71-cafd354d3f72","ts":"2026-10-26T20:59:46.912Z"}
+{"helper_id":"f6c7457c-4e31-45b2-bedd-85029ecc4a93","tokens":69260,"outcome":"green","event":"done","id":"272c755f-e904-4301-b470-137ca80f4588","ts":"2026-10-26T21:00:01.420Z"}
+{"helper_id":"44b59b4f-dfed-4c5f-a1a2-de2236a535db","tokens":63388,"outcome":"green","event":"done","id":"1ed21757-a6f6-40e2-b041-18ccd6d47b22","ts":"2026-10-26T21:00:20.750Z"}
