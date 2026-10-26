@@ -167,3 +167,28 @@ describe('review r1 fixes', () => {
     }
   });
 });
+
+describe('integration fixes (carried findings)', () => {
+  it('one zero or overflowing size is skipped, not fatal to the audit', () => {
+    const huge = '9'.repeat(400);
+    const r = auditCss(`a{font-size:0.0px}\nb{font-size:0px}\nc{font-size:${huge}px}\nd{font-size:15px}\n<p class="text-[0px] text-[${huge}rem] text-[15px]">`);
+    assert.deepEqual(r.changes.map(c => [c.line, c.from, c.to_step]), [[4, '15px', 'sm'], [5, 'text-[15px]', 'sm']]);
+    assert.equal(r.skipped.length, 5);
+    assert.ok(r.skipped.every(s => /zero|range/.test(s.reason)));
+  });
+  it('audit at a terminal refuses instead of waiting for stdin', async () => {
+    const tty = { cwd: os.tmpdir(), stdinIsTTY: true, env: {}, stdin: () => new Promise(() => {}), stdinBytes: () => new Promise(() => {}) };
+    await assert.rejects(run(['audit'], tty), e => e instanceof KitExit && e.code === 1 && /terminal|no input/.test(e.message));
+  });
+  it('refuses /proc paths even when they are regular files', async () => {
+    await assert.rejects(run(['audit', '--file', '/proc/self/status'], io(os.tmpdir())), e => e instanceof KitExit && e.code === 1 && /\/proc/.test(e.message));
+  });
+  it('scans unclosed openers in linear time (2 MB adversarial inputs)', () => {
+    const MB2 = 2 * 1024 * 1024;
+    for (const t of ['text-[x'.repeat(MB2 / 7), 'font-size: '.repeat(MB2 / 11), 'font-size:'.repeat(MB2 / 10) + '\n', '/*'.repeat(MB2 / 2)]) {
+      const t0 = Date.now();
+      auditCss(t);
+      assert.ok(Date.now() - t0 < 2000, `took ${Date.now() - t0} ms`);
+    }
+  });
+});

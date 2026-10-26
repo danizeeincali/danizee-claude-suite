@@ -14,6 +14,7 @@
  * Built from ideas audited by /w-bbs (run 2026-10-26-ai-design-skills); no foreign code.
  */
 import fs from 'fs/promises';
+import { constants as fsc } from 'fs';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
 
@@ -202,31 +203,37 @@ export function assume(input) {
   return { kind, brief, assumptions, warnings };
 }
 
+const PROTECTED = /^\/(dev|proc)(\/|$)/;
+/** Open on the handle (O_RDONLY | O_NONBLOCK), require a regular file via fh.stat(), refuse /dev and /proc, bounded read. */
+async function openRegular(p) {
+  let real = p;
+  try { real = await fs.realpath(p); } catch { /* open reports it */ }
+  if (PROTECTED.test(p) || PROTECTED.test(real)) throw bad(`${p} is not a regular file (paths under /dev and /proc are refused)`);
+  const fh = await fs.open(p, fsc.O_RDONLY | fsc.O_NONBLOCK);
+  try {
+    if (!(await fh.stat()).isFile()) throw bad(`${p} is not a regular file`);
+    const buf = Buffer.alloc(MAX_BYTES + 1);
+    let n = 0;
+    while (n < buf.length) {
+      const { bytesRead } = await fh.read(buf, n, buf.length - n, null);
+      if (!bytesRead) break;
+      n += bytesRead;
+    }
+    if (n > MAX_BYTES) throw bad(`${p} is larger than 8 MiB`);
+    return buf.subarray(0, n);
+  } finally { await fh.close().catch(() => {}); }
+}
+
 async function readInput(flags, io) {
   const cwd = io.cwd || process.cwd();
   let raw;
   if (flags.file !== undefined) {
     const file = path.resolve(cwd, flags.file);
-    let fh;
     try {
-      const st = await fs.stat(file);
-      if (!st.isFile()) throw bad(`${file} is not a regular file`);
-      if (st.size > MAX_BYTES) throw bad(`${file} is larger than 8 MiB`);
-      fh = await fs.open(file, 'r');
-      const buf = Buffer.alloc(MAX_BYTES + 1);
-      let n = 0;
-      while (n < buf.length) {
-        const { bytesRead } = await fh.read(buf, n, buf.length - n, null);
-        if (!bytesRead) break;
-        n += bytesRead;
-      }
-      if (n > MAX_BYTES) throw bad(`${file} is larger than 8 MiB`);
-      raw = buf.subarray(0, n).toString('utf-8');
+      raw = (await openRegular(file)).toString('utf-8');
     } catch (e) {
       if (e instanceof KitExit) throw e;
       throw bad(`cannot read ${file}: ${e.code || e.message}`);
-    } finally {
-      if (fh) await fh.close();
     }
   } else {
     const buf = typeof io.stdinBytes === 'function'
@@ -237,7 +244,7 @@ async function readInput(flags, io) {
   }
   raw = raw.replace(/^\uFEFF/, '');
   if (!raw.trim()) throw bad('no input: pass the brief JSON on stdin or --file');
-  try { return JSON.parse(raw); } catch { throw bad('input is not valid JSON'); }
+  try { return JSON.parse(raw); } catch (e) { throw bad(`input is not valid JSON: ${String(e.message).slice(0, 200)}`); }
 }
 
 export async function run(args, io) {

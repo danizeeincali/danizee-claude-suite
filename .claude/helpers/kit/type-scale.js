@@ -11,6 +11,7 @@
  * Built from ideas audited by /w-bbs (run 2026-10-26-ai-design-skills); no foreign code.
  */
 import fs from 'fs/promises';
+import { constants as fsc } from 'fs';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
 
@@ -25,6 +26,28 @@ export const SCALE = [
 const MAX_BYTES = 8 * 1024 * 1024;
 const EPS = 1e-6;
 const bad = m => new KitExit(m, 1);
+
+const PROTECTED = /^\/(dev|proc)(\/|$)/;
+/** Open on the handle (O_RDONLY | O_NONBLOCK), require a regular file via fh.stat(), refuse /dev and /proc, bounded read. */
+async function openRegular(p) {
+  let real = p;
+  try { real = await fs.realpath(p); } catch { /* open reports it */ }
+  if (PROTECTED.test(p) || PROTECTED.test(real)) throw bad(`${p} is not a regular file (paths under /dev and /proc are refused)`);
+  const fh = await fs.open(p, fsc.O_RDONLY | fsc.O_NONBLOCK);
+  try {
+    if (!(await fh.stat()).isFile()) throw bad(`${p} is not a regular file`);
+    const buf = Buffer.alloc(MAX_BYTES + 1);
+    let n = 0;
+    while (n < buf.length) {
+      const { bytesRead } = await fh.read(buf, n, buf.length - n, null);
+      if (!bytesRead) break;
+      n += bytesRead;
+    }
+    if (n > MAX_BYTES) throw bad(`${p} is larger than 8 MiB`);
+    return buf.subarray(0, n);
+  } finally { await fh.close().catch(() => {}); }
+}
+
 const round = n => Math.round(n * 1000) / 1000;
 
 function checkRoot(rootPx) {
@@ -63,15 +86,15 @@ export function auditCss(text, { rootPx = 16 } = {}) {
   checkRoot(rootPx);
   const src = stripComments(text.replace(/^﻿/, ''));
   const hits = [];
-  const decl = /(^|[;{\s"'])font-size\s*:\s*([^;}\n"']*)/gi;
+  const decl = /(^|[;{\s"'])font-size\s*:\s*([^;}\n"':]*)/gi;
   for (let m; (m = decl.exec(src));) hits.push({ idx: m.index + m[1].length, from: m[2].replace(/!\s*important\s*$/i, '').trim() });
-  const cls = /(?<![\w-])text-\[([^\]\s]*)\]/g;
+  const cls = /(?<![\w-])text-\[([^\]\s[]*)\]/g;
   for (let m; (m = cls.exec(src));) hits.push({ idx: m.index, from: m[0], value: m[1], arbitrary: true });
   hits.sort((a, b) => a.idx - b.idx);
   const changes = [], skipped = [];
-  let onScale = 0, line = 1, pos = 0; // hits are sorted, so count newlines once, incrementally
+  let onScale = 0, line = 1, nl = src.indexOf('\n'); // hits are sorted, so count newlines once, incrementally
   for (const h of hits) {
-    for (let i = src.indexOf('\n', pos); i !== -1 && i < h.idx; i = src.indexOf('\n', pos)) { line++; pos = i + 1; }
+    while (nl !== -1 && nl < h.idx) { line++; nl = src.indexOf('\n', nl + 1); }
     const value = h.arbitrary ? h.value.replace(/^length:/i, '') : h.from;
     if (!/^(\d*\.?\d+)(px|rem)$/i.test(value)) {
       // Arbitrary classes such as text-[#fff] are colours, not font sizes (text-[length:15px] is a size and is handled above); only report var()/calc() forms.
@@ -79,7 +102,12 @@ export function auditCss(text, { rootPx = 16 } = {}) {
       skipped.push({ line, value: h.from, reason: /^(var|calc|clamp|min|max)\(/i.test(value) ? 'dynamic value' : /%$/.test(value) ? 'percentage' : 'not a px or rem size' });
       continue;
     }
-    const r = snap(value, { rootPx });
+    let r;
+    try { r = snap(value, { rootPx }); } catch (e) {
+      if (!(e instanceof KitExit)) throw e;
+      skipped.push({ line, value: h.from, reason: 'zero or out-of-range size' });
+      continue;
+    }
     if (r.changed) changes.push({ line, from: h.from, to_step: r.step, size_px: r.size_px, line_height_px: r.line_height_px });
     else onScale++;
   }
@@ -122,26 +150,14 @@ export async function run(args, io) {
   let buf;
   if (flags.file !== undefined) {
     const file = path.resolve(cwd, flags.file);
-    let fh;
     try {
-      const st = await fs.stat(file);
-      if (!st.isFile()) throw bad(`${file} is not a regular file`);
-      if (st.size > MAX_BYTES) throw bad('input is larger than 8 MiB');
-      fh = await fs.open(file, 'r');
-      const b = Buffer.alloc(MAX_BYTES + 1);
-      let n = 0;
-      for (;;) {
-        const { bytesRead } = await fh.read(b, n, b.length - n, null);
-        if (!bytesRead) break;
-        n += bytesRead;
-        if (n >= b.length) break;
-      }
-      buf = b.subarray(0, n);
+      buf = await openRegular(file);
     } catch (e) {
       if (e instanceof KitExit) throw e;
       throw bad(`cannot read ${file}: ${e.code || e.message}`);
-    } finally { if (fh) await fh.close().catch(() => {}); }
+    }
   } else {
+    if (io.stdinIsTTY) throw bad('no input: pass CSS on stdin or --file (stdin is a terminal)');
     buf = typeof io.stdinBytes === 'function' ? await io.stdinBytes({ maxBytes: MAX_BYTES + 1 }) : Buffer.from(String(await io.stdin()), 'utf-8');
   }
   if (buf.length > MAX_BYTES) throw bad('input is larger than 8 MiB');

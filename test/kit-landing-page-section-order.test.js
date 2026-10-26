@@ -202,3 +202,46 @@ describe('run — input handling', () => {
     assert.equal(PLAN.length, 9);
   });
 });
+
+describe('integration fixes (carried findings)', () => {
+  const rio = (stdin, cwd) => ({ cwd, stdin: async () => stdin, stdinBytes: async () => Buffer.from(stdin, 'utf-8'), stdinIsTTY: false, env: {} });
+  it('gives the same result on stdin and --file when the text opens with an html comment or block', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ls-sniff-'));
+    try {
+      const texts = [
+        '<!-- built by hand -->\n<section id="hero"><a class="btn" href="/a">Go</a></section>\n<section id="benefits">x</section>\n<section id="final-cta"><a class="btn" href="/a">Go</a></section>\n',
+        '<div align="center">\n\n## Hero\n[Go](/a)\n\n## Benefits\nx\n\n## Final CTA\n[Go](/a)\n',
+        '<!-- note -->\n## Hero\n[Go](/a)\n\n## Final CTA\n[Go](/a)\n',
+      ];
+      for (const [i, t] of texts.entries()) {
+        for (const ext of ['md', 'html', 'txt']) {
+          await fs.writeFile(path.join(dir, `t${i}.${ext}`), t);
+          assert.deepEqual(await run(['check', '--file', `t${i}.${ext}`], rio('', dir)), await run(['check'], rio(t, dir)), `text ${i} .${ext}`);
+        }
+      }
+      assert.deepEqual((await run(['check'], rio(texts[0], dir))).found, ['hero', 'benefits', 'final-cta']);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+  it('refuses /proc paths even when they are regular files', async () => {
+    await assert.rejects(run(['check', '--file', '/proc/self/status'], rio('', os.tmpdir())), e => e instanceof KitExit && e.code === 1 && /\/proc/.test(e.message));
+  });
+  it('scans malformed html and markdown in linear time (2 MB adversarial inputs)', () => {
+    const MB2 = 2 * 1024 * 1024;
+    const cases = {
+      'a with unquoted lt': '<a x=' .repeat(MB2 / 5),
+      'unclosed a': '<a href="x">'.repeat(MB2 / 11),
+      'unclosed button with single quote': '<section id="hero">' + '<button \'x '.repeat(MB2 / 12),
+      'script openers': '<script '.repeat(MB2 / 8),
+      'tag openers with lone quote': '<a "'.repeat(MB2 / 4) + '<div \'',
+      'md brackets': '## Hero\n' + '[a('.repeat(MB2 / 3),
+      'md heading spaces': '## Hero' + ' '.repeat(MB2) + 'x',
+    };
+    for (const [name, t] of Object.entries(cases)) {
+      for (const type of ['md', 'html']) {
+        const t0 = Date.now();
+        checkText(t, type);
+        assert.ok(Date.now() - t0 < 2000, `${name} as ${type} took ${Date.now() - t0} ms`);
+      }
+    }
+  });
+});
