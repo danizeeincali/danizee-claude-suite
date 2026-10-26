@@ -46,3 +46,8 @@ animation tasks.
 
 Reach for the `integration` stream: each workflow step runs `node .claude/helpers/kit/cli.js <verb> ...` with a one-line
 "when the task is UI / landing page / animation work" condition, its exit handling, and advisory/blocking as approved.
+
+## Standing input rule (added after round 1)
+
+See "Input reading" in `rules.md`: regular-file `--file` with a bounded read, byte-counted `stdinBytes` cap, empty or
+repeated flags refused, input method never changes the result, and tests for both methods.

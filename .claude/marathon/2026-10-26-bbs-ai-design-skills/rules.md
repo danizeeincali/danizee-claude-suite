@@ -36,3 +36,14 @@ Add a rule the second time something goes wrong.
 - Lines only the human can close are listed once under "Waiting on human" and never retried.
 - A problem the owner finds while using the build is an escape: record it with
   `cli.js record escape` so skipped reviews show their cost.
+
+## Input reading (promoted 2026-10-26 after the same defect in two round-1 reviews)
+
+- Every design verb reads input one way: `--file` must be a regular file (`fs.stat(...).isFile()`, else exit 1 naming
+  it; a FIFO, device or `/dev/stdin` is refused) and is read with a bounded read of at most 8 MiB + 1 bytes; stdin is
+  read with `io.stdinBytes({ maxBytes: MAX + 1 })` and the cap is counted in **bytes**, never `text.length`.
+- An empty flag value (`--file ""`) and a repeated flag are refused with exit 1.
+- Content sniffing never depends on how the input arrived: `--file x.md` and the same text on stdin give the same result
+  (pass `--format` or decide from the text alone, ignoring fenced code).
+- Tests: unit tests drive `stdinBytes` (over-cap with multibyte text, and a happy path); the packaged test drives both
+  stdin and `--file` through the installed CLI.

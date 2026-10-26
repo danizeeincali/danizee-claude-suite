@@ -10,3 +10,7 @@
 {"role":"build","model":"sonnet","stream":"tagline-word-reveal-on-scroll","budget":150000,"event":"spawn","id":"09b088f8-38d3-4aa0-b298-1aebddd331d6","ts":"2026-10-26T20:35:13.621Z"}
 {"role":"build","model":"sonnet","stream":"realistic-sample-content-rules","budget":150000,"event":"spawn","id":"0a539b0a-4bbb-4126-8c1f-9cdef6dcb906","ts":"2026-10-26T20:35:14.234Z"}
 {"role":"build","model":"sonnet","stream":"context-split-showcase-or-website","budget":150000,"event":"spawn","id":"06fe07c9-3a97-48b1-bd9e-0ebabe4830be","ts":"2026-10-26T20:35:14.908Z"}
+{"helper_id":"06fe07c9-3a97-48b1-bd9e-0ebabe4830be","tokens":67847,"outcome":"green","event":"done","id":"bc95e4aa-c428-4c13-9bbc-889c4b4771de","ts":"2026-10-26T20:37:33.345Z"}
+{"helper_id":"24315753-3000-4890-b149-03ecfe914dc4","tokens":82953,"outcome":"green","event":"done","id":"95c38dc4-c61b-4bdd-ad45-dd1737b5de44","ts":"2026-10-26T20:37:50.037Z"}
+{"helper_id":"c44b57b9-d0e3-4e7c-9cac-dbed2f96492d","tokens":64522,"outcome":"green","event":"done","id":"25a58ead-5bc6-409e-80d1-1fcb6d93d9ad","ts":"2026-10-26T20:37:50.908Z"}
+{"helper_id":"09b088f8-38d3-4aa0-b298-1aebddd331d6","tokens":68111,"outcome":"green","event":"done","id":"639c6bb4-3cda-4362-93e9-0008a8dc2276","ts":"2026-10-26T20:37:53.108Z"}
