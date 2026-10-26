@@ -4,11 +4,12 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import zlib from 'zlib';
+import { execFileSync } from 'child_process';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
 import * as fidelity from '../src/lib/kit/fidelity.js';
 import { classify, PRODUCT_JUDGES } from '../src/lib/kit/exit-codes.js';
 
-const { decodePng, encodePng, crc32, compare, run, boxBlur, compositeOnWhite } = fidelity;
+const { decodePng, encodePng, crc32, compare, run, boxBlur, gaussianBlur, compositeOnWhite, MAX_PIXELS } = fidelity;
 const exit = (fn, code = 1, re) => assert.throws(fn, (e) => e instanceof KitExit && e.code === code && (!re || re.test(e.message)));
 const exitAsync = (p, code = 1, re) => assert.rejects(p, (e) => e instanceof KitExit && e.code === code && (!re || re.test(e.message)));
 
@@ -107,7 +108,25 @@ describe('decodePng', () => {
     const ihdr = forged.subarray(16, 29); ihdr.writeUInt32BE(4, 4); forged.writeUInt32BE(crc32(forged.subarray(12, 29)), 29);
     exit(() => decodePng(forged), 1, /pixel data/);
   });
-  it('refuses an image over 50 megapixels before inflating it', () => {
+  it('refuses unknown critical chunks and PLTE / tRNS after the pixel data; unknown ancillary chunks are skipped', () => {
+    const base = { width: 3, height: 3, color: 2, samples: noise(27) };
+    exit(() => decodePng(png({ ...base, extra: [chunk('ABCD', Buffer.from([1, 2]))] })), 1, /unknown critical chunk "ABCD"/);
+    exit(() => decodePng(png({ ...base, extra: [chunk('aBCD', Buffer.alloc(0)), chunk('XxXx', Buffer.alloc(0))] })), 1, /critical chunk "XxXx"/);
+    assert.equal(decodePng(png({ ...base, extra: [chunk('tEXt', Buffer.from('a\0b')), chunk('aBCD', Buffer.alloc(0))] })).width, 3);
+    const afterIdat = (buf, c) => Buffer.concat([buf.subarray(0, buf.length - 12), c, buf.subarray(buf.length - 12)]);
+    exit(() => decodePng(afterIdat(png(base), chunk('tRNS', Buffer.from([0, 1, 0, 2, 0, 3])))), 1, /tRNS chunk after its pixel data/);
+    const pal = { width: 2, height: 1, color: 3, samples: Buffer.from([0, 1]), plte: [1, 2, 3, 4, 5, 6] };
+    assert.equal(decodePng(png(pal)).width, 2);
+    exit(() => decodePng(afterIdat(png(pal), chunk('PLTE', Buffer.from([9, 9, 9, 8, 8, 8])))), 1, /PLTE chunk after its pixel data/);
+    exit(() => decodePng(afterIdat(png(pal), chunk('tRNS', Buffer.from([0])))), 1, /tRNS chunk after/);
+  });
+  it('the pixel cap is 16 megapixels: a 4100x4000 header is refused before inflating', () => {
+    assert.equal(MAX_PIXELS, 16_000_000);
+    const buf = png({ width: 2, height: 2, color: 0, samples: Buffer.alloc(4) });
+    const ihdr = buf.subarray(16, 29); ihdr.writeUInt32BE(4100, 0); ihdr.writeUInt32BE(4000, 4); buf.writeUInt32BE(crc32(buf.subarray(12, 29)), 29);
+    exit(() => decodePng(buf), 1, /16\.4 megapixels; the limit is 16 megapixels/);
+  });
+  it('refuses an image over 64 megapixels (far over the cap) before inflating it', () => {
     const buf = png({ width: 2, height: 2, color: 0, samples: Buffer.alloc(4) });
     const ihdr = buf.subarray(16, 29); ihdr.writeUInt32BE(8000, 0); ihdr.writeUInt32BE(8000, 4); buf.writeUInt32BE(crc32(buf.subarray(12, 29)), 29);
     exit(() => decodePng(buf), 1, /megapixels/);
@@ -153,6 +172,44 @@ describe('scoring', () => {
     const o = boxBlur(src, 5, 1, 1);
     assert.deepEqual([0, 1, 2, 3, 4].map((x) => o[x * 3]), [0, 30, 30, 30, 0]);
     assert.equal(boxBlur(src, 5, 1, 0), src);
+  });
+  const stripes = (period) => decodePng(encodePng(6 * period, 6, rgbOf(6 * period, 6, (x) => { const v = x % period === 1 % period ? 100 - 20 * (period - 1) : 120; return [v, v, v]; }), 3));
+  it('a period-3 stripe pattern (140/20/140 against gray 100) is not erased by the default blur: it fails and is not identical', () => {
+    const ref = img(6, 6, 100);
+    const act = decodePng(encodePng(6, 6, rgbOf(6, 6, (x) => (x % 3 === 1 ? [20, 20, 20] : [140, 140, 140])), 3));
+    const r = compare(ref, act, {});
+    assert.equal(r.identical, false); assert.notEqual(r.psnr, null);
+    assert.equal(r.pass, false); assert.equal(r.exit, 2); assert.ok(r.psnr < 20, `psnr ${r.psnr}`);
+    // a region over the stripes fails too
+    assert.equal(compare(ref, act, { regions: [{ id: 'all', x: 0, y: 0, w: 6, h: 6 }] }).regions[0].pass, false);
+  });
+  it('zero-mean stripes of period 2 to 5 all fail at the default blur', () => {
+    for (const period of [2, 3, 4, 5]) {
+      const act = stripes(period);
+      const r = compare(img(6 * period, 6, 100), act, {});
+      assert.equal(r.identical, false, `period ${period}`); assert.equal(r.pass, false, `period ${period}: psnr ${r.psnr}`);
+    }
+  });
+  it('identical comes from the raw pixels: a difference the heaviest blur flattens is still not identical and has a finite psnr', () => {
+    const ref = img(6, 6, 100);
+    const act = decodePng(encodePng(6, 6, rgbOf(6, 6, (x) => (x % 3 === 1 ? [20, 20, 20] : [140, 140, 140])), 3));
+    const r = compare(ref, act, { blur: 21, regions: [{ id: 'a', x: 0, y: 0, w: 3, h: 3 }] });
+    assert.equal(r.identical, false); assert.equal(typeof r.psnr, 'number'); assert.equal(typeof r.regions[0].psnr, 'number');
+    assert.equal(compare(ref, ref, { blur: 21 }).identical, true);
+  });
+  it('gaussian blur: keeps a uniform image uniform, and a rectangle blur equals the full blur inside it', () => {
+    const W2 = 20, H2 = 15, src = Float32Array.from(noise(W2 * H2 * 3, 9));
+    for (const r of [1, 3, 9]) {
+      const fullB = gaussianBlur(src, W2, H2, r);
+      const rect = { x: 4, y: 5, w: 7, h: 6 };
+      const part = gaussianBlur(src, W2, H2, r, rect);
+      for (let y = 0; y < rect.h; y++) for (let x = 0; x < rect.w; x++) for (let c = 0; c < 3; c++) {
+        assert.ok(Math.abs(part[(y * rect.w + x) * 3 + c] - fullB[((rect.y + y) * W2 + rect.x + x) * 3 + c]) < 1e-3);
+      }
+      const flat = gaussianBlur(new Float32Array(W2 * H2 * 3).fill(77), W2, H2, r);
+      assert.ok(flat.every((v) => Math.abs(v - 77) < 1e-3));
+    }
+    assert.equal(gaussianBlur(src, W2, H2, 0), src);
   });
   it('blur suppresses a 1px offset more than it suppresses a moved block', () => {
     const block = (x0) => decodePng(encodePng(40, 40, rgbOf(40, 40, (x, y) => (x >= x0 && x < x0 + 8 && y >= 16 && y < 24 ? [0, 0, 0] : [255, 255, 255])), 3));
@@ -231,6 +288,13 @@ describe('run', () => {
     await put(d, 'a.png', solid(4, 4, 1)); await fs.mkdir(path.join(d, 'dir'));
     const bad = (args, re) => exitAsync(run(args, { cwd: d }), 1, re);
     await bad(['--ref', 'dir', '--actual', 'a.png'], /not a regular file/);
+    if (process.platform !== 'win32') {
+      // a real FIFO with no writer: refused without hanging (opened O_NONBLOCK, checked on the handle)
+      execFileSync('mkfifo', [path.join(d, 'fifo.png')]);
+      await bad(['--ref', 'fifo.png', '--actual', 'a.png'], /--ref .*fifo\.png is not a regular file/);
+      await bad(['--ref', 'a.png', '--actual', 'a.png', '--regions', 'fifo.png'], /--regions .*not a regular file/);
+      await bad(['--ref', 'a.png', '--actual', '/dev/null'], /--actual \/dev\/null is not a regular file/);
+    }
     await bad(['--ref', '', '--actual', 'a.png'], /non-empty/);
     await bad(['--ref', 'a.png', '--ref', 'a.png', '--actual', 'a.png'], /twice/);
     await bad(['--ref', 'a.png'], /--actual is required/);
@@ -262,6 +326,29 @@ describe('run', () => {
     // overwrites an existing regular file
     await run(['--ref', 'a.png', '--actual', 'a.png', '--diff-out', 'diff.png'], { cwd: d });
     assert.deepEqual([...decodePng(await fs.readFile(path.join(d, 'diff.png'))).rgba.subarray(0, 3)], [0, 0, 0]);
+  }));
+  it('a failing compare keeps exit 2 when --diff-out cannot be written, and reports diff_out_error', () => tmp(async (d) => {
+    await put(d, 'a.png', solid(4, 4, 100)); await put(d, 'c.png', solid(4, 4, 180)); await fs.mkdir(path.join(d, 'adir'));
+    await fs.symlink('nowhere', path.join(d, 'link.png'));
+    for (const target of ['nodir/d.png', 'adir', 'link.png']) {
+      const r = await run(['--ref', 'a.png', '--actual', 'c.png', '--diff-out', target], { cwd: d });
+      assert.equal(r.pass, false, target); assert.equal(r.exit, 2, target);
+      assert.equal(r.diff_out, undefined, target);
+      assert.match(r.diff_out_error, /ENOENT|not a regular file|symlink/, target);
+    }
+    assert.match((await run(['--ref', 'a.png', '--actual', 'c.png', '--diff-out', 'nodir/d.png'], { cwd: d })).diff_out_error, /ENOENT/);
+    // a passing compare with an unwritable target is still exit 1 (it says nothing about the product)
+    await exitAsync(run(['--ref', 'a.png', '--actual', 'a.png', '--diff-out', 'nodir/d.png'], { cwd: d }), 1, /ENOENT/);
+  }));
+  it('--diff-out that is the same file as an input (path or hard link) is refused with exit 1 and the input is untouched', () => tmp(async (d) => {
+    const refBytes = solid(4, 4, 100);
+    await put(d, 'ref.png', refBytes); await put(d, 'off.png', solid(4, 4, 180)); await put(d, 'r.json', '[]');
+    await fs.link(path.join(d, 'ref.png'), path.join(d, 'hard.png'));
+    for (const target of ['ref.png', './ref.png', 'off.png', 'hard.png', 'r.json']) {
+      await exitAsync(run(['--ref', 'ref.png', '--actual', 'off.png', '--regions', 'r.json', '--diff-out', target], { cwd: d }), 1, /same file as --(ref|actual|regions)/);
+    }
+    assert.deepEqual(await fs.readFile(path.join(d, 'ref.png')), refBytes);
+    assert.deepEqual(await fs.readFile(path.join(d, 'r.json'), 'utf-8'), '[]');
   }));
   it('--diff-out refuses a symlink target and leaves what it points at alone', () => tmp(async (d) => {
     await put(d, 'a.png', solid(2, 2, 1)); await put(d, 'victim.txt', 'keep');

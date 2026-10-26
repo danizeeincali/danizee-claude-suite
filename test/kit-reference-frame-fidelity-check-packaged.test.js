@@ -31,6 +31,16 @@ describe('fidelity — packaged end to end', () => {
     assert.equal(pkg.kit(['fidelity', '--ref', 'ref.png']).code, 1);
     w('junk.png', 'not a png');
     assert.equal(pkg.kit(['fidelity', '--ref', 'junk.png', '--actual', 'ref.png']).code, 1);
+    // /dev/stdin (a pipe here, with data waiting) is refused as not a regular file, never read
+    const viaStdin = pkg.kit(['fidelity', '--ref', '/dev/stdin', '--actual', 'ref.png'], solid(100));
+    assert.equal(viaStdin.code, 1);
+    assert.match(viaStdin.err, /--ref \/dev\/stdin is not a regular file/);
+    // a failing frame with an unwritable --diff-out still blocks (exit 2) and says why the picture is missing
+    const noDir = pkg.kit(['fidelity', '--ref', 'ref.png', '--actual', 'off.png', '--diff-out', 'artifacts/d.png']);
+    assert.equal(noDir.code, 2);
+    assert.match(noDir.json.diff_out_error, /ENOENT/);
+    assert.equal(pkg.kit(['fidelity', '--ref', 'ref.png', '--actual', 'off.png', '--diff-out', 'ref.png']).code, 1);
+    assert.equal(fs.readFileSync(path.join(pkg.dir, 'ref.png')).equals(solid(100)), true);
     assert.deepEqual(pkg.egress(), []);
   });
 });
