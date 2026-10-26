@@ -16,6 +16,7 @@
  * Built from ideas audited by /w-bbs (run 2026-10-26-ai-design-skills); no foreign code.
  */
 import fs from 'fs/promises';
+import { constants as fsc } from 'fs';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
 
@@ -105,8 +106,11 @@ export function plan(input) {
 }
 
 async function readBounded(p) {
-  const fh = await fs.open(p, 'r');
+  const fh = await fs.open(p, fsc.O_RDONLY | fsc.O_NONBLOCK);
   try {
+    const st = await fh.stat();
+    if (!st.isFile()) throw bad(`${p} is not a regular file`);
+    if (st.size > MAX_BYTES) throw bad(`${p} is over 8 MiB`);
     const buf = Buffer.alloc(MAX_BYTES + 1);
     let n = 0;
     while (n < buf.length) {
@@ -134,9 +138,10 @@ export async function run(args, io) {
   if (file !== undefined) {
     const p = path.resolve(io.cwd || process.cwd(), file);
     try {
-      const st = await fs.stat(p);
-      if (!st.isFile()) throw bad(`${p} is not a regular file`);
-      if (st.size > MAX_BYTES) throw bad(`${p} is over 8 MiB`);
+      const real = await fs.realpath(p).catch(() => p);
+      for (const q of [p, real]) {
+        if (/^\/(dev|proc)(\/|$)/.test(q)) throw bad(`${p} is under /dev or /proc and is refused`);
+      }
       buf = await readBounded(p);
     } catch (e) {
       if (e instanceof KitExit) throw e;

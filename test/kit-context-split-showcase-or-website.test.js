@@ -214,6 +214,42 @@ describe('run', () => {
   it('--file refuses /dev/stdin', async () => {
     await assert.rejects(run(['--file', '/dev/stdin'], ioNoStdin()), e => e instanceof KitExit && e.code === 1);
   });
+  it('--file refuses /dev/stdin, /dev/fd/N and /proc/self/fd/N even when they resolve to a regular file', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mp-'));
+    let fh;
+    try {
+      const f = path.join(dir, 'plan.json');
+      await fs.writeFile(f, JSON.stringify(base()));
+      fh = await fs.open(f, 'r');
+      for (const p of [`/proc/self/fd/${fh.fd}`, `/dev/fd/${fh.fd}`]) {
+        await assert.rejects(run(['--file', p], ioNoStdin()), e => e instanceof KitExit && e.code === 1 && /\/dev or \/proc/.test(e.message), p);
+      }
+      await fs.symlink('/dev/stdin', path.join(dir, 'link'));
+      await assert.rejects(run(['--file', 'link'], ioNoStdin(dir)), e => e instanceof KitExit && e.code === 1);
+      // packaged-style: stdin redirected from a regular file must still be refused
+      const { spawnSync } = await import('child_process');
+      const inFd = (await fs.open(f, 'r'));
+      try {
+        const r = spawnSync(process.execPath, ['.claude/helpers/kit/cli.js', 'motion-plan', '--file', '/dev/stdin'], { stdio: [inFd.fd, 'pipe', 'pipe'], encoding: 'utf-8' });
+        assert.equal(r.status, 1);
+      } finally { await inFd.close(); }
+    } finally { await fh?.close(); await fs.rm(dir, { recursive: true, force: true }); }
+  });
+  it('--file opens O_RDONLY|O_NONBLOCK and checks the opened handle (a FIFO is refused without hanging)', async () => {
+    const { constants } = await import('fs');
+    const { execFileSync: ex } = await import('child_process');
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mp-'));
+    const realOpen = fs.open; const flags = [];
+    try {
+      ex('mkfifo', [path.join(dir, 'p.json')]);
+      await fs.writeFile(path.join(dir, 'ok.json'), JSON.stringify(base()));
+      fs.open = (p, fl, ...r) => { flags.push(fl); return realOpen(p, (typeof fl === 'number' ? fl : constants.O_RDONLY) | constants.O_NONBLOCK, ...r); };
+      await assert.rejects(run(['--file', 'p.json'], ioNoStdin(dir)), e => e instanceof KitExit && e.code === 1 && /regular file/.test(e.message));
+      await run(['--file', 'ok.json'], { ...ioNoStdin(dir), stdout: { write() {} } }).catch(() => {});
+      assert.ok(flags.length >= 2);
+      for (const fl of flags) assert.equal(typeof fl, 'number'), assert.ok(fl & constants.O_NONBLOCK, 'O_NONBLOCK'), assert.equal(fl & 3, constants.O_RDONLY);
+    } finally { fs.open = realOpen; await fs.rm(dir, { recursive: true, force: true }); }
+  });
   it('--file refuses a file over 8 MiB, including one that reads past the cap', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mp-'));
     try {
