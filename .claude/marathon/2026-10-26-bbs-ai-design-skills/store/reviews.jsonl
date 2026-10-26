@@ -8,3 +8,5 @@
 {"stream":"realistic-sample-content-rules","counts":{"high":0,"medium":4,"low":1},"angle":"r1","tokens":82806,"pass":false,"round":1,"commit":"c6775eb","id":"32b13054-4146-4aec-9625-86d072367f9e","ts":"2026-10-26T20:44:21.091Z"}
 {"stream":"realistic-sample-content-rules","counts":{"high":0,"medium":2,"low":2},"angle":"r2","tokens":70104,"pass":true,"round":2,"commit":"3859aac","id":"29253e9e-3d40-44f5-bef0-abd9129c8bab","ts":"2026-10-26T20:52:47.204Z"}
 {"stream":"reference-frame-fidelity-check","counts":{"high":2,"medium":2,"low":4},"angle":"r1","tokens":83663,"pass":false,"round":1,"commit":"322a09c","id":"7aac4aeb-9458-4d0f-96fd-4d5ae5f805b5","ts":"2026-10-26T20:54:07.363Z"}
+{"stream":"layer-export-placement-math","counts":{"high":0,"medium":1,"low":2},"angle":"r1","tokens":79193,"pass":true,"round":1,"commit":"227cf7d","id":"53b90ef0-3c57-48ba-89b2-34e5c3eef2e6","ts":"2026-10-26T20:55:00.977Z"}
+{"stream":"context-split-showcase-or-website","counts":{"high":0,"medium":1,"low":1},"angle":"r2","tokens":70782,"pass":true,"round":2,"commit":"498ec58","id":"55588525-a6d1-476c-b849-a30a5f588e17","ts":"2026-10-26T20:57:41.197Z"}

@@ -56,3 +56,8 @@
 {"helper_id":"fce91f9a-8a71-486b-aa9e-22398c4bbbe3","tokens":75000,"outcome":"green","event":"done","id":"d8965a70-a2da-4915-abf4-514adb72a70e","ts":"2026-10-26T20:54:11.987Z"}
 {"role":"fix","model":"opus","stream":"reference-frame-fidelity-check","budget":150000,"event":"spawn","id":"db54213b-ce8a-40a3-957e-c8c9726cfc27","ts":"2026-10-26T20:54:26.241Z"}
 {"role":"review","model":"opus","stream":"sacred-background-preservation","budget":150000,"event":"spawn","id":"64bb796d-f36b-47be-8cbd-a89880e8a188","ts":"2026-10-26T20:54:26.607Z"}
+{"helper_id":"f1de710f-a5d8-49e4-aed9-9888fe13da12","tokens":79193,"outcome":"green","event":"done","id":"fe1b4e1f-cf8e-4b45-8842-bf4ae234f7d7","ts":"2026-10-26T20:55:01.750Z"}
+{"helper_id":"d7bfd30b-ad03-4707-a2ab-59e5775cac20","tokens":82949,"outcome":"green","event":"done","id":"87bb86af-1082-495b-a555-e296181611bc","ts":"2026-10-26T20:57:24.898Z"}
+{"role":"review","model":"opus","stream":"entrance-choreography-kinds","budget":150000,"event":"spawn","id":"44b59b4f-dfed-4c5f-a1a2-de2236a535db","ts":"2026-10-26T20:57:29.831Z"}
+{"role":"fix","model":"sonnet","stream":"layer-export-placement-math","budget":150000,"event":"spawn","id":"be79accc-0d8b-44b1-84bd-b6c099c4250b","ts":"2026-10-26T20:57:30.358Z"}
+{"helper_id":"6dd71a93-8096-48a4-b99c-4112ef59308b","tokens":70782,"outcome":"green","event":"done","id":"fe3ec3a6-a007-490f-a780-3fd3c2f24992","ts":"2026-10-26T20:57:41.998Z"}
