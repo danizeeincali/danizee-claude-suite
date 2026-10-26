@@ -117,10 +117,10 @@ describe('bg-fill guard', () => {
     assert.match(b.violations[0].why, /sibling/);
     assert.equal(g('.bg { filter: grayscale(1); }').exit, 2);
     assert.equal(g('.bg { filter: none; }').pass, true);
-    assert.equal(g('.panel { backdrop-filter: blur(8px); }').pass, true);
+    assert.equal(g('.bg { background: url(a.jpg); }\n'+'.panel { backdrop-filter: blur(8px); }').pass, true);
   });
   it('passes when an unrelated selector animates its background', () => {
-    const css = '@keyframes pulse { to { background-color: red; background-position: 5px 0; } }\n.btn { animation: pulse 1s; transition: background 0.3s; }\n.btn:hover { background: blue; }\n.bg-two:hover { background: red; }\n.bgx { filter: blur(2px); }';
+    const css = '.bg { background: url(a.jpg); }\n@keyframes pulse { to { background-color: red; background-position: 5px 0; } }\n.btn { animation: pulse 1s; transition: background 0.3s; }\n.btn:hover { background: blue; }\n.bg-two:hover { background: red; }\n.bgx { filter: blur(2px); }';
     assert.equal(g(css).pass, true);
   });
   it('ignores comments and strings and keeps line numbers true', () => {
@@ -135,13 +135,14 @@ describe('bg-fill guard', () => {
     assert.equal(g('.hero { .bg { background-image: url(a.jpg); &:hover { background: black; } } }').exit, 2);
     assert.equal(g('.bg.dark { background: #111; }').exit, 2);
     assert.equal(g('body .bg { background-image: url(a.jpg); }').pass, true);
-    assert.equal(g('.bg::before { filter: blur(3px); }').pass, true);
+    assert.equal(g('.bg { background: url(a.jpg); }\n'+'.bg::before { filter: blur(3px); }').pass, true);
     assert.equal(g('.a { background: red; }', '.a, .bg').pass, true);
     assert.equal(g('.bg { filter: blur(3px); }', '#none, .bg').exit, 2);
   });
   it('is exit 0 or 2, never other; bad selector is exit 1', async () => {
     for (const css of ['', '.bg {', '}}}', '@media', '.bg { background: ', '/* unterminated', '"unterminated']) {
-      const r = g(css);
+      let r;
+      try { r = g(css); } catch (e) { assert.ok(e instanceof KitExit && e.code === 1 && /no rule selects/.test(e.message), css); continue; }
       assert.ok(r.exit === 0 || r.exit === 2);
     }
     await rejects1(run(['guard'], stdin('.bg{}')));
@@ -245,8 +246,8 @@ describe('bg-fill guard — review r1', () => {
     assert.equal(g('.page > .hero:hover { background: none; }', t).exit, 2);
     assert.equal(g('body .page .hero:focus { background-position: 1px 0; }', t).exit, 2);
     assert.equal(g('div.page .hero:hover { background: none; }', t).exit, 2);
-    assert.equal(g('.subpage .hero:hover { background: none; }', 'page .hero').pass, true);
-    assert.equal(g('.other .hero:hover { background: none; }', t).pass, true);
+    assert.throws(() => g('.subpage .hero:hover { background: none; }', 'page .hero'), (e) => e instanceof KitExit && e.code === 1 && /no rule selects/.test(e.message));
+    assert.throws(() => g('.other .hero:hover { background: none; }', t), (e) => e instanceof KitExit && e.code === 1 && /no rule selects/.test(e.message));
     assert.equal(g('.page .hero { background: url(a.jpg); }', t).pass, true);
   });
   it('matches quoted @keyframes names and animation names', () => {
@@ -332,5 +333,49 @@ describe('bg-fill --file is checked on the open handle', () => {
       assert.equal(r.exit, 2);
       assert.equal(r.violations[0].property, 'filter');
     } finally { fsp.stat = realStat; clearTimeout(unblock); }
+  });
+});
+
+describe('bg-fill — review r2 fixes', () => {
+  const exit1 = (re) => (e) => e instanceof KitExit && e.code === 1 && re.test(e.message);
+  it('accepts a child combinator and a backslash escape in --selector, in guard and css', async () => {
+    const r = guard('.page > .hero { background: url(a.jpg); }\n.page > .hero:hover { background: #000; }', '.page > .hero');
+    assert.equal(r.exit, 2);
+    const e = guard('.md\\:bg { background: url(a.jpg); }\n.md\\:bg:hover { background: #000; }', '.md\\:bg');
+    assert.equal(e.exit, 2);
+    assert.equal(guard('.md\\:bg { background: url(a.jpg); }', '.md\\:bg').pass, true);
+    assert.match(cssFor({ ...base, selector: '.page > .hero', scale_mode: 'FILL' }).raw_css, /^\.page > \.hero \{/);
+    assert.match(cssFor({ ...base, selector: '.md\\:bg', scale_mode: 'FILL' }).raw_css, /^\.md\\:bg \{/);
+    const cli = await run(['guard', '--selector', '.page > .hero'], stdin('.page > .hero { filter: blur(1px); }'));
+    assert.equal(cli.exit, 2);
+    for (const bad of ['.a { x', '.a}', '.a<b', '.a;b', '.a\nb']) assert.throws(() => guard('.a{}', bad), exit1(/cannot appear/));
+  });
+  it('guard exits 1 when no rule selects the target (typo or malformed selector)', async () => {
+    const css = '.bg { background: url(a.jpg); }\n.bg:hover { background: #000; }';
+    assert.throws(() => guard(css, '.bgg'), exit1(/no rule selects \.bgg/));
+    assert.throws(() => guard(css, '.bg >'), exit1(/no rule selects/));
+    await rejects1(run(['guard', '--selector', '.bgg'], stdin(css)));
+    assert.equal(guard(css, '.bg').exit, 2);
+  });
+  it('refuses comment markers in a selector so raw_css cannot become a comment', () => {
+    assert.throws(() => cssFor({ ...base, selector: '.bg /*', scale_mode: 'FILL' }), exit1(/comment/));
+    assert.throws(() => cssFor({ ...base, selector: '.bg */', scale_mode: 'FILL' }), exit1(/comment/));
+    assert.throws(() => guard('.bg{}', '.bg /*'), exit1(/comment/));
+    assert.ok(cssFor({ ...base, selector: '.a /x', scale_mode: 'FILL' }).raw_css.startsWith('.a /x {'));
+  });
+  it('css refuses a non-finite or exponent length with exit 1 naming the field', () => {
+    assert.throws(() => cssFor({ ...base, scale_mode: 'TILE', image: { w: 1e300, h: 1 }, tile_scale: 1e10 }), exit1(/image\.w \* tile_scale/));
+    assert.throws(() => cssFor({ ...base, scale_mode: 'CROP', container: { w: 1e30, h: 5 }, transform: [[1, 0, 0], [0, 1, 0]] }), exit1(/container\.w/));
+    assert.throws(() => cssFor({ ...base, scale_mode: 'CROP', transform: [[1e-300, 0, 1e300], [0, 1, 0]] }), exit1(/out of range/));
+    assert.equal(cssFor({ ...base, scale_mode: 'TILE', tile_scale: 2 }).css['background-size'], '800px 600px');
+  });
+  it('sees background swaps behind :is() and :where() wrappers', () => {
+    const img = '.bg { background: url(a.jpg); }\n';
+    for (const sel of [':is(.bg):hover', ':where(.bg):hover', ':is(.x, .bg):focus', '.page :is(.bg):hover', ':is(:where(.bg)):hover']) {
+      const r = guard(img + sel + ' { background: #000; }', sel.startsWith('.page') ? '.page .bg' : '.bg');
+      assert.equal(r.exit, 2, sel);
+    }
+    assert.equal(guard(img + ':is(.x, .y):hover { background: #000; }', '.bg').pass, true);
+    assert.equal(guard(img + ':is(.bg) { background: url(a.jpg); }', '.bg').pass, true);
   });
 });

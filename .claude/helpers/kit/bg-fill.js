@@ -40,7 +40,11 @@ export const SCALE_MODES = Object.freeze(['FILL', 'FIT', 'TILE', 'STRETCH', 'CRO
 // ---------- css generation ----------
 
 const EPS = 1e-9;
-const num = (n) => String(Math.round(n * 10000) / 10000);
+const num = (n, field = 'length') => {
+  const r = Math.round(n * 10000) / 10000;
+  if (!Number.isFinite(r) || Math.abs(r) >= 1e21) throw bad(`${field} is out of range: the computed CSS length is not a finite number below 1e21`);
+  return String(r);
+};
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
@@ -54,7 +58,8 @@ function dims(v, field) {
 
 export function checkSelector(sel, field = 'selector') {
   if (typeof sel !== 'string' || !sel.trim()) throw bad(`${field} must be a non-empty string`);
-  if (/[{};<>\\\u0000-\u001f]/.test(sel)) throw bad(`${field} contains a character that cannot appear in a selector`);
+  if (/[{};<\u0000-\u001f]/.test(sel)) throw bad(`${field} contains a character that cannot appear in a selector`);
+  if (sel.includes('/*') || sel.includes('*/')) throw bad(`${field} must not contain a comment marker (/* or */)`);
   return sel.trim();
 }
 
@@ -76,7 +81,7 @@ export function cssFor(input) {
   else if (mode === 'TILE') {
     const s = input.tile_scale === undefined ? 1 : input.tile_scale;
     if (!isNum(s) || s <= 0) throw bad('tile_scale must be a positive number');
-    size = `${num(image.w * s)}px ${num(image.h * s)}px`;
+    size = `${num(image.w * s, 'image.w * tile_scale')}px ${num(image.h * s, 'image.h * tile_scale')}px`;
     position = '0 0';
     repeat = 'repeat';
   } else {
@@ -86,8 +91,8 @@ export function cssFor(input) {
     if (Math.abs(b) > EPS || Math.abs(c) > EPS) throw bad('transform is rotated or skewed (b and c must be 0); it cannot be written as CSS background sizing');
     if (a <= EPS || d <= EPS) throw bad('transform scale a and d must be positive (a flipped or degenerate crop is not supported)');
     const w = container.w / a, h = container.h / d;
-    size = `${num(w)}px ${num(h)}px`;
-    position = `${num(-tx * w + 0)}px ${num(-ty * h + 0)}px`;
+    size = `${num(w, 'container.w / a')}px ${num(h, 'container.h / d')}px`;
+    position = `${num(-tx * w + 0, 'transform tx * width')}px ${num(-ty * h + 0, 'transform ty * height')}px`;
   }
   const css = { 'background-size': size, 'background-position': position, 'background-repeat': repeat };
   const raw_css = `${selector} {\n${Object.entries(css).map(([k, v]) => `  ${k}: ${v};`).join('\n')}\n}\n`;
@@ -308,7 +313,7 @@ function covers(cand, want) {
   return rest;
 }
 
-const PSEUDO_CLASS = /(^|[^:]):(?!root\b)[a-z-]+/i;
+const PSEUDO_CLASS = /(^|[^:\\]):(?!root\b)[a-z-]+/i;
 
 /**
  * null when `part` does not select the target element; else { conditional, qualified }.
@@ -316,6 +321,28 @@ const PSEUDO_CLASS = /(^|[^:]):(?!root\b)[a-z-]+/i;
  * a rule whose ancestors end with the target's ancestors applies (qualified when it adds ancestors or qualifiers), and so
  * does a rule whose ancestors are a less specific subsequence of the target's (e.g. `.hero` or `.page > .hero` for `.page .hero`).
  */
+/** Expand :is(...) / :where(...) at the start of a compound into its arguments, so `:is(.bg):hover` is judged as `.bg:hover`. */
+export function expandIs(sel, budget = { n: MAX_SELECTORS_PER_RULE }) {
+  const m = /(^|[\s>+~])(:(?:is|where)\()/i.exec(sel);
+  if (!m) return [sel];
+  const open = m.index + m[1].length + m[2].length - 1;
+  let depth = 0, close = -1;
+  for (let i = open; i < sel.length; i++) {
+    if (sel[i] === '(') depth++;
+    else if (sel[i] === ')' && --depth === 0) { close = i; break; }
+  }
+  if (close < 0) return [sel];
+  const before = sel.slice(0, m.index + m[1].length), after = sel.slice(close + 1);
+  const out = [];
+  for (const arg of splitTop(sel.slice(open + 1, close))) {
+    for (const e of expandIs(before + arg + after, budget)) {
+      if (--budget.n < 0) throw bad(`:is()/:where() expands to more than ${MAX_SELECTORS_PER_RULE} selectors`);
+      out.push(e);
+    }
+  }
+  return out;
+}
+
 export function matchSelector(part, target) {
   const p = normSel(part), t = normSel(target);
   if (!p || !t) return null;
@@ -391,7 +418,7 @@ export function guard(cssText, selector) {
   const applied = [];
   for (const rule of rules) {
     const hits = [];
-    for (const s of rule.selectors) for (const t of targets) { const m = matchSelector(s, t); if (m) hits.push(m); }
+    for (const s0 of rule.selectors) for (const s of expandIs(s0)) for (const t of targets) { const m = matchSelector(s, t); if (m) hits.push(m); }
     if (!hits.length) continue;
     const conditionalAt = rule.atStack.length > 0;
     const conditional = conditionalAt || hits.every(h => h.conditional);
@@ -399,6 +426,7 @@ export function guard(cssText, selector) {
     const bg = rule.decls.filter(d => BG_PROPS.has(unprefixed(d.prop)));
     applied.push({ rule, conditional, qualified, bg, where: conditionalAt ? `inside ${rule.atStack[rule.atStack.length - 1]}` : 'in a state or qualified rule' });
   }
+  if (!applied.length) throw bad(`no rule selects ${target}`);
   // The design is the first unconditional rule that sets the background, preferring one without extra ancestors.
   const design = applied.find(a => !a.conditional && !a.qualified && a.bg.length) || applied.find(a => !a.conditional && a.bg.length);
   const designValues = new Map();
