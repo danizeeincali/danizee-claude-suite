@@ -1,3 +1,6 @@
 {"key":"packaged_intake-batch-before-design","value":true,"id":"38a5632f-b15c-41db-b394-c224cbcdff06","ts":"2026-10-26T20:44:25.741Z"}
 {"key":"egress_zero_intake-batch-before-design","value":true,"id":"35a1b948-b0fe-49e7-b289-6731144c9186","ts":"2026-10-26T20:44:25.906Z"}
 {"key":"callers_intake-batch-before-design","value":0,"id":"225886f2-517f-46ff-b6bc-8345115a26f4","ts":"2026-10-26T20:44:26.053Z"}
+{"key":"packaged_landing-page-section-order","value":true,"id":"779a16de-96dc-4243-9cc9-38db8f3b2564","ts":"2026-10-26T20:45:16.839Z"}
+{"key":"egress_zero_landing-page-section-order","value":true,"id":"0685f6f4-2a09-4af8-b3de-ef7fd2962db1","ts":"2026-10-26T20:45:16.970Z"}
+{"key":"callers_landing-page-section-order","value":0,"id":"93410644-727a-4393-b091-6cb850f378e5","ts":"2026-10-26T20:45:17.078Z"}

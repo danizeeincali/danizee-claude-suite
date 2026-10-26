@@ -21,12 +21,12 @@
     },
     {
       "name": "landing-page-section-order",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/landing-page-section-order.md",
-      "next": "build the verb per contracts.md, tests green",
+      "next": "2 medium findings from r2 carried to integration (carried.md)",
       "tasks": [],
       "isolation": "/home/claude/danizee-claude-suite-landing-page-section-order",
-      "phase": "build",
+      "phase": "done",
       "base": "36c97933e6aece2e0c7d568f88ca384b53a86098"
     },
     {

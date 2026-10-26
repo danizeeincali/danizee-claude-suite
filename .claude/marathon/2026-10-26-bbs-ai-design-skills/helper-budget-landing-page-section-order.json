@@ -11,9 +11,9 @@
     "cost": 256412
   },
   "clock": {
-    "depth": 1,
-    "startedAt": 1793047487161,
-    "elapsedMs": 584430
+    "depth": 0,
+    "startedAt": null,
+    "elapsedMs": 611391
   },
   "helpers": {
     "5f13d623-dd0a-4622-afc1-fd65ea7dd6a9": {
@@ -70,7 +70,7 @@
       "ok": 0,
       "failed": 0,
       "grants": 0,
-      "skipped": 1,
+      "skipped": 2,
       "reserved": {
         "steps": 0,
         "cost": 0
