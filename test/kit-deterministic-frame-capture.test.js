@@ -394,3 +394,70 @@ try {
     });
   });
 }
+
+describe('frame-capture capture review r2', () => {
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fc-r2-')); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+  const cap = (pw, out, extra = []) => run(['capture', '--url', 'file:///tmp/x.html', '--out', out, '--fps', '30', ...extra], { cwd: dir, resolvePlaywright: async () => pw });
+  const exists = (p) => fs.stat(p).then(() => true, () => false);
+
+  it('HTTP error status exits 1 and writes nothing', async () => {
+    const { pw } = fakePlaywright();
+    const orig = pw.chromium.launch;
+    pw.chromium.launch = async (o) => {
+      const b = await orig(o);
+      const nc = b.newContext;
+      b.newContext = async (o2) => { const c = await nc(o2); const np = c.newPage; c.newPage = async () => { const pg = await np(); pg.goto = async () => ({ ok: () => false, status: () => 404 }); return pg; }; return c; };
+      return b;
+    };
+    const out = path.join(dir, 'http404');
+    assert.equal(await code(cap(pw, out, ['--frames', '2'])), 1);
+    assert.equal(await exists(out), false);
+  });
+
+  it('rejected goto is a one-line KitExit 1 naming the URL and leaves no --out', async () => {
+    const { pw } = fakePlaywright();
+    const orig = pw.chromium.launch;
+    pw.chromium.launch = async (o) => {
+      const b = await orig(o);
+      const nc = b.newContext;
+      b.newContext = async (o2) => { const c = await nc(o2); const np = c.newPage; c.newPage = async () => { const pg = await np(); pg.goto = async () => { throw new Error('net::ERR_FILE_NOT_FOUND\nat x'); }; return pg; }; return c; };
+      return b;
+    };
+    const out = path.join(dir, 'gotofail');
+    await assert.rejects(cap(pw, out, ['--frames', '2']), (e) => e instanceof KitExit && e.code === 1 && e.message.includes('file:///tmp/x.html') && !e.message.includes('\n'));
+    assert.equal(await exists(out), false);
+  });
+
+  it('a failed second capture leaves no manifest and no old frames', async () => {
+    const out = path.join(dir, 'partial');
+    await cap(fakePlaywright().pw, out, ['--frames', '3']);
+    assert.ok(await exists(path.join(out, 'manifest.json')));
+    const { pw } = fakePlaywright();
+    const orig = pw.chromium.launch;
+    pw.chromium.launch = async (o) => {
+      const b = await orig(o);
+      const nc = b.newContext;
+      b.newContext = async (o2) => { const c = await nc(o2); const np = c.newPage; c.newPage = async () => { const pg = await np(); let n = 0; pg.screenshot = async () => { if (++n === 2) throw new Error('crash'); return Buffer.from('NEW'); }; return pg; }; return c; };
+      return b;
+    };
+    await assert.rejects(cap(pw, out, ['--frames', '3']));
+    assert.equal(await exists(path.join(out, 'manifest.json')), false);
+    assert.equal(await exists(path.join(out, 'frame-00003.png')), false);
+  });
+
+  it('old playwright without routeWebSocket or page.clock is exit 4', async () => {
+    const a = fakePlaywright();
+    const o1 = a.pw.chromium.launch;
+    a.pw.chromium.launch = async (o) => { const b = await o1(o); const nc = b.newContext; b.newContext = async (x) => { const c = await nc(x); delete c.routeWebSocket; return c; }; return b; };
+    const r1 = await cap(a.pw, path.join(dir, 'old1'), ['--frames', '2']);
+    assert.deepEqual([r1.captured, r1.exit, r1.reason], [0, 4, 'playwright >= 1.48 required']);
+    const b = fakePlaywright();
+    const o2 = b.pw.chromium.launch;
+    b.pw.chromium.launch = async (o) => { const br = await o2(o); const nc = br.newContext; br.newContext = async (x) => { const c = await nc(x); const np = c.newPage; c.newPage = async () => { const pg = await np(); delete pg.clock; return pg; }; return c; }; return br; };
+    const r2 = await cap(b.pw, path.join(dir, 'old2'), ['--frames', '2']);
+    assert.deepEqual([r2.captured, r2.exit], [0, 4]);
+    assert.equal(b.rec.closed, true);
+  });
+});

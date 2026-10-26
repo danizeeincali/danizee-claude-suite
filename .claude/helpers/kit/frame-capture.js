@@ -215,6 +215,8 @@ async function writeAtomic(dest, data) {
   }
 }
 
+const OLD_PLAYWRIGHT = 'playwright >= 1.48 required';
+
 export async function capture(o, io = {}) {
   const href = checkUrl(o.url);
   const pw = await (io.resolvePlaywright ? io.resolvePlaywright(io.cwd) : resolvePlaywright(io.cwd));
@@ -223,7 +225,6 @@ export async function capture(o, io = {}) {
   const lst = await fs.lstat(out).catch(() => null);
   if (lst && lst.isSymbolicLink()) throw bad(`--out ${o.out} is a symlink and is refused`);
   if (lst && !lst.isDirectory()) throw bad(`--out ${o.out} is not a directory`);
-  await fs.mkdir(out, { recursive: true });
   const p = plan(o);
   let browser;
   try {
@@ -231,12 +232,22 @@ export async function capture(o, io = {}) {
       return { captured: 0, reason: `playwright browser could not start: ${String(e && e.message).split('\n')[0]}`, exit: 4 };
     }
     const ctx = await browser.newContext({ viewport: { width: o.width, height: o.height }, deviceScaleFactor: o.scale, serviceWorkers: 'block' });
+    if (typeof ctx.routeWebSocket !== 'function') return { captured: 0, reason: OLD_PLAYWRIGHT, exit: 4 };
     await ctx.route('**/*', routeRequest);
     await ctx.routeWebSocket(/.*/, routeSocket);
     const page = await ctx.newPage();
+    if (!page.clock) return { captured: 0, reason: OLD_PLAYWRIGHT, exit: 4 };
     await page.clock.install({ time: 0 });
     await page.clock.pauseAt(1000);
-    await page.goto(href);
+    let resp;
+    try { resp = await page.goto(href); } catch (e) {
+      throw bad(`could not load ${href}: ${String(e && e.message).split('\n')[0]}`);
+    }
+    if (resp && !resp.ok()) throw bad(`page returned HTTP ${resp.status()}`);
+    await fs.mkdir(out, { recursive: true });
+    // A run that fails partway must not leave an earlier manifest beside a mix of frames.
+    await fs.rm(path.join(out, 'manifest.json'), { force: true });
+    for (const n of await fs.readdir(out)) if (/^frame-\d+\.png$/.test(n)) await fs.rm(path.join(out, n), { force: true });
     const files = [];
     const total = o.warmup + o.frames;
     for (let g = 0; g < total; g++) {
