@@ -41,3 +41,13 @@
 {"role":"review","model":"opus","stream":"context-split-showcase-or-website","budget":150000,"event":"spawn","id":"6dd71a93-8096-48a4-b99c-4112ef59308b","ts":"2026-10-26T20:44:46.571Z"}
 {"role":"fix","model":"sonnet","stream":"landing-page-section-order","budget":150000,"event":"spawn","id":"7a8a3037-9078-4f65-8118-457a7179d468","ts":"2026-10-26T20:44:46.941Z"}
 {"helper_id":"7a8a3037-9078-4f65-8118-457a7179d468","tokens":0,"outcome":"red","event":"done","id":"35f50d6d-b311-44a5-84ba-ef1579888ffc","ts":"2026-10-26T20:45:14.213Z"}
+{"role":"fix","model":"sonnet","stream":"realistic-sample-content-rules","budget":150000,"event":"spawn","id":"0af8635b-30dc-4cce-9832-b49039edccc3","ts":"2026-10-26T20:45:28.926Z"}
+{"helper_id":"0169896a-5898-4904-bb82-f21e9ed22480","tokens":93591,"outcome":"green","event":"done","id":"e8441d37-c7a4-4c67-a968-cf423fbe4a40","ts":"2026-10-26T20:47:20.286Z"}
+{"role":"review","model":"opus","stream":"reference-frame-fidelity-check","budget":150000,"event":"spawn","id":"6eb23a88-94dc-442a-b9a2-9ac44789b4e7","ts":"2026-10-26T20:47:24.332Z"}
+{"role":"build","model":"sonnet","stream":"layer-export-placement-math","budget":150000,"event":"spawn","id":"83057a25-edd4-4d93-a261-0b26dbbe1665","ts":"2026-10-26T20:47:25.066Z"}
+{"role":"build","model":"sonnet","stream":"sacred-background-preservation","budget":150000,"event":"spawn","id":"fce91f9a-8a71-486b-aa9e-22398c4bbbe3","ts":"2026-10-26T20:47:25.805Z"}
+{"helper_id":"0af8635b-30dc-4cce-9832-b49039edccc3","tokens":65164,"outcome":"green","event":"done","id":"ad46ada0-e8f8-4e70-a80b-1dc097e4353b","ts":"2026-10-26T20:47:43.373Z"}
+{"role":"review","model":"opus","stream":"realistic-sample-content-rules","budget":150000,"event":"spawn","id":"ec9355ec-6183-4468-99e3-be7458963ff2","ts":"2026-10-26T20:47:46.789Z"}
+{"helper_id":"83057a25-edd4-4d93-a261-0b26dbbe1665","tokens":74803,"outcome":"green","event":"done","id":"c160ded3-fab2-43d0-925f-262ea493d71d","ts":"2026-10-26T20:52:30.540Z"}
+{"role":"build","model":"sonnet","stream":"entrance-choreography-kinds","budget":150000,"event":"spawn","id":"d7bfd30b-ad03-4707-a2ab-59e5775cac20","ts":"2026-10-26T20:52:36.015Z"}
+{"role":"review","model":"opus","stream":"layer-export-placement-math","budget":150000,"event":"spawn","id":"f1de710f-a5d8-49e4-aed9-9888fe13da12","ts":"2026-10-26T20:52:36.421Z"}

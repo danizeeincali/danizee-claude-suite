@@ -81,24 +81,33 @@
     },
     {
       "name": "layer-export-placement-math",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/layer-export-placement-math.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "build the verb per contracts.md, tests green",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-layer-export-placement-math",
+      "phase": "build",
+      "base": "f2463f4372ffe152a0225e19ac8c873d44d468f2"
     },
     {
       "name": "sacred-background-preservation",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/sacred-background-preservation.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "build the verb per contracts.md, tests green",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-sacred-background-preservation",
+      "phase": "build",
+      "base": "f2463f4372ffe152a0225e19ac8c873d44d468f2"
     },
     {
       "name": "entrance-choreography-kinds",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/entrance-choreography-kinds.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "build the verb per contracts.md, tests green",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-entrance-choreography-kinds",
+      "phase": "build",
+      "base": "f2463f4372ffe152a0225e19ac8c873d44d468f2"
     },
     {
       "name": "keyframe-track-story-engine",

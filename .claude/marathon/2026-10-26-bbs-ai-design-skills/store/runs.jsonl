@@ -12,3 +12,7 @@
 {"kind":"unit","status":"green","stream":"type-scale-snapping-to-tailwind-steps","commit":"9295885","id":"865a8745-f7ae-4723-934e-cc6fff01cb1a","ts":"2026-10-26T20:43:22.800Z"}
 {"kind":"unit","status":"green","stream":"context-split-showcase-or-website","commit":"498ec58","id":"a7aff978-921e-44c4-8a27-73f8c86cb47b","ts":"2026-10-26T20:44:01.975Z"}
 {"kind":"unit","status":"green","stream":"context-split-showcase-or-website","commit":"498ec58","id":"f5d1d7e1-6ef1-48d4-b56e-2f05c1fb3dc0","ts":"2026-10-26T20:44:02.177Z"}
+{"kind":"unit","status":"green","stream":"reference-frame-fidelity-check","commit":"322a09c","id":"e0f45c3b-da4f-4d9c-8f1b-83c8f4cf2158","ts":"2026-10-26T20:47:20.184Z"}
+{"kind":"unit","status":"green","stream":"realistic-sample-content-rules","commit":"3859aac","id":"d901f829-151d-4c69-bf61-e904676d3d93","ts":"2026-10-26T20:47:43.155Z"}
+{"kind":"unit","status":"green","stream":"realistic-sample-content-rules","commit":"3859aac","id":"919e4656-4e63-4776-9803-80d6295208a0","ts":"2026-10-26T20:47:43.271Z"}
+{"kind":"unit","status":"green","stream":"layer-export-placement-math","commit":"227cf7d","id":"f4d4e5b5-4812-4bce-ac04-119ec0c975f4","ts":"2026-10-26T20:52:30.413Z"}

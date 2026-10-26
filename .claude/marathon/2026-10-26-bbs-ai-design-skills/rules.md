@@ -47,3 +47,12 @@ Add a rule the second time something goes wrong.
   (pass `--format` or decide from the text alone, ignoring fenced code).
 - Tests: unit tests drive `stdinBytes` (over-cap with multibyte text, and a happy path); the packaged test drives both
   stdin and `--file` through the installed CLI.
+
+## Linear time on capped input (promoted 2026-10-26: quadratic scans in three streams)
+
+- An 8 MiB cap bounds work only if the work is linear. Line numbers come from newline offsets computed once (binary
+  search or a forward walk), never a rescan from 0 per hit.
+- No regex may rescan to the end of the input for every unclosed opener (`<script`, `<!--`, `<a`, a tag whose
+  unquoted attribute class allows `<`): find closers with indexOf from the opener and stop at the first miss.
+- Recursive walkers over parsed JSON use an explicit stack or refuse deep nesting with exit 1.
+- Each verb with a scanner has a timing test: about 2 MB of adversarial input finishes in under 2 s.

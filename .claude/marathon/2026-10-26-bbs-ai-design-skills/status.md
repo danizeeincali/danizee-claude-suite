@@ -1,7 +1,7 @@
 # Marathon 2026-10-26-bbs-ai-design-skills
 
 - State: RUNNING
-- Budget: 1,896,818 / 14,000,000 tokens
+- Budget: 2,730,376 / 14,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
@@ -18,9 +18,9 @@
 | realistic-sample-content-rules | /home/claude/danizee-claude-suite-realistic-sample-content-rules | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/realistic-sample-content-rules.md | active | clean 0/2 | build | build the verb per contracts.md, tests green |  | 0 |
 | context-split-showcase-or-website | /home/claude/danizee-claude-suite-context-split-showcase-or-website | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/context-split-showcase-or-website.md | active | clean 0/2 | build | build the verb per contracts.md, tests green |  | 0 |
 | reference-frame-fidelity-check | /home/claude/danizee-claude-suite-reference-frame-fidelity-check | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/reference-frame-fidelity-check.md | active | clean 0/2 | build | build the verb per contracts.md, tests green |  | 0 |
-| layer-export-placement-math |  | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/layer-export-placement-math.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
-| sacred-background-preservation |  | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/sacred-background-preservation.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
-| entrance-choreography-kinds |  | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/entrance-choreography-kinds.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
+| layer-export-placement-math | /home/claude/danizee-claude-suite-layer-export-placement-math | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/layer-export-placement-math.md | active | clean 0/2 | build | build the verb per contracts.md, tests green |  | 0 |
+| sacred-background-preservation | /home/claude/danizee-claude-suite-sacred-background-preservation | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/sacred-background-preservation.md | active | clean 0/2 | build | build the verb per contracts.md, tests green |  | 0 |
+| entrance-choreography-kinds | /home/claude/danizee-claude-suite-entrance-choreography-kinds | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/entrance-choreography-kinds.md | active | clean 0/2 | build | build the verb per contracts.md, tests green |  | 0 |
 | keyframe-track-story-engine |  | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/keyframe-track-story-engine.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | deterministic-frame-capture |  | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/deterministic-frame-capture.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | integration |  | .claude/bbs/runs/2026-10-26-ai-design-skills/integration.md | queued | clean 0/2 |  | after every build stream is done: wire each power into its approved steps |  | 0 |
@@ -49,7 +49,7 @@
 | tagline-word-reveal-on-scroll: clean reviews in a row | build | failing | 0 | at_least 2 |
 | tagline-word-reveal-on-scroll: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | tagline-word-reveal-on-scroll: packaged check passes | build | failing | — | is true |
-| realistic-sample-content-rules: green unit runs in a row | build | met | 1 | at_least 1 |
+| realistic-sample-content-rules: green unit runs in a row | build | met | 3 | at_least 1 |
 | realistic-sample-content-rules: zero egress in the packaged check | build | failing | — | is true |
 | realistic-sample-content-rules: clean reviews in a row | build | failing | 0 | at_least 2 |
 | realistic-sample-content-rules: wired into all 3 targets, reached by a user | build | failing | — | at_least 3 |
@@ -59,12 +59,12 @@
 | context-split-showcase-or-website: clean reviews in a row | build | failing | 0 | at_least 2 |
 | context-split-showcase-or-website: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | context-split-showcase-or-website: packaged check passes | build | failing | — | is true |
-| reference-frame-fidelity-check: green unit runs in a row | build | failing | 0 | at_least 1 |
+| reference-frame-fidelity-check: green unit runs in a row | build | met | 1 | at_least 1 |
 | reference-frame-fidelity-check: zero egress in the packaged check | build | failing | — | is true |
 | reference-frame-fidelity-check: clean reviews in a row | build | failing | 0 | at_least 2 |
 | reference-frame-fidelity-check: wired into all 3 targets, reached by a user | build | failing | — | at_least 3 |
 | reference-frame-fidelity-check: packaged check passes | build | failing | — | is true |
-| layer-export-placement-math: green unit runs in a row | build | failing | 0 | at_least 1 |
+| layer-export-placement-math: green unit runs in a row | build | met | 1 | at_least 1 |
 | layer-export-placement-math: zero egress in the packaged check | build | failing | — | is true |
 | layer-export-placement-math: clean reviews in a row | build | failing | 0 | at_least 2 |
 | layer-export-placement-math: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |

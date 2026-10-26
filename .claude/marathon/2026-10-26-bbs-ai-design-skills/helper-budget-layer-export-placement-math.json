@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "openedAt": 1793047644976,
+  "limits": {
+    "steps": 200,
+    "cost": 1500000,
+    "timeMs": null
+  },
+  "spent": {
+    "steps": 8,
+    "cost": 74803
+  },
+  "clock": {
+    "depth": 1,
+    "startedAt": 1793047956797,
+    "elapsedMs": 305431
+  },
+  "helpers": {
+    "83057a25-edd4-4d93-a261-0b26dbbe1665": {
+      "steps": 8,
+      "cost": 74803,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "f1de710f-a5d8-49e4-aed9-9888fe13da12": {
+      "steps": 0,
+      "cost": 0,
+      "ok": 0,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 10,
+        "cost": 150000
+      }
+    }
+  }
+}
