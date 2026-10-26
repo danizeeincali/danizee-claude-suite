@@ -378,6 +378,13 @@ export function diffPngComposited(ref, act, width, height) {
  * can be swapped in between the check and the read.
  */
 export async function readRegular(file, flag, max) {
+  // /dev and /proc paths are refused however they are spelled (also through a symlink), so /dev/stdin is refused even
+  // when stdin is redirected from a regular file.
+  let resolved;
+  try { resolved = await fs.realpath(file); } catch { resolved = path.resolve(file); }
+  for (const p of new Set([resolved, path.resolve(file)])) {
+    if (/^\/(dev|proc)(\/|$)/.test(p.split(path.sep).join('/'))) throw bad(`${flag} ${file} is not a regular file`);
+  }
   let fh;
   try { fh = await fs.open(file, FS.O_RDONLY | (FS.O_NONBLOCK || 0)); } catch (e) {
     // EISDIR: a directory (Windows); ENXIO: a socket, such as /dev/stdin when stdin is a socket pair.

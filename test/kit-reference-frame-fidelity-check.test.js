@@ -295,6 +295,20 @@ describe('run', () => {
       await bad(['--ref', 'a.png', '--actual', 'a.png', '--regions', 'fifo.png'], /--regions .*not a regular file/);
       await bad(['--ref', 'a.png', '--actual', '/dev/null'], /--actual \/dev\/null is not a regular file/);
     }
+    if (process.platform === 'linux') {
+      // /dev and /proc are refused by resolved path, directly and through a symlink; nothing here reads the runner's stdin
+      for (const p of ['/dev/stdin', '/proc/self/fd/0', '/dev/fd/0']) {
+        await bad(['--ref', p, '--actual', 'a.png'], /--ref .* is not a regular file/);
+        await bad(['--ref', 'a.png', '--actual', p], /--actual .* is not a regular file/);
+      }
+      await fs.symlink('/dev/stdin', path.join(d, 'link-dev.png'));
+      await fs.symlink('/proc/self/fd/0', path.join(d, 'link-proc.png'));
+      await bad(['--ref', 'link-dev.png', '--actual', 'a.png'], /--ref link-dev\.png is not a regular file/);
+      await bad(['--ref', 'a.png', '--actual', 'link-proc.png'], /--actual link-proc\.png is not a regular file/);
+      // a symlink to a regular file is still fine
+      await fs.symlink(path.join(d, 'a.png'), path.join(d, 'link-ok.png'));
+      assert.equal((await run(['--ref', 'link-ok.png', '--actual', 'a.png'], { cwd: d })).identical, true);
+    }
     await bad(['--ref', '', '--actual', 'a.png'], /non-empty/);
     await bad(['--ref', 'a.png', '--ref', 'a.png', '--actual', 'a.png'], /twice/);
     await bad(['--ref', 'a.png'], /--actual is required/);
