@@ -303,8 +303,8 @@ describe('run', () => {
       }
       await fs.symlink('/dev/stdin', path.join(d, 'link-dev.png'));
       await fs.symlink('/proc/self/fd/0', path.join(d, 'link-proc.png'));
-      await bad(['--ref', 'link-dev.png', '--actual', 'a.png'], /--ref link-dev\.png is not a regular file/);
-      await bad(['--ref', 'a.png', '--actual', 'link-proc.png'], /--actual link-proc\.png is not a regular file/);
+      await bad(['--ref', 'link-dev.png', '--actual', 'a.png'], /--ref .*link-dev\.png is not a regular file/);
+      await bad(['--ref', 'a.png', '--actual', 'link-proc.png'], /--actual .*link-proc\.png is not a regular file/);
       // a symlink to a regular file is still fine
       await fs.symlink(path.join(d, 'a.png'), path.join(d, 'link-ok.png'));
       assert.equal((await run(['--ref', 'link-ok.png', '--actual', 'a.png'], { cwd: d })).identical, true);
