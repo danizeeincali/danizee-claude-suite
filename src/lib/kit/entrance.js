@@ -17,6 +17,7 @@
  * Built from ideas audited by /w-bbs (run 2026-10-26-ai-design-skills); no foreign code.
  */
 import fs from 'fs/promises';
+import { constants as fsConstants } from 'fs';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
 
@@ -190,18 +191,20 @@ function parse(args) {
 
 async function readFileBounded(file, cwd) {
   const p = path.resolve(cwd, file);
-  const st = await fs.stat(p).catch(e => { throw bad(`cannot read ${p}: ${e.code || e.message}`); });
-  if (!st.isFile()) throw bad(`--file ${file} is not a regular file`);
-  if (st.size > MAX_BYTES) throw bad(`input is larger than ${MAX_BYTES} bytes`);
-  const fh = await fs.open(p, 'r').catch(e => { throw bad(`cannot read ${p}: ${e.code || e.message}`); });
+  const banned = x => x === '/dev' || x === '/proc' || x.startsWith('/dev/') || x.startsWith('/proc/');
+  if (banned(p)) throw bad(`--file ${file} is not a regular file (device and /proc paths are refused)`);
+  const real = await fs.realpath(p).catch(e => { throw bad(`cannot read ${p}: ${e.code || e.message}`); });
+  if (banned(real)) throw bad(`--file ${file} is not a regular file (device and /proc paths are refused)`);
+  const fh = await fs.open(real, fsConstants.O_RDONLY | fsConstants.O_NONBLOCK).catch(e => { throw bad(`cannot read ${p}: ${e.code || e.message}`); });
   try {
-    const buf = Buffer.alloc(Math.min(st.size, MAX_BYTES) + 1);
+    const st = await fh.stat();
+    if (!st.isFile()) throw bad(`--file ${file} is not a regular file`);
+    const buf = Buffer.alloc(MAX_BYTES + 1);
     let n = 0;
-    for (;;) {
+    while (n < buf.length) {
       const { bytesRead } = await fh.read(buf, n, buf.length - n, null);
       if (!bytesRead) break;
       n += bytesRead;
-      if (n >= buf.length) break;
     }
     if (n > MAX_BYTES) throw bad(`input is larger than ${MAX_BYTES} bytes`);
     return buf.subarray(0, n);

@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
+import { spawnSync } from 'child_process';
+import { fileURLToPath } from 'url';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
 import { run, plan, normalize, CATALOGUE, KINDS, MAX_BYTES, verb, usage } from '../src/lib/kit/entrance.js';
 
@@ -255,5 +257,49 @@ describe('entrance: run input', () => {
       await fs.writeFile(f, '');
       await rejects(() => run(['--file', 'big.json'], io('', { cwd: dir })), /no input/);
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('--file refuses /dev/stdin and /proc paths even when stdin is a regular file', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'entrance-'));
+    try {
+      const inp = path.join(dir, 'in.json');
+      await fs.writeFile(inp, JSON.stringify({ groups: [{ id: 'a', kind: 'card', order: 0 }] }));
+      const mod = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/lib/kit/entrance.js');
+      const fd = (await fs.open(inp, 'r')).fd;
+      for (const target of ['/dev/stdin', '/proc/self/fd/0']) {
+        const script = `import(${JSON.stringify(mod)}).then(m => m.run(['--file', ${JSON.stringify(target)}], { cwd: '/', stdinIsTTY: false }))` +
+          '.then(() => process.exit(0), e => { console.error(e.message); process.exit(e.code === 1 ? 1 : 9); });';
+        const r = spawnSync(process.execPath, ['--input-type=module', '-e', script], { stdio: [fd, 'pipe', 'pipe'], encoding: 'utf-8', timeout: 10000 });
+        assert.equal(r.status, 1, `${target}: ${r.status} ${r.stderr}`);
+        assert.match(r.stderr, /regular file/);
+      }
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+  it('--file refuses a FIFO without hanging', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'entrance-'));
+    try {
+      const fifo = path.join(dir, 'p.json');
+      assert.equal(spawnSync('mkfifo', [fifo]).status, 0);
+      await rejects(() => run(['--file', 'p.json'], io('', { cwd: dir })), /regular file/);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+  it('--file decides the size from the bytes read, not from st.size', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'entrance-'));
+    const h0 = await fs.open(import.meta.filename, 'r');
+    const proto = Object.getPrototypeOf(h0);
+    await h0.close();
+    const orig = proto.stat, origPathStat = fs.stat;
+    const lie = st => new Proxy(st, { get: (t, k) => k === 'size' ? 5 : (typeof t[k] === 'function' ? t[k].bind(t) : t[k]) });
+    try {
+      const body = JSON.stringify({ groups: [{ id: 'a', kind: 'card', order: 0 }] });
+      await fs.writeFile(path.join(dir, 'g.json'), body);
+      proto.stat = async function (...a) { return lie(await orig.apply(this, a)); };
+      fs.stat = async (...a) => lie(await origPathStat(...a));
+      const r = await run(['--file', 'g.json'], io('', { cwd: dir }));
+      assert.equal(r.timeline[0].id, 'a');
+      const f = path.join(dir, 'big.json');
+      await fs.writeFile(f, Buffer.alloc(MAX_BYTES + 1, 32));
+      await rejects(() => run(['--file', 'big.json'], io('', { cwd: dir })), /larger than/);
+    } finally { proto.stat = orig; fs.stat = origPathStat; await fs.rm(dir, { recursive: true, force: true }); }
   });
 });
