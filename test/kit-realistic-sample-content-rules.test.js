@@ -160,3 +160,92 @@ describe('sample-content run', () => {
     await exit1(run(['lint'], io(dir, 'a'.repeat(8 * 1024 * 1024 + 1))));
   });
 });
+
+describe('sample-content review r1 fixes', () => {
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sample-content-r1-')); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+  const key = r => r.findings.map(f => [f.rule, f.line]);
+  const bytesIo = (cwd, text, seen = {}) => ({ cwd, stdinIsTTY: false, env: {}, stdinBytes: async o => { seen.opts = o; return Buffer.from(text, 'utf-8'); } });
+  const both = async (name, text, extra = []) => {
+    await fs.writeFile(path.join(dir, name), text);
+    const f = await run(['lint', '--file', name, ...extra], io(dir));
+    const s = await run(['lint', ...extra], io(dir, text));
+    return [f, s];
+  };
+
+  it('format: --file and stdin give identical findings (md with a leading div; html starting with <p>)', async () => {
+    const md = '<div align="center">\n\n# Get Started With Our Product\n';
+    const [f1, s1] = await both('readme.md', md);
+    assert.deepEqual(key(f1), [['title-case', 3]]);
+    assert.deepEqual(key(s1), key(f1));
+    const html = '<p>Hi</p>\n<h2>Build Your Perfect Dashboard</h2>\n<div style="width:100%">Revolutionary</div>\n';
+    const [f2, s2] = await both('page.html', html);
+    assert.deepEqual(key(f2), [['title-case', 2], ['hype', 3]]);
+    assert.deepEqual(key(s2), key(f2));
+    const [f3, s3] = await both('data.json', '{"a":"Revolutionary"}');
+    assert.deepEqual(key(s3), key(f3));
+    const [f4, s4] = await both('notes.txt', '{"a": broken Lorem ipsum');
+    assert.deepEqual(key(s4), key(f4));
+    assert.equal(s4.format, 'md');
+  });
+
+  it('format: ignores tags inside fenced code, and --format overrides', async () => {
+    const t = '```\n<div>\n```\nWidth is 100%\n';
+    assert.equal((await run(['lint'], io(dir, t))).counts['round-figure'], 1);
+    const forced = await run(['lint', '--format', 'html'], io(dir, 'a <b>100%</b>'));
+    assert.equal(forced.format, 'html');
+    assert.equal((await run(['lint', '--format', 'text'], io(dir, '<h2>Build Your Perfect Dashboard</h2>'))).counts['title-case'], 0);
+    await exit1(run(['lint', '--format', 'json'], io(dir, 'not json Lorem ipsum')));
+    await exit1(run(['lint', '--format', 'yaml'], io(dir, 'x')));
+  });
+
+  it('input: stdin is read through stdinBytes with maxBytes cap+1 (happy path)', async () => {
+    const seen = {};
+    const r = await run(['lint'], bytesIo(dir, 'Lorem ipsum', seen));
+    assert.equal(seen.opts.maxBytes, 8 * 1024 * 1024 + 1);
+    assert.equal(r.counts.lorem, 1);
+  });
+
+  it('input: the cap counts bytes, so multibyte text under 8M characters is still refused', async () => {
+    const text = 'é'.repeat(4 * 1024 * 1024 + 1); // 4M+1 characters, 8M+2 bytes
+    assert.ok(text.length < 8 * 1024 * 1024);
+    await exit1(run(['lint'], bytesIo(dir, text)));
+    await exit1(run(['lint'], io(dir, text)));
+    const ok = await run(['lint'], bytesIo(dir, 'é'.repeat(1024) + ' Lorem ipsum'));
+    assert.equal(ok.counts.lorem, 1);
+  });
+
+  it('input: --file must be a regular file; a directory and an over-cap file exit 1', async () => {
+    await exit1(run(['lint', '--file', '.'], io(dir)));
+    await fs.writeFile(path.join(dir, 'big.txt'), Buffer.alloc(8 * 1024 * 1024 + 1, 97));
+    await exit1(run(['lint', '--file', 'big.txt'], io(dir)));
+  });
+
+  it('flags: an empty value and a repeated flag exit 1', async () => {
+    await exit1(run(['lint', '--file', ''], io(dir, 'Lorem ipsum')));
+    await exit1(run(['lint', '--rules', ''], io(dir, 'Lorem ipsum')));
+    await exit1(run(['lint', '--format', ''], io(dir, 'Lorem ipsum')));
+    await exit1(run(['lint', '--file', 'a.md', '--file', 'b.md'], io(dir, 'x')));
+    await exit1(run(['lint', '--rules', 'lorem', '--rules', 'hype'], io(dir, 'Lorem ipsum')));
+    await exit1(run(['lint', '--format', 'md', '--format', 'html'], io(dir, 'Lorem ipsum')));
+  });
+
+  it('json: findings point at the line where the string starts, through \\n and \\u escapes', () => {
+    const raw = '{\n  "a": "fine",\n  "b": "line one\\nline two\\nLorem ipsum"\n}';
+    assert.deepEqual(lint(raw, { name: 'x.json' }).findings.map(f => f.line), [3]);
+    const esc = '{\n  "x": "caf\\u00e9 a\\/b",\n  "y": "caf\\u00e9 a\\/b Lorem ipsum"\n}';
+    assert.deepEqual(lint(esc, { name: 'x.json' }).findings.map(f => [f.rule, f.line]), [['lorem', 3]]);
+    const dup = '{"a":"Lorem ipsum",\n"b":"Lorem ipsum"}';
+    assert.deepEqual(lint(dup, { name: 'x.json' }).findings.map(f => f.line), [1, 2]);
+  });
+
+  it('round-figure: skips status codes and currency prices under 1,000, keeps the rest', () => {
+    for (const ok of ['Error 500: server down. Please retry.', 'Returns 200 OK', 'HTTP status: 300', 'error code 400', '$300 a month', '£500 per seat', '€200 off']) {
+      assert.equal(hits(ok, 'round-figure').length, 0, ok);
+    }
+    for (const bad of ['1,200 reviewers', 'up to 500 seats', 'only $1,000 a year', '$10,000 saved', '£2,000 fee', '50% off', 'Join 300 teams']) {
+      assert.equal(hits(bad, 'round-figure').length, 1, bad);
+    }
+  });
+});

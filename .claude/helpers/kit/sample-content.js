@@ -13,7 +13,10 @@
  * went wrong", "An error occurred" with no next step on that line or the next).
  * A .json file (or stdin that parses as an object/array) has every string value scanned; a finding's line is where
  * the string starts in the file. HTML scripts, styles and tag markup are blanked before the content rules run.
- * Input is capped at 8 MiB; bad flags, an unknown rule or invalid JSON in a .json file exit 1. Advisory: exit 0.
+ * The format is decided from the text alone (identical for --file and stdin): JSON when the whole input parses as an
+ * object/array, HTML when tags appear outside fenced code, else markdown/text; markdown headings are read in every mode.
+ * --format md|html|text|json overrides. Input is capped at 8 MiB (bytes, read bounded); bad flags, an empty or repeated
+ * flag, an unknown rule or format, or invalid JSON under --format json exit 1. Advisory: exit 0.
  * Built from ideas audited by /w-bbs (run 2026-10-26-ai-design-skills); no foreign code.
  */
 import fs from 'fs/promises';
@@ -21,8 +24,9 @@ import path from 'path';
 import { KitExit } from './kit-exit.js';
 
 export const verb = 'sample-content';
-export const usage = 'cli.js sample-content lint [--file <md|html|txt|json>] [--rules a,b]  (text on stdin without --file; advisory, exit 0)';
+export const usage = 'cli.js sample-content lint [--file <md|html|txt|json>] [--rules a,b] [--format md|html|text|json]  (text on stdin without --file; advisory, exit 0)';
 
+export const FORMATS = ['md', 'html', 'text', 'json'];
 export const RULES = ['lorem', 'placeholder-person', 'placeholder-company', 'hype', 'title-case', 'round-figure', 'repeated-date', 'vague-error'];
 const MAX_BYTES = 8 * 1024 * 1024;
 const bad = m => new KitExit(m, 1);
@@ -97,7 +101,7 @@ function headings(text, isHtml) {
   let off = 0, fence = false;
   for (const ln of text.split('\n')) {
     if (/^\s*(```|~~~)/.test(ln)) fence = !fence;
-    else if (!fence && !isHtml) {
+    else if (!fence) {
       const m = /^ {0,3}#{1,6}\s+(.+?)\s*#*\s*$/.exec(ln);
       if (m) out.push({ idx: off, text: m[1] });
     }
@@ -134,11 +138,15 @@ export function lintText(text, { rules = RULES, isHtml = false } = {}) {
       const n = Number(m[1]);
       if (n >= 10 && n % 10 === 0) add('round-figure', m.index, m[0], `"${m[0]}" looks invented; use a believable figure such as ${n > 10 ? n - 3 : n + 3}% (or a measured value like ${n - 0.6 > 0 ? (n - 0.6).toFixed(1) : '9.4'}%).`, body);
     }
-    const num = /(?<![\w.#,$-])(\$?)(?!0\d)(\d{1,3}(?:,\d{3})+|\d+)(?![\w%]|\.\d|,\d)/g;
+    const num = /(?<![\w.#,$€£¥-])([$€£¥]?)(?!0\d)(\d{1,3}(?:,\d{3})+|\d+)(?![\w%]|\.\d|,\d)/g;
     while ((m = num.exec(body))) {
       const n = Number(m[2].replace(/,/g, ''));
       const plainYear = !m[1] && !m[2].includes(',') && n >= 1900 && n <= 2099;
-      if (n >= 100 && n % 100 === 0 && !plainYear) {
+      const before = body.slice(Math.max(0, m.index - 24), m.index);
+      const after = body.slice(m.index + m[0].length, m.index + m[0].length + 6);
+      const statusCode = !m[1] && (/\b(?:error|status|http|code)s?\s*[:#=]?\s*$/i.test(before) || /^\s*OK\b/.test(after));
+      const smallPrice = m[1] && n < 1000;
+      if (n >= 100 && n % 100 === 0 && !plainYear && !statusCode && !smallPrice) {
         const alt = Math.round(n * 0.97 / 7) * 7 + 3;
         add('round-figure', m.index, m[0], `"${m[0]}" is suspiciously round; use a believable figure such as ${m[1]}${alt.toLocaleString('en-US')}.`, body);
       }
@@ -184,22 +192,37 @@ function sentenceCase(t) {
   return words.map((w, i) => (/^[A-Z][a-z']+$/.test(w) && i > 0 ? w.toLowerCase() : w)).join(' ');
 }
 
-/** Walk JSON, scanning every string value; lines point at where the string begins in the raw file. */
+/** Walk JSON, scanning every string value; every finding's line is where that string starts in the raw text. */
 export function lintJson(raw, data, opts) {
   const findings = [];
-  const cursor = new Map();
-  const visit = v => {
-    if (typeof v === 'string') {
-      const enc = JSON.stringify(v).slice(1, -1);
-      const from = cursor.get(enc) || 0;
-      let at = enc ? raw.indexOf('"' + enc + '"', from) : -1;
-      if (at >= 0) cursor.set(enc, at + 1);
-      const base = at >= 0 ? lineOf(raw, at) : 1;
-      for (const f of lintText(v, { ...opts, isHtml: /<\/?[a-z][^>]*>/i.test(v) })) findings.push({ ...f, line: base + f.line - 1 });
-    } else if (Array.isArray(v)) v.forEach(visit);
-    else if (v && typeof v === 'object') Object.values(v).forEach(visit);
+  const n = raw.length;
+  let i = 0, line = 1;
+  const ws = () => { while (i < n) { const c = raw.charCodeAt(i); if (c === 10) line++; else if (c !== 32 && c !== 9 && c !== 13) break; i++; } };
+  const str = () => { // at the opening quote; returns the raw token and the line it starts on
+    const start = i, startLine = line;
+    i++;
+    while (i < n && raw[i] !== '"') i += raw[i] === '\\' ? 2 : 1;
+    i++;
+    return { tok: raw.slice(start, i), line: startLine };
   };
-  visit(data);
+  const value = () => {
+    ws();
+    const c = raw[i];
+    if (c === '"') {
+      const { tok, line: at } = str();
+      for (const f of lintText(JSON.parse(tok), { ...opts, isHtml: /<\/?[a-z][^>]*>/i.test(JSON.parse(tok)) })) findings.push({ ...f, line: at });
+    } else if (c === '[' || c === '{') {
+      const obj = c === '{';
+      i++; ws();
+      while (i < n && raw[i] !== (obj ? '}' : ']')) {
+        if (obj) { ws(); str(); ws(); i++; } // key, then ':'
+        value(); ws();
+        if (raw[i] === ',') { i++; ws(); }
+      }
+      i++;
+    } else while (i < n && !/[\s,\]}]/.test(raw[i])) i++;
+  };
+  value();
   return findings.sort((a, b) => a.line - b.line);
 }
 
@@ -217,54 +240,79 @@ function parse(args) {
   const flags = {};
   for (let i = 0; i < rest.length; i++) {
     const a = rest[i];
-    if (a !== '--file' && a !== '--rules') throw bad(`unknown argument "${a}" (usage: ${usage})`);
+    if (a !== '--file' && a !== '--rules' && a !== '--format') throw bad(`unknown argument "${a}" (usage: ${usage})`);
     const v = rest[++i];
-    if (v === undefined || v.startsWith('--')) throw bad(`${a} needs a value`);
+    if (v === undefined || v === '' || v.startsWith('--')) throw bad(`${a} needs a non-empty value`);
+    if (Object.hasOwn(flags, a.slice(2))) throw bad(`${a} was given more than once`);
     flags[a.slice(2)] = v;
   }
   return flags;
 }
 
-export function lint(raw, { rules = RULES, name = '' } = {}) {
+const FENCE_RE = /^[ \t]*(```|~~~)[\s\S]*?(?:^[ \t]*\1.*$|(?![\s\S]))/gm;
+const TAG_RE = /<(?:!doctype\b|!--|\/?[a-z][a-z0-9-]*(?:\s[^<>]*)?\/?>)/i;
+
+/** Decide the format from the text alone (fenced code ignored); never from a file name or how the text arrived. */
+export function detectFormat(raw) {
+  const t = raw.trimStart();
+  if (/^[[{]/.test(t)) { try { const v = JSON.parse(raw); if (v && typeof v === 'object') return 'json'; } catch { /* not JSON */ } }
+  return TAG_RE.test(raw.replace(FENCE_RE, blank)) ? 'html' : 'md';
+}
+
+export function lint(raw, { rules = RULES, name = '', format } = {}) {
+  if (format !== undefined && !FORMATS.includes(format)) throw bad(`unknown format "${format}" (known: ${FORMATS.join(', ')})`);
   const ext = path.extname(name).toLowerCase();
-  const trimmed = raw.trimStart();
+  const fmt = format || (ext === '.json' ? 'json' : ext === '.html' || ext === '.htm' ? 'html' : detectFormat(raw)); // a name is only a caller-supplied hint; run() never passes one
   let findings;
-  let asJson = ext === '.json';
-  if (!ext && /^[[{]/.test(trimmed)) { try { JSON.parse(raw); asJson = true; } catch { /* plain text */ } }
-  if (asJson) {
+  if (fmt === 'json') {
     let data;
     try { data = JSON.parse(raw); } catch (e) { throw bad(`input is not valid JSON: ${e.message}`); }
     findings = lintJson(raw, data, { rules });
   } else {
-    const isHtml = ext === '.html' || ext === '.htm' || (!ext && /^<(!doctype|html|body|main|section|div|h[1-6]|button|a)\b/i.test(trimmed));
-    findings = lintText(raw, { rules, isHtml });
+    findings = lintText(raw, { rules, isHtml: fmt === 'html' });
   }
   const counts = { total: findings.length };
   for (const r of rules) counts[r] = 0;
   for (const f of findings) counts[f.rule]++;
-  return { findings, counts };
+  return { findings, counts, format: fmt };
+}
+
+async function readBounded(file) {
+  let fh;
+  try { fh = await fs.open(file, 'r'); } catch (e) { throw bad(`cannot read ${file}: ${e.code || e.message}`); }
+  try {
+    const buf = Buffer.alloc(MAX_BYTES + 1);
+    let n = 0;
+    while (n < buf.length) {
+      const { bytesRead } = await fh.read(buf, n, buf.length - n, null);
+      if (!bytesRead) break;
+      n += bytesRead;
+    }
+    return buf.subarray(0, n);
+  } catch (e) { throw bad(`cannot read ${file}: ${e.code || e.message}`); } finally { await fh.close(); }
 }
 
 export async function run(args, io) {
   const flags = parse(args);
   const rules = parseRules(flags.rules);
+  if (flags.format !== undefined && !FORMATS.includes(flags.format)) throw bad(`unknown format "${flags.format}" (known: ${FORMATS.join(', ')})`);
   const cwd = io.cwd || process.cwd();
-  let raw, name = '';
-  if (flags.file) {
+  let buf;
+  if (flags.file !== undefined) {
     const file = path.resolve(cwd, flags.file);
-    name = file;
     let st;
     try { st = await fs.stat(file); } catch (e) { throw bad(`cannot read ${file}: ${e.code || e.message}`); }
     if (!st.isFile()) throw bad(`${file} is not a file`);
     if (st.size > MAX_BYTES) throw bad('input is over 8 MiB');
-    try { raw = await fs.readFile(file, 'utf-8'); } catch (e) { throw bad(`cannot read ${file}: ${e.code || e.message}`); }
+    buf = await readBounded(file);
   } else {
     if (io.stdinIsTTY) throw bad('no input: pass --file <f> or text on stdin');
-    raw = String(await io.stdin());
-    if (Buffer.byteLength(raw) > MAX_BYTES) throw bad('input is over 8 MiB');
+    const got = await (typeof io.stdinBytes === 'function' ? io.stdinBytes : io.stdin)({ maxBytes: MAX_BYTES + 1 });
+    buf = Buffer.isBuffer(got) ? got : Buffer.from(String(got), 'utf-8');
   }
-  raw = raw.replace(/^﻿/, '');
+  if (buf.length > MAX_BYTES) throw bad('input is over 8 MiB');
+  const raw = buf.toString('utf-8').replace(/^\uFEFF/, '');
   if (!raw.trim()) throw bad('no input: the file or stdin is empty');
-  const r = lint(raw, { rules, name });
-  return { file: flags.file || null, rules, findings: r.findings, counts: r.counts };
+  const r = lint(raw, { rules, format: flags.format });
+  return { file: flags.file ?? null, format: r.format, rules, findings: r.findings, counts: r.counts };
 }

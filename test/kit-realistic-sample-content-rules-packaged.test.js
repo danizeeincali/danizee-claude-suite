@@ -25,4 +25,18 @@ describe('sample-content — packaged end to end', () => {
     assert.equal(pkg.kit(['sample-content', 'lint', '--file', 'absent.md']).code, 1);
     assert.deepEqual(pkg.egress(), []);
   });
+
+  it('gives the same findings for --file and stdin, and refuses empty or repeated flags', async () => {
+    const text = '<div align="center">\n\n# Get Started With Our Product\nError 500 and Lorem ipsum\n';
+    await fs.writeFile(path.join(pkg.dir, 'same.md'), text);
+    const f = pkg.kit(['sample-content', 'lint', '--file', 'same.md']);
+    const s = pkg.kit(['sample-content', 'lint'], text);
+    assert.deepEqual(s.json.findings, f.json.findings);
+    assert.deepEqual(f.json.findings.map(x => x.rule), ['title-case', 'lorem']);
+    assert.equal(pkg.kit(['sample-content', 'lint', '--format', 'text'], text).json.format, 'text');
+    assert.equal(pkg.kit(['sample-content', 'lint', '--format', 'json'], text).code, 1);
+    assert.equal(pkg.kit(['sample-content', 'lint', '--file', ''], 'Lorem ipsum').code, 1);
+    assert.equal(pkg.kit(['sample-content', 'lint', '--file', 'same.md', '--file', 'same.md']).code, 1);
+    assert.equal(pkg.kit(['sample-content', 'lint'], 'é'.repeat(4 * 1024 * 1024 + 1)).code, 1);
+  });
 });
