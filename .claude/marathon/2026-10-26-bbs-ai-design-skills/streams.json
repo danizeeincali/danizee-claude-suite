@@ -51,9 +51,9 @@
     },
     {
       "name": "realistic-sample-content-rules",
-      "state": "active",
+      "state": "blocked",
       "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/realistic-sample-content-rules.md",
-      "next": "build the verb per contracts.md, tests green",
+      "next": "helper allowance steps used up (lead sized it at 40); r2 findings and a third review carried to integration",
       "tasks": [],
       "isolation": "/home/claude/danizee-claude-suite-realistic-sample-content-rules",
       "phase": "build",

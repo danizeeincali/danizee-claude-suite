@@ -6,3 +6,4 @@
 {"stream":"landing-page-section-order","counts":{"high":0,"medium":2,"low":0},"angle":"r2","tokens":77056,"pass":true,"round":2,"commit":"18e270a","id":"a1e8b40e-cb36-46f9-853e-f8389a259b70","ts":"2026-10-26T20:43:43.067Z"}
 {"stream":"intake-batch-before-design","counts":{"high":0,"medium":0,"low":3},"angle":"r2","tokens":63181,"pass":true,"round":2,"commit":"ee17553","id":"ee6ba25b-cbbc-4287-ae94-7f4fd85bfd26","ts":"2026-10-26T20:44:19.870Z"}
 {"stream":"realistic-sample-content-rules","counts":{"high":0,"medium":4,"low":1},"angle":"r1","tokens":82806,"pass":false,"round":1,"commit":"c6775eb","id":"32b13054-4146-4aec-9625-86d072367f9e","ts":"2026-10-26T20:44:21.091Z"}
+{"stream":"realistic-sample-content-rules","counts":{"high":0,"medium":2,"low":2},"angle":"r2","tokens":70104,"pass":true,"round":2,"commit":"3859aac","id":"29253e9e-3d40-44f5-bef0-abd9129c8bab","ts":"2026-10-26T20:52:47.204Z"}

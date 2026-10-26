@@ -1,9 +1,9 @@
 # Marathon 2026-10-26-bbs-ai-design-skills
 
 - State: RUNNING
-- Budget: 2,730,376 / 14,000,000 tokens
+- Budget: 2,650,480 / 14,000,000 tokens
 - Allowance: unknown (ceiling 100%)
-- Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
+- Gate (run-wide, all streams): 1/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
 - Next for you: Continue stream "type-scale-snapping-to-tailwind-steps" (next: build the verb per contracts.md, tests green) — /w-marathon --resume 2026-10-26-bbs-ai-design-skills.
 
@@ -15,7 +15,7 @@
 | landing-page-section-order | /home/claude/danizee-claude-suite-landing-page-section-order | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/landing-page-section-order.md | done | met | done | 2 medium findings from r2 carried to integration (carried.md) |  | 0 |
 | type-scale-snapping-to-tailwind-steps | /home/claude/danizee-claude-suite-type-scale-snapping-to-tailwind-steps | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/type-scale-snapping-to-tailwind-steps.md | active | clean 1/2 | build | build the verb per contracts.md, tests green |  | 0 |
 | tagline-word-reveal-on-scroll | /home/claude/danizee-claude-suite-tagline-word-reveal-on-scroll | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/tagline-word-reveal-on-scroll.md | active | clean 0/2 | build | build the verb per contracts.md, tests green |  | 0 |
-| realistic-sample-content-rules | /home/claude/danizee-claude-suite-realistic-sample-content-rules | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/realistic-sample-content-rules.md | active | clean 0/2 | build | build the verb per contracts.md, tests green |  | 0 |
+| realistic-sample-content-rules | /home/claude/danizee-claude-suite-realistic-sample-content-rules | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/realistic-sample-content-rules.md | blocked | clean 1/2 | build | helper allowance steps used up (lead sized it at 40); r2 findings and a third review carried to integration |  | 0 |
 | context-split-showcase-or-website | /home/claude/danizee-claude-suite-context-split-showcase-or-website | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/context-split-showcase-or-website.md | active | clean 0/2 | build | build the verb per contracts.md, tests green |  | 0 |
 | reference-frame-fidelity-check | /home/claude/danizee-claude-suite-reference-frame-fidelity-check | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/reference-frame-fidelity-check.md | active | clean 0/2 | build | build the verb per contracts.md, tests green |  | 0 |
 | layer-export-placement-math | /home/claude/danizee-claude-suite-layer-export-placement-math | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/layer-export-placement-math.md | active | clean 0/2 | build | build the verb per contracts.md, tests green |  | 0 |
@@ -51,7 +51,7 @@
 | tagline-word-reveal-on-scroll: packaged check passes | build | failing | — | is true |
 | realistic-sample-content-rules: green unit runs in a row | build | met | 3 | at_least 1 |
 | realistic-sample-content-rules: zero egress in the packaged check | build | failing | — | is true |
-| realistic-sample-content-rules: clean reviews in a row | build | failing | 0 | at_least 2 |
+| realistic-sample-content-rules: clean reviews in a row | build | failing | 1 | at_least 2 |
 | realistic-sample-content-rules: wired into all 3 targets, reached by a user | build | failing | — | at_least 3 |
 | realistic-sample-content-rules: packaged check passes | build | failing | — | is true |
 | context-split-showcase-or-website: green unit runs in a row | build | met | 3 | at_least 1 |
@@ -90,7 +90,7 @@
 | deterministic-frame-capture: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | deterministic-frame-capture: packaged check passes | build | failing | — | is true |
 | The owner was told what they got: delivered.md lists every power, wired, with its command | build | failing | — | is true |
-| Clean reviews in a row | build | failing | 0 | at_least 2 |
+| Clean reviews in a row | build | failing | 1 | at_least 2 |
 | High findings in the latest review | build | met | 0 | at_most 0 |
 | Open high findings | build | met | 0 | at_most 0 |
 

@@ -12,3 +12,8 @@ open findings below; the integration stream fixes them before it wires the verb,
 
 ## intake-batch-before-design (review r2, low, open)
 - stat-then-open race on --file; JSON parse error drops its reason; refusal tests assert only the exit code.
+
+## realistic-sample-content-rules (r1 over and fixed, r2 passed; streak 1 of 2; allowance steps used up)
+- Open from r2: quadratic lineOf (medium), vague-error accepts description words as a next step (medium), unclosed
+  tag regexes quadratic (low), deep JSON nesting overflows the walker (low). The integration stream fixes these and
+  runs the stream's second clean review before wiring the verb.
