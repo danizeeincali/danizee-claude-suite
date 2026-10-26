@@ -1,0 +1,1168 @@
+{
+  "run": "2026-10-26-ai-design-skills",
+  "ts": "2026-10-26T19:33:51.314Z",
+  "scanned": 401,
+  "skipped": 0,
+  "via": "git",
+  "kinds": {
+    "ui": 0,
+    "api": 0,
+    "job": 1,
+    "model": 0,
+    "cli": 2,
+    "feature": 0,
+    "lib": 0,
+    "workflow": 46
+  },
+  "surfaces": [
+    {
+      "id": "job:.github/workflows/release.yml",
+      "kind": "job",
+      "file": ".github/workflows/release.yml",
+      "anchors": [
+        "github-release",
+        "release.yml"
+      ],
+      "label": "job github-release",
+      "evidence": [
+        "CI workflow"
+      ],
+      "activity": 1
+    },
+    {
+      "id": "cli:bin/cli.js",
+      "kind": "cli",
+      "file": "bin/cli.js",
+      "anchors": [
+        "init",
+        "check",
+        "update",
+        "uninstall",
+        "install-user",
+        "uninstall-user",
+        "db"
+      ],
+      "label": "cli init",
+      "evidence": [
+        "subcommand parser"
+      ],
+      "activity": 23
+    },
+    {
+      "id": "cli:package.json",
+      "kind": "cli",
+      "file": "package.json",
+      "anchors": [
+        "danizee-claude-suite"
+      ],
+      "label": "cli danizee-claude-suite",
+      "evidence": [
+        "package.json bin"
+      ],
+      "activity": 15
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-bbs.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-bbs.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Model Policy (token/cost)",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Intake",
+        "⛔ CHECKPOINT 1: Fetch",
+        "⛔ CHECKPOINT 2: Inventory",
+        "⛔ CHECKPOINT 3: Map",
+        "⛔ CHECKPOINT 3a: Usage",
+        "⛔ CHECKPOINT 3b: Surfaces",
+        "⛔ CHECKPOINT 3c: Targets",
+        "⛔ CHECKPOINT 4: Verdict (HIL — the only approval)",
+        "⛔ CHECKPOINT 5: Hand-off",
+        "⛔ CHECKPOINT 6: Compound (MANDATORY)",
+        "`--resume <run-id>`",
+        "`--status`",
+        "Verbs",
+        "Completion Checklist",
+        "Example"
+      ],
+      "label": "/w-bbs",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 33
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-marathon.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Model Policy (token/cost) — applies to EVERY helper spawn",
+        "Files — `.claude/marathon/<run-id>/` (committed, not /tmp)",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Search",
+        "⛔ CHECKPOINT 1: Interview (HIL — once)",
+        "⛔ CHECKPOINT 2: Kickoff (HIL — the last question)",
+        "⛔ CHECKPOINT 3: Arm",
+        "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "⛔ CHECKPOINT 5: Stop",
+        "⛔ CHECKPOINT 6: Compound (MANDATORY — per stream)",
+        "`--resume [run-id]`",
+        "`--status [run-id]`",
+        "Verbs",
+        "Completion Checklist",
+        "Example"
+      ],
+      "label": "/w-marathon",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 33
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-review.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-review.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Agents Deployed",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Search",
+        "⛔ CHECKPOINT 1: Code Analysis",
+        "⛔ CHECKPOINT 2: Security Scan",
+        "⛔ CHECKPOINT 3: Performance Check",
+        "⛔ CHECKPOINT 4: Ralph Candidates (AUTO-PROCEED)",
+        "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "⛔ CHECKPOINT 5: Compound (MANDATORY - NEVER SKIP)",
+        "Completion Checklist",
+        "Closing step: record the push receipt",
+        "Compounds",
+        "Example"
+      ],
+      "label": "/w-review",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 26
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-fix.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-fix.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Search",
+        "🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery",
+        "⛔ CHECKPOINT 1: Investigation",
+        "⛔ CHECKPOINT 2: Fix Applied",
+        "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)",
+        "Completion Checklist",
+        "Compounds",
+        "Example"
+      ],
+      "label": "/w-fix",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 23
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Model Policy (token/cost) — applies to EVERY subagent spawn",
+        "Dynamic Workflows (optional power-tool — HIL-gated)",
+        "When it's the right tool — the 3 failure modes it solves",
+        "The 6 patterns (compose 2–4 per real task)",
+        "Best practices (non-negotiable when you DO use one)",
+        "Mistakes that waste tokens",
+        "🚦 The HIL gate (MANDATORY — before spawning ANY workflow)",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Search",
+        "🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery",
+        "⛔ CHECKPOINT 1: Interview (MANDATORY - NEVER SKIP)",
+        "⛔ CHECKPOINT 2: Plan",
+        "🧭 CHECKPOINT 2.5: Dynamic Workflow Assessment",
+        "⛔ CHECKPOINT 3: Spec",
+        "⛔ CHECKPOINT 4: Tests (BLOCKING GATE)",
+        "⛔ CHECKPOINT 5: Build",
+        "⛔ CHECKPOINT 6: Review",
+        "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "🔒 CLOSING STEP: Scrub and receipt",
+        "⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)",
+        "Completion Checklist",
+        "Compounds",
+        "Example"
+      ],
+      "label": "/w-plan-tdd-swarm",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 20
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-debug.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-debug.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Execution Protocol",
+        "Phase 1: Debug Investigation",
+        "⛔ CHECKPOINT 0: Search",
+        "🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery",
+        "⛔ CHECKPOINT 1: Analysis",
+        "⛔ CHECKPOINT 2: Diagnosis (BLOCKING GATE)",
+        "Phase 2: TDD-Swarm Fix",
+        "⛔ CHECKPOINT 3: Plan",
+        "⛔ CHECKPOINT 4: Tests (BLOCKING GATE)",
+        "⛔ CHECKPOINT 5: Build",
+        "⛔ CHECKPOINT 6: Review",
+        "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "🔒 CLOSING STEP: Scrub and receipt",
+        "⛔ CHECKPOINT 7: Compound (MANDATORY - NEVER SKIP)",
+        "Completion Checklist",
+        "Compounds",
+        "Example"
+      ],
+      "label": "/w-debug",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 18
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-end.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-end.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY EXECUTION",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Summary",
+        "⛔ CHECKPOINT 1: Compound (MANDATORY - NEVER SKIP)",
+        "⛔ CHECKPOINT 2: Commit (MANDATORY - NEVER SKIP)",
+        "What Gets Captured",
+        "Completion Checklist",
+        "Example",
+        "Next Session"
+      ],
+      "label": "/w-end",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 17
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-background-compound.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-background-compound.md",
+      "anchors": [
+        "Usage",
+        "Model Policy (token/cost)",
+        "Why the handoff matters",
+        "One copy, configured per project",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Pre-flight",
+        "⛔ CHECKPOINT 1: Handoff (lead, foreground — do not delegate)",
+        "⛔ CHECKPOINT 2: Background Dispatch",
+        "⛔ CHECKPOINT 3: Measure the context and decide",
+        "⛔ CHECKPOINT 4: Record",
+        "Difference from /w-compound",
+        "Example"
+      ],
+      "label": "/w-background-compound",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 16
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-compound.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-compound.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY EXECUTION",
+        "Categories",
+        "What Gets Stored",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Category Detection",
+        "⛔ CHECKPOINT 1: Storage Complete (MANDATORY - NEVER SKIP)",
+        "⛔ CHECKPOINT 2: Analyze Changes (AUTO-PROCEED)",
+        "⛔ CHECKPOINT 3: Generate Diagnostics (AUTO-PROCEED)",
+        "⛔ CHECKPOINT 4: Generate Fix Candidates (AUTO-PROCEED)",
+        "⛔ CHECKPOINT 5: Append to Ralph Candidates (AUTO-PROCEED)",
+        "⛔ CHECKPOINT 6: Ralph Candidate Check (MANDATORY)",
+        "🧠 CHECKPOINT 7: Agent Pi Brain — Auto-Recipe Extraction (fork-aware)",
+        "Completion Checklist",
+        "Output Summary",
+        "Example"
+      ],
+      "label": "/w-compound",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 15
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-hotfix.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-hotfix.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Search",
+        "🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery",
+        "⛔ CHECKPOINT 1: Branch Created",
+        "⛔ CHECKPOINT 2: Fix Applied",
+        "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "⛔ CHECKPOINT 3: Security Review (MANDATORY - NEVER SKIP)",
+        "🔒 CLOSING STEP: Scrub and receipt",
+        "⛔ CHECKPOINT 4: Compound (MANDATORY - NEVER SKIP)",
+        "Completion Checklist",
+        "Compounds",
+        "Example"
+      ],
+      "label": "/w-hotfix",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 15
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-security.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-security.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Checks Performed",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Search",
+        "⛔ CHECKPOINT 1: Scan Complete",
+        "⛔ CHECKPOINT 2: Analysis Done",
+        "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "🔒 CLOSING STEP: Scrub and receipt",
+        "⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)",
+        "Completion Checklist",
+        "Compounds",
+        "Example"
+      ],
+      "label": "/w-security",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 15
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-swarm.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-swarm.md",
+      "anchors": [
+        "Prerequisites",
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Search",
+        "🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery",
+        "⛔ CHECKPOINT 1: Task Decomposition & Agent Assignment",
+        "⛔ CHECKPOINT 2: RuFlo Swarm Initialization & Execution",
+        "⛔ CHECKPOINT 3: Integration & Verification",
+        "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "⛔ CHECKPOINT 4: Compound (MANDATORY - NEVER SKIP)",
+        "Completion Checklist",
+        "Compounds",
+        "Example"
+      ],
+      "label": "/w-swarm",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 15
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-tdd-swarm.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-tdd-swarm.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Search",
+        "🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery",
+        "⛔ CHECKPOINT 1: Plan",
+        "⛔ CHECKPOINT 2: Spec",
+        "⛔ CHECKPOINT 3: Tests (BLOCKING GATE)",
+        "⛔ CHECKPOINT 4: Build",
+        "⛔ CHECKPOINT 5: Review",
+        "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "🔒 CLOSING STEP: Scrub and receipt",
+        "⛔ CHECKPOINT 6: Compound (MANDATORY - NEVER SKIP)",
+        "Completion Checklist",
+        "Compounds",
+        "Example"
+      ],
+      "label": "/w-tdd-swarm",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 15
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-bg-review.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-bg-review.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Agents Deployed",
+        "Execution Protocol",
+        "Phase 0: Search",
+        "Phase 1: Code Analysis",
+        "Phase 2: Security Scan",
+        "Phase 3: Performance Check",
+        "Phase 4: Ralph Candidates",
+        "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "Phase 5: Compound (MANDATORY - NEVER SKIP)",
+        "Phase 6: Git Commit (MANDATORY - NEVER SKIP)",
+        "Completion Checklist",
+        "Compounds",
+        "Example"
+      ],
+      "label": "/w-bg-review",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 14
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-ralph-batch.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-ralph-batch.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Execution Modes",
+        "Candidate Types",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Load & Filter Candidates",
+        "⛔ CHECKPOINT 1: Mode Configuration",
+        "⛔ CHECKPOINT 2: Execute/Generate",
+        "⛔ CHECKPOINT 3: Summary Report",
+        "Completion Checklist",
+        "Script Output Location",
+        "Best Practices",
+        "Example"
+      ],
+      "label": "/w-ralph-batch",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 14
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-multi-repo.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-multi-repo.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Search",
+        "⛔ CHECKPOINT 1: Repos Analyzed",
+        "⛔ CHECKPOINT 2: Changes Prepared",
+        "⛔ CHECKPOINT 3: Sync Complete",
+        "⛔ CHECKPOINT 4: Compound (MANDATORY - NEVER SKIP)",
+        "Completion Checklist",
+        "Compounds",
+        "Example"
+      ],
+      "label": "/w-multi-repo",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 13
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-ralph-pick.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-ralph-pick.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Load Candidates",
+        "⛔ CHECKPOINT 1: Candidate Selected",
+        "⛔ CHECKPOINT 2: Tests Verified",
+        "⛔ CHECKPOINT 3: Ralph Loop Execution",
+        "⛔ CHECKPOINT 4: Completion Verification",
+        "⛔ CHECKPOINT 5: Candidate Updated",
+        "Completion Checklist",
+        "Candidate Statuses",
+        "Example"
+      ],
+      "label": "/w-ralph-pick",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 13
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-architect.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-architect.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Search",
+        "🧠 CHECKPOINT 0.5: Pi Brain — Knowledge Discovery",
+        "⛔ CHECKPOINT 1: Hive Initialized",
+        "⛔ CHECKPOINT 2: Design Proposals",
+        "⛔ CHECKPOINT 3: Consensus Reached",
+        "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "⛔ CHECKPOINT 4: Compound (MANDATORY - NEVER SKIP)",
+        "Completion Checklist",
+        "Compounds",
+        "Example"
+      ],
+      "label": "/w-architect",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 11
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-perf.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-perf.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Checks Performed",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Search",
+        "⛔ CHECKPOINT 1: Profiling Done",
+        "⛔ CHECKPOINT 2: Analysis Complete",
+        "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "⛔ CHECKPOINT 3: Compound (MANDATORY - NEVER SKIP)",
+        "Completion Checklist",
+        "Compounds",
+        "Example"
+      ],
+      "label": "/w-perf",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 11
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-ralph-goals.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-ralph-goals.md",
+      "anchors": [
+        "What This Does",
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Interview Categories",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Idea Captured",
+        "⛔ CHECKPOINT 1: Requirements Clear",
+        "⛔ CHECKPOINT 2: Generate IMPLEMENTATION_PLAN.md",
+        "⛔ CHECKPOINT 3: Generate Spec Files",
+        "⛔ CHECKPOINT 4: Configure AGENTS.md",
+        "⛔ CHECKPOINT 5: Output Run Command",
+        "Completion Checklist",
+        "Example"
+      ],
+      "label": "/w-ralph-goals",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 11
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-ralph-this.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-ralph-this.md",
+      "anchors": [
+        "What is Pure Ralph?",
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Parse Task",
+        "⛔ CHECKPOINT 1: Create Implementation Plan",
+        "⛔ CHECKPOINT 2: Verify AGENTS.md",
+        "⛔ CHECKPOINT 3: Output Run Command",
+        "⛔ CHECKPOINT 4: Execute (if requested)",
+        "Completion Checklist",
+        "Example"
+      ],
+      "label": "/w-ralph-this",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 11
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-agent-tdd-swarm.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-agent-tdd-swarm.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Execution Protocol",
+        "PHASE 0: Context Gathering (AUTO-PROCEED)",
+        "PHASE 1: Search (AUTO-PROCEED)",
+        "PHASE 1.5: Pi Brain — Knowledge Discovery (AUTO-PROCEED)",
+        "PHASE 2: Plan (AUTO-PROCEED)",
+        "PHASE 3: Spec (AUTO-PROCEED)",
+        "PHASE 4: Tests (BLOCKING GATE — TDD only)",
+        "PHASE 5: Build (AUTO-PROCEED)",
+        "PHASE 6: Review (AUTO-PROCEED)",
+        "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "PHASE 7: Commit & PR (AUTO-PROCEED)",
+        "PHASE 8: Compound (MANDATORY - NEVER SKIP)",
+        "PHASE 9: Report & Notify Parent (MANDATORY - NEVER SKIP)",
+        "Completion Checklist"
+      ],
+      "label": "/w-agent-tdd-swarm",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 10
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-autoresearch.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-autoresearch.md",
+      "anchors": [
+        "Usage",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Mode Detection",
+        "⛔ CHECKPOINT 1: Discovery (free-form mode only)",
+        "⛔ CHECKPOINT 2: Setup",
+        "⛔ CHECKPOINT 3: Background Dispatch",
+        "State Files",
+        "JSONL Protocol",
+        "Example"
+      ],
+      "label": "/w-autoresearch",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 10
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-bg-debug.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-bg-debug.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Execution Protocol",
+        "Phase 1: Debug Investigation",
+        "Phase 0: Search",
+        "Phase 1: Analysis",
+        "Phase 2: Diagnosis (BLOCKING GATE)",
+        "Phase 2: TDD-Swarm Fix",
+        "Phase 3: Plan",
+        "Phase 4: Tests (BLOCKING GATE)",
+        "Phase 5: Build",
+        "Phase 6: Review",
+        "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "Phase 7: Compound (MANDATORY - NEVER SKIP)",
+        "Phase 8: Git Commit (MANDATORY - NEVER SKIP)",
+        "Completion Checklist",
+        "Compounds",
+        "Example"
+      ],
+      "label": "/w-bg-debug",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 10
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-bg-idea-tdd-swarm.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-bg-idea-tdd-swarm.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Execution Protocol",
+        "Phase 0: Search",
+        "Phase 1: Interview (MANDATORY - ONLY USER GATE)",
+        "Phase 2: Plan",
+        "Phase 3: Spec",
+        "Phase 4: Tests (BLOCKING GATE)",
+        "Phase 5: Build",
+        "Phase 6: Review",
+        "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "Phase 7: Compound (MANDATORY - NEVER SKIP)",
+        "Phase 8: Git Commit (MANDATORY - NEVER SKIP)",
+        "Completion Checklist",
+        "Compounds",
+        "Example"
+      ],
+      "label": "/w-bg-idea-tdd-swarm",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 10
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-bg-perf.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-bg-perf.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Checks Performed",
+        "Execution Protocol",
+        "Phase 0: Search",
+        "Phase 1: Profiling Done",
+        "Phase 2: Analysis Complete",
+        "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "Phase 3: Compound (MANDATORY - NEVER SKIP)",
+        "Phase 4: Git Commit (MANDATORY - NEVER SKIP)",
+        "Completion Checklist",
+        "Compounds",
+        "Example"
+      ],
+      "label": "/w-bg-perf",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 10
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-bg-security.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-bg-security.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Checks Performed",
+        "Execution Protocol",
+        "Phase 0: Search",
+        "Phase 1: Scan Complete",
+        "Phase 2: Analysis Done",
+        "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "Phase 3: Compound (MANDATORY - NEVER SKIP)",
+        "Phase 4: Git Commit (MANDATORY - NEVER SKIP)",
+        "Completion Checklist",
+        "Compounds",
+        "Example"
+      ],
+      "label": "/w-bg-security",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 10
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-bg-tdd-swarm.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-bg-tdd-swarm.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Execution Protocol",
+        "Phase 0: Search",
+        "Phase 1: Plan",
+        "Phase 2: Spec",
+        "Phase 3: Tests (BLOCKING GATE)",
+        "Phase 4: Build",
+        "Phase 5: Review",
+        "✅ VERIFICATION CHECKPOINT — Cross-Method Validation",
+        "Phase 6: Compound (MANDATORY - NEVER SKIP)",
+        "Phase 7: Git Commit (MANDATORY - NEVER SKIP)",
+        "Completion Checklist",
+        "Compounds",
+        "Example"
+      ],
+      "label": "/w-bg-tdd-swarm",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 10
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-search.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-search.md",
+      "anchors": [
+        "Usage",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Search Complete",
+        "Memory Namespaces Searched",
+        "Example"
+      ],
+      "label": "/w-search",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 10
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-start.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-start.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY EXECUTION",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Context Loaded",
+        "Memory Sources",
+        "Completion Checklist",
+        "Example"
+      ],
+      "label": "/w-start",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 10
+    },
+    {
+      "id": "workflow:.claude/commands/analysis/component.md",
+      "kind": "workflow",
+      "file": ".claude/commands/analysis/component.md",
+      "anchors": [
+        "Usage",
+        "Frameworks Supported",
+        "What It Creates",
+        "Example"
+      ],
+      "label": "/analysis:component",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 10
+    },
+    {
+      "id": "workflow:.claude/commands/analysis/design.md",
+      "kind": "workflow",
+      "file": ".claude/commands/analysis/design.md",
+      "anchors": [
+        "Usage",
+        "What It Creates",
+        "Example"
+      ],
+      "label": "/analysis:design",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 10
+    },
+    {
+      "id": "workflow:.claude/commands/analysis/layout.md",
+      "kind": "workflow",
+      "file": ".claude/commands/analysis/layout.md",
+      "anchors": [
+        "Usage",
+        "Layout Types",
+        "What It Creates",
+        "Example"
+      ],
+      "label": "/analysis:layout",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 10
+    },
+    {
+      "id": "workflow:.claude/commands/analysis/theme.md",
+      "kind": "workflow",
+      "file": ".claude/commands/analysis/theme.md",
+      "anchors": [
+        "Usage",
+        "Theme Styles",
+        "What It Creates",
+        "Example"
+      ],
+      "label": "/analysis:theme",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 10
+    },
+    {
+      "id": "workflow:.claude/commands/coordination/agent-spawn.md",
+      "kind": "workflow",
+      "file": ".claude/commands/coordination/agent-spawn.md",
+      "anchors": [
+        "Available Agents",
+        "Usage",
+        "Example"
+      ],
+      "label": "/coordination:agent-spawn",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 10
+    },
+    {
+      "id": "workflow:.claude/commands/coordination/memory-ops.md",
+      "kind": "workflow",
+      "file": ".claude/commands/coordination/memory-ops.md",
+      "anchors": [
+        "Operations",
+        "Search Memory",
+        "Store Pattern",
+        "Query Memory",
+        "Learn from Outcome",
+        "Memory Namespaces"
+      ],
+      "label": "/coordination:memory-ops",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 10
+    },
+    {
+      "id": "workflow:.claude/commands/coordination/swarm-init.md",
+      "kind": "workflow",
+      "file": ".claude/commands/coordination/swarm-init.md",
+      "anchors": [
+        "Usage",
+        "Topologies",
+        "Quick Start",
+        "Domain-Based Agent Hierarchy"
+      ],
+      "label": "/coordination:swarm-init",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 10
+    },
+    {
+      "id": "workflow:.claude/commands/workflows/compound.md",
+      "kind": "workflow",
+      "file": ".claude/commands/workflows/compound.md",
+      "anchors": [
+        "Usage",
+        "Categories",
+        "What Gets Stored",
+        "Example"
+      ],
+      "label": "/workflows:compound",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 10
+    },
+    {
+      "id": "workflow:.claude/commands/workflows/plan.md",
+      "kind": "workflow",
+      "file": ".claude/commands/workflows/plan.md",
+      "anchors": [
+        "Usage",
+        "What It Does",
+        "Output",
+        "Example"
+      ],
+      "label": "/workflows:plan",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 10
+    },
+    {
+      "id": "workflow:.claude/commands/workflows/review.md",
+      "kind": "workflow",
+      "file": ".claude/commands/workflows/review.md",
+      "anchors": [
+        "Usage",
+        "Agents Deployed",
+        "Checkpoints",
+        "Example"
+      ],
+      "label": "/workflows:review",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 10
+    },
+    {
+      "id": "workflow:.claude/commands/workflows/work.md",
+      "kind": "workflow",
+      "file": ".claude/commands/workflows/work.md",
+      "anchors": [
+        "Usage",
+        "What It Does",
+        "Features",
+        "Example"
+      ],
+      "label": "/workflows:work",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 10
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-suite-sync.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-suite-sync.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Fetch Upstream",
+        "⛔ CHECKPOINT 1: Compare & Detect Gaps",
+        "⛔ CHECKPOINT 2: Interview — Category Selection",
+        "⛔ CHECKPOINT 3: Build Additive Changes",
+        "⛔ CHECKPOINT 4: Verify No Regressions",
+        "⛔ CHECKPOINT 6: Compound (MANDATORY - NEVER SKIP)",
+        "Completion Checklist",
+        "Example"
+      ],
+      "label": "/w-suite-sync",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 7
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-agent-interview-swarm.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-agent-interview-swarm.md",
+      "anchors": [
+        "Usage",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Execution Protocol",
+        "PHASE 0: Context Gathering (AUTO-PROCEED)",
+        "PHASE 0.5: Search (AUTO-PROCEED)",
+        "PHASE 0.75: Pi Brain — Knowledge Discovery (AUTO-PROCEED)",
+        "⛔ PHASE 1: Interview (USER GATES — MANDATORY)",
+        "PHASE 2: Save Spec (AUTO-PROCEED)",
+        "PHASE 3: Spawn Terminal Agent (AUTO-PROCEED)",
+        "Completion Checklist"
+      ],
+      "label": "/w-agent-interview-swarm",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 4
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-ralph-init.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-ralph-init.md",
+      "anchors": [
+        "What is Pure Ralph?",
+        "Usage",
+        "⚠️ MANDATORY EXECUTION",
+        "What Gets Created",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Verify Structure",
+        "⛔ CHECKPOINT 1: Create/Update Structure",
+        "⛔ CHECKPOINT 2: Customize AGENTS.md",
+        "⛔ CHECKPOINT 3: Setup Complete",
+        "Completion Checklist",
+        "Example"
+      ],
+      "label": "/w-ralph-init",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 4
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-bug-hunt.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-bug-hunt.md",
+      "anchors": [
+        "Usage",
+        "The workflows it uses",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Model Policy",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Search",
+        "⛔ CHECKPOINT 1: Interview (HIL — once; offer every default in one pass)",
+        "⛔ CHECKPOINT 2: Kickoff (HIL — the last question)",
+        "⛔ CHECKPOINT 3: Arm",
+        "⛔ CHECKPOINT 4: Hunt loop — per area, until the clock says stop",
+        "⛔ CHECKPOINT 5: Wrap-up",
+        "⛔ CHECKPOINT 6: Compound (MANDATORY — per area)",
+        "`--resume [run-id]`",
+        "`--status [run-id]`",
+        "Completion Checklist",
+        "Example"
+      ],
+      "label": "/w-bug-hunt",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 3
+    },
+    {
+      "id": "workflow:.claude/commands/.shortcuts/w-marathon-times.md",
+      "kind": "workflow",
+      "file": ".claude/commands/.shortcuts/w-marathon-times.md",
+      "anchors": [
+        "Usage",
+        "How it differs from /w-marathon",
+        "⚠️ MANDATORY FIRST ACTION",
+        "Rules",
+        "Model Policy and the shared steps",
+        "Execution Protocol",
+        "⛔ CHECKPOINT 0: Search",
+        "⛔ CHECKPOINT 1: Interview (HIL — once, short: the clock has not started)",
+        "⛔ CHECKPOINT 2: Kickoff (HIL — the last question)",
+        "⛔ CHECKPOINT 3: Arm",
+        "⛔ CHECKPOINT 4: Loop — per stream, until the clock says stop",
+        "⛔ CHECKPOINT 5: Wrap-up",
+        "⛔ CHECKPOINT 6: Compound (MANDATORY — per stream)",
+        "`--resume [run-id]`",
+        "`--status [run-id]`",
+        "Completion Checklist",
+        "Example"
+      ],
+      "label": "/w-marathon-times",
+      "evidence": [
+        "installed Claude Code command"
+      ],
+      "activity": 3
+    }
+  ],
+  "owner": []
+}

@@ -1,0 +1,160 @@
+{
+  "run": "2026-10-26-ai-design-skills",
+  "source_identity": "git:eabf86665588de0eb4c9e2fbf5fc9d3ae807e9f1",
+  "powers": [
+    {
+      "name": "Intake batch before design",
+      "what": "Collects the missing brief in one batch and fills any gap with a stated assumption instead of stalling.",
+      "evidence": "repo/skills/landing-page-design/SKILL.md:24-50",
+      "dependencies": [],
+      "data_needed": "Offer, audience, primary action, proof assets, objections, and brand constraints for the page, possibly incomplete.",
+      "network": "none",
+      "size": "small",
+      "licence": "MIT",
+      "idea": "Before designing, gather the offer, the one primary action, the audience and its objections, the proof available, and the brand and design constraints in a single round of questions. Where an answer is missing, state a one-line assumption and continue rather than waiting for the user."
+    },
+    {
+      "name": "Landing page section order",
+      "what": "Fixed sequence of numbered page sections, from an above-the-fold hero through the argument to objection handling and a repeated final call to action.",
+      "evidence": "repo/skills/landing-page-design/SKILL.md:52-72",
+      "dependencies": [],
+      "data_needed": "Offer, audience, proof points, and the single primary conversion action.",
+      "network": "none",
+      "size": "small",
+      "licence": "MIT",
+      "idea": "Lay the page out as ordered sections: a headline stating outcome and audience, a supporting subheadline, one primary call to action, a single proof signal and a hero visual above the fold; then problem and solution, outcome-driven benefits, a three-step process and social proof; then an FAQ, a risk reversal and a final call to action that mirrors the top. A tagline section sits within the middle argument."
+    },
+    {
+      "name": "Type scale snapping to Tailwind steps",
+      "what": "Maps any off-scale font size to the nearest smaller standard step and takes its paired line height from that step.",
+      "evidence": "repo/skills/landing-page-design/SKILL.md:170-192",
+      "dependencies": [
+        "Tailwind CSS"
+      ],
+      "data_needed": "The existing font sizes and line heights in the codebase or design that must be audited.",
+      "network": "none",
+      "size": "small",
+      "licence": "MIT",
+      "idea": "Look at every font size in the design. If it does not land exactly on a standard step from the Tailwind type scale, drop it to the closest step below and use that step's line height. Letter spacing and line height may only be tuned inside the step already chosen, so two rules never conflict."
+    },
+    {
+      "name": "Tagline word reveal on scroll",
+      "what": "A large benefit statement whose words brighten one at a time in reading order as the section scrolls into view.",
+      "evidence": "repo/skills/landing-page-design/SKILL.md:335-351",
+      "dependencies": [
+        "IntersectionObserver",
+        "requestAnimationFrame"
+      ],
+      "data_needed": "A tagline of at least two lines in the theme text colour, plus the base easing and the viewport trigger position.",
+      "network": "none",
+      "size": "medium",
+      "licence": "MIT",
+      "idea": "Render the tagline at a large type size, starting each word at a muted fraction of the base text colour. As the block crosses a trigger line, activate words one at a time in reading order, each transitioning on the shared easing curve. Track each word with an observer or a single throttled frame-based scroll handler, never an unthrottled scroll listener."
+    },
+    {
+      "name": "Realistic sample content rules",
+      "what": "Checklist that keeps placeholder copy, names, prices and figures believable and free of filler phrases.",
+      "evidence": "repo/skills/landing-page-design/SKILL.md:295-305",
+      "dependencies": [],
+      "data_needed": "Draft copy, sample people, company names, prices and metrics for the page.",
+      "network": "none",
+      "size": "small",
+      "licence": "MIT",
+      "idea": "Write real sentences in the product voice rather than lorem ipsum. Give people full names suited to the audience, invent company names that fit the industry, and avoid suspiciously round figures and repeated dates. Ban a list of hype words, use sentence case for headings and buttons, and write system messages as calm, specific statements that say what failed and what to do next."
+    },
+    {
+      "name": "Context split showcase or website",
+      "what": "Decides whether an animation request is a standalone showcase or a website section, then maps each page section to the motion it should receive.",
+      "evidence": "repo/skills/design-to-motion/SKILL.md:20-45",
+      "dependencies": [],
+      "data_needed": "The user request, whether a site codebase is present, and a section-by-section list of the page.",
+      "network": "none",
+      "size": "medium",
+      "licence": "MIT",
+      "idea": "Before building, classify the job as either a self-contained showcase that plays from an empty state and loops, or a website section that animates once on scroll with live text. Then go section by section: hero text always gets a small load-in, cards with visuals get a card intro plus a story, product mockups get only a load-in until the user says otherwise, and text-only blocks are left to the normal scroll reveal."
+    },
+    {
+      "name": "Reference frame fidelity check",
+      "what": "Compares a rendered still against the source reference using a blurred peak signal-to-noise score, per container, before any motion is added.",
+      "evidence": "repo/skills/design-to-motion/SKILL.md:193-199",
+      "dependencies": [
+        "gblur"
+      ],
+      "data_needed": "The reference frame image and the rendered still at the same scale, plus each container's region.",
+      "network": "none",
+      "size": "medium",
+      "licence": "MIT",
+      "idea": "Render the static version at a fixed scale, blur both images lightly to suppress sub-pixel antialiasing, and compute a peak signal-to-noise score for the whole frame and for each container, with a target for each. Where a region scores low, retry it with heavier blur so only structure is compared, and inspect an amplified difference image to find misplaced stacking, shadows or strokes rather than chasing tiny offsets."
+    },
+    {
+      "name": "Layer export placement math",
+      "what": "Computes where to place each exported layer image so it lines up with the source, including overhang, clipping and stroke-geometry cases.",
+      "evidence": "repo/skills/design-to-motion/SKILL.md:93-109",
+      "dependencies": [
+        "Figma REST API"
+      ],
+      "data_needed": "Figma file key, node ids, a personal access token read from a secure store, and each layer's absolute bounds and render bounds from the node tree.",
+      "network": "outbound",
+      "size": "large",
+      "licence": "MIT",
+      "idea": "Export each moving element as its own high-resolution image in batches. Choose its placement from a decision table: use the render bounds when the image matches them, offset by the overhang when a parent clipped it or effects spread evenly, use the stroke or fill geometry when the overhang is uneven, and export with absolute bounds for arcs, rotated blobs and masks. Keep the original z order, and where a container's children must move separately, rebuild the container in CSS and export each child."
+    },
+    {
+      "name": "Sacred background preservation",
+      "what": "Keeps a photo or texture background exactly as designed by reusing the original image fill with its transform, never animating or swapping it.",
+      "evidence": "repo/skills/design-to-motion/SKILL.md:135-145",
+      "dependencies": [
+        "Figma REST API"
+      ],
+      "data_needed": "The raw background image fill from the design file, its scale mode and image transform, and a reference crop of the background region.",
+      "network": "outbound",
+      "size": "medium",
+      "licence": "MIT",
+      "idea": "Fetch the raw image fill instead of a render, then reproduce its scale mode and transform as CSS sizing and offset. Frosted panels need their own sibling layer so the backdrop filter can see the photo. Verify the background region against the reference, and if the image cannot be obtained, report it to the user rather than silently substituting a flat colour."
+    },
+    {
+      "name": "Entrance choreography kinds",
+      "what": "A catalogue of named entrance animations for each element type, with stagger order and the rule that covered layers arrive last.",
+      "evidence": "repo/skills/design-to-motion/SKILL.md:214-236",
+      "dependencies": [
+        "CSS transitions"
+      ],
+      "data_needed": "Each element group in the layout, its kind (card, text, icon, bar, photo and so on), and its reading-order position.",
+      "network": "none",
+      "size": "medium",
+      "licence": "MIT",
+      "idea": "Assign every element group a kind from the catalogue: whole cards rise with blur, text rises a short distance from a small blur, bars and rules grow from zero along their start edge, photos shimmer and then sharpen, and so on. Stagger containers in reading order and items within a group by small steps, keep the empty state free of scale-to-zero, and let anything hidden under another layer appear last and leave first."
+    },
+    {
+      "name": "Keyframe track story engine",
+      "what": "Drives looping in-page stories from a single eased keyframe function on a shared clock, with a story picker for each visual.",
+      "evidence": "repo/skills/design-to-motion/SKILL.md:243-293",
+      "dependencies": [
+        "requestAnimationFrame"
+      ],
+      "data_needed": "For each visual, a one-sentence story, the element it acts on, and a list of time and value keyframes per story.",
+      "network": "none",
+      "size": "large",
+      "licence": "MIT",
+      "idea": "Write a one-sentence story for each visual from a menu of patterns such as a new item landing on a stack, a chart scrubber gliding, a donut segment easing outward, a typed prompt revealing glyph by glyph, or a marquee moving one full set. Build each story from eased keyframe tracks evaluated against the loop clock, so every story starts and ends on the exact design, and offset stories across cards so they do not act in unison."
+    },
+    {
+      "name": "Deterministic frame capture",
+      "what": "Records an animation frame by frame under a stepped fake clock instead of real-time screen recording, so output is repeatable.",
+      "evidence": "repo/skills/design-to-motion/SKILL.md:365-402",
+      "dependencies": [
+        "Playwright",
+        "Chromium"
+      ],
+      "data_needed": "The page URL in capture mode, the frame size, the device scale factor, and the number of frames to record after the warm-up.",
+      "network": "none",
+      "size": "medium",
+      "licence": "MIT",
+      "idea": "Install a fake clock in a headless browser, step it by whole-millisecond increments that average the target frame rate, advance the page's own animation clock inside the same evaluation as the seek, pause all CSS animations at the matching time, and screenshot each frame. Save the loop time for each frame beside the images so the export window and seam checks can be verified."
+    }
+  ],
+  "not_inventoried": [],
+  "total": 12,
+  "none_found": null,
+  "ts": "2026-10-26T19:32:45.280Z"
+}

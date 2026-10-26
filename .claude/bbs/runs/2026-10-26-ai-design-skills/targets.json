@@ -1,0 +1,374 @@
+{
+  "run": "2026-10-26-ai-design-skills",
+  "ts": "2026-10-26T19:35:36.036Z",
+  "usage_evidence": "owner",
+  "targets": {
+    "Intake batch before design": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 1: Interview (MANDATORY - NEVER SKIP)",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 1: Interview (MANDATORY - NEVER SKIP)",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 1: Interview (MANDATORY - NEVER SKIP)",
+        "how": "When the task is a landing page, UI or animation build, batch all missing brief items (audience, offer, brand, references) into one interview round and record stated assumptions for gaps; advisory otherwise.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 1: Interview (HIL — once)",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 1: Interview (HIL — once)",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 1: Interview (HIL — once)",
+        "how": "For UI or landing-page streams, ask the missing design brief in the single interview batch and log assumptions instead of stalling; advisory for non-UI work.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/analysis/design.md",
+        "file": ".claude/commands/analysis/design.md",
+        "at": "Usage",
+        "reach": "/analysis:design › Usage",
+        "workflow": "analysis:design",
+        "step": "Usage",
+        "how": "Run the design workflow with one intake batch up front, filling gaps with stated assumptions.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "Existing design workflow in the suite, the natural home for design intake."
+      }
+    ],
+    "Landing page section order": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 3: Spec",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 3: Spec",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 3: Spec",
+        "how": "When the task is a landing page, write the spec as the fixed numbered section sequence (hero, argument, objection handling, repeated final CTA); advisory for non-landing work.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/analysis/layout.md",
+        "file": ".claude/commands/analysis/layout.md",
+        "at": "Layout Types",
+        "reach": "/analysis:layout › Layout Types",
+        "workflow": "analysis:layout",
+        "step": "Layout Types",
+        "how": "Offer the landing-page section order as a layout type with its fixed numbered sections.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "Existing layout workflow in the suite, where page structure belongs."
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/analysis/design.md",
+        "file": ".claude/commands/analysis/design.md",
+        "at": "What It Creates",
+        "reach": "/analysis:design › What It Creates",
+        "workflow": "analysis:design",
+        "step": "What It Creates",
+        "how": "Design output for a landing page follows the fixed section sequence.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "Existing design workflow; the section order shapes what it produces."
+      }
+    ],
+    "Type scale snapping to Tailwind steps": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 5: Build",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 5: Build",
+        "how": "When building UI, snap any off-scale font size to the nearest smaller Tailwind step and use its paired line height; advisory outside UI work.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/analysis/design.md",
+        "file": ".claude/commands/analysis/design.md",
+        "at": "What It Creates",
+        "reach": "/analysis:design › What It Creates",
+        "workflow": "analysis:design",
+        "step": "What It Creates",
+        "how": "Typography tokens the design emits are snapped to Tailwind steps with paired line heights.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "Existing design workflow; type scale is a core design output."
+      }
+    ],
+    "Tagline word reveal on scroll": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 5: Build",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 5: Build",
+        "how": "When a landing page or animated UI includes a large benefit statement, build it as a scroll-triggered word-by-word reveal; advisory otherwise.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "how": "In UI streams, implement the tagline section with the word reveal on scroll as part of the build loop; advisory for non-UI streams.",
+        "mode": "advisory",
+        "by": "proposed"
+      }
+    ],
+    "Realistic sample content rules": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 6: Review",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 6: Review",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 6: Review",
+        "how": "For UI or landing work, review placeholder copy, names, prices and figures against the believable-content checklist and flag filler phrases; advisory.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/analysis/design.md",
+        "file": ".claude/commands/analysis/design.md",
+        "at": "What It Creates",
+        "reach": "/analysis:design › What It Creates",
+        "workflow": "analysis:design",
+        "step": "What It Creates",
+        "how": "Sample content in the generated design follows the realistic-content checklist.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "Existing design workflow that produces mock content."
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "how": "When a stream builds UI, check placeholder content each loop pass against the realism rules; advisory.",
+        "mode": "advisory",
+        "by": "proposed"
+      }
+    ],
+    "Context split showcase or website": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 2: Plan",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 2: Plan",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 2: Plan",
+        "how": "When the task is animating a design, decide first whether it is a standalone showcase or a website section and map each page section to its motion; advisory for non-animation work.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 1: Interview (HIL — once)",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 1: Interview (HIL — once)",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 1: Interview (HIL — once)",
+        "how": "For animation streams, ask the showcase-versus-website question in the interview and record the motion map per section.",
+        "mode": "advisory",
+        "by": "proposed"
+      }
+    ],
+    "Reference frame fidelity check": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 4: Tests (BLOCKING GATE)",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 4: Tests (BLOCKING GATE)",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 4: Tests (BLOCKING GATE)",
+        "how": "For UI or animation tasks with a reference design, compare the rendered still to the reference using blurred PSNR per container before motion is added; a score below target stops the flow.",
+        "mode": "blocking",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "how": "In UI streams, run the per-container fidelity score each loop pass and treat a score under target as an unmet build gate; applies only to UI work.",
+        "mode": "blocking",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-perf.md",
+        "file": ".claude/commands/.shortcuts/w-perf.md",
+        "at": "⛔ CHECKPOINT 1: Profiling Done",
+        "reach": "/w-perf › ⛔ CHECKPOINT 1: Profiling Done",
+        "workflow": "w-perf",
+        "step": "⛔ CHECKPOINT 1: Profiling Done",
+        "how": "Alongside screenshots, score the rendered still against the reference with blurred PSNR and report per container.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "w-perf already takes screenshots, so a fidelity score fits its profiling step."
+      }
+    ],
+    "Layer export placement math": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 5: Build",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 5: Build",
+        "how": "When assembling exported design layers into animated UI, compute each layer's placement (overhang, clipping, stroke geometry) so it lines up with the source; advisory otherwise.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "how": "In animation streams, use the placement math when positioning exported layer images; advisory for non-UI work.",
+        "mode": "advisory",
+        "by": "proposed"
+      }
+    ],
+    "Sacred background preservation": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 6: Review",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 6: Review",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 6: Review",
+        "how": "For UI or animation work, check that photo or texture backgrounds reuse the original image fill and transform and are never animated or swapped; advisory.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 3: Spec",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 3: Spec",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 3: Spec",
+        "how": "When animating a design with a photo or texture background, write the spec rule that the background is left exactly as designed.",
+        "mode": "advisory",
+        "by": "proposed"
+      }
+    ],
+    "Entrance choreography kinds": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 5: Build",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 5: Build",
+        "how": "When building animated UI, pick a named entrance animation per element type with stagger order, covered layers arriving last; advisory otherwise.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "how": "In animation streams, apply the entrance catalogue and stagger rules while building each element; advisory for non-UI work.",
+        "mode": "advisory",
+        "by": "proposed"
+      }
+    ],
+    "Keyframe track story engine": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 5: Build",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 5: Build",
+        "how": "When a landing page needs looping in-page visuals, drive them from one eased keyframe function on a shared clock with a story picker; advisory otherwise.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "how": "In animated-UI streams, build looping stories on the shared-clock keyframe engine; advisory for non-UI work.",
+        "mode": "advisory",
+        "by": "proposed"
+      }
+    ],
+    "Deterministic frame capture": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 4: Tests (BLOCKING GATE)",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 4: Tests (BLOCKING GATE)",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 4: Tests (BLOCKING GATE)",
+        "how": "For animation tasks, record output frame by frame under a stepped fake clock so test captures are repeatable; advisory outside animation work.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-perf.md",
+        "file": ".claude/commands/.shortcuts/w-perf.md",
+        "at": "⛔ CHECKPOINT 1: Profiling Done",
+        "reach": "/w-perf › ⛔ CHECKPOINT 1: Profiling Done",
+        "workflow": "w-perf",
+        "step": "⛔ CHECKPOINT 1: Profiling Done",
+        "how": "Capture animation frames under a stepped fake clock instead of real-time recording so profiling screenshots are repeatable.",
+        "mode": "advisory",
+        "by": "proposed",
+        "unused_reason": "w-perf already takes screenshots; deterministic capture makes them repeatable."
+      }
+    ]
+  }
+}

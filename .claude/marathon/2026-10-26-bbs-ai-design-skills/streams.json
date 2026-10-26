@@ -1,0 +1,105 @@
+{
+  "streams": [
+    {
+      "name": "_meta",
+      "state": "meta",
+      "isolation": "worktree",
+      "mode": "marathon",
+      "command": "w-marathon",
+      "created": "2026-10-26T20:07:04.947Z",
+      "tasks": []
+    },
+    {
+      "name": "intake-batch-before-design",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/intake-batch-before-design.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "landing-page-section-order",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/landing-page-section-order.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "type-scale-snapping-to-tailwind-steps",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/type-scale-snapping-to-tailwind-steps.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "tagline-word-reveal-on-scroll",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/tagline-word-reveal-on-scroll.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "realistic-sample-content-rules",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/realistic-sample-content-rules.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "context-split-showcase-or-website",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/context-split-showcase-or-website.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "reference-frame-fidelity-check",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/reference-frame-fidelity-check.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "layer-export-placement-math",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/layer-export-placement-math.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "sacred-background-preservation",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/sacred-background-preservation.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "entrance-choreography-kinds",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/entrance-choreography-kinds.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "keyframe-track-story-engine",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/keyframe-track-story-engine.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "deterministic-frame-capture",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/deterministic-frame-capture.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "integration",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/integration.md",
+      "next": "after every build stream is done: wire each power into its approved steps",
+      "tasks": []
+    }
+  ],
+  "handoff": null
+}

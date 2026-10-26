@@ -1,0 +1,41 @@
+# Integration — bbs run 2026-10-26-ai-design-skills
+
+Building a power is not the deliverable; a user using it is. This stream starts after every build stream is done.
+
+## Rows
+- Intake batch before design → `/w-plan-tdd-swarm` · ⛔ CHECKPOINT 1: Interview (MANDATORY - NEVER SKIP) · advisory — When the task is a landing page, UI or animation build, batch all missing brief items (audience, offer, brand, references) into one interview round and record stated assumptions for gaps; advisory otherwise.
+- Intake batch before design → `/w-marathon` · ⛔ CHECKPOINT 1: Interview (HIL — once) · advisory — For UI or landing-page streams, ask the missing design brief in the single interview batch and log assumptions instead of stalling; advisory for non-UI work.
+- Intake batch before design → `/analysis:design` · Usage · advisory — Run the design workflow with one intake batch up front, filling gaps with stated assumptions.
+- Landing page section order → `/w-plan-tdd-swarm` · ⛔ CHECKPOINT 3: Spec · advisory — When the task is a landing page, write the spec as the fixed numbered section sequence (hero, argument, objection handling, repeated final CTA); advisory for non-landing work.
+- Landing page section order → `/analysis:layout` · Layout Types · advisory — Offer the landing-page section order as a layout type with its fixed numbered sections.
+- Landing page section order → `/analysis:design` · What It Creates · advisory — Design output for a landing page follows the fixed section sequence.
+- Type scale snapping to Tailwind steps → `/w-plan-tdd-swarm` · ⛔ CHECKPOINT 5: Build · advisory — When building UI, snap any off-scale font size to the nearest smaller Tailwind step and use its paired line height; advisory outside UI work.
+- Type scale snapping to Tailwind steps → `/analysis:design` · What It Creates · advisory — Typography tokens the design emits are snapped to Tailwind steps with paired line heights.
+- Tagline word reveal on scroll → `/w-plan-tdd-swarm` · ⛔ CHECKPOINT 5: Build · advisory — When a landing page or animated UI includes a large benefit statement, build it as a scroll-triggered word-by-word reveal; advisory otherwise.
+- Tagline word reveal on scroll → `/w-marathon` · ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met · advisory — In UI streams, implement the tagline section with the word reveal on scroll as part of the build loop; advisory for non-UI streams.
+- Realistic sample content rules → `/w-plan-tdd-swarm` · ⛔ CHECKPOINT 6: Review · advisory — For UI or landing work, review placeholder copy, names, prices and figures against the believable-content checklist and flag filler phrases; advisory.
+- Realistic sample content rules → `/analysis:design` · What It Creates · advisory — Sample content in the generated design follows the realistic-content checklist.
+- Realistic sample content rules → `/w-marathon` · ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met · advisory — When a stream builds UI, check placeholder content each loop pass against the realism rules; advisory.
+- Context split showcase or website → `/w-plan-tdd-swarm` · ⛔ CHECKPOINT 2: Plan · advisory — When the task is animating a design, decide first whether it is a standalone showcase or a website section and map each page section to its motion; advisory for non-animation work.
+- Context split showcase or website → `/w-marathon` · ⛔ CHECKPOINT 1: Interview (HIL — once) · advisory — For animation streams, ask the showcase-versus-website question in the interview and record the motion map per section.
+- Reference frame fidelity check → `/w-plan-tdd-swarm` · ⛔ CHECKPOINT 4: Tests (BLOCKING GATE) · blocking — For UI or animation tasks with a reference design, compare the rendered still to the reference using blurred PSNR per container before motion is added; a score below target stops the flow.
+- Reference frame fidelity check → `/w-marathon` · ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met · blocking — In UI streams, run the per-container fidelity score each loop pass and treat a score under target as an unmet build gate; applies only to UI work.
+- Reference frame fidelity check → `/w-perf` · ⛔ CHECKPOINT 1: Profiling Done · advisory — Alongside screenshots, score the rendered still against the reference with blurred PSNR and report per container.
+- Layer export placement math → `/w-plan-tdd-swarm` · ⛔ CHECKPOINT 5: Build · advisory — When assembling exported design layers into animated UI, compute each layer's placement (overhang, clipping, stroke geometry) so it lines up with the source; advisory otherwise.
+- Layer export placement math → `/w-marathon` · ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met · advisory — In animation streams, use the placement math when positioning exported layer images; advisory for non-UI work.
+- Sacred background preservation → `/w-plan-tdd-swarm` · ⛔ CHECKPOINT 6: Review · advisory — For UI or animation work, check that photo or texture backgrounds reuse the original image fill and transform and are never animated or swapped; advisory.
+- Sacred background preservation → `/w-plan-tdd-swarm` · ⛔ CHECKPOINT 3: Spec · advisory — When animating a design with a photo or texture background, write the spec rule that the background is left exactly as designed.
+- Entrance choreography kinds → `/w-plan-tdd-swarm` · ⛔ CHECKPOINT 5: Build · advisory — When building animated UI, pick a named entrance animation per element type with stagger order, covered layers arriving last; advisory otherwise.
+- Entrance choreography kinds → `/w-marathon` · ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met · advisory — In animation streams, apply the entrance catalogue and stagger rules while building each element; advisory for non-UI work.
+- Keyframe track story engine → `/w-plan-tdd-swarm` · ⛔ CHECKPOINT 5: Build · advisory — When a landing page needs looping in-page visuals, drive them from one eased keyframe function on a shared clock with a story picker; advisory otherwise.
+- Keyframe track story engine → `/w-marathon` · ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met · advisory — In animated-UI streams, build looping stories on the shared-clock keyframe engine; advisory for non-UI work.
+- Deterministic frame capture → `/w-plan-tdd-swarm` · ⛔ CHECKPOINT 4: Tests (BLOCKING GATE) · advisory — For animation tasks, record output frame by frame under a stepped fake clock so test captures are repeatable; advisory outside animation work.
+- Deterministic frame capture → `/w-perf` · ⛔ CHECKPOINT 1: Profiling Done · advisory — Capture animation frames under a stepped fake clock instead of real-time recording so profiling screenshots are repeatable.
+
+## How
+1. Wire each row where it says, the way that surface works:
+   - workflow: add a step under the named heading of the workflow's command source (src/plugins/*.js for the suite's own commands) that runs `node .claude/helpers/kit/cli.js <verb>`: what to do when the kit is not installed, what each exit code means, and, for `advisory`, that the workflow goes on; regenerate the installed command files
+2. Record each power: `node .claude/helpers/bbs/cli.js integrate --run 2026-10-26-ai-design-skills --power <name> [--verb <kit verb>] [--entry <module>#<symbol>] [--reach <surface id>[@<at>]=<test file>::<command>]...`. A reach test goes in through the surface (it imports the surface file or names its route, endpoint, command or flag) and checks the power's effect there; a test that only calls the power does not count.
+3. Measure each power: `node .claude/helpers/bbs/cli.js wired --run 2026-10-26-ai-design-skills --power <name> --record` records `wired_<slug>` (targets that use the entry and whose reach test passes now).
+4. Tell the owner: `node .claude/helpers/bbs/cli.js delivered --run 2026-10-26-ai-design-skills --record` writes delivered.md (where to find each power, the test that proves it, how to run it) and records `delivered`; print delivered.md to the owner.
+5. Review this stream on the files it changed: the reviewer checks each wiring is reached in the normal flow (a menu links the page, the router mounts the endpoint, the scheduler runs the job, the flag is read), not only that the file names the power.

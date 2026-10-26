@@ -1,0 +1,15 @@
+{
+  "run": "2026-10-26-ai-design-skills",
+  "type": "repo",
+  "ref": "https://github.com/elayadesign/ai-design-skills",
+  "identity": "git:eabf86665588de0eb4c9e2fbf5fc9d3ae807e9f1",
+  "fetched": true,
+  "reuse_from": null,
+  "cited": [],
+  "ts": "2026-10-26T19:31:14.115Z",
+  "source_only": {
+    "kept": 5,
+    "skipped": 0
+  },
+  "fetched_at": "2026-10-26T19:31:20.012Z"
+}
