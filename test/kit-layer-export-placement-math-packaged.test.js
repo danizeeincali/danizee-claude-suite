@@ -39,6 +39,7 @@ describe('layer-place — packaged end to end', () => {
     assert.equal(pkg.kit(['layer-place'], JSON.stringify({ frame: input.frame, layers: [{ id: 'a', z: 0, bounds: { x: 0, y: 0, w: -1, h: 1 } }] })).code, 1);
     assert.equal(pkg.kit(['layer-place', '--file', pkg.dir]).code, 1);
     assert.equal(pkg.kit(['layer-place', '--file', '']).code, 1);
+    assert.equal(pkg.kit(['layer-place', '--file', '/dev/stdin'], body).code, 1);
     assert.equal(pkg.kit(['layer-place', '--file', file, '--file', file]).code, 1);
     assert.equal(pkg.kit(['layer-place'], '').code, 1);
     assert.deepEqual(pkg.egress(), []);

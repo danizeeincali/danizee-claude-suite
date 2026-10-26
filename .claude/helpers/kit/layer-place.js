@@ -11,8 +11,8 @@
  * Decision table, first match wins:
  *   1 absolute-bounds   shape arc / rotated / mask: export with absolute bounds, place at bounds.
  *   2 render-bounds     the image size equals render_bounds size x scale (each side within 1 px): place at render_bounds.
- *   3 overhang-offset   clipped_by_parent, or effects_even with an even overhang: place at bounds pushed out by the
- *                       overhang (render_bounds minus bounds on each side). Needs render_bounds.
+ *   3 overhang-offset   render_bounds given and (clipped_by_parent or effects_even): place at bounds pushed out by the
+ *                       overhang (render_bounds minus bounds on each side), even or uneven.
  *   4 stroke-geometry   the overhang is uneven and stroke_geometry is given: place at stroke_geometry.
  *   5 bounds            nothing else fits: place at bounds and warn.
  * Positions are relative to the frame origin. children_move marks the layer's container to be rebuilt in CSS, with
@@ -21,6 +21,7 @@
  * Built from ideas audited by /w-bbs (run 2026-10-26-ai-design-skills); no foreign code.
  */
 import fs from 'fs/promises';
+import { constants as fsConstants } from 'fs';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
 
@@ -126,16 +127,20 @@ export function placeLayer(layer, frame) {
     return { placement: at(rb, 'render-bounds', `image ${layer.image.w}x${layer.image.h} matches render bounds ${rb.w}x${rb.h} at scale ${layer.image.scale} (within ${IMAGE_TOLERANCE_PX}px)`) };
   }
   const ov = rb ? overhang(bounds, rb) : null;
-  if (rb && (layer.clipped_by_parent || (layer.effects_even && isEven(ov)))) {
+  if (rb && (layer.clipped_by_parent || layer.effects_even)) {
     const b = { x: bounds.x - ov.left, y: bounds.y - ov.top, w: bounds.w + ov.left + ov.right, h: bounds.h + ov.top + ov.bottom };
-    return { placement: at(b, 'overhang-offset', `${layer.clipped_by_parent ? 'clipped by its parent' : 'even effects'}: bounds offset by the overhang (left ${ov.left}, top ${ov.top}, right ${ov.right}, bottom ${ov.bottom})`, { overhang: ov }) };
+    return { placement: at(b, 'overhang-offset', `${layer.clipped_by_parent ? 'clipped by its parent' : 'effects_even'}: bounds offset by the overhang (left ${ov.left}, top ${ov.top}, right ${ov.right}, bottom ${ov.bottom})`, { overhang: ov }) };
   }
   if (rb && !isEven(ov) && layer.stroke_geometry) {
     return { placement: at(layer.stroke_geometry, 'stroke-geometry', 'uneven overhang: placed at the stroke geometry', { overhang: ov }) };
   }
+  const flags = `clipped_by_parent=${layer.clipped_by_parent}, effects_even=${layer.effects_even}`;
+  const why = !rb
+    ? `no render_bounds, so overhang-offset and stroke-geometry could not apply (${flags})`
+    : `render_bounds given but neither clipped_by_parent nor effects_even was set (${flags}), and ${layer.stroke_geometry ? 'the overhang is even' : 'there is no stroke_geometry for an uneven overhang'}`;
   return {
     placement: at(bounds, 'bounds', 'no rule matched: placed at bounds'),
-    warning: `layer "${layer.id}": no placement rule matched (image does not match render bounds, no clipping or even effects, no stroke geometry for an uneven overhang); placed at bounds, check it against the source`,
+    warning: `layer "${layer.id}": no placement rule matched (image does not match render bounds; ${why}); placed at bounds, check it against the source`,
   };
 }
 
@@ -176,12 +181,16 @@ function parse(args) {
 }
 
 async function readFileBounded(file) {
-  let st;
-  try { st = await fs.stat(file); } catch (e) { throw bad(`cannot read ${file}: ${e.code || e.message}`); }
-  if (!st.isFile()) throw bad(`${file} is not a regular file`);
+  const under = p => /^\/(dev|proc)(\/|$)/.test(p);
+  if (under(file)) throw bad(`${file} is under /dev/ or /proc/ and is refused`);
+  let real;
+  try { real = await fs.realpath(file); } catch (e) { throw bad(`cannot read ${file}: ${e.code || e.message}`); }
+  if (under(real)) throw bad(`${file} resolves under /dev/ or /proc/ (${real}) and is refused`);
   let fh;
   try {
-    fh = await fs.open(file, 'r');
+    fh = await fs.open(real, fsConstants.O_RDONLY | fsConstants.O_NONBLOCK);
+    const st = await fh.stat();
+    if (!st.isFile()) throw bad(`${file} is not a regular file`);
     const buf = Buffer.alloc(MAX_INPUT_BYTES + 1);
     let n = 0;
     while (n < buf.length) {
@@ -191,6 +200,7 @@ async function readFileBounded(file) {
     }
     return buf.subarray(0, n);
   } catch (e) {
+    if (e instanceof KitExit) throw e;
     throw bad(`cannot read ${file}: ${e.code || e.message}`);
   } finally {
     if (fh) await fh.close().catch(() => {});

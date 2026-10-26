@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs';
 import os from 'os';
@@ -80,14 +80,33 @@ describe('layer-place decision table', () => {
     assert.equal(r.warnings.length, 1);
   });
 
-  it('effects_even with an uneven overhang does not take rule 3; stroke geometry takes it', () => {
+  it('effects_even with an uneven overhang takes rule 3 (contract), even with stroke geometry', () => {
     const rb = { x: 100, y: 70, w: 55, h: 20 };
     const sg = { x: 108, y: 68, w: 44, h: 24 };
     const r = one(L({ render_bounds: rb, effects_even: true, stroke_geometry: sg }));
     const p = r.placements[0];
-    assert.equal(p.rule, 'stroke-geometry');
-    assert.deepEqual([p.left, p.top, p.width, p.height], [8, 18, 44, 24]);
+    assert.equal(p.rule, 'overhang-offset');
+    assert.deepEqual([p.left, p.top, p.width, p.height], [0, 20, 55, 20]);
     assert.deepEqual(p.overhang, { left: 10, top: 0, right: 5, bottom: 0 });
+  });
+
+  it('effects_even, uneven overhang in both axes, no stroke geometry: overhang-offset at render bounds', () => {
+    const r = one({ id: 'a', z: 0, bounds: { x: 10, y: 10, w: 40, h: 20 }, render_bounds: { x: 6, y: 8, w: 50, h: 26 }, effects_even: true }, { x: 0, y: 0 });
+    const p = r.placements[0];
+    assert.equal(p.rule, 'overhang-offset');
+    assert.deepEqual([p.left, p.top, p.width, p.height], [6, 8, 50, 26]);
+    assert.deepEqual(r.warnings, []);
+  });
+
+  it('fallback warning says which flags were set and why', () => {
+    const w1 = one(L({ render_bounds: { x: 100, y: 60, w: 60, h: 40 } })).warnings[0];
+    assert.match(w1, /clipped_by_parent=false/);
+    assert.match(w1, /effects_even=false/);
+    assert.match(w1, /neither clipped_by_parent nor effects_even/);
+    const w2 = one(L({ effects_even: true })).warnings[0];
+    assert.match(w2, /effects_even=true/);
+    assert.match(w2, /no render_bounds/);
+    assert.doesNotMatch(w2, /no clipping or even effects/);
   });
 
   it('rule 3 beats rule 4 when clipped_by_parent, even with an uneven overhang', () => {
@@ -239,9 +258,16 @@ describe('layer-place input reading', () => {
     await exit1Async(run([], ioOf(buf)));
   });
 
-  it('accepts input of exactly the cap in bytes (then fails as JSON, not as size)', async () => {
+  it('accepts valid JSON padded with whitespace to exactly the cap in bytes, and refuses one byte more', async () => {
     const buf = Buffer.alloc(MAX_INPUT_BYTES, 0x20);
-    await assert.rejects(run([], ioOf(buf)), e => e.code === 1 && /no input/.test(e.message));
+    buf.write(good, 0);
+    const r = await run([], ioOf(buf));
+    assert.equal(r.placements[0].id, 'a');
+    await assert.rejects(run([], ioOf(Buffer.concat([buf, Buffer.from(' ')]))), e => e.code === 1 && /larger than/.test(e.message));
+  });
+
+  it('whitespace of exactly the cap is refused as no input', async () => {
+    await assert.rejects(run([], ioOf(Buffer.alloc(MAX_INPUT_BYTES, 0x20))), e => e.code === 1 && /no input/.test(e.message));
   });
 
   it('refuses empty stdin, whitespace and invalid JSON', async () => {
@@ -256,10 +282,14 @@ describe('layer-place input reading', () => {
   });
 
   describe('--file', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'layer-place-'));
-    const f = path.join(dir, 'in.json');
-    fs.writeFileSync(f, good);
-    const noStdin = { cwd: dir, stdinBytes: async () => { throw new Error('stdin must not be read'); } };
+    let dir, f;
+    before(() => {
+      dir = fs.mkdtempSync(path.join(os.tmpdir(), 'layer-place-'));
+      f = path.join(dir, 'in.json');
+      fs.writeFileSync(f, good);
+    });
+    after(() => { fs.rmSync(dir, { recursive: true, force: true }); });
+    const noStdin = { get cwd() { return dir; }, stdinBytes: async () => { throw new Error('stdin must not be read'); } };
 
     it('reads a regular file, relative to cwd, same result as stdin', async () => {
       const a = await run(['--file', 'in.json'], noStdin);
@@ -291,7 +321,23 @@ describe('layer-place input reading', () => {
       const empty = path.join(dir, 'empty.json');
       fs.writeFileSync(empty, '');
       await exit1Async(run(['--file', empty], noStdin));
-      fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('refuses /dev/stdin, /dev/null and /proc paths even when they would be regular files', async () => {
+      for (const p of ['/dev/stdin', '/dev/null', '/proc/self/fd/0', '/proc/self/status', '/dev/../dev/zero']) {
+        await assert.rejects(run(['--file', p], noStdin), e => e instanceof KitExit && e.code === 1 && /\/dev\/ or \/proc\//.test(e.message), p);
+      }
+    });
+
+    it('refuses a symlink that resolves under /dev/', async () => {
+      const link = path.join(dir, 'link');
+      fs.symlinkSync('/dev/null', link);
+      await assert.rejects(run(['--file', link], noStdin), e => e.code === 1 && /resolves under/.test(e.message));
+    });
+
+    it('--file never touches the runner stdin (independent of it)', async () => {
+      const r = await run(['--file', f], noStdin);
+      assert.equal(r.placements[0].id, 'a');
     });
   });
 });
