@@ -56,3 +56,6 @@ Add a rule the second time something goes wrong.
   unquoted attribute class allows `<`): find closers with indexOf from the opener and stop at the first miss.
 - Recursive walkers over parsed JSON use an explicit stack or refuse deep nesting with exit 1.
 - Each verb with a scanner has a timing test: about 2 MB of adversarial input finishes in under 2 s.
+- (added after r2 reviews) Implement the regular-file check on the open handle: `fs.open(p, O_RDONLY | O_NONBLOCK)`,
+  then `fh.stat().isFile()`, then the bounded read. Also refuse any path that resolves under `/dev/` or `/proc/` (so
+  `/dev/stdin` is refused even when stdin is redirected from a regular file). Tests must not depend on the runner's stdin.
