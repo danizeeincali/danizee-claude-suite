@@ -91,7 +91,8 @@ export function emitFragment(text, options = {}) {
     '.wr-sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}',
     `.wr-js .wr-w{opacity:${muted};transition:opacity 500ms ${easing}}`,
     '.wr-js .wr-w.wr-on{opacity:1}',
-    '@media (prefers-reduced-motion:reduce){.wr-js .wr-w{opacity:1;transition:none}}'
+    '@media (prefers-reduced-motion:reduce){.wr-js .wr-w{opacity:1;transition:none}}',
+    '@media print{.wr-js .wr-w{opacity:1;transition:none}}'
   ].join('\n');
   const js = [
     '(function(){',
@@ -108,7 +109,7 @@ export function emitFragment(text, options = {}) {
     'function seq(p){var ws=p.querySelectorAll(".wr-w");for(var i=0;i<ws.length;i++){(function(w,d){if(d>0)setTimeout(function(){on(w);},d);else on(w);})(ws[i],i*STAGGER);}}',
     'function passed(e){var r=e.boundingClientRect;if(!r)return false;var rb=e.rootBounds;return r.top<(rb?rb.top:0);}',
     'if(reduce||typeof IntersectionObserver!=="function"){all(root);return;}',
-    'var io=new IntersectionObserver(function(es){for(var j=0;j<es.length;j++){if(es[j].isIntersecting||passed(es[j])){io.unobserve(es[j].target);seq(es[j].target);}}},{rootMargin:MARGIN,threshold:0});',
+    'var io=new IntersectionObserver(function(es){for(var j=0;j<es.length;j++){if(es[j].isIntersecting||es[j].intersectionRatio>0||passed(es[j])){io.unobserve(es[j].target);seq(es[j].target);}}},{rootMargin:MARGIN,threshold:0});',
     'root.classList.add("wr-js");io.observe(root);',
     '})();'
   ].join('\n');

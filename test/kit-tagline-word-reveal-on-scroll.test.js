@@ -40,6 +40,19 @@ function harness(fragment, { reduce = false, noObserver = false } = {}) {
   return { words, timers, observers, lit, flush, p };
 }
 
+describe('review r3 fixes', () => {
+  it('reveals on an early IntersectionObserver entry without isIntersecting', () => {
+    const h = harness(emitFragment('Ship the thing people asked for'));
+    h.observers[0].fire(undefined, { intersectionRatio: 0.5, boundingClientRect: { top: 300 }, rootBounds: { top: 0 } });
+    h.flush();
+    assert.ok(h.lit().every(Boolean));
+  });
+  it('shows every word at full opacity in print', () => {
+    const f = emitFragment('Ship the thing');
+    assert.match(f, /@media print\{\.wr-js \.wr-w\{opacity:1;transition:none\}\}/);
+  });
+});
+
 describe('emit — markup', () => {
   it('has a <p>, one span per word, a style and a script, and no scroll listener', () => {
     const f = emitFragment('Ship the thing people asked for');
