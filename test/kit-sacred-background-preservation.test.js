@@ -67,6 +67,23 @@ describe('bg-fill css', () => {
 
 describe('bg-fill guard', () => {
   const g = (css, sel = '.bg') => guard(css, sel);
+  it('treats single-colon pseudo-elements as a separate layer, like ::', () => {
+    for (const pe of [':before', ':after', ':first-line', ':first-letter', '::before']) {
+      const r = g(`.bg { background-image: url(a.jpg); }\n.bg${pe} { background: red; }`);
+      assert.equal(r.exit, 0, pe);
+    }
+    assert.equal(g('.bg { background-image: url(a.jpg); }\n.bg:hover { background: red; }').exit, 2);
+    assert.equal(g('.bg { background-image: url(a.jpg); }\n.bg:hover:before { background: red; }').exit, 0);
+  });
+  it('allows background-attachment: scroll only under prefers-reduced-motion: reduce', () => {
+    const base = '.bg { background: url(a.jpg) fixed; }\n';
+    assert.equal(g(base + '@media (prefers-reduced-motion: reduce) { .bg { background-attachment: scroll; } }').exit, 0);
+    assert.equal(g(base + '@media (max-width: 600px) { .bg { background-attachment: scroll; } }').exit, 2);
+    assert.equal(g(base + '@media (prefers-reduced-motion: reduce) { .bg { background-position: 10px 0; } }').exit, 2);
+    assert.equal(g(base + '@media (prefers-reduced-motion: reduce) { .bg { background: #000; } }').exit, 2);
+    assert.equal(g(base + '@media (prefers-reduced-motion: reduce) { .bg { background-attachment: local; } }').exit, 2);
+    assert.equal(g(base + '.bg:hover { background-attachment: scroll; }').exit, 2);
+  });
   it('passes plain static rules for the background', () => {
     const r = g('.bg { background-image: url(a.jpg); background-size: cover; background-position: 50% 50%; }');
     assert.deepEqual(r, { selector: '.bg', violations: [], pass: true, exit: 0 });
