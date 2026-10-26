@@ -30,6 +30,12 @@ describe('landing-sections — packaged end to end', () => {
     assert.equal(pkg.kit(['landing-sections', 'check', '--file', 'missing.md']).code, 1);
     assert.equal(pkg.kit(['landing-sections', 'check'], '').code, 1);
     assert.equal(pkg.kit(['landing-sections', 'nope']).code, 1);
+    const md = '## Hero\n[Try it](/a)\n\n## Benefits\n\n```html\n<section id="faq"></section>\n```\n\n## Final CTA\n[Try it](/a)\n';
+    fs.writeFileSync(path.join(pkg.dir, 'fenced.md'), md);
+    assert.deepEqual(pkg.kit(['landing-sections', 'check'], md).json, pkg.kit(['landing-sections', 'check', '--file', 'fenced.md']).json);
+    assert.equal(pkg.kit(['landing-sections', 'check', '--file', 'spec.md', '--file', 'fenced.md']).code, 1);
+    assert.equal(pkg.kit(['landing-sections', 'check', '--file', '']).code, 1);
+    assert.equal(pkg.kit(['landing-sections', 'check'], 'é'.repeat(4.5 * 1024 * 1024)).code, 1);
     assert.deepEqual(pkg.egress(), []);
   });
 });

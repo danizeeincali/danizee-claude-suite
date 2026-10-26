@@ -179,7 +179,7 @@ export function checkText(text, type = 'md') {
 const bad = m => new KitExit(m, 1);
 
 function sniff(text) {
-  return /^\s*<(!doctype|html|body|div|section|header|main|nav|h[1-6])\b/i.test(text) || /<(section|div|header|main|body|html)\b[^>]*\b(id|data-section)\s*=/i.test(text) ? 'html' : 'md';
+  return /^\s*<(!doctype|html|body|div|section|header|main|nav|h[1-6])\b/i.test(text) ? 'html' : 'md';
 }
 
 export async function run(args, io) {
@@ -194,17 +194,25 @@ export async function run(args, io) {
     const a = rest.shift();
     if (a !== '--file') throw bad(`unexpected argument "${a}"\n${usage}`);
     if (!rest.length || rest[0].startsWith('--')) throw bad('--file needs a value');
+    if (file !== undefined) throw bad('--file given more than once');
     file = rest.shift();
+    if (!file) throw bad('--file needs a non-empty value');
   }
   const cwd = io.cwd || process.cwd();
   let text, type;
-  if (file) {
+  if (file !== undefined) {
     const p = path.resolve(cwd, file);
     try {
       const st = await fs.stat(p);
       if (!st.isFile()) throw bad(`${p} is not a file`);
       if (st.size > MAX_BYTES) throw bad(`${p} is larger than 8 MiB`);
-      text = await fs.readFile(p, 'utf-8');
+      const fh = await fs.open(p, 'r');
+      try {
+        const buf = Buffer.alloc(MAX_BYTES + 1);
+        const { bytesRead } = await fh.read(buf, 0, MAX_BYTES + 1, 0);
+        if (bytesRead > MAX_BYTES) throw bad(`${p} is larger than 8 MiB`);
+        text = buf.subarray(0, bytesRead).toString('utf-8');
+      } finally { await fh.close(); }
     } catch (e) {
       if (e instanceof KitExit) throw e;
       throw bad(`cannot read ${p}: ${e.code || e.message}`);
@@ -212,8 +220,9 @@ export async function run(args, io) {
     const ext = path.extname(p).toLowerCase();
     type = ext === '.html' || ext === '.htm' ? 'html' : ext === '.md' || ext === '.markdown' || ext === '.txt' ? 'md' : null;
   } else {
-    text = String(await io.stdin());
-    if (text.length > MAX_BYTES) throw bad('input is larger than 8 MiB');
+    const buf = Buffer.from(await (typeof io.stdinBytes === 'function' ? io.stdinBytes({ maxBytes: MAX_BYTES + 1 }) : io.stdin({ maxBytes: MAX_BYTES + 1 })));
+    if (buf.length > MAX_BYTES) throw bad('input is larger than 8 MiB');
+    text = buf.toString('utf-8');
   }
   text = text.replace(/^﻿/, '').replace(/\r\n?/g, '\n');
   if (!text.trim()) throw bad('no input: pass a markdown spec or HTML page on stdin or --file');

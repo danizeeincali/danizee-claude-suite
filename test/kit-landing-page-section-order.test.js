@@ -171,6 +171,31 @@ describe('run — input handling', () => {
       await exit(() => run(['check'], io('x'.repeat(8 * 1024 * 1024 + 1), dir)));
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
+  const bytesIo = (buf, seen, cwd) => ({ cwd, stdinBytes: async o => { seen.push(o); return buf; }, stdin: async () => { throw new Error('text stdin must not be used'); }, stdinIsTTY: false, env: {} });
+  it('stdin is read as bounded bytes and the cap counts bytes, not characters', async () => {
+    const seen = [];
+    const r = await run(['check'], bytesIo(Buffer.from(MD_GOOD), seen));
+    assert.equal(r.found.length, 9);
+    assert.deepEqual(seen, [{ maxBytes: 8 * 1024 * 1024 + 1 }]);
+    const big = Buffer.from('é'.repeat(4.5 * 1024 * 1024));
+    assert.ok(big.length > 8 * 1024 * 1024 && big.toString().length < 8 * 1024 * 1024);
+    await exit(() => run(['check'], bytesIo(big, [])));
+  });
+  it('sniffs the same result for stdin as for --file: markdown with a fenced html snippet stays markdown', async () => {
+    const md = '## Hero\n[Go](/a)\n\n## Benefits\n\n```html\n<section id="faq"></section>\n```\n\n## Final CTA\n[Go](/a)\n';
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ls-'));
+    try {
+      await fs.writeFile(path.join(dir, 'spec.md'), md);
+      const viaFile = await run(['check', '--file', 'spec.md'], io('', dir));
+      const viaStdin = await run(['check'], io(md, dir));
+      assert.deepEqual(viaStdin, viaFile);
+      assert.deepEqual(viaStdin.found, ['hero', 'benefits', 'final-cta']);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+  it('refuses a repeated or empty --file', async () => {
+    await exit(() => run(['check', '--file', 'a.md', '--file', 'b.md'], io('', process.cwd())));
+    await exit(() => run(['check', '--file', ''], io(MD_GOOD, process.cwd())));
+  });
   it('exports the verb contract', () => {
     assert.equal(verb, 'landing-sections');
     assert.match(ls.usage, /landing-sections/);
