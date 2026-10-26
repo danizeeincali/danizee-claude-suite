@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { execFileSync } from 'child_process';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
 import * as mp from '../src/lib/kit/motion-plan.js';
@@ -230,8 +231,9 @@ describe('run', () => {
       const { spawnSync } = await import('child_process');
       const inFd = (await fs.open(f, 'r'));
       try {
-        const r = spawnSync(process.execPath, ['.claude/helpers/kit/cli.js', 'motion-plan', '--file', '/dev/stdin'], { stdio: [inFd.fd, 'pipe', 'pipe'], encoding: 'utf-8' });
+        const r = spawnSync(process.execPath, [fileURLToPath(new URL('../.claude/helpers/kit/cli.js', import.meta.url)), 'motion-plan', '--file', '/dev/stdin'], { stdio: [inFd.fd, 'pipe', 'pipe'], encoding: 'utf-8' });
         assert.equal(r.status, 1);
+        assert.match(r.stderr, /\/dev|\/proc/);
       } finally { await inFd.close(); }
     } finally { await fh?.close(); await fs.rm(dir, { recursive: true, force: true }); }
   });

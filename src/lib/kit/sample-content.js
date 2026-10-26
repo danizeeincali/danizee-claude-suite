@@ -340,6 +340,16 @@ async function readBounded(file) {
   } catch (e) { if (e instanceof KitExit) throw e; throw bad(`cannot read ${file}: ${e.code || e.message}`); } finally { await fh.close(); }
 }
 
+function decodeText(buf) {
+  if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) return buf.subarray(2).toString('utf16le');
+  if (buf.length >= 2 && buf[0] === 0xFE && buf[1] === 0xFF) {
+    const sw = Buffer.from(buf.subarray(2));
+    if (sw.length % 2) throw bad('input is truncated UTF-16; save it as UTF-8');
+    return sw.swap16().toString('utf16le');
+  }
+  return buf.toString('utf-8');
+}
+
 export async function run(args, io) {
   const flags = parse(args);
   const rules = parseRules(flags.rules);
@@ -355,7 +365,7 @@ export async function run(args, io) {
     buf = Buffer.isBuffer(got) ? got : Buffer.from(String(got), 'utf-8');
   }
   if (buf.length > MAX_BYTES) throw bad('input is over 8 MiB');
-  const raw = buf.toString('utf-8').replace(/^\uFEFF/, '');
+  const raw = decodeText(buf).replace(/^\uFEFF/, '').replace(/\r(?!\n)/g, '\n');
   if (!raw.trim()) throw bad('no input: the file or stdin is empty');
   const r = lint(raw, { rules, format: flags.format });
   return { file: flags.file ?? null, format: r.format, rules, findings: r.findings, counts: r.counts };
