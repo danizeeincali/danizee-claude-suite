@@ -264,3 +264,22 @@ describe('keyframes sample, patterns, emit', () => {
     const n = frames.length; pending && pending(); assert.equal(frames.length, n);
   });
 });
+
+describe('keyframes review r1 fixes', () => {
+  it('unison groups offsets equal modulo loop_ms', () => {
+    const r = check(spec([story({ id: 'a', card: 'x', offset_ms: 0 }), story({ id: 'b', card: 'y', offset_ms: 2000 })]));
+    assert.equal(r.warnings.length, 1);
+    assert.equal(r.warnings[0].rule, 'unison');
+    assert.equal(check(spec([story({ id: 'a', card: 'x', offset_ms: 0 }), story({ id: 'b', card: 'y', offset_ms: 1000 })])).warnings.length, 0);
+  });
+  it('sample refuses tracks whose times are out of order', async () => {
+    const tr = [0, 1500, 1000, 2000].map(t => ({ t, v: t === 2000 ? 0 : t }));
+    const f = await write('unsorted.json', spec([story({ tracks: { glow: tr } })]));
+    await exit1(run(['sample', '--file', f, '--at', '1200'], io()), /strictly increasing/);
+  });
+  it('sentenceCount does not split on abbreviations', () => {
+    assert.equal(check(spec([story({ sentence: 'The bar grows, e.g. from zero.' })])).ok, true);
+    assert.equal(check(spec([story({ sentence: "Dr. Lee's card pulses once." })])).ok, true);
+    assert.equal(check(spec([story({ sentence: 'It pulses. Then it stops.' })])).ok, false);
+  });
+});

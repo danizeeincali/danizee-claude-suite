@@ -38,7 +38,6 @@ export const PATTERNS = [
 ];
 const PATTERN_NAMES = PATTERNS.map(p => p.name);
 const EASE_NAMES = ['linear', 'in', 'out', 'in-out'];
-const NAMED = { in: [0.42, 0, 1, 1], out: [0, 0, 0.58, 1], 'in-out': [0.42, 0, 0.58, 1] };
 
 const bad = m => new KitExit(m, 1);
 const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -272,6 +271,13 @@ export function normalize(input) {
 
 // ---- check ----
 
+const ABBREV = new Set(['dr', 'mr', 'mrs', 'ms', 'vs', 'e.g', 'i.e', 'etc', 'approx', 'no', 'st']);
+function lastWord(s, i) {
+  let a = i;
+  while (a > 0 && !/\s/.test(s[a - 1])) a--;
+  return s.slice(a, i).toLowerCase();
+}
+
 /** Count sentences in one pass: a ./!/? run followed by whitespace and more text starts a new one. */
 export function sentenceCount(text) {
   const s = text.trim();
@@ -284,7 +290,7 @@ export function sentenceCount(text) {
     while (j < s.length && (s[j] === '.' || s[j] === '!' || s[j] === '?')) j++;
     let k = j;
     while (k < s.length && /\s/.test(s[k])) k++;
-    if (k > j && k < s.length) n++;
+    if (k > j && k < s.length && !/\p{Ll}/u.test(s[k]) && !ABBREV.has(lastWord(s, i))) n++;
     i = j - 1;
   }
   return n;
@@ -313,12 +319,13 @@ export function check(input) {
   }
   const byOffset = new Map();
   for (const s of stories) {
-    if (!byOffset.has(s.offset_ms)) byOffset.set(s.offset_ms, []);
-    byOffset.get(s.offset_ms).push(s);
+    const phase = ((s.offset_ms % loop_ms) + loop_ms) % loop_ms;
+    if (!byOffset.has(phase)) byOffset.set(phase, []);
+    byOffset.get(phase).push(s);
   }
   for (const [offset, group] of byOffset) {
     const cards = [...new Set(group.map(s => s.card))];
-    if (cards.length > 1) warnings.push({ rule: 'unison', stories: group.map(s => s.id), message: `stories ${group.map(s => `"${s.id}"`).join(', ')} on cards ${cards.map(c => `"${c}"`).join(', ')} share offset ${offset} ms: the cards act in unison; give each its own offset_ms` });
+    if (cards.length > 1) warnings.push({ rule: 'unison', stories: group.map(s => s.id), message: `stories ${group.map(s => `"${s.id}"`).join(', ')} on cards ${cards.map(c => `"${c}"`).join(', ')} share loop phase ${offset} ms (offset_ms modulo loop_ms): the cards act in unison; give each its own offset_ms` });
   }
   return { ok: findings.length === 0, findings, warnings };
 }
@@ -328,6 +335,10 @@ export function sample(input, at) {
   const values = {};
   for (const s of stories) {
     const vals = {};
+    for (const prop of Object.keys(s.tracks)) {
+      const tr = s.tracks[prop];
+      for (let i = 1; i < tr.length; i++) if (!(tr[i].t > tr[i - 1].t)) throw bad(`story "${s.id}" track "${prop}": keyframe times must be strictly increasing (keyframe ${i} t=${tr[i].t} is not after t=${tr[i - 1].t}); run check`);
+    }
     for (const prop of Object.keys(s.tracks)) vals[prop] = evaluate(s.tracks[prop], at + s.offset_ms, loop_ms);
     values[s.id] = vals;
   }
