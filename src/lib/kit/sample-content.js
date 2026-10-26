@@ -1,0 +1,270 @@
+/**
+ * sample-content — lint sample copy in a design, spec or page for filler that makes a product look fake.
+ * Pure and deterministic: it reads one file (md, html, txt or json) or stdin and reports findings; it never edits.
+ *
+ *   sample-content lint [--file <f>] [--rules a,b]   → { file, rules, findings: [{ rule, line, text, hint }], counts }
+ *
+ * Rules: lorem (lorem ipsum filler), placeholder-person (John/Jane Doe, Foo Bar, Test User), placeholder-company
+ * (Acme, Example Inc), hype (revolutionary, seamless, unlock, ... ), title-case (markdown headings, <h1-6>, <button>,
+ * <a class=*btn*> written in Title Case; acronyms, camel-case names like GitHub and a single capitalised word do not
+ * count, and every significant word must be capitalised), round-figure (percentages that are multiples of 10 and
+ * numbers of 100 or more that are multiples of 100; years 1900-2099, versions like 100.0 and "10x" are left alone),
+ * repeated-date (the same date written 3 or more times; reported once, at its first line), vague-error ("Something
+ * went wrong", "An error occurred" with no next step on that line or the next).
+ * A .json file (or stdin that parses as an object/array) has every string value scanned; a finding's line is where
+ * the string starts in the file. HTML scripts, styles and tag markup are blanked before the content rules run.
+ * Input is capped at 8 MiB; bad flags, an unknown rule or invalid JSON in a .json file exit 1. Advisory: exit 0.
+ * Built from ideas audited by /w-bbs (run 2026-10-26-ai-design-skills); no foreign code.
+ */
+import fs from 'fs/promises';
+import path from 'path';
+import { KitExit } from './kit-exit.js';
+
+export const verb = 'sample-content';
+export const usage = 'cli.js sample-content lint [--file <md|html|txt|json>] [--rules a,b]  (text on stdin without --file; advisory, exit 0)';
+
+export const RULES = ['lorem', 'placeholder-person', 'placeholder-company', 'hype', 'title-case', 'round-figure', 'repeated-date', 'vague-error'];
+const MAX_BYTES = 8 * 1024 * 1024;
+const bad = m => new KitExit(m, 1);
+
+const HYPE = {
+  revolutionary: 'what changed, in numbers or a plain verb',
+  seamless: 'what actually connects, e.g. "syncs with Google Calendar every 5 minutes"',
+  seamlessly: 'what actually connects, e.g. "syncs with Google Calendar every 5 minutes"',
+  'cutting-edge': 'the specific technology or what it enables',
+  'game-changing': 'the concrete before and after',
+  unlock: 'a plain verb such as "get", "open" or "use"',
+  unlocks: 'a plain verb such as "gets", "opens" or "uses"',
+  unlocking: 'a plain verb such as "getting" or "using"',
+  supercharge: 'the measurable gain, e.g. "cut review time from 2 days to 3 hours"',
+  supercharged: 'the measurable gain, e.g. "cut review time from 2 days to 3 hours"',
+  effortless: 'how many steps or clicks it takes',
+  effortlessly: 'how many steps or clicks it takes',
+  'world-class': 'a verifiable proof point such as an award, certification or customer count',
+  'next-generation': 'what is new compared with the last version',
+  leverage: '"use"',
+  leverages: '"uses"',
+  leveraging: '"using"',
+  synergy: 'who works with whom and what they get out of it',
+  synergies: 'who works with whom and what they get out of it',
+  'best-in-class': 'a benchmark result or a named comparison',
+};
+const HYPE_RE = new RegExp(`(?<![\\w-])(${Object.keys(HYPE).sort((a, b) => b.length - a.length).map(w => w.replace(/-/g, '[-\\u2011]')).join('|')})(?![\\w-])`, 'gi');
+
+const SMALL = new Set(['a', 'an', 'the', 'and', 'or', 'but', 'nor', 'of', 'to', 'in', 'on', 'at', 'by', 'for', 'with', 'from', 'as', 'is', 'vs', 'via', 'into', 'over', 'per', 'up']);
+const NEXT_STEP = /\b(try|retry|check|contact|please|refresh|reload|go back|click|select|choose|ensure|make sure|see|wait|add|enter|sign in|log in|reconnect|restart|use)\b/i;
+const MONTHS = 'Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?';
+const DATE_RE = new RegExp(`\\b(\\d{4}-\\d{2}-\\d{2}|(?:${MONTHS})\\.? \\d{1,2}(?:st|nd|rd|th)?,? \\d{4}|\\d{1,2}(?:st|nd|rd|th)? (?:${MONTHS})\\.?,? \\d{4}|\\d{1,2}/\\d{1,2}/\\d{2,4})\\b`, 'gi');
+
+const snip = s => { const t = s.replace(/\s+/g, ' ').trim(); return t.length > 120 ? t.slice(0, 117) + '...' : t; };
+const lineOf = (text, idx) => { let n = 1; for (let i = 0; i < idx; i++) if (text.charCodeAt(i) === 10) n++; return n; };
+const blank = s => s.replace(/[^\n]/g, ' ');
+
+/** Words that make a heading Title Case: capitalised plain words (not acronyms, not camel-case like GitHub). */
+export function isTitleCase(raw) {
+  const words = raw.replace(/[`*_~[\]()]/g, ' ').split(/\s+/).map(w => w.replace(/^[^A-Za-z0-9]+|[^A-Za-z0-9]+$/g, '')).filter(Boolean);
+  if (words.length < 3) return false;
+  const cap = w => /^[A-Z][a-z']+$/.test(w);
+  const special = w => /^[A-Z0-9]{2,}s?$/.test(w) || /^[a-z]+[A-Z]/.test(w) || /^[A-Z][a-z]+[A-Z]/.test(w) || /\d/.test(w);
+  let caps = 0, capsAfterFirst = 0;
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    if (special(w)) continue;
+    if (cap(w)) { caps++; if (i > 0) capsAfterFirst++; }
+    else if (!SMALL.has(w.toLowerCase())) return false; // a significant lowercase word: sentence case
+  }
+  return caps >= 3 && capsAfterFirst >= 2;
+}
+
+/** Strip scripts, styles and tags from HTML, keeping every newline so line numbers hold. */
+export function htmlToText(html) {
+  return html
+    .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, blank)
+    .replace(/<!--[\s\S]*?-->/g, blank)
+    .replace(/<[^>]*>/g, blank);
+}
+
+function headings(text, isHtml) {
+  const out = []; // { idx, text }
+  if (isHtml) {
+    const re = /<(h[1-6]|button|a)\b([^>]*)>([\s\S]*?)<\/\1\s*>/gi;
+    let m;
+    while ((m = re.exec(text))) {
+      if (m[1].toLowerCase() === 'a' && !/class\s*=\s*["'][^"']*btn[^"']*["']/i.test(m[2])) continue;
+      out.push({ idx: m.index, text: m[3].replace(/<[^>]*>/g, ' ') });
+    }
+  }
+  let off = 0, fence = false;
+  for (const ln of text.split('\n')) {
+    if (/^\s*(```|~~~)/.test(ln)) fence = !fence;
+    else if (!fence && !isHtml) {
+      const m = /^ {0,3}#{1,6}\s+(.+?)\s*#*\s*$/.exec(ln);
+      if (m) out.push({ idx: off, text: m[1] });
+    }
+    off += ln.length + 1;
+  }
+  return out;
+}
+
+/** Lint one string of text. `isHtml` strips markup first. Returns findings with 1-based lines. */
+export function lintText(text, { rules = RULES, isHtml = false } = {}) {
+  const on = new Set(rules);
+  const findings = [];
+  const add = (rule, idx, t, hint, src) => findings.push({ rule, line: lineOf(src, idx), text: snip(t), hint });
+  const body = (isHtml ? htmlToText(text) : text).replace(/https?:\/\/[^\s)>"']+/g, blank).replace(/\]\([^)\n]*\)/g, blank);
+  const scan = (rule, re, hintFor, test) => {
+    if (!on.has(rule)) return;
+    re.lastIndex = 0;
+    let m;
+    while ((m = re.exec(body))) { if (!test || test(m)) add(rule, m.index, m[0], hintFor(m), body); }
+  };
+
+  scan('lorem', /\b(?:lorem ipsum(?: dolor(?: sit(?: amet)?)?)?|dolor sit amet|consectetur adipiscing)\b/gi,
+    () => 'Replace the filler with a real sentence in the product voice, e.g. what this section tells a customer to do next.');
+  scan('placeholder-person', /\b(John|Jane) Doe\b|\bFoo Bar\b|\bTest User\b/g,
+    () => 'Use a full realistic name that suits the audience, e.g. "Maya Okafor, operations lead at a 40-person logistics firm".');
+  scan('placeholder-company', /\bAcme\b(?: (?:Corp(?:oration)?|Inc|Co|Ltd|LLC)\b\.?)?|\bExample (?:Inc|Corp|Co|LLC|Ltd)\b\.?/g,
+    () => 'Invent a company name that fits the industry, e.g. "Harbor Freight Analytics" for logistics or "Linden Dental" for healthcare.');
+  scan('hype', HYPE_RE, m => `Replace "${m[0]}" with ${HYPE[m[0].toLowerCase().replace(/‑/g, '-')] || 'a specific, checkable claim'}.`);
+
+  if (on.has('round-figure')) {
+    const pct = /(?<![\w.])(\d{1,3})%/g;
+    let m;
+    while ((m = pct.exec(body))) {
+      const n = Number(m[1]);
+      if (n >= 10 && n % 10 === 0) add('round-figure', m.index, m[0], `"${m[0]}" looks invented; use a believable figure such as ${n > 10 ? n - 3 : n + 3}% (or a measured value like ${n - 0.6 > 0 ? (n - 0.6).toFixed(1) : '9.4'}%).`, body);
+    }
+    const num = /(?<![\w.#,$-])(\$?)(?!0\d)(\d{1,3}(?:,\d{3})+|\d+)(?![\w%]|\.\d|,\d)/g;
+    while ((m = num.exec(body))) {
+      const n = Number(m[2].replace(/,/g, ''));
+      const plainYear = !m[1] && !m[2].includes(',') && n >= 1900 && n <= 2099;
+      if (n >= 100 && n % 100 === 0 && !plainYear) {
+        const alt = Math.round(n * 0.97 / 7) * 7 + 3;
+        add('round-figure', m.index, m[0], `"${m[0]}" is suspiciously round; use a believable figure such as ${m[1]}${alt.toLocaleString('en-US')}.`, body);
+      }
+    }
+  }
+
+  if (on.has('repeated-date')) {
+    const seen = new Map();
+    DATE_RE.lastIndex = 0;
+    let m;
+    while ((m = DATE_RE.exec(body))) {
+      const k = m[0].toLowerCase().replace(/\s+/g, ' ');
+      const e = seen.get(k) || { first: m.index, text: m[0], n: 0 };
+      e.n++; seen.set(k, e);
+    }
+    for (const e of seen.values()) {
+      if (e.n >= 3) add('repeated-date', e.first, e.text, `"${e.text}" appears ${e.n} times; spread sample dates across realistic days and times (e.g. vary the day by 1 to 9 days).`, body);
+    }
+  }
+
+  if (on.has('vague-error')) {
+    const re = /\b(something went wrong|an error (?:has )?occurred|an unknown error|an unexpected error)\b/gi;
+    let m;
+    while ((m = re.exec(body))) {
+      const end = m.index + m[0].length;
+      const nl1 = body.indexOf('\n', end);
+      const nl2 = nl1 < 0 ? -1 : body.indexOf('\n', nl1 + 1);
+      const rest = body.slice(end, nl2 < 0 ? undefined : nl2);
+      if (!NEXT_STEP.test(rest)) add('vague-error', m.index, m[0], 'Say what failed and what to do next, e.g. "We couldn\'t save your changes. Check your connection and try again."', body);
+    }
+  }
+
+  if (on.has('title-case')) {
+    for (const h of headings(text, isHtml)) {
+      if (isTitleCase(h.text)) add('title-case', h.idx, h.text, `Use sentence case: "${sentenceCase(h.text)}".`, text);
+    }
+  }
+  return findings.sort((a, b) => a.line - b.line || RULES.indexOf(a.rule) - RULES.indexOf(b.rule));
+}
+
+function sentenceCase(t) {
+  const words = t.replace(/\s+/g, ' ').trim().split(' ');
+  return words.map((w, i) => (/^[A-Z][a-z']+$/.test(w) && i > 0 ? w.toLowerCase() : w)).join(' ');
+}
+
+/** Walk JSON, scanning every string value; lines point at where the string begins in the raw file. */
+export function lintJson(raw, data, opts) {
+  const findings = [];
+  const cursor = new Map();
+  const visit = v => {
+    if (typeof v === 'string') {
+      const enc = JSON.stringify(v).slice(1, -1);
+      const from = cursor.get(enc) || 0;
+      let at = enc ? raw.indexOf('"' + enc + '"', from) : -1;
+      if (at >= 0) cursor.set(enc, at + 1);
+      const base = at >= 0 ? lineOf(raw, at) : 1;
+      for (const f of lintText(v, { ...opts, isHtml: /<\/?[a-z][^>]*>/i.test(v) })) findings.push({ ...f, line: base + f.line - 1 });
+    } else if (Array.isArray(v)) v.forEach(visit);
+    else if (v && typeof v === 'object') Object.values(v).forEach(visit);
+  };
+  visit(data);
+  return findings.sort((a, b) => a.line - b.line);
+}
+
+export function parseRules(spec) {
+  if (spec === undefined) return [...RULES];
+  const list = String(spec).split(',').map(s => s.trim()).filter(Boolean);
+  if (!list.length) throw bad('--rules needs a comma-separated list of: ' + RULES.join(', '));
+  for (const r of list) if (!RULES.includes(r)) throw bad(`unknown rule "${r}" (known: ${RULES.join(', ')})`);
+  return [...new Set(list)];
+}
+
+function parse(args) {
+  const [sub, ...rest] = args;
+  if (sub !== 'lint') throw bad(`usage: ${usage}`);
+  const flags = {};
+  for (let i = 0; i < rest.length; i++) {
+    const a = rest[i];
+    if (a !== '--file' && a !== '--rules') throw bad(`unknown argument "${a}" (usage: ${usage})`);
+    const v = rest[++i];
+    if (v === undefined || v.startsWith('--')) throw bad(`${a} needs a value`);
+    flags[a.slice(2)] = v;
+  }
+  return flags;
+}
+
+export function lint(raw, { rules = RULES, name = '' } = {}) {
+  const ext = path.extname(name).toLowerCase();
+  const trimmed = raw.trimStart();
+  let findings;
+  let asJson = ext === '.json';
+  if (!ext && /^[[{]/.test(trimmed)) { try { JSON.parse(raw); asJson = true; } catch { /* plain text */ } }
+  if (asJson) {
+    let data;
+    try { data = JSON.parse(raw); } catch (e) { throw bad(`input is not valid JSON: ${e.message}`); }
+    findings = lintJson(raw, data, { rules });
+  } else {
+    const isHtml = ext === '.html' || ext === '.htm' || (!ext && /^<(!doctype|html|body|main|section|div|h[1-6]|button|a)\b/i.test(trimmed));
+    findings = lintText(raw, { rules, isHtml });
+  }
+  const counts = { total: findings.length };
+  for (const r of rules) counts[r] = 0;
+  for (const f of findings) counts[f.rule]++;
+  return { findings, counts };
+}
+
+export async function run(args, io) {
+  const flags = parse(args);
+  const rules = parseRules(flags.rules);
+  const cwd = io.cwd || process.cwd();
+  let raw, name = '';
+  if (flags.file) {
+    const file = path.resolve(cwd, flags.file);
+    name = file;
+    let st;
+    try { st = await fs.stat(file); } catch (e) { throw bad(`cannot read ${file}: ${e.code || e.message}`); }
+    if (!st.isFile()) throw bad(`${file} is not a file`);
+    if (st.size > MAX_BYTES) throw bad('input is over 8 MiB');
+    try { raw = await fs.readFile(file, 'utf-8'); } catch (e) { throw bad(`cannot read ${file}: ${e.code || e.message}`); }
+  } else {
+    if (io.stdinIsTTY) throw bad('no input: pass --file <f> or text on stdin');
+    raw = String(await io.stdin());
+    if (Buffer.byteLength(raw) > MAX_BYTES) throw bad('input is over 8 MiB');
+  }
+  raw = raw.replace(/^﻿/, '');
+  if (!raw.trim()) throw bad('no input: the file or stdin is empty');
+  const r = lint(raw, { rules, name });
+  return { file: flags.file || null, rules, findings: r.findings, counts: r.counts };
+}
