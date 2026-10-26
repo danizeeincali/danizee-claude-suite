@@ -201,7 +201,8 @@ describe('review round 2 fixes', () => {
 });
 
 describe('review round 3 fixes', () => {
-  const blocks = () => [...review().matchAll(/```bash\n([\s\S]*?)```/g)].map(m => m[1]);
+  // the diff-range blocks only: the design-kit review step adds its own bash block to Review
+  const blocks = () => [...review().matchAll(/```bash\n([\s\S]*?)```/g)].map(m => m[1]).filter(b => b.includes('diff-range'));
   it('skipped-file wording matches what diff-range prints', () => {
     const r = review();
     assert.match(r, /`too_large` skip names each file on stderr, so report those names/);

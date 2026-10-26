@@ -86,6 +86,28 @@ Skip this block for non-UI tasks.
 | Caching | _____ | _____ | _____ |
 | Bundle size | _____ | _____ | _____ |
 
+**🎯 Reference frame fidelity (UI work with a reference design, advisory here):** When the task is UI or animation work with a reference design, render the still (before any motion is added) to `"$ACTUAL"`, export the reference to `"$REF"`, list the containers as `[{id, x, y, w, h}]` in `"$REGIONS"`, and report the blurred PSNR per container alongside the screenshots. Skip this for non-UI work. Before running a block, put the real path in place of each `NAME='<...>'` placeholder at its top (the CSS selector for `BG_SELECTOR`, a file:// or localhost URL for `URL`); shell variables do not persist between Bash calls, so run the block as one. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+```bash
+REF='<the reference PNG>'; [ -f "$REF" ] || echo "REF is still the placeholder or does not exist: put the path of the reference PNG in place of <the reference PNG>" >&2
+ACTUAL='<the rendered still PNG>'; [ -f "$ACTUAL" ] || echo "ACTUAL is still the placeholder or does not exist: put the path of the rendered still PNG in place of <the rendered still PNG>" >&2
+REGIONS='<the containers JSON you wrote>'; [ -f "$REGIONS" ] || echo "REGIONS is still the placeholder or does not exist: put the path of the containers JSON you wrote in place of <the containers JSON you wrote>" >&2
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js fidelity --ref "$REF" --actual "$ACTUAL" --regions "$REGIONS"; RC=$?; (exit $RC); fi
+```
+
+Exit 0: every container meets the target; exit 2: report each region with `pass: false` and its `psnr` in the findings table (advisory here: profiling goes on); exit 1 is wrong input: report it, never read it as a pass.
+
+**🎞️ Deterministic frame capture (animation work only):** When the task is animation work, capture the animation frames under a stepped fake clock instead of real-time recording, so profiling screenshots are repeatable: `plan` prints the stepped fake-clock times (`steps_ms`, one per frame); `capture` records the page frame by frame on that clock into `"$FRAMES"`. Skip this for non-animation work. Before running a block, put the real path in place of each `NAME='<...>'` placeholder at its top (the CSS selector for `BG_SELECTOR`, a file:// or localhost URL for `URL`); shell variables do not persist between Bash calls, so run the block as one. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+```bash
+URL='<the file:// or localhost page URL>'
+FRAMES='<the output frames directory>'
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js frame-capture plan --fps 30 --frames 60; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js frame-capture capture --url "$URL" --out "$FRAMES" --fps 30 --frames 60; RC=$?; (exit $RC); fi
+```
+
+Exit 0 printed the plan or the captured frames; exit 1 is wrong input; exit 2 refused a URL that is not file:// or localhost (nothing was fetched); exit 4 means playwright is not installed: say so and fall back to plain screenshots. The step is advisory: whatever it prints, the workflow goes on.
+
 **AUTO-PROCEED:** Continue to Analysis phase.
 
 ---

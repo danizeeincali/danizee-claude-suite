@@ -1,0 +1,66 @@
+{
+  "run": "2026-10-26-ai-design-skills",
+  "ts": "2026-10-26T22:37:44.550Z",
+  "powers": {
+    "Intake batch before design": {
+      "verb": "design-brief",
+      "entry": null,
+      "reach": []
+    },
+    "Landing page section order": {
+      "verb": "landing-sections",
+      "entry": null,
+      "reach": []
+    },
+    "Type scale snapping to Tailwind steps": {
+      "verb": "type-scale",
+      "entry": null,
+      "reach": []
+    },
+    "Tagline word reveal on scroll": {
+      "verb": "word-reveal",
+      "entry": null,
+      "reach": []
+    },
+    "Realistic sample content rules": {
+      "verb": "sample-content",
+      "entry": null,
+      "reach": []
+    },
+    "Context split showcase or website": {
+      "verb": "motion-plan",
+      "entry": null,
+      "reach": []
+    },
+    "Reference frame fidelity check": {
+      "verb": "fidelity",
+      "entry": null,
+      "reach": []
+    },
+    "Layer export placement math": {
+      "verb": "layer-place",
+      "entry": null,
+      "reach": []
+    },
+    "Sacred background preservation": {
+      "verb": "bg-fill",
+      "entry": null,
+      "reach": []
+    },
+    "Entrance choreography kinds": {
+      "verb": "entrance",
+      "entry": null,
+      "reach": []
+    },
+    "Keyframe track story engine": {
+      "verb": "keyframes",
+      "entry": null,
+      "reach": []
+    },
+    "Deterministic frame capture": {
+      "verb": "frame-capture",
+      "entry": null,
+      "reach": []
+    }
+  }
+}
