@@ -341,7 +341,10 @@ async function readBounded(file) {
 }
 
 function decodeText(buf) {
-  if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) return buf.subarray(2).toString('utf16le');
+  if (buf.length >= 2 && buf[0] === 0xFF && buf[1] === 0xFE) {
+    if (buf.length % 2) throw bad('input is truncated UTF-16; save it as UTF-8');
+    return buf.subarray(2).toString('utf16le');
+  }
   if (buf.length >= 2 && buf[0] === 0xFE && buf[1] === 0xFF) {
     const sw = Buffer.from(buf.subarray(2));
     if (sw.length % 2) throw bad('input is truncated UTF-16; save it as UTF-8');

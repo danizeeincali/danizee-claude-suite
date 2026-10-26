@@ -14,7 +14,7 @@
  * Built from ideas audited by /w-bbs (run 2026-10-26-ai-design-skills); no foreign code.
  */
 import fs from 'fs/promises';
-import { constants as fsc } from 'fs';
+import { constants as fsc, fstatSync } from 'fs';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
 
@@ -211,7 +211,11 @@ async function openRegular(p) {
   if (PROTECTED.test(p) || PROTECTED.test(real)) throw bad(`${p} is not a regular file (paths under /dev and /proc are refused)`);
   const fh = await fs.open(p, fsc.O_RDONLY | fsc.O_NONBLOCK);
   try {
-    if (!(await fh.stat()).isFile()) throw bad(`${p} is not a regular file`);
+    const st = await fh.stat({ bigint: true });
+    if (!st.isFile()) throw bad(`${p} is not a regular file`);
+    let s0 = null;
+    try { s0 = fstatSync(0, { bigint: true }); } catch { /* no stdin */ }
+    if (s0 && s0.ino !== 0n && s0.dev === st.dev && s0.ino === st.ino) throw bad(`${p} is not a regular file (it is the same file as standard input)`);
     const buf = Buffer.alloc(MAX_BYTES + 1);
     let n = 0;
     while (n < buf.length) {
