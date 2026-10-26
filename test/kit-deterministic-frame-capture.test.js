@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import http from 'node:http';
 import { pathToFileURL } from 'node:url';
 import { run, plan, seamCheck, checkUrl, resolvePlaywright, NOT_INSTALLED } from '../src/lib/kit/frame-capture.js';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
@@ -188,7 +189,7 @@ describe('frame-capture capture', () => {
       screenshot: async () => Buffer.from('PNG' + calls.length),
     };
     let closed = false;
-    const fake = { chromium: { launch: async () => ({ newContext: async (o) => { calls.push(['ctx', o.viewport.width, o.viewport.height, o.deviceScaleFactor]); return { newPage: async () => fakePage }; }, close: async () => { closed = true; } }) } };
+    const fake = { chromium: { launch: async () => ({ newContext: async (o) => { calls.push(['ctx', o.viewport.width, o.viewport.height, o.deviceScaleFactor]); return { route: async () => {}, routeWebSocket: async () => {}, newPage: async () => fakePage }; }, close: async () => { closed = true; } }) } };
     const out = path.join(dir, 'frames');
     const r = await run(['capture', '--url', 'file:///tmp/x.html', '--out', out, '--fps', '30', '--frames', '4', '--warmup', '1', '--loop-ms', '100', '--width', '320', '--height', '200', '--scale', '2'], { cwd: dir, resolvePlaywright: async () => fake });
     assert.equal(r.captured, 4);
@@ -245,6 +246,151 @@ if (browserOk) {
       const again = path.join(dir, 'again');
       await run(['capture', '--url', pathToFileURL(page).href, '--out', again, '--fps', '30', '--frames', '30', '--loop-ms', '1000', '--width', '320', '--height', '120'], { cwd: dir });
       assert.deepEqual(await fs.readFile(path.join(again, 'frame-00016.png')), mid, 'repeatable');
+    });
+  });
+}
+
+// A stand-in playwright that records the launch options, the context options and the context-level route handlers.
+// The page has no route(): egress must be guarded on the context, so popups are covered too.
+function fakePlaywright({ animations } = {}) {
+  const rec = { launch: null, ctxOpts: null, route: null, ws: null, closed: false };
+  const page = {
+    clock: { install: async () => {}, pauseAt: async () => {}, runFor: async () => {} },
+    goto: async () => {},
+    evaluate: async (fn, t) => {
+      if (!animations) return;
+      const saved = Object.getOwnPropertyDescriptor(globalThis, 'document');
+      globalThis.document = { getAnimations: () => animations(t) };
+      try { fn(t); } finally { if (saved) Object.defineProperty(globalThis, 'document', saved); else delete globalThis.document; }
+    },
+    screenshot: async () => Buffer.from('PNG'),
+  };
+  const ctx = {
+    route: async (pat, h) => { rec.route = [pat, h]; },
+    routeWebSocket: async (pat, h) => { rec.ws = [pat, h]; },
+    newPage: async () => { if (!rec.route) throw new Error('page opened before the context route was set'); return page; },
+  };
+  const pw = { chromium: { launch: async (o) => { rec.launch = o; return { newContext: async (o2) => { rec.ctxOpts = o2; return ctx; }, close: async () => { rec.closed = true; } }; } } };
+  return { rec, pw };
+}
+
+describe('frame-capture capture review r1', () => {
+  let dir;
+  before(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fc-r1-')); });
+  after(async () => { await fs.rm(dir, { recursive: true, force: true }); });
+  const cap = (pw, out, extra = []) => run(['capture', '--url', 'file:///tmp/x.html', '--out', out, '--fps', '30', ...extra], { cwd: dir, resolvePlaywright: async () => pw });
+
+  it('blocks egress at the browser and context level: resolver rules, no proxy, no service workers, context routes', async () => {
+    const { rec, pw } = fakePlaywright();
+    await cap(pw, path.join(dir, 'eg'), ['--frames', '2']);
+    assert.ok(rec.launch.args.includes('--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1'), JSON.stringify(rec.launch));
+    assert.ok(rec.launch.args.includes('--no-proxy-server'));
+    assert.equal(rec.ctxOpts.serviceWorkers, 'block');
+    assert.equal(rec.route[0], '**/*');
+    const verdict = async (url) => {
+      let v = null;
+      await rec.route[1]({ request: () => ({ url: () => url }), continue: async () => { v = 'continue'; }, abort: async () => { v = 'abort'; }, fulfill: async () => { v = 'fulfill'; } });
+      return v;
+    };
+    for (const u of ['https://example.com/x', 'http://blocked.invalid/redirect-target', 'http://localhost.evil.com/', 'http://127.0.0.2/', 'http://user@localhost/']) assert.equal(await verdict(u), 'abort', u);
+    for (const u of ['file:///tmp/x.html', 'http://127.0.0.1:8080/a.css', 'http://localhost/b.js']) assert.equal(await verdict(u), 'continue', u);
+    const sock = async (url) => {
+      let v = null;
+      await rec.ws[1]({ url: () => url, connectToServer: () => { v = 'connect'; }, close: async () => { v = 'close'; } });
+      return v;
+    };
+    for (const u of ['wss://example.com/s', 'ws://blocked.invalid/', 'ws://user@localhost/', 'ws://127.0.0.2/']) assert.equal(await sock(u), 'close', u);
+    for (const u of ['ws://127.0.0.1:8080/s', 'ws://localhost/s']) assert.equal(await sock(u), 'connect', u);
+  });
+
+  it('a capture without --loop-ms writes a manifest that seam accepts', async () => {
+    const { pw } = fakePlaywright();
+    const out = path.join(dir, 'noloop');
+    assert.equal((await cap(pw, out, ['--frames', '30'])).captured, 30);
+    const r = await run(['seam', '--file', path.join(out, 'manifest.json'), '--loop-ms', '1000'], { cwd: dir });
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.findings, []);
+    const off = await run(['seam', '--file', path.join(out, 'manifest.json'), '--loop-ms', '900'], { cwd: dir });
+    assert.equal(off.ok, false);
+    assert.ok(off.findings.some((f) => f.kind === 'seam'));
+  });
+
+  it('capturing twice into the same --out leaves only the new frames', async () => {
+    const out = path.join(dir, 'twice');
+    assert.equal((await cap(fakePlaywright().pw, out, ['--frames', '6'])).captured, 6);
+    await fs.writeFile(path.join(out, 'notes.txt'), 'mine');
+    assert.equal((await cap(fakePlaywright().pw, out, ['--frames', '3'])).captured, 3);
+    assert.deepEqual((await fs.readdir(out)).sort(), ['frame-00001.png', 'frame-00002.png', 'frame-00003.png', 'manifest.json', 'notes.txt']);
+    const man = JSON.parse(await fs.readFile(path.join(out, 'manifest.json'), 'utf-8'));
+    assert.deepEqual(man.frames.map((f) => f.file), ['frame-00001.png', 'frame-00002.png', 'frame-00003.png']);
+  });
+
+  it('an animation that starts after load is seeked from its own start, not from page load', async () => {
+    const set = [];
+    const mk = (name) => { const a = { pause() {} }; Object.defineProperty(a, 'currentTime', { get: () => null, set: (v) => set.push([name, v]) }); return a; };
+    const early = mk('early');
+    const late = mk('late');
+    const { pw } = fakePlaywright({ animations: (t) => (t >= 100 ? [early, late] : [early]) });
+    assert.equal((await cap(pw, path.join(dir, 'late'), ['--frames', '6'])).captured, 6);
+    assert.deepEqual(set.filter((s) => s[0] === 'early').map((s) => s[1]), [0, 33, 66, 100, 133, 166]);
+    assert.deepEqual(set.filter((s) => s[0] === 'late').map((s) => s[1]), [0, 33, 66]);
+  });
+});
+
+if (browserOk) {
+  describe('frame-capture capture egress with real playwright (local server only; blocked.invalid is a reserved name)', () => {
+    let dir, server, port;
+    const hits = [];
+    const finals = ['redirect', 'direct', 'fetch', 'ws'];
+    let release;
+    const allIn = new Promise((r) => { release = r; });
+    const HTML = `<!doctype html><body><div style="width:20px;height:20px;background:red"></div>
+<script>
+const sent = new Set();
+const b = (p) => { if (sent.has(p)) return; sent.add(p); fetch('/beacon/' + p).catch(() => {}); };
+</script>
+<img src="/redir" onload="b('redirect-loaded')" onerror="b('redirect-blocked')">
+<img src="http://blocked.invalid/x.png" onload="b('direct-loaded')" onerror="b('direct-blocked')">
+<script>
+fetch('http://blocked.invalid/f').then(() => b('fetch-ok'), () => b('fetch-blocked'));
+try {
+  const ws = new WebSocket('ws://blocked.invalid/s');
+  ws.onopen = () => b('ws-open');
+  ws.onmessage = () => b('ws-message');
+  ws.onclose = () => b('ws-closed');
+  ws.onerror = () => b('ws-error');
+} catch (e) { b('ws-closed'); }
+</script>
+<img src="/hold">`;
+    before(async () => {
+      dir = await fs.mkdtemp(path.join(os.tmpdir(), 'fc-egress-'));
+      server = http.createServer((req, res) => {
+        hits.push({ path: req.url, host: req.headers.host });
+        if (req.url === '/') { res.writeHead(200, { 'content-type': 'text/html' }); res.end(HTML); return; }
+        if (req.url === '/redir') { res.writeHead(302, { location: 'http://blocked.invalid/redirected.png' }); res.end(); return; }
+        if (req.url === '/hold') {
+          // Hold the load event until every check has reported, so the capture sees them all.
+          const done = () => { if (!res.writableEnded) { res.writeHead(204); res.end(); } };
+          const t = setTimeout(done, 8000);
+          allIn.then(() => { clearTimeout(t); done(); });
+          return;
+        }
+        res.writeHead(204); res.end();
+        if (finals.every((w) => hits.some((h) => h.path.startsWith(`/beacon/${w}-`)))) release();
+      });
+      await new Promise((r) => server.listen(0, '127.0.0.1', r));
+      port = server.address().port;
+    });
+    after(async () => { await new Promise((r) => server.close(r)); await fs.rm(dir, { recursive: true, force: true }); });
+
+    it('a local page that requests, redirects to and opens a socket to a non-local host never reaches it', async () => {
+      const r = await run(['capture', '--url', `http://127.0.0.1:${port}/`, '--out', path.join(dir, 'out'), '--fps', '30', '--frames', '3', '--width', '120', '--height', '60'], { cwd: dir });
+      assert.equal(r.captured, 3);
+      const paths = hits.map((h) => h.path);
+      assert.ok(paths.includes('/redir'), JSON.stringify(paths));
+      for (const p of ['redirect-blocked', 'direct-blocked', 'fetch-blocked', 'ws-closed']) assert.ok(paths.includes(`/beacon/${p}`), `${p}: ${JSON.stringify(paths)}`);
+      for (const p of ['redirect-loaded', 'direct-loaded', 'fetch-ok', 'ws-open', 'ws-message']) assert.ok(!paths.includes(`/beacon/${p}`), `${p}: ${JSON.stringify(paths)}`);
+      assert.ok(hits.every((h) => h.host === `127.0.0.1:${port}`), JSON.stringify(hits));
     });
   });
 }

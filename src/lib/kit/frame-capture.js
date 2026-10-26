@@ -8,7 +8,7 @@
  *       → { fps, warmup, steps_ms, frames:[{index,t_ms,loop_t_ms}], mean_fps }. Frame g (counting warm-up frames) sits at
  *       floor(g*1000/fps) ms, so the running sum of steps never drifts more than 1 ms from g*1000/fps. steps_ms[g] is the
  *       step from frame g to frame g+1 (warm-up included, plus the step after the last frame). Warm-up frames are stepped
- *       but excluded from `frames`. loop_t_ms is t_ms mod loop_ms (null without --loop-ms).
+ *       but excluded from `frames`. loop_t_ms is t_ms mod loop_ms (null without --loop-ms; seam derives it).
  *   frame-capture seam --loop-ms <ms> [--file <manifest.json>]   (or the manifest on stdin)
  *       → { ok, findings:[{kind,index?,detail}] }. Kinds: duplicate, missing, timing, inconsistent, seam. Advisory, exit 0.
  *       The first frame's loop time and the last frame's loop time plus the next step must meet at the seam.
@@ -17,7 +17,10 @@
  *       Only file:// and http://localhost / http://127.0.0.1 URLs; anything else is refused (exit 2) and never fetched.
  *       Loads playwright only if the project can resolve it (it is not a dependency of this suite); if not, returns
  *       { captured:0, reason:"playwright not installed: frame-capture capture needs it", exit:4 }. Writes
- *       <out>/frame-00001.png ... and <out>/manifest.json. Requests to anything but a local URL are aborted in the page.
+ *       <out>/frame-00001.png ... and <out>/manifest.json (stale frame-*.png from an earlier run in <out> are removed).
+ *       Egress is blocked at the browser: Chromium resolves no name but localhost/127.0.0.1 and uses no proxy, service
+ *       workers are blocked, and context-level routes (popups included) abort non-local requests and WebSockets.
+ *       Each animation is seeked relative to the frame time it first appeared at, so late starters are not skipped ahead.
  *
  * Built from ideas audited by /w-bbs (run 2026-10-26-ai-design-skills); no foreign code.
  */
@@ -70,12 +73,15 @@ export function seamCheck(manifest, loopMs) {
   if (m.warmup !== undefined && (!isInt(m.warmup) || m.warmup < 0)) throw bad('manifest.warmup must be a non-negative integer');
   if (m.loop_ms !== undefined && m.loop_ms !== null && m.loop_ms !== loopMs) throw bad(`manifest.loop_ms (${m.loop_ms}) differs from --loop-ms (${loopMs})`);
   const warmup = m.warmup || 0;
-  const fr = m.frames;
-  for (let i = 0; i < fr.length; i++) {
-    const f = fr[i];
+  for (let i = 0; i < m.frames.length; i++) {
+    const f = m.frames[i];
     if (!f || typeof f !== 'object' || Array.isArray(f)) throw bad(`manifest.frames[${i}] must be an object`);
-    for (const k of ['index', 't_ms', 'loop_t_ms']) if (!isInt(f[k]) || f[k] < 0) throw bad(`manifest.frames[${i}].${k} must be a non-negative integer`);
+    for (const k of ['index', 't_ms', 'loop_t_ms']) {
+      if (k === 'loop_t_ms' && f[k] === null) continue; // captured without --loop-ms: derived from t_ms below
+      if (!isInt(f[k]) || f[k] < 0) throw bad(`manifest.frames[${i}].${k} must be a non-negative integer`);
+    }
   }
+  const fr = m.frames.map((f) => (f.loop_t_ms === null ? { ...f, loop_t_ms: f.t_ms % loopMs } : f));
   const findings = [];
   const seen = new Map();
   for (let i = 0; i < fr.length; i++) {
@@ -107,6 +113,20 @@ export function checkUrl(s) {
   throw bad(`url refused: only file:// and http://localhost or http://127.0.0.1 are allowed, got ${u.protocol}//${u.hostname}`, 2);
 }
 const isLocalUrl = (s) => { try { checkUrl(s); return true; } catch { return false; } };
+/** WebSockets: only ws:// to localhost or 127.0.0.1, without credentials (wss:// is refused like https://). */
+const isLocalWs = (s) => {
+  try {
+    const u = new URL(s);
+    return u.protocol === 'ws:' && !u.username && !u.password && (u.hostname === 'localhost' || u.hostname === '127.0.0.1');
+  } catch { return false; }
+};
+
+/** Browser-level egress boundary: no name but localhost/127.0.0.1 resolves (redirect targets included) and no proxy is used. */
+export const LAUNCH_ARGS = Object.freeze(['--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost, EXCLUDE 127.0.0.1', '--no-proxy-server']);
+/** Context-level request route (covers popups): continue local requests, abort everything else. */
+export const routeRequest = (route) => (isLocalUrl(route.request().url()) ? route.continue() : route.abort());
+/** Context-level WebSocket route: connect local sockets, close every other one without connecting it. */
+export const routeSocket = (ws) => (isLocalWs(ws.url()) ? ws.connectToServer() : ws.close());
 
 function parseFlags(args, allowed) {
   const out = {};
@@ -207,12 +227,13 @@ export async function capture(o, io = {}) {
   const p = plan(o);
   let browser;
   try {
-    try { browser = await pw.chromium.launch({ headless: true }); } catch (e) {
+    try { browser = await pw.chromium.launch({ headless: true, args: [...LAUNCH_ARGS] }); } catch (e) {
       return { captured: 0, reason: `playwright browser could not start: ${String(e && e.message).split('\n')[0]}`, exit: 4 };
     }
-    const ctx = await browser.newContext({ viewport: { width: o.width, height: o.height }, deviceScaleFactor: o.scale });
+    const ctx = await browser.newContext({ viewport: { width: o.width, height: o.height }, deviceScaleFactor: o.scale, serviceWorkers: 'block' });
+    await ctx.route('**/*', routeRequest);
+    await ctx.routeWebSocket(/.*/, routeSocket);
     const page = await ctx.newPage();
-    await page.route('**/*', (route) => (isLocalUrl(route.request().url()) ? route.continue() : route.abort()));
     await page.clock.install({ time: 0 });
     await page.clock.pauseAt(1000);
     await page.goto(href);
@@ -221,14 +242,28 @@ export async function capture(o, io = {}) {
     for (let g = 0; g < total; g++) {
       if (g > 0) await page.clock.runFor(p.steps_ms[g - 1]);
       const t = frameTime(g, o.fps);
-      // Seek the page's own animation clock and pause every CSS animation at t inside one evaluation.
-      await page.evaluate((ms) => { for (const a of document.getAnimations()) { a.pause(); a.currentTime = ms; } }, t);
+      // Pause every animation inside one evaluation, seeked to t minus the frame time it was first seen at (animations
+      // present at load start at 0), so one that starts later is not jumped ahead to the global time.
+      await page.evaluate((ms) => {
+        const key = Symbol.for('frame-capture.start');
+        const start = globalThis[key] || (globalThis[key] = new WeakMap());
+        for (const a of document.getAnimations()) {
+          if (!start.has(a)) start.set(a, ms);
+          a.pause();
+          a.currentTime = ms - start.get(a);
+        }
+      }, t);
       if (g < o.warmup) continue;
       const k = g - o.warmup;
       const name = `frame-${String(k + 1).padStart(5, '0')}.png`;
       const png = await page.screenshot({ type: 'png' });
       await writeAtomic(path.join(out, name), png);
       files.push(name);
+    }
+    const keep = new Set(files);
+    for (const n of await fs.readdir(out)) {
+      if (!/^frame-\d+\.png$/.test(n) || keep.has(n)) continue;
+      try { await fs.unlink(path.join(out, n)); } catch (e) { throw bad(`cannot remove stale ${n} from --out: ${e.code || e.message}`); }
     }
     const manifest = {
       fps: o.fps, loop_ms: o.loopMs, warmup: o.warmup, url: href, width: o.width, height: o.height, scale: o.scale,
