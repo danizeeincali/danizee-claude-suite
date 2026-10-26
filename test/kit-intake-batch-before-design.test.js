@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
+import { spawnSync } from 'child_process';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
 import * as db from '../src/lib/kit/design-brief.js';
 
@@ -107,5 +108,37 @@ describe('run', () => {
       await fs.writeFile(path.join(dir, 'big.json'), Buffer.alloc(8 * 1024 * 1024 + 1, 32));
       await assert.rejects(run(['assume', '--file', 'big.json'], io('', dir)), /8 MiB/);
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('refuses a FIFO or /dev/stdin as --file, an empty --file and a repeated --file', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'design-brief-'));
+    try {
+      const body = JSON.stringify({ kind: 'landing', answers: { offer: 'x' } });
+      await assert.rejects(run(['assume', '--file', '/dev/stdin'], io(body, dir)), e => e.code === 1 && /regular file/.test(e.message));
+      await assert.rejects(run(['assume', '--file', '/dev/null'], io(body, dir)), e => e.code === 1 && /regular file/.test(e.message));
+      const fifo = path.join(dir, 'p.fifo');
+      if (spawnSync('mkfifo', [fifo]).status === 0) {
+        await assert.rejects(run(['assume', '--file', fifo], io(body, dir)), e => e.code === 1 && /regular file/.test(e.message));
+      }
+      await assert.rejects(run(['assume', '--file', ''], io(body, dir)), e => e.code === 1 && /needs a value/.test(e.message));
+      await fs.writeFile(path.join(dir, 'b.json'), body);
+      await assert.rejects(run(['assume', '--file', 'b.json', '--file', 'b.json'], io(body, dir)), e => e.code === 1 && /only once/.test(e.message));
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('reads stdin through stdinBytes with a byte cap of 8 MiB, multibyte included', async () => {
+    const body = JSON.stringify({ kind: 'landing', answers: { offer: 'x' } });
+    const seen = [];
+    const bytesIo = buf => ({ cwd: '/', stdinIsTTY: false, env: {}, stdinBytes: async o => { seen.push(o); return buf; } });
+    assert.equal((await run(['questions'], bytesIo(Buffer.from(body)))).batch.length, 6);
+    assert.equal(seen[0].maxBytes, 8 * 1024 * 1024 + 1);
+    const over = Buffer.alloc(8 * 1024 * 1024 + 1, 32);
+    await assert.rejects(run(['assume'], bytesIo(over)), e => e.code === 1 && /8 MiB/.test(e.message));
+    // 4 Mi + 1 two-byte characters: fewer than 8 Mi characters, more than 8 MiB
+    const multi = Buffer.from('\u00e9'.repeat(4 * 1024 * 1024 + 1));
+    assert.ok(multi.toString('utf-8').length < 8 * 1024 * 1024 && multi.length > 8 * 1024 * 1024);
+    await assert.rejects(run(['assume'], bytesIo(multi)), e => e.code === 1 && /8 MiB/.test(e.message));
+    // the text-only fallback counts bytes too
+    await assert.rejects(run(['assume'], io(multi.toString('utf-8'))), e => e.code === 1 && /8 MiB/.test(e.message));
   });
 });

@@ -1,5 +1,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'fs/promises';
+import path from 'path';
 import { installPackaged } from './helpers/packaged.js';
 
 describe('design-brief — packaged end to end', () => {
@@ -22,6 +24,23 @@ describe('design-brief — packaged end to end', () => {
     assert.equal(pkg.kit(['design-brief', 'assume'], '{"kind":"landing","answers":{"offer":7}}').code, 1);
     assert.equal(pkg.kit(['design-brief', 'assume'], '{"kind":"landing","x":1}').code, 1);
     assert.equal(pkg.kit(['design-brief', 'nope'], body).code, 1);
+    assert.deepEqual(pkg.egress(), []);
+  });
+
+  it('drives --file through the installed CLI and refuses /dev/stdin and an empty value', async () => {
+    const body = JSON.stringify({ kind: 'landing', answers: { offer: 'Invoicing for freelancers', primary_action: ['Buy', 'Call'] } });
+    const f = path.join(pkg.dir, 'brief-input.json');
+    await fs.writeFile(f, body);
+    const viaStdin = pkg.kit(['design-brief', 'assume'], body);
+    const viaFile = pkg.kit(['design-brief', 'assume', '--file', 'brief-input.json']);
+    assert.equal(viaFile.code, 0);
+    assert.deepEqual(viaFile.json, viaStdin.json);
+    assert.equal(pkg.kit(['design-brief', 'assume', '--file', '/dev/stdin'], body).code, 1);
+    assert.equal(pkg.kit(['design-brief', 'assume', '--file', ''], body).code, 1);
+    assert.equal(pkg.kit(['design-brief', 'assume', '--file', 'brief-input.json', '--file', 'brief-input.json']).code, 1);
+    const big = pkg.kit(['design-brief', 'assume'], Buffer.alloc(8 * 1024 * 1024 + 1, 32));
+    assert.equal(big.code, 1);
+    assert.match(big.err, /8 MiB/);
     assert.deepEqual(pkg.egress(), []);
   });
 });

@@ -205,22 +205,37 @@ export function assume(input) {
 async function readInput(flags, io) {
   const cwd = io.cwd || process.cwd();
   let raw;
-  if (flags.file) {
+  if (flags.file !== undefined) {
     const file = path.resolve(cwd, flags.file);
+    let fh;
     try {
       const st = await fs.stat(file);
+      if (!st.isFile()) throw bad(`${file} is not a regular file`);
       if (st.size > MAX_BYTES) throw bad(`${file} is larger than 8 MiB`);
-      raw = await fs.readFile(file, 'utf-8');
+      fh = await fs.open(file, 'r');
+      const buf = Buffer.alloc(MAX_BYTES + 1);
+      let n = 0;
+      while (n < buf.length) {
+        const { bytesRead } = await fh.read(buf, n, buf.length - n, null);
+        if (!bytesRead) break;
+        n += bytesRead;
+      }
+      if (n > MAX_BYTES) throw bad(`${file} is larger than 8 MiB`);
+      raw = buf.subarray(0, n).toString('utf-8');
     } catch (e) {
       if (e instanceof KitExit) throw e;
       throw bad(`cannot read ${file}: ${e.code || e.message}`);
+    } finally {
+      if (fh) await fh.close();
     }
-  } else if (typeof io.stdinBytes === 'function') {
-    const buf = await io.stdinBytes({ maxBytes: MAX_BYTES });
+  } else {
+    const buf = typeof io.stdinBytes === 'function'
+      ? await io.stdinBytes({ maxBytes: MAX_BYTES + 1 })
+      : Buffer.from(String(await io.stdin({ maxBytes: MAX_BYTES + 1 })), 'utf-8');
     if (buf.length > MAX_BYTES) throw bad('input is larger than 8 MiB');
     raw = buf.toString('utf-8');
-  } else raw = await io.stdin();
-  raw = String(raw).replace(/^﻿/, '');
+  }
+  raw = raw.replace(/^\uFEFF/, '');
   if (!raw.trim()) throw bad('no input: pass the brief JSON on stdin or --file');
   try { return JSON.parse(raw); } catch { throw bad('input is not valid JSON'); }
 }
@@ -232,7 +247,8 @@ export async function run(args, io) {
   while (rest.length) {
     const a = rest.shift();
     if (a !== '--file') throw bad(`unexpected argument "${a}" (allowed: --file <f>)\n${usage}`);
-    if (!rest.length || rest[0].startsWith('--')) throw bad('--file needs a value');
+    if (flags.file !== undefined) throw bad('--file may be given only once');
+    if (!rest.length || !rest[0] || rest[0].startsWith('--')) throw bad('--file needs a value');
     flags.file = rest.shift();
   }
   const data = await readInput(flags, io);
