@@ -379,3 +379,84 @@ describe('bg-fill — review r2 fixes', () => {
     assert.equal(guard(img + ':is(.bg) { background: url(a.jpg); }', '.bg').pass, true);
   });
 });
+
+describe('bg-fill — review r3 fixes (fail-closed guard)', () => {
+  const g = (css, sel = '.bg') => guard(css, sel);
+  it('flags a later plain longhand the design did not set, or set only through its shorthand', () => {
+    for (const css of [
+      '.bg{background:url(a.jpg) center/cover}\n.bg{background-image:url(b.jpg)}',
+      '.bg{background:url(a.jpg) center/cover}\n.bg{background-size:200% 200%}',
+      '.bg{background-image:url(a.jpg)}\n.bg{background-size:10px}',
+      '.bg{background:url(a.jpg)}\n.bg{-webkit-background-size:10px}',
+    ]) {
+      const r = g(css);
+      assert.equal(r.exit, 2, css);
+      assert.equal(r.pass, false, css);
+      assert.equal(r.violations[0].line, 2, css);
+      assert.match(r.violations[0].why, /later rule/, css);
+    }
+  });
+  it('flags the IE star and underscore hacks', () => {
+    for (const [css, prop] of [
+      ['.bg{background:url(a.jpg)}\n.bg{*background:none}', '*background'],
+      ['.bg{background:url(a.jpg)}\n.bg{_background:#000}', '_background'],
+      ['.bg{background:url(a.jpg)}\n.bg:hover{*background-image:none}', '*background-image'],
+    ]) {
+      const r = g(css);
+      assert.equal(r.exit, 2, css);
+      assert.deepEqual(r.violations.map(v => [v.line, v.property]), [[2, prop]], css);
+      assert.match(r.violations[0].why, /flat colour/, css);
+    }
+  });
+  it('takes the first rule that carries an image as the design, so a fallback colour first passes', () => {
+    assert.deepEqual(g('.bg{background:#333}\n.bg{background:#333 url(a.jpg) center/cover}'), { selector: '.bg', violations: [], pass: true, exit: 0 });
+    const r = g('.bg{background:#333}\n.bg{background:#333 url(a.jpg) center/cover}\n.bg{background:#333}');
+    assert.equal(r.exit, 2);
+    assert.deepEqual(r.violations.map(v => v.line), [3]);
+  });
+  it('counts CR, CRLF and form feed as line breaks', () => {
+    for (const nl of ['\r', '\r\n', '\f', '\n']) {
+      const r = g(`.bg{background:url(a.jpg)}${nl}/* a${nl}b */${nl}.bg:hover{background:#000}`);
+      assert.deepEqual(r.violations.map(v => v.line), [4], JSON.stringify(nl));
+    }
+  });
+  it('class: any background-related declaration after the design is a change unless provably equal', () => {
+    const design = '.bg{background:url(a.jpg) center/cover}\n';
+    const longhand = '.bg{background-image:url(a.jpg)}\n';
+    for (const [css, exit] of [
+      // longhand after shorthand
+      [design + '.bg{background-position:0 0}', 2],
+      [design + '.bg{background-repeat:no-repeat}', 2],
+      [design + '.bg{background-size:cover}', 0],
+      [design + '.bg{background-position:center}', 0],
+      [design + '.bg{background-image:url(a.jpg)}', 0],
+      [design + '.bg{background:url(a.jpg) center / cover}', 0],
+      [design + '.bg{background:url(a.jpg) center/contain}', 2],
+      // prefixed longhand
+      [design + '.bg{-moz-background-size:10px}', 2],
+      [design + '.bg{-webkit-background-size:cover}', 0],
+      [design + '.bg{-o-background-position:0 0}', 2],
+      // hacks
+      [design + '.bg{*background-image:url(b.jpg)}', 2],
+      [design + '.bg{_background-size:auto}', 2],
+      [design + '.bg{background:url(a.jpg); *background:none}', 2],
+      // a property the design never set
+      [longhand + '.bg{background-repeat:no-repeat}', 2],
+      [longhand + '.bg{background-attachment:fixed}', 2],
+      [longhand + '.bg{background-position-x:10px}', 2],
+      [longhand + '.bg{background-blend-mode:multiply}', 2],
+      [longhand + '.bg{background-color:#000}', 2],
+      [longhand + '.bg{all:unset}', 2],
+      [longhand + '.bg{background-repeat:repeat}', 0],
+      [longhand + '.bg{background-size:auto}', 0],
+      // cannot be proved equal: fail closed
+      ['.bg{background:var(--hero)}\n.bg{background-size:cover}', 2],
+      [design + '.bg{background-size:var(--s)}', 2],
+      [design + '.bg{background:inherit}', 2],
+      // conditional rules: any background-related property
+      [design + '.bg:hover{background-color:red}', 2],
+      [design + '@media (min-width:1px){.bg{-webkit-background-size:cover}}', 2],
+      [design + '.bg:hover{_background-position:0 0}', 2],
+    ]) assert.equal(g(css).exit, exit, css);
+  });
+});

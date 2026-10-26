@@ -175,7 +175,9 @@ const MAX_SELECTOR_CHARS = 32 * 1024 * 1024;
 
 const unquote = (s) => s.replace(/^(["'])([^]*)\1$/, '$2');
 
-export function parseCss(raw) {
+export function parseCss(raw0) {
+  // CSS treats CR, CRLF and form feed as newlines; normalise once so every offset and line number derives from one text.
+  const raw = raw0.replace(/\r\n?|\f/g, '\n');
   const src = mask(raw);
   const text = mask(raw, true);
   const lineAt = lineIndex(src);
@@ -190,7 +192,7 @@ export function parseCss(raw) {
     const idx = seg.indexOf(':');
     if (idx < 0) return null;
     const prop = seg.slice(0, idx).trim().toLowerCase();
-    if (!/^-?[a-z][a-z-]*$/.test(prop)) return null;
+    if (!/^[*_]?-?[a-z][a-z-]*$/.test(prop)) return null;
     const lead = seg.length - seg.trimStart().length;
     const after = seg.slice(idx + 1);
     const vlead = after.length - after.trimStart().length;
@@ -368,14 +370,27 @@ export function matchSelector(part, target) {
 }
 
 // ---------- guard ----------
+//
+// FAIL-CLOSED RULE: the guard is a blocking judge. When it cannot prove that a rule leaves the background exactly as
+// designed, it fails (exit 2); it never passes on doubt. The design is the first unconditional rule whose background
+// carries an image (falling back to the first unconditional rule that sets any background property); plain rules
+// before it only build the design's cascade. After that, every conditional rule, and every later or ancestor-qualified
+// rule, that declares a background-related property (`background*` or `all`, after stripping vendor prefixes and the IE
+// `*`/`_` hacks) is a change unless its value provably equals the design value. The design's `background` shorthand is
+// expanded into its longhands to compare; a longhand the design never set compares against its initial value; a value
+// that cannot be expanded or compared (var(), inherit, unknown syntax) is a change. A later plain rule that restates the
+// design's image exactly extends the design: it may set longhands the design left at their initial value, never change
+// one the design set.
 
-const BG_PROPS = new Set(['background', 'background-image', 'background-position', 'background-position-x', 'background-position-y', 'background-size']);
 const FILTER_PROPS = new Set(['filter', 'backdrop-filter']);
-const TOUCHED = new Set([...BG_PROPS, ...FILTER_PROPS, 'all']);
 const TIME = /^[-+]?[\d.]+m?s$/i;
 const EASING = /^(ease|ease-in|ease-out|ease-in-out|linear|step-start|step-end|cubic-bezier\(.*\)|steps\(.*\)|normal|allow-discrete)$/i;
-/** The property name without a vendor prefix: -webkit-backdrop-filter is checked as backdrop-filter. */
-export const unprefixed = (prop) => prop.toLowerCase().replace(/^-(webkit|moz|ms|o)-/, '');
+/** The property name without an IE star/underscore hack or a vendor prefix: -webkit-backdrop-filter is checked as backdrop-filter, *background as background. */
+export const unprefixed = (prop) => prop.toLowerCase().replace(/^[*_]/, '').replace(/^-(webkit|moz|ms|o)-/, '');
+/** Background-related: any background* property, or `all` (which resets the background). */
+const isBg = (base) => base === 'background' || base.startsWith('background-') || base === 'all';
+const touched = (base) => isBg(base) || FILTER_PROPS.has(base);
+const isHack = (prop) => /^[*_]/.test(prop);
 
 function transitionProps(prop, value) {
   const items = splitTop(value);
@@ -397,7 +412,115 @@ function flatReplacement(prop, value) {
   return false;
 }
 
-const normValue = (v) => v.replace(/\s+/g, ' ').trim().toLowerCase();
+const normValue = (v) => v.replace(/\s+/g, ' ').replace(/\s*,\s*/g, ', ').trim().toLowerCase();
+const normPos = (v) => v.split(', ').map(l => l.split(' ').map(t => (/^[-+]?0*\.?0*(px|%|[a-z]+)?$/.test(t) && /0/.test(t) ? '0%' : t)).join(' ')).join(', ');
+const longNorm = (key, value) => { const v = normValue(value); return key === 'background-position' ? normPos(v) : v; };
+
+const LONGHANDS = ['background-image', 'background-position', 'background-size', 'background-repeat', 'background-attachment', 'background-origin', 'background-clip', 'background-color'];
+const INITIAL = {
+  'background-image': 'none', 'background-position': '0% 0%', 'background-size': 'auto', 'background-repeat': 'repeat',
+  'background-attachment': 'scroll', 'background-origin': 'padding-box', 'background-clip': 'border-box',
+  'background-color': 'transparent', 'background-blend-mode': 'normal',
+};
+const UNKNOWN = Symbol('unknown');
+const CSS_WIDE = /^(inherit|initial|unset|revert|revert-layer)$/;
+const T_IMAGE = /^(none|url\(.*\)|(-[a-z]+-)?(repeating-)?(linear|radial|conic)-gradient\(.*\)|(-[a-z]+-)?(image-set|element|cross-fade)\(.*\)|image\(.*\))$/;
+const T_POS = /^(left|right|top|bottom|center|[-+]?[\d.]+(%|[a-z]+)?|calc\(.*\))$/;
+const T_SIZE = /^(auto|cover|contain|[-+]?[\d.]+(%|[a-z]+)?|calc\(.*\))$/;
+const T_REPEAT = /^(repeat|repeat-x|repeat-y|no-repeat|space|round)$/;
+const T_ATTACH = /^(scroll|fixed|local)$/;
+const T_BOX = /^(border-box|padding-box|content-box|text)$/;
+const T_COLOR = /^(#[0-9a-f]{3,8}|(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix)\(.*\)|[a-z]+)$/;
+
+/** Whitespace-separated tokens outside parentheses, with each top-level '/' as its own token. */
+function topTokens(s) {
+  const out = [];
+  let depth = 0, cur = '';
+  for (const ch of s) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    if (depth === 0 && (ch === ' ' || ch === '/')) { if (cur) out.push(cur); cur = ''; if (ch === '/') out.push('/'); } else cur += ch;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+
+/** The `background` shorthand as its longhands, or null when it cannot be expanded with certainty. */
+function expand(value) {
+  const v = normValue(value);
+  if (!v || CSS_WIDE.test(v) || /\b(var|env|attr)\(/.test(v)) return null;
+  const layers = splitTop(v);
+  const acc = Object.fromEntries(LONGHANDS.map(k => [k, []]));
+  let color = 'transparent';
+  for (let li = 0; li < layers.length; li++) {
+    let image, att, col, slash = false, sizeOpen = false;
+    const pos = [], size = [], rep = [], boxes = [];
+    for (const t of topTokens(layers[li])) {
+      if (t === '/') { if (!pos.length || slash) return null; slash = sizeOpen = true; continue; }
+      if (sizeOpen && T_SIZE.test(t) && size.length < 2) { size.push(t); continue; }
+      if (sizeOpen && !size.length) return null;
+      sizeOpen = false;
+      if (!image && T_IMAGE.test(t)) image = t;
+      else if (T_REPEAT.test(t) && rep.length < 2) rep.push(t);
+      else if (T_ATTACH.test(t) && !att) att = t;
+      else if (T_BOX.test(t) && boxes.length < 2) boxes.push(t);
+      else if (T_POS.test(t) && pos.length < 4 && !slash) pos.push(t);
+      else if (T_COLOR.test(t) && !col && li === layers.length - 1) col = t;
+      else return null;
+    }
+    if (sizeOpen && !size.length) return null;
+    acc['background-image'].push(image || 'none');
+    acc['background-position'].push(normPos(pos.join(' ') || '0% 0%'));
+    acc['background-size'].push(size.join(' ') || 'auto');
+    acc['background-repeat'].push(rep.join(' ') || 'repeat');
+    acc['background-attachment'].push(att || 'scroll');
+    acc['background-origin'].push(boxes[0] || 'padding-box');
+    acc['background-clip'].push(boxes[1] || boxes[0] || 'border-box');
+    if (col) color = col;
+  }
+  const out = {};
+  for (const k of LONGHANDS) out[k] = k === 'background-color' ? color : acc[k].join(', ');
+  return out;
+}
+
+/** The design's computed background: longhand -> normalised value or UNKNOWN; `explicit` holds what a rule set. */
+function newState() { return { values: new Map(Object.entries(INITIAL)), explicit: new Set() }; }
+const lookup = (st, k) => (st.values.has(k) ? st.values.get(k) : UNKNOWN);
+
+function applyDecl(st, base, value) {
+  const set = (k, v) => { st.values.set(k, v); st.explicit.add(k); };
+  // position-x/-y now follow background-position: not set on their own, and never provably equal to a later longhand.
+  const derived = () => { for (const k of ['background-position-x', 'background-position-y']) { st.values.delete(k); st.explicit.delete(k); } };
+  if (base === 'all') { for (const k of [...st.values.keys(), 'background-position-x', 'background-position-y']) set(k, UNKNOWN); return; }
+  if (base === 'background') {
+    const e = expand(value);
+    for (const k of LONGHANDS) set(k, e ? e[k] : UNKNOWN);
+    derived();
+    return;
+  }
+  set(base, longNorm(base, value));
+  if (base === 'background-position') derived();
+  else if (base.startsWith('background-position-')) set('background-position', UNKNOWN);
+}
+
+/** The longhands a declaration would set to something not provably equal to the design (UNKNOWN never equals). */
+function diffKeys(st, base, value) {
+  if (base === 'all') return ['all'];
+  if (base === 'background') {
+    const e = expand(value);
+    if (!e) return ['background'];
+    const out = LONGHANDS.filter(k => lookup(st, k) !== e[k]);
+    for (const k of ['background-position-x', 'background-position-y']) if (st.explicit.has(k) && !out.includes('background-position')) out.push(k);
+    return out;
+  }
+  const want = lookup(st, base);
+  return want === UNKNOWN || want !== longNorm(base, value) ? [base] : [];
+}
+
+const carriesImage = (d) => {
+  const b = unprefixed(d.prop);
+  return (b === 'background' || b === 'background-image') && /(url\(|gradient\(|image-set\(|element\(|\bimage\(|cross-fade\(|var\()/i.test(d.value);
+};
 
 export function guard(cssText, selector) {
   const target = checkSelector(selector, '--selector');
@@ -423,36 +546,57 @@ export function guard(cssText, selector) {
     const conditionalAt = rule.atStack.length > 0;
     const conditional = conditionalAt || hits.every(h => h.conditional);
     const qualified = !conditional && hits.filter(h => !h.conditional).every(h => h.qualified);
-    const bg = rule.decls.filter(d => BG_PROPS.has(unprefixed(d.prop)));
+    const bg = rule.decls.filter(d => isBg(unprefixed(d.prop)));
     applied.push({ rule, conditional, qualified, bg, where: conditionalAt ? `inside ${rule.atStack[rule.atStack.length - 1]}` : 'in a state or qualified rule' });
   }
   if (!applied.length) throw bad(`no rule selects ${target}`);
-  // The design is the first unconditional rule that sets the background, preferring one without extra ancestors.
-  const design = applied.find(a => !a.conditional && !a.qualified && a.bg.length) || applied.find(a => !a.conditional && a.bg.length);
-  const designValues = new Map();
-  if (design) for (const d of design.bg) designValues.set(unprefixed(d.prop), normValue(original(d)));
+  // The design: the first unconditional rule whose background carries an image (preferring one without extra
+  // ancestors), else the first unconditional rule that sets any background property.
+  const uncond = applied.filter(a => !a.conditional);
+  const design = uncond.find(a => !a.qualified && a.bg.some(carriesImage)) || uncond.find(a => a.bg.some(carriesImage))
+    || uncond.find(a => !a.qualified && a.bg.length) || uncond.find(a => a.bg.length);
+  // The design's cascade: the design plus the plain rules before it (e.g. a fallback colour).
+  const cascade = new Set();
+  if (design) { const di = applied.indexOf(design); applied.forEach((a, i) => { if (i < di && !a.conditional && !a.qualified) cascade.add(a); }); cascade.add(design); }
+  const st = newState();
+  for (const a of applied) if (cascade.has(a)) for (const d of a.bg) applyDecl(st, unprefixed(d.prop), original(d));
 
   for (const a of applied) {
+    // A later plain rule that restates the design's image exactly extends the design (see the rule at the top).
+    const designImage = lookup(st, 'background-image');
+    const extends_ = !a.conditional && !a.qualified && !cascade.has(a) && designImage !== UNKNOWN && designImage !== 'none'
+      && a.bg.some(d => {
+        const b = unprefixed(d.prop);
+        if (b === 'background-image') return longNorm(b, original(d)) === designImage;
+        if (b === 'background') return expand(original(d))?.['background-image'] === designImage;
+        return false;
+      });
+    let imageSeen = false;
     for (const d of a.rule.decls) {
       const { prop, value, line } = d;
       const base = unprefixed(prop);
       if (base === 'backdrop-filter' && !/^none$/i.test(value)) add(line, prop, 'backdrop-filter on the background element itself; put the frosted panel on a sibling layer so its backdrop filter can see the photo');
       else if (base === 'filter' && !/^none$/i.test(value)) add(line, prop, 'filter on the background element alters the photo; leave the background exactly as designed');
-      if (BG_PROPS.has(base)) {
+      if (isBg(base)) {
         if (a.conditional) {
           if (flatReplacement(base, value)) add(line, prop, `the background image is replaced by a flat colour or none ${a.where}`);
           else add(line, prop, `the background is changed ${a.where}; it must stay exactly as designed`);
-        } else if (a !== design) {
+        } else if (!cascade.has(a)) {
           const where = a.qualified ? 'in an ancestor-qualified rule' : 'in a later rule for the same selector';
-          const known = designValues.get(base);
-          const shorthandReset = base === 'background' && known === undefined && designValues.size > 0;
-          const changed = known !== undefined ? known !== normValue(original(d)) : (a.qualified || shorthandReset);
-          if (flatReplacement(base, value) && (changed || known === undefined)) add(line, prop, `the background image is replaced by a flat colour or none ${where}`);
-          else if (changed) add(line, prop, `the background is changed ${where}; it must stay exactly as designed`);
+          const v = original(d);
+          const keys = diffKeys(st, base, v).filter(k => !extends_ || st.explicit.has(k) || k === 'all' || k === 'background');
+          if (keys.length) {
+            if (flatReplacement(base, value)) add(line, prop, `the background image is replaced by a flat colour or none ${where}`);
+            else add(line, prop, `the background is changed ${where}; it must stay exactly as designed`);
+          } else if (extends_) applyDecl(st, base, v);
+        } else {
+          // Inside the design's own cascade, an IE hack that drops the image after it was set still strips the photo.
+          if (imageSeen && isHack(prop) && flatReplacement(base, value)) add(line, prop, 'the background image is replaced by a flat colour or none by an IE hack in the design rule');
+          if (carriesImage(d)) imageSeen = true;
         }
       }
       if (base === 'transition' || base === 'transition-property') {
-        const hit = transitionProps(base, value).filter(p => TOUCHED.has(p));
+        const hit = transitionProps(base, value).filter(touched);
         if (hit.length) add(line, prop, `transition on ${[...new Set(hit)].join(', ')} would animate the background`);
       }
       if (base === 'animation' || base === 'animation-name') {
@@ -467,8 +611,7 @@ export function guard(cssText, selector) {
   for (const name of usedNames) {
     for (const kf of kfByName.get(name)) {
       for (const f of kf.frames) for (const d of f.decls) {
-        const base = unprefixed(d.prop);
-        if (BG_PROPS.has(base) || FILTER_PROPS.has(base)) add(d.line, d.prop, `@keyframes ${name}, used by ${target}, animates ${d.prop}`);
+        if (touched(unprefixed(d.prop))) add(d.line, d.prop, `@keyframes ${name}, used by ${target}, animates ${d.prop}`);
       }
     }
   }
