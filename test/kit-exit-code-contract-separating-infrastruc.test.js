@@ -109,7 +109,7 @@ describe('exit-codes', () => {
     await bad(['describe', '2', '--bogus=1']);
   });
   it('exit 2 is a non-blocking refusal unless the verb is a listed product judge', async () => {
-    assert.deepEqual([...PRODUCT_JUDGES].sort(), ['fidelity', 'push-gate', 'scrub']);
+    assert.deepEqual([...PRODUCT_JUDGES].sort(), ['bg-fill', 'fidelity', 'push-gate', 'scrub']);
     assert.ok(Object.isFrozen(PRODUCT_JUDGES));
     for (const v of ['graph', 'impact', 'callers', 'guarded-write', 'lenses', 'redact', 'review-score', 'wording-judge', 'safe-git', 'diff-range']) {
       const r = await run(['blocks', '2', '--verb', v]);
