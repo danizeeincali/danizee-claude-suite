@@ -11,45 +11,63 @@
     },
     {
       "name": "intake-batch-before-design",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/intake-batch-before-design.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "build the verb per contracts.md, tests green",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-intake-batch-before-design",
+      "phase": "build",
+      "base": "36c97933e6aece2e0c7d568f88ca384b53a86098"
     },
     {
       "name": "landing-page-section-order",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/landing-page-section-order.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "build the verb per contracts.md, tests green",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-landing-page-section-order",
+      "phase": "build",
+      "base": "36c97933e6aece2e0c7d568f88ca384b53a86098"
     },
     {
       "name": "type-scale-snapping-to-tailwind-steps",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/type-scale-snapping-to-tailwind-steps.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "build the verb per contracts.md, tests green",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-type-scale-snapping-to-tailwind-steps",
+      "phase": "build",
+      "base": "36c97933e6aece2e0c7d568f88ca384b53a86098"
     },
     {
       "name": "tagline-word-reveal-on-scroll",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/tagline-word-reveal-on-scroll.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "build the verb per contracts.md, tests green",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-tagline-word-reveal-on-scroll",
+      "phase": "build",
+      "base": "36c97933e6aece2e0c7d568f88ca384b53a86098"
     },
     {
       "name": "realistic-sample-content-rules",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/realistic-sample-content-rules.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "build the verb per contracts.md, tests green",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-realistic-sample-content-rules",
+      "phase": "build",
+      "base": "36c97933e6aece2e0c7d568f88ca384b53a86098"
     },
     {
       "name": "context-split-showcase-or-website",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/context-split-showcase-or-website.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "build the verb per contracts.md, tests green",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-context-split-showcase-or-website",
+      "phase": "build",
+      "base": "36c97933e6aece2e0c7d568f88ca384b53a86098"
     },
     {
       "name": "reference-frame-fidelity-check",
