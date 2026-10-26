@@ -1,9 +1,9 @@
 # Marathon 2026-10-26-bbs-ai-design-skills
 
 - State: RUNNING
-- Budget: 869,741 / 14,000,000 tokens
+- Budget: 1,112,675 / 14,000,000 tokens
 - Allowance: unknown (ceiling 100%)
-- Gate (run-wide, all streams): 2/2 clean reviews — build gate not met, full gate not met
+- Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
 - Next for you: Continue stream "intake-batch-before-design" (next: build the verb per contracts.md, tests green) — /w-marathon --resume 2026-10-26-bbs-ai-design-skills.
 
@@ -13,11 +13,11 @@
 |---|---|---|---|---|---|---|---|---|
 | intake-batch-before-design | /home/claude/danizee-claude-suite-intake-batch-before-design | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/intake-batch-before-design.md | active | clean 1/2 | build | build the verb per contracts.md, tests green |  | 0 |
 | landing-page-section-order | /home/claude/danizee-claude-suite-landing-page-section-order | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/landing-page-section-order.md | active | clean 1/2 | build | build the verb per contracts.md, tests green |  | 0 |
-| type-scale-snapping-to-tailwind-steps | /home/claude/danizee-claude-suite-type-scale-snapping-to-tailwind-steps | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/type-scale-snapping-to-tailwind-steps.md | active | clean 0/2 | build | build the verb per contracts.md, tests green |  | 0 |
+| type-scale-snapping-to-tailwind-steps | /home/claude/danizee-claude-suite-type-scale-snapping-to-tailwind-steps | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/type-scale-snapping-to-tailwind-steps.md | active | clean 1/2 | build | build the verb per contracts.md, tests green |  | 0 |
 | tagline-word-reveal-on-scroll | /home/claude/danizee-claude-suite-tagline-word-reveal-on-scroll | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/tagline-word-reveal-on-scroll.md | active | clean 0/2 | build | build the verb per contracts.md, tests green |  | 0 |
 | realistic-sample-content-rules | /home/claude/danizee-claude-suite-realistic-sample-content-rules | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/realistic-sample-content-rules.md | active | clean 0/2 | build | build the verb per contracts.md, tests green |  | 0 |
 | context-split-showcase-or-website | /home/claude/danizee-claude-suite-context-split-showcase-or-website | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/context-split-showcase-or-website.md | active | clean 0/2 | build | build the verb per contracts.md, tests green |  | 0 |
-| reference-frame-fidelity-check |  | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/reference-frame-fidelity-check.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
+| reference-frame-fidelity-check | /home/claude/danizee-claude-suite-reference-frame-fidelity-check | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/reference-frame-fidelity-check.md | active | clean 0/2 | build | build the verb per contracts.md, tests green |  | 0 |
 | layer-export-placement-math |  | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/layer-export-placement-math.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | sacred-background-preservation |  | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/sacred-background-preservation.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | entrance-choreography-kinds |  | .claude/bbs/runs/2026-10-26-ai-design-skills/briefs/entrance-choreography-kinds.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
@@ -29,19 +29,19 @@
 
 | Line | Owner | Status | Actual | Target |
 |---|---|---|---|---|
-| intake-batch-before-design: green unit runs in a row | build | met | 1 | at_least 1 |
+| intake-batch-before-design: green unit runs in a row | build | met | 3 | at_least 1 |
 | intake-batch-before-design: zero egress in the packaged check | build | failing | — | is true |
 | intake-batch-before-design: clean reviews in a row | build | failing | 1 | at_least 2 |
 | intake-batch-before-design: wired into all 3 targets, reached by a user | build | failing | — | at_least 3 |
 | intake-batch-before-design: packaged check passes | build | failing | — | is true |
-| landing-page-section-order: green unit runs in a row | build | met | 1 | at_least 1 |
+| landing-page-section-order: green unit runs in a row | build | met | 3 | at_least 1 |
 | landing-page-section-order: zero egress in the packaged check | build | failing | — | is true |
 | landing-page-section-order: clean reviews in a row | build | failing | 1 | at_least 2 |
 | landing-page-section-order: wired into all 3 targets, reached by a user | build | failing | — | at_least 3 |
 | landing-page-section-order: packaged check passes | build | failing | — | is true |
 | type-scale-snapping-to-tailwind-steps: green unit runs in a row | build | met | 1 | at_least 1 |
 | type-scale-snapping-to-tailwind-steps: zero egress in the packaged check | build | failing | — | is true |
-| type-scale-snapping-to-tailwind-steps: clean reviews in a row | build | failing | 0 | at_least 2 |
+| type-scale-snapping-to-tailwind-steps: clean reviews in a row | build | failing | 1 | at_least 2 |
 | type-scale-snapping-to-tailwind-steps: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | type-scale-snapping-to-tailwind-steps: packaged check passes | build | failing | — | is true |
 | tagline-word-reveal-on-scroll: green unit runs in a row | build | met | 1 | at_least 1 |
@@ -49,7 +49,7 @@
 | tagline-word-reveal-on-scroll: clean reviews in a row | build | failing | 0 | at_least 2 |
 | tagline-word-reveal-on-scroll: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | tagline-word-reveal-on-scroll: packaged check passes | build | failing | — | is true |
-| realistic-sample-content-rules: green unit runs in a row | build | failing | 0 | at_least 1 |
+| realistic-sample-content-rules: green unit runs in a row | build | met | 1 | at_least 1 |
 | realistic-sample-content-rules: zero egress in the packaged check | build | failing | — | is true |
 | realistic-sample-content-rules: clean reviews in a row | build | failing | 0 | at_least 2 |
 | realistic-sample-content-rules: wired into all 3 targets, reached by a user | build | failing | — | at_least 3 |
@@ -90,7 +90,7 @@
 | deterministic-frame-capture: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | deterministic-frame-capture: packaged check passes | build | failing | — | is true |
 | The owner was told what they got: delivered.md lists every power, wired, with its command | build | failing | — | is true |
-| Clean reviews in a row | build | met | 2 | at_least 2 |
+| Clean reviews in a row | build | failing | 0 | at_least 2 |
 | High findings in the latest review | build | met | 0 | at_most 0 |
 | Open high findings | build | met | 0 | at_most 0 |
 

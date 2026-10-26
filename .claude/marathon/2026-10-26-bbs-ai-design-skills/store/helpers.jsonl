@@ -14,3 +14,14 @@
 {"helper_id":"24315753-3000-4890-b149-03ecfe914dc4","tokens":82953,"outcome":"green","event":"done","id":"95c38dc4-c61b-4bdd-ad45-dd1737b5de44","ts":"2026-10-26T20:37:50.037Z"}
 {"helper_id":"c44b57b9-d0e3-4e7c-9cac-dbed2f96492d","tokens":64522,"outcome":"green","event":"done","id":"25a58ead-5bc6-409e-80d1-1fcb6d93d9ad","ts":"2026-10-26T20:37:50.908Z"}
 {"helper_id":"09b088f8-38d3-4aa0-b298-1aebddd331d6","tokens":68111,"outcome":"green","event":"done","id":"639c6bb4-3cda-4362-93e9-0008a8dc2276","ts":"2026-10-26T20:37:53.108Z"}
+{"role":"fix","model":"sonnet","stream":"intake-batch-before-design","budget":150000,"event":"spawn","id":"19a3cff5-57eb-4abf-8c33-95c2f6ca9ba2","ts":"2026-10-26T20:38:19.462Z"}
+{"role":"fix","model":"sonnet","stream":"landing-page-section-order","budget":150000,"event":"spawn","id":"f2d31f5e-aedd-4209-b81a-b4338d9f70fb","ts":"2026-10-26T20:38:19.788Z"}
+{"role":"review","model":"opus","stream":"context-split-showcase-or-website","budget":150000,"event":"spawn","id":"a3bded3f-6dbc-4569-a3c8-a0194fc07b9a","ts":"2026-10-26T20:38:20.114Z"}
+{"role":"review","model":"opus","stream":"tagline-word-reveal-on-scroll","budget":150000,"event":"spawn","id":"0572f9e1-d06b-4aca-815b-8d850931a42a","ts":"2026-10-26T20:38:20.479Z"}
+{"helper_id":"0a539b0a-4bbb-4126-8c1f-9cdef6dcb906","tokens":75748,"outcome":"green","event":"done","id":"12d50161-c5d6-4fb9-ad59-aa9377eb4a71","ts":"2026-10-26T20:38:53.180Z"}
+{"role":"build","model":"sonnet","stream":"reference-frame-fidelity-check","budget":150000,"event":"spawn","id":"0169896a-5898-4904-bb82-f21e9ed22480","ts":"2026-10-26T20:38:57.937Z"}
+{"helper_id":"f2d31f5e-aedd-4209-b81a-b4338d9f70fb","tokens":48896,"outcome":"green","event":"done","id":"4618d5cd-98d3-4415-9cfd-db0b5ae0fc06","ts":"2026-10-26T20:40:29.721Z"}
+{"helper_id":"19a3cff5-57eb-4abf-8c33-95c2f6ca9ba2","tokens":51749,"outcome":"green","event":"done","id":"f27c7c1c-9a7e-44e8-8967-7847f830ba72","ts":"2026-10-26T20:40:41.576Z"}
+{"helper_id":"66edf726-a349-4aad-bd90-8241e802bb50","tokens":62165,"outcome":"green","event":"done","id":"9e90da04-426b-46c0-b991-51461e679215","ts":"2026-10-26T20:40:54.191Z"}
+{"helper_id":"a3bded3f-6dbc-4569-a3c8-a0194fc07b9a","tokens":74148,"outcome":"green","event":"done","id":"4d6390c6-5ead-4623-b312-64ea28e9acab","ts":"2026-10-26T20:40:55.318Z"}
+{"helper_id":"0572f9e1-d06b-4aca-815b-8d850931a42a","tokens":80228,"outcome":"green","event":"done","id":"6faabcfe-4562-4884-b522-d9b9e95254d5","ts":"2026-10-26T20:40:56.795Z"}

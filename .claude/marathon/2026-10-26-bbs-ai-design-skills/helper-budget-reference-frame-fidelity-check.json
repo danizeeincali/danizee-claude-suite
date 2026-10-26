@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "openedAt": 1793047137853,
+  "limits": {
+    "steps": 40,
+    "cost": 1500000,
+    "timeMs": null
+  },
+  "spent": {
+    "steps": 0,
+    "cost": 0
+  },
+  "clock": {
+    "depth": 1,
+    "startedAt": 1793047138233,
+    "elapsedMs": 0
+  },
+  "helpers": {
+    "0169896a-5898-4904-bb82-f21e9ed22480": {
+      "steps": 0,
+      "cost": 0,
+      "ok": 0,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 10,
+        "cost": 150000
+      }
+    }
+  }
+}

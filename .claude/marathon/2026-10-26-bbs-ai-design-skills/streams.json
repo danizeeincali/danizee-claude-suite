@@ -71,10 +71,13 @@
     },
     {
       "name": "reference-frame-fidelity-check",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/reference-frame-fidelity-check.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "build the verb per contracts.md, tests green",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-reference-frame-fidelity-check",
+      "phase": "build",
+      "base": "a48e6a7af1a566953983278fe241816c197ef483"
     },
     {
       "name": "layer-export-placement-math",
