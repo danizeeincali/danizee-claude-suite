@@ -2,10 +2,11 @@
  * Reach tests for the 12 design powers of bbs run 2026-10-26-ai-design-skills.
  *
  * Each test goes in through the surface a user reaches: it reads the installed workflow command file
- * (.claude/commands/...), finds the step under the approved heading, extracts the exact kit command that step tells
- * the agent to run, fills its quoted "$VARIABLES" with a small fixture and runs it through the installed
- * .claude/helpers/kit/cli.js, then checks the power's effect. It also checks the step is gated on UI / landing /
- * animation work, carries the kit-missing fallback and says whether it is advisory or blocking.
+ * (.claude/commands/...), finds the step under the approved heading, cuts out that step's own paragraph and bash
+ * block, fills the block's NAME='<...>' placeholders with a small fixture and runs the block's real lines with bash
+ * (so a shell-level bug, such as assigning to a bash special variable, fails the test), then checks the power's
+ * effect. On that slice alone it also checks the step is gated on UI / landing / animation work, carries the
+ * kit-missing fallback and says whether it is advisory or blocking.
  */
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -47,23 +48,26 @@ const write = (name, body) => { const p = path.join(dir, name); fs.writeFileSync
 
 before(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'design-reach-'));
-  fx['"$BRIEF"'] = write('brief.json', JSON.stringify({ kind: 'landing', answers: { offer: 'Invoice tool for freelancers' } }));
-  fx['"$MOTION"'] = write('motion.json', JSON.stringify({ request: 'animate this design', has_site_codebase: false, sections: [{ id: 'hero', kind: 'hero' }, { id: 'features', kind: 'cards' }] }));
-  fx['"$SPEC"'] = write('spec.md', '# Hero\n\nGet paid on time.\n\n# Pricing\n');
-  fx['"$BG"'] = write('bg.json', JSON.stringify({ selector: '.hero', container: { w: 1200, h: 600 }, image: { w: 2400, h: 1600 }, scale_mode: 'FILL' }));
-  fx['"$CSS"'] = write('styles.css', '.lead{font-size:15px}\n.hero{background-image:url(a.jpg)}\n.hero:hover{background-image:url(b.jpg);transition:background 1s}\n');
-  fx['"$BG_SELECTOR"'] = '.hero';
-  fx['"$TAGLINE"'] = write('tagline.txt', 'Invoices that pay themselves');
-  fx['"$PAGE"'] = write('page.html', '<h1>Lorem ipsum dolor</h1><p>John Doe at Acme Inc</p>\n');
-  fx['"$LAYERS"'] = write('layers.json', JSON.stringify({ frame: { x: 0, y: 0 }, layers: [{ id: 'card', z: 1, bounds: { x: 10, y: 20, w: 100, h: 50 }, render_bounds: { x: 6, y: 16, w: 108, h: 58 }, effects_even: true }] }));
-  fx['"$GROUPS"'] = write('groups.json', JSON.stringify({ groups: [{ id: 'title', kind: 'text', order: 1, items: 1 }, { id: 'cards', kind: 'card', order: 2, covered: true, items: 2 }, { id: 'shot', kind: 'photo', order: 3, items: 1 }] }));
-  fx['"$STORIES"'] = write('stories.json', JSON.stringify({ loop_ms: 1000, stories: [{ id: 's1', card: 'c1', pattern: 'stack-landing', sentence: 'A card drops in.', tracks: { y: [{ t: 0, v: 0 }, { t: 1000, v: 5 }] } }] }));
+  fx.BRIEF = write('brief.json', JSON.stringify({ kind: 'landing', answers: { offer: 'Invoice tool for freelancers' } }));
+  fx.MOTION = write('motion.json', JSON.stringify({ request: 'animate this design', has_site_codebase: false, sections: [{ id: 'hero', kind: 'hero' }, { id: 'features', kind: 'cards' }] }));
+  fx.SPEC = write('spec.md', '# Hero\n\nGet paid on time.\n\n# Pricing\n');
+  fx.BG = write('bg.json', JSON.stringify({ selector: '.hero', container: { w: 1200, h: 600 }, image: { w: 2400, h: 1600 }, scale_mode: 'FILL' }));
+  fx.CSS = write('styles.css', '.lead{font-size:15px}\n.hero{background-image:url(a.jpg)}\n.hero:hover{background-image:url(b.jpg);transition:background 1s}\n');
+  fx.BG_SELECTOR = '.hero';
+  fx.TAGLINE = write('tagline.txt', 'Invoices that pay themselves');
+  fx.PAGE = write('page.html', '<h1>Lorem ipsum dolor</h1><p>John Doe at Acme Inc</p>\n');
+  fx.LAYERS = write('layers.json', JSON.stringify({ frame: { x: 0, y: 0 }, layers: [{ id: 'card', z: 1, bounds: { x: 10, y: 20, w: 100, h: 50 }, render_bounds: { x: 6, y: 16, w: 108, h: 58 }, effects_even: true }] }));
+  fx.ENTRANCE_GROUPS = write('groups.json', JSON.stringify({ groups: [{ id: 'title', kind: 'text', order: 1, items: 1 }, { id: 'cards', kind: 'card', order: 2, covered: true, items: 2 }, { id: 'shot', kind: 'photo', order: 3, items: 1 }] }));
+  fx.STORIES = write('stories.json', JSON.stringify({ loop_ms: 1000, stories: [{ id: 's1', card: 'c1', pattern: 'stack-landing', sentence: 'A card drops in.', tracks: { y: [{ t: 0, v: 0 }, { t: 1000, v: 5 }] } }] }));
+  fx.URL = `file://${path.join(dir, 'page.html')}`;
+  fx.FRAMES = path.join(dir, 'frames');
   // reference and actual stills: a 32x32 grey frame with a dark 16x16 card; "bad" has the card moved off its place
   const still = (cx) => { const px = Buffer.alloc(32 * 32 * 3, 200); for (let y = 8; y < 24; y++) for (let x = cx; x < cx + 16; x++) px.fill(30, (y * 32 + x) * 3, (y * 32 + x) * 3 + 3); return encodePng(32, 32, px, 3); };
-  fx['"$REF"'] = write('ref.png', still(8));
+  fx.REF = write('ref.png', still(8));
   fx.good = write('good.png', still(8));
   fx.bad = write('bad.png', still(16));
-  fx['"$REGIONS"'] = write('regions.json', JSON.stringify([{ id: 'card', x: 8, y: 8, w: 16, h: 16 }]));
+  fx.ACTUAL = fx.good;
+  fx.REGIONS = write('regions.json', JSON.stringify([{ id: 'card', x: 8, y: 8, w: 16, h: 16 }]));
 });
 after(() => { fs.rmSync(dir, { recursive: true, force: true }); });
 
@@ -75,43 +79,79 @@ function step(file, heading) {
   return s;
 }
 
-/** The exact kit commands the step tells the agent to run for `verb` (from the guarded bash lines or inline code). */
-function commands(section, verb) {
+/** The exact kit commands a piece of step text tells the agent to run for `verb` (guarded bash lines or inline code). */
+function commands(text, verb) {
   const re = new RegExp(`node \\.claude/helpers/kit/cli\\.js ${verb}(?![\\w-])[^;\`\\n]*`, 'g');
-  return [...section.matchAll(re)].map(m => m[0].trim());
+  return [...text.matchAll(re)].map(m => m[0].trim());
 }
 
-/** Run one extracted command with its placeholders filled; `over` replaces fixtures for this run. */
-function run(command, over = {}) {
-  const map = { ...fx, ...over };
-  let filled = command;
-  for (const ph of command.match(/"\$[A-Z_]+"/g) || []) {
-    assert.ok(ph in map, `no fixture for ${ph} in: ${command}`);
-    filled = filled.replace(ph, map[ph]);
+const runsVerb = (line, verb, prefix) => new RegExp(`node \\.claude/helpers/kit/cli\\.js ${verb}${prefix ? ` ${prefix}` : ''}(?![\\w-])`).test(line);
+
+/**
+ * The step's own slice for `verb` under `heading`: the paragraph that leads its bash block, the block, and the
+ * paragraph after it; or, for an inline-only step, the one paragraph that names the command.
+ * Returns { text, block (the bash lines or null), line (the line that runs the command) }.
+ */
+function slice(file, heading, verb, prefix = '') {
+  const lines = step(file, heading).split('\n');
+  const para = (from, dir) => { const out = []; let i = from; while (i >= 0 && i < lines.length && lines[i].trim() === '') i += dir; while (i >= 0 && i < lines.length && lines[i].trim() !== '' && !/^\s*```/.test(lines[i])) { out.push(lines[i]); i += dir; } return dir < 0 ? out.reverse() : out; };
+  for (let i = 0; i < lines.length; i++) {
+    if (!/^\s*```bash/.test(lines[i])) continue;
+    let j = i + 1;
+    while (j < lines.length && !/^\s*```/.test(lines[j])) j++;
+    const block = lines.slice(i + 1, j);
+    const line = block.find(l => runsVerb(l, verb, prefix));
+    if (!line) continue;
+    return { text: [...para(i - 1, -1), ...lines.slice(i, j + 1), ...para(j + 1, 1)].join('\n'), block, line };
   }
-  const argv = filled.split(/\s+/);
-  assert.equal(argv[0], 'node');
-  assert.equal(argv[1], KIT, 'the step runs the installed kit CLI');
-  const r = spawnSync(process.execPath, argv.slice(1), { cwd: ROOT, encoding: 'utf-8' });
+  const k = lines.findIndex(l => runsVerb(l, verb, prefix));
+  assert.ok(k >= 0, `${file} › ${heading} never runs kit/cli.js ${verb} ${prefix}`);
+  const text = [...para(k - 1, -1).filter(() => !/^\s*[-*] /.test(lines[k])), lines[k], ...(/^\s*[-*] /.test(lines[k]) ? [] : para(k + 1, 1))].join('\n');
+  return { text, block: null, line: commands(lines[k], verb).find(c => runsVerb(c, verb, prefix)) };
+}
+
+/**
+ * Run the step's real bash: the block's placeholder assignments (each '<...>' filled with the fixture for its name)
+ * and the block line that runs the command, as one bash script from the project root. An inline-only step runs its
+ * inline command with bash. `over` replaces fixtures for this run.
+ */
+function run(s, over = {}) {
+  const map = { ...fx, ...over };
+  const q = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
+  let script;
+  if (s.block) {
+    const assigns = s.block.filter(l => /^[A-Za-z_][A-Za-z0-9_]*='<[^']*>'/.test(l)).map(l => {
+      const name = l.match(/^([A-Za-z_][A-Za-z0-9_]*)=/)[1];
+      assert.ok(name in map, `no fixture for ${name} in: ${l}`);
+      return l.replace(/^([A-Za-z_][A-Za-z0-9_]*)='<[^']*>'/, `$1=${q(map[name])}`);
+    });
+    script = [...assigns, s.line].join('\n');
+  } else {
+    assert.ok(!/"\$[A-Z_]+"/.test(s.line), `an inline-only step has no placeholders to fill: ${s.line}`);
+    script = s.line;
+  }
+  assert.match(script, new RegExp(`node ${KIT.replace(/[.]/g, '\\.')} `), 'the step runs the installed kit CLI');
+  const r = spawnSync('bash', ['-c', script], { cwd: ROOT, encoding: 'utf-8' });
+  assert.doesNotMatch(r.stderr, /is still the placeholder or does not exist/, `a filled placeholder did not reach the command: ${r.stderr}`);
+  assert.doesNotMatch(r.stdout, /kit not installed/, 'the installed kit runs');
   let json = null;
   try { json = JSON.parse(r.stdout); } catch { /* not JSON */ }
   return { status: r.status, stdout: r.stdout, stderr: r.stderr, json };
 }
 
-/** The step's single command for `verb` that starts with `prefix`. */
+/** The step's slice text for `verb` (`section`) and the runnable step (`command`, passed to run()). */
 function cmd(file, heading, verb, prefix = '') {
-  const s = step(file, heading);
-  const found = commands(s, verb).filter(c => c.startsWith(`node ${KIT} ${verb}${prefix ? ` ${prefix}` : ''}`));
-  assert.ok(found.length, `${file} › ${heading} never runs kit/cli.js ${verb} ${prefix}`);
-  return { section: s, command: found[0] };
+  const s = slice(file, heading, verb, prefix);
+  return { section: s.text, command: s };
 }
 
-/** The step is gated on design work, carries the kit-missing fallback and is advisory unless `blocking`. */
-function gated(section, verb, { blocking = false } = {}) {
-  assert.match(section, /When the (?:task|change|stream) (?:is|builds) (?:UI|a landing page|animating|animation)|For a landing page|Before designing|Landing page in the fixed/);
-  assert.match(section, /kit not installed|cli\.js` is missing/);
-  if (blocking) assert.match(section, /Exit 2 stops/);
-  else assert.match(section, /advisory/);
+/** On the step's own slice: gated on design work, carries the kit-missing fallback, advisory unless `blocking`. */
+function gated(text, verb, { blocking = false } = {}) {
+  assert.match(text, new RegExp(`cli\\.js ${verb}(?![\\w-])`), `the slice is the ${verb} step`);
+  assert.match(text, /When the (?:task|change|stream) (?:is|builds) (?:UI|a landing page|animating|animation)|For a landing page|Before designing|Landing page in the fixed/);
+  assert.match(text, /kit not installed|cli\.js` is missing/);
+  if (blocking) assert.match(text, /Exit 2 stops/);
+  else assert.match(text, /advisory/);
 }
 
 describe('Intake batch before design (design-brief)', () => {
@@ -206,14 +246,29 @@ describe('Context split showcase or website (motion-plan)', () => {
 });
 
 describe('Reference frame fidelity check (fidelity)', () => {
-  for (const [file, heading, blocking] of [[WF.plan, H.tests, true], [WF.marathon, H.mLoop, true], [WF.perf, H.profiling, false]]) {
+  // [file, approved heading, blocking, the heading whose block runs the score (the approved one unless it differs)]
+  for (const [file, heading, blocking, runAt] of [[WF.plan, H.tests, true, H.build], [WF.marathon, H.mLoop, true], [WF.perf, H.profiling, false]]) {
     it(`${file} › ${heading}: a matching still passes, a misplaced card exits 2 (${blocking ? 'blocking' : 'advisory'})`, () => {
-      const { section, command } = cmd(file, heading, 'fidelity');
+      if (runAt) {
+        // at Tests no UI exists yet: the step records REF and REGIONS and the expectation, and points at the Build score
+        const t = slice(file, heading, 'fidelity');
+        gated(t.text, 'fidelity', { blocking });
+        assert.equal(t.block, null, 'Tests runs no score before the UI exists');
+        assert.match(t.text, /"\$REF"/);
+        assert.match(t.text, /"\$REGIONS"/);
+        assert.match(t.text, /expectation/);
+        assert.match(t.text, /end of CHECKPOINT 5 Build, once the still is rendered and before motion is added/);
+        const b = slice(file, runAt, 'fidelity');
+        assert.match(b.text, /CHECKPOINT 4: Tests/, 'the Build score uses what Tests recorded');
+        assert.match(b.text, /before motion is added/);
+        assert.match(b.text, /Exit 2 stops the flow/);
+      }
+      const { section, command } = cmd(file, runAt || heading, 'fidelity');
       gated(section, 'fidelity', { blocking });
-      const ok = run(command, { '"$ACTUAL"': fx.good });
+      const ok = run(command, { ACTUAL: fx.good });
       assert.equal(ok.status, 0);
       assert.equal(ok.json.pass, true);
-      const bad = run(command, { '"$ACTUAL"': fx.bad });
+      const bad = run(command, { ACTUAL: fx.bad });
       assert.equal(bad.status, 2);
       assert.equal(bad.json.pass, false);
       assert.equal(bad.json.regions[0].id, 'card');
@@ -245,6 +300,11 @@ describe('Sacred background preservation (bg-fill)', () => {
     assert.equal(r.status, 0);
     assert.equal(r.json.css['background-size'], 'cover');
     assert.match(r.json.raw_css, /^\.hero \{/);
+    // raw_css holds sizing only, so the spec keeps the exported background-image and adds these rules to it
+    assert.doesNotMatch(r.json.raw_css, /background-image/);
+    assert.match(section, /to the element's original `background-image` declaration/);
+    assert.match(section, /stays exactly as it was exported/);
+    assert.doesNotMatch(section, /as the only background CSS/);
   });
   it('w-plan-tdd-swarm › Review: an animated or swapped background is reported (advisory)', () => {
     const { section, command } = cmd(WF.plan, H.review, 'bg-fill', 'guard');

@@ -1,6 +1,6 @@
 # What you got — bbs run 2026-10-26-ai-design-skills
 
-Written 2026-10-26T22:45:11.162Z. The powers below were built from ideas found in the source this run audited (a rebuild is written from the idea, never from its code). All 12 are wired into the places you approved at the verdict.
+Written 2026-10-26T23:06:17.797Z. The powers below were built from ideas found in the source this run audited (a rebuild is written from the idea, never from its code). All 12 are wired into the places you approved at the verdict.
 
 ## Intake batch before design
 

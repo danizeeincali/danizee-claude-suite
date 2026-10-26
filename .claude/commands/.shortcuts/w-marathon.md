@@ -116,8 +116,6 @@ One question at a time with AskUserQuestion. Every question Claude would otherwi
 8. **Budget:** run token budget and usage ceiling (defaults 20M and 70%). Say plainly that one fix round cost 8.7M tokens in the first project and one power cost ~650k in the `/bbs` run.
 9. **Wake-up:** in-session cron (dies with the session, expires in 7 days) plus the launchd/crontab fallback the owner may install.
 
-End with: "What did I forget to ask about?"
-
 **🎨 Design brief (UI / landing page / animation work only):** When the task is UI, landing page or animation work, ask the missing design brief in this single interview batch and log assumptions instead of stalling: write what is known as JSON `{kind: landing|ui|motion, answers: {offer, primary_action, audience, objections, proof, brand, references}}` to `"$BRIEF"`, ask every question `questions` prints in this one interview round, then record the stated assumptions `assume` prints for the gaps the owner leaves open (never stall on them). Skip this for non-UI work. Before running a block, put the real path in place of each `NAME='<...>'` placeholder at its top (the CSS selector for `BG_SELECTOR`, a file:// or localhost URL for `URL`); shell variables do not persist between Bash calls, so run the block as one. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
 
 ```bash
@@ -136,6 +134,8 @@ if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/he
 ```
 
 Exit 0 printed the answer; exit 1 is wrong input or a broken state: report it and fix the input, never read it as a pass. The step is advisory: whatever it prints, the workflow goes on.
+
+End with: "What did I forget to ask about?"
 
 **REQUIRED OUTPUT:** the four kickoff lines verbatim, the stream list, the tolerance, the human jobs, the budget.
 
@@ -205,12 +205,12 @@ The copy refuses a `W` that is not an existing git work tree ("is not the stream
 TAGLINE='<the tagline text file>'; [ -f "$TAGLINE" ] || echo "TAGLINE is still the placeholder or does not exist: put the path of the tagline text file in place of <the tagline text file>" >&2
 PAGE='<the page or copy file>'; [ -f "$PAGE" ] || echo "PAGE is still the placeholder or does not exist: put the path of the page or copy file in place of <the page or copy file>" >&2
 LAYERS='<the layers JSON you wrote>'; [ -f "$LAYERS" ] || echo "LAYERS is still the placeholder or does not exist: put the path of the layers JSON you wrote in place of <the layers JSON you wrote>" >&2
-GROUPS='<the groups JSON you wrote>'; [ -f "$GROUPS" ] || echo "GROUPS is still the placeholder or does not exist: put the path of the groups JSON you wrote in place of <the groups JSON you wrote>" >&2
+ENTRANCE_GROUPS='<the groups JSON you wrote>'; [ -f "$ENTRANCE_GROUPS" ] || echo "ENTRANCE_GROUPS is still the placeholder or does not exist: put the path of the groups JSON you wrote in place of <the groups JSON you wrote>" >&2
 STORIES='<the stories JSON you wrote>'; [ -f "$STORIES" ] || echo "STORIES is still the placeholder or does not exist: put the path of the stories JSON you wrote in place of <the stories JSON you wrote>" >&2
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js word-reveal emit --text-file "$TAGLINE"; RC=$?; (exit $RC); fi
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js sample-content lint --file "$PAGE"; RC=$?; (exit $RC); fi
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js layer-place --file "$LAYERS"; RC=$?; (exit $RC); fi
-if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js entrance --file "$GROUPS"; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js entrance --file "$ENTRANCE_GROUPS"; RC=$?; (exit $RC); fi
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js keyframes check --file "$STORIES"; RC=$?; (exit $RC); fi
 ```
 
