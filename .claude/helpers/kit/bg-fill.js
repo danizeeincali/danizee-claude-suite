@@ -307,7 +307,7 @@ function covers(cand, want) {
     if (!c.startsWith(want)) return null;
     const rest = c.slice(want.length);
     if (rest && /^[\w-]/.test(rest)) return null;
-    if (rest.includes('::')) return null;
+    if (rest.includes('::') || /(^|[^:\\]):(before|after|first-line|first-letter)(?![\w-])/i.test(rest)) return null;
     return rest;
   };
   let rest = tryMatch(cand);
@@ -594,6 +594,9 @@ export function guard(cssText, selector) {
       else if (base === 'filter' && !/^none$/i.test(value)) add(line, prop, 'filter on the background element alters the photo; leave the background exactly as designed');
       if (isBg(base)) {
         if (a.conditional) {
+          // Turning a fixed (parallax) background off for people who asked for less motion is the one allowed change.
+          if (base === 'background-attachment' && /^scroll(\s*,\s*scroll)*$/i.test(value.replace(/\s*!important\s*$/i, '').trim())
+            && a.rule.atStack.length && a.rule.atStack.every(x => /^@media\b/i.test(x) && /\(\s*prefers-reduced-motion\s*:\s*reduce\s*\)/i.test(x))) continue;
           if (flatReplacement(base, value)) add(line, prop, `the background image is replaced by a flat colour or none ${a.where}`);
           else add(line, prop, `the background is changed ${a.where}; it must stay exactly as designed`);
         } else if (!cascade.has(a)) {

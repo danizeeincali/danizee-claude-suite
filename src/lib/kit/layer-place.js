@@ -135,12 +135,13 @@ export function placeLayer(layer, frame) {
     return { placement: at(layer.stroke_geometry, 'stroke-geometry', 'uneven overhang: placed at the stroke geometry', { overhang: ov }) };
   }
   const flags = `clipped_by_parent=${layer.clipped_by_parent}, effects_even=${layer.effects_even}`;
+  const imgState = !layer.image ? 'no image given' : rb ? 'image does not match render bounds' : 'image given but there are no render_bounds to match';
   const why = !rb
     ? `no render_bounds, so overhang-offset and stroke-geometry could not apply (${flags})`
-    : `render_bounds given but neither clipped_by_parent nor effects_even was set (${flags}), and ${layer.stroke_geometry ? 'the overhang is even' : 'there is no stroke_geometry for an uneven overhang'}`;
+    : `render_bounds given but neither clipped_by_parent nor effects_even was set (${flags}), and ${isEven(ov) ? 'the overhang is even' : 'there is no stroke_geometry for an uneven overhang'}`;
   return {
     placement: at(bounds, 'bounds', 'no rule matched: placed at bounds'),
-    warning: `layer "${layer.id}": no placement rule matched (image does not match render bounds; ${why}); placed at bounds, check it against the source`,
+    warning: `layer "${layer.id}": no placement rule matched (${imgState}; ${why}); placed at bounds, check it against the source`,
   };
 }
 

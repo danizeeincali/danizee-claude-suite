@@ -234,6 +234,36 @@ describe('layer-place validation', () => {
   });
 });
 
+describe('layer-place review r2 lows', () => {
+  const msgOf = fn => { try { fn(); } catch (e) { return e.message; } return ''; };
+  it('every validation case names its field in the message', () => {
+    const cases = [
+      [() => plan([]), /input|object/i], [() => plan({ frame }), /layers/], [() => plan({ frame, layers: {} }), /layers/],
+      [() => plan({ frame, layers: [], extra: 1 }), /extra/], [() => plan({ frame: { x: 0 }, layers: [] }), /frame\.y/],
+      [() => plan({ frame: { x: '0', y: 0 }, layers: [] }), /frame\.x/],
+      [() => one(L({ id: '' })), /layers\[0\]\.id/], [() => one(L({ id: 5 })), /layers\[0\]\.id/], [() => one(L({ wat: 1 })), /wat/],
+      [() => one(L({ shape: 'blob' })), /shape/], [() => one(L({ clipped_by_parent: 'yes' })), /clipped_by_parent/],
+      [() => one(L({ children_move: 1 })), /children_move/], [() => one(L({ bounds: { x: 0, y: 0, w: 1 } })), /bounds\.h/],
+      [() => one(L({ bounds: { x: 0, y: 0, w: 1, h: 1, d: 1 } })), /bounds[\s\S]*\bd\b|\bd\b[\s\S]*bounds/],
+      [() => one(L({ image: { w: 1, h: 1 } })), /image\.scale/], [() => one(L({ z: NaN })), /layers\[0\]\.z/],
+      [() => one(L({ bounds: { x: 0, y: 0, w: -1, h: 1 } })), /bounds\.w/], [() => one(L({ image: { w: 1, h: 1, scale: 0 } })), /image\.scale/],
+    ];
+    for (const [fn, re] of cases) { const m = msgOf(fn); assert.match(m, re, m); }
+  });
+  it('the fallback warning states the real reason', () => {
+    const w = layer => one(layer).warnings[0];
+    assert.match(w(L()), /no image given/);
+    assert.doesNotMatch(w(L()), /image does not match render bounds/);
+    const even = w(L({ render_bounds: { x: 100, y: 60, w: 60, h: 40 } }));
+    assert.match(even, /the overhang is even/);
+    assert.doesNotMatch(even, /no stroke_geometry/);
+    const uneven = w(L({ render_bounds: { x: 100, y: 70, w: 60, h: 25 } }));
+    assert.match(uneven, /no stroke_geometry for an uneven overhang/);
+    assert.match(w(L({ image: { w: 1, h: 1, scale: 1 } })), /no render_bounds to match/);
+    assert.match(w(L({ image: { w: 1, h: 1, scale: 1 }, render_bounds: { x: 100, y: 60, w: 60, h: 40 } })), /image does not match render bounds/);
+  });
+});
+
 describe('layer-place input reading', () => {
   const good = JSON.stringify({ frame, layers: [L()] });
   const ioOf = (buf, seen = {}) => ({ cwd: os.tmpdir(), stdinBytes: async o => { seen.opts = o; return buf; } });

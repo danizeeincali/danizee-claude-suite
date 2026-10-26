@@ -393,6 +393,7 @@ export async function readRegular(file, flag, max) {
   }
   try {
     const st = await fh.stat();
+    const bst = await fh.stat({ bigint: true });
     if (!st.isFile()) throw bad(`${flag} ${file} is not a regular file`);
     if (st.size > max) throw bad(`${flag} ${file} is larger than ${max} bytes`);
     const buf = Buffer.alloc(Math.min(st.size, max) + 1);
@@ -403,7 +404,7 @@ export async function readRegular(file, flag, max) {
       n += bytesRead;
     }
     if (n > max) throw bad(`${flag} ${file} is larger than ${max} bytes`);
-    return { data: buf.subarray(0, n), st };
+    return { data: buf.subarray(0, n), st: bst };
   } finally { await fh.close(); }
 }
 /** readRegular, returning only the bytes. */
@@ -489,8 +490,8 @@ export async function run(args, io = {}) {
   if (diffOut) {
     // A hard link (or another path) to an input is the same file too: compare device and inode.
     let ost = null;
-    try { ost = await fs.stat(diffOut); } catch { /* absent or unreadable: the writer reports it */ }
-    if (ost) for (const i of inputs) if (i.st && i.st.dev === ost.dev && i.st.ino === ost.ino) throw sameAsInput(i.flag);
+    try { ost = await fs.stat(diffOut, { bigint: true }); } catch { /* absent or unreadable: the writer reports it */ }
+    if (ost) for (const i of inputs) if (i.st && i.st.ino !== 0n && ost.ino !== 0n && i.st.dev === ost.dev && i.st.ino === ost.ino) throw sameAsInput(i.flag);
   }
   const result = compareComposited(ref, act, width, height, { target, regionTarget, blur, regions });
   if (diffOut) {

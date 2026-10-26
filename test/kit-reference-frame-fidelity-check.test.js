@@ -364,6 +364,20 @@ describe('run', () => {
     assert.deepEqual(await fs.readFile(path.join(d, 'ref.png')), refBytes);
     assert.deepEqual(await fs.readFile(path.join(d, 'r.json'), 'utf-8'), '[]');
   }));
+  it('same-file check uses bigint stats: a Number-precision collision or ino 0 does not refuse a different --diff-out', () => tmp(async (d) => {
+    await put(d, 'a.png', solid(4, 4, 100)); await put(d, 'b.png', solid(4, 4, 100));
+    const real = fs.stat; const ref = await real(path.join(d, 'a.png'));
+    try {
+      // A call without { bigint: true } collides with the input (lost precision); the exact bigint call tells the files apart.
+      fs.stat = async (p, o) => (o && o.bigint ? real(p, o) : ref);
+      const r = await run(['--ref', 'a.png', '--actual', 'b.png', '--diff-out', 'new.png'], { cwd: d });
+      assert.ok(r.diff_out);
+      // ino 0n is unknown, never a match.
+      fs.stat = async (p, o) => { const s = await real(path.join(d, 'a.png'), { bigint: true }); return o && o.bigint ? { ...s, ino: 0n } : s; };
+      const z = await run(['--ref', 'a.png', '--actual', 'b.png', '--diff-out', 'new2.png'], { cwd: d });
+      assert.ok(z.diff_out);
+    } finally { fs.stat = real; }
+  }));
   it('--diff-out refuses a symlink target and leaves what it points at alone', () => tmp(async (d) => {
     await put(d, 'a.png', solid(2, 2, 1)); await put(d, 'victim.txt', 'keep');
     await fs.symlink('victim.txt', path.join(d, 'link.png'));
