@@ -104,29 +104,52 @@ export function plan(input) {
   };
 }
 
+async function readBounded(p) {
+  const fh = await fs.open(p, 'r');
+  try {
+    const buf = Buffer.alloc(MAX_BYTES + 1);
+    let n = 0;
+    while (n < buf.length) {
+      const { bytesRead } = await fh.read(buf, n, buf.length - n, null);
+      if (!bytesRead) break;
+      n += bytesRead;
+    }
+    if (n > MAX_BYTES) throw bad(`${p} is over 8 MiB`);
+    return buf.subarray(0, n);
+  } finally { await fh.close(); }
+}
+
 export async function run(args, io) {
   let file;
   const rest = [...args];
   while (rest.length) {
     const a = rest.shift();
     if (a !== '--file') throw bad(`unexpected argument "${a}"\n${usage}`);
+    if (file !== undefined) throw bad('--file given more than once');
     if (!rest.length || rest[0].startsWith('--')) throw bad('--file needs a value');
     file = rest.shift();
+    if (file === '') throw bad('--file needs a non-empty value');
   }
-  let raw;
-  if (file) {
+  let buf;
+  if (file !== undefined) {
     const p = path.resolve(io.cwd || process.cwd(), file);
     try {
       const st = await fs.stat(p);
+      if (!st.isFile()) throw bad(`${p} is not a regular file`);
       if (st.size > MAX_BYTES) throw bad(`${p} is over 8 MiB`);
-      raw = await fs.readFile(p, 'utf-8');
+      buf = await readBounded(p);
     } catch (e) {
       if (e instanceof KitExit) throw e;
       throw bad(`cannot read ${p}: ${e.code || e.message}`);
     }
-  } else raw = await io.stdin();
-  raw = String(raw);
-  if (Buffer.byteLength(raw) > MAX_BYTES) throw bad('input is over 8 MiB');
+  } else {
+    const got = typeof io.stdinBytes === 'function'
+      ? await io.stdinBytes({ maxBytes: MAX_BYTES + 1 })
+      : await io.stdin({ maxBytes: MAX_BYTES + 1 });
+    buf = Buffer.isBuffer(got) ? got : Buffer.from(String(got), 'utf-8');
+  }
+  if (buf.length > MAX_BYTES) throw bad('input is over 8 MiB');
+  let raw = buf.toString('utf-8');
   raw = raw.replace(/^﻿/, '');
   if (!raw.trim()) throw bad('no input: pass JSON on stdin or --file');
   let data;

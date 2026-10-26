@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
+import { execFileSync } from 'child_process';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
 import * as mp from '../src/lib/kit/motion-plan.js';
 
 const { plan, decideMode, run, verb } = mp;
 const exit = (fn, code = 1) => assert.throws(fn, e => e instanceof KitExit && e.code === code);
-const io = (stdin, cwd) => ({ cwd, stdin: async () => stdin, stdinIsTTY: false, env: {} });
+const io = (stdin, cwd) => ({ cwd, stdinBytes: async () => Buffer.from(stdin, 'utf-8'), stdinIsTTY: false, env: {} });
+const ioNoStdin = cwd => ({ cwd, stdin: async () => { throw new Error('stdin must not be read'); }, stdinBytes: async () => { throw new Error('stdin must not be read'); }, stdinIsTTY: false, env: {} });
 const base = (o = {}) => ({ request: 'animate this', has_site_codebase: false, sections: [], ...o });
 
 describe('mode rules in priority order', () => {
@@ -171,5 +173,61 @@ describe('run', () => {
     await assert.rejects(run(['--file'], io('{}')), e => e.code === 1);
     await assert.rejects(run(['--file', '/no/such/file.json'], io('')), e => e.code === 1);
     await assert.rejects(run([], io('x'.repeat(8 * 1024 * 1024 + 1))), e => e.code === 1);
+  });
+  it('stdin is read with stdinBytes({maxBytes: 8 MiB + 1}) and a happy path works', async () => {
+    let seen;
+    const r = await run([], { stdinBytes: async o => { seen = o; return Buffer.from(JSON.stringify(base({ request: 'a reel' }))); }, stdin: async () => { throw new Error('use stdinBytes'); }, env: {} });
+    assert.equal(r.mode, 'showcase');
+    assert.deepEqual(seen, { maxBytes: 8 * 1024 * 1024 + 1 });
+  });
+  it('the 8 MiB cap counts bytes, not characters (multibyte text)', async () => {
+    const euro = '\u20ac'.repeat(3 * 1024 * 1024); // 3 Mi chars, 9 Mi bytes
+    assert.ok(euro.length < 8 * 1024 * 1024);
+    await assert.rejects(run([], io(euro)), e => e instanceof KitExit && e.code === 1 && /8 MiB/.test(e.message));
+  });
+  it('--file refuses a directory, naming it', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mp-'));
+    try {
+      await assert.rejects(run(['--file', '.'], ioNoStdin(dir)), e => e instanceof KitExit && e.code === 1 && e.message.includes(dir));
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+  it('--file refuses a FIFO without reading it', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mp-'));
+    const fifo = path.join(dir, 'f.fifo');
+    let hold;
+    try {
+      execFileSync('mkfifo', [fifo]);
+      hold = await fs.open(fifo, 'r+'); // keeps the pipe open: an unbounded read never sees EOF
+      await hold.write(JSON.stringify(base({ request: 'the page' })));
+      let timer;
+      const outcome = await Promise.race([
+        run(['--file', fifo], ioNoStdin(dir)).then(() => 'read', e => (e instanceof KitExit && e.code === 1 && e.message.includes(fifo) ? 'refused' : 'other')),
+        new Promise(res => { timer = setTimeout(() => res('hung'), 1500); }),
+      ]);
+      clearTimeout(timer);
+      assert.equal(outcome, 'refused');
+    } finally {
+      if (hold) await hold.close();
+      await fs.rm(dir, { recursive: true, force: true });
+    }
+  });
+  it('--file refuses /dev/stdin', async () => {
+    await assert.rejects(run(['--file', '/dev/stdin'], ioNoStdin()), e => e instanceof KitExit && e.code === 1);
+  });
+  it('--file refuses a file over 8 MiB, including one that reads past the cap', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mp-'));
+    try {
+      await fs.writeFile(path.join(dir, 'big.json'), Buffer.alloc(8 * 1024 * 1024 + 1, 0x20));
+      await assert.rejects(run(['--file', 'big.json'], ioNoStdin(dir)), e => e instanceof KitExit && e.code === 1 && /8 MiB/.test(e.message));
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+  it('an empty --file value and a repeated --file are refused, not read from stdin', async () => {
+    const stdin = JSON.stringify(base({ request: 'a reel' }));
+    await assert.rejects(run(['--file', ''], io(stdin)), e => e instanceof KitExit && e.code === 1);
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mp-'));
+    try {
+      await fs.writeFile(path.join(dir, 'a.json'), JSON.stringify(base()));
+      await assert.rejects(run(['--file', 'a.json', '--file', 'a.json'], io(stdin, dir)), e => e instanceof KitExit && e.code === 1 && /more than once/.test(e.message));
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
 });
