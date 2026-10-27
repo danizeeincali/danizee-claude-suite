@@ -106,7 +106,7 @@ if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/he
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js frame-capture capture --url "$URL" --out "$FRAMES" --fps 30 --frames 60; RC=$?; (exit $RC); fi
 ```
 
-Exit 0 printed the plan or the captured frames; exit 1 is wrong input; exit 2 refused a URL that is not file:// or localhost (nothing was fetched); exit 4 means playwright is not installed: say so and fall back to plain screenshots. The step is advisory: whatever it prints, the workflow goes on.
+Exit 0 printed the plan or the captured frames; exit 1 is wrong input; exit 2 refused a URL that is not file:// or localhost (nothing was fetched); exit 4 means playwright (1.48+ with its Chromium) is not usable: report the printed `reason` and fall back to plain screenshots. The step is advisory: whatever it prints, the workflow goes on.
 
 **AUTO-PROCEED:** Continue to Analysis phase.
 

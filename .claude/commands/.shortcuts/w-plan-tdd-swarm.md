@@ -266,7 +266,7 @@ This is also the standing rule for any later phase (Search fan-out, Build, Revie
 ```bash
 SPEC='<the spec file>'; [ -f "$SPEC" ] || echo "SPEC is still the placeholder or does not exist: put the path of the spec file in place of <the spec file>" >&2
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js landing-sections plan; RC=$?; (exit $RC); fi
-if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js landing-sections check --file "$SPEC"; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js landing-sections check --format md --file "$SPEC"; RC=$?; (exit $RC); fi
 ```
 
 Exit 0 printed the answer; exit 1 is wrong input or a broken state: report it and fix the input, never read it as a pass. The step is advisory: whatever it prints, the workflow goes on.
@@ -308,16 +308,13 @@ A flaky property = a real bug or a bad invariant — fix the code, don't loosen 
 
 **🎯 Reference frame fidelity (BLOCKING for UI / animation work with a reference design):** When the task is UI or animation work with a reference design, this step only records the expectation here, because no UI exists yet to render: export the reference to `"$REF"`, list the containers as `[{id, x, y, w, h}]` in `"$REGIONS"`, and add the expectation "the rendered still matches the reference in every container" to the test list, with both paths. The blocking score (`node .claude/helpers/kit/cli.js fidelity` with blurred PSNR) runs at the end of CHECKPOINT 5 Build, once the still is rendered and before motion is added; that is where Exit 2 stops the flow. Skip this for non-UI work. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
 
-**🎞️ Deterministic frame capture (animation work only):** When the task is animation work, record the output frame by frame under a stepped fake clock so test captures are repeatable: `plan` prints the stepped fake-clock times (`steps_ms`, one per frame); `capture` records the page frame by frame on that clock into `"$FRAMES"`. Skip this for non-animation work. Before running a block, put the real path in place of each `NAME='<...>'` placeholder at its top (the CSS selector for `BG_SELECTOR`, a file:// or localhost URL for `URL`); shell variables do not persist between Bash calls, so run the block as one. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+**🎞️ Deterministic frame capture (animation work only):** When the task is animation work, plan the frame-by-frame capture under a stepped fake clock here so test captures are repeatable: `plan` prints the stepped fake-clock times (`steps_ms`, one per frame); add the expectation "test captures use these steps" to the test list. No page exists yet at this point, so `capture` runs at the end of CHECKPOINT 5 Build, once the page renders. Skip this for non-animation work. Before running a block, put the real path in place of each `NAME='<...>'` placeholder at its top (the CSS selector for `BG_SELECTOR`, a file:// or localhost URL for `URL`); shell variables do not persist between Bash calls, so run the block as one. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
 
 ```bash
-URL='<the file:// or localhost page URL>'
-FRAMES='<the output frames directory>'
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js frame-capture plan --fps 30 --frames 60; RC=$?; (exit $RC); fi
-if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js frame-capture capture --url "$URL" --out "$FRAMES" --fps 30 --frames 60; RC=$?; (exit $RC); fi
 ```
 
-Exit 0 printed the plan or the captured frames; exit 1 is wrong input; exit 2 refused a URL that is not file:// or localhost (nothing was fetched); exit 4 means playwright is not installed: say so and fall back to plain screenshots. The step is advisory: whatever it prints, the workflow goes on.
+Exit 0 printed the plan; exit 1 is wrong input. The step is advisory: whatever it prints, the workflow goes on.
 
 **AUTO-PROCEED:** Continue to Build phase after tests fail.
 
@@ -373,7 +370,7 @@ if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/he
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js keyframes emit; RC=$?; (exit $RC); fi
 ```
 
-Exit 0 printed the answer; exit 1 is wrong input or a broken state: report it and fix the input, never read it as a pass. The step is advisory: whatever it prints, the workflow goes on.
+The block runs several commands, so read each command's own output and error line, not the block's final status. Exit 0 printed the answer; exit 1 is wrong input or a broken state: report it and fix the input, never read it as a pass. The step is advisory: whatever it prints, the workflow goes on.
 
 **🎯 Reference frame fidelity score (BLOCKING for UI / animation work with a reference design):** When the task is UI or animation work with a reference design, run this at the end of Build, once the UI is built and before motion is added (render the still with the entrance, word reveal and keyframe motion not yet applied): render the still to `"$ACTUAL"` and score it against the `"$REF"` and `"$REGIONS"` recorded at CHECKPOINT 4: Tests, with blurred PSNR. Skip this for non-UI work. Before running a block, put the real path in place of each `NAME='<...>'` placeholder at its top (the CSS selector for `BG_SELECTOR`, a file:// or localhost URL for `URL`); shell variables do not persist between Bash calls, so run the block as one. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
 
@@ -385,6 +382,16 @@ if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/he
 ```
 
 Exit 0: the frame and every container meet the target, go on. **Exit 2 stops the flow: do not add motion or go on to Review until the score passes**; fix the regions it lists with `pass: false` (a low `structural_psnr` means a misplaced layer, a high one a small offset) and score again. Exit 1 is wrong input (size mismatch, not a PNG): fix it and score again, never read it as a pass. This is the one blocking design step in this workflow; with no kit it is skipped like every kit step.
+
+**🎞️ Deterministic frame capture (animation work only):** When the task is animation work, now that the page renders, record it frame by frame on the stepped fake clock planned at CHECKPOINT 4: Tests into `"$FRAMES"`, so test captures are repeatable. Skip this for non-animation work. Before running a block, put the real path in place of each `NAME='<...>'` placeholder at its top (a file:// or localhost URL for `URL`); shell variables do not persist between Bash calls, so run the block as one. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+```bash
+URL='<the file:// or localhost page URL>'
+FRAMES='<the output frames directory>'
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js frame-capture capture --url "$URL" --out "$FRAMES" --fps 30 --frames 60; RC=$?; (exit $RC); fi
+```
+
+Exit 0 printed the captured frames and `manifest.json`; exit 1 is wrong input or a page that did not load; exit 2 refused a URL that is not file:// or localhost (nothing was fetched); exit 4 means playwright (1.48+ with its Chromium) is not usable: report the printed `reason` and fall back to plain screenshots. The step is advisory: whatever it prints, the workflow goes on.
 
 **AUTO-PROCEED:** Continue to Review phase.
 
@@ -468,7 +475,7 @@ if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/he
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js bg-fill guard --file "$CSS" --selector "$BG_SELECTOR"; RC=$?; (exit $RC); fi
 ```
 
-Exit 0: nothing to flag. `bg-fill guard` exits 2 when the background is animated, transitioned, swapped or filtered: report each `violations` row as a review finding. Exit 1 is wrong input: report it, never read it as a pass. Both steps are advisory here: the review goes on.
+The block runs several commands, so read each command's own output and error line, not the block's final status. Exit 0: nothing to flag. `bg-fill guard` exits 2 when the background is animated, transitioned, swapped or filtered: report each `violations` row as a review finding. Exit 1 is wrong input: report it, never read it as a pass. Both steps are advisory here: the review goes on.
 
 **AUTO-PROCEED:** Continue to Verification phase.
 

@@ -50,7 +50,8 @@ before(() => {
   dir = fs.mkdtempSync(path.join(os.tmpdir(), 'design-reach-'));
   fx.BRIEF = write('brief.json', JSON.stringify({ kind: 'landing', answers: { offer: 'Invoice tool for freelancers' } }));
   fx.MOTION = write('motion.json', JSON.stringify({ request: 'animate this design', has_site_codebase: false, sections: [{ id: 'hero', kind: 'hero' }, { id: 'features', kind: 'cards' }] }));
-  fx.SPEC = write('spec.md', '# Hero\n\nGet paid on time.\n\n# Pricing\n');
+  // opens with an inline tag, as many markdown specs do: the Spec step must still read it as markdown
+  fx.SPEC = write('spec.md', '<a id="top"></a>\n\n# Hero\n\nGet paid on time.\n\n# Pricing\n');
   fx.BG = write('bg.json', JSON.stringify({ selector: '.hero', container: { w: 1200, h: 600 }, image: { w: 2400, h: 1600 }, scale_mode: 'FILL' }));
   fx.CSS = write('styles.css', '.lead{font-size:15px}\n.hero{background-image:url(a.jpg)}\n.hero:hover{background-image:url(b.jpg);transition:background 1s}\n');
   fx.BG_SELECTOR = '.hero';
@@ -357,7 +358,9 @@ describe('Deterministic frame capture (frame-capture)', () => {
     it(`${file} › ${heading}: frames are stepped on a fake clock, the same every run`, () => {
       const { section, command } = cmd(file, heading, 'frame-capture', 'plan');
       gated(section, 'frame-capture');
-      assert.ok(commands(section, 'frame-capture').some(c => c.includes(' capture --url ')), 'the step also says how to capture');
+      // the capture itself runs where the page exists: in /w-perf the same step, in /w-plan-tdd-swarm at the end of Build
+      const where = file === WF.plan ? cmd(WF.plan, H.build, 'frame-capture', 'capture').section : section;
+      assert.ok(commands(where, 'frame-capture').some(c => c.includes(' capture --url ')), 'the workflow also says how to capture');
       const a = run(command);
       const b = run(command);
       assert.equal(a.status, 0);
