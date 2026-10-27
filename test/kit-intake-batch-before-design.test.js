@@ -149,6 +149,10 @@ describe('integration fixes (carried findings)', () => {
   });
   it('a JSON parse error keeps its reason', async () => {
     await assert.rejects(run(['assume'], io('{"kind": "landing",', os.tmpdir())), e => e.code === 1 && /not valid JSON: \S/.test(e.message) && !/not valid JSON$/.test(e.message));
+    // the reason never quotes the input: a credentials file passed by mistake must not leak into stderr
+    for (const bad of ['{"kind": "landing", "api_key": sk-live-0123456789}', 'OPENAI_API_KEY=sk-live-0123456789']) {
+      await assert.rejects(run(['assume'], io(bad, os.tmpdir())), e => e.code === 1 && /not valid JSON: \S/.test(e.message) && !/sk-live|OPENAI/.test(e.message));
+    }
   });
   it('refusals name their cause, not only the exit code', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'db-msg-'));

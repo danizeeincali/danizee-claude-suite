@@ -54,7 +54,7 @@ before(() => {
   fx.SPEC = write('spec.md', '<a id="top"></a>\n\n# Hero\n\nGet paid on time.\n\n# Pricing\n');
   fx.BG = write('bg.json', JSON.stringify({ selector: '.hero', container: { w: 1200, h: 600 }, image: { w: 2400, h: 1600 }, scale_mode: 'FILL' }));
   fx.CSS = write('styles.css', '.lead{font-size:15px}\n.hero{background-image:url(a.jpg)}\n.hero:hover{background-image:url(b.jpg);transition:background 1s}\n');
-  fx.BG_SELECTOR = '.hero';
+  fx.SEL_FILE = write('selector.txt', '.hero');
   fx.TAGLINE = write('tagline.txt', 'Invoices that pay themselves');
   fx.PAGE = write('page.html', '<h1>Lorem ipsum dolor</h1><p>John Doe at Acme Inc</p>\n');
   fx.LAYERS = write('layers.json', JSON.stringify({ frame: { x: 0, y: 0 }, layers: [{ id: 'card', z: 1, bounds: { x: 10, y: 20, w: 100, h: 50 }, render_bounds: { x: 6, y: 16, w: 108, h: 58 }, effects_even: true }] }));
@@ -121,7 +121,9 @@ function run(s, over = {}) {
   const q = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
   let script;
   if (s.block) {
-    const assigns = s.block.filter(l => /^[A-Za-z_][A-Za-z0-9_]*='<[^']*>'/.test(l)).map(l => {
+    // placeholder lines are filled; derived lines (NAME=$(cat "$FILE")) run as written, in block order
+    const assigns = s.block.filter(l => /^[A-Za-z_][A-Za-z0-9_]*=(?:'<[^']*>'|\$\()/.test(l)).map(l => {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*='<[^']*>'/.test(l)) return l;
       const name = l.match(/^([A-Za-z_][A-Za-z0-9_]*)=/)[1];
       assert.ok(name in map, `no fixture for ${name} in: ${l}`);
       return l.replace(/^([A-Za-z_][A-Za-z0-9_]*)='<[^']*>'/, `$1=${q(map[name])}`);
@@ -315,6 +317,18 @@ describe('Sacred background preservation (bg-fill)', () => {
     assert.equal(r.status, 2);
     assert.equal(r.json.pass, false);
     assert.deepEqual(r.json.violations.map(v => v.property).sort(), ['background-image', 'transition']);
+  });
+  it("w-plan-tdd-swarm › Review: a quoted attribute selector reaches the judge intact and runs nothing", () => {
+    const { command } = cmd(WF.plan, H.review, 'bg-fill', 'guard');
+    const css = write('attr.css', "[data-bg='hero']{background-image:url(a.jpg)}\n[data-bg='hero']:hover{background-image:url(b.jpg)}\n");
+    const marker = path.join(dir, 'injected');
+    const sel = write('attr-selector.txt', `[data-bg='hero;touch ${marker}']`);
+    const r1 = run(command, { CSS: css, SEL_FILE: sel });
+    assert.ok(!fs.existsSync(marker), 'no part of the selector ran as a command');
+    assert.equal(r1.status, 1, 'a selector no rule matches is reported as wrong input');
+    const r2 = run(command, { CSS: css, SEL_FILE: write('attr-selector2.txt', "[data-bg='hero']") });
+    assert.equal(r2.status, 2, 'the quoted selector is judged as written');
+    assert.equal(r2.json.pass, false);
   });
 });
 

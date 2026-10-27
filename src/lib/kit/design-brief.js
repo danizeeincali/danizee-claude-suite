@@ -248,7 +248,16 @@ async function readInput(flags, io) {
   }
   raw = raw.replace(/^\uFEFF/, '');
   if (!raw.trim()) throw bad('no input: pass the brief JSON on stdin or --file');
-  try { return JSON.parse(raw); } catch (e) { throw bad(`input is not valid JSON: ${String(e.message).slice(0, 200)}`); }
+  try { return JSON.parse(raw); } catch (e) { throw bad(`input is not valid JSON: ${jsonReason(e)}`); }
+}
+
+/** The parse error's reason without the input snippet V8 quotes, so a wrong --file never echoes its contents. */
+function jsonReason(e) {
+  const msg = String(e && e.message);
+  if (/end of JSON input/.test(msg)) return 'unexpected end of input';
+  const m = /at position (\d+)(?: \(line (\d+) column (\d+)\))?/.exec(msg);
+  if (m) return `syntax error at position ${m[1]}${m[2] ? ` (line ${m[2]} column ${m[3]})` : ''}`;
+  return 'syntax error';
 }
 
 export async function run(args, io) {
