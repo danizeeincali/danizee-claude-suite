@@ -7,7 +7,7 @@ Generate UI component designs with specifications.
 /frontend-design:design [component description]
 ```
 
-**Intake first (one batch).** Before designing, write what is known to `"$BRIEF"` (`{kind: landing|ui|motion, answers: {...}}`), ask every question `questions` prints in one round, and fill the gaps with the stated assumptions `assume` prints. Before running a block, put the real path in place of each `NAME='<...>'` placeholder at its top (a file:// or localhost URL for `URL`); shell variables do not persist between Bash calls, so run the block as one. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+**Intake first (one batch).** Before designing, write what is known to `"$BRIEF"` (`{kind: landing|ui|motion, answers: {...}}`), run the block once and ask every question `questions` prints in this one round (as few AskUserQuestion calls as it takes, at most 4 questions each), write the answers into the brief JSON, then run the block again and fill the gaps the owner left open with the stated assumptions `assume` prints. Before running a block, put the real path in place of each `NAME='<...>'` placeholder at its top (a file:// or localhost URL for `URL`); shell variables do not persist between Bash calls, so run the block as one. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
 
 ```bash
 BRIEF='<the brief JSON you wrote>'; [ -f "$BRIEF" ] || echo "BRIEF is still the placeholder or does not exist: put the path of the brief JSON you wrote in place of <the brief JSON you wrote>" >&2

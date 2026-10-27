@@ -16,8 +16,8 @@
  * `missing` the must sections that are absent, `out_of_order` each section that appears after one that should
  * follow it, with the canonical section it belongs after (null for the first). `cta` says whether the hero and
  * the final section each carry a call to action (markdown link, `CTA:` line, HTML button or a.btn/.cta) and
- * whether a label is the same in both (case and punctuation ignored). Advisory: exit 0. File type comes from
- * the extension; stdin is sniffed. Binary input, an unreadable file or unknown arguments exit 1.
+ * whether a label is the same in both (case and punctuation ignored). Advisory: exit 0. The type is sniffed
+ * from the text for --file and stdin alike unless --format md|html is given. Binary input, an unreadable file or unknown arguments exit 1.
  * Built from ideas audited by /w-bbs (run 2026-10-26-ai-design-skills); no foreign code.
  */
 import fs from 'fs/promises';
@@ -26,7 +26,7 @@ import path from 'path';
 import { KitExit } from './kit-exit.js';
 
 export const verb = 'landing-sections';
-export const usage = 'cli.js landing-sections plan | check [--file <spec.md|page.html>]  (text on stdin or --file; advisory, exit 0)';
+export const usage = 'cli.js landing-sections plan | check [--format md|html] [--file <spec.md|page.html>]  (text on stdin or --file; advisory, exit 0)';
 
 const MAX_BYTES = 8 * 1024 * 1024;
 
