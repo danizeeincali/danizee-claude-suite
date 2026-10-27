@@ -233,15 +233,20 @@ async function openRegular(p) {
 }
 
 
-// Decided from the text alone (never the file extension), so stdin and --file agree: leading comments are skipped.
+// Decided from the text alone (never the file extension), so stdin and --file agree. Skipped first: a BOM, a
+// leading front-matter block (--- ... ---), comments, and <?...?>, {%...%} or {#...#} prologs.
+const SKIP = [['<!--', '-->'], ['<?', '?>'], ['{%', '%}'], ['{#', '#}']];
 function sniff(text) {
-  let i = 0;
+  let i = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  const fm = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(\r?\n|$)/.exec(text.slice(i));
+  if (fm) i += fm[0].length;
   for (;;) {
     while (i < text.length && /\s/.test(text[i])) i++;
-    if (!text.startsWith('<!--', i)) break;
-    const e = text.indexOf('-->', i + 4);
+    const pair = SKIP.find(([open]) => text.startsWith(open, i));
+    if (!pair) break;
+    const e = text.indexOf(pair[1], i + pair[0].length);
     if (e < 0) { i = text.length; break; }
-    i = e + 3;
+    i = e + pair[1].length;
   }
   return /^<(!doctype\b|[a-z][a-z0-9-]*)/i.test(text.slice(i, i + 64)) ? 'html' : 'md';
 }

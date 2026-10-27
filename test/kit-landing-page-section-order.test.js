@@ -222,6 +222,28 @@ describe('integration fixes (carried findings)', () => {
       assert.deepEqual((await run(['check'], rio(texts[0], dir))).found, ['hero', 'benefits', 'final-cta']);
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
+  it('reads a page as html when it opens with front matter or an <?xml, <?php or {% %} prolog, and front-matter markdown as markdown', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ls-prolog-'));
+    const page = '<section id="hero"><a class="btn" href="/a">Go</a></section>\n<section id="faq">x</section>\n<section id="final-cta"><a class="btn" href="/a">Go</a></section>\n';
+    try {
+      const html = {
+        'front matter': '---\nlayout: base\ntitle: Home\n---\n' + page,
+        'xml prolog': '<?xml version="1.0" encoding="UTF-8"?>\n' + page,
+        'php prolog': '<?php include "head.php"; ?>\n' + page,
+        'jinja extends': '{% extends "base.html" %}\n{# hero first #}\n' + page,
+        'bom and front matter': '\ufeff---\r\ntitle: Home\r\n---\r\n' + page,
+      };
+      for (const [name, t] of Object.entries(html)) {
+        await fs.writeFile(path.join(dir, 'p.html'), t);
+        const viaFile = await run(['check', '--file', 'p.html'], rio('', dir));
+        assert.deepEqual(viaFile, await run(['check'], rio(t, dir)), name);
+        assert.deepEqual(viaFile.found, ['hero', 'faq', 'final-cta'], name);
+        assert.equal(viaFile.cta.hero && viaFile.cta.final, true, name);
+      }
+      const md = '---\ntitle: Home\n---\n## Hero\n[Go](/a)\n\n## FAQ\nx\n\n## Final CTA\n[Go](/a)\n';
+      assert.deepEqual((await run(['check'], rio(md, dir))).found, ['hero', 'faq', 'final-cta']);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
   it('refuses /proc paths even when they are regular files', async () => {
     await assert.rejects(run(['check', '--file', '/proc/self/status'], rio('', os.tmpdir())), e => e instanceof KitExit && e.code === 1 && /\/proc/.test(e.message));
   });
