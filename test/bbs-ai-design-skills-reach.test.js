@@ -17,6 +17,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { stepSection } from '../.claude/helpers/bbs/wiring.js';
 import { encodePng } from '../.claude/helpers/kit/fidelity.js';
+import { validateFinishLine, evaluateGate } from '../.claude/helpers/marathon/gate.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const KIT = '.claude/helpers/kit/cli.js';
@@ -263,7 +264,8 @@ describe('Reference frame fidelity check (fidelity)', () => {
         assert.match(t.text, /end of CHECKPOINT 5 Build, once the still is rendered and before motion is added/);
         const b = slice(file, runAt, 'fidelity');
         assert.match(b.text, /CHECKPOINT 4: Tests/, 'the Build score uses what Tests recorded');
-        assert.match(b.text, /before motion is added/);
+        // the still is scored with motion off, so the motion built earlier in Build cannot skew the score
+        assert.match(b.text, /render the still with motion off \(take the screenshot with `prefers-reduced-motion: reduce` emulated/);
         assert.match(b.text, /Exit 2 stops the flow/);
       }
       const { section, command } = cmd(file, runAt || heading, 'fidelity');
@@ -383,4 +385,24 @@ describe('Deterministic frame capture (frame-capture)', () => {
       assert.deepEqual(a.json, b.json, 'the capture plan is repeatable');
     });
   }
+});
+
+describe('Reference frame fidelity gate in /w-marathon', () => {
+  it('a failing score keeps the scripted stream gate unmet however many green test runs follow', () => {
+    const t = slice(WF.marathon, H.mLoop, 'fidelity').text;
+    assert.match(t, /record measure key=fidelity_<s> value=false/);
+    const m = t.match(/\{"id": "fidelity_<s>"[^`]*\}/);
+    assert.ok(m, 'the step gives the finish-line line to add');
+    const line = JSON.parse(m[0].replace(/<s>/g, 'ui'));
+    const finishLine = { lines: [line] };
+    assert.deepEqual(validateFinishLine(finishLine), [], 'the line is a valid finish-line line');
+    const green = Array.from({ length: 5 }, () => ({ kind: 'unit', status: 'green', stream: 'ui' }));
+    const met = (measurements) => evaluateGate({ finishLine, runs: green, reviews: [], findings: [], helpers: [], measurements, stream: 'ui' })
+      .lines.find(l => l.id === 'fidelity_ui').status === 'met';
+    assert.equal(met([{ key: 'fidelity_ui', value: false }]), false);
+    assert.equal(met([{ key: 'fidelity_ui', value: false }, { key: 'fidelity_ui', value: true }]), true);
+    assert.equal(met([{ key: 'fidelity_ui', value: true }, { key: 'fidelity_ui', value: false }]), false);
+    const interview = stepSection(fs.readFileSync(path.join(ROOT, WF.marathon), 'utf-8'), H.mInterview);
+    assert.match(String(interview?.text ?? interview), /fidelity_<s>/, 'the Interview adds the line for UI streams');
+  });
 });
