@@ -52,3 +52,15 @@
 {"kind":"unit","status":"green","stream":"reference-frame-fidelity-check","commit":"075b3a5","id":"88fd17ab-73b9-4634-98a4-c00f2738e350","ts":"2026-10-26T22:25:04.145Z"}
 {"kind":"unit","status":"green","stream":"realistic-sample-content-rules","commit":"3f7eafa","id":"e0b54c6e-48a0-4d5f-bbf7-7ff476501f42","ts":"2026-10-26T22:26:44.320Z"}
 {"kind":"unit","status":"green","stream":"realistic-sample-content-rules","commit":"3f7eafa","id":"8fea5a82-0be3-47bf-be5a-f8e7cea0ddb6","ts":"2026-10-26T22:26:44.483Z"}
+{"kind":"unit","status":"green","stream":"integration","commit":"63b861f","id":"f9652910-d5ea-40f7-85a5-7c4a0c5ecbfd","ts":"2026-10-26T23:10:58.174Z"}
+{"kind":"unit","status":"green","stream":"integration","commit":"63b861f","id":"8aba0f88-1e68-414f-b4eb-17158e9f5c29","ts":"2026-10-26T23:10:58.293Z"}
+{"kind":"unit","status":"green","stream":"integration","commit":"bb36f2f","id":"907cf79c-8e24-4c42-86d9-08ad46d1a4d9","ts":"2026-10-27T00:15:27.476Z"}
+{"kind":"unit","status":"green","stream":"integration","commit":"bb36f2f","id":"3ebc462e-bfd7-456d-9b51-848ef726dd1d","ts":"2026-10-27T00:15:27.618Z"}
+{"kind":"unit","status":"green","stream":"integration","commit":"272a309","id":"38250be3-383a-466b-abe2-23576c1da09f","ts":"2026-10-27T06:34:58.260Z"}
+{"kind":"unit","status":"green","stream":"integration","commit":"272a309","id":"d10b9662-963c-423c-a094-68803a09ab95","ts":"2026-10-27T06:34:58.383Z"}
+{"kind":"unit","status":"green","stream":"integration","commit":"3666dae","id":"f1f040d5-5b0e-4e2d-83e8-8447d9d3e2bc","ts":"2026-10-27T06:45:34.003Z"}
+{"kind":"unit","status":"green","stream":"integration","commit":"3666dae","id":"301fb4c0-f73c-40ba-979e-b23b761d1bc9","ts":"2026-10-27T06:45:34.140Z"}
+{"kind":"unit","status":"green","stream":"integration","commit":"0f6efea","id":"31f2810c-fe59-45e2-b602-3aaced299de6","ts":"2026-10-27T06:58:52.672Z"}
+{"kind":"unit","status":"green","stream":"integration","commit":"0f6efea","id":"5912674b-bc11-4e8f-a43d-bf91940f4e4d","ts":"2026-10-27T06:58:52.805Z"}
+{"kind":"unit","status":"green","stream":"integration","commit":"4b9bf4e","id":"e402c41d-d1a7-4243-aa18-b2d6f88e1c10","ts":"2026-10-27T07:22:47.792Z"}
+{"kind":"unit","status":"green","stream":"integration","commit":"4b9bf4e","id":"c862fde4-f227-45fe-b911-d3636a94ed7b","ts":"2026-10-27T07:22:47.938Z"}

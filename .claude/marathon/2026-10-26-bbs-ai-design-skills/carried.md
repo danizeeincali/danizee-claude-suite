@@ -13,10 +13,10 @@ open findings below; the integration stream fixes them before it wires the verb,
 ## intake-batch-before-design (review r2, low, open)
 - stat-then-open race on --file; JSON parse error drops its reason; refusal tests assert only the exit code.
 
-## realistic-sample-content-rules (r1 over and fixed, r2 passed; streak 1 of 2; allowance steps used up)
-- Open from r2: quadratic lineOf (medium), vague-error accepts description words as a next step (medium), unclosed
-  tag regexes quadratic (low), deep JSON nesting overflows the walker (low). The integration stream fixes these and
-  runs the stream's second clean review before wiring the verb.
+## realistic-sample-content-rules (r2 fixed, r2 and r3 passed, gate met; r3 findings open)
+- UTF-16 input (PowerShell 5.1 output) is decoded as UTF-8 and reported clean (src/lib/kit/sample-content.js:358):
+  decode by BOM or refuse with exit 1 (medium).
+- CR-only line endings put every finding on line 1 and skip headings (sample-content.js:69): normalise lone \r (low).
 
 ## type-scale-snapping-to-tailwind-steps (r1 and r2 passed, gate met; r2 findings open)
 - One zero or overflowing size aborts the whole audit (medium); unclosed `text-[` openers make the class scan
@@ -69,3 +69,6 @@ fidelity, motion-plan. Landing and intake stay closed with findings carried.
 ## reference-frame-fidelity-check (r2 and r3 passed, gate met; r3 medium open)
 - Same-file check compares Number inodes, so precision loss or ino 0 can wrongly refuse --diff-out and turn a
   blocking exit 2 into exit 1 (src/lib/kit/fidelity.js:493): use bigint stats and ignore ino 0n.
+
+## Integration allowance raise (2026-10-27, Dani chose "Raise to 400 steps")
+The integration helper allowance went from 200 to 400 steps (cost unchanged at 1.5M), keeping what was spent.
