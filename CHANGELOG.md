@@ -4,6 +4,43 @@ Releases are version tags with a GitHub release; the suite is no longer publishe
 (npm stays at 4.1.0). Versions 4.2.0 to 4.5.0 were set in `package.json` but never published
 or tagged, so 4.6.0 is the first release after 4.1.0 and carries all of them.
 
+## 4.7.0 — 2026-10-28
+
+Twelve design and animation powers from the `/w-bbs` run on elayadesign/ai-design-skills (MIT),
+each rebuilt from the source's idea with no code copied. Each is a kit verb
+(`node .claude/helpers/kit/cli.js <verb>`) wired into existing workflows, and the steps run only
+for UI, landing-page or animation tasks.
+
+### Added
+- **`design-brief`**: collects a missing design brief in one batch and fills gaps with stated
+  assumptions instead of stalling (`/pt` and `/mt` Interview, `/analysis:design`).
+- **`landing-sections`**: a fixed landing page section order from the hero through objection
+  handling to a repeated final call to action (`/pt` Spec, `/analysis:layout`, `/analysis:design`).
+- **`type-scale`**: snaps off-scale font sizes to the nearest smaller Tailwind step with its
+  paired line height (`/pt` Build, `/analysis:design`).
+- **`word-reveal`**: a tagline whose words brighten in reading order on scroll (`/pt` Build,
+  `/mt` Loop).
+- **`sample-content`**: rules that keep placeholder copy, names, prices and figures believable
+  (`/pt` Review, `/mt` Loop, `/analysis:design`).
+- **`motion-plan`**: decides whether an animation is a standalone showcase or a website section
+  and maps each section to its motion (`/pt` Plan, `/mt` Interview).
+- **`fidelity`**: compares a rendered still with the reference by a blurred PSNR score per
+  container before motion is added. It is a **blocking** gate in `/pt` Tests and `/mt` Loop
+  (the marathon finish line holds until the latest `fidelity_<stream>` measure passes) and
+  advisory in `/w-perf`.
+- **`layer-place`**: placement math for exported layer images, including overhang, clipping and
+  stroke geometry (`/pt` Build, `/mt` Loop).
+- **`bg-fill`**: keeps a photo or texture background exactly as designed (`/pt` Spec and Review).
+- **`entrance`**: entrance choreography kinds (`/pt` Build, `/mt` Loop).
+- **`keyframes`**: looping in-page stories from one eased keyframe function on a shared clock
+  (`/pt` Build, `/mt` Loop).
+- **`frame-capture`**: records an animation frame by frame under a stepped fake clock, so output
+  is repeatable (`/pt` Tests, `/w-perf`).
+
+### Removed
+- The GitHub test workflow (`.github/workflows/test.yml`) and its reach test. Tests run locally
+  with `npm test`; only the release workflow remains.
+
 ## 4.6.0 — 2026-10-22
 
 The first GitHub release. It also carries 4.2.0 to 4.5.0 below, which were never published.
