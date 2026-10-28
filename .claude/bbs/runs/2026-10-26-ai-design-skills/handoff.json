@@ -1,0 +1,1751 @@
+{
+  "run": "2026-10-26-ai-design-skills",
+  "source": {
+    "run": "2026-10-26-ai-design-skills",
+    "type": "repo",
+    "ref": "https://github.com/elayadesign/ai-design-skills",
+    "identity": "git:eabf86665588de0eb4c9e2fbf5fc9d3ae807e9f1",
+    "fetched": true,
+    "reuse_from": null,
+    "cited": [],
+    "ts": "2026-10-26T19:31:14.115Z",
+    "source_only": {
+      "kept": 5,
+      "skipped": 0
+    },
+    "fetched_at": "2026-10-26T19:31:20.012Z"
+  },
+  "marathonRun": "2026-10-26-bbs-ai-design-skills",
+  "powers": [
+    {
+      "name": "Intake batch before design",
+      "slug": "intake-batch-before-design",
+      "verdict": "rebuild",
+      "brief": "briefs/intake-batch-before-design.md",
+      "brief_path": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/intake-batch-before-design.md",
+      "lines": [
+        {
+          "id": "tests_green_intake-batch-before-design",
+          "label": "intake-batch-before-design: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "intake-batch-before-design"
+        },
+        {
+          "id": "egress_zero_intake-batch-before-design",
+          "label": "intake-batch-before-design: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_intake-batch-before-design",
+          "stream": "intake-batch-before-design"
+        },
+        {
+          "id": "six_sigma_intake-batch-before-design",
+          "label": "intake-batch-before-design: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "intake-batch-before-design"
+        },
+        {
+          "id": "wired_intake-batch-before-design",
+          "label": "intake-batch-before-design: wired into all 3 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 3,
+          "owner": "build",
+          "source": "measure:wired_intake-batch-before-design",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_intake-batch-before-design",
+          "label": "intake-batch-before-design: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_intake-batch-before-design",
+          "stream": "intake-batch-before-design"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 1: Interview (MANDATORY - NEVER SKIP)",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 1: Interview (MANDATORY - NEVER SKIP)",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 1: Interview (MANDATORY - NEVER SKIP)",
+          "how": "When the task is a landing page, UI or animation build, batch all missing brief items (audience, offer, brand, references) into one interview round and record stated assumptions for gaps; advisory otherwise.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "⛔ CHECKPOINT 1: Interview (HIL — once)",
+          "reach": "/w-marathon › ⛔ CHECKPOINT 1: Interview (HIL — once)",
+          "workflow": "w-marathon",
+          "step": "⛔ CHECKPOINT 1: Interview (HIL — once)",
+          "how": "For UI or landing-page streams, ask the missing design brief in the single interview batch and log assumptions instead of stalling; advisory for non-UI work.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/analysis/design.md",
+          "file": ".claude/commands/analysis/design.md",
+          "at": "Usage",
+          "reach": "/analysis:design › Usage",
+          "workflow": "analysis:design",
+          "step": "Usage",
+          "how": "Run the design workflow with one intake batch up front, filling gaps with stated assumptions.",
+          "mode": "advisory",
+          "by": "proposed",
+          "unused_reason": "Existing design workflow in the suite, the natural home for design intake."
+        }
+      ]
+    },
+    {
+      "name": "Landing page section order",
+      "slug": "landing-page-section-order",
+      "verdict": "rebuild",
+      "brief": "briefs/landing-page-section-order.md",
+      "brief_path": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/landing-page-section-order.md",
+      "lines": [
+        {
+          "id": "tests_green_landing-page-section-order",
+          "label": "landing-page-section-order: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "landing-page-section-order"
+        },
+        {
+          "id": "egress_zero_landing-page-section-order",
+          "label": "landing-page-section-order: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_landing-page-section-order",
+          "stream": "landing-page-section-order"
+        },
+        {
+          "id": "six_sigma_landing-page-section-order",
+          "label": "landing-page-section-order: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "landing-page-section-order"
+        },
+        {
+          "id": "wired_landing-page-section-order",
+          "label": "landing-page-section-order: wired into all 3 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 3,
+          "owner": "build",
+          "source": "measure:wired_landing-page-section-order",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_landing-page-section-order",
+          "label": "landing-page-section-order: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_landing-page-section-order",
+          "stream": "landing-page-section-order"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 3: Spec",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 3: Spec",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 3: Spec",
+          "how": "When the task is a landing page, write the spec as the fixed numbered section sequence (hero, argument, objection handling, repeated final CTA); advisory for non-landing work.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/analysis/layout.md",
+          "file": ".claude/commands/analysis/layout.md",
+          "at": "Layout Types",
+          "reach": "/analysis:layout › Layout Types",
+          "workflow": "analysis:layout",
+          "step": "Layout Types",
+          "how": "Offer the landing-page section order as a layout type with its fixed numbered sections.",
+          "mode": "advisory",
+          "by": "proposed",
+          "unused_reason": "Existing layout workflow in the suite, where page structure belongs."
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/analysis/design.md",
+          "file": ".claude/commands/analysis/design.md",
+          "at": "What It Creates",
+          "reach": "/analysis:design › What It Creates",
+          "workflow": "analysis:design",
+          "step": "What It Creates",
+          "how": "Design output for a landing page follows the fixed section sequence.",
+          "mode": "advisory",
+          "by": "proposed",
+          "unused_reason": "Existing design workflow; the section order shapes what it produces."
+        }
+      ]
+    },
+    {
+      "name": "Type scale snapping to Tailwind steps",
+      "slug": "type-scale-snapping-to-tailwind-steps",
+      "verdict": "rebuild",
+      "brief": "briefs/type-scale-snapping-to-tailwind-steps.md",
+      "brief_path": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/type-scale-snapping-to-tailwind-steps.md",
+      "lines": [
+        {
+          "id": "tests_green_type-scale-snapping-to-tailwind-steps",
+          "label": "type-scale-snapping-to-tailwind-steps: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "type-scale-snapping-to-tailwind-steps"
+        },
+        {
+          "id": "egress_zero_type-scale-snapping-to-tailwind-steps",
+          "label": "type-scale-snapping-to-tailwind-steps: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_type-scale-snapping-to-tailwind-steps",
+          "stream": "type-scale-snapping-to-tailwind-steps"
+        },
+        {
+          "id": "six_sigma_type-scale-snapping-to-tailwind-steps",
+          "label": "type-scale-snapping-to-tailwind-steps: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "type-scale-snapping-to-tailwind-steps"
+        },
+        {
+          "id": "wired_type-scale-snapping-to-tailwind-steps",
+          "label": "type-scale-snapping-to-tailwind-steps: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_type-scale-snapping-to-tailwind-steps",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_type-scale-snapping-to-tailwind-steps",
+          "label": "type-scale-snapping-to-tailwind-steps: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_type-scale-snapping-to-tailwind-steps",
+          "stream": "type-scale-snapping-to-tailwind-steps"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 5: Build",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 5: Build",
+          "how": "When building UI, snap any off-scale font size to the nearest smaller Tailwind step and use its paired line height; advisory outside UI work.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/analysis/design.md",
+          "file": ".claude/commands/analysis/design.md",
+          "at": "What It Creates",
+          "reach": "/analysis:design › What It Creates",
+          "workflow": "analysis:design",
+          "step": "What It Creates",
+          "how": "Typography tokens the design emits are snapped to Tailwind steps with paired line heights.",
+          "mode": "advisory",
+          "by": "proposed",
+          "unused_reason": "Existing design workflow; type scale is a core design output."
+        }
+      ]
+    },
+    {
+      "name": "Tagline word reveal on scroll",
+      "slug": "tagline-word-reveal-on-scroll",
+      "verdict": "rebuild",
+      "brief": "briefs/tagline-word-reveal-on-scroll.md",
+      "brief_path": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/tagline-word-reveal-on-scroll.md",
+      "lines": [
+        {
+          "id": "tests_green_tagline-word-reveal-on-scroll",
+          "label": "tagline-word-reveal-on-scroll: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "tagline-word-reveal-on-scroll"
+        },
+        {
+          "id": "egress_zero_tagline-word-reveal-on-scroll",
+          "label": "tagline-word-reveal-on-scroll: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_tagline-word-reveal-on-scroll",
+          "stream": "tagline-word-reveal-on-scroll"
+        },
+        {
+          "id": "six_sigma_tagline-word-reveal-on-scroll",
+          "label": "tagline-word-reveal-on-scroll: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "tagline-word-reveal-on-scroll"
+        },
+        {
+          "id": "wired_tagline-word-reveal-on-scroll",
+          "label": "tagline-word-reveal-on-scroll: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_tagline-word-reveal-on-scroll",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_tagline-word-reveal-on-scroll",
+          "label": "tagline-word-reveal-on-scroll: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_tagline-word-reveal-on-scroll",
+          "stream": "tagline-word-reveal-on-scroll"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 5: Build",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 5: Build",
+          "how": "When a landing page or animated UI includes a large benefit statement, build it as a scroll-triggered word-by-word reveal; advisory otherwise.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "workflow": "w-marathon",
+          "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "how": "In UI streams, implement the tagline section with the word reveal on scroll as part of the build loop; advisory for non-UI streams.",
+          "mode": "advisory",
+          "by": "proposed"
+        }
+      ]
+    },
+    {
+      "name": "Realistic sample content rules",
+      "slug": "realistic-sample-content-rules",
+      "verdict": "rebuild",
+      "brief": "briefs/realistic-sample-content-rules.md",
+      "brief_path": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/realistic-sample-content-rules.md",
+      "lines": [
+        {
+          "id": "tests_green_realistic-sample-content-rules",
+          "label": "realistic-sample-content-rules: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "realistic-sample-content-rules"
+        },
+        {
+          "id": "egress_zero_realistic-sample-content-rules",
+          "label": "realistic-sample-content-rules: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_realistic-sample-content-rules",
+          "stream": "realistic-sample-content-rules"
+        },
+        {
+          "id": "six_sigma_realistic-sample-content-rules",
+          "label": "realistic-sample-content-rules: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "realistic-sample-content-rules"
+        },
+        {
+          "id": "wired_realistic-sample-content-rules",
+          "label": "realistic-sample-content-rules: wired into all 3 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 3,
+          "owner": "build",
+          "source": "measure:wired_realistic-sample-content-rules",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_realistic-sample-content-rules",
+          "label": "realistic-sample-content-rules: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_realistic-sample-content-rules",
+          "stream": "realistic-sample-content-rules"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 6: Review",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 6: Review",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 6: Review",
+          "how": "For UI or landing work, review placeholder copy, names, prices and figures against the believable-content checklist and flag filler phrases; advisory.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/analysis/design.md",
+          "file": ".claude/commands/analysis/design.md",
+          "at": "What It Creates",
+          "reach": "/analysis:design › What It Creates",
+          "workflow": "analysis:design",
+          "step": "What It Creates",
+          "how": "Sample content in the generated design follows the realistic-content checklist.",
+          "mode": "advisory",
+          "by": "proposed",
+          "unused_reason": "Existing design workflow that produces mock content."
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "workflow": "w-marathon",
+          "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "how": "When a stream builds UI, check placeholder content each loop pass against the realism rules; advisory.",
+          "mode": "advisory",
+          "by": "proposed"
+        }
+      ]
+    },
+    {
+      "name": "Context split showcase or website",
+      "slug": "context-split-showcase-or-website",
+      "verdict": "rebuild",
+      "brief": "briefs/context-split-showcase-or-website.md",
+      "brief_path": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/context-split-showcase-or-website.md",
+      "lines": [
+        {
+          "id": "tests_green_context-split-showcase-or-website",
+          "label": "context-split-showcase-or-website: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "context-split-showcase-or-website"
+        },
+        {
+          "id": "egress_zero_context-split-showcase-or-website",
+          "label": "context-split-showcase-or-website: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_context-split-showcase-or-website",
+          "stream": "context-split-showcase-or-website"
+        },
+        {
+          "id": "six_sigma_context-split-showcase-or-website",
+          "label": "context-split-showcase-or-website: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "context-split-showcase-or-website"
+        },
+        {
+          "id": "wired_context-split-showcase-or-website",
+          "label": "context-split-showcase-or-website: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_context-split-showcase-or-website",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_context-split-showcase-or-website",
+          "label": "context-split-showcase-or-website: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_context-split-showcase-or-website",
+          "stream": "context-split-showcase-or-website"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 2: Plan",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 2: Plan",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 2: Plan",
+          "how": "When the task is animating a design, decide first whether it is a standalone showcase or a website section and map each page section to its motion; advisory for non-animation work.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "⛔ CHECKPOINT 1: Interview (HIL — once)",
+          "reach": "/w-marathon › ⛔ CHECKPOINT 1: Interview (HIL — once)",
+          "workflow": "w-marathon",
+          "step": "⛔ CHECKPOINT 1: Interview (HIL — once)",
+          "how": "For animation streams, ask the showcase-versus-website question in the interview and record the motion map per section.",
+          "mode": "advisory",
+          "by": "proposed"
+        }
+      ]
+    },
+    {
+      "name": "Reference frame fidelity check",
+      "slug": "reference-frame-fidelity-check",
+      "verdict": "rebuild",
+      "brief": "briefs/reference-frame-fidelity-check.md",
+      "brief_path": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/reference-frame-fidelity-check.md",
+      "lines": [
+        {
+          "id": "tests_green_reference-frame-fidelity-check",
+          "label": "reference-frame-fidelity-check: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "reference-frame-fidelity-check"
+        },
+        {
+          "id": "egress_zero_reference-frame-fidelity-check",
+          "label": "reference-frame-fidelity-check: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_reference-frame-fidelity-check",
+          "stream": "reference-frame-fidelity-check"
+        },
+        {
+          "id": "six_sigma_reference-frame-fidelity-check",
+          "label": "reference-frame-fidelity-check: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "reference-frame-fidelity-check"
+        },
+        {
+          "id": "wired_reference-frame-fidelity-check",
+          "label": "reference-frame-fidelity-check: wired into all 3 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 3,
+          "owner": "build",
+          "source": "measure:wired_reference-frame-fidelity-check",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_reference-frame-fidelity-check",
+          "label": "reference-frame-fidelity-check: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_reference-frame-fidelity-check",
+          "stream": "reference-frame-fidelity-check"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 4: Tests (BLOCKING GATE)",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 4: Tests (BLOCKING GATE)",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 4: Tests (BLOCKING GATE)",
+          "how": "For UI or animation tasks with a reference design, compare the rendered still to the reference using blurred PSNR per container before motion is added; a score below target stops the flow.",
+          "mode": "blocking",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "workflow": "w-marathon",
+          "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "how": "In UI streams, run the per-container fidelity score each loop pass and treat a score under target as an unmet build gate; applies only to UI work.",
+          "mode": "blocking",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-perf.md",
+          "file": ".claude/commands/.shortcuts/w-perf.md",
+          "at": "⛔ CHECKPOINT 1: Profiling Done",
+          "reach": "/w-perf › ⛔ CHECKPOINT 1: Profiling Done",
+          "workflow": "w-perf",
+          "step": "⛔ CHECKPOINT 1: Profiling Done",
+          "how": "Alongside screenshots, score the rendered still against the reference with blurred PSNR and report per container.",
+          "mode": "advisory",
+          "by": "proposed",
+          "unused_reason": "w-perf already takes screenshots, so a fidelity score fits its profiling step."
+        }
+      ]
+    },
+    {
+      "name": "Layer export placement math",
+      "slug": "layer-export-placement-math",
+      "verdict": "rebuild",
+      "brief": "briefs/layer-export-placement-math.md",
+      "brief_path": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/layer-export-placement-math.md",
+      "lines": [
+        {
+          "id": "tests_green_layer-export-placement-math",
+          "label": "layer-export-placement-math: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "layer-export-placement-math"
+        },
+        {
+          "id": "egress_zero_layer-export-placement-math",
+          "label": "layer-export-placement-math: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_layer-export-placement-math",
+          "stream": "layer-export-placement-math"
+        },
+        {
+          "id": "six_sigma_layer-export-placement-math",
+          "label": "layer-export-placement-math: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "layer-export-placement-math"
+        },
+        {
+          "id": "wired_layer-export-placement-math",
+          "label": "layer-export-placement-math: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_layer-export-placement-math",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_layer-export-placement-math",
+          "label": "layer-export-placement-math: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_layer-export-placement-math",
+          "stream": "layer-export-placement-math"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 5: Build",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 5: Build",
+          "how": "When assembling exported design layers into animated UI, compute each layer's placement (overhang, clipping, stroke geometry) so it lines up with the source; advisory otherwise.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "workflow": "w-marathon",
+          "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "how": "In animation streams, use the placement math when positioning exported layer images; advisory for non-UI work.",
+          "mode": "advisory",
+          "by": "proposed"
+        }
+      ]
+    },
+    {
+      "name": "Sacred background preservation",
+      "slug": "sacred-background-preservation",
+      "verdict": "rebuild",
+      "brief": "briefs/sacred-background-preservation.md",
+      "brief_path": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/sacred-background-preservation.md",
+      "lines": [
+        {
+          "id": "tests_green_sacred-background-preservation",
+          "label": "sacred-background-preservation: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "sacred-background-preservation"
+        },
+        {
+          "id": "egress_zero_sacred-background-preservation",
+          "label": "sacred-background-preservation: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_sacred-background-preservation",
+          "stream": "sacred-background-preservation"
+        },
+        {
+          "id": "six_sigma_sacred-background-preservation",
+          "label": "sacred-background-preservation: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "sacred-background-preservation"
+        },
+        {
+          "id": "wired_sacred-background-preservation",
+          "label": "sacred-background-preservation: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_sacred-background-preservation",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_sacred-background-preservation",
+          "label": "sacred-background-preservation: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_sacred-background-preservation",
+          "stream": "sacred-background-preservation"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 6: Review",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 6: Review",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 6: Review",
+          "how": "For UI or animation work, check that photo or texture backgrounds reuse the original image fill and transform and are never animated or swapped; advisory.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 3: Spec",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 3: Spec",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 3: Spec",
+          "how": "When animating a design with a photo or texture background, write the spec rule that the background is left exactly as designed.",
+          "mode": "advisory",
+          "by": "proposed"
+        }
+      ]
+    },
+    {
+      "name": "Entrance choreography kinds",
+      "slug": "entrance-choreography-kinds",
+      "verdict": "rebuild",
+      "brief": "briefs/entrance-choreography-kinds.md",
+      "brief_path": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/entrance-choreography-kinds.md",
+      "lines": [
+        {
+          "id": "tests_green_entrance-choreography-kinds",
+          "label": "entrance-choreography-kinds: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "entrance-choreography-kinds"
+        },
+        {
+          "id": "egress_zero_entrance-choreography-kinds",
+          "label": "entrance-choreography-kinds: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_entrance-choreography-kinds",
+          "stream": "entrance-choreography-kinds"
+        },
+        {
+          "id": "six_sigma_entrance-choreography-kinds",
+          "label": "entrance-choreography-kinds: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "entrance-choreography-kinds"
+        },
+        {
+          "id": "wired_entrance-choreography-kinds",
+          "label": "entrance-choreography-kinds: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_entrance-choreography-kinds",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_entrance-choreography-kinds",
+          "label": "entrance-choreography-kinds: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_entrance-choreography-kinds",
+          "stream": "entrance-choreography-kinds"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 5: Build",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 5: Build",
+          "how": "When building animated UI, pick a named entrance animation per element type with stagger order, covered layers arriving last; advisory otherwise.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "workflow": "w-marathon",
+          "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "how": "In animation streams, apply the entrance catalogue and stagger rules while building each element; advisory for non-UI work.",
+          "mode": "advisory",
+          "by": "proposed"
+        }
+      ]
+    },
+    {
+      "name": "Keyframe track story engine",
+      "slug": "keyframe-track-story-engine",
+      "verdict": "rebuild",
+      "brief": "briefs/keyframe-track-story-engine.md",
+      "brief_path": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/keyframe-track-story-engine.md",
+      "lines": [
+        {
+          "id": "tests_green_keyframe-track-story-engine",
+          "label": "keyframe-track-story-engine: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "keyframe-track-story-engine"
+        },
+        {
+          "id": "egress_zero_keyframe-track-story-engine",
+          "label": "keyframe-track-story-engine: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_keyframe-track-story-engine",
+          "stream": "keyframe-track-story-engine"
+        },
+        {
+          "id": "six_sigma_keyframe-track-story-engine",
+          "label": "keyframe-track-story-engine: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "keyframe-track-story-engine"
+        },
+        {
+          "id": "wired_keyframe-track-story-engine",
+          "label": "keyframe-track-story-engine: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_keyframe-track-story-engine",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_keyframe-track-story-engine",
+          "label": "keyframe-track-story-engine: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_keyframe-track-story-engine",
+          "stream": "keyframe-track-story-engine"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 5: Build",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 5: Build",
+          "how": "When a landing page needs looping in-page visuals, drive them from one eased keyframe function on a shared clock with a story picker; advisory otherwise.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "workflow": "w-marathon",
+          "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "how": "In animated-UI streams, build looping stories on the shared-clock keyframe engine; advisory for non-UI work.",
+          "mode": "advisory",
+          "by": "proposed"
+        }
+      ]
+    },
+    {
+      "name": "Deterministic frame capture",
+      "slug": "deterministic-frame-capture",
+      "verdict": "rebuild",
+      "brief": "briefs/deterministic-frame-capture.md",
+      "brief_path": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/deterministic-frame-capture.md",
+      "lines": [
+        {
+          "id": "tests_green_deterministic-frame-capture",
+          "label": "deterministic-frame-capture: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "deterministic-frame-capture"
+        },
+        {
+          "id": "egress_zero_deterministic-frame-capture",
+          "label": "deterministic-frame-capture: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_deterministic-frame-capture",
+          "stream": "deterministic-frame-capture"
+        },
+        {
+          "id": "six_sigma_deterministic-frame-capture",
+          "label": "deterministic-frame-capture: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "deterministic-frame-capture"
+        },
+        {
+          "id": "wired_deterministic-frame-capture",
+          "label": "deterministic-frame-capture: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_deterministic-frame-capture",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_deterministic-frame-capture",
+          "label": "deterministic-frame-capture: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_deterministic-frame-capture",
+          "stream": "deterministic-frame-capture"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 4: Tests (BLOCKING GATE)",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 4: Tests (BLOCKING GATE)",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 4: Tests (BLOCKING GATE)",
+          "how": "For animation tasks, record output frame by frame under a stepped fake clock so test captures are repeatable; advisory outside animation work.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-perf.md",
+          "file": ".claude/commands/.shortcuts/w-perf.md",
+          "at": "⛔ CHECKPOINT 1: Profiling Done",
+          "reach": "/w-perf › ⛔ CHECKPOINT 1: Profiling Done",
+          "workflow": "w-perf",
+          "step": "⛔ CHECKPOINT 1: Profiling Done",
+          "how": "Capture animation frames under a stepped fake clock instead of real-time recording so profiling screenshots are repeatable.",
+          "mode": "advisory",
+          "by": "proposed",
+          "unused_reason": "w-perf already takes screenshots; deterministic capture makes them repeatable."
+        }
+      ]
+    }
+  ],
+  "memos": [],
+  "skipped": [],
+  "integration": {
+    "stream": "integration",
+    "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/integration.md"
+  },
+  "finish_line": {
+    "tolerance": {
+      "high": 0,
+      "medium": 2,
+      "low": 5,
+      "passes_in_a_row": 2
+    },
+    "lines": [
+      {
+        "id": "tests_green_intake-batch-before-design",
+        "label": "intake-batch-before-design: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "intake-batch-before-design"
+      },
+      {
+        "id": "egress_zero_intake-batch-before-design",
+        "label": "intake-batch-before-design: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_intake-batch-before-design",
+        "stream": "intake-batch-before-design"
+      },
+      {
+        "id": "six_sigma_intake-batch-before-design",
+        "label": "intake-batch-before-design: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "intake-batch-before-design"
+      },
+      {
+        "id": "wired_intake-batch-before-design",
+        "label": "intake-batch-before-design: wired into all 3 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 3,
+        "owner": "build",
+        "source": "measure:wired_intake-batch-before-design",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_intake-batch-before-design",
+        "label": "intake-batch-before-design: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_intake-batch-before-design",
+        "stream": "intake-batch-before-design"
+      },
+      {
+        "id": "tests_green_landing-page-section-order",
+        "label": "landing-page-section-order: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "landing-page-section-order"
+      },
+      {
+        "id": "egress_zero_landing-page-section-order",
+        "label": "landing-page-section-order: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_landing-page-section-order",
+        "stream": "landing-page-section-order"
+      },
+      {
+        "id": "six_sigma_landing-page-section-order",
+        "label": "landing-page-section-order: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "landing-page-section-order"
+      },
+      {
+        "id": "wired_landing-page-section-order",
+        "label": "landing-page-section-order: wired into all 3 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 3,
+        "owner": "build",
+        "source": "measure:wired_landing-page-section-order",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_landing-page-section-order",
+        "label": "landing-page-section-order: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_landing-page-section-order",
+        "stream": "landing-page-section-order"
+      },
+      {
+        "id": "tests_green_type-scale-snapping-to-tailwind-steps",
+        "label": "type-scale-snapping-to-tailwind-steps: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "type-scale-snapping-to-tailwind-steps"
+      },
+      {
+        "id": "egress_zero_type-scale-snapping-to-tailwind-steps",
+        "label": "type-scale-snapping-to-tailwind-steps: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_type-scale-snapping-to-tailwind-steps",
+        "stream": "type-scale-snapping-to-tailwind-steps"
+      },
+      {
+        "id": "six_sigma_type-scale-snapping-to-tailwind-steps",
+        "label": "type-scale-snapping-to-tailwind-steps: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "type-scale-snapping-to-tailwind-steps"
+      },
+      {
+        "id": "wired_type-scale-snapping-to-tailwind-steps",
+        "label": "type-scale-snapping-to-tailwind-steps: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_type-scale-snapping-to-tailwind-steps",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_type-scale-snapping-to-tailwind-steps",
+        "label": "type-scale-snapping-to-tailwind-steps: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_type-scale-snapping-to-tailwind-steps",
+        "stream": "type-scale-snapping-to-tailwind-steps"
+      },
+      {
+        "id": "tests_green_tagline-word-reveal-on-scroll",
+        "label": "tagline-word-reveal-on-scroll: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "tagline-word-reveal-on-scroll"
+      },
+      {
+        "id": "egress_zero_tagline-word-reveal-on-scroll",
+        "label": "tagline-word-reveal-on-scroll: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_tagline-word-reveal-on-scroll",
+        "stream": "tagline-word-reveal-on-scroll"
+      },
+      {
+        "id": "six_sigma_tagline-word-reveal-on-scroll",
+        "label": "tagline-word-reveal-on-scroll: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "tagline-word-reveal-on-scroll"
+      },
+      {
+        "id": "wired_tagline-word-reveal-on-scroll",
+        "label": "tagline-word-reveal-on-scroll: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_tagline-word-reveal-on-scroll",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_tagline-word-reveal-on-scroll",
+        "label": "tagline-word-reveal-on-scroll: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_tagline-word-reveal-on-scroll",
+        "stream": "tagline-word-reveal-on-scroll"
+      },
+      {
+        "id": "tests_green_realistic-sample-content-rules",
+        "label": "realistic-sample-content-rules: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "realistic-sample-content-rules"
+      },
+      {
+        "id": "egress_zero_realistic-sample-content-rules",
+        "label": "realistic-sample-content-rules: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_realistic-sample-content-rules",
+        "stream": "realistic-sample-content-rules"
+      },
+      {
+        "id": "six_sigma_realistic-sample-content-rules",
+        "label": "realistic-sample-content-rules: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "realistic-sample-content-rules"
+      },
+      {
+        "id": "wired_realistic-sample-content-rules",
+        "label": "realistic-sample-content-rules: wired into all 3 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 3,
+        "owner": "build",
+        "source": "measure:wired_realistic-sample-content-rules",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_realistic-sample-content-rules",
+        "label": "realistic-sample-content-rules: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_realistic-sample-content-rules",
+        "stream": "realistic-sample-content-rules"
+      },
+      {
+        "id": "tests_green_context-split-showcase-or-website",
+        "label": "context-split-showcase-or-website: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "context-split-showcase-or-website"
+      },
+      {
+        "id": "egress_zero_context-split-showcase-or-website",
+        "label": "context-split-showcase-or-website: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_context-split-showcase-or-website",
+        "stream": "context-split-showcase-or-website"
+      },
+      {
+        "id": "six_sigma_context-split-showcase-or-website",
+        "label": "context-split-showcase-or-website: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "context-split-showcase-or-website"
+      },
+      {
+        "id": "wired_context-split-showcase-or-website",
+        "label": "context-split-showcase-or-website: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_context-split-showcase-or-website",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_context-split-showcase-or-website",
+        "label": "context-split-showcase-or-website: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_context-split-showcase-or-website",
+        "stream": "context-split-showcase-or-website"
+      },
+      {
+        "id": "tests_green_reference-frame-fidelity-check",
+        "label": "reference-frame-fidelity-check: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "reference-frame-fidelity-check"
+      },
+      {
+        "id": "egress_zero_reference-frame-fidelity-check",
+        "label": "reference-frame-fidelity-check: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_reference-frame-fidelity-check",
+        "stream": "reference-frame-fidelity-check"
+      },
+      {
+        "id": "six_sigma_reference-frame-fidelity-check",
+        "label": "reference-frame-fidelity-check: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "reference-frame-fidelity-check"
+      },
+      {
+        "id": "wired_reference-frame-fidelity-check",
+        "label": "reference-frame-fidelity-check: wired into all 3 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 3,
+        "owner": "build",
+        "source": "measure:wired_reference-frame-fidelity-check",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_reference-frame-fidelity-check",
+        "label": "reference-frame-fidelity-check: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_reference-frame-fidelity-check",
+        "stream": "reference-frame-fidelity-check"
+      },
+      {
+        "id": "tests_green_layer-export-placement-math",
+        "label": "layer-export-placement-math: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "layer-export-placement-math"
+      },
+      {
+        "id": "egress_zero_layer-export-placement-math",
+        "label": "layer-export-placement-math: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_layer-export-placement-math",
+        "stream": "layer-export-placement-math"
+      },
+      {
+        "id": "six_sigma_layer-export-placement-math",
+        "label": "layer-export-placement-math: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "layer-export-placement-math"
+      },
+      {
+        "id": "wired_layer-export-placement-math",
+        "label": "layer-export-placement-math: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_layer-export-placement-math",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_layer-export-placement-math",
+        "label": "layer-export-placement-math: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_layer-export-placement-math",
+        "stream": "layer-export-placement-math"
+      },
+      {
+        "id": "tests_green_sacred-background-preservation",
+        "label": "sacred-background-preservation: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "sacred-background-preservation"
+      },
+      {
+        "id": "egress_zero_sacred-background-preservation",
+        "label": "sacred-background-preservation: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_sacred-background-preservation",
+        "stream": "sacred-background-preservation"
+      },
+      {
+        "id": "six_sigma_sacred-background-preservation",
+        "label": "sacred-background-preservation: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "sacred-background-preservation"
+      },
+      {
+        "id": "wired_sacred-background-preservation",
+        "label": "sacred-background-preservation: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_sacred-background-preservation",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_sacred-background-preservation",
+        "label": "sacred-background-preservation: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_sacred-background-preservation",
+        "stream": "sacred-background-preservation"
+      },
+      {
+        "id": "tests_green_entrance-choreography-kinds",
+        "label": "entrance-choreography-kinds: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "entrance-choreography-kinds"
+      },
+      {
+        "id": "egress_zero_entrance-choreography-kinds",
+        "label": "entrance-choreography-kinds: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_entrance-choreography-kinds",
+        "stream": "entrance-choreography-kinds"
+      },
+      {
+        "id": "six_sigma_entrance-choreography-kinds",
+        "label": "entrance-choreography-kinds: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "entrance-choreography-kinds"
+      },
+      {
+        "id": "wired_entrance-choreography-kinds",
+        "label": "entrance-choreography-kinds: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_entrance-choreography-kinds",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_entrance-choreography-kinds",
+        "label": "entrance-choreography-kinds: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_entrance-choreography-kinds",
+        "stream": "entrance-choreography-kinds"
+      },
+      {
+        "id": "tests_green_keyframe-track-story-engine",
+        "label": "keyframe-track-story-engine: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "keyframe-track-story-engine"
+      },
+      {
+        "id": "egress_zero_keyframe-track-story-engine",
+        "label": "keyframe-track-story-engine: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_keyframe-track-story-engine",
+        "stream": "keyframe-track-story-engine"
+      },
+      {
+        "id": "six_sigma_keyframe-track-story-engine",
+        "label": "keyframe-track-story-engine: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "keyframe-track-story-engine"
+      },
+      {
+        "id": "wired_keyframe-track-story-engine",
+        "label": "keyframe-track-story-engine: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_keyframe-track-story-engine",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_keyframe-track-story-engine",
+        "label": "keyframe-track-story-engine: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_keyframe-track-story-engine",
+        "stream": "keyframe-track-story-engine"
+      },
+      {
+        "id": "tests_green_deterministic-frame-capture",
+        "label": "deterministic-frame-capture: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "deterministic-frame-capture"
+      },
+      {
+        "id": "egress_zero_deterministic-frame-capture",
+        "label": "deterministic-frame-capture: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_deterministic-frame-capture",
+        "stream": "deterministic-frame-capture"
+      },
+      {
+        "id": "six_sigma_deterministic-frame-capture",
+        "label": "deterministic-frame-capture: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "deterministic-frame-capture"
+      },
+      {
+        "id": "wired_deterministic-frame-capture",
+        "label": "deterministic-frame-capture: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_deterministic-frame-capture",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_deterministic-frame-capture",
+        "label": "deterministic-frame-capture: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_deterministic-frame-capture",
+        "stream": "deterministic-frame-capture"
+      },
+      {
+        "id": "delivered",
+        "label": "The owner was told what they got: delivered.md lists every power, wired, with its command",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:delivered",
+        "stream": "integration"
+      },
+      {
+        "id": "clean_reviews",
+        "label": "Clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak"
+      },
+      {
+        "id": "latest_high",
+        "label": "High findings in the latest review",
+        "type": "number",
+        "op": "at_most",
+        "value": 0,
+        "owner": "build",
+        "source": "reviews.latest.high"
+      },
+      {
+        "id": "open_high",
+        "label": "Open high findings",
+        "type": "number",
+        "op": "at_most",
+        "value": 0,
+        "owner": "build",
+        "source": "findings.open:high"
+      }
+    ]
+  },
+  "note": null,
+  "ts": "2026-10-26T20:07:06.442Z"
+}

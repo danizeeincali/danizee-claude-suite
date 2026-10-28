@@ -1,0 +1,647 @@
+{
+  "tolerance": {
+    "high": 0,
+    "medium": 2,
+    "low": 5,
+    "passes_in_a_row": 2
+  },
+  "lines": [
+    {
+      "id": "tests_green_intake-batch-before-design",
+      "label": "intake-batch-before-design: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "intake-batch-before-design"
+    },
+    {
+      "id": "egress_zero_intake-batch-before-design",
+      "label": "intake-batch-before-design: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_intake-batch-before-design",
+      "stream": "intake-batch-before-design"
+    },
+    {
+      "id": "six_sigma_intake-batch-before-design",
+      "label": "intake-batch-before-design: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "intake-batch-before-design"
+    },
+    {
+      "id": "wired_intake-batch-before-design",
+      "label": "intake-batch-before-design: wired into all 3 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 3,
+      "owner": "build",
+      "source": "measure:wired_intake-batch-before-design",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_intake-batch-before-design",
+      "label": "intake-batch-before-design: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_intake-batch-before-design",
+      "stream": "intake-batch-before-design"
+    },
+    {
+      "id": "tests_green_landing-page-section-order",
+      "label": "landing-page-section-order: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "landing-page-section-order"
+    },
+    {
+      "id": "egress_zero_landing-page-section-order",
+      "label": "landing-page-section-order: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_landing-page-section-order",
+      "stream": "landing-page-section-order"
+    },
+    {
+      "id": "six_sigma_landing-page-section-order",
+      "label": "landing-page-section-order: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "landing-page-section-order"
+    },
+    {
+      "id": "wired_landing-page-section-order",
+      "label": "landing-page-section-order: wired into all 3 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 3,
+      "owner": "build",
+      "source": "measure:wired_landing-page-section-order",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_landing-page-section-order",
+      "label": "landing-page-section-order: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_landing-page-section-order",
+      "stream": "landing-page-section-order"
+    },
+    {
+      "id": "tests_green_type-scale-snapping-to-tailwind-steps",
+      "label": "type-scale-snapping-to-tailwind-steps: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "type-scale-snapping-to-tailwind-steps"
+    },
+    {
+      "id": "egress_zero_type-scale-snapping-to-tailwind-steps",
+      "label": "type-scale-snapping-to-tailwind-steps: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_type-scale-snapping-to-tailwind-steps",
+      "stream": "type-scale-snapping-to-tailwind-steps"
+    },
+    {
+      "id": "six_sigma_type-scale-snapping-to-tailwind-steps",
+      "label": "type-scale-snapping-to-tailwind-steps: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "type-scale-snapping-to-tailwind-steps"
+    },
+    {
+      "id": "wired_type-scale-snapping-to-tailwind-steps",
+      "label": "type-scale-snapping-to-tailwind-steps: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_type-scale-snapping-to-tailwind-steps",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_type-scale-snapping-to-tailwind-steps",
+      "label": "type-scale-snapping-to-tailwind-steps: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_type-scale-snapping-to-tailwind-steps",
+      "stream": "type-scale-snapping-to-tailwind-steps"
+    },
+    {
+      "id": "tests_green_tagline-word-reveal-on-scroll",
+      "label": "tagline-word-reveal-on-scroll: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "tagline-word-reveal-on-scroll"
+    },
+    {
+      "id": "egress_zero_tagline-word-reveal-on-scroll",
+      "label": "tagline-word-reveal-on-scroll: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_tagline-word-reveal-on-scroll",
+      "stream": "tagline-word-reveal-on-scroll"
+    },
+    {
+      "id": "six_sigma_tagline-word-reveal-on-scroll",
+      "label": "tagline-word-reveal-on-scroll: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "tagline-word-reveal-on-scroll"
+    },
+    {
+      "id": "wired_tagline-word-reveal-on-scroll",
+      "label": "tagline-word-reveal-on-scroll: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_tagline-word-reveal-on-scroll",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_tagline-word-reveal-on-scroll",
+      "label": "tagline-word-reveal-on-scroll: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_tagline-word-reveal-on-scroll",
+      "stream": "tagline-word-reveal-on-scroll"
+    },
+    {
+      "id": "tests_green_realistic-sample-content-rules",
+      "label": "realistic-sample-content-rules: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "realistic-sample-content-rules"
+    },
+    {
+      "id": "egress_zero_realistic-sample-content-rules",
+      "label": "realistic-sample-content-rules: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_realistic-sample-content-rules",
+      "stream": "realistic-sample-content-rules"
+    },
+    {
+      "id": "six_sigma_realistic-sample-content-rules",
+      "label": "realistic-sample-content-rules: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "realistic-sample-content-rules"
+    },
+    {
+      "id": "wired_realistic-sample-content-rules",
+      "label": "realistic-sample-content-rules: wired into all 3 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 3,
+      "owner": "build",
+      "source": "measure:wired_realistic-sample-content-rules",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_realistic-sample-content-rules",
+      "label": "realistic-sample-content-rules: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_realistic-sample-content-rules",
+      "stream": "realistic-sample-content-rules"
+    },
+    {
+      "id": "tests_green_context-split-showcase-or-website",
+      "label": "context-split-showcase-or-website: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "context-split-showcase-or-website"
+    },
+    {
+      "id": "egress_zero_context-split-showcase-or-website",
+      "label": "context-split-showcase-or-website: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_context-split-showcase-or-website",
+      "stream": "context-split-showcase-or-website"
+    },
+    {
+      "id": "six_sigma_context-split-showcase-or-website",
+      "label": "context-split-showcase-or-website: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "context-split-showcase-or-website"
+    },
+    {
+      "id": "wired_context-split-showcase-or-website",
+      "label": "context-split-showcase-or-website: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_context-split-showcase-or-website",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_context-split-showcase-or-website",
+      "label": "context-split-showcase-or-website: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_context-split-showcase-or-website",
+      "stream": "context-split-showcase-or-website"
+    },
+    {
+      "id": "tests_green_reference-frame-fidelity-check",
+      "label": "reference-frame-fidelity-check: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "reference-frame-fidelity-check"
+    },
+    {
+      "id": "egress_zero_reference-frame-fidelity-check",
+      "label": "reference-frame-fidelity-check: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_reference-frame-fidelity-check",
+      "stream": "reference-frame-fidelity-check"
+    },
+    {
+      "id": "six_sigma_reference-frame-fidelity-check",
+      "label": "reference-frame-fidelity-check: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "reference-frame-fidelity-check"
+    },
+    {
+      "id": "wired_reference-frame-fidelity-check",
+      "label": "reference-frame-fidelity-check: wired into all 3 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 3,
+      "owner": "build",
+      "source": "measure:wired_reference-frame-fidelity-check",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_reference-frame-fidelity-check",
+      "label": "reference-frame-fidelity-check: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_reference-frame-fidelity-check",
+      "stream": "reference-frame-fidelity-check"
+    },
+    {
+      "id": "tests_green_layer-export-placement-math",
+      "label": "layer-export-placement-math: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "layer-export-placement-math"
+    },
+    {
+      "id": "egress_zero_layer-export-placement-math",
+      "label": "layer-export-placement-math: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_layer-export-placement-math",
+      "stream": "layer-export-placement-math"
+    },
+    {
+      "id": "six_sigma_layer-export-placement-math",
+      "label": "layer-export-placement-math: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "layer-export-placement-math"
+    },
+    {
+      "id": "wired_layer-export-placement-math",
+      "label": "layer-export-placement-math: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_layer-export-placement-math",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_layer-export-placement-math",
+      "label": "layer-export-placement-math: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_layer-export-placement-math",
+      "stream": "layer-export-placement-math"
+    },
+    {
+      "id": "tests_green_sacred-background-preservation",
+      "label": "sacred-background-preservation: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "sacred-background-preservation"
+    },
+    {
+      "id": "egress_zero_sacred-background-preservation",
+      "label": "sacred-background-preservation: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_sacred-background-preservation",
+      "stream": "sacred-background-preservation"
+    },
+    {
+      "id": "six_sigma_sacred-background-preservation",
+      "label": "sacred-background-preservation: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "sacred-background-preservation"
+    },
+    {
+      "id": "wired_sacred-background-preservation",
+      "label": "sacred-background-preservation: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_sacred-background-preservation",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_sacred-background-preservation",
+      "label": "sacred-background-preservation: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_sacred-background-preservation",
+      "stream": "sacred-background-preservation"
+    },
+    {
+      "id": "tests_green_entrance-choreography-kinds",
+      "label": "entrance-choreography-kinds: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "entrance-choreography-kinds"
+    },
+    {
+      "id": "egress_zero_entrance-choreography-kinds",
+      "label": "entrance-choreography-kinds: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_entrance-choreography-kinds",
+      "stream": "entrance-choreography-kinds"
+    },
+    {
+      "id": "six_sigma_entrance-choreography-kinds",
+      "label": "entrance-choreography-kinds: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "entrance-choreography-kinds"
+    },
+    {
+      "id": "wired_entrance-choreography-kinds",
+      "label": "entrance-choreography-kinds: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_entrance-choreography-kinds",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_entrance-choreography-kinds",
+      "label": "entrance-choreography-kinds: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_entrance-choreography-kinds",
+      "stream": "entrance-choreography-kinds"
+    },
+    {
+      "id": "tests_green_keyframe-track-story-engine",
+      "label": "keyframe-track-story-engine: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "keyframe-track-story-engine"
+    },
+    {
+      "id": "egress_zero_keyframe-track-story-engine",
+      "label": "keyframe-track-story-engine: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_keyframe-track-story-engine",
+      "stream": "keyframe-track-story-engine"
+    },
+    {
+      "id": "six_sigma_keyframe-track-story-engine",
+      "label": "keyframe-track-story-engine: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "keyframe-track-story-engine"
+    },
+    {
+      "id": "wired_keyframe-track-story-engine",
+      "label": "keyframe-track-story-engine: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_keyframe-track-story-engine",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_keyframe-track-story-engine",
+      "label": "keyframe-track-story-engine: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_keyframe-track-story-engine",
+      "stream": "keyframe-track-story-engine"
+    },
+    {
+      "id": "tests_green_deterministic-frame-capture",
+      "label": "deterministic-frame-capture: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "deterministic-frame-capture"
+    },
+    {
+      "id": "egress_zero_deterministic-frame-capture",
+      "label": "deterministic-frame-capture: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_deterministic-frame-capture",
+      "stream": "deterministic-frame-capture"
+    },
+    {
+      "id": "six_sigma_deterministic-frame-capture",
+      "label": "deterministic-frame-capture: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "deterministic-frame-capture"
+    },
+    {
+      "id": "wired_deterministic-frame-capture",
+      "label": "deterministic-frame-capture: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_deterministic-frame-capture",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_deterministic-frame-capture",
+      "label": "deterministic-frame-capture: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_deterministic-frame-capture",
+      "stream": "deterministic-frame-capture"
+    },
+    {
+      "id": "delivered",
+      "label": "The owner was told what they got: delivered.md lists every power, wired, with its command",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:delivered",
+      "stream": "integration"
+    },
+    {
+      "id": "clean_reviews",
+      "label": "Clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak"
+    },
+    {
+      "id": "latest_high",
+      "label": "High findings in the latest review",
+      "type": "number",
+      "op": "at_most",
+      "value": 0,
+      "owner": "build",
+      "source": "reviews.latest.high"
+    },
+    {
+      "id": "open_high",
+      "label": "Open high findings",
+      "type": "number",
+      "op": "at_most",
+      "value": 0,
+      "owner": "build",
+      "source": "findings.open:high"
+    }
+  ]
+}

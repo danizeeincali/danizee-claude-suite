@@ -1,0 +1,15 @@
+# Review d7017e44-b2a4-49fc-92e0-fb0597d2841b — deterministic-frame-capture, round 3
+
+- Commit: 658df7f
+- Angle: correctness
+- Result: pass
+- 3 findings
+
+## Medium (1)
+
+- **A stalled local resource hangs each screenshot 30 s and fails with a raw multi-line Playwright error** — `src/lib/kit/frame-capture.js:362` (correctness): Only page.goto is wrapped in KitExit. page.screenshot waits for web fonts, and page.clock.runFor and page.evaluate carry no bounded or mapped error path. On a slow or stalled local dev server (here a @font-face first used by a timer 100 ms after load, whose request never answers) the capture blocks for Playwright's default 30 s and then throws a TimeoutError. I reproduced this with real Playwright 1.63: frame-00001.png was written, then 'page.screenshot: Timeout 30000ms exceeded.' came back with a 'Call log:' and ANSI escape codes. That is not a KitExit, so cli.js prints the raw multi-line text and returns exit 1, with no frame index and no hint about which resource stalled. No test covers a failure during the frame loop against real or stand-in Playwright apart from the one write failure. — fix: Wrap the per-frame runFor, evaluate and screenshot calls in a try/catch that throws KitExit(\`frame ${k+1}: ${first line of message}\`, 1). Optionally await document.fonts.ready with a bounded timeout once goto returns, so a stalled font fails before frame 1. Add a stand-in test where screenshot rejects with a Playwright-style TimeoutError and assert a one-line KitExit 1.
+
+## Low (2)
+
+- **Blocked non-local requests are aborted silently, so frames can show fallback fonts or missing CDN assets with no warning** — `src/lib/kit/frame-capture.js:219` (other): routeRequest and the resolver rules correctly abort every non-local request, and the contract requires that. But nothing counts or reports what was blocked. A local design page that pulls Google Fonts, a CDN script or remote images is captured with fallback fonts, a missing script or broken images. The result is still captured:N and exit 0, and nothing in the result or the manifest shows that the frames differ from what the page looks like online. — fix: Count the URLs (or origins) aborted by routeRequest and routeSocket and return them in the result, for example blocked:\[...origins\] capped at about 20, so the caller can tell that the frames are degraded.
+- **A project with only @playwright/test under strict installs (pnpm) is reported as 'playwright not installed'** — `src/lib/kit/frame-capture.js:294` (other): resolvePlaywright resolves only the bare 'playwright' specifier from the project. Most projects install @playwright/test, which depends on playwright, but pnpm and other strict layouts do not hoist that dependency. In those layouts req.resolve('playwright') fails and the verb returns exit 4 'playwright not installed' even though a working Playwright, with its browsers, is present. — fix: Fall back to resolving '@playwright/test' (which re-exports chromium) and then 'playwright-core' before returning null. Add a fake-resolver or tmp node\_modules test for each specifier.

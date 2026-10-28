@@ -1,0 +1,14 @@
+# Review 11da7ecc-a98a-4fca-982d-d18b7ab3e56f — sacred-background-preservation, round 5
+
+- Commit: cfb0580
+- Angle: correctness
+- Result: pass
+- 2 findings
+
+## Medium (1)
+
+- **Single-colon pseudo-elements (:before, :after, :first-line) are judged as state rules on the background element** — `src/lib/kit/bg-fill.js:310` (accessibility): covers() recognises a pseudo-element only by '::'. The CSS2 single-colon forms :before, :after, :first-line and :first-letter, which browsers still accept and much existing CSS uses, are left as a qualifier rest, so the rule counts as a conditional rule on the background element itself. The usual way to keep text on a photo readable is a dark scrim on a pseudo-element layer. Checked with guard(): '.hero{background:url(a.jpg) center/cover} .hero:before{content:"";background:rgba(0,0,0,.45)}' returns exit 2 with 'the background image is replaced by a flat colour or none in a state or qualified rule'. '.hero:after{background:linear-gradient(#0008,#0008)}' and '.hero:first-line{background:#000}' also return exit 2. The same CSS written with '::before' passes. So the judge blocks the sibling-layer pattern the contract asks for (a frosted or scrim panel on a separate layer) when the CSS uses the legacy spelling, and its message wrongly says the photo is replaced. Vendor single-colon pseudo-elements such as :-ms-input-placeholder are misread in the same way. — fix: In covers(), treat a rest that contains '::' or the single-colon pseudo-elements :before, :after, :first-line, :first-letter (and vendor :-moz-/-ms- placeholder forms) as a different element (return null). Add tests showing '.hero:before' and '.hero:after' scrims pass.
+
+## Low (1)
+
+- **Turning off a fixed parallax background for prefers-reduced-motion is a blocking violation** — `src/lib/kit/bg-fill.js:596` (accessibility): Any background\* declaration inside an at-rule is a violation. So '.hero{background:url(a.jpg) center/cover fixed} @media (prefers-reduced-motion: reduce){.hero{background-attachment:scroll}}' returns exit 2 with 'the background is changed inside @media (prefers-reduced-motion: reduce); it must stay exactly as designed' (checked). The contract's list of guarded properties is background, background-image, background-position, background-size and filter; it does not name background-attachment. Switching off a fixed (parallax) background is a common reduced-motion accommodation. The guard punishes adding it and tells the author to remove it, with no spec rule behind that. Failing closed here makes the gate push the build away from a motion-safety fix. — fix: Inside a prefers-reduced-motion: reduce block, allow background-attachment: scroll, or otherwise exempt that one longhand (and only that value) from the conditional-change check. Add a test for it, and a test that other background changes in the same block still exit 2.

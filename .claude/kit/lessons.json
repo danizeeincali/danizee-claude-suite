@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "lessons": [
+    {
+      "id": "L1",
+      "role": "bbs",
+      "text": "In a cloud session usage finds no transcripts, so record the owner's own workflow list with usage --force --workflows before targets, and give any row in a workflow outside that list an unused_reason.",
+      "scope": "",
+      "session": "2026-10-26-ai-design-skills",
+      "status": "active",
+      "kept": 0,
+      "created_at": "2026-10-26T20:07:39.700Z"
+    }
+  ]
+}

@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "openedAt": 1793046739729,
+  "limits": {
+    "steps": 200,
+    "cost": 1500000,
+    "timeMs": null
+  },
+  "spent": {
+    "steps": 40,
+    "cost": 256412
+  },
+  "clock": {
+    "depth": 0,
+    "startedAt": null,
+    "elapsedMs": 611391
+  },
+  "helpers": {
+    "5f13d623-dd0a-4622-afc1-fd65ea7dd6a9": {
+      "steps": 10,
+      "cost": 65938,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "c44b57b9-d0e3-4e7c-9cac-dbed2f96492d": {
+      "steps": 10,
+      "cost": 64522,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "f2d31f5e-aedd-4209-b81a-b4338d9f70fb": {
+      "steps": 10,
+      "cost": 48896,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "0912be6a-619d-403c-8a6d-4c8ba6122a79": {
+      "steps": 10,
+      "cost": 77056,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "7a8a3037-9078-4f65-8118-457a7179d468": {
+      "steps": 0,
+      "cost": 0,
+      "ok": 0,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 2,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    }
+  },
+  "raised": [
+    {
+      "from": 40,
+      "to": 200,
+      "ts": "2026-10-26T22:19:10.486Z",
+      "by": "owner decision 2026-10-26"
+    }
+  ]
+}

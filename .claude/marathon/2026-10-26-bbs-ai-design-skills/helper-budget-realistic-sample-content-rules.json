@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "openedAt": 1793046914144,
+  "limits": {
+    "steps": 200,
+    "cost": 1500000,
+    "timeMs": null
+  },
+  "spent": {
+    "steps": 58,
+    "cost": 445861
+  },
+  "clock": {
+    "depth": 0,
+    "startedAt": null,
+    "elapsedMs": 1564915
+  },
+  "helpers": {
+    "0a539b0a-4bbb-4126-8c1f-9cdef6dcb906": {
+      "steps": 10,
+      "cost": 75748,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "b3accd80-7357-4b04-9c2e-7bf0ec38176e": {
+      "steps": 10,
+      "cost": 82806,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "0af8635b-30dc-4cce-9832-b49039edccc3": {
+      "steps": 8,
+      "cost": 65164,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "ec9355ec-6183-4468-99e3-be7458963ff2": {
+      "steps": 10,
+      "cost": 70104,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "89c82c02-e6fc-4a5a-b8cd-585825ed49da": {
+      "steps": 0,
+      "cost": 0,
+      "ok": 0,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "02964111-8a76-4a80-b694-ef7a652cff64": {
+      "steps": 10,
+      "cost": 78704,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "8e7bed81-75f6-42dd-ab65-81402968cecf": {
+      "steps": 10,
+      "cost": 73335,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    }
+  },
+  "raised": [
+    {
+      "from": 40,
+      "to": 200,
+      "ts": "2026-10-26T22:19:10.539Z",
+      "by": "owner decision 2026-10-26"
+    }
+  ]
+}

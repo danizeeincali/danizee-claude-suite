@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "openedAt": 1793046740270,
+  "limits": {
+    "steps": 200,
+    "cost": 1500000,
+    "timeMs": null
+  },
+  "spent": {
+    "steps": 41,
+    "cost": 348189
+  },
+  "clock": {
+    "depth": 0,
+    "startedAt": null,
+    "elapsedMs": 1562003
+  },
+  "helpers": {
+    "f157972d-011b-4d31-95d5-9f8766508137": {
+      "steps": 10,
+      "cost": 150000,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "66edf726-a349-4aad-bd90-8241e802bb50": {
+      "steps": 10,
+      "cost": 62165,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "5916065f-6408-43b1-9501-d129c2fa09b4": {
+      "steps": 10,
+      "cost": 54889,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "c42f32e6-38f4-4832-a1ce-0cd728249990": {
+      "steps": 11,
+      "cost": 81135,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    }
+  },
+  "raised": [
+    {
+      "from": 40,
+      "to": 200,
+      "ts": "2026-10-26T22:19:10.717Z",
+      "by": "owner decision 2026-10-26"
+    }
+  ]
+}

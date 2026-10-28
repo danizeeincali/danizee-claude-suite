@@ -1,0 +1,208 @@
+{
+  "version": 1,
+  "openedAt": 1793053965234,
+  "limits": {
+    "steps": 400,
+    "cost": 1500000,
+    "timeMs": null
+  },
+  "spent": {
+    "steps": 380,
+    "cost": 1497069
+  },
+  "clock": {
+    "depth": 14,
+    "startedAt": 1793053965926,
+    "elapsedMs": 0
+  },
+  "helpers": {
+    "748976da-8214-4846-9448-3eed6e91cbc1": {
+      "steps": 18,
+      "cost": 82971,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "06a8de62-f310-4cd8-aed0-ee0388dca8c3": {
+      "steps": 8,
+      "cost": 51449,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "15db03b8-c073-4879-9706-173e26c3c2c5": {
+      "steps": 13,
+      "cost": 63185,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "50a51261-42c3-4dda-a88b-9e8c5d7bbc9a": {
+      "steps": 16,
+      "cost": 81466,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "13195353-c76c-40ea-ba00-46b5eed1666c": {
+      "steps": 47,
+      "cost": 142792,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fb13f3ee-02a4-4566-a70b-fa4203df29f5": {
+      "steps": 32,
+      "cost": 117667,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "acb3d076-25dc-4953-b988-81b6cf9cebf6": {
+      "steps": 20,
+      "cost": 100802,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "129f16f1-27d5-4d5f-9cc8-feb6f6ce7018": {
+      "steps": 26,
+      "cost": 106410,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "88a1467f-7df7-459e-b24f-8fc82036f12a": {
+      "steps": 17,
+      "cost": 69970,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "8b15d000-20b1-48e3-9963-9da1650577ba": {
+      "steps": 35,
+      "cost": 143240,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "a423bfaa-2730-40c6-b1e2-7b530d092b3e": {
+      "steps": 0,
+      "cost": 0,
+      "ok": 0,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "29ad1f30-890c-43ea-b350-e65e026b50b4": {
+      "steps": 34,
+      "cost": 124825,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "b95329fa-66f5-4bf9-ba5a-611039452115": {
+      "steps": 26,
+      "cost": 115870,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "2eb45910-e75c-4fa3-9093-edcb3e09db84": {
+      "steps": 51,
+      "cost": 156834,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "4eb8a009-3197-4e02-8ac3-32b80ec63db5": {
+      "steps": 37,
+      "cost": 139588,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    }
+  },
+  "raised": [
+    {
+      "from": 200,
+      "to": 400,
+      "ts": "2026-10-27T06:23:36.246Z",
+      "by": "owner decision 2026-10-27"
+    }
+  ]
+}

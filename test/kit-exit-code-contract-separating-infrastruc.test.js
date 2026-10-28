@@ -109,7 +109,7 @@ describe('exit-codes', () => {
     await bad(['describe', '2', '--bogus=1']);
   });
   it('exit 2 is a non-blocking refusal unless the verb is a listed product judge', async () => {
-    assert.deepEqual([...PRODUCT_JUDGES].sort(), ['push-gate', 'scrub']);
+    assert.deepEqual([...PRODUCT_JUDGES].sort(), ['bg-fill', 'fidelity', 'push-gate', 'scrub']);
     assert.ok(Object.isFrozen(PRODUCT_JUDGES));
     for (const v of ['graph', 'impact', 'callers', 'guarded-write', 'lenses', 'redact', 'review-score', 'wording-judge', 'safe-git', 'diff-range']) {
       const r = await run(['blocks', '2', '--verb', v]);
@@ -187,6 +187,21 @@ describe('exit-codes', () => {
       assert.equal(r.blocks, true);
       assert.match(r.description, /--result/);
     }
+  });
+  it('the generic regression text does not promise scrub fields to fidelity, and a fidelity --result names PSNR, target and failing regions', async () => {
+    const generic = await run(['describe', '2', '--verb', 'fidelity']);
+    assert.equal(generic.class, 'regression'); assert.equal(generic.blocks, true);
+    assert.match(generic.description, /--result/);
+    assert.doesNotMatch(generic.description, /JSON output\) for the hit count/);
+    assert.match(generic.description, /fidelity the frame PSNR/);
+    const res = { psnr: 16.4321, target: 30, pass: false, frame_pass: false, identical: false, regions: [{ id: 'hero', psnr: 12.5, target: 28, pass: false }, { id: 'footer', psnr: null, target: 28, pass: true }], exit: 2 };
+    const r = classify({ code: 2, verb: 'fidelity', result: res });
+    assert.equal(r.class, 'regression'); assert.equal(r.blocks, true);
+    assert.match(r.description, /16\.4321 dB against a target of 30 dB \(below target\)/);
+    assert.match(r.description, /1 region\(s\) below their target: "hero"/);
+    assert.doesNotMatch(r.description, /footer|hit count|unscanned/);
+    const regionOnly = classify({ code: 2, verb: 'fidelity', result: { ...res, psnr: null, identical: true, frame_pass: true } });
+    assert.match(regionOnly.description, /identical \(no difference\).*the frame itself passes.*"hero"/);
   });
   it('scrub exit 2 with zero hits and a partial-clone scan blocks with --result (judges fail closed)', () => {
     for (const result of [partial, { hit_count: 0, complete: false, not_scanned: [{ file: 'a', reason: 'object not available locally (partial clone?)' }, { file: 'b', reason: 'object not available locally (partial clone?)' }] }]) {

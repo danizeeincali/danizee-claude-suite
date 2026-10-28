@@ -44,7 +44,7 @@ const freeze = (o) => Object.freeze(o);
 export const CLASSES = freeze({
   clean: freeze({ code: 0, blocks: false, description: 'The verb succeeded; nothing to report.' }),
   usage: freeze({ code: 1, blocks: false, description: 'Invalid input, broken state, or a tool failure (not separable yet): the call was malformed or the data unusable, or the tool crashed or a git child failed, since cli.js reports any crash as 1. Check the message before blaming the caller; never block on it.' }),
-  regression: freeze({ code: 2, blocks: true, description: 'Regression: a verb that judges the product (see product_judges) ran and said no. The only outcome allowed to block a merge. Exit 2 from any other verb, or with no verb, is a refusal (precondition) and does not block. A judge also exits 2 when it could not judge (scrub on an incomplete scan, push-gate whose scrub check could not run); that still blocks (fail closed). Pass --result <file|-> (the verb\'s JSON output) for the hit count, the first unscanned paths with reasons and a remedy.' }),
+  regression: freeze({ code: 2, blocks: true, description: 'Regression: a verb that judges the product (see product_judges) ran and said no. The only outcome allowed to block a merge. Exit 2 from any other verb, or with no verb, is a refusal (precondition) and does not block. A judge also exits 2 when it could not judge (scrub on an incomplete scan, push-gate whose scrub check could not run); that still blocks (fail closed). Pass --result <file|-> (the judge\'s JSON output) for a fuller description: for scrub and push-gate the hit count, the first unscanned paths with reasons and a remedy; for fidelity the frame PSNR against its target and the ids of the failing regions.' }),
   precondition: freeze({ code: 4, blocks: false, description: 'A prerequisite was never met (missing tool, file, credential or setup); nothing was judged.' }),
   infrastructure: freeze({ code: 5, blocks: false, description: 'The tool or environment failed (timeout, crash, signal, git failure); says nothing about the product. Retry or repair, never block on it alone.' }),
 });
@@ -53,7 +53,7 @@ export const CLASSES = freeze({
 export const INFRA_FLOOR = 128;
 
 /** Verbs whose exit 2 is a product verdict (checked against each verb's usage text); every other 2 is a non-blocking refusal. */
-export const PRODUCT_JUDGES = freeze(['push-gate', 'scrub']);
+export const PRODUCT_JUDGES = freeze(['push-gate', 'scrub', 'fidelity', 'bg-fill']);
 
 const REFUSAL = freeze({ class: 'precondition', description: 'The verb refused the call (exit 2): an argument, a size or count limit, an unsafe path or repository state. Nothing was judged about the product, so it never blocks; change the call or the environment. Only the product judges (see product_judges) use 2 as a verdict.' });
 const SHELL = freeze({
@@ -122,6 +122,7 @@ function remedy(v, rs) {
 
 /** A better description of a judge's exit 2 from its result (hit count, unscanned files and reasons, remedy), or null to keep the generic one. It never changes the class: a judge's 2 blocks. */
 function describeJudge(v, result) {
+  if (v === 'fidelity') return describeFidelity(result);
   const scan = scanOf(v, result);
   if (!scan) return null;
   const hits = typeof scan.hit_count === 'number' ? scan.hit_count : 0;
@@ -133,6 +134,18 @@ function describeJudge(v, result) {
   if (hits > 0) return `${CLASSES.regression.description.split(' A judge also')[0]} ${v} found ${hits} hit(s)${ns.length ? ` and did not scan ${ns.length} file(s)${pathsOf(ns)} (${list}${hidden})` : ''}.`;
   if (ns.length) return `Fail closed: ${v} found no hits but ${ns.length} file(s) were not scanned${pathsOf(ns)} (${list}${hidden}), so nothing shows they are clean and it blocks. ${remedy(v, rs)}`;
   return null;
+}
+
+/** fidelity's exit 2 from its result: the frame PSNR against its target and the failing region ids, or null to keep the generic text. */
+function describeFidelity(result) {
+  if (!result || typeof result !== 'object' || Array.isArray(result)) return null;
+  const num = (x) => typeof x === 'number' && Number.isFinite(x);
+  if (!num(result.target) || !(num(result.psnr) || (result.psnr === null && result.identical === true))) return null;
+  const frame = num(result.psnr) ? `${result.psnr} dB` : 'identical (no difference)';
+  const verdict = result.frame_pass === false ? 'below target' : result.frame_pass === true ? 'the frame itself passes' : 'frame verdict not given';
+  const failed = Array.isArray(result.regions) ? result.regions.filter((r) => r && typeof r === 'object' && r.pass === false && typeof r.id === 'string') : [];
+  const ids = failed.slice(0, PATH_LISTED).map((r) => JSON.stringify(r.id.length > PATH_CAP ? `${r.id.slice(0, PATH_CAP)}...` : r.id)).join(', ') + (failed.length > PATH_LISTED ? `, +${failed.length - PATH_LISTED} more` : '');
+  return `${CLASSES.regression.description.split(' A judge also')[0]} fidelity scored the frame at ${frame} against a target of ${result.target} dB (${verdict})${failed.length ? `; ${failed.length} region(s) below their target: ${ids}` : ''}. Rerun with --diff-out <d.png> to see where the frames differ.`;
 }
 
 const KIT_DIR = path.dirname(fileURLToPath(import.meta.url));

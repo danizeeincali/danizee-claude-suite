@@ -1,0 +1,371 @@
+{
+  "run": "2026-10-26-ai-design-skills",
+  "source_identity": "git:eabf86665588de0eb4c9e2fbf5fc9d3ae807e9f1",
+  "powers_ts": "2026-10-26T19:32:45.280Z",
+  "sandbox": {
+    "present": true,
+    "kind": "unshare",
+    "reason": "unshare is available"
+  },
+  "rows": {
+    "Intake batch before design": {
+      "licence": "MIT",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "design.md and frontend-design.js only generate component specs; no candidate gathers offer, CTA, audience, proof and brand in one question round.",
+        "ts": "2026-10-26T19:33:50.642Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "landing-page-design/SKILL.md:24-50 only tells the agent to ask the user questions in one batch and assume defaults; no fetches or calls.",
+        "ts": "2026-10-26T19:36:39.564Z"
+      },
+      "decision": "rebuild"
+    },
+    "Landing page section order": {
+      "licence": "MIT",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "partial",
+        "tool": "command:.claude/commands/analysis/layout.md",
+        "why": "layout.md offers a marketing/landing page layout type but defines no ordered section sequence (headline, proof, FAQ, final CTA).",
+        "ts": "2026-10-26T19:33:50.642Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "landing-page-design/SKILL.md:52-72 is a static ordered list of page sections with no network step.",
+        "ts": "2026-10-26T19:36:39.691Z"
+      },
+      "decision": "rebuild"
+    },
+    "Type scale snapping to Tailwind steps": {
+      "licence": "MIT",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "No candidate snaps font sizes to a Tailwind type scale; bbs/steps.js and marathon/page.js only handle command headings and a run page with hand-set rem sizes.",
+        "ts": "2026-10-26T19:33:50.642Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "landing-page-design/SKILL.md:170-192 is a lookup table and a snap-down rule applied to local CSS; the only font mention (:154) is a name list, not a download instruction.",
+        "ts": "2026-10-26T19:36:39.782Z"
+      },
+      "decision": "rebuild"
+    },
+    "Tagline word reveal on scroll": {
+      "licence": "MIT",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "No candidate implements a scroll-triggered word-by-word reveal; marathon/page.js has only an overflow-x scroll wrapper.",
+        "ts": "2026-10-26T19:33:50.642Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "landing-page-design/SKILL.md:335-351 describes per-word opacity transitions using IntersectionObserver or a throttled scroll handler, all client-side with no requests.",
+        "ts": "2026-10-26T19:36:39.878Z"
+      },
+      "decision": "rebuild"
+    },
+    "Realistic sample content rules": {
+      "licence": "MIT",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "notes.js parses captured note text for people and topics; no candidate generates sample copy, names or hype-word bans.",
+        "ts": "2026-10-26T19:33:50.642Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "landing-page-design/SKILL.md:295-305 are writing rules for invented names, numbers and copy; nothing is fetched.",
+        "ts": "2026-10-26T19:36:39.973Z"
+      },
+      "decision": "rebuild"
+    },
+    "Context split showcase or website": {
+      "licence": "MIT",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "surfaces.js locates where users meet a feature in code; no candidate classifies a showcase versus a scroll-animated website section.",
+        "ts": "2026-10-26T19:33:50.642Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "design-to-motion/SKILL.md:20-61 is a decision table and local animation rules; the only links are companion-skill references in prose (:18), not instructions to fetch.",
+        "ts": "2026-10-26T19:36:40.138Z"
+      },
+      "decision": "rebuild"
+    },
+    "Reference frame fidelity check": {
+      "licence": "MIT",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "threshold-route.js routes model-judged findings by confidence; no candidate computes PSNR or blur-compares a rendered frame against a reference.",
+        "ts": "2026-10-26T19:33:50.642Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "network probe found: the source makes a network call the inventory does not account for"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "network probe found: the source makes a network call the inventory does not account for"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "found",
+        "evidence": "design-to-motion/SKILL.md:193-199 compares against the reference frame, which the setup at :83-89 obtains by calling the Figma REST API with a personal access token and downloading PNGs from the image CDN.",
+        "ts": "2026-10-26T19:36:40.253Z"
+      },
+      "decision": "rebuild"
+    },
+    "Layer export placement math": {
+      "licence": "MIT",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "render.js renders findings to SARIF, JUnit or comments; no candidate exports layers or computes placement bounds.",
+        "ts": "2026-10-26T19:33:50.642Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "network probe found: the source makes a network call the inventory does not account for"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "network probe found: the source makes a network call the inventory does not account for"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "found",
+        "evidence": "design-to-motion/SKILL.md:93-109 depends on batched Figma REST image export calls (:95) and tree/geometry data fetched from the Figma API (:84-89), plus CDN downloads with retries.",
+        "ts": "2026-10-26T19:36:40.409Z"
+      },
+      "decision": "rebuild"
+    },
+    "Sacred background preservation": {
+      "licence": "MIT",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "The background-compound shortcuts compound knowledge in the background; no candidate fetches a raw image fill or reproduces background scale modes.",
+        "ts": "2026-10-26T19:33:50.642Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "network probe found: the source makes a network call the inventory does not account for"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "network probe found: the source makes a network call the inventory does not account for"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "found",
+        "evidence": "design-to-motion/SKILL.md:135-145 tells the agent to pull the raw background image fill from the Figma files images endpoint (:141).",
+        "ts": "2026-10-26T19:36:40.507Z"
+      },
+      "decision": "rebuild"
+    },
+    "Entrance choreography kinds": {
+      "licence": "MIT",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "triage.js, surfaces.js and redact.js have no animation or entrance-kind catalogue; nothing assigns blur, rise or stagger kinds to element groups.",
+        "ts": "2026-10-26T19:33:50.642Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "design-to-motion/SKILL.md:214-236 is a table of CSS transform/blur/clip-path entrance kinds and stagger timings; no network.",
+        "ts": "2026-10-26T19:36:40.625Z"
+      },
+      "decision": "rebuild"
+    },
+    "Keyframe track story engine": {
+      "licence": "MIT",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "shared-budget.js is a per-job spend allowance and design.md only lists a component spec; no eased keyframe track engine exists.",
+        "ts": "2026-10-26T19:33:50.642Z"
+      },
+      "legal": [
+        "rebuild",
+        "use",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "clean",
+        "evidence": "design-to-motion/SKILL.md:243-293 is a local story table plus a pure JS interpolation function driven by the page clock; no requests.",
+        "ts": "2026-10-26T19:36:40.735Z"
+      },
+      "decision": "rebuild"
+    },
+    "Deterministic frame capture": {
+      "licence": "MIT",
+      "licence_class": "permissive",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "w-marathon-times uses a wall-clock deadline and w-perf takes plain screenshots; no candidate installs a fake clock or steps animation frames.",
+        "ts": "2026-10-26T19:33:50.642Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "network probe found: the source makes a network call the inventory does not account for"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence permissive — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "network probe found: the source makes a network call the inventory does not account for"
+      },
+      "needs_probe": false,
+      "probe": {
+        "result": "found",
+        "evidence": "design-to-motion/SKILL.md:365-402 drives a headless browser to load the page and screenshot frames, and relies on installing a browser and ffmpeg; no external API in the capture step itself, but use would bring in browser and encoder installs.",
+        "ts": "2026-10-26T19:36:40.833Z"
+      },
+      "decision": "rebuild"
+    }
+  },
+  "decisions": {
+    "Intake batch before design": "rebuild",
+    "Landing page section order": "rebuild",
+    "Type scale snapping to Tailwind steps": "rebuild",
+    "Tagline word reveal on scroll": "rebuild",
+    "Realistic sample content rules": "rebuild",
+    "Context split showcase or website": "rebuild",
+    "Reference frame fidelity check": "rebuild",
+    "Layer export placement math": "rebuild",
+    "Sacred background preservation": "rebuild",
+    "Entrance choreography kinds": "rebuild",
+    "Keyframe track story engine": "rebuild",
+    "Deterministic frame capture": "rebuild"
+  },
+  "ts": "2026-10-26T20:07:04.534Z"
+}

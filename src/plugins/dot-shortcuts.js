@@ -835,6 +835,16 @@ curl -s -H "Authorization: Bearer anonymous" "https://pi.ruv.io/v1/memories/sear
 - Refined requirements list
 - Spec file: .claude/plans/YYYY-MM-DD-[name].md
 
+**🎨 Design brief (UI / landing page / animation work only):** When the task is UI, landing page or animation work, batch every missing brief item (audience, offer, brand, references) into this one interview round: write what is known as JSON \`{kind: landing|ui|motion, answers: {offer, primary_action, audience, objections, proof, brand, references}}\` to \`"$BRIEF"\`, run the block once and ask every question \`questions\` prints in as few AskUserQuestion calls as it takes (at most 4 questions each, one call after another in this round: the brief is one batch, the one exception to asking one question at a time), write the answers into the brief JSON, then run the block again and record the stated assumptions \`assume\` prints for the gaps the owner left open (never stall on them). Skip this for non-UI work. Before running a block, put the real path in place of each \`NAME='<...>'\` placeholder at its top (a file:// or localhost URL for \`URL\`); shell variables do not persist between Bash calls, so run the block as one. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+\`\`\`bash
+BRIEF='<the brief JSON you wrote>'; [ -f "$BRIEF" ] || echo "BRIEF is still the placeholder or does not exist: put the path of the brief JSON you wrote in place of <the brief JSON you wrote>" >&2
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js design-brief questions --file "$BRIEF"; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js design-brief assume --file "$BRIEF"; RC=$?; (exit $RC); fi
+\`\`\`
+
+Exit 0 printed the answer; exit 1 is wrong input or a broken state: report it and fix the input, never read it as a pass. The step is advisory: whatever it prints, the workflow goes on.
+
 **After interview, PRINT the full spec content inline so the user can review it.**
 Display the complete spec — do not just say "here's the spec" without showing it.
 
@@ -851,6 +861,15 @@ STOP and wait for user response.
 - Architecture summary (3-5 bullets)
 - Files to create/modify (list)
 - Approach and rationale
+
+**🎬 Showcase or website (animation work only):** When the task is animating a design, decide first whether it is a standalone showcase or a website section: write \`{request, has_site_codebase, sections: [{id, kind, has_visual}], mode?}\` to \`"$MOTION"\` and run the motion plan: it says showcase or website (\`assumed: true\` means ask the owner to confirm) and maps each section to its motion; record that map. Skip this for non-animation work. Before running a block, put the real path in place of each \`NAME='<...>'\` placeholder at its top (a file:// or localhost URL for \`URL\`); shell variables do not persist between Bash calls, so run the block as one. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+\`\`\`bash
+MOTION='<the sections JSON you wrote>'; [ -f "$MOTION" ] || echo "MOTION is still the placeholder or does not exist: put the path of the sections JSON you wrote in place of <the sections JSON you wrote>" >&2
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js motion-plan --file "$MOTION"; RC=$?; (exit $RC); fi
+\`\`\`
+
+Exit 0 printed the answer; exit 1 is wrong input or a broken state: report it and fix the input, never read it as a pass. The step is advisory: whatever it prints, the workflow goes on.
 
 **Print the full plan inline so the user can review it.**
 
@@ -880,6 +899,25 @@ This is also the standing rule for any later phase (Search fan-out, Build, Revie
 - Acceptance criteria (numbered list)
 - Test cases (numbered list)
 
+**🧱 Landing page section order (landing page work only):** When the task is a landing page, write the spec as the fixed numbered section sequence \`plan\` prints (hero, argument, objection handling, the final CTA repeating the hero CTA); \`check --file "$SPEC"\` lists \`missing\` and \`out_of_order\` sections. Skip this for non-landing work. Before running a block, put the real path in place of each \`NAME='<...>'\` placeholder at its top (a file:// or localhost URL for \`URL\`); shell variables do not persist between Bash calls, so run the block as one. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+\`\`\`bash
+SPEC='<the spec file>'; [ -f "$SPEC" ] || echo "SPEC is still the placeholder or does not exist: put the path of the spec file in place of <the spec file>" >&2
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js landing-sections plan; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js landing-sections check --format md --file "$SPEC"; RC=$?; (exit $RC); fi
+\`\`\`
+
+Exit 0 printed the answer; exit 1 is wrong input or a broken state: report it and fix the input, never read it as a pass. The step is advisory: whatever it prints, the workflow goes on.
+
+**🖼️ Sacred background (animation work with a photo or texture background only):** When the task is animating a design whose background is a photo or texture, write the spec rule that the background is left exactly as designed: put \`{selector, container: {w, h}, image: {w, h}, scale_mode, transform?}\` in \`"$BG"\` and add the sizing rules of the \`raw_css\` it prints (background-size, background-position, background-repeat) to the element's original \`background-image\` declaration in the spec; that declaration stays exactly as it was exported, and nothing else about the background changes. A rotated or skewed transform exits 1: keep the original export. Skip this for other work. Before running a block, put the real path in place of each \`NAME='<...>'\` placeholder at its top (a file:// or localhost URL for \`URL\`); shell variables do not persist between Bash calls, so run the block as one. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+\`\`\`bash
+BG='<the background JSON you wrote>'; [ -f "$BG" ] || echo "BG is still the placeholder or does not exist: put the path of the background JSON you wrote in place of <the background JSON you wrote>" >&2
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js bg-fill css --file "$BG"; RC=$?; (exit $RC); fi
+\`\`\`
+
+Exit 0 printed the answer; exit 1 is wrong input or a broken state: report it and fix the input, never read it as a pass. The step is advisory: whatever it prints, the workflow goes on.
+
 **AUTO-PROCEED:** Continue to Tests phase.
 
 ---
@@ -905,6 +943,16 @@ hundreds of inputs and auto-shrinks any failure to a minimal counterexample, cat
 (e.g. a \`SITE_ALIASES["constructor"]\` prototype-chain bug). Use **fast-check** (JS/TS) or your stack's
 equivalent (e.g. hypothesis for Python). See \`docs/solutions/ideas/model-policy-workflows.md\` for guidance.
 A flaky property = a real bug or a bad invariant — fix the code, don't loosen the property.
+
+**🎯 Reference frame fidelity (BLOCKING for UI / animation work with a reference design):** When the task is UI or animation work with a reference design, this step only records the expectation here, because no UI exists yet to render: export the reference to \`"$REF"\`, list the containers as \`[{id, x, y, w, h}]\` in \`"$REGIONS"\`, and add the expectation "the rendered still matches the reference in every container" to the test list, with both paths. The blocking score (\`node .claude/helpers/kit/cli.js fidelity\` with blurred PSNR) runs at the end of CHECKPOINT 5 Build, once the still is rendered and before motion is added; that is where Exit 2 stops the flow. Skip this for non-UI work. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+**🎞️ Deterministic frame capture (animation work only):** When the task is animation work, plan the frame-by-frame capture under a stepped fake clock here so test captures are repeatable: \`plan\` prints the stepped fake-clock times (\`steps_ms\`, one per frame); add the expectation "test captures use these steps" to the test list. No page exists yet at this point, so \`capture\` runs at the end of CHECKPOINT 5 Build, once the page renders. Skip this for non-animation work. Before running a block, put the real path in place of each \`NAME='<...>'\` placeholder at its top (a file:// or localhost URL for \`URL\`); shell variables do not persist between Bash calls, so run the block as one. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+\`\`\`bash
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js frame-capture plan --fps 30 --frames 60; RC=$?; (exit $RC); fi
+\`\`\`
+
+Exit 0 printed the plan; exit 1 is wrong input. The step is advisory: whatever it prints, the workflow goes on.
 
 **AUTO-PROCEED:** Continue to Build phase after tests fail.
 
@@ -943,6 +991,45 @@ Skip this block for non-UI tasks.
 **REQUIRED OUTPUT:**
 - Implementation file paths: _____
 - Test run result: "All _____ tests PASS"
+
+**🎨 Design kit while building (UI / landing page / animation work only):** When the task is UI, landing page or animation work, snap every off-scale font size in \`"$CSS"\` to the nearest smaller Tailwind step with its paired line height (\`type-scale audit\` lists each \`changes\` row); build a large benefit statement (\`"$TAGLINE"\`) as the scroll-triggered word reveal \`word-reveal emit\` prints; place each exported layer from \`"$LAYERS"\` (\`{frame, layers: [{id, z, bounds, render_bounds?, image?, clipped_by_parent?, effects_even?, stroke_geometry?, shape?}]}\`) at the \`left/top/width/height\` \`layer-place\` prints; pick each element group's entrance from \`"$ENTRANCE_GROUPS"\` (\`{groups: [{id, kind, order, covered?, items}]}\`) with the stagger \`entrance\` prints (covered layers arrive last); and drive looping in-page visuals from one shared-clock keyframe engine: \`keyframes check\` the stories in \`"$STORIES"\` (\`ok: false\` lists seams to fix), then \`keyframes emit\` the engine. Skip what does not apply, and all of it for non-UI work. Delete the lines for inputs this task does not have (no layer export, no looping visuals, no tagline) before running the block; a placeholder warning followed by \`ENOENT\` means that line should have been removed, not that you should invent the input. Before running a block, put the real path in place of each \`NAME='<...>'\` placeholder at its top (a file:// or localhost URL for \`URL\`); shell variables do not persist between Bash calls, so run the block as one. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+\`\`\`bash
+CSS='<the stylesheet>'; [ -f "$CSS" ] || echo "CSS is still the placeholder or does not exist: put the path of the stylesheet in place of <the stylesheet>" >&2
+TAGLINE='<the tagline text file>'; [ -f "$TAGLINE" ] || echo "TAGLINE is still the placeholder or does not exist: put the path of the tagline text file in place of <the tagline text file>" >&2
+LAYERS='<the layers JSON you wrote>'; [ -f "$LAYERS" ] || echo "LAYERS is still the placeholder or does not exist: put the path of the layers JSON you wrote in place of <the layers JSON you wrote>" >&2
+ENTRANCE_GROUPS='<the groups JSON you wrote>'; [ -f "$ENTRANCE_GROUPS" ] || echo "ENTRANCE_GROUPS is still the placeholder or does not exist: put the path of the groups JSON you wrote in place of <the groups JSON you wrote>" >&2
+STORIES='<the stories JSON you wrote>'; [ -f "$STORIES" ] || echo "STORIES is still the placeholder or does not exist: put the path of the stories JSON you wrote in place of <the stories JSON you wrote>" >&2
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js type-scale audit --file "$CSS"; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js word-reveal emit --text-file "$TAGLINE"; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js layer-place --file "$LAYERS"; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js entrance --file "$ENTRANCE_GROUPS"; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js keyframes check --file "$STORIES"; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js keyframes emit; RC=$?; (exit $RC); fi
+\`\`\`
+
+The block runs several commands, so read each command's own output and error line, not the block's final status. Exit 0 printed the answer; exit 1 is wrong input or a broken state: report it and fix the input, never read it as a pass. The step is advisory: whatever it prints, the workflow goes on.
+
+**🎯 Reference frame fidelity score (BLOCKING for UI / animation work with a reference design):** When the task is UI or animation work with a reference design, run this at the end of Build, once the UI is built: render the still with motion off (take the screenshot with \`prefers-reduced-motion: reduce\` emulated, which the word reveal and entrance CSS honour by showing their end state, and each keyframe story held at its own local t=0, its design state: read the loop at clock \`loop_ms - offset_ms\` for that story) to \`"$ACTUAL"\` and score it against the \`"$REF"\` and \`"$REGIONS"\` recorded at CHECKPOINT 4: Tests, with blurred PSNR. Skip this for non-UI work. Before running a block, put the real path in place of each \`NAME='<...>'\` placeholder at its top (a file:// or localhost URL for \`URL\`); shell variables do not persist between Bash calls, so run the block as one. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+\`\`\`bash
+REF='<the reference PNG>'; [ -f "$REF" ] || echo "REF is still the placeholder or does not exist: put the path of the reference PNG in place of <the reference PNG>" >&2
+ACTUAL='<the rendered still PNG>'; [ -f "$ACTUAL" ] || echo "ACTUAL is still the placeholder or does not exist: put the path of the rendered still PNG in place of <the rendered still PNG>" >&2
+REGIONS='<the containers JSON you wrote>'; [ -f "$REGIONS" ] || echo "REGIONS is still the placeholder or does not exist: put the path of the containers JSON you wrote in place of <the containers JSON you wrote>" >&2
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js fidelity --ref "$REF" --actual "$ACTUAL" --regions "$REGIONS"; RC=$?; (exit $RC); fi
+\`\`\`
+
+Exit 0: the frame and every container meet the target, go on. **Exit 2 stops the flow: do not go on to Review until the score passes**; fix the regions it lists with \`pass: false\` (a low \`structural_psnr\` means a misplaced layer, a high one a small offset) and score again. Exit 1 is wrong input (size mismatch, not a PNG): fix it and score again, never read it as a pass. This is the one blocking design step in this workflow; with no kit it is skipped like every kit step.
+
+**🎞️ Deterministic frame capture (animation work only):** When the task is animation work, now that the page renders, record it frame by frame on the stepped fake clock planned at CHECKPOINT 4: Tests into \`"$FRAMES"\`, so test captures are repeatable. Skip this for non-animation work. Before running a block, put the real path in place of each \`NAME='<...>'\` placeholder at its top (a file:// or localhost URL for \`URL\`); shell variables do not persist between Bash calls, so run the block as one. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+\`\`\`bash
+URL='<the file:// or localhost page URL>'
+FRAMES='<the output frames directory>'
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js frame-capture capture --url "$URL" --out "$FRAMES" --fps 30 --frames 60; RC=$?; (exit $RC); fi
+\`\`\`
+
+Exit 0 printed the captured frames and \`manifest.json\`; exit 1 is wrong input or a page that did not load; exit 2 refused a URL that is not file:// or localhost (nothing was fetched); exit 4 means playwright (1.48+ with its Chromium) is not usable: report the printed \`reason\` and fall back to plain screenshots. The step is advisory: whatever it prints, the workflow goes on.
 
 **AUTO-PROCEED:** Continue to Review phase.
 
@@ -1015,6 +1102,19 @@ Remove the directory at the end (\`rm -rf -- <printed dir>\`, the literal path).
 | Security | _____ | _____ |
 | Performance | _____ | _____ |
 | Architecture | _____ | _____ |
+
+**🎨 Design review (UI / landing page / animation work only):** When the change is UI, landing page or animation work, lint the placeholder copy, names, prices and figures in \`"$PAGE"\` against the believable-content checklist (each \`findings\` row is a filler phrase to replace), and check that the photo or texture background of \`"$BG_SELECTOR"\` in \`"$CSS"\` keeps its original fill and transform and is never animated, swapped or filtered. Skip this for non-UI work. Before running a block, put the real path in place of each \`NAME='<...>'\` placeholder at its top (the path of a file you wrote with the Write tool holding the CSS selector for \`SEL_FILE\`: a selector such as \`[data-bg='hero']\` is page text and never goes into a shell argument); shell variables do not persist between Bash calls, so run the block as one. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+\`\`\`bash
+PAGE='<the page or copy file>'; [ -f "$PAGE" ] || echo "PAGE is still the placeholder or does not exist: put the path of the page or copy file in place of <the page or copy file>" >&2
+CSS='<the stylesheet>'; [ -f "$CSS" ] || echo "CSS is still the placeholder or does not exist: put the path of the stylesheet in place of <the stylesheet>" >&2
+SEL_FILE='<the file holding the background element selector>'; [ -f "$SEL_FILE" ] || echo "SEL_FILE is still the placeholder or does not exist: put the path of the file holding the background element selector in place of <the file holding the background element selector>" >&2
+BG_SELECTOR=$(cat "$SEL_FILE")
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js sample-content lint --file "$PAGE"; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js bg-fill guard --file "$CSS" --selector "$BG_SELECTOR"; RC=$?; (exit $RC); fi
+\`\`\`
+
+The block runs several commands, so read each command's own output and error line, not the block's final status. \`sample-content lint\` always exits 0, so report each of its \`findings\` rows. \`bg-fill guard\` exit 0 means the background is clean; it exits 2 when the background is animated, transitioned, swapped or filtered: report each \`violations\` row as a review finding. Exit 1 is wrong input: report it, never read it as a pass. Both steps are advisory here: the review goes on.
 
 **AUTO-PROCEED:** Continue to Verification phase.
 
@@ -3349,6 +3449,28 @@ Skip this block for non-UI tasks.
 | Caching | _____ | _____ | _____ |
 | Bundle size | _____ | _____ | _____ |
 
+**🎯 Reference frame fidelity (UI work with a reference design, advisory here):** When the task is UI or animation work with a reference design, render the still (before any motion is added) to \`"$ACTUAL"\`, export the reference to \`"$REF"\`, list the containers as \`[{id, x, y, w, h}]\` in \`"$REGIONS"\`, and report the blurred PSNR per container alongside the screenshots. Skip this for non-UI work. Before running a block, put the real path in place of each \`NAME='<...>'\` placeholder at its top (a file:// or localhost URL for \`URL\`); shell variables do not persist between Bash calls, so run the block as one. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+\`\`\`bash
+REF='<the reference PNG>'; [ -f "$REF" ] || echo "REF is still the placeholder or does not exist: put the path of the reference PNG in place of <the reference PNG>" >&2
+ACTUAL='<the rendered still PNG>'; [ -f "$ACTUAL" ] || echo "ACTUAL is still the placeholder or does not exist: put the path of the rendered still PNG in place of <the rendered still PNG>" >&2
+REGIONS='<the containers JSON you wrote>'; [ -f "$REGIONS" ] || echo "REGIONS is still the placeholder or does not exist: put the path of the containers JSON you wrote in place of <the containers JSON you wrote>" >&2
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js fidelity --ref "$REF" --actual "$ACTUAL" --regions "$REGIONS"; RC=$?; (exit $RC); fi
+\`\`\`
+
+Exit 0: every container meets the target; exit 2: report each region with \`pass: false\` and its \`psnr\` in the findings table (advisory here: profiling goes on); exit 1 is wrong input: report it, never read it as a pass.
+
+**🎞️ Deterministic frame capture (animation work only):** When the task is animation work, capture the animation frames under a stepped fake clock instead of real-time recording, so profiling screenshots are repeatable: \`plan\` prints the stepped fake-clock times (\`steps_ms\`, one per frame); \`capture\` records the page frame by frame on that clock into \`"$FRAMES"\`. Skip this for non-animation work. Before running a block, put the real path in place of each \`NAME='<...>'\` placeholder at its top (a file:// or localhost URL for \`URL\`); shell variables do not persist between Bash calls, so run the block as one. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+\`\`\`bash
+URL='<the file:// or localhost page URL>'
+FRAMES='<the output frames directory>'
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js frame-capture plan --fps 30 --frames 60; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js frame-capture capture --url "$URL" --out "$FRAMES" --fps 30 --frames 60; RC=$?; (exit $RC); fi
+\`\`\`
+
+Exit 0 printed the plan or the captured frames; exit 1 is wrong input; exit 2 refused a URL that is not file:// or localhost (nothing was fetched); exit 4 means playwright (1.48+ with its Chromium) is not usable: report the printed \`reason\` and fall back to plain screenshots. The step is advisory: whatever it prints, the workflow goes on.
+
 **AUTO-PROCEED:** Continue to Analysis phase.
 
 ---
@@ -4807,6 +4929,27 @@ One question at a time with AskUserQuestion. Every question Claude would otherwi
 8. **Budget:** run token budget and usage ceiling (defaults 20M and 70%). Say plainly that one fix round cost 8.7M tokens in the first project and one power cost ~650k in the \`/bbs\` run.
 9. **Wake-up:** in-session cron (dies with the session, expires in 7 days) plus the launchd/crontab fallback the owner may install.
 
+**🎨 Design brief (UI / landing page / animation work only):** When the task is UI, landing page or animation work, ask the missing design brief in this single interview batch and log assumptions instead of stalling: write what is known as JSON \`{kind: landing|ui|motion, answers: {offer, primary_action, audience, objections, proof, brand, references}}\` to \`"$BRIEF"\`, run the block once and ask every question \`questions\` prints in as few AskUserQuestion calls as it takes (at most 4 questions each, one call after another in this round: the brief is one batch, the one exception to asking one question at a time), write the answers into the brief JSON, then run the block again and record the stated assumptions \`assume\` prints for the gaps the owner left open (never stall on them). Skip this for non-UI work. Before running a block, put the real path in place of each \`NAME='<...>'\` placeholder at its top (a file:// or localhost URL for \`URL\`); shell variables do not persist between Bash calls, so run the block as one. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+\`\`\`bash
+BRIEF='<the brief JSON you wrote>'; [ -f "$BRIEF" ] || echo "BRIEF is still the placeholder or does not exist: put the path of the brief JSON you wrote in place of <the brief JSON you wrote>" >&2
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js design-brief questions --file "$BRIEF"; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js design-brief assume --file "$BRIEF"; RC=$?; (exit $RC); fi
+\`\`\`
+
+Exit 0 printed the answer; exit 1 is wrong input or a broken state: report it and fix the input, never read it as a pass. The step is advisory: whatever it prints, the workflow goes on.
+
+**🎯 Fidelity finish line (UI streams with a reference design only):** When a stream builds UI from a reference design, add the line \`{"id": "fidelity_<s>", "label": "<s>: reference fidelity met", "type": "bool", "op": "is", "value": true, "owner": "build", "stream": "<s>", "source": "measure:fidelity_<s>"}\` to the finish line you show the owner, so the blocking fidelity score in 4.3b decides the stream's gate. Skip this for non-UI streams.
+
+**🎬 Showcase or website (animation work only):** When the task is animating a design, ask the showcase-versus-website question here and record the motion map per section: write \`{request, has_site_codebase, sections: [{id, kind, has_visual}], mode?}\` to \`"$MOTION"\` and run the motion plan: it says showcase or website (\`assumed: true\` means ask the owner to confirm) and maps each section to its motion; record that map. Skip this for non-animation work. Before running a block, put the real path in place of each \`NAME='<...>'\` placeholder at its top (a file:// or localhost URL for \`URL\`); shell variables do not persist between Bash calls, so run the block as one. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+\`\`\`bash
+MOTION='<the sections JSON you wrote>'; [ -f "$MOTION" ] || echo "MOTION is still the placeholder or does not exist: put the path of the sections JSON you wrote in place of <the sections JSON you wrote>" >&2
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js motion-plan --file "$MOTION"; RC=$?; (exit $RC); fi
+\`\`\`
+
+Exit 0 printed the answer; exit 1 is wrong input or a broken state: report it and fix the input, never read it as a pass. The step is advisory: whatever it prints, the workflow goes on.
+
 End with: "What did I forget to ask about?"
 
 **REQUIRED OUTPUT:** the four kickoff lines verbatim, the stream list, the tolerance, the human jobs, the budget.
@@ -4872,6 +5015,35 @@ The copy refuses a \`W\` that is not an existing git work tree ("is not the stre
 **4.3 Build.** Inside the worktree, build through \`/pt\` (interview already done — pass the stream's plan and skip straight to its Plan gate) or \`/w-tdd-swarm\`: contracts first, failing tests, then builders. Route each builder with \`cli.js route hasContract=<bool> hasFailingTests=<bool> files=<n> category=<c>\`: **scoped → \`build_scoped\` (haiku)**, default → \`build\` (sonnet), **hard → \`build_hard\` (opus)**. For every helper: \`cli.js record helper stream=<s> role=build model=<m> budget=<n>\` before the spawn (put the budget in the brief); \`cli.js record helper-done helper_id=<id> tokens=<n> outcome=green|red|escalated\` from the task notification. **Red tests → retry one tier up (\`next\` from \`cli.js route\`) before any review is spent**, with \`escalated_from=<id>\` on the new spawn row; the second row's outcome is what the review sees. A builder's output never feeds the next step until its tests are green.
 
 **4.3a Integration stream (runs from a \`/w-bbs\` hand-off).** The \`integration\` stream starts only after every build stream is done; its plan is the bbs run's \`integration.md\`. Building a power is not the deliverable; a user reaching it is. For each approved target, wire the power where it lands, the way that surface works (a page or component, an endpoint handler, a job, a model or prompt step, a command, a flag, the library entry, or a workflow step), and write a **reach test** that goes in through that place (renders the page, calls the endpoint, runs the job or command, runs the model step with a stub client, turns the flag on, imports from the package entry) and checks the power's effect there. Record each power with \`node .claude/helpers/bbs/cli.js integrate --run <bbs run> --power <name> [--verb <kit verb>] [--entry <module>#<symbol>] [--reach <surface id>[@<at>]=<test file>::<command>]...\` (the command is one test runner call that names the test file, such as \`node --test test/reach/x.test.js\` or \`npx vitest run test/reach/x.test.js\`; it runs without a shell and with no credentials in its environment, so no \`;\`, \`&&\`, \`||\`, pipe, \`$\` or inline \`-e\` code), measure it with \`cli.js wired --run <bbs run> --power <name> --record\`, then write the keys once with \`cli.js delivered --run <bbs run> --record\` and print \`delivered.md\` to the owner. Its reviewer reads the files it changed and checks each wiring is reached in the normal flow (a menu links the page, the router mounts the endpoint, the scheduler runs the job, the flag is read, the workflow step runs), not only that a file names the power.
+
+**4.3b Design kit (UI / landing page / animation streams only).** When the stream builds UI, a landing page or animation, run these each loop pass inside the worktree; skip all of it for non-UI streams. Delete the lines for inputs this task does not have (no layer export, no looping visuals, no tagline) before running the block; a placeholder warning followed by \`ENOENT\` means that line should have been removed, not that you should invent the input. Before running a block, put the real path in place of each \`NAME='<...>'\` placeholder at its top (a file:// or localhost URL for \`URL\`); shell variables do not persist between Bash calls, so run the block as one. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+\`\`\`bash
+TAGLINE='<the tagline text file>'; [ -f "$TAGLINE" ] || echo "TAGLINE is still the placeholder or does not exist: put the path of the tagline text file in place of <the tagline text file>" >&2
+PAGE='<the page or copy file>'; [ -f "$PAGE" ] || echo "PAGE is still the placeholder or does not exist: put the path of the page or copy file in place of <the page or copy file>" >&2
+LAYERS='<the layers JSON you wrote>'; [ -f "$LAYERS" ] || echo "LAYERS is still the placeholder or does not exist: put the path of the layers JSON you wrote in place of <the layers JSON you wrote>" >&2
+ENTRANCE_GROUPS='<the groups JSON you wrote>'; [ -f "$ENTRANCE_GROUPS" ] || echo "ENTRANCE_GROUPS is still the placeholder or does not exist: put the path of the groups JSON you wrote in place of <the groups JSON you wrote>" >&2
+STORIES='<the stories JSON you wrote>'; [ -f "$STORIES" ] || echo "STORIES is still the placeholder or does not exist: put the path of the stories JSON you wrote in place of <the stories JSON you wrote>" >&2
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js word-reveal emit --text-file "$TAGLINE"; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js sample-content lint --file "$PAGE"; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js layer-place --file "$LAYERS"; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js entrance --file "$ENTRANCE_GROUPS"; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js keyframes check --file "$STORIES"; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js keyframes emit; RC=$?; (exit $RC); fi
+\`\`\`
+
+Build the tagline section as the word reveal \`word-reveal emit\` prints; replace each placeholder \`sample-content lint\` flags; place exported layer images at the \`layer-place\` positions; apply the \`entrance\` timeline and stagger; build looping stories on the shared-clock keyframe engine (\`keyframes check\` must say \`ok: true\`, then \`keyframes emit\` prints the engine). The block runs several commands, so read each command's own output and error line, not the block's final status. Exit 0 printed the answer; exit 1 is wrong input: fix it. These are advisory: the loop goes on.
+
+**🎯 Reference frame fidelity (BLOCKING for UI / animation work with a reference design):** When the task is UI or animation work with a reference design, render the still with motion off (take the screenshot with \`prefers-reduced-motion: reduce\` emulated, which the word reveal and entrance CSS honour by showing their end state, and each keyframe story held at its own local t=0, its design state: read the loop at clock \`loop_ms - offset_ms\` for that story) to \`"$ACTUAL"\`, export the reference to \`"$REF"\`, list the containers as \`[{id, x, y, w, h}]\` in \`"$REGIONS"\`, and score them with blurred PSNR. Skip this for non-UI work. Before running a block, put the real path in place of each \`NAME='<...>'\` placeholder at its top (a file:// or localhost URL for \`URL\`); shell variables do not persist between Bash calls, so run the block as one. If \`.claude/helpers/kit/cli.js\` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+\`\`\`bash
+REF='<the reference PNG>'; [ -f "$REF" ] || echo "REF is still the placeholder or does not exist: put the path of the reference PNG in place of <the reference PNG>" >&2
+ACTUAL='<the rendered still PNG>'; [ -f "$ACTUAL" ] || echo "ACTUAL is still the placeholder or does not exist: put the path of the rendered still PNG in place of <the rendered still PNG>" >&2
+REGIONS='<the containers JSON you wrote>'; [ -f "$REGIONS" ] || echo "REGIONS is still the placeholder or does not exist: put the path of the containers JSON you wrote in place of <the containers JSON you wrote>" >&2
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js fidelity --ref "$REF" --actual "$ACTUAL" --regions "$REGIONS"; RC=$?; (exit $RC); fi
+\`\`\`
+
+Exit 0: the frame and every container meet the target, go on. **Exit 2 stops: a score under target is an unmet build gate, and the stream is not done until it passes**: record every score with \`cli.js record measure key=fidelity_<s> value=false\` (exit 2) or \`value=true\` (exit 0). The stream's finish line carries \`{"id": "fidelity_<s>", "label": "<s>: reference fidelity met", "type": "bool", "op": "is", "value": true, "owner": "build", "stream": "<s>", "source": "measure:fidelity_<s>"}\` (added at the Interview for every UI stream with a reference design), so the scripted gate (4.8) stays unmet until the latest score passes; test runs never write this measure, and a fix round (4.7 → 4.4) on such a stream scores fidelity again before 4.4; fix the regions it lists with \`pass: false\` (a low \`structural_psnr\` means a misplaced layer, a high one a small offset) and score again. Exit 1 is wrong input (size mismatch, not a PNG): fix it and score again, never read it as a pass. This is the one blocking design step in this loop; with no kit it is skipped like every kit step.
 
 **4.4 Record runs.** After every test run: \`cli.js record run kind=unit|e2e|build status=green|red stream=<s>\`. Each test run uses its own temp folder, cleaned up afterwards.
 

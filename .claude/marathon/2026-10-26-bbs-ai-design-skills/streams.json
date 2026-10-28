@@ -1,0 +1,145 @@
+{
+  "streams": [
+    {
+      "name": "_meta",
+      "state": "meta",
+      "isolation": "worktree",
+      "mode": "marathon",
+      "command": "w-marathon",
+      "created": "2026-10-26T20:07:04.947Z",
+      "tasks": [],
+      "finished": "2026-10-27T07:23:17.457Z"
+    },
+    {
+      "name": "intake-batch-before-design",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/intake-batch-before-design.md",
+      "next": "wired by the integration stream",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-intake-batch-before-design",
+      "phase": "done",
+      "base": "36c97933e6aece2e0c7d568f88ca384b53a86098"
+    },
+    {
+      "name": "landing-page-section-order",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/landing-page-section-order.md",
+      "next": "2 medium findings from r2 carried to integration (carried.md)",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-landing-page-section-order",
+      "phase": "done",
+      "base": "36c97933e6aece2e0c7d568f88ca384b53a86098"
+    },
+    {
+      "name": "type-scale-snapping-to-tailwind-steps",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/type-scale-snapping-to-tailwind-steps.md",
+      "next": "r2 findings carried to integration (carried.md)",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-type-scale-snapping-to-tailwind-steps",
+      "phase": "done",
+      "base": "36c97933e6aece2e0c7d568f88ca384b53a86098"
+    },
+    {
+      "name": "tagline-word-reveal-on-scroll",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/tagline-word-reveal-on-scroll.md",
+      "next": "integration: carried findings",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-tagline-word-reveal-on-scroll",
+      "phase": "done",
+      "base": "36c97933e6aece2e0c7d568f88ca384b53a86098"
+    },
+    {
+      "name": "realistic-sample-content-rules",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/realistic-sample-content-rules.md",
+      "next": "integration: carried r3 findings",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-realistic-sample-content-rules",
+      "phase": "done",
+      "base": "36c97933e6aece2e0c7d568f88ca384b53a86098"
+    },
+    {
+      "name": "context-split-showcase-or-website",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/context-split-showcase-or-website.md",
+      "next": "integration: carried r3 low",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-context-split-showcase-or-website",
+      "phase": "done",
+      "base": "36c97933e6aece2e0c7d568f88ca384b53a86098"
+    },
+    {
+      "name": "reference-frame-fidelity-check",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/reference-frame-fidelity-check.md",
+      "next": "integration: carried findings",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-reference-frame-fidelity-check",
+      "phase": "done",
+      "base": "a48e6a7af1a566953983278fe241816c197ef483"
+    },
+    {
+      "name": "layer-export-placement-math",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/layer-export-placement-math.md",
+      "next": "integration: carried r2 lows",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-layer-export-placement-math",
+      "phase": "done",
+      "base": "f2463f4372ffe152a0225e19ac8c873d44d468f2"
+    },
+    {
+      "name": "sacred-background-preservation",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/sacred-background-preservation.md",
+      "next": "integration: carried r5 findings",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-sacred-background-preservation",
+      "phase": "done",
+      "base": "f2463f4372ffe152a0225e19ac8c873d44d468f2"
+    },
+    {
+      "name": "entrance-choreography-kinds",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/entrance-choreography-kinds.md",
+      "next": "integration: carried r2 lows",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-entrance-choreography-kinds",
+      "phase": "done",
+      "base": "f2463f4372ffe152a0225e19ac8c873d44d468f2"
+    },
+    {
+      "name": "keyframe-track-story-engine",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/keyframe-track-story-engine.md",
+      "next": "integration: carried r2 findings",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-keyframe-track-story-engine",
+      "phase": "done",
+      "base": "483b7d4272af5442bd0dec862474c2578b986838"
+    },
+    {
+      "name": "deterministic-frame-capture",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/briefs/deterministic-frame-capture.md",
+      "next": "integration: carried r3 findings",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-deterministic-frame-capture",
+      "phase": "done",
+      "base": "483b7d4272af5442bd0dec862474c2578b986838"
+    },
+    {
+      "name": "integration",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-26-ai-design-skills/integration.md",
+      "next": "review r1 of the wiring and carried fixes",
+      "tasks": [],
+      "isolation": "/home/claude/danizee-claude-suite-integration",
+      "phase": "review",
+      "base": "5dc3143"
+    }
+  ],
+  "handoff": null
+}
