@@ -26,3 +26,8 @@
 {"kind":"unit","status":"green","stream":"unslop-slop-audit","commit":"335bf53","id":"7e58a04a-7438-434d-918f-e55ce1a9983e","ts":"2026-10-30T23:55:13.318Z"}
 {"kind":"unit","status":"green","stream":"unslop-image-generation-gate","commit":"b13d3e7","id":"8a4edddf-d15d-4015-8f75-368a7bceabe5","ts":"2026-10-30T23:55:22.785Z"}
 {"kind":"unit","status":"green","stream":"unslop-direction-brief","commit":"5c754b3","id":"74095d4d-d65d-4729-a43f-0751448eb6a3","ts":"2026-10-30T23:55:41.671Z"}
+{"kind":"unit","status":"green","stream":"unslop-triage-and-refine-only-gate","commit":"7f8bb0a","id":"2914601f-5f8a-41d4-9b23-38e3ab03dd61","ts":"2026-10-30T23:58:00.029Z"}
+{"kind":"unit","status":"green","stream":"unslop-triage-and-refine-only-gate","commit":"7f8bb0a","id":"82cb0e7d-fa5b-421b-af0e-3156e661ef53","ts":"2026-10-30T23:58:06.458Z"}
+{"kind":"unit","status":"green","stream":"unslop-do-not-list-and-final-checklist","commit":"bea1b73","id":"4235baba-a808-40cb-a504-c327c48dd295","ts":"2026-10-30T23:58:22.139Z"}
+{"kind":"unit","status":"green","stream":"unslop-visual-direction","commit":"4b18acd","id":"f375d322-50d3-4217-835c-f77b9c2beaf5","ts":"2026-10-30T23:58:32.710Z"}
+{"kind":"unit","status":"green","stream":"unslop-visual-direction","commit":"4b18acd","id":"c4c457c7-c325-4c6b-87ea-8a32434b9b45","ts":"2026-10-30T23:58:36.331Z"}

@@ -121,12 +121,12 @@
     },
     {
       "name": "unslop-do-not-list-and-final-checklist",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-do-not-list-and-final-checklist.md",
-      "next": "builder writes contract, failing tests, verb",
+      "next": "integration wires it",
       "tasks": [],
       "isolation": "../danizee-claude-suite-unslop-do-not-list-and-final-checklist",
-      "phase": "build",
+      "phase": "done",
       "base": "b67b1e322ae3e966871c10cb30b0ad3110d790d7"
     },
     {

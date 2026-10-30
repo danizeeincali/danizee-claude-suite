@@ -10,3 +10,6 @@
 {"key":"packaged_unslop-direction-brief","value":true,"id":"a290715a-f222-43df-99b7-5709db03a9e4","ts":"2026-10-30T23:55:45.128Z"}
 {"key":"egress_zero_unslop-direction-brief","value":true,"id":"34f3e05f-77ad-46d5-ad65-a890f226d770","ts":"2026-10-30T23:55:45.251Z"}
 {"key":"callers_unslop-direction-brief","value":0,"id":"aa137ea3-bc0d-4205-90c9-5f6e85c52225","ts":"2026-10-30T23:55:45.398Z"}
+{"key":"packaged_unslop-do-not-list-and-final-checklist","value":true,"id":"1372528b-3ee9-4b83-9cff-cb49e7b4e728","ts":"2026-10-30T23:58:26.646Z"}
+{"key":"egress_zero_unslop-do-not-list-and-final-checklist","value":true,"id":"3ab2d4d9-280a-4492-90dc-22c00efdef45","ts":"2026-10-30T23:58:26.776Z"}
+{"key":"callers_unslop-do-not-list-and-final-checklist","value":0,"id":"2de98db6-5b62-40c4-ab62-1962ff3deb3f","ts":"2026-10-30T23:58:26.905Z"}

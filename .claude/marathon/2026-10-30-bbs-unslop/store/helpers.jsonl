@@ -68,3 +68,14 @@
 {"role":"build","model":"sonnet","stream":"unslop-live-page-snapshot","budget":150000,"event":"spawn","id":"f2d130d8-6a88-4796-b143-52ed8092775d","ts":"2026-10-30T23:55:59.623Z"}
 {"role":"build","model":"sonnet","stream":"unslop-story-video-renderer","budget":150000,"event":"spawn","id":"8749dbe3-dfc1-421a-bffb-cae2ae10d05e","ts":"2026-10-30T23:56:00.433Z"}
 {"role":"build","model":"sonnet","stream":"unslop-story-video-authoring","budget":150000,"event":"spawn","id":"540b5ce5-39e8-42f7-b34d-13435c748640","ts":"2026-10-30T23:56:01.240Z"}
+{"helper_id":"cb8ed81d-171e-4d1c-baaf-3f270d423430","tokens":73587,"outcome":"green","event":"done","id":"b256ec6c-c76b-4dd6-84b0-5474fe5794af","ts":"2026-10-30T23:56:09.419Z"}
+{"role":"fix","model":"sonnet","stream":"unslop-do-not-list-and-final-checklist","budget":100000,"event":"spawn","id":"2e383a87-ab7a-4d63-9615-f3141026a2fd","ts":"2026-10-30T23:56:11.000Z"}
+{"helper_id":"19419f28-39b8-4375-a07b-a5c6a8785176","tokens":71862,"outcome":"green","event":"done","id":"9012b165-c5ca-4367-8a7d-bae0b50bfaf5","ts":"2026-10-30T23:56:11.443Z"}
+{"role":"fix","model":"sonnet","stream":"unslop-triage-and-refine-only-gate","budget":100000,"event":"spawn","id":"66c1e6f9-3e53-43d0-963d-3563c27f1342","ts":"2026-10-30T23:56:12.750Z"}
+{"helper_id":"66c1e6f9-3e53-43d0-963d-3563c27f1342","tokens":49700,"outcome":"green","event":"done","id":"11c08b55-4b8c-49e0-9980-2a54eb88e05f","ts":"2026-10-30T23:57:53.250Z"}
+{"role":"review","model":"opus","stream":"unslop-triage-and-refine-only-gate","budget":150000,"event":"spawn","id":"48ef5431-3520-4693-b1a1-1a83cf692d8f","ts":"2026-10-30T23:58:09.312Z"}
+{"helper_id":"2e383a87-ab7a-4d63-9615-f3141026a2fd","tokens":59071,"outcome":"green","event":"done","id":"49f8bb63-84a2-4d6f-84c3-3a68c5ad3116","ts":"2026-10-30T23:58:15.066Z"}
+{"helper_id":"67e646b6-c57b-4f7c-9361-97ad1217377d","tokens":55700,"outcome":"green","event":"done","id":"c05a647f-2a88-4327-8738-051c29f731ff","ts":"2026-10-30T23:58:27.733Z"}
+{"role":"review","model":"opus","stream":"unslop-visual-direction","budget":150000,"event":"spawn","id":"5ceb9877-6b5f-444b-9345-556e5634e348","ts":"2026-10-30T23:58:39.228Z"}
+{"helper_id":"7d203293-c0f0-449e-aaa4-e02cbcfbd28e","tokens":63988,"outcome":"green","event":"done","id":"cb6be092-4a0b-4142-b97b-278ce769339c","ts":"2026-10-30T23:58:44.476Z"}
+{"role":"fix","model":"sonnet","stream":"unslop-image-generation-gate","budget":100000,"event":"spawn","id":"a847c121-5820-42bb-be29-7431fea1f728","ts":"2026-10-30T23:58:45.944Z"}
