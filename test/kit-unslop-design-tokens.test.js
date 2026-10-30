@@ -284,3 +284,43 @@ describe('check input', () => {
     assert.ok(Date.now() - t < 5000);
   });
 });
+
+describe('review r1 fixes', () => {
+  const cssVar = (css, name) => new RegExp(`${name}: (#[0-9a-f]{6});`).exec(css)[1];
+  it('hover differs from base for black and white accents', () => {
+    const b = emit({ accent: '#000000' }).css;
+    assert.notEqual(cssVar(b, '--color-accent-hover'), cssVar(b, '--color-accent'));
+    const w = emit({ accent: '#ffffff', mode: 'dark' }).css;
+    assert.notEqual(cssVar(w, '--color-accent-hover'), cssVar(w, '--color-accent'));
+  });
+  it('a grey accent uses the default hue and says so', () => {
+    for (const a of ['#ffffff', '#808080', '#000000']) {
+      const r = emit({ accent: a });
+      assert.equal(r.hue, emit({}).hue);
+      assert.ok(r.notes.some(n => /grey/.test(n)));
+    }
+    assert.ok(!emit({ accent: '#e11d48' }).notes.some(n => /grey/.test(n)));
+  });
+  it('--hue 359.99 stays inside 0-359', async () => {
+    const r = await run(['emit', '--hue', '359.99'], io(''));
+    assert.ok(r.hue >= 0 && r.hue < 360);
+    assert.equal(r.hue, 0);
+  });
+  it('flags px glued to !important', async () => {
+    const r = await chk('.a{margin:5px!important}');
+    assert.deepEqual(codes(r), ['OFF_GRID_SPACING']);
+    assert.deepEqual(codes(await chk('.a{margin:5px !important}')), ['OFF_GRID_SPACING']);
+  });
+  it('--file honours the 8 MiB cap and names an empty file', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dt-'));
+    try {
+      const max = 8 * 1024 * 1024;
+      await fs.writeFile(path.join(dir, 'big.css'), Buffer.alloc(max + 1, 0x20));
+      await exit(() => run(['check', '--file', 'big.css'], io('', dir)));
+      await fs.writeFile(path.join(dir, 'max.css'), '.a{margin:8px}' + ' '.repeat(max - 14));
+      assert.equal((await run(['check', '--file', 'max.css'], io('', dir))).ok, true);
+      await fs.writeFile(path.join(dir, 'empty.css'), ' \n');
+      await assert.rejects(() => run(['check', '--file', 'empty.css'], io('', dir)), e => e instanceof KitExit && /empty\.css is empty/.test(e.message));
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+});

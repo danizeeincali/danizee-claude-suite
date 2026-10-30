@@ -188,7 +188,9 @@ export function buildSheet({ hue = DEFAULT_HUE, accent, mode = 'light', kind = '
     accentRgb = holdContrast(dark ? 0.72 : 0.52, accentC, hue, bg, 4.5);
   }
   const ao = rgbToOklch(accentRgb);
-  const hover = oklchToRgb(clamp01(ao.L + (dark ? 0.06 : -0.06)), ao.C, accentHue);
+  const step = dark ? 0.06 : -0.06;
+  let hover = oklchToRgb(clamp01(ao.L + step), ao.C, accentHue);
+  if (hex(hover) === hex(accentRgb)) hover = oklchToRgb(clamp01(ao.L - step), ao.C, accentHue); // pinned at black or white: shift the other way
   const subtle = oklchToRgb(dark ? 0.26 : 0.95, Math.min(ao.C, 0.04), accentHue);
   const onAccent = contrastRatio([255, 255, 255], accentRgb) >= contrastRatio(at(950), accentRgb) ? [255, 255, 255] : at(950);
   add(['color', 'accent', 'base'], hex(accentRgb), '--color-accent');
@@ -243,13 +245,18 @@ const toCss = entries => ':root {\n' + entries.filter(e => e.css).map(e => `  ${
 
 export function emit({ hue, accent, mode = 'light', format = 'css', kind = 'app' } = {}) {
   let h = hue;
-  if (h === undefined) h = accent ? rgbToOklch(parseHex(accent)).h : DEFAULT_HUE;
-  h = Math.round(h * 10) / 10;
+  let greyAccent = false;
+  if (h === undefined) {
+    const o = accent ? rgbToOklch(parseHex(accent)) : null;
+    if (o && o.C >= 0.02) h = o.h; else { h = DEFAULT_HUE; greyAccent = !!o; }
+  }
+  h = (Math.round(h * 10) / 10) % 360;
   const { entries, contrast, accentHex } = buildSheet({ hue: h, accent, mode, kind });
   const out = { kind, mode, format, hue: h, accent: accentHex, contrast };
   if (format === 'css') out.css = `/* design-tokens: ${kind}, ${mode}, hue ${h}. Radius nesting: outer = inner + padding. Override where the project has its own system. */\n` + toCss(entries);
   else out.tokens = nest(entries);
   out.notes = ['Starting values: keep the project\'s own system when it has a good one.', 'Weights are 400 and 600 only; use at most one accent.'];
+  if (greyAccent) out.notes.push(`The accent is grey, so it has no hue; the neutral ramp uses the default hue ${DEFAULT_HUE}. Pass --hue to choose one.`);
   return out;
 }
 
@@ -308,7 +315,7 @@ export function checkCss(raw) {
     const line = lineOf(valStart + (m[3].length - m[3].trimStart().length));
     if (!value) continue;
     if (!prop.startsWith('--') && SPACING_PROPS.test(prop) && !/(^|[^\w-])(calc|var|clamp|min|max)\(/.test(value)) {
-      for (const t of value.split(/\s+/)) {
+      for (const t of value.replace(/\s*!important$/i, '').split(/\s+/)) {
         const px = /^(-?\d*\.?\d+)px$/i.exec(t);
         if (!px) continue;
         const n = Math.abs(parseFloat(px[1]));
@@ -442,7 +449,7 @@ export async function run(args, io) {
   }
   if (buf.length > MAX_BYTES) throw bad('input is larger than 8 MiB');
   const text = buf.toString('utf-8').replace(/^﻿/, '').replace(/\r\n?/g, '\n');
-  if (!text.trim()) throw bad('no input: pass CSS on stdin or --file');
+  if (!text.trim()) throw bad(f.file !== undefined ? `${path.resolve(cwd, f.file)} is empty` : 'no input: pass CSS on stdin or --file');
   if (text.includes('\0')) throw bad('input looks binary (contains NUL bytes)');
   const result = checkCss(text);
   if (f.strict && !result.ok) result.exit = 2;
