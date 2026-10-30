@@ -199,3 +199,91 @@ describe('review r1 fixes', () => {
     assert.match(ooo.fix, /"spacing"/);
   });
 });
+
+describe('review r2 fixes', () => {
+  it('remaining and batch keep the misplaced pass on an out-of-order state', async () => {
+    assert.deepEqual(evaluate(['spacing', 'motion']).remaining, IDS.slice(1));
+    assert.deepEqual(evaluate(['color']).remaining, IDS);
+    assert.deepEqual(evaluate(['spacing', 'color', 'spacing']).remaining, IDS.slice(2));
+    await write('r2a.json', { done: ['spacing', 'motion'] });
+    const r = await call(['next', '--state', 'r2a.json', '--all-at-once']);
+    assert.equal(r.ok, false);
+    assert.deepEqual(r.remaining, IDS.slice(1));
+    assert.deepEqual(r.batch.map(p => p.id), IDS.slice(1));
+    assert.equal(r.next.id, 'color');
+    const plain = await call(['next', '--state', 'r2a.json']);
+    assert.equal(plain.remaining.length, 8);
+  });
+  it('inherited Object.prototype names are not flags', async () => {
+    for (const n of ['toString', 'constructor', 'valueOf', 'hasOwnProperty', '__proto__']) {
+      await exit(() => call(['next', n, 'x']));
+      await exit(() => call(['mark', '--state', 'x.json', '--pass', 'spacing', n, 'y']));
+    }
+  });
+  it('a refused mark does not create the state folder', async () => {
+    await exit(() => call(['mark', '--state', 'ghost/x.json', '--pass', 'color']), 2);
+    await assert.rejects(fs.stat(path.join(dir, 'ghost')), { code: 'ENOENT' });
+  });
+  it('header says a non-string entry exits 1 (both copies)', async () => {
+    for (const f of ['../src/lib/kit/redline-passes.js', '../.claude/helpers/kit/redline-passes.js']) {
+      const src = (await fs.readFile(new URL(f, import.meta.url), 'utf-8')).replace(/\n \* ?/g, ' ');
+      assert.match(src, /a non-string entry, like a missing `done`, exits 1/, f);
+    }
+  });
+});
+
+describe('header contract and real producer output', () => {
+  it('every documented output field is present and every documented exit code is produced', async () => {
+    const n = await call(['next', '--all-at-once']);
+    for (const k of ['next', 'done', 'remaining', 'ok', 'batch', 'reminder']) assert.ok(k in n, k);
+    await write('hc.json', { done: ['icons'] });
+    const bad = await call(['next', '--state', 'hc.json', '--strict']);
+    for (const k of ['problem', 'fix', 'exit']) assert.ok(k in bad, k);
+    assert.equal(bad.exit, 2);
+    const m = await call(['mark', '--state', 'hc2.json', '--pass', 'spacing']);
+    assert.deepEqual(Object.keys(m).sort(), ['done', 'marked', 'next']);
+    const p = await call(['plan']);
+    assert.deepEqual(Object.keys(p.passes[0]).sort(), ['checks', 'id', 'label', 'n', 'why_here']);
+    await exit(() => call([]), 1);
+    await exit(() => call(['mark', '--state', 'hc2.json', '--pass', 'motion']), 2);
+  });
+  it('plan output ids feed mark and next end to end', async () => {
+    const { passes } = await call(['plan']);
+    let last;
+    for (const p of passes) last = await call(['mark', '--state', 'prod.json', '--pass', p.id]);
+    assert.equal(last.next, null);
+    const r = await call(['next', '--state', 'prod.json']);
+    assert.deepEqual(r.done, passes.map(p => p.id));
+    assert.equal(r.next, null);
+    // the printed next/batch passes are valid plan passes
+    const b = await call(['next', '--all-at-once']);
+    assert.deepEqual(b.batch, passes);
+    assert.deepEqual(b.next, passes[0]);
+  });
+  it('edge shapes: blank items, duplicate keys, null and array JSON, inherited keys in done', async () => {
+    await write('e1.json', { done: ['spacing', ''] });
+    const blank = await call(['next', '--state', 'e1.json']);
+    assert.equal(blank.ok, false);
+    assert.match(blank.problem, /unknown/);
+    assert.equal(blank.next.id, 'color');
+    await exit(() => call(['mark', '--state', 'e1.json', '--pass', 'color']));
+    await write('e2.json', '{"done":["spacing"],"done":[]}');
+    assert.equal((await call(['next', '--state', 'e2.json'])).next.id, 'spacing');
+    await write('e3.json', '{"done":[],"done":["spacing"]}');
+    assert.equal((await call(['next', '--state', 'e3.json'])).next.id, 'color');
+    await write('e4.json', 'null');
+    await exit(() => call(['next', '--state', 'e4.json']));
+    await exit(() => call(['mark', '--state', 'e4.json', '--pass', 'spacing']));
+    assert.equal(await fs.readFile(path.join(dir, 'e4.json'), 'utf-8'), 'null');
+    await write('e5.json', '[]');
+    await exit(() => call(['next', '--state', 'e5.json']));
+    await write('e6.json', { done: ['toString', 'constructor', '__proto__'] });
+    const inh = await call(['next', '--state', 'e6.json']);
+    assert.equal(inh.ok, false);
+    assert.match(inh.problem, /unknown pass "toString"/);
+    await write('e7.json', { done: ['spacing', null] });
+    await exit(() => call(['next', '--state', 'e7.json']));
+    await write('e8.json', { done: {} });
+    await exit(() => call(['next', '--state', 'e8.json']));
+  });
+});

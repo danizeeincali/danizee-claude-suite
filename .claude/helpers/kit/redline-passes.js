@@ -11,8 +11,8 @@
  *       → { marked, done, next }                                           appends the pass when it is the next one
  *
  * STATE. The progress file is `{ "done": ["spacing", ...] }`. A missing file means nothing is done. `done` must be an
- * array of pass ids in plan order with no gaps; anything else is reported by `next` as ok=false with a `problem`
- * (an unknown id, a repeated id, or a pass that skips an earlier one). When ok, `next` is the first pass of the plan
+ * array of pass ids in plan order with no gaps; a list of pass ids that is wrong is reported by `next` as ok=false with a `problem`
+ * (an unknown id, a repeated id, or a pass that skips an earlier one); a non-string entry, like a missing `done`, exits 1. When ok, `next` is the first pass of the plan
  * that is not done; on a problem it is the first plan pass after the in-order prefix of `done` (so it can name a pass
  * that appears later in a broken `done`), and `fix` says how to repair that kind of problem. `next` is null once all
  * nine are done. With --strict an out-of-order or unknown `done`
@@ -98,14 +98,16 @@ export function evaluate(done) {
   let problem = null;
   let kind = null;
   const seen = new Set();
+  let prefix = 0;
   for (let i = 0; i < done.length && !problem; i++) {
     const id = done[i];
     if (typeof id !== 'string' || !IDS.includes(id)) { problem = `unknown pass ${JSON.stringify(id)}`; kind = ['unknown', id]; }
     else if (seen.has(id)) { problem = `pass "${id}" is listed more than once`; kind = ['repeat', id]; }
     else if (id !== IDS[i]) { problem = `pass "${id}" was done before "${IDS[i]}"`; kind = ['order', id]; }
     seen.add(id);
+    if (!problem) prefix = i + 1;
   }
-  const remaining = IDS.filter(id => !seen.has(id));
+  const remaining = IDS.slice(prefix);
   const res = { next: remaining.length ? copyPass(byId(remaining[0])) : null, done: [...done], remaining, ok: !problem };
   if (problem) {
     res.problem = problem;
@@ -126,7 +128,7 @@ async function readState(file, cwd) {
   if (st && !st.isFile()) throw bad(`${p} is not a regular file`);
   if (st && st.size > MAX_BYTES) throw bad(`${p} is larger than 8 MiB`);
   const data = await readJsonState(p, { fallback: null });
-  if (data === null) return { p, done: [] };
+  if (data === null && !(st && st.size > 0)) return { p, done: [] };
   if (!data || typeof data !== 'object' || Array.isArray(data) || !Array.isArray(data.done)) {
     throw bad(`${p} must hold {"done": [...]}`);
   }
@@ -138,7 +140,7 @@ function parseFlags(rest, spec) {
   const out = {};
   while (rest.length) {
     const a = rest.shift();
-    const kind = spec[a];
+    const kind = Object.hasOwn(spec, a) ? spec[a] : null;
     if (!kind) throw bad(`unexpected argument "${a}"\n${usage}`);
     const key = a.slice(2);
     if (key in out) throw bad(`${a} given more than once`);
@@ -175,14 +177,18 @@ export async function run(args, io = {}) {
     if (!f.pass) throw bad(`mark needs --pass <id>\n${usage}`);
     if (!byId(f.pass)) throw bad(`unknown pass "${f.pass}"; passes are ${IDS.join(', ')}`);
     const file = path.resolve(cwd, f.state);
-    return withStateLock(file, async () => {
-      const s = await readState(f.state, cwd);
+    const check = s => {
       const cur = evaluate(s.done);
       if (!cur.ok) throw bad(`${file} is out of order (${cur.problem}); fix it before marking`);
       if (!cur.next) throw new KitExit('all nine passes are already done', 2);
       if (cur.next.id !== f.pass) {
         throw new KitExit(`"${f.pass}" is not the next pass; the next one is "${cur.next.id}"`, 2);
       }
+    };
+    check(await readState(f.state, cwd)); // refuse before the lock so a refusal never creates the folder
+    return withStateLock(file, async () => {
+      const s = await readState(f.state, cwd);
+      check(s);
       const done = [...s.done, f.pass];
       await writeJsonAtomic(file, { ...(s.data || {}), done });
       const after = evaluate(done);
