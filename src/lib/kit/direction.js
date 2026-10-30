@@ -15,10 +15,10 @@
  * materials and type are borrowed from), moments (one or two places on the screen that carry the accent colour; at
  * most two) and signature (one small concrete detail that is unmistakably this product).
  *
- * check input is a JSON object with those five keys (moments may be an array of strings; unknown keys are refused),
+ * check input is a JSON object with those five keys (moments may be an array of strings, blank items dropped; any other field must be a string; unknown keys and exact duplicate keys are refused with exit 1),
  * or a markdown/text block with lines `Product: ...`, `Character: ...`, `World: ...`, `Moments: ...`,
  * `Signature: ...` (bullets and bold around the label are fine; lines under a label continue it). The type is
- * sniffed from the text (a leading `{` means JSON). Problem codes: missing, duplicate_field, banned_word (clean,
+ * sniffed from the text (a leading `{`, a JSON array, or a bare JSON null/number/boolean means JSON, so a non-object is refused with exit 1, not read as markdown). Problem codes: missing, duplicate_field, banned_word (clean,
  * modern, sleek, minimal, minimalist, beautiful, stunning, elegant, premium, intuitive, user-friendly, cutting-edge,
  * innovative, professional, simple; whole-word, case-insensitive, in any field), too_long (over 200 characters),
  * too_many_moments (more than 2), too_few_traits (character with fewer than 2), signature_not_concrete (only a
@@ -175,7 +175,10 @@ export function fromJson(obj) {
     const v = obj[k];
     if (v === null || v === undefined) { out[id] = ''; continue; }
     if (typeof v === 'string') { out[id] = v; continue; }
-    if (Array.isArray(v) && v.every(x => typeof x === 'string')) { out[id] = v.join('; '); count[id] = v.filter(x => x.trim()).length; continue; }
+    if (id === 'moments' && Array.isArray(v) && v.every(x => typeof x === 'string')) {
+      const kept = v.map(x => x.trim()).filter(Boolean);
+      out[id] = kept.join('; '); count[id] = kept.length; continue;
+    }
     throw bad(`direction.${k} must be a string${id === 'moments' ? ' or an array of strings' : ''}`);
   }
   if (Object.keys(count).length) Object.defineProperty(out, '__count', { value: count, enumerable: false });
@@ -261,6 +264,43 @@ function parseJson(text) {
   }
 }
 
+/** True when the text is JSON: a leading `{`, a JSON array (`[` that parses) or a bare JSON null/number/boolean. */
+function sniffJson(text) {
+  const t = text.trim();
+  if (t.startsWith('{')) return true;
+  try {
+    const v = JSON.parse(t);
+    return v === null || typeof v !== 'string';
+  } catch { return false; }
+}
+
+/** The first exact repeated key of the top-level object in JSON text, or null (a light scan; JSON.parse keeps the last). */
+function firstDuplicateKey(text) {
+  const t = text.trim();
+  if (!t.startsWith('{')) return null;
+  const seen = new Set();
+  let depth = 0;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (c === '"') {
+      let j = i + 1;
+      while (j < t.length && t[j] !== '"') j += t[j] === '\\' ? 2 : 1;
+      if (depth === 1) {
+        let k = j + 1;
+        while (/\s/.test(t[k] || '')) k++;
+        if (t[k] === ':') {
+          let key; try { key = JSON.parse(t.slice(i, j + 1)); } catch { key = t.slice(i + 1, j); }
+          if (seen.has(key)) return key;
+          seen.add(key);
+        }
+      }
+      i = j;
+    } else if (c === '{' || c === '[') depth++;
+    else if (c === '}' || c === ']') depth--;
+  }
+  return null;
+}
+
 export async function run(args, io) {
   const [cmd, ...rest] = args;
   if (cmd === 'template') {
@@ -283,7 +323,11 @@ export async function run(args, io) {
   }
   const text = await readText(file, io);
   if (cmd === 'from-brief') return fromBrief(parseJson(text));
-  const values = text.trimStart().startsWith('{') ? fromJson(parseJson(text)) : parseText(text);
+  const values = sniffJson(text) ? fromJson(parseJson(text)) : parseText(text);
+  if (sniffJson(text)) {
+    const dupKey = firstDuplicateKey(text);
+    if (dupKey !== null) throw bad(`key "${dupKey}" given more than once`);
+  }
   const result = checkFields(values);
   if (strict && !result.ok) result.exit = 2;
   return result;

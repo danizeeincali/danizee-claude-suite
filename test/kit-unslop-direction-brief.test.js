@@ -231,3 +231,76 @@ describe('from-brief', () => {
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
 });
+
+describe('round 2 failure paths', () => {
+  it('a moments array of blank strings is missing, not present (and --strict exits 2)', async () => {
+    for (const blank of [[' ', ''], ['', '', '', ' '], []]) {
+      const r = await run(['check', '--strict'], io(JSON.stringify(withField('moments', blank))));
+      assert.equal(r.ok, false);
+      assert.equal(r.fields.moments.present, false);
+      assert.ok(codes(r).includes('moments:missing'));
+      assert.equal(r.exit, 2);
+    }
+    const mixed = await run(['check'], io(JSON.stringify(withField('moments', [' ', 'the total']))));
+    assert.equal(mixed.fields.moments.text, 'the total');
+    assert.equal(mixed.ok, true);
+  });
+  it('only moments accepts an array; other fields exit 1', async () => {
+    await exit(() => run(['check'], io(JSON.stringify(withField('character', ['patient', 'dry'])))));
+    await exit(() => run(['check'], io(JSON.stringify(withField('product', ['x'])))));
+  });
+  it('exact duplicate JSON keys exit 1 instead of last-wins', async () => {
+    await exit(() => run(['check'], io('{"product":"a","product":"b","character":"x, y","world":"w","moments":"m","signature":"s"}')));
+    // a repeated key inside a nested value or a string value that looks like a key is not a duplicate
+    const ok = await run(['check'], io(JSON.stringify(withField('product', 'a "product": b, "product": c'))));
+    assert.equal(ok.fields.product.present, true);
+  });
+  it('non-object JSON (null, array, number) exits 1; broken-looking markdown starting with [ still parses as text', async () => {
+    await exit(() => run(['check'], io('null')));
+    await exit(() => run(['check'], io('["Product: a"]')));
+    await exit(() => run(['check'], io('42')));
+    const md = await run(['check'], io('[notes]\nProduct: a printer for bakers'));
+    assert.equal(md.fields.product.present, true);
+  });
+});
+
+describe('header contract and documented edges', () => {
+  it('every output field and exit code the header documents is asserted', async () => {
+    const head = (await fs.readFile(new URL('../src/lib/kit/direction.js', import.meta.url), 'utf-8')).split('*/')[0];
+    const t = await run(['template'], io(''));
+    for (const k of ['id', 'label', 'ask', 'example']) { assert.ok(head.includes(k)); assert.ok(k in t.fields[0]); }
+    const c = await run(['check'], io(JSON.stringify(GOOD)));
+    for (const k of ['ok', 'fields', 'problems', 'next']) { assert.ok(head.includes(k)); assert.ok(k in c); }
+    for (const k of ['present', 'text', 'problems']) { assert.ok(head.includes(k)); assert.ok(k in c.fields.product); }
+    const bad2 = await run(['check'], io(JSON.stringify({ ...GOOD, moments: '' })));
+    for (const k of ['field', 'code', 'message', 'fix']) { assert.ok(head.includes(k)); assert.ok(k in bad2.problems[0]); }
+    const fb = await run(['from-brief'], io(JSON.stringify({ kind: 'landing', answers: { offer: 'a printer', audience: 'bakers' } })));
+    for (const k of ['fields', 'prefilled', 'next']) { assert.ok(head.includes(k)); assert.ok(k in fb); }
+    for (const k of ['text', 'todo']) { assert.ok(head.includes(k)); assert.ok(k in fb.fields[0]); }
+    for (const code of ['missing', 'duplicate_field', 'banned_word', 'too_long', 'too_many_moments', 'too_few_traits', 'signature_not_concrete', 'world_is_style_word']) assert.ok(head.includes(code));
+    assert.equal((await run(['check', '--strict'], io(JSON.stringify({ ...GOOD, moments: '' })))).exit, 2);
+    assert.equal((await run(['check'], io(JSON.stringify({ ...GOOD, moments: '' })))).exit, undefined);
+    await exit(() => run(['check', '--strict', '--strict'], io('x')));
+    await exit(() => run(['check', '--file'], io('x')));
+    await exit(() => run(['check', '--file', 'a', '--file', 'b'], io('x')));
+  });
+  it('inherited object keys as flags or JSON keys are refused', async () => {
+    for (const a of ['--constructor', '--toString', '--__proto__', '--hasOwnProperty']) await exit(() => run(['check', a], io(JSON.stringify(GOOD))));
+    await exit(() => run(['check'], io('{"__proto__":"x","product":"a"}')));
+    await exit(() => run(['check'], io('{"constructor":"x"}')));
+    const r = await run(['check'], io('Constructor: x\ntoString: y\n__proto__: z'));
+    assert.equal(r.ok, false);
+  });
+  it('the check input built from the real producer (template, from-brief) is accepted', async () => {
+    const t = await run(['template'], io(''));
+    const fromTemplate = Object.fromEntries(t.fields.map(f => [f.id, f.example]));
+    assert.equal((await run(['check'], io(JSON.stringify(fromTemplate)))).ok, true);
+    const md = t.fields.map(f => `- **${f.label}:** ${f.example}`).join('\n');
+    assert.equal((await run(['check'], io(md))).ok, true);
+    const fb = await run(['from-brief'], io(JSON.stringify({ kind: 'landing', answers: { offer: 'a prep-list printer', audience: 'bakers' } })));
+    const filled = Object.fromEntries(fb.fields.map(f => [f.id, f.text || fromTemplate[f.id]]));
+    assert.equal((await run(['check'], io(JSON.stringify(filled)))).fields.product.present, true);
+    const blankItems = await run(['check'], io(JSON.stringify({ ...fromTemplate, moments: ['', 'the total', ' '] })));
+    assert.equal(blankItems.fields.moments.text, 'the total');
+  });
+});
