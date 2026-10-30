@@ -36,3 +36,8 @@ Add a rule the second time something goes wrong.
 - Lines only the human can close are listed once under "Waiting on human" and never retried.
 - A problem the owner finds while using the build is an escape: record it with
   `cli.js record escape` so skipped reviews show their cost.
+
+## Promoted in this run
+
+- (docs, seen twice) A kit verb's header contract is checked by a test: every exit code and output field the header documents is asserted, so the header and the code cannot drift apart.
+- (correctness, seen twice) Every input shape a verb's header says it accepts gets a test built from the real producer's output (run the sibling verb), never a hand-made look-alike; every documented edge (blank array items, duplicate keys, null/array JSON, inherited object keys as flags) is tested.

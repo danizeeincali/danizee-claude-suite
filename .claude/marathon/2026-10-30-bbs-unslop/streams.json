@@ -41,12 +41,12 @@
     },
     {
       "name": "unslop-ordered-redline-passes",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-ordered-redline-passes.md",
-      "next": "builder writes contract, failing tests, verb",
+      "next": "integration wires it",
       "tasks": [],
       "isolation": "../danizee-claude-suite-unslop-ordered-redline-passes",
-      "phase": "build",
+      "phase": "done",
       "base": "e2d81ce5fe4cf53073d5faffcd9dd5cbc7b1dcbd"
     },
     {
@@ -61,24 +61,33 @@
     },
     {
       "name": "unslop-glyph-and-duotone-effects",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-glyph-and-duotone-effects.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract, failing tests, verb",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-glyph-and-duotone-effects",
+      "phase": "build",
+      "base": "53e5f6acc5f98261def53b24780b1f0fe6b1d46f"
     },
     {
       "name": "unslop-visual-direction",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-visual-direction.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract, failing tests, verb",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-visual-direction",
+      "phase": "build",
+      "base": "53e5f6acc5f98261def53b24780b1f0fe6b1d46f"
     },
     {
       "name": "unslop-image-generation-gate",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-image-generation-gate.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract, failing tests, verb",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-image-generation-gate",
+      "phase": "build",
+      "base": "53e5f6acc5f98261def53b24780b1f0fe6b1d46f"
     },
     {
       "name": "unslop-live-page-snapshot",

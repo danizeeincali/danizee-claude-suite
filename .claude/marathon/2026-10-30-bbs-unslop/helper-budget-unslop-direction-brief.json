@@ -7,13 +7,13 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 180,
-    "cost": 213270
+    "steps": 300,
+    "cost": 348907
   },
   "clock": {
     "depth": 1,
-    "startedAt": 1793403818688,
-    "elapsedMs": 407719
+    "startedAt": 1793404135929,
+    "elapsedMs": 675829
   },
   "helpers": {
     "build-unslop-direction-brief": {
@@ -53,6 +53,30 @@
       }
     },
     "review-r2-unslop-direction-brief": {
+      "steps": 60,
+      "cost": 77439,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r2-unslop-direction-brief": {
+      "steps": 60,
+      "cost": 58198,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r3-unslop-direction-brief": {
       "steps": 0,
       "cost": 0,
       "ok": 0,

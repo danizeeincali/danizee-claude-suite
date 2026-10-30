@@ -7,16 +7,28 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 0,
-    "cost": 0
+    "steps": 60,
+    "cost": 72813
   },
   "clock": {
     "depth": 1,
-    "startedAt": 1793403840690,
-    "elapsedMs": 0
+    "startedAt": 1793404033745,
+    "elapsedMs": 184095
   },
   "helpers": {
     "build-unslop-triage-and-refine-only-gate": {
+      "steps": 60,
+      "cost": 72813,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r1-unslop-triage-and-refine-only-gate": {
       "steps": 0,
       "cost": 0,
       "ok": 0,
@@ -24,7 +36,7 @@
       "grants": 1,
       "skipped": 0,
       "reserved": {
-        "steps": 150,
+        "steps": 80,
         "cost": 150000
       }
     }
