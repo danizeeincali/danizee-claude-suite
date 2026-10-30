@@ -6,7 +6,7 @@
  *   redesign-checklist list
  *       → { do_not: [{ id, rule }], checklist: [{ id, item, how_to_check }], template_test: { how } }
  *   redesign-checklist template-test --name <product name> [--file <page.html|page.md>] [--format html|md]   (or the text on stdin)
- *       → { name_found, occurrences, sentences, generic: [{ line, text }], generic_ratio, threshold, pass, next }
+ *       → { name_found, occurrences, sentences, checked, generic: [{ line, text }], generic_ratio, threshold, pass, next }
  *   redesign-checklist check --before <file> --after <file> [--name <product name>] [--strict] [--format html|md] [--before-format html|md] [--after-format html|md]
  *       → { violations: [{ rule, detail, line }], template, pass, next }
  *
@@ -20,12 +20,12 @@
  * `generic` when every content word (stop words and the placeholder removed) is in GENERIC_WORDS (streamline,
  * workflow, powerful, platform, seamless, ...). generic_ratio is generic / sentences (3 decimals); the test passes
  * when the name occurs at least once and generic_ratio <= MAX_GENERIC_RATIO (0.3). `line` is a 1-based line of the
- * input. Text with no sentence that has a content word gives generic_ratio 0.
+ * input. Words are read with Unicode letter classes (Cyrillic, Greek and so on count). Text with no sentence that has a content word gives sentences 0, checked 0, generic_ratio 0 and pass false, with a next that says the test could not judge the copy.
  *
  * check compares two versions (HTML or markdown, sniffed from the text by landing-sections' own sniff, which skips a BOM, front matter, comments and <?..?>, {%..%}, {#..#} prologs; --format forces both, --before-format / --after-format force one side, each html or md) for mechanical do-not violations, each as
- * { rule, detail, line }: `section-dropped` / `section-reordered` (sections found by landing-sections' detection;
+ * { rule, detail, line }: `section-dropped` (also when a repeated heading or section has fewer copies in after than in before) / `section-reordered` (sections found by landing-sections' detection;
  * when the before page has fewer than two known sections, by heading text order instead), `field-removed` (a form
- * field `name` attribute in before and not in after), `link-removed` (an href or markdown link target in before and
+ * field `name` attribute in before and not in after), `link-removed` (an href, or a markdown inline link or reference definition target, in before and
  * not in after), `invented-data` (a number or percentage in the visible copy of after that is not in before:
  * "invented data?"), `looping-motion` (more `animation: ... infinite` / `animation-iteration-count: infinite` in
  * after than in before). `line` is the 1-based line in after for additions and in before for removals. With --name
@@ -150,7 +150,7 @@ export function visibleText(raw, type) {
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 function contentWords(sentence) {
-  return (sentence.toLowerCase().replace(/[‘’]/g, "'").match(/[a-z][a-z'-]*/g) || [])
+  return (sentence.toLowerCase().replace(/[‘’]/g, "'").match(/\p{L}[\p{L}\p{M}'-]*/gu) || [])
     .map(w => w.replace(/^['-]+|['-]+$/g, ''))
     .filter(w => w && !STOP_WORDS.has(w));
 }
@@ -179,14 +179,16 @@ export function templateTest(raw, name, type) {
       }
     }
   });
+  const checked = sentences;
   const generic_ratio = sentences ? Math.round((generic.length / sentences) * 1000) / 1000 : 0;
   const name_found = occurrences > 0;
-  const pass = name_found && generic_ratio <= MAX_GENERIC_RATIO;
+  const pass = name_found && checked > 0 && generic_ratio <= MAX_GENERIC_RATIO;
   let next;
   if (!name_found) next = `The name "${nm}" does not occur in the visible copy: name the product in the headline or hero.`;
+  else if (!checked) next = 'No readable sentences were found in the visible copy, so the test could not judge it: add real sentences (or give the page as html or md with --format), or check the copy by eye with another product\'s name.';
   else if (!pass) next = 'Rewrite the generic sentences with the product\'s own nouns (what it holds, who uses it, what it shows), then run the test again.';
   else next = 'The copy reads as this product. Also run the swap by eye with another product\'s name.';
-  return { name_found, occurrences, sentences, generic, generic_ratio, threshold: MAX_GENERIC_RATIO, pass, next };
+  return { name_found, occurrences, sentences, checked, generic, generic_ratio, threshold: MAX_GENERIC_RATIO, pass, next };
 }
 
 let nlCache = { text: null, offsets: [] };
@@ -228,7 +230,12 @@ function fieldNames(text, type) {
 }
 
 function linkTargets(text, type) {
-  if (type !== 'html') return firstLines(text.replace(/^ {0,3}(`{3,}|~{3,})[\s\S]*?^ {0,3}\1.*$/gm, blank), /\]\(\s*<?([^)\s>]+)/g);
+  if (type !== 'html') {
+    const body = text.replace(/^ {0,3}(`{3,}|~{3,})[\s\S]*?^ {0,3}\1.*$/gm, blank);
+    const m = firstLines(body, /\]\(\s*<?([^)\s>]+)/g);
+    for (const [k, v] of firstLines(body, /^ {0,3}\[[^\]\n]+\]:[ \t]*<?([^\s>]+)/gm)) if (!m.has(k)) m.set(k, v);
+    return m;
+  }
   const src = stripComments(text);
   const m = new Map();
   for (const t of src.matchAll(TAG)) {
@@ -272,10 +279,14 @@ function headings(text, type) {
   return out.filter(h => h.name);
 }
 
+const counts = ids => { const m = new Map(); for (const x of ids) m.set(x, (m.get(x) || 0) + 1); return m; };
+// The ids both lists share, each kept as many times as the smaller count allows, in list order.
+function shared(ids, other) {
+  const room = counts(other), seen = new Map();
+  return ids.filter(x => { const n = (seen.get(x) || 0) + 1; seen.set(x, n); return n <= (room.get(x) || 0); });
+}
 function orderChanged(beforeIds, afterIds) {
-  const inBefore = new Set(beforeIds);
-  const common = afterIds.filter(x => inBefore.has(x));
-  const want = beforeIds.filter(x => new Set(afterIds).has(x));
+  const common = shared(afterIds, beforeIds), want = shared(beforeIds, afterIds);
   return common.some((x, i) => x !== want[i]);
 }
 
@@ -294,11 +305,15 @@ export function compare(before, after, opts = {}) {
     const lb = new Map(hb.map(h => [h.name, h.line])), la = new Map(ha.map(h => [h.name, h.line]));
     lineB = x => lb.get(x) ?? null; lineA = x => la.get(x) ?? null;
   }
-  const setA = new Set(idsA);
-  for (const id of idsB) if (!setA.has(id)) violations.push({ rule: 'section-dropped', detail: `${what} "${id}" is in before and not in after`, line: lineB(id) });
+  const cntB = counts(idsB), cntA = counts(idsA);
+  for (const [id, n] of cntB) {
+    const left = cntA.get(id) || 0;
+    if (left >= n) continue;
+    violations.push({ rule: 'section-dropped', detail: left ? `${what} "${id}" is in before ${n} times and in after ${left}` : `${what} "${id}" is in before and not in after`, line: lineB(id) });
+  }
   if (orderChanged(idsB, idsA)) {
-    const common = idsA.filter(x => new Set(idsB).has(x));
-    const want = idsB.filter(x => setA.has(x));
+    const common = shared(idsA, idsB);
+    const want = shared(idsB, idsA);
     const i = common.findIndex((x, k) => x !== want[k]);
     violations.push({ rule: 'section-reordered', detail: `${what}s changed order: after has "${common[i]}" where before has "${want[i]}"`, line: lineA(common[i]) });
   }

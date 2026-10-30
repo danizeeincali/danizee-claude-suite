@@ -218,4 +218,34 @@ describe('review r1 regressions', () => {
     assert.equal(r.violations.length, 1);
     assert.equal(r.violations[0].line, n + 1);
   });
+  it('r2: a dropped copy of a repeated heading is reported', () => {
+    const b = '## Example\n\n## Setup\n\n## Example\n';
+    const r = compare(b, '## Example\n\n## Setup\n');
+    assert.deepEqual(r.violations.map(v => v.rule), ['section-dropped']);
+    assert.match(r.violations[0].detail, /example/);
+    assert.equal(r.pass, false);
+    assert.deepEqual(compare(b, b).violations, []);
+    assert.deepEqual(compare(b, '## Example\n\n## Example\n\n## Setup\n').violations.map(v => v.rule), ['section-reordered']);
+  });
+  it('r2: markdown reference-style link targets are read', () => {
+    const b = 'See [docs][d].\n\n[d]: https://x.y/docs\n';
+    const r = compare(b, 'See docs.\n');
+    assert.deepEqual(r.violations.map(v => v.rule), ['link-removed']);
+    assert.match(r.violations[0].detail, /x\.y\/docs/);
+    assert.equal(r.violations[0].line, 3);
+    assert.deepEqual(compare(b, b).violations, []);
+    assert.deepEqual(compare('```\n[d]: https://x.y/docs\n```\n', 'plain\n').violations.map(v => v.rule).filter(x => x === 'link-removed'), []);
+  });
+  it('r2: copy with no readable sentence does not pass; non-Latin copy is read', () => {
+    const r = templateTest('<h1>Acme</h1><p>123 456</p>', 'Acme');
+    assert.equal(r.checked, 0);
+    assert.equal(r.pass, false);
+    assert.match(r.next, /could not judge/);
+    const ru = templateTest('<h1>Тест</h1><p>Лучшая платформа для команд.</p>', 'Тест');
+    assert.ok(ru.checked >= 1);
+    assert.equal(ru.checked, ru.sentences);
+    const ru2 = templateTest('<h1>Тест</h1><p>Склад хранит паллеты и коробки.</p>', 'Тест');
+    assert.equal(ru2.pass, true);
+    assert.equal(compare('<h1>Acme</h1>', '<h1>Acme</h1>', { name: 'Acme' }).pass, false);
+  });
 });
