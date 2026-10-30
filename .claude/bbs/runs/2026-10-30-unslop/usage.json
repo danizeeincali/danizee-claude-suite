@@ -1,0 +1,42 @@
+{
+  "run": "2026-10-30-unslop",
+  "ts": "2026-10-30T22:43:00.427Z",
+  "evidence": "owner",
+  "window_days": null,
+  "files_read": 0,
+  "lines_skipped": 0,
+  "workflows": [
+    {
+      "name": "w-plan-tdd-swarm",
+      "count": null,
+      "sessions": null,
+      "last_used": null,
+      "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+      "via": {
+        "w-plan-tdd-swarm": null
+      }
+    },
+    {
+      "name": "w-marathon",
+      "count": null,
+      "sessions": null,
+      "last_used": null,
+      "file": ".claude/commands/.shortcuts/w-marathon.md",
+      "via": {
+        "w-marathon": null
+      }
+    },
+    {
+      "name": "w-bbs",
+      "count": null,
+      "sessions": null,
+      "last_used": null,
+      "file": ".claude/commands/.shortcuts/w-bbs.md",
+      "via": {
+        "w-bbs": null
+      }
+    }
+  ],
+  "other_invocations": 0,
+  "installed": 53
+}

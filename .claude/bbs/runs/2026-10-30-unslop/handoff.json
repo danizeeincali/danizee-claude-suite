@@ -1,0 +1,1684 @@
+{
+  "run": "2026-10-30-unslop",
+  "source": {
+    "run": "2026-10-30-unslop",
+    "type": "repo",
+    "ref": "https://github.com/heydamir/unslop",
+    "identity": "git:4652254daff586ff4739849395a127b56f7f8cc7",
+    "fetched": true,
+    "reuse_from": null,
+    "cited": [],
+    "ts": "2026-10-30T22:39:55.898Z",
+    "source_only": {
+      "kept": 14,
+      "skipped": 6
+    },
+    "fetched_at": "2026-10-30T22:40:00.788Z"
+  },
+  "marathonRun": "2026-10-30-bbs-unslop",
+  "powers": [
+    {
+      "name": "unslop slop audit",
+      "slug": "unslop-slop-audit",
+      "verdict": "rebuild",
+      "brief": "briefs/unslop-slop-audit.md",
+      "brief_path": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-slop-audit.md",
+      "lines": [
+        {
+          "id": "tests_green_unslop-slop-audit",
+          "label": "unslop-slop-audit: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "unslop-slop-audit"
+        },
+        {
+          "id": "egress_zero_unslop-slop-audit",
+          "label": "unslop-slop-audit: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_unslop-slop-audit",
+          "stream": "unslop-slop-audit"
+        },
+        {
+          "id": "six_sigma_unslop-slop-audit",
+          "label": "unslop-slop-audit: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "unslop-slop-audit"
+        },
+        {
+          "id": "wired_unslop-slop-audit",
+          "label": "unslop-slop-audit: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_unslop-slop-audit",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_unslop-slop-audit",
+          "label": "unslop-slop-audit: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_unslop-slop-audit",
+          "stream": "unslop-slop-audit"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 6: Review",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 6: Review",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 6: Review",
+          "how": "For UI, landing page or dashboard tasks, walk the changed screens against the slop-sign list and write one line per sign with its fix; unresolved signs stop the review. Advisory for non-UI work.",
+          "mode": "blocking",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "workflow": "w-marathon",
+          "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "how": "In UI, landing page or dashboard streams, run the slop audit each loop pass and treat unresolved signs as an unmet build gate. Advisory for non-UI streams.",
+          "mode": "blocking",
+          "by": "proposed"
+        }
+      ]
+    },
+    {
+      "name": "unslop direction brief",
+      "slug": "unslop-direction-brief",
+      "verdict": "rebuild",
+      "brief": "briefs/unslop-direction-brief.md",
+      "brief_path": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-direction-brief.md",
+      "lines": [
+        {
+          "id": "tests_green_unslop-direction-brief",
+          "label": "unslop-direction-brief: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "unslop-direction-brief"
+        },
+        {
+          "id": "egress_zero_unslop-direction-brief",
+          "label": "unslop-direction-brief: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_unslop-direction-brief",
+          "stream": "unslop-direction-brief"
+        },
+        {
+          "id": "six_sigma_unslop-direction-brief",
+          "label": "unslop-direction-brief: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "unslop-direction-brief"
+        },
+        {
+          "id": "wired_unslop-direction-brief",
+          "label": "unslop-direction-brief: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_unslop-direction-brief",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_unslop-direction-brief",
+          "label": "unslop-direction-brief: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_unslop-direction-brief",
+          "stream": "unslop-direction-brief"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 2: Plan",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 2: Plan",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 2: Plan",
+          "how": "For UI, landing page or dashboard tasks, write the five-line direction (product, character, world, moments, signature) into the plan before any visual change; advisory otherwise.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "⛔ CHECKPOINT 1: Interview (HIL — once)",
+          "reach": "/w-marathon › ⛔ CHECKPOINT 1: Interview (HIL — once)",
+          "workflow": "w-marathon",
+          "step": "⛔ CHECKPOINT 1: Interview (HIL — once)",
+          "how": "For UI, landing page or dashboard streams, derive the direction from the product and confirm it in the single interview batch; advisory for non-UI work.",
+          "mode": "advisory",
+          "by": "proposed"
+        }
+      ]
+    },
+    {
+      "name": "unslop triage and refine-only gate",
+      "slug": "unslop-triage-and-refine-only-gate",
+      "verdict": "rebuild",
+      "brief": "briefs/unslop-triage-and-refine-only-gate.md",
+      "brief_path": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-triage-and-refine-only-gate.md",
+      "lines": [
+        {
+          "id": "tests_green_unslop-triage-and-refine-only-gate",
+          "label": "unslop-triage-and-refine-only-gate: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "unslop-triage-and-refine-only-gate"
+        },
+        {
+          "id": "egress_zero_unslop-triage-and-refine-only-gate",
+          "label": "unslop-triage-and-refine-only-gate: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_unslop-triage-and-refine-only-gate",
+          "stream": "unslop-triage-and-refine-only-gate"
+        },
+        {
+          "id": "six_sigma_unslop-triage-and-refine-only-gate",
+          "label": "unslop-triage-and-refine-only-gate: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "unslop-triage-and-refine-only-gate"
+        },
+        {
+          "id": "wired_unslop-triage-and-refine-only-gate",
+          "label": "unslop-triage-and-refine-only-gate: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_unslop-triage-and-refine-only-gate",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_unslop-triage-and-refine-only-gate",
+          "label": "unslop-triage-and-refine-only-gate: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_unslop-triage-and-refine-only-gate",
+          "stream": "unslop-triage-and-refine-only-gate"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 1: Interview (MANDATORY - NEVER SKIP)",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 1: Interview (MANDATORY - NEVER SKIP)",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 1: Interview (MANDATORY - NEVER SKIP)",
+          "how": "For UI, landing page or dashboard tasks, grade the existing screen as heavy, light or no slop and ask the user to confirm the direction in the interview; advisory otherwise.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "⛔ CHECKPOINT 2: Kickoff (HIL — the last question)",
+          "reach": "/w-marathon › ⛔ CHECKPOINT 2: Kickoff (HIL — the last question)",
+          "workflow": "w-marathon",
+          "step": "⛔ CHECKPOINT 2: Kickoff (HIL — the last question)",
+          "how": "For UI, landing page or dashboard streams, include the triage grade and refine-only option in the kickoff question; advisory for non-UI work.",
+          "mode": "advisory",
+          "by": "proposed"
+        }
+      ]
+    },
+    {
+      "name": "unslop ordered redline passes",
+      "slug": "unslop-ordered-redline-passes",
+      "verdict": "rebuild",
+      "brief": "briefs/unslop-ordered-redline-passes.md",
+      "brief_path": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-ordered-redline-passes.md",
+      "lines": [
+        {
+          "id": "tests_green_unslop-ordered-redline-passes",
+          "label": "unslop-ordered-redline-passes: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "unslop-ordered-redline-passes"
+        },
+        {
+          "id": "egress_zero_unslop-ordered-redline-passes",
+          "label": "unslop-ordered-redline-passes: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_unslop-ordered-redline-passes",
+          "stream": "unslop-ordered-redline-passes"
+        },
+        {
+          "id": "six_sigma_unslop-ordered-redline-passes",
+          "label": "unslop-ordered-redline-passes: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "unslop-ordered-redline-passes"
+        },
+        {
+          "id": "wired_unslop-ordered-redline-passes",
+          "label": "unslop-ordered-redline-passes: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_unslop-ordered-redline-passes",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_unslop-ordered-redline-passes",
+          "label": "unslop-ordered-redline-passes: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_unslop-ordered-redline-passes",
+          "stream": "unslop-ordered-redline-passes"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 5: Build",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 5: Build",
+          "how": "When building or redesigning UI, landing page or dashboard screens, apply the nine passes in order, finishing each across the whole screen; advisory otherwise.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "workflow": "w-marathon",
+          "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "how": "In UI, landing page or dashboard streams, run one ordered pass per loop iteration from spacing to motion; advisory for non-UI streams.",
+          "mode": "advisory",
+          "by": "proposed"
+        }
+      ]
+    },
+    {
+      "name": "unslop design tokens",
+      "slug": "unslop-design-tokens",
+      "verdict": "rebuild",
+      "brief": "briefs/unslop-design-tokens.md",
+      "brief_path": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-design-tokens.md",
+      "lines": [
+        {
+          "id": "tests_green_unslop-design-tokens",
+          "label": "unslop-design-tokens: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "unslop-design-tokens"
+        },
+        {
+          "id": "egress_zero_unslop-design-tokens",
+          "label": "unslop-design-tokens: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_unslop-design-tokens",
+          "stream": "unslop-design-tokens"
+        },
+        {
+          "id": "six_sigma_unslop-design-tokens",
+          "label": "unslop-design-tokens: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "unslop-design-tokens"
+        },
+        {
+          "id": "wired_unslop-design-tokens",
+          "label": "unslop-design-tokens: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_unslop-design-tokens",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_unslop-design-tokens",
+          "label": "unslop-design-tokens: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_unslop-design-tokens",
+          "stream": "unslop-design-tokens"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 3: Spec",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 3: Spec",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 3: Spec",
+          "how": "For UI, landing page or dashboard specs, use the token sheet as starting values for spacing, ramps, type and motion unless the project already has a system; advisory otherwise.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "workflow": "w-marathon",
+          "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "how": "In UI streams, pull spacing, color, radius and motion values from the token sheet when the project has none; advisory for non-UI work.",
+          "mode": "advisory",
+          "by": "proposed"
+        }
+      ]
+    },
+    {
+      "name": "unslop glyph and duotone effects",
+      "slug": "unslop-glyph-and-duotone-effects",
+      "verdict": "rebuild",
+      "brief": "briefs/unslop-glyph-and-duotone-effects.md",
+      "brief_path": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-glyph-and-duotone-effects.md",
+      "lines": [
+        {
+          "id": "tests_green_unslop-glyph-and-duotone-effects",
+          "label": "unslop-glyph-and-duotone-effects: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "unslop-glyph-and-duotone-effects"
+        },
+        {
+          "id": "egress_zero_unslop-glyph-and-duotone-effects",
+          "label": "unslop-glyph-and-duotone-effects: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_unslop-glyph-and-duotone-effects",
+          "stream": "unslop-glyph-and-duotone-effects"
+        },
+        {
+          "id": "six_sigma_unslop-glyph-and-duotone-effects",
+          "label": "unslop-glyph-and-duotone-effects: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "unslop-glyph-and-duotone-effects"
+        },
+        {
+          "id": "wired_unslop-glyph-and-duotone-effects",
+          "label": "unslop-glyph-and-duotone-effects: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_unslop-glyph-and-duotone-effects",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_unslop-glyph-and-duotone-effects",
+          "label": "unslop-glyph-and-duotone-effects: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_unslop-glyph-and-duotone-effects",
+          "stream": "unslop-glyph-and-duotone-effects"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 5: Build",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 5: Build",
+          "how": "When a landing page hero image needs to match the palette, offer one glyph, halftone, dither or duotone treatment on the main visual only; advisory otherwise.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "workflow": "w-marathon",
+          "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "how": "In landing page streams with a hero image, apply a single duotone or glyph treatment in the visuals pass; advisory for non-UI streams.",
+          "mode": "advisory",
+          "by": "proposed"
+        }
+      ]
+    },
+    {
+      "name": "unslop visual direction",
+      "slug": "unslop-visual-direction",
+      "verdict": "rebuild",
+      "brief": "briefs/unslop-visual-direction.md",
+      "brief_path": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-visual-direction.md",
+      "lines": [
+        {
+          "id": "tests_green_unslop-visual-direction",
+          "label": "unslop-visual-direction: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "unslop-visual-direction"
+        },
+        {
+          "id": "egress_zero_unslop-visual-direction",
+          "label": "unslop-visual-direction: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_unslop-visual-direction",
+          "stream": "unslop-visual-direction"
+        },
+        {
+          "id": "six_sigma_unslop-visual-direction",
+          "label": "unslop-visual-direction: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "unslop-visual-direction"
+        },
+        {
+          "id": "wired_unslop-visual-direction",
+          "label": "unslop-visual-direction: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_unslop-visual-direction",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_unslop-visual-direction",
+          "label": "unslop-visual-direction: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_unslop-visual-direction",
+          "stream": "unslop-visual-direction"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 2: Plan",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 2: Plan",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 2: Plan",
+          "how": "For landing page or empty-state work, decide whether a visual is needed and write it as one plain sentence before any generation; advisory for dashboards and non-UI work.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "workflow": "w-marathon",
+          "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "how": "In landing page streams, choose the visual style and write the prompt recipe only after the screen works without it; advisory for non-UI work.",
+          "mode": "advisory",
+          "by": "proposed"
+        }
+      ]
+    },
+    {
+      "name": "unslop image generation gate",
+      "slug": "unslop-image-generation-gate",
+      "verdict": "rebuild",
+      "brief": "briefs/unslop-image-generation-gate.md",
+      "brief_path": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-image-generation-gate.md",
+      "lines": [
+        {
+          "id": "tests_green_unslop-image-generation-gate",
+          "label": "unslop-image-generation-gate: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "unslop-image-generation-gate"
+        },
+        {
+          "id": "egress_zero_unslop-image-generation-gate",
+          "label": "unslop-image-generation-gate: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_unslop-image-generation-gate",
+          "stream": "unslop-image-generation-gate"
+        },
+        {
+          "id": "six_sigma_unslop-image-generation-gate",
+          "label": "unslop-image-generation-gate: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "unslop-image-generation-gate"
+        },
+        {
+          "id": "wired_unslop-image-generation-gate",
+          "label": "unslop-image-generation-gate: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_unslop-image-generation-gate",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_unslop-image-generation-gate",
+          "label": "unslop-image-generation-gate: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_unslop-image-generation-gate",
+          "stream": "unslop-image-generation-gate"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 5: Build",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 5: Build",
+          "how": "Before any paid image generation for a UI or landing page, show prompt, model and size and wait for approval; if declined leave an empty slot and put the prompt in the report.",
+          "mode": "blocking",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "workflow": "w-marathon",
+          "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "how": "Before any paid image generation in a UI or landing page stream, require approval of prompt, model and size; declined means an empty slot, not a stalled loop.",
+          "mode": "blocking",
+          "by": "proposed"
+        }
+      ]
+    },
+    {
+      "name": "unslop live page snapshot",
+      "slug": "unslop-live-page-snapshot",
+      "verdict": "rebuild",
+      "brief": "briefs/unslop-live-page-snapshot.md",
+      "brief_path": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-live-page-snapshot.md",
+      "lines": [
+        {
+          "id": "tests_green_unslop-live-page-snapshot",
+          "label": "unslop-live-page-snapshot: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "unslop-live-page-snapshot"
+        },
+        {
+          "id": "egress_zero_unslop-live-page-snapshot",
+          "label": "unslop-live-page-snapshot: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_unslop-live-page-snapshot",
+          "stream": "unslop-live-page-snapshot"
+        },
+        {
+          "id": "six_sigma_unslop-live-page-snapshot",
+          "label": "unslop-live-page-snapshot: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "unslop-live-page-snapshot"
+        },
+        {
+          "id": "wired_unslop-live-page-snapshot",
+          "label": "unslop-live-page-snapshot: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_unslop-live-page-snapshot",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_unslop-live-page-snapshot",
+          "label": "unslop-live-page-snapshot: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_unslop-live-page-snapshot",
+          "stream": "unslop-live-page-snapshot"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 0: Search",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 0: Search",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 0: Search",
+          "how": "When a UI redesign starts from only a live URL, save a static HTML copy and screenshot to work on and compare against; advisory otherwise.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "⛔ CHECKPOINT 0: Search",
+          "reach": "/w-marathon › ⛔ CHECKPOINT 0: Search",
+          "workflow": "w-marathon",
+          "step": "⛔ CHECKPOINT 0: Search",
+          "how": "For UI or landing page streams that begin from a live link, snapshot the page once up front as the baseline copy; advisory for non-UI work.",
+          "mode": "advisory",
+          "by": "proposed"
+        }
+      ]
+    },
+    {
+      "name": "unslop story video renderer",
+      "slug": "unslop-story-video-renderer",
+      "verdict": "rebuild",
+      "brief": "briefs/unslop-story-video-renderer.md",
+      "brief_path": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-story-video-renderer.md",
+      "lines": [
+        {
+          "id": "tests_green_unslop-story-video-renderer",
+          "label": "unslop-story-video-renderer: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "unslop-story-video-renderer"
+        },
+        {
+          "id": "egress_zero_unslop-story-video-renderer",
+          "label": "unslop-story-video-renderer: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_unslop-story-video-renderer",
+          "stream": "unslop-story-video-renderer"
+        },
+        {
+          "id": "six_sigma_unslop-story-video-renderer",
+          "label": "unslop-story-video-renderer: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "unslop-story-video-renderer"
+        },
+        {
+          "id": "wired_unslop-story-video-renderer",
+          "label": "unslop-story-video-renderer: wired into its target, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "measure:wired_unslop-story-video-renderer",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_unslop-story-video-renderer",
+          "label": "unslop-story-video-renderer: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_unslop-story-video-renderer",
+          "stream": "unslop-story-video-renderer"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 5: Build",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 5: Build",
+          "how": "When the user asks for a before-and-after video of a UI redesign, render the story page to MP4 with the headless browser and ffmpeg; advisory and optional.",
+          "mode": "advisory",
+          "by": "proposed"
+        }
+      ]
+    },
+    {
+      "name": "unslop story video authoring",
+      "slug": "unslop-story-video-authoring",
+      "verdict": "rebuild",
+      "brief": "briefs/unslop-story-video-authoring.md",
+      "brief_path": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-story-video-authoring.md",
+      "lines": [
+        {
+          "id": "tests_green_unslop-story-video-authoring",
+          "label": "unslop-story-video-authoring: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "unslop-story-video-authoring"
+        },
+        {
+          "id": "egress_zero_unslop-story-video-authoring",
+          "label": "unslop-story-video-authoring: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_unslop-story-video-authoring",
+          "stream": "unslop-story-video-authoring"
+        },
+        {
+          "id": "six_sigma_unslop-story-video-authoring",
+          "label": "unslop-story-video-authoring: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "unslop-story-video-authoring"
+        },
+        {
+          "id": "wired_unslop-story-video-authoring",
+          "label": "unslop-story-video-authoring: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_unslop-story-video-authoring",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_unslop-story-video-authoring",
+          "label": "unslop-story-video-authoring: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_unslop-story-video-authoring",
+          "stream": "unslop-story-video-authoring"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 3: Spec",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 3: Spec",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 3: Spec",
+          "how": "When a before-and-after story video is requested for a UI redesign, spec the story page as three to five CSS-only steps with redlines; advisory otherwise.",
+          "mode": "advisory",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "workflow": "w-marathon",
+          "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+          "how": "In UI streams that ship a redesign story, author the story steps from the original screen after the passes are done; advisory for non-UI work.",
+          "mode": "advisory",
+          "by": "proposed"
+        }
+      ]
+    },
+    {
+      "name": "unslop do-not list and final checklist",
+      "slug": "unslop-do-not-list-and-final-checklist",
+      "verdict": "rebuild",
+      "brief": "briefs/unslop-do-not-list-and-final-checklist.md",
+      "brief_path": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-do-not-list-and-final-checklist.md",
+      "lines": [
+        {
+          "id": "tests_green_unslop-do-not-list-and-final-checklist",
+          "label": "unslop-do-not-list-and-final-checklist: green unit runs in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 1,
+          "owner": "build",
+          "source": "runs.streak:unit",
+          "stream": "unslop-do-not-list-and-final-checklist"
+        },
+        {
+          "id": "egress_zero_unslop-do-not-list-and-final-checklist",
+          "label": "unslop-do-not-list-and-final-checklist: zero egress in the packaged check",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:egress_zero_unslop-do-not-list-and-final-checklist",
+          "stream": "unslop-do-not-list-and-final-checklist"
+        },
+        {
+          "id": "six_sigma_unslop-do-not-list-and-final-checklist",
+          "label": "unslop-do-not-list-and-final-checklist: clean reviews in a row",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "reviews.streak",
+          "stream": "unslop-do-not-list-and-final-checklist"
+        },
+        {
+          "id": "wired_unslop-do-not-list-and-final-checklist",
+          "label": "unslop-do-not-list-and-final-checklist: wired into all 2 targets, reached by a user",
+          "type": "number",
+          "op": "at_least",
+          "value": 2,
+          "owner": "build",
+          "source": "measure:wired_unslop-do-not-list-and-final-checklist",
+          "stream": "integration"
+        },
+        {
+          "id": "packaged_unslop-do-not-list-and-final-checklist",
+          "label": "unslop-do-not-list-and-final-checklist: packaged check passes",
+          "type": "bool",
+          "op": "is",
+          "value": true,
+          "owner": "build",
+          "source": "measure:packaged_unslop-do-not-list-and-final-checklist",
+          "stream": "unslop-do-not-list-and-final-checklist"
+        }
+      ],
+      "targets": [
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+          "at": "⛔ CHECKPOINT 6: Review",
+          "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 6: Review",
+          "workflow": "w-plan-tdd-swarm",
+          "step": "⛔ CHECKPOINT 6: Review",
+          "how": "For UI, landing page or dashboard work, check the redesign against the do-not list, the closing checklist and the swap-the-product-name template test; failures stop the review. Advisory for non-UI work.",
+          "mode": "blocking",
+          "by": "proposed"
+        },
+        {
+          "kind": "workflow",
+          "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+          "file": ".claude/commands/.shortcuts/w-marathon.md",
+          "at": "Completion Checklist",
+          "reach": "/w-marathon › Completion Checklist",
+          "workflow": "w-marathon",
+          "step": "Completion Checklist",
+          "how": "For UI, landing page or dashboard streams, confirm the do-not limits and template-fit test before closing; advisory for non-UI work.",
+          "mode": "advisory",
+          "by": "proposed"
+        }
+      ]
+    }
+  ],
+  "memos": [],
+  "skipped": [],
+  "integration": {
+    "stream": "integration",
+    "plan": ".claude/bbs/runs/2026-10-30-unslop/integration.md"
+  },
+  "finish_line": {
+    "tolerance": {
+      "high": 0,
+      "medium": 2,
+      "low": 5,
+      "passes_in_a_row": 2
+    },
+    "lines": [
+      {
+        "id": "tests_green_unslop-slop-audit",
+        "label": "unslop-slop-audit: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "unslop-slop-audit"
+      },
+      {
+        "id": "egress_zero_unslop-slop-audit",
+        "label": "unslop-slop-audit: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_unslop-slop-audit",
+        "stream": "unslop-slop-audit"
+      },
+      {
+        "id": "six_sigma_unslop-slop-audit",
+        "label": "unslop-slop-audit: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "unslop-slop-audit"
+      },
+      {
+        "id": "wired_unslop-slop-audit",
+        "label": "unslop-slop-audit: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_unslop-slop-audit",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_unslop-slop-audit",
+        "label": "unslop-slop-audit: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_unslop-slop-audit",
+        "stream": "unslop-slop-audit"
+      },
+      {
+        "id": "tests_green_unslop-direction-brief",
+        "label": "unslop-direction-brief: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "unslop-direction-brief"
+      },
+      {
+        "id": "egress_zero_unslop-direction-brief",
+        "label": "unslop-direction-brief: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_unslop-direction-brief",
+        "stream": "unslop-direction-brief"
+      },
+      {
+        "id": "six_sigma_unslop-direction-brief",
+        "label": "unslop-direction-brief: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "unslop-direction-brief"
+      },
+      {
+        "id": "wired_unslop-direction-brief",
+        "label": "unslop-direction-brief: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_unslop-direction-brief",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_unslop-direction-brief",
+        "label": "unslop-direction-brief: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_unslop-direction-brief",
+        "stream": "unslop-direction-brief"
+      },
+      {
+        "id": "tests_green_unslop-triage-and-refine-only-gate",
+        "label": "unslop-triage-and-refine-only-gate: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "unslop-triage-and-refine-only-gate"
+      },
+      {
+        "id": "egress_zero_unslop-triage-and-refine-only-gate",
+        "label": "unslop-triage-and-refine-only-gate: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_unslop-triage-and-refine-only-gate",
+        "stream": "unslop-triage-and-refine-only-gate"
+      },
+      {
+        "id": "six_sigma_unslop-triage-and-refine-only-gate",
+        "label": "unslop-triage-and-refine-only-gate: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "unslop-triage-and-refine-only-gate"
+      },
+      {
+        "id": "wired_unslop-triage-and-refine-only-gate",
+        "label": "unslop-triage-and-refine-only-gate: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_unslop-triage-and-refine-only-gate",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_unslop-triage-and-refine-only-gate",
+        "label": "unslop-triage-and-refine-only-gate: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_unslop-triage-and-refine-only-gate",
+        "stream": "unslop-triage-and-refine-only-gate"
+      },
+      {
+        "id": "tests_green_unslop-ordered-redline-passes",
+        "label": "unslop-ordered-redline-passes: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "unslop-ordered-redline-passes"
+      },
+      {
+        "id": "egress_zero_unslop-ordered-redline-passes",
+        "label": "unslop-ordered-redline-passes: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_unslop-ordered-redline-passes",
+        "stream": "unslop-ordered-redline-passes"
+      },
+      {
+        "id": "six_sigma_unslop-ordered-redline-passes",
+        "label": "unslop-ordered-redline-passes: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "unslop-ordered-redline-passes"
+      },
+      {
+        "id": "wired_unslop-ordered-redline-passes",
+        "label": "unslop-ordered-redline-passes: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_unslop-ordered-redline-passes",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_unslop-ordered-redline-passes",
+        "label": "unslop-ordered-redline-passes: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_unslop-ordered-redline-passes",
+        "stream": "unslop-ordered-redline-passes"
+      },
+      {
+        "id": "tests_green_unslop-design-tokens",
+        "label": "unslop-design-tokens: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "unslop-design-tokens"
+      },
+      {
+        "id": "egress_zero_unslop-design-tokens",
+        "label": "unslop-design-tokens: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_unslop-design-tokens",
+        "stream": "unslop-design-tokens"
+      },
+      {
+        "id": "six_sigma_unslop-design-tokens",
+        "label": "unslop-design-tokens: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "unslop-design-tokens"
+      },
+      {
+        "id": "wired_unslop-design-tokens",
+        "label": "unslop-design-tokens: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_unslop-design-tokens",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_unslop-design-tokens",
+        "label": "unslop-design-tokens: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_unslop-design-tokens",
+        "stream": "unslop-design-tokens"
+      },
+      {
+        "id": "tests_green_unslop-glyph-and-duotone-effects",
+        "label": "unslop-glyph-and-duotone-effects: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "unslop-glyph-and-duotone-effects"
+      },
+      {
+        "id": "egress_zero_unslop-glyph-and-duotone-effects",
+        "label": "unslop-glyph-and-duotone-effects: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_unslop-glyph-and-duotone-effects",
+        "stream": "unslop-glyph-and-duotone-effects"
+      },
+      {
+        "id": "six_sigma_unslop-glyph-and-duotone-effects",
+        "label": "unslop-glyph-and-duotone-effects: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "unslop-glyph-and-duotone-effects"
+      },
+      {
+        "id": "wired_unslop-glyph-and-duotone-effects",
+        "label": "unslop-glyph-and-duotone-effects: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_unslop-glyph-and-duotone-effects",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_unslop-glyph-and-duotone-effects",
+        "label": "unslop-glyph-and-duotone-effects: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_unslop-glyph-and-duotone-effects",
+        "stream": "unslop-glyph-and-duotone-effects"
+      },
+      {
+        "id": "tests_green_unslop-visual-direction",
+        "label": "unslop-visual-direction: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "unslop-visual-direction"
+      },
+      {
+        "id": "egress_zero_unslop-visual-direction",
+        "label": "unslop-visual-direction: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_unslop-visual-direction",
+        "stream": "unslop-visual-direction"
+      },
+      {
+        "id": "six_sigma_unslop-visual-direction",
+        "label": "unslop-visual-direction: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "unslop-visual-direction"
+      },
+      {
+        "id": "wired_unslop-visual-direction",
+        "label": "unslop-visual-direction: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_unslop-visual-direction",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_unslop-visual-direction",
+        "label": "unslop-visual-direction: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_unslop-visual-direction",
+        "stream": "unslop-visual-direction"
+      },
+      {
+        "id": "tests_green_unslop-image-generation-gate",
+        "label": "unslop-image-generation-gate: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "unslop-image-generation-gate"
+      },
+      {
+        "id": "egress_zero_unslop-image-generation-gate",
+        "label": "unslop-image-generation-gate: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_unslop-image-generation-gate",
+        "stream": "unslop-image-generation-gate"
+      },
+      {
+        "id": "six_sigma_unslop-image-generation-gate",
+        "label": "unslop-image-generation-gate: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "unslop-image-generation-gate"
+      },
+      {
+        "id": "wired_unslop-image-generation-gate",
+        "label": "unslop-image-generation-gate: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_unslop-image-generation-gate",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_unslop-image-generation-gate",
+        "label": "unslop-image-generation-gate: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_unslop-image-generation-gate",
+        "stream": "unslop-image-generation-gate"
+      },
+      {
+        "id": "tests_green_unslop-live-page-snapshot",
+        "label": "unslop-live-page-snapshot: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "unslop-live-page-snapshot"
+      },
+      {
+        "id": "egress_zero_unslop-live-page-snapshot",
+        "label": "unslop-live-page-snapshot: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_unslop-live-page-snapshot",
+        "stream": "unslop-live-page-snapshot"
+      },
+      {
+        "id": "six_sigma_unslop-live-page-snapshot",
+        "label": "unslop-live-page-snapshot: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "unslop-live-page-snapshot"
+      },
+      {
+        "id": "wired_unslop-live-page-snapshot",
+        "label": "unslop-live-page-snapshot: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_unslop-live-page-snapshot",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_unslop-live-page-snapshot",
+        "label": "unslop-live-page-snapshot: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_unslop-live-page-snapshot",
+        "stream": "unslop-live-page-snapshot"
+      },
+      {
+        "id": "tests_green_unslop-story-video-renderer",
+        "label": "unslop-story-video-renderer: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "unslop-story-video-renderer"
+      },
+      {
+        "id": "egress_zero_unslop-story-video-renderer",
+        "label": "unslop-story-video-renderer: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_unslop-story-video-renderer",
+        "stream": "unslop-story-video-renderer"
+      },
+      {
+        "id": "six_sigma_unslop-story-video-renderer",
+        "label": "unslop-story-video-renderer: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "unslop-story-video-renderer"
+      },
+      {
+        "id": "wired_unslop-story-video-renderer",
+        "label": "unslop-story-video-renderer: wired into its target, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "measure:wired_unslop-story-video-renderer",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_unslop-story-video-renderer",
+        "label": "unslop-story-video-renderer: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_unslop-story-video-renderer",
+        "stream": "unslop-story-video-renderer"
+      },
+      {
+        "id": "tests_green_unslop-story-video-authoring",
+        "label": "unslop-story-video-authoring: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "unslop-story-video-authoring"
+      },
+      {
+        "id": "egress_zero_unslop-story-video-authoring",
+        "label": "unslop-story-video-authoring: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_unslop-story-video-authoring",
+        "stream": "unslop-story-video-authoring"
+      },
+      {
+        "id": "six_sigma_unslop-story-video-authoring",
+        "label": "unslop-story-video-authoring: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "unslop-story-video-authoring"
+      },
+      {
+        "id": "wired_unslop-story-video-authoring",
+        "label": "unslop-story-video-authoring: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_unslop-story-video-authoring",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_unslop-story-video-authoring",
+        "label": "unslop-story-video-authoring: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_unslop-story-video-authoring",
+        "stream": "unslop-story-video-authoring"
+      },
+      {
+        "id": "tests_green_unslop-do-not-list-and-final-checklist",
+        "label": "unslop-do-not-list-and-final-checklist: green unit runs in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 1,
+        "owner": "build",
+        "source": "runs.streak:unit",
+        "stream": "unslop-do-not-list-and-final-checklist"
+      },
+      {
+        "id": "egress_zero_unslop-do-not-list-and-final-checklist",
+        "label": "unslop-do-not-list-and-final-checklist: zero egress in the packaged check",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:egress_zero_unslop-do-not-list-and-final-checklist",
+        "stream": "unslop-do-not-list-and-final-checklist"
+      },
+      {
+        "id": "six_sigma_unslop-do-not-list-and-final-checklist",
+        "label": "unslop-do-not-list-and-final-checklist: clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak",
+        "stream": "unslop-do-not-list-and-final-checklist"
+      },
+      {
+        "id": "wired_unslop-do-not-list-and-final-checklist",
+        "label": "unslop-do-not-list-and-final-checklist: wired into all 2 targets, reached by a user",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "measure:wired_unslop-do-not-list-and-final-checklist",
+        "stream": "integration"
+      },
+      {
+        "id": "packaged_unslop-do-not-list-and-final-checklist",
+        "label": "unslop-do-not-list-and-final-checklist: packaged check passes",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:packaged_unslop-do-not-list-and-final-checklist",
+        "stream": "unslop-do-not-list-and-final-checklist"
+      },
+      {
+        "id": "delivered",
+        "label": "The owner was told what they got: delivered.md lists every power, wired, with its command",
+        "type": "bool",
+        "op": "is",
+        "value": true,
+        "owner": "build",
+        "source": "measure:delivered",
+        "stream": "integration"
+      },
+      {
+        "id": "clean_reviews",
+        "label": "Clean reviews in a row",
+        "type": "number",
+        "op": "at_least",
+        "value": 2,
+        "owner": "build",
+        "source": "reviews.streak"
+      },
+      {
+        "id": "latest_high",
+        "label": "High findings in the latest review",
+        "type": "number",
+        "op": "at_most",
+        "value": 0,
+        "owner": "build",
+        "source": "reviews.latest.high"
+      },
+      {
+        "id": "open_high",
+        "label": "Open high findings",
+        "type": "number",
+        "op": "at_most",
+        "value": 0,
+        "owner": "build",
+        "source": "findings.open:high"
+      }
+    ]
+  },
+  "note": null,
+  "ts": "2026-10-30T23:28:30.729Z"
+}

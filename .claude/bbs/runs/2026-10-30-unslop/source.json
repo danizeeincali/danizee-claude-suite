@@ -1,0 +1,15 @@
+{
+  "run": "2026-10-30-unslop",
+  "type": "repo",
+  "ref": "https://github.com/heydamir/unslop",
+  "identity": "git:4652254daff586ff4739849395a127b56f7f8cc7",
+  "fetched": true,
+  "reuse_from": null,
+  "cited": [],
+  "ts": "2026-10-30T22:39:55.898Z",
+  "source_only": {
+    "kept": 14,
+    "skipped": 6
+  },
+  "fetched_at": "2026-10-30T22:40:00.788Z"
+}

@@ -1,0 +1,105 @@
+{
+  "streams": [
+    {
+      "name": "_meta",
+      "state": "meta",
+      "isolation": "worktree",
+      "mode": "marathon",
+      "command": "w-marathon",
+      "created": "2026-10-30T23:28:29.299Z",
+      "tasks": []
+    },
+    {
+      "name": "unslop-slop-audit",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-slop-audit.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "unslop-direction-brief",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-direction-brief.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "unslop-triage-and-refine-only-gate",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-triage-and-refine-only-gate.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "unslop-ordered-redline-passes",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-ordered-redline-passes.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "unslop-design-tokens",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-design-tokens.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "unslop-glyph-and-duotone-effects",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-glyph-and-duotone-effects.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "unslop-visual-direction",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-visual-direction.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "unslop-image-generation-gate",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-image-generation-gate.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "unslop-live-page-snapshot",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-live-page-snapshot.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "unslop-story-video-renderer",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-story-video-renderer.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "unslop-story-video-authoring",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-story-video-authoring.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "unslop-do-not-list-and-final-checklist",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-do-not-list-and-final-checklist.md",
+      "next": "read the brief, write the contract and failing tests",
+      "tasks": []
+    },
+    {
+      "name": "integration",
+      "state": "queued",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/integration.md",
+      "next": "after every build stream is done: wire each power into its approved steps",
+      "tasks": []
+    }
+  ],
+  "handoff": null
+}

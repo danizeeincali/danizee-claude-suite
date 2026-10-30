@@ -1,0 +1,363 @@
+{
+  "run": "2026-10-30-unslop",
+  "source_identity": "git:4652254daff586ff4739849395a127b56f7f8cc7",
+  "powers_ts": "2026-10-30T22:41:48.065Z",
+  "sandbox": {
+    "present": true,
+    "kind": "unshare",
+    "reason": "unshare is available"
+  },
+  "rows": {
+    "unslop slop audit": {
+      "licence": "CC-BY-4.0",
+      "licence_class": "none",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "No candidate walks a screen against a slop-sign list; landing-sections checks page section order and CTAs, design-brief collects answers, and the rest are unrelated.",
+        "ts": "2026-10-30T22:42:54.365Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "licence none — use is legal only for a permissive licence"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence none — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "licence none — use is legal only for a permissive licence"
+      },
+      "needs_probe": false,
+      "probe": null,
+      "decision": "rebuild"
+    },
+    "unslop direction brief": {
+      "licence": "CC-BY-4.0",
+      "licence_class": "none",
+      "judgment": {
+        "status": "partial",
+        "tool": "helper:.claude/helpers/kit/design-brief.js",
+        "why": "questions/assume capture product offer, audience and brand constraints, but nothing on character, world, moments or signature, no banned-adjective list, and its default brand text uses 'clean'.",
+        "ts": "2026-10-30T22:42:54.365Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "licence none — use is legal only for a permissive licence"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence none — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "licence none — use is legal only for a permissive licence"
+      },
+      "needs_probe": false,
+      "probe": null,
+      "decision": "rebuild"
+    },
+    "unslop triage and refine-only gate": {
+      "licence": "CC-BY-4.0",
+      "licence_class": "none",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "triage.js tracks finding identity across runs and issue lifecycle; no candidate grades a screen as heavy, light or no slop or gates on user agreement.",
+        "ts": "2026-10-30T22:42:54.365Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "licence none — use is legal only for a permissive licence"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence none — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "licence none — use is legal only for a permissive licence"
+      },
+      "needs_probe": false,
+      "probe": null,
+      "decision": "rebuild"
+    },
+    "unslop ordered redline passes": {
+      "licence": "CC-BY-4.0",
+      "licence_class": "none",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "No candidate applies the nine ordered passes; entrance.js has entrance keyframes using blur, scale and several easings, which conflicts with the motion pass rules rather than implementing them.",
+        "ts": "2026-10-30T22:42:54.365Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "licence none — use is legal only for a permissive licence"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence none — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "licence none — use is legal only for a permissive licence"
+      },
+      "needs_probe": false,
+      "probe": null,
+      "decision": "rebuild"
+    },
+    "unslop design tokens": {
+      "licence": "CC-BY-4.0",
+      "licence_class": "none",
+      "judgment": {
+        "status": "partial",
+        "tool": "helper:.claude/helpers/kit/entrance.js",
+        "why": "entrance.js holds per-kind durations, a shared ease-out curve and a container stagger, covering part of the motion tokens only; no spacing scale, neutral ramps, type scale, radii or six-item stagger cap.",
+        "ts": "2026-10-30T22:42:54.365Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "licence none — use is legal only for a permissive licence"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence none — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "licence none — use is legal only for a permissive licence"
+      },
+      "needs_probe": false,
+      "probe": null,
+      "decision": "rebuild"
+    },
+    "unslop glyph and duotone effects": {
+      "licence": "CC-BY-4.0",
+      "licence_class": "none",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "layer-place.js and bg-fill.js place and size images; none renders glyph grids, halftone, dithering or duotone.",
+        "ts": "2026-10-30T22:42:54.365Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "licence none — use is legal only for a permissive licence"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence none — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "licence none — use is legal only for a permissive licence"
+      },
+      "needs_probe": false,
+      "probe": null,
+      "decision": "rebuild"
+    },
+    "unslop visual direction": {
+      "licence": "CC-BY-4.0",
+      "licence_class": "none",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "No candidate decides whether a visual is needed, writes a one-sentence visual brief or builds a generation prompt; landing-sections only lists a hero visual as a required element.",
+        "ts": "2026-10-30T22:42:54.365Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "licence none — use is legal only for a permissive licence"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence none — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "licence none — use is legal only for a permissive licence"
+      },
+      "needs_probe": false,
+      "probe": null,
+      "decision": "rebuild"
+    },
+    "unslop image generation gate": {
+      "licence": "CC-BY-4.0",
+      "licence_class": "none",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "No candidate generates images or asks for a yes before a paid run; bg-fill.js only computes CSS background sizing for an existing image.",
+        "ts": "2026-10-30T22:42:54.365Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "licence none — use is legal only for a permissive licence"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence none — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "licence none — use is legal only for a permissive licence"
+      },
+      "needs_probe": false,
+      "probe": null,
+      "decision": "rebuild"
+    },
+    "unslop live page snapshot": {
+      "licence": "CC-BY-4.0",
+      "licence_class": "none",
+      "judgment": {
+        "status": "missing",
+        "tool": null,
+        "why": "The only candidates are pager and legacy review fixtures and the theme command; none opens a live page in a headless browser or inlines its assets.",
+        "ts": "2026-10-30T22:42:54.365Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "licence none — use is legal only for a permissive licence"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence none — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "licence none — use is legal only for a permissive licence"
+      },
+      "needs_probe": false,
+      "probe": null,
+      "decision": "rebuild"
+    },
+    "unslop story video renderer": {
+      "licence": "CC-BY-4.0",
+      "licence_class": "none",
+      "judgment": {
+        "status": "partial",
+        "tool": "helper:.claude/helpers/kit/frame-capture.js",
+        "why": "capture steps a faked clock at fps, pauses CSS animations and screenshots each frame with a manifest, covering the deterministic frame core; no ffmpeg MP4 encoding, stage scaling, redline overlays, step classes, play mode or loopback server.",
+        "ts": "2026-10-30T22:42:54.365Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "licence none — use is legal only for a permissive licence"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence none — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "licence none — use is legal only for a permissive licence"
+      },
+      "needs_probe": false,
+      "probe": null,
+      "decision": "rebuild"
+    },
+    "unslop story video authoring": {
+      "licence": "CC-BY-4.0",
+      "licence_class": "none",
+      "judgment": {
+        "status": "partial",
+        "tool": "helper:.claude/helpers/kit/keyframes.js",
+        "why": "check enforces one-sentence stories, seamless loop start and end, and unison offsets, and the engine evaluates eased tracks; no step plan, CSS tween rules for gradients, pills or text, redlines, camera framing or credit line.",
+        "ts": "2026-10-30T22:42:54.365Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "licence none — use is legal only for a permissive licence"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence none — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "licence none — use is legal only for a permissive licence"
+      },
+      "needs_probe": false,
+      "probe": null,
+      "decision": "rebuild"
+    },
+    "unslop do-not list and final checklist": {
+      "licence": "CC-BY-4.0",
+      "licence_class": "none",
+      "judgment": {
+        "status": "partial",
+        "tool": "helper:.claude/helpers/kit/landing-sections.js",
+        "why": "check verifies section order against the canonical plan and that hero and final CTAs exist and match; nothing covers logo handling, emoji or exclamation marks, dead bands, real visuals, motion calm or the template test.",
+        "ts": "2026-10-30T22:42:54.365Z"
+      },
+      "legal": [
+        "rebuild",
+        "skip"
+      ],
+      "default": "rebuild",
+      "removed": [
+        {
+          "verdict": "use",
+          "reason": "licence none — use is legal only for a permissive licence"
+        }
+      ],
+      "not_legal_why": {
+        "buy": "licence none — buy is legal only for a commercial licence or a power that sends data off the machine",
+        "use": "licence none — use is legal only for a permissive licence"
+      },
+      "needs_probe": false,
+      "probe": null,
+      "decision": "rebuild"
+    }
+  },
+  "decisions": {
+    "unslop slop audit": "rebuild",
+    "unslop direction brief": "rebuild",
+    "unslop triage and refine-only gate": "rebuild",
+    "unslop ordered redline passes": "rebuild",
+    "unslop design tokens": "rebuild",
+    "unslop glyph and duotone effects": "rebuild",
+    "unslop visual direction": "rebuild",
+    "unslop image generation gate": "rebuild",
+    "unslop live page snapshot": "rebuild",
+    "unslop story video renderer": "rebuild",
+    "unslop story video authoring": "rebuild",
+    "unslop do-not list and final checklist": "rebuild"
+  },
+  "ts": "2026-10-30T23:28:28.952Z"
+}

@@ -1,0 +1,12 @@
+{"run":"2026-10-30-unslop","power":"unslop slop audit","verdict":"rebuild","label":1,"ts":"2026-10-30T23:28:28.952Z"}
+{"run":"2026-10-30-unslop","power":"unslop direction brief","verdict":"rebuild","label":1,"ts":"2026-10-30T23:28:28.952Z"}
+{"run":"2026-10-30-unslop","power":"unslop triage and refine-only gate","verdict":"rebuild","label":1,"ts":"2026-10-30T23:28:28.952Z"}
+{"run":"2026-10-30-unslop","power":"unslop ordered redline passes","verdict":"rebuild","label":1,"ts":"2026-10-30T23:28:28.952Z"}
+{"run":"2026-10-30-unslop","power":"unslop design tokens","verdict":"rebuild","label":1,"ts":"2026-10-30T23:28:28.952Z"}
+{"run":"2026-10-30-unslop","power":"unslop glyph and duotone effects","verdict":"rebuild","label":1,"ts":"2026-10-30T23:28:28.952Z"}
+{"run":"2026-10-30-unslop","power":"unslop visual direction","verdict":"rebuild","label":1,"ts":"2026-10-30T23:28:28.952Z"}
+{"run":"2026-10-30-unslop","power":"unslop image generation gate","verdict":"rebuild","label":1,"ts":"2026-10-30T23:28:28.952Z"}
+{"run":"2026-10-30-unslop","power":"unslop live page snapshot","verdict":"rebuild","label":1,"ts":"2026-10-30T23:28:28.952Z"}
+{"run":"2026-10-30-unslop","power":"unslop story video renderer","verdict":"rebuild","label":1,"ts":"2026-10-30T23:28:28.952Z"}
+{"run":"2026-10-30-unslop","power":"unslop story video authoring","verdict":"rebuild","label":1,"ts":"2026-10-30T23:28:28.952Z"}
+{"run":"2026-10-30-unslop","power":"unslop do-not list and final checklist","verdict":"rebuild","label":1,"ts":"2026-10-30T23:28:28.952Z"}
