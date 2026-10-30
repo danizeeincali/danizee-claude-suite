@@ -11,17 +11,23 @@
     },
     {
       "name": "unslop-slop-audit",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-slop-audit.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract, failing tests, verb",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-slop-audit",
+      "phase": "build",
+      "base": "e2d81ce5fe4cf53073d5faffcd9dd5cbc7b1dcbd"
     },
     {
       "name": "unslop-direction-brief",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-direction-brief.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract, failing tests, verb",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-direction-brief",
+      "phase": "build",
+      "base": "e2d81ce5fe4cf53073d5faffcd9dd5cbc7b1dcbd"
     },
     {
       "name": "unslop-triage-and-refine-only-gate",
@@ -32,10 +38,13 @@
     },
     {
       "name": "unslop-ordered-redline-passes",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-ordered-redline-passes.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract, failing tests, verb",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-ordered-redline-passes",
+      "phase": "build",
+      "base": "e2d81ce5fe4cf53073d5faffcd9dd5cbc7b1dcbd"
     },
     {
       "name": "unslop-design-tokens",

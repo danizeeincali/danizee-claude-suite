@@ -1,20 +1,20 @@
 # Marathon 2026-10-30-bbs-unslop
 
 - State: RUNNING
-- Budget: 0 / 14,000,000 tokens
+- Budget: 450,000 / 14,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Next stream "unslop-slop-audit": create its worktree (`git worktree add ../<repo>-unslop-slop-audit -b marathon/2026-10-30-bbs-unslop/unslop-slop-audit`) and activate it with `cli.js stream unslop-slop-audit state=active isolation=<path>`, then /w-marathon --resume 2026-10-30-bbs-unslop.
+- Next for you: Continue stream "unslop-slop-audit" (next: builder writes contract, failing tests, verb) — /w-marathon --resume 2026-10-30-bbs-unslop.
 
 ## Streams
 
 | Stream | Isolation | Plan | State | Gate | Phase | Next | Tasks | Escapes |
 |---|---|---|---|---|---|---|---|---|
-| unslop-slop-audit |  | .claude/bbs/runs/2026-10-30-unslop/briefs/unslop-slop-audit.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
-| unslop-direction-brief |  | .claude/bbs/runs/2026-10-30-unslop/briefs/unslop-direction-brief.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
+| unslop-slop-audit | ../danizee-claude-suite-unslop-slop-audit | .claude/bbs/runs/2026-10-30-unslop/briefs/unslop-slop-audit.md | active | clean 0/2 | build | builder writes contract, failing tests, verb |  | 0 |
+| unslop-direction-brief | ../danizee-claude-suite-unslop-direction-brief | .claude/bbs/runs/2026-10-30-unslop/briefs/unslop-direction-brief.md | active | clean 0/2 | build | builder writes contract, failing tests, verb |  | 0 |
 | unslop-triage-and-refine-only-gate |  | .claude/bbs/runs/2026-10-30-unslop/briefs/unslop-triage-and-refine-only-gate.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
-| unslop-ordered-redline-passes |  | .claude/bbs/runs/2026-10-30-unslop/briefs/unslop-ordered-redline-passes.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
+| unslop-ordered-redline-passes | ../danizee-claude-suite-unslop-ordered-redline-passes | .claude/bbs/runs/2026-10-30-unslop/briefs/unslop-ordered-redline-passes.md | active | clean 0/2 | build | builder writes contract, failing tests, verb |  | 0 |
 | unslop-design-tokens |  | .claude/bbs/runs/2026-10-30-unslop/briefs/unslop-design-tokens.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | unslop-glyph-and-duotone-effects |  | .claude/bbs/runs/2026-10-30-unslop/briefs/unslop-glyph-and-duotone-effects.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
 | unslop-visual-direction |  | .claude/bbs/runs/2026-10-30-unslop/briefs/unslop-visual-direction.md | queued | clean 0/2 |  | read the brief, write the contract and failing tests |  | 0 |
