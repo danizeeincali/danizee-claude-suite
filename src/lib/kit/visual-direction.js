@@ -29,6 +29,13 @@
  *       placement: object-fit cover, object-position, radius, alt text from the sentence, an edge fade into the
  *       page color done in code, and the display size. The sentence must pass the sentence check, else exit 1.
  *
+ * Styles: the style set (photo, illustration, render, collage) is the four ways an image prompt can be rendered, not
+ * the brief's example looks (painted background, cinematic object, soft 3D, ...), which are art directions that
+ * map onto these. "cinematic" is banned inside the sentence because it is a vague quality word, whereas the brief
+ * names a cinematic object as a direction: say what is physically there (a lit object, low angle) instead.
+ * Direct callers: decide, checkSentence and buildPrompt throw a KitExit (code 1) for a non-object context or a
+ * non-string sentence.
+ *
  * Exit codes: 0 answer printed; 1 bad input (unknown subcommand or flag, duplicate flag, missing, unreadable,
  * binary, oversize or non-object input, invalid field; message on stderr, nothing on stdout).
  * Built from ideas audited by /w-bbs (run 2026-10-30-unslop); no foreign code.
@@ -39,7 +46,7 @@ import path from 'path';
 import { KitExit } from './kit-exit.js';
 
 export const verb = 'visual-direction';
-export const usage = 'cli.js visual-direction decide | sentence | prompt [--file <context.json>]  (JSON on stdin or --file; advisory, exit 0)';
+export const usage = 'cli.js visual-direction decide | sentence | prompt [--file <context.json>]  (JSON on stdin or --file; exit 0 answer, 1 bad input; sentence problems are advisory)';
 
 const MAX_BYTES = 8 * 1024 * 1024;
 const bad = m => new KitExit(m, 1);
@@ -64,22 +71,49 @@ const BASE_NEGATIVE = ['text', 'letters', 'logos', 'watermarks', 'glows', 'gradi
 
 export const BANNED = ['stunning', 'futuristic', 'abstract', '3d blob', 'glowing', 'gradient', 'neon', 'cyberpunk', 'sleek', 'cinematic', '8k', 'trending'];
 const VAGUE = new Set(['something', 'thing', 'things', 'stuff', 'vibe', 'vibes', 'feeling', 'idea', 'concept', 'mood', 'energy', 'innovation', 'technology', 'future', 'visual', 'image', 'picture', 'background']);
-const STOP = new Set(['a', 'an', 'the', 'of', 'in', 'on', 'at', 'by', 'with', 'and', 'or', 'to', 'from', 'for', 'into', 'onto', 'over', 'under', 'near', 'its', 'their', 'his', 'her', 'is', 'are', 'as', 'that', 'this', 'one', 'two', 'some', 'very', 'soft', 'warm', 'cool', 'light', 'new', 'big', 'small', 'large', 'little', 'beautiful', 'modern', 'nice', 'cool', 'amazing']);
+const STOP = new Set(['a', 'an', 'the', 'of', 'in', 'on', 'at', 'by', 'with', 'and', 'or', 'to', 'from', 'for', 'into', 'onto', 'over', 'under', 'near', 'its', 'their', 'his', 'her', 'is', 'are', 'as', 'that', 'this', 'one', 'two', 'some', 'very', 'soft', 'warm', 'cool', 'light', 'new', 'big', 'small', 'large', 'little', 'beautiful', 'modern', 'nice', 'amazing']);
 const LIGHT_WORDS = /\b(light|lit|sun|sunlight|sunrise|sunset|dawn|dusk|daylight|lamp|candle|shadow|shadows|morning|evening|window|overcast|moonlight|backlit)\b/i;
 const SETTING_WORDS = /\b(in|on|at|beside|inside|under|near|against|across|behind|by|through|over)\b/i;
 
 const words = s => s.trim().split(/\s+/).filter(Boolean);
 
+const ABBREV = new Set(['mr', 'mrs', 'ms', 'dr', 'st', 'jr', 'sr', 'vs', 'a.m', 'p.m', 'e.g', 'i.e']);
+/**
+ * A second sentence starts after "!" or "?", or after "." (and closing quotes or brackets) plus a space, when the next
+ * character is not a lowercase letter and the word before the period is not a known abbreviation (Mr, Dr, St, a.m.,
+ * p.m., e.g., i.e.) or a single letter. Decimals (3.5) have no space. One linear pass; the look-back is at most 8 characters.
+ */
+function hasSecondSentence(s) {
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (c !== '.' && c !== '!' && c !== '?') continue;
+    let j = i + 1;
+    while (j < s.length && '"\')]'.includes(s[j])) j++;
+    if (j >= s.length || s[j] !== ' ') continue;
+    while (j < s.length && s[j] === ' ') j++;
+    if (j >= s.length) continue;
+    if (c === '.') {
+      if (/[a-z]/.test(s[j])) continue;
+      let k = i;
+      while (k > 0 && i - k < 8 && s[k - 1] !== ' ') k--;
+      const tok = s.slice(k, i).replace(/^["'(\[]+/, '').toLowerCase();
+      if (ABBREV.has(tok) || /^[a-z]$/.test(tok)) continue;
+    }
+    return true;
+  }
+  return false;
+}
+
 /** Check a visual sentence. Returns { ok, sentence, words, problems, hints }. */
 export function checkSentence(sentence) {
-  const s = String(sentence).replace(/\s+/g, ' ').trim();
+  if (typeof sentence !== 'string') throw bad('sentence must be a string');
+  const s = sentence.replace(/\s+/g, ' ').trim();
   const problems = [];
   const hints = [];
   const add = (id, message) => problems.push({ id, message });
   const wc = s ? words(s).length : 0;
   if (!s) add('empty', 'the sentence is empty: write what is in the picture, where, and in what light');
-  // more than one sentence: a terminator followed by more text (decimals like 3.5 and abbreviations without a space are fine)
-  if (/[.!?]["')\]]*\s+\S/.test(s)) add('not-one-sentence', 'write ONE sentence; merge the second thought into the first or drop it');
+  if (hasSecondSentence(s)) add('not-one-sentence', 'write ONE sentence; merge the second thought into the first or drop it');
   if (wc > 30) add('too-long', `${wc} words; the limit is 30 — cut to one subject, one setting, one light`);
   const lower = ` ${s.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
   const hit = BANNED.filter(b => lower.includes(` ${b.replace(/[^a-z0-9]+/g, ' ')} `) || (b === 'glowing' && /\bglow(s|ed|ing)?\b/.test(lower)) || (b === 'gradient' && /\bgradients\b/.test(lower)));
@@ -96,6 +130,7 @@ export function checkSentence(sentence) {
 
 /** Decide whether a screen needs a visual and which kind. */
 export function decide(ctx) {
+  if (!isObj(ctx)) throw bad('context must be an object');
   const screen = need(ctx, 'screen', v => SCREENS.includes(v), `one of ${SCREENS.join(', ')}`);
   const hasUi = needBool(ctx, 'has_product_ui');
   const works = needBool(ctx, 'works_without_visual');
@@ -148,8 +183,9 @@ export function colorWord(hex) {
 
 /** Build the image prompt and placement notes. */
 export function buildPrompt(ctx) {
-  const chk = checkSentence(typeof ctx.sentence === 'string' ? ctx.sentence : '');
+  if (!isObj(ctx)) throw bad('context must be an object');
   if (typeof ctx.sentence !== 'string') throw bad('sentence must be a string');
+  const chk = checkSentence(ctx.sentence);
   if (!chk.ok) throw bad(`sentence fails the check: ${chk.problems.map(p => p.id).join(', ')} — run the sentence subcommand and fix it first`);
   const style = need(ctx, 'style', v => STYLES.includes(v), `one of ${STYLES.join(', ')}`);
   const aspect = need(ctx, 'aspect', v => Object.hasOwn(SIZES, v), `one of ${Object.keys(SIZES).join(', ')}`);

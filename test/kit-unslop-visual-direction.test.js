@@ -163,3 +163,37 @@ describe('input handling', () => {
   });
   it('accepts a BOM', async () => assert.equal((await call('sentence', '﻿' + JSON.stringify({ sentence: GOOD }))).ok, true));
 });
+
+describe('review r1 fixes', () => {
+  it('abbreviations, times and quoted periods are one sentence; prompt works', () => {
+    for (const s of ['Mr. Lee shapes a clay bowl at a wooden bench in low morning sun.', 'A kettle at 3 p.m. in sun on a stove.', 'Dr. Ito holds a brass kettle at a bench, e.g. in morning sun.']) {
+      const r = checkSentence(s);
+      assert.equal(r.problems.some(p => p.id === 'not-one-sentence'), false, s);
+      assert.equal(buildPrompt({ ...P, sentence: s }).aspect, '16:9');
+    }
+    assert.ok(checkSentence('A kettle on a stove. A cup on a table.').problems.some(p => p.id === 'not-one-sentence'));
+    assert.ok(checkSentence('A kettle on a stove! A cup on a table.').problems.some(p => p.id === 'not-one-sentence'));
+  });
+  it('a long run of periods is scanned in linear time', () => {
+    const t = Date.now();
+    checkSentence('. '.repeat(200000) + 'x'.repeat(100000));
+    assert.ok(Date.now() - t < 3000);
+  });
+  it('usage no longer says every subcommand is advisory', async () => {
+    const { usage } = await import('../src/lib/kit/visual-direction.js');
+    assert.doesNotMatch(usage, /advisory, exit 0/);
+    assert.match(usage, /1 bad input/);
+  });
+  it('direct callers get a KitExit for bad arguments', () => {
+    for (const f of [() => decide(null), () => decide([]), () => buildPrompt(undefined), () => checkSentence(undefined), () => checkSentence(5)])
+      assert.throws(f, e => e instanceof KitExit && e.code === 1);
+  });
+  it('header explains the style set and cinematic', async () => {
+    const src = await fs.readFile(new URL('../src/lib/kit/visual-direction.js', import.meta.url), 'utf-8');
+    assert.match(src, /"cinematic" is banned inside the sentence/);
+  });
+  it('STOP has no duplicate cool', async () => {
+    const src = await fs.readFile(new URL('../src/lib/kit/visual-direction.js', import.meta.url), 'utf-8');
+    assert.equal(src.match(/'cool'/g).length, 1);
+  });
+});
