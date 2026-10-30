@@ -6,18 +6,22 @@
  *       → { grade: "heavy"|"light"|"refine-only", why, total, groups_hit, top_groups, plan, budget_hint,
  *           confirm: { required: true, question, options } }
  *   slop-triage gate --state <file.json>
- *       → exit 0 { confirmed: true, grade, at } when the state file records { confirmed: true, grade, at };
- *         exit 2 { confirmed: false, why } otherwise (no file, or not confirmed): the stop-before-edit gate.
+ *       → exit 0 { confirmed: true, grade, at, choice?, graded_as? } when the state file records { confirmed: true, grade, at };
+ *         exit 2 { confirmed: false, why, exit: 2 } otherwise (no file, or not confirmed): the stop-before-edit gate.
  *   slop-triage confirm --state <file.json> --grade <heavy|light|refine-only> [--choice <option text>]
  *       → writes { confirmed: true, grade, choice, at } atomically (temp file + rename) and prints it.
- *         The default choice is "Go with this direction"; "Only refine, keep the design" is also a yes.
- *         "Change the direction" is a no: nothing is written, exit 2, and the grade should be re-run.
+ *         The default choice is "Go with this direction". "Only refine, keep the design" is also a yes, but it is
+ *         recorded as grade "refine-only", so a caller that branches on the gate's grade runs no redesign. Every
+ *         record carries graded_as, the grade you passed.
+ *         "Change the direction" is a no: it REVOKES any earlier confirmation by atomically writing
+ *         { confirmed: false, choice, at } over the state file, then exits 2 (so gate exits 2 afterwards); grade again.
  *
  * Input is the JSON of `slop-audit scan`:
  *   { format: "html"|"css"|"jsx"|"md", hits: [{ sign, group, line, excerpt, fix }],
  *     counts: { surfaces, type, icons, spacing, copy, components, "landing-hero", motion, "template-look": n },
  *     total, manual: [sign ids] }
- * A wrong shape exits 1 with the field named.
+ * A wrong shape exits 1 with the field named, and so does an inconsistent one: total must equal hits.length and
+ * each counts[group] must equal the hits in that group. Extra keys (the `exit` of `scan --strict`) are ignored.
  *
  * Grading (thresholds are exported constants): refine-only when total is 0, or total is 1 to REFINE_MAX_HITS (2)
  * in at most one group: an already good screen gets a few small refinements and never a redesign. Otherwise heavy
@@ -25,7 +29,8 @@
  * HEAVY_BIG_TOTAL (8) or more, or, given --lines (the screen's line count), hits per 100 lines reach
  * HEAVY_DENSITY (5). Otherwise light. `plan` says what to do: heavy runs the full ordered redline passes after a
  * new direction; light lists targeted fixes by group in pass order (spacing, color, icons, copy, type, layout,
- * motion) and keeps the existing brand; refine-only is at most REFINE_MAX_EDITS (3) refinements, design kept.
+ * motion) and keeps the existing brand; refine-only is at most REFINE_MAX_EDITS (3) items, design kept: the hits become `refinements` and the
+ * rest of the three are generic `suggestions` with exact values, so even a clean screen (0 hits) gets 3.
  * `confirm.question` is one question to put to the user before any edit; skip it only when the user already said
  * to just do it. `budget_hint` keeps the run quick. Advisory except gate (exit 2) and bad input (exit 1).
  * Built from ideas audited by /w-bbs (run 2026-10-30-unslop); no foreign code.
@@ -62,6 +67,13 @@ export const PASSES = [
   { pass: 'motion', groups: ['motion'] },
 ];
 
+/** Generic small refinements for a screen the audit found (nearly) clean; each has an exact value. */
+export const SUGGESTIONS = [
+  { suggestion: 'spacing', fix: 'Snap one off-grid gap or padding to the 4/8 scale (4, 8, 12, 16, 24, 32 px)' },
+  { suggestion: 'contrast', fix: 'Check the weakest text on its background: raise it to a 4.5:1 contrast ratio (3:1 for large text)' },
+  { suggestion: 'type', fix: 'Set one heading line-height to 1.1 to 1.2 and keep body text at 1.5 to 1.6' },
+];
+
 const BUDGET = {
   heavy: 'full pass set; render at most 3 times; start image generation once the direction is confirmed',
   light: 'targeted fixes only; render at most 3 times',
@@ -88,6 +100,11 @@ export function validateAudit(a) {
   if (!a.counts || typeof a.counts !== 'object' || Array.isArray(a.counts)) throw bad('audit.counts: must be an object');
   for (const g of GROUPS) if (!isInt(a.counts[g])) throw bad(`audit.counts.${g}: must be a non-negative integer`);
   if (!isInt(a.total)) throw bad('audit.total: must be a non-negative integer');
+  if (a.total !== a.hits.length) throw bad(`audit.total: must equal hits.length (${a.hits.length})`);
+  for (const g of GROUPS) {
+    const n = a.hits.filter(h => h.group === g).length;
+    if (a.counts[g] !== n) throw bad(`audit.counts.${g}: must equal the hits in group ${g} (${n})`);
+  }
   if (!Array.isArray(a.manual) || a.manual.some(m => typeof m !== 'string')) throw bad('audit.manual: must be an array of sign ids (strings)');
   return a;
 }
@@ -155,9 +172,10 @@ function plan(g, counts, hits) {
   }
   return {
     mode: 'refine-only',
-    steps: [`Offer at most ${REFINE_MAX_EDITS} small refinements with exact values`, 'Apply them only if the user agrees', 'Keep the design; never change a good screen just to look different'],
+    steps: [`Offer ${REFINE_MAX_EDITS} small refinements with exact values: the audit's own first, then the suggestions below`, 'Apply them only if the user agrees', 'Keep the design; never change a good screen just to look different'],
     max_refinements: REFINE_MAX_EDITS,
-    refinements: hits.slice(0, REFINE_MAX_EDITS).map(h => ({ sign: h.sign, line: h.line, fix: h.fix })),
+    refinements: hits.map(h => ({ sign: h.sign, line: h.line, fix: h.fix })),
+    suggestions: SUGGESTIONS.slice(0, REFINE_MAX_EDITS - hits.length),
   };
 }
 
@@ -255,7 +273,7 @@ export async function run(args, io) {
     if (!GRADES.includes(s.grade) || typeof s.at !== 'string' || Number.isNaN(Date.parse(s.at))) {
       return { confirmed: false, why: 'the confirmation is incomplete: it needs a valid grade and at', exit: 2 };
     }
-    return { confirmed: true, grade: s.grade, at: s.at, ...(typeof s.choice === 'string' ? { choice: s.choice } : {}) };
+    return { confirmed: true, grade: s.grade, at: s.at, ...(typeof s.choice === 'string' ? { choice: s.choice } : {}), ...(GRADES.includes(s.graded_as) ? { graded_as: s.graded_as } : {}) };
   }
   if (cmd === 'confirm') {
     const f = parseFlags(rest, ['--state', '--grade', '--choice']);
@@ -263,18 +281,27 @@ export async function run(args, io) {
     if (!GRADES.includes(f['--grade'])) throw bad(`--grade must be one of ${GRADES.join(', ')}`);
     const choice = f['--choice'] ?? OPTIONS[0];
     if (!OPTIONS.includes(choice)) throw bad(`--choice must be one of: ${OPTIONS.join(' | ')}`);
-    if (choice === 'Change the direction') throw new KitExit('the user chose to change the direction: nothing recorded, grade again', 2);
-    const rec = { confirmed: true, grade: f['--grade'], choice, at: new Date().toISOString() };
     const target = path.resolve(cwd, f['--state']);
-    const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
-    try {
-      await fs.writeFile(tmp, JSON.stringify(rec, null, 2) + '\n', { flag: 'wx' });
-      await fs.rename(tmp, target);
-    } catch (e) {
-      await fs.rm(tmp, { force: true }).catch(() => {});
-      throw bad(`cannot write ${target}: ${e.code || e.message}`);
+    const at = new Date().toISOString();
+    if (choice === 'Change the direction') {
+      await writeState(target, { confirmed: false, choice, at });
+      throw new KitExit('the user chose to change the direction: any earlier confirmation is revoked, grade again', 2);
     }
+    const rec = { confirmed: true, grade: choice === OPTIONS[2] ? 'refine-only' : f['--grade'], graded_as: f['--grade'], choice, at };
+    await writeState(target, rec);
     return rec;
   }
   throw bad(`first argument must be grade, gate or confirm\n${usage}`);
+}
+
+/** Write the state file atomically (temp file + rename). */
+async function writeState(target, rec) {
+  const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    await fs.writeFile(tmp, JSON.stringify(rec, null, 2) + '\n', { flag: 'wx' });
+    await fs.rename(tmp, target);
+  } catch (e) {
+    await fs.rm(tmp, { force: true }).catch(() => {});
+    throw bad(`cannot write ${target}: ${e.code || e.message}`);
+  }
 }
