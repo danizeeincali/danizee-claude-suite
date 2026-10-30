@@ -7,13 +7,13 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 60,
-    "cost": 75600
+    "steps": 180,
+    "cost": 213345
   },
   "clock": {
     "depth": 1,
-    "startedAt": 1793404053144,
-    "elapsedMs": 202582
+    "startedAt": 1793404354463,
+    "elapsedMs": 484688
   },
   "helpers": {
     "build-unslop-do-not-list-and-final-checklist": {
@@ -29,6 +29,30 @@
       }
     },
     "review-r1-unslop-do-not-list-and-final-checklist": {
+      "steps": 60,
+      "cost": 73031,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r1-unslop-do-not-list-and-final-checklist": {
+      "steps": 60,
+      "cost": 64714,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r2-unslop-do-not-list-and-final-checklist": {
       "steps": 0,
       "cost": 0,
       "ok": 0,

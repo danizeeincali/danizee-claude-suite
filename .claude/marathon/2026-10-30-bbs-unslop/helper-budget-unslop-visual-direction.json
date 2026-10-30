@@ -7,16 +7,40 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 0,
-    "cost": 0
+    "steps": 120,
+    "cost": 139487
   },
   "clock": {
     "depth": 1,
-    "startedAt": 1793404185127,
-    "elapsedMs": 0
+    "startedAt": 1793404559072,
+    "elapsedMs": 355502
   },
   "helpers": {
     "build-unslop-visual-direction": {
+      "steps": 60,
+      "cost": 71074,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r1-unslop-visual-direction": {
+      "steps": 60,
+      "cost": 68413,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r1-unslop-visual-direction": {
       "steps": 0,
       "cost": 0,
       "ok": 0,
@@ -24,8 +48,8 @@
       "grants": 1,
       "skipped": 0,
       "reserved": {
-        "steps": 150,
-        "cost": 150000
+        "steps": 60,
+        "cost": 100000
       }
     }
   }

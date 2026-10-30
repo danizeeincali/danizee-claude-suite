@@ -1,2 +1,5 @@
 {"category":"docs","kind":"rule","ref":".claude/marathon/2026-10-30-bbs-unslop/rules.md","area":null,"id":"29df1481-2023-4577-8239-b57677a1bfb4","ts":"2026-10-30T23:46:24.839Z"}
 {"category":"correctness","kind":"rule","ref":".claude/marathon/2026-10-30-bbs-unslop/rules.md","area":null,"id":"2a8bdd1c-c600-4819-9357-62a0a5e19369","ts":"2026-10-30T23:46:24.971Z"}
+{"category":"test-quality","kind":"rule","ref":".claude/marathon/2026-10-30-bbs-unslop/rules.md","area":null,"id":"0a107657-4665-4270-af64-ef1aefa4c918","ts":"2026-10-30T23:50:56.096Z"}
+{"category":"other","kind":"rule","ref":".claude/marathon/2026-10-30-bbs-unslop/rules.md","area":null,"id":"62d42979-614f-4e96-b128-158307dcfc37","ts":"2026-10-30T23:50:56.174Z"}
+{"category":"performance","kind":"rule","ref":".claude/marathon/2026-10-30-bbs-unslop/rules.md","area":null,"id":"af1fb5e8-88f2-4ae6-afc9-c893082d2d4c","ts":"2026-10-30T23:52:37.763Z"}

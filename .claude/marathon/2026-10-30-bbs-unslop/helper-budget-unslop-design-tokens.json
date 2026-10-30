@@ -7,13 +7,13 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 60,
-    "cost": 95737
+    "steps": 180,
+    "cost": 230702
   },
   "clock": {
     "depth": 1,
-    "startedAt": 1793404129693,
-    "elapsedMs": 279483
+    "startedAt": 1793404481907,
+    "elapsedMs": 610983
   },
   "helpers": {
     "build-unslop-design-tokens": {
@@ -29,6 +29,30 @@
       }
     },
     "review-r1-unslop-design-tokens": {
+      "steps": 60,
+      "cost": 80019,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r1-unslop-design-tokens": {
+      "steps": 60,
+      "cost": 54946,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r2-unslop-design-tokens": {
       "steps": 0,
       "cost": 0,
       "ok": 0,

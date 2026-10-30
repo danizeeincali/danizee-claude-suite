@@ -41,3 +41,6 @@ Add a rule the second time something goes wrong.
 
 - (docs, seen twice) A kit verb's header contract is checked by a test: every exit code and output field the header documents is asserted, so the header and the code cannot drift apart.
 - (correctness, seen twice) Every input shape a verb's header says it accepts gets a test built from the real producer's output (run the sibling verb), never a hand-made look-alike; every documented edge (blank array items, duplicate keys, null/array JSON, inherited object keys as flags) is tested.
+- (test-quality, seen twice) Tests drive the real CLI path too (a `--file` run and a piped stdin run through `node .claude/helpers/kit/cli.js <verb>`), not only an in-process fake stdin; size caps and BOM handling are tested through `--file`.
+- (other, seen twice) Every documented limit or threshold must be reachable: a test shows each cap or limit actually taking effect, and each format a verb sniffs can be forced with a `--format` override.
+- (performance, seen twice) Every regex or scan over user input is linear: no pattern that rescans to the end per match (unbounded lazy spans, per-match line lookups from the start); a test feeds the 8 MiB cap shape of the worst case and must finish in a few seconds.
