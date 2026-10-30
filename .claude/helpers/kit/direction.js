@@ -88,7 +88,7 @@ const COLORS = new Set(['red', 'orange', 'yellow', 'green', 'teal', 'cyan', 'blu
 const FONT_WORDS = new Set(['font', 'fonts', 'typeface', 'typefaces', 'type', 'typography', 'serif', 'sans', 'sans-serif', 'mono', 'monospace', 'monospaced', 'bold', 'italic', 'light', 'heavy', 'thin', 'regular', 'condensed', 'rounded', 'inter', 'helvetica', 'arial', 'roboto', 'georgia', 'times', 'courier', 'futura', 'garamond', 'baskerville', 'bodoni', 'didot', 'verdana', 'poppins', 'lato', 'montserrat', 'playfair', 'caslon', 'gotham', 'avenir', 'palatino', 'fraunces', 'jetbrains', 'menlo', 'consolas', 'display', 'letter', 'letters', 'lettering']);
 const STYLE_WORDS = new Set(['tech', 'technology', 'digital', 'software', 'saas', 'startup', 'corporate', 'business', 'web', 'app', 'apps', 'online', 'abstract', 'futuristic', 'dark', 'light', 'bold', 'colorful', 'colourful', 'generic', 'flat', 'ui', 'ux', 'design', 'style', 'styles', 'gradient', 'gradients', 'glow', 'sparkle', 'sparkles', 'cyber', 'neon', 'retro', 'vintage', 'playful', 'fun', 'trendy', 'contemporary', 'sleek', 'minimal', 'minimalist', 'modern', 'clean', 'simple', 'glass', 'glassmorphism', 'brutalist', 'brutalism', 'material', 'aesthetic', 'look', 'vibe', 'theme', 'world', 'internet', 'cloud', 'ai', 'data']);
 
-const words = s => String(s).toLowerCase().replace(/#[0-9a-f]{3,8}\b/g, ' hex ').replace(/\b(?:rgba?|hsla?)\([^)]*\)/g, ' rgb ').split(/[^a-z0-9-]+/).map(w => w.replace(/^-+|-+$/g, '')).filter(Boolean);
+const words = s => String(s).toLowerCase().replace(/#[0-9a-f]{3,8}\b/g, ' hex ').replace(/\b(?:rgba?|hsla?)\([^)]{0,64}\)/g, ' rgb ').split(/[^a-z0-9-]+/).map(w => w.replace(/^-+|-+$/g, '')).filter(Boolean);
 const meaningful = s => words(s).filter(w => !STOP.has(w));
 const onlyFrom = (s, ...sets) => {
   const w = meaningful(s);
@@ -235,13 +235,23 @@ async function openRegular(p) {
   } finally { await fh.close().catch(() => {}); }
 }
 
+function decodeBytes(buf) {
+  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) return buf.subarray(2).toString('utf16le');
+  if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) {
+    const sw = Buffer.from(buf.subarray(2));
+    sw.swap16();
+    return sw.toString('utf16le');
+  }
+  return buf.toString('utf-8');
+}
+
 async function readText(file, io) {
   const cwd = io.cwd || process.cwd();
   let text;
   if (file !== undefined) {
     const p = path.resolve(cwd, file);
     try {
-      text = (await openRegular(p)).toString('utf-8');
+      text = decodeBytes(await openRegular(p));
     } catch (e) {
       if (e instanceof KitExit) throw e;
       throw bad(`cannot read ${p}: ${e.code || e.message}`);
@@ -249,7 +259,7 @@ async function readText(file, io) {
   } else {
     const buf = Buffer.from(await (typeof io.stdinBytes === 'function' ? io.stdinBytes({ maxBytes: MAX_BYTES + 1 }) : io.stdin({ maxBytes: MAX_BYTES + 1 })));
     if (buf.length > MAX_BYTES) throw bad('input is larger than 8 MiB');
-    text = buf.toString('utf-8');
+    text = decodeBytes(buf);
   }
   text = text.replace(/^﻿/, '').replace(/\r\n?/g, '\n');
   if (!text.trim()) throw bad('no input: pass the direction on stdin or --file');

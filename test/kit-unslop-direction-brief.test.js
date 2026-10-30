@@ -304,3 +304,36 @@ describe('header contract and documented edges', () => {
     assert.equal(blankItems.fields.moments.text, 'the total');
   });
 });
+
+describe('round 3 fixes', () => {
+  const block = 'Product: a prep-list printer for bakers.\nCharacter: dry, punctual\nWorld: a trade kitchen at dawn\nMoments: the total\nSignature: tally-mark underline\n';
+  const runCli = (args, input) => {
+    try { return { code: 0, out: execFileSync('node', [CLI, 'direction', ...args], { input, encoding: 'utf-8', timeout: 60000, maxBuffer: 64 * 1024 * 1024, stdio: ['pipe', 'pipe', 'pipe'] }) }; }
+    catch (e) { return { code: e.status, out: String(e.stdout), err: String(e.stderr) }; }
+  };
+  it('unclosed rgb( signature of 1 MiB finishes quickly (linear words scan), via --file and stdin', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dir-r3-'));
+    const text = block.replace('tally-mark underline', 'rgb('.repeat(262144));
+    await fs.writeFile(path.join(dir, 'd.md'), text);
+    const t0 = Date.now();
+    const r = runCli(['check', '--file', path.join(dir, 'd.md')], '');
+    assert.equal(r.code, 0);
+    const r2 = runCli(['check'], text);
+    assert.equal(r2.code, 0);
+    assert.ok(Date.now() - t0 < 15000);
+  });
+  it('UTF-16LE and UTF-16BE (BOM) input is decoded, via --file and stdin', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dir-r3-'));
+    const le = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(block, 'utf16le')]);
+    const be = Buffer.from(le); be.swap16();
+    for (const buf of [le, be]) {
+      const f = path.join(dir, 'u.md');
+      await fs.writeFile(f, buf);
+      const r = runCli(['check', '--file', f], '');
+      assert.equal(r.code, 0, r.err);
+      assert.ok(!JSON.parse(r.out).problems.some(p => p.code === 'missing'));
+      const r2 = runCli(['check'], buf);
+      assert.equal(r2.code, 0, r2.err);
+    }
+  });
+});
