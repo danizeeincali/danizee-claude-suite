@@ -171,7 +171,31 @@ describe('mark', () => {
     const results = await Promise.allSettled(IDS.slice(0, 3).map(id => call(['mark', '--state', 'race.json', '--pass', id])));
     const ok = results.filter(r => r.status === 'fulfilled');
     assert.ok(ok.length >= 1);
+    results.filter(r => r.status === 'rejected').forEach(r => assert.ok(r.reason instanceof KitExit && r.reason.code === 2, String(r.reason)));
     const done = JSON.parse(await fs.readFile(path.join(dir, 'race.json'), 'utf-8')).done;
+    assert.equal(done.length, ok.length);
     assert.deepEqual(done, IDS.slice(0, done.length));
+  });
+});
+
+describe('review r1 fixes', () => {
+  it('header documents the real exit codes, signature and next rule (both copies)', async () => {
+    for (const f of ['../src/lib/kit/redline-passes.js', '../.claude/helpers/kit/redline-passes.js']) {
+      const src = (await fs.readFile(new URL(f, import.meta.url), 'utf-8')).replace(/\n \* ?/g, ' ');
+      assert.match(src, /out of order or already done exits 2 with the file untouched; an unknown pass id exits 1/, f);
+      assert.doesNotMatch(src, /already\s+done or unknown exits 2/, f);
+      assert.match(src, /\{ next, done, remaining, ok, problem\?, fix\?, batch\?, reminder\?, exit\? \}/, f);
+      assert.match(src, /first plan pass after the in-order prefix/, f);
+    }
+  });
+  it('fix text names the right remedy for each problem kind', () => {
+    const unk = evaluate(['spacing', 'bogus', 'color']);
+    assert.equal(unk.next.id, 'color');
+    assert.match(unk.fix, /Remove "bogus"/);
+    const rep = evaluate(['spacing', 'spacing']);
+    assert.match(rep.fix, /Remove the repeated "spacing"/);
+    const ooo = evaluate(['color']);
+    assert.match(ooo.fix, /Redo the passes in plan order/);
+    assert.match(ooo.fix, /"spacing"/);
   });
 });

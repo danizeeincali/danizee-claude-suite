@@ -6,14 +6,16 @@
  *       → { passes: [{ n, id, label, why_here, checks: [string] }] }       nine passes: spacing, color, icons, copy,
  *                                                                          type, layout, details, visuals, motion
  *   redline-passes next [--state <file.json>] [--strict] [--all-at-once]
- *       → { next, done, remaining, ok, problem?, fix? }                    advisory, exit 0
+ *       → { next, done, remaining, ok, problem?, fix?, batch?, reminder?, exit? }   advisory, exit 0 (exit 2 with --strict)
  *   redline-passes mark --state <file.json> --pass <id>
  *       → { marked, done, next }                                           appends the pass when it is the next one
  *
  * STATE. The progress file is `{ "done": ["spacing", ...] }`. A missing file means nothing is done. `done` must be an
  * array of pass ids in plan order with no gaps; anything else is reported by `next` as ok=false with a `problem`
- * (an unknown id, a repeated id, or a pass that skips an earlier one), and `next` still names the first pass of the
- * plan that is not done. `next` is null once all nine are done. With --strict an out-of-order or unknown `done`
+ * (an unknown id, a repeated id, or a pass that skips an earlier one). When ok, `next` is the first pass of the plan
+ * that is not done; on a problem it is the first plan pass after the in-order prefix of `done` (so it can name a pass
+ * that appears later in a broken `done`), and `fix` says how to repair that kind of problem. `next` is null once all
+ * nine are done. With --strict an out-of-order or unknown `done`
  * exits 2 (the JSON is still printed); without it the answer is advisory and the exit is 0.
  *
  * ALL AT ONCE. When nearly every line of a screen changes, the passes may be planned in order and written in one go.
@@ -21,8 +23,8 @@
  * still be applied, and then marked, in order.
  *
  * MARK. `mark` appends the pass only when it is the next one in order, under the kit state lock, and writes the file
- * atomically (temp file then rename), creating it (and its folder) when missing. A pass that is out of order, already
- * done or unknown exits 2 with the file untouched; a state file that is malformed, over 8 MiB or in the wrong shape
+ * atomically (temp file then rename), creating it (and its folder) when missing. A pass that is out of order or already
+ * done exits 2 with the file untouched; an unknown pass id exits 1; a state file that is malformed, over 8 MiB or in the wrong shape
  * exits 1. The state file is read from disk only; nothing else is read and nothing goes to the network.
  *
  * Exit codes: 0 answer printed; 1 bad input or broken state (message on stderr); 2 refusal (mark out of order,
@@ -94,19 +96,23 @@ export function plan() {
 /** Judge a `done` list against the plan: { ok, problem?, fix?, done, next, remaining }. */
 export function evaluate(done) {
   let problem = null;
+  let kind = null;
   const seen = new Set();
   for (let i = 0; i < done.length && !problem; i++) {
     const id = done[i];
-    if (typeof id !== 'string' || !IDS.includes(id)) problem = `unknown pass ${JSON.stringify(id)}`;
-    else if (seen.has(id)) problem = `pass "${id}" is listed more than once`;
-    else if (id !== IDS[i]) problem = `pass "${id}" was done before "${IDS[i]}"`;
+    if (typeof id !== 'string' || !IDS.includes(id)) { problem = `unknown pass ${JSON.stringify(id)}`; kind = ['unknown', id]; }
+    else if (seen.has(id)) { problem = `pass "${id}" is listed more than once`; kind = ['repeat', id]; }
+    else if (id !== IDS[i]) { problem = `pass "${id}" was done before "${IDS[i]}"`; kind = ['order', id]; }
     seen.add(id);
   }
   const remaining = IDS.filter(id => !seen.has(id));
   const res = { next: remaining.length ? copyPass(byId(remaining[0])) : null, done: [...done], remaining, ok: !problem };
   if (problem) {
     res.problem = problem;
-    res.fix = `Redo the passes out of order and keep to the plan order; the next pass to apply is "${remaining[0] ?? 'none'}".`;
+    const nx = `the next pass to apply is "${remaining[0] ?? 'none'}"`;
+    res.fix = kind[0] === 'unknown' ? `Remove ${JSON.stringify(kind[1])} from "done"; ${nx}.`
+      : kind[0] === 'repeat' ? `Remove the repeated "${kind[1]}" from "done"; ${nx}.`
+      : `Redo the passes in plan order and keep "done" to that order; ${nx}.`;
   }
   return res;
 }
