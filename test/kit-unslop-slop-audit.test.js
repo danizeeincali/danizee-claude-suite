@@ -358,3 +358,124 @@ describe('run scan', () => {
     assert.equal(r.hits[0].line, 2);
   });
 });
+
+describe('review r1 regressions', () => {
+  const COPY_SIGNS = ['fake-data', 'exclamation-marks', 'hype-words', 'greeting-headline', 'emoji-icons', 'unverified-social-proof'];
+  const copyHits = (t, f) => scanText(t, f).hits.filter(h => COPY_SIGNS.includes(h.sign));
+
+  it('jsx: code between and around tags is never read as copy (multi-component .jsx)', () => {
+    const src = `import React from 'react';
+
+export function Header() {
+  return <h1>Projects</h1>;
+}
+
+export function Footer({ year }) {
+  const port = 1234;
+  if (!year) throw new Error('year is required!');
+  const label = "Welcome back!";
+  return (
+    <footer className="p-4">
+      <p>Built in {year}</p>
+      {year > 2000 && <small>since 2000</small>}
+    </footer>
+  );
+}
+`;
+    assert.deepEqual(copyHits(src, 'jsx'), []);
+    assert.equal(scanText(src).format, 'jsx');
+    assert.equal(scanText(src).total, 0);
+  });
+  it('jsx: TS generics and forwardRef are not tags (shadcn-style tsx)', () => {
+    const src = `import * as React from 'react';
+import { cn } from '@/lib/utils';
+
+export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  size?: Array<string>;
+}
+
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, ...props }, ref) => {
+    const [n, setN] = React.useState<number>(1234);
+    const [msg, setMsg] = React.useState<string>('saved!');
+    if (n < 5 && msg !== 'x') console.log("never!");
+    return <button ref={ref} className={cn('px-4', className)} {...props}>Save</button>;
+  }
+);
+Button.displayName = 'Button';
+
+export const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  (props, ref) => <div ref={ref} {...props}>Total 1834</div>
+);
+`;
+    assert.deepEqual(copyHits(src, 'jsx'), []);
+    assert.equal(scanText(src).total, 0);
+  });
+  it('jsx: text children and lone string literal children are still read', () => {
+    const src = `export const A = () => (
+  <main>
+    <h1>Welcome back, Sam</h1>
+    <p>Get started now!</p>
+    <p>{"Revolutionary stuff"}</p>
+    <ul>{items.map(i => <li key={i.id}>{i.name}</li>)}</ul>
+    <b>John Doe</b>
+  </main>
+);
+const note = 'Lorem ipsum!';
+`;
+    const hits = scanText(src, 'jsx').hits.map(h => h.sign + ':' + h.line);
+    for (const x of ['greeting-headline:3', 'exclamation-marks:4', 'hype-words:5', 'fake-data:7']) assert.ok(hits.includes(x), x + ' in ' + hits);
+    assert.ok(!hits.some(h => h.endsWith(':9') || h.endsWith(':8')), String(hits));
+  });
+  it('jsx: --strict exits 0 on a clean multi-component file', async () => {
+    const src = "export function Footer() {\n  const port = 1234;\n  throw new Error('year is required!');\n}\nexport const H = () => <h1>Projects</h1>;\n";
+    const r = await run(['scan', '--strict', '--format', 'jsx'], io(src));
+    assert.equal(r.exit, 0);
+    assert.equal(r.total, 0);
+  });
+
+  it('md: a fence closes only on a fence at least as long, with no info string', () => {
+    const nested = '# T\n\n````md\n```js\nconst a = "x!";\n```\nWelcome back!\n````\n\nDone.\n';
+    assert.equal(scanText(nested, 'md').total, 0);
+    const info = '# T\n\n```js\nconst a = "x!";\n```js\nWelcome back!\n```\n';
+    assert.equal(scanText(info, 'md').total, 0);
+    const tilde = '# T\n\n~~~\nWow!\n```\nWow!\n~~~\n\nok\n';
+    assert.equal(scanText(tilde, 'md').total, 0);
+    const after = '# T\n\n```\ncode!\n```\nAfter the fence!\n';
+    assert.deepEqual(scanText(after, 'md').hits.map(h => h.line), [6]);
+    const longer = '# T\n\n```\ncode!\n`````\nAfter!\n';
+    assert.deepEqual(scanText(longer, 'md').hits.map(h => h.line), [6]);
+  });
+  it('md: a README that opens with an HTML block is still markdown', async () => {
+    const readme = '<p align="center">\n  <img src="logo.png" alt="Logo">\n</p>\n\n# Project\n\nInstall:\n\n```sh\necho "done!"\n```\n\nUse `x!` inline.\n';
+    assert.equal(sa.sniff(readme), 'md');
+    const r = scanText(readme);
+    assert.equal(r.format, 'md');
+    assert.equal(r.total, 0);
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sa-'));
+    try {
+      await fs.writeFile(path.join(dir, 'README.md'), readme);
+      const f = await run(['scan', '--file', 'README.md', '--strict'], io('', dir));
+      assert.equal(f.format, 'md');
+      assert.equal(f.exit, 0);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+    assert.equal(sa.sniff('<div>\n<style>\n.a { color: red; }\n</style>\n</div>'), 'html');
+    assert.equal(sa.sniff('<ul>\n- not a list\n</ul>'), 'html');
+  });
+
+  it('header contract: every documented exit code and output field is asserted', async () => {
+    const header = (await fs.readFile(new URL('../src/lib/kit/slop-audit.js', import.meta.url), 'utf8')).split('*/')[0];
+    for (const f of ['format', 'hits', 'counts', 'total', 'manual', 'exit', 'sign, group, line, excerpt, fix']) assert.ok(header.includes(f), f);
+    const dirty = '<h1>Get started now!</h1>';
+    const r = await run(['scan', '--strict'], io(dirty));
+    assert.deepEqual(Object.keys(r).sort(), ['counts', 'exit', 'format', 'hits', 'manual', 'total']);
+    assert.deepEqual(Object.keys(r.hits[0]).sort(), ['excerpt', 'fix', 'group', 'line', 'sign']);
+    assert.equal(r.exit, 2);
+    assert.equal((await run(['scan'], io(dirty))).exit, undefined);
+    assert.equal((await run(['scan', '--strict'], io('<p>Plain.</p>'))).exit, 0);
+    assert.equal(Object.keys(r.counts).length, sa.GROUPS.length);
+    await exit(() => run(['scan'], io('')), 1);
+    await exit(() => run(['nope'], io('')), 1);
+    for (const fmt of ['html', 'css', 'jsx', 'md']) assert.equal((await run(['scan', '--format', fmt], io('x'))).format, fmt);
+  });
+});

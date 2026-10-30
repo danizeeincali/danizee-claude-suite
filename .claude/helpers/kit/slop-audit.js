@@ -13,7 +13,10 @@
  *
  * scan reads HTML, CSS, JSX or markdown text (Tailwind class text included). The format comes from --format, else
  * it is sniffed from the text alone (so stdin and --file agree). HTML comments, <script> bodies, CSS/JS comments
- * and fenced or inline code in markdown are skipped. Copy signs (emoji, exclamation marks, hype words, greetings,
+ * and fenced or inline code in markdown are skipped (a fence closes on a line of the same character, at least as
+ * long as the opener, with no info string; a README that opens with an HTML block is still sniffed as markdown
+ * when it has a heading or a fence). In JSX copy signs read only element text children and a lone string
+ * literal child such as {"Hi"}: never code, tags, attributes or TS generics like useState<string>. Copy signs (emoji, exclamation marks, hype words, greetings,
  * fake data, unverified social proof) read visible text only: never tags, attributes, `!important` or `!==`.
  * Output shape (stable; the triage verb reads it):
  *   format  "html" | "css" | "jsx" | "md"
@@ -183,15 +186,19 @@ function maskCode(text, format) {
   if (format === 'md') {
     t = t.replace(/^---[ \t]*\n[\s\S]*?\n---[ \t]*(\n|$)/, blank);
     const lines = t.split('\n');
-    let fence = null;
+    let fence = null; // { ch, len } of the open fence (CommonMark: the close is at least as long, same char, no info string)
     t = lines.map(line => {
-      const f = /^ {0,3}(`{3,}|~{3,})/.exec(line);
-      if (f) {
-        if (!fence) fence = f[1][0];
-        else if (f[1][0] === fence) fence = null;
+      if (fence) {
+        const c = new RegExp('^ {0,3}' + (fence.ch === '`' ? '`' : '~') + '{' + fence.len + ',}[ \\t]*$').test(line);
+        if (c) fence = null;
         return blank(line);
       }
-      return fence ? blank(line) : line;
+      const f = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+      if (f && !(f[1][0] === '`' && f[2].includes('`'))) {
+        fence = { ch: f[1][0], len: f[1].length };
+        return blank(line);
+      }
+      return line;
     }).join('\n');
     t = t.replace(/`[^`\n]*`/g, blank);
   }
@@ -206,30 +213,146 @@ function maskCode(text, format) {
 
 const TAG_RE = /<\/?[A-Za-z][\w:.-]*(?:[^<>"'{}]|"[^"]*"|'[^']*'|\{[^{}]*\}|\{[^{}]*\{[^{}]*\}[^{}]*\})*>/g;
 
+const KW_BEFORE_TAG = new Set(['return', 'yield', 'case', 'default', 'else', 'typeof', 'await', 'of', 'in', 'do', 'void', 'throw']);
+
+/**
+ * JSX only: keeps the text children of JSX elements (and a lone string literal child such as {"Hi"}) and
+ * blanks everything else: code, tags, attributes, other {expressions}. Generics (useState<string>) and
+ * comparisons are not tags. Same length as the input.
+ */
+function jsxVisible(src) {
+  const n = src.length;
+  const out = Array.from(src, c => (c === '\n' ? '\n' : ' '));
+  const show = (a, b) => { for (let i = a; i < b; i++) out[i] = src[i]; };
+  const ws = c => c === ' ' || c === '\t' || c === '\n' || c === '\r';
+  const idc = c => c !== undefined && /[\w$]/.test(c);
+
+  const skipString = i => { // src[i] is a quote; returns the index after the string
+    const q = src[i];
+    if (q === '`') {
+      let j = i + 1;
+      while (j < n && src[j] !== '`') {
+        if (src[j] === '\\') j += 2;
+        else if (src[j] === '$' && src[j + 1] === '{') j = scanCode(j + 2, true) + 1;
+        else j++;
+      }
+      return Math.min(j + 1, n);
+    }
+    let j = i + 1;
+    while (j < n && src[j] !== q && src[j] !== '\n') j += src[j] === '\\' ? 2 : 1;
+    return Math.min(j + 1, n);
+  };
+
+  const tagStartsAt = i => { // is the '<' at i the start of a JSX element, in code position?
+    const c = src[i + 1];
+    if (!(c === '>' || /[A-Za-z]/.test(c || ''))) return false;
+    let j = i - 1;
+    if (idc(src[j]) || src[j] === ')' || src[j] === ']') return false; // useState<string>, f(x)<y, a[0]<b
+    while (j >= 0 && ws(src[j])) j--;
+    if (j < 0) return true;
+    if (idc(src[j])) {
+      let k = j;
+      while (k > 0 && idc(src[k - 1])) k--;
+      return KW_BEFORE_TAG.has(src.slice(k, j + 1));
+    }
+    return src[j] !== ')' && src[j] !== ']' && src[j] !== '.';
+  };
+
+  // Parses the element whose '<' is at i; returns the index after it, or -1 when it is not an element.
+  const parseElement = i => {
+    let j = i + 1;
+    let name = '';
+    if (src[j] !== '>') {
+      const m = /^[A-Za-z][\w:.-]*/.exec(src.slice(j, j + 200));
+      if (!m) return -1;
+      name = m[0];
+      j += name.length;
+      for (;;) {
+        while (j < n && ws(src[j])) j++;
+        if (j >= n) return -1;
+        if (src[j] === '/' && src[j + 1] === '>') return j + 2;
+        if (src[j] === '>') break;
+        if (src[j] === '{') { j = scanCode(j + 1, true) + 1; continue; } // {...props}
+        const am = /^[\w:.-]+/.exec(src.slice(j, j + 200));
+        if (!am) return -1;
+        j += am[0].length;
+        let k = j;
+        while (k < n && ws(src[k])) k++;
+        if (src[k] === '=') {
+          k++;
+          while (k < n && ws(src[k])) k++;
+          if (src[k] === '"' || src[k] === "'") { const e = src.indexOf(src[k], k + 1); if (e < 0) return -1; j = e + 1; }
+          else if (src[k] === '{') j = scanCode(k + 1, true) + 1;
+          else if (src[k] === '<') { const e = parseElement(k); if (e < 0) return -1; j = e; }
+          else return -1;
+        }
+      }
+    }
+    j++; // past '>'
+    const raw = name === 'style' || name === 'script';
+    for (;;) {
+      let k = j;
+      while (k < n && src[k] !== '<' && src[k] !== '{') k++;
+      if (!raw) show(j, k);
+      if (k >= n) return n;
+      if (src[k] === '{') {
+        const e = scanCode(k + 1, true);
+        if (!raw) {
+          const inner = src.slice(k + 1, e).trim();
+          if (/^(?:"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`[^`$\\]*`)$/.test(inner)) show(k + 1 + src.slice(k + 1, e).indexOf(inner[0]) + 1, k + 1 + src.slice(k + 1, e).lastIndexOf(inner[0]));
+        }
+        j = e + 1;
+        continue;
+      }
+      if (src[k + 1] === '/') { // closing tag
+        const e = src.indexOf('>', k);
+        return e < 0 ? n : e + 1;
+      }
+      const e = parseElement(k);
+      if (e < 0) { if (!raw) show(k, k + 1); j = k + 1; } else j = e;
+    }
+  };
+
+  // Walks code from i. When inBraces, stops at the matching '}' and returns its index; else returns n.
+  function scanCode(i, inBraces) {
+    let depth = 0;
+    while (i < n) {
+      const c = src[i];
+      if (c === '"' || c === "'" || c === '`') { i = skipString(i); continue; }
+      if (c === '{') depth++;
+      else if (c === '}') { if (inBraces && depth === 0) return i; depth--; }
+      else if (c === '<' && tagStartsAt(i)) {
+        const e = parseElement(i);
+        if (e > 0) { i = e; continue; }
+      }
+      i++;
+    }
+    return n;
+  }
+
+  scanCode(0, false);
+  return out.join('');
+}
+
 /** Same length as the masked text; only human-visible copy survives, everything else is spaces. */
 function visibleText(masked, format) {
   if (format === 'css') return blank(masked);
+  if (format === 'jsx') return jsxVisible(masked);
   let t = masked.replace(/(<style\b[^<>]*>)([\s\S]*?)(<\/style\s*>|$)/gi, (_, o, b, c) => o + blank(b) + c);
   let out = '';
   let last = 0;
   const seg = s => {
-    if (format === 'jsx') {
-      s = s.replace(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g, blank);
-      s = s.replace(/[{}=;()]/g, ' ');
-    }
     if (format === 'md') {
       s = s.replace(/\]\([^)\n]*\)/g, blank).replace(/\bhttps?:\/\/\S+/g, blank);
     }
     return s;
   };
-  let seenTag = false;
   for (const m of t.matchAll(TAG_RE)) {
-    out += (seenTag || format !== 'jsx') ? seg(t.slice(last, m.index)) : blank(t.slice(last, m.index));
+    out += seg(t.slice(last, m.index));
     out += blank(m[0]);
     last = m.index + m[0].length;
-    seenTag = true;
   }
-  out += (seenTag || format !== 'jsx') ? seg(t.slice(last)) : blank(t.slice(last));
+  out += seg(t.slice(last));
   return out;
 }
 
@@ -492,7 +615,8 @@ export function sniff(text) {
   const t = text.replace(/^﻿/, '').replace(/^---[ \t]*\n[\s\S]*?\n---[ \t]*(\n|$)/, '').trimStart();
   if (/^<!doctype\b|^<html\b/i.test(t)) return 'html';
   if (/^(?:import|export)\b|\bclassName\s*=|\bfunction\s+[A-Z]\w*\s*\(|=>\s*\(?\s*</.test(t)) return 'jsx';
-  if (/^#{1,6}\s|^```|^~~~|^[-*]\s|^\[[^\]]+\]\(/m.test(t) && !/^<[a-z]/i.test(t)) return 'md';
+  // a README may open with an HTML block (centred logo): then only a heading or a fence counts as markdown
+  if (/^<[a-z]/i.test(t) ? /^#{1,6}[ \t]+\S|^ {0,3}(?:```|~~~)/m.test(t) : /^#{1,6}\s|^```|^~~~|^[-*]\s|^\[[^\]]+\]\(/m.test(t)) return 'md';
   if (/^<[a-z!]/i.test(t) || /<\/?[a-z][\w-]*[\s>]/i.test(t)) return 'html';
   if (/[{}]/.test(t) && /[a-z-]+\s*:\s*[^;{}]+;?/i.test(t)) return 'css';
   return 'md';
