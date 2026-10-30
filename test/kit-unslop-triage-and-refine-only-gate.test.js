@@ -255,6 +255,27 @@ describe('gate and confirm', () => {
   });
 });
 
+describe('confirm write safety', () => {
+  it('a failed revoke exits 1 and says the earlier confirmation may still be in force', async () => {
+    const dir = await tmp();
+    await fs.writeFile(path.join(dir, 'file'), 'x');
+    await exit(() => run(['confirm', '--state', 'file/s.json', '--grade', 'heavy', '--choice', 'Change the direction'], io('', dir)), 1, /could not revoke.*may still be in force/);
+    const r = spawnSync(process.execPath, [path.join(ROOT, '.claude', 'helpers', 'kit', 'cli.js'), 'slop-triage', 'confirm', '--state', 'file/s.json', '--grade', 'heavy', '--choice', 'Change the direction'], { cwd: dir, encoding: 'utf-8' });
+    assert.equal(r.status, 1); assert.match(r.stderr + r.stdout, /may still be in force/);
+  });
+  it('concurrent confirms in the same millisecond do not clobber each other temp file', async () => {
+    const dir = await tmp();
+    const realNow = Date.now; Date.now = () => 1700000000000;
+    try {
+      const rs = await Promise.all([1, 2, 3, 4].map(() => run(['confirm', '--state', 's.json', '--grade', 'heavy'], io('', dir))));
+      assert.equal(rs.length, 4);
+    } finally { Date.now = realNow; }
+    const g = await run(['gate', '--state', 's.json'], io('', dir));
+    assert.equal(g.confirmed, true);
+    assert.deepEqual((await fs.readdir(dir)).filter(n => n.endsWith('.tmp')), []);
+  });
+});
+
 describe('validateAudit rejects counts and total that contradict hits', () => {
   it('total, and each group count, must match the hits (real slop-audit output tampered with)', async () => {
     const real = fx('scan-sloppy.html.json');

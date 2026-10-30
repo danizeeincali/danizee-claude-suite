@@ -15,6 +15,8 @@
  *         record carries graded_as, the grade you passed.
  *         "Change the direction" is a no: it REVOKES any earlier confirmation by atomically writing
  *         { confirmed: false, choice, at } over the state file, then exits 2 (so gate exits 2 afterwards); grade again.
+ *         If that revoke write fails, it exits 1 (not 2) with "could not revoke ... an earlier confirmation ... may
+ *         still be in force": treat the old confirmation as still standing.
  *
  * Input is the JSON of `slop-audit scan`:
  *   { format: "html"|"css"|"jsx"|"md", hits: [{ sign, group, line, excerpt, fix }],
@@ -38,6 +40,7 @@
 import fs from 'fs/promises';
 import { constants as fsc, fstatSync } from 'fs';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import { KitExit } from './kit-exit.js';
 
 export const verb = 'slop-triage';
@@ -284,7 +287,10 @@ export async function run(args, io) {
     const target = path.resolve(cwd, f['--state']);
     const at = new Date().toISOString();
     if (choice === 'Change the direction') {
-      await writeState(target, { confirmed: false, choice, at });
+      try { await writeState(target, { confirmed: false, choice, at }); } catch (e) {
+        if (e instanceof KitExit) throw bad(`could not revoke: ${e.message}; an earlier confirmation in ${target}, if any, may still be in force`);
+        throw e;
+      }
       throw new KitExit('the user chose to change the direction: any earlier confirmation is revoked, grade again', 2);
     }
     const rec = { confirmed: true, grade: choice === OPTIONS[2] ? 'refine-only' : f['--grade'], graded_as: f['--grade'], choice, at };
@@ -294,14 +300,16 @@ export async function run(args, io) {
   throw bad(`first argument must be grade, gate or confirm\n${usage}`);
 }
 
-/** Write the state file atomically (temp file + rename). */
+/** Write the state file atomically (temp file + rename). The temp name has a random suffix; only our own temp file is ever removed. */
 async function writeState(target, rec) {
-  const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
+  const tmp = `${target}.${process.pid}.${randomUUID()}.tmp`;
+  let created = false;
   try {
     await fs.writeFile(tmp, JSON.stringify(rec, null, 2) + '\n', { flag: 'wx' });
+    created = true;
     await fs.rename(tmp, target);
   } catch (e) {
-    await fs.rm(tmp, { force: true }).catch(() => {});
+    if (created) await fs.rm(tmp, { force: true }).catch(() => {});
     throw bad(`cannot write ${target}: ${e.code || e.message}`);
   }
 }
