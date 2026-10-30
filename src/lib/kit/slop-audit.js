@@ -243,9 +243,40 @@ function jsxVisible(src) {
     return Math.min(j + 1, n);
   };
 
+  const regexAllowedAt = i => { // does a regex literal (not a division) start at the '/' at i?
+    let j = i - 1;
+    while (j >= 0 && (src[j] === ' ' || src[j] === '\t')) j--;
+    if (j < 0 || src[j] === '\n') return true;
+    if (idc(src[j])) {
+      let k = j;
+      while (k > 0 && idc(src[k - 1])) k--;
+      return KW_BEFORE_TAG.has(src.slice(k, j + 1));
+    }
+    return '=(,:[!&|?{};+-*%~^'.includes(src[j]);
+  };
+
+  const skipRegex = i => { // src[i] is '/'; returns the index after the literal and its flags, or -1
+    let j = i + 1;
+    let cls = false;
+    while (j < n && src[j] !== '\n') {
+      const c = src[j];
+      if (c === '\\') { j += 2; continue; }
+      if (c === '[') cls = true;
+      else if (c === ']') cls = false;
+      else if (c === '/' && !cls) {
+        j++;
+        while (j < n && idc(src[j])) j++;
+        return j;
+      }
+      j++;
+    }
+    return -1;
+  };
+
   const tagStartsAt = i => { // is the '<' at i the start of a JSX element, in code position?
     const c = src[i + 1];
     if (!(c === '>' || /[A-Za-z]/.test(c || ''))) return false;
+    if (/^<[A-Za-z_$][\w$]*\s+extends\b[^()]*?>\s*\(/.test(src.slice(i, i + 300))) return false; // <T extends X>(...) generic arrow
     let j = i - 1;
     if (idc(src[j]) || src[j] === ')' || src[j] === ']') return false; // useState<string>, f(x)<y, a[0]<b
     while (j >= 0 && ws(src[j])) j--;
@@ -319,6 +350,10 @@ function jsxVisible(src) {
     while (i < n) {
       const c = src[i];
       if (c === '"' || c === "'" || c === '`') { i = skipString(i); continue; }
+      if (c === '/' && src[i + 1] !== '/' && src[i + 1] !== '*' && src[i + 1] !== '>' && regexAllowedAt(i)) {
+        const e = skipRegex(i);
+        if (e > 0) { i = e; continue; }
+      }
       if (c === '{') depth++;
       else if (c === '}') { if (inBraces && depth === 0) return i; depth--; }
       else if (c === '<' && tagStartsAt(i)) {
@@ -610,11 +645,26 @@ export function scanText(text, format = sniff(text)) {
   return { format, hits, counts, total: hits.length, manual: [...MANUAL] };
 }
 
+/** The text with fenced blocks and inline code removed (linear). */
+function withoutCodeSpans(t) {
+  const out = [];
+  let fence = null;
+  for (const line of t.split('\n')) {
+    const m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (fence) {
+      if (m && m[1][0] === fence[0] && m[1].length >= fence.length && !m[2].trim()) fence = null;
+    } else if (m) fence = m[1];
+    else out.push(line.replace(/`[^`\n]*`/g, ' '));
+  }
+  return out.join('\n');
+}
+
 /** Decided from the text alone, so stdin and --file agree. */
 export function sniff(text) {
   const t = text.replace(/^﻿/, '').replace(/^---[ \t]*\n[\s\S]*?\n---[ \t]*(\n|$)/, '').trimStart();
   if (/^<!doctype\b|^<html\b/i.test(t)) return 'html';
-  if (/^(?:import|export)\b|\bclassName\s*=|\bfunction\s+[A-Z]\w*\s*\(|=>\s*\(?\s*</.test(t)) return 'jsx';
+  // code samples inside a markdown fence or inline code must not make a document jsx
+  if (/^(?:import|export)\b/.test(t) || /\bclassName\s*=|\bfunction\s+[A-Z]\w*\s*\(|=>\s*\(?\s*</.test(withoutCodeSpans(t))) return 'jsx';
   // a README may open with an HTML block (centred logo): then only a heading or a fence counts as markdown
   if (/^<[a-z]/i.test(t) ? /^#{1,6}[ \t]+\S|^ {0,3}(?:```|~~~)/m.test(t) : /^#{1,6}\s|^```|^~~~|^[-*]\s|^\[[^\]]+\]\(/m.test(t)) return 'md';
   if (/^<[a-z!]/i.test(t) || /<\/?[a-z][\w-]*[\s>]/i.test(t)) return 'html';

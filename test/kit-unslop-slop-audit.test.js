@@ -332,6 +332,8 @@ describe('run scan', () => {
       await exit(() => run(['scan', '--file', '/dev/null'], io('', dir)));
       await fs.writeFile(path.join(dir, 'bin.html'), Buffer.from([0x3c, 0, 0x3e]));
       await exit(() => run(['scan', '--file', 'bin.html'], io('', dir)));
+      await fs.writeFile(path.join(dir, 'big.html'), Buffer.alloc(8 * 1024 * 1024 + 1, 0x61));
+      await exit(() => run(['scan', '--file', 'big.html'], io('', dir)));
       await fs.writeFile(path.join(dir, 'empty.css'), '  \n');
       await exit(() => run(['scan', '--file', 'empty.css'], io('', dir)));
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
@@ -477,5 +479,41 @@ const note = 'Lorem ipsum!';
     await exit(() => run(['scan'], io('')), 1);
     await exit(() => run(['nope'], io('')), 1);
     for (const fmt of ['html', 'css', 'jsx', 'md']) assert.equal((await run(['scan', '--format', fmt], io('x'))).format, fmt);
+  });
+});
+
+describe('review r2 regressions', () => {
+  it('a README with a jsx fence containing className= is markdown and its prose is scanned', () => {
+    const md = '# My Button\n\nWelcome back! This is a revolutionary button.\n\n```jsx\n<Button className="px-4">Click me!</Button>\n```\n';
+    assert.equal(sa.sniff(md), 'md');
+    const r = scanText(md);
+    assert.equal(r.format, 'md');
+    const s = r.hits.map(h => h.sign + ':' + h.line);
+    for (const x of ['greeting-headline:3', 'exclamation-marks:3', 'hype-words:3']) assert.ok(s.includes(x), x + ' in ' + s);
+    assert.equal(sa.sniff('Use `className=` here\n\n# T\n'), 'md');
+    assert.equal(sa.sniff('export const A = () => <b>x</b>;\n'), 'jsx');
+    assert.equal(sa.sniff('const A = () => <div className="x">hi</div>;\n'), 'jsx');
+  });
+  it('a TSX generic arrow <T extends X>(...) is not a JSX element', () => {
+    const src = `const identity = <T extends unknown>(x: T): T => x;
+const pick = <K extends keyof Array<string>, V>(k: K) => k;
+const port = 1234;
+throw new Error('year is required!');
+export const H = () => <h1>Projects</h1>;
+`;
+    const r = scanText(src, 'jsx');
+    assert.deepEqual(r.hits, []);
+  });
+  it('a regex literal holding a backtick or brace does not hide later markup', () => {
+    const src = 'const re = /`/;\nexport const A = () => <h1>Welcome back!</h1>;\n';
+    assert.ok(scanText(src, 'jsx').hits.some(h => h.sign === 'greeting-headline' && h.line === 2));
+    const br = 'export const A = () => <p>{x.replace(/\\{/g, "")}<b>Welcome back!</b></p>;\nconst q = a / b;\n';
+    assert.ok(scanText(br, 'jsx').hits.some(h => h.sign === 'greeting-headline'));
+  });
+  it('the jsx and markdown fence sniffing stay linear on a large input', () => {
+    const big = ('```\n' + 'a'.repeat(60) + '\n').repeat(100000);
+    const t0 = Date.now();
+    scanText(big.slice(0, 8 * 1024 * 1024), undefined);
+    assert.ok(Date.now() - t0 < 5000);
   });
 });
