@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
+import { execFileSync } from 'child_process';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
 import * as d from '../src/lib/kit/direction.js';
 
 const { run, template, checkFields, parseText, fromBrief, FIELDS, BANNED, verb } = d;
 const io = (stdin, cwd) => ({ cwd, stdin: async () => stdin, stdinIsTTY: false, env: {} });
 const exit = async (p, code = 1) => assert.rejects(Promise.resolve().then(p), e => e instanceof KitExit && e.code === code);
+const CLI = path.resolve(import.meta.dirname, '../.claude/helpers/kit/cli.js');
 const IDS = ['product', 'character', 'world', 'moments', 'signature'];
 
 const GOOD = {
@@ -20,6 +22,17 @@ const GOOD = {
 };
 const codes = r => r.problems.map(p => `${p.field}:${p.code}`);
 const withField = (k, v) => ({ ...GOOD, [k]: v });
+
+describe('moments array count', () => {
+  it('counts a JSON array by its length, not by re-splitting elements', async () => {
+    const two = await run(['check'], io(JSON.stringify(withField('moments', ['the total and subtotal row', 'the print button']))));
+    assert.ok(!codes(two).includes('moments:too_many_moments'));
+    const three = await run(['check'], io(JSON.stringify(withField('moments', ['a', 'b', 'c']))));
+    assert.ok(codes(three).includes('moments:too_many_moments'));
+    const strict = await run(['check', '--strict'], io(JSON.stringify(withField('moments', ['the total and subtotal row', 'the print button']))));
+    assert.notEqual(strict.exit, 2);
+  });
+});
 
 describe('template', () => {
   it('lists the five fields in order with id, label, ask, example', async () => {
@@ -184,6 +197,22 @@ describe('from-brief', () => {
     assert.equal(e.fields[0].text, '');
     assert.deepEqual(e.prefilled, []);
     assert.equal(fromBrief({ kind: 'ui', answers: { audience: 'cooks' } }).fields[0].text, 'For cooks.');
+  });
+  it('real design-brief assume output: assumed fields are unknown, product stays todo', async () => {
+    const runAssume = answers => JSON.parse(execFileSync(process.execPath, [CLI, 'design-brief', 'assume'], { input: JSON.stringify({ kind: 'ui', answers }), encoding: 'utf-8' }));
+    const none = runAssume({});
+    assert.ok(none.assumptions.some(a => a.field === 'offer'));
+    const r0 = await run(['from-brief'], io(JSON.stringify(none)));
+    assert.equal(r0.fields[0].text, '');
+    assert.equal(r0.fields[0].todo, true);
+    assert.deepEqual(r0.prefilled, []);
+    const r1 = await run(['from-brief'], io(JSON.stringify(runAssume({ offer: 'A prep-list printer' }))));
+    assert.equal(r1.fields[0].text, 'A prep-list printer.');
+    assert.equal(r1.fields[0].todo, true);
+    assert.match(r1.fields[0].note, /audience/);
+    const r2 = await run(['from-brief'], io(JSON.stringify(runAssume({ offer: 'A prep-list printer', audience: 'bakers' }))));
+    assert.equal(r2.fields[0].todo, false);
+    assert.equal(r2.fields[0].text, 'A prep-list printer, for bakers.');
   });
   it('exit 1 when not a design-brief shape', async () => {
     await exit(() => run(['from-brief'], io('[1]')));

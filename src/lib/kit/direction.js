@@ -27,7 +27,9 @@
  * ok or not; with --strict exit 2 (the JSON is still printed) when ok is false.
  *
  * from-brief reads a design-brief input ({ kind, answers }) or its assume output ({ kind, brief }) and returns a
- * skeleton: product is prefilled from the offer and audience, the other four are questions with todo: true.
+ * skeleton: product is prefilled from the offer and audience, the other four are questions with todo: true. Fields
+ * listed in the assume output's `assumptions` are the kind's default text, not the user's words, so they count as
+ * missing (product stays todo with a note). A JSON moments array is counted by its length, not re-split.
  * Exit 1 when the input is not a design-brief shape, is empty, binary, unreadable, over 8 MiB, or an argument is
  * unknown, repeated or missing its value.
  * Built from ideas audited by /w-bbs (run 2026-10-30-unslop); no foreign code.
@@ -96,7 +98,7 @@ const onlyFrom = (s, ...sets) => {
 const SPLIT = /\s*(?:;|,|\n|&|\+|\band\b|\bplus\b)\s*/i;
 const items = s => String(s).split(SPLIT).map(x => x.replace(/^[-*•\d.)\s]+/, '').trim()).filter(Boolean);
 
-function judge(id, text) {
+function judge(id, text, count) {
   const out = [];
   const add = (code, message, fix) => out.push({ code, message, fix });
   if (!text) {
@@ -107,7 +109,8 @@ function judge(id, text) {
   for (const [w, re] of BANNED_RE) if (re.test(text)) hit.add(w);
   for (const w of hit) add('banned_word', `"${w}" fits every template and says nothing about this product`, `Replace "${w}" with something concrete: a person, a place, a material or a habit.`);
   if (text.length > MAX_FIELD) add('too_long', `${text.length} characters; a line is at most ${MAX_FIELD}`, 'Cut it to the one thing that matters.');
-  if (id === 'moments' && items(text).length > MAX_MOMENTS) add('too_many_moments', `${items(text).length} moments listed; the accent colour goes on at most ${MAX_MOMENTS} places`, `Keep the ${MAX_MOMENTS} places that carry the product's value and drop the rest.`);
+  const nMoments = id === 'moments' ? (count ?? items(text).length) : 0;
+  if (id === 'moments' && nMoments > MAX_MOMENTS) add('too_many_moments', `${nMoments} moments listed; the accent colour goes on at most ${MAX_MOMENTS} places`, `Keep the ${MAX_MOMENTS} places that carry the product's value and drop the rest.`);
   if (id === 'character' && items(text).length < 2) add('too_few_traits', 'character needs two or three traits', 'Add a second trait, described as you would a colleague (for example "dry-humoured, punctual").');
   if (id === 'signature' && onlyFrom(text, COLORS, FONT_WORDS)) add('signature_not_concrete', 'a colour or a font alone is not a signature', 'Name a concrete detail: a shape, a gesture, a mark, a way numbers or edges are drawn.');
   if (id === 'world' && onlyFrom(text, STYLE_WORDS)) add('world_is_style_word', 'a style word is not a place', 'Name a physical or cultural place (a workshop, a harbour, a newsroom) and what it is made of.');
@@ -120,7 +123,7 @@ export function checkFields(values) {
   const problems = [];
   for (const id of IDS) {
     const text = String(values[id] ?? '').replace(/[ \t]+/g, ' ').trim();
-    const found = judge(id, text);
+    const found = judge(id, text, values.__count && values.__count[id]);
     if (values.__dup && values.__dup.includes(id)) found.push({ code: 'duplicate_field', message: `${FIELD_BY_ID[id].label} appears more than once; the first is used`, fix: 'Keep one line per field.' });
     fields[id] = { present: text.length > 0, text, problems: found.map(p => p.code) };
     for (const p of found) problems.push({ field: id, ...p });
@@ -164,7 +167,7 @@ export function parseText(text) {
 /** Normalise a parsed JSON direction into { id: text }. */
 export function fromJson(obj) {
   if (!isObj(obj)) throw bad('direction JSON must be an object with the keys product, character, world, moments, signature');
-  const out = {};
+  const out = {}, count = {};
   for (const k of Object.keys(obj)) {
     const id = k.toLowerCase();
     if (!IDS.includes(id)) throw bad(`unknown key "${k}" in direction (allowed: ${IDS.join(', ')})`);
@@ -172,9 +175,10 @@ export function fromJson(obj) {
     const v = obj[k];
     if (v === null || v === undefined) { out[id] = ''; continue; }
     if (typeof v === 'string') { out[id] = v; continue; }
-    if (Array.isArray(v) && v.every(x => typeof x === 'string')) { out[id] = v.join('; '); continue; }
+    if (Array.isArray(v) && v.every(x => typeof x === 'string')) { out[id] = v.join('; '); count[id] = v.filter(x => x.trim()).length; continue; }
     throw bad(`direction.${k} must be a string${id === 'moments' ? ' or an array of strings' : ''}`);
   }
+  if (Object.keys(count).length) Object.defineProperty(out, '__count', { value: count, enumerable: false });
   return out;
 }
 
@@ -183,8 +187,11 @@ export function fromBrief(input) {
   let src = input;
   if (isObj(input) && isObj(input.brief) && input.answers === undefined) src = { kind: input.kind, answers: input.brief };
   const { answers } = normalizeBrief(src);
-  const offer = typeof answers.offer === 'string' ? answers.offer.replace(/[.\s]+$/, '') : '';
-  const aud = typeof answers.audience === 'string' ? answers.audience.replace(/[.\s]+$/, '') : '';
+  // Fields that assume filled with the kind's default text are unknown, not the user's words.
+  const assumed = new Set(isObj(input) && Array.isArray(input.assumptions) ? input.assumptions.map(a => isObj(a) ? a.field : a) : []);
+  const known = k => !assumed.has(k) && typeof answers[k] === 'string' ? answers[k].replace(/[.\s]+$/, '') : '';
+  const offer = known('offer');
+  const aud = known('audience');
   let product = '';
   if (offer && aud) product = `${offer}, for ${aud}.`;
   else if (offer) product = `${offer}.`;
