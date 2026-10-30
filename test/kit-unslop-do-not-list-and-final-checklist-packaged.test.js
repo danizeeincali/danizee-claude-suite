@@ -44,4 +44,21 @@ describe('redesign-checklist — packaged end to end', () => {
     assert.equal(pkg.kit(['redesign-checklist', 'nope']).code, 1);
     assert.deepEqual(pkg.egress(), []);
   });
+
+  it('--format overrides the sniff through the real CLI (file and piped stdin)', () => {
+    const r1 = '<p align="center"><img src="a.png"></p>\n\n## Install\n\nSee [docs](https://x.y/docs).\n\n## Usage\n\nRun it.\n';
+    const r2 = '<p align="center"><img src="a.png"></p>\n\n## Usage\n\nRun it.\n\n## Install\n\nSee docs.\n';
+    fs.writeFileSync(path.join(pkg.dir, 'r1.md'), r1);
+    fs.writeFileSync(path.join(pkg.dir, 'r2.md'), r2);
+    assert.equal(pkg.kit(['redesign-checklist', 'check', '--before', 'r1.md', '--after', 'r2.md', '--strict']).code, 0);
+    const f = pkg.kit(['redesign-checklist', 'check', '--before', 'r1.md', '--after', 'r2.md', '--format', 'md', '--strict']);
+    assert.equal(f.code, 2);
+    assert.equal(f.json.exit, 2);
+    assert.equal(pkg.kit(['redesign-checklist', 'check', '--before', 'r1.md', '--after', 'r2.md', '--format', 'rst']).code, 1);
+    const t = pkg.kit(['redesign-checklist', 'template-test', '--name', 'Acme', '--format', 'md'], '<b>Acme</b> pallets');
+    assert.equal(t.code, 0);
+    assert.equal(t.json.name_found, true);
+    fs.writeFileSync(path.join(pkg.dir, 'p.txt'), 'Search everything faster.');
+    assert.equal(pkg.kit(['redesign-checklist', 'template-test', '--name', 'Arc', '--file', 'p.txt']).json.name_found, false);
+  });
 });

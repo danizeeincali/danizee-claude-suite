@@ -5,16 +5,16 @@
  *
  *   redesign-checklist list
  *       → { do_not: [{ id, rule }], checklist: [{ id, item, how_to_check }], template_test: { how } }
- *   redesign-checklist template-test --name <product name> [--file <page.html|page.md>]   (or the text on stdin)
+ *   redesign-checklist template-test --name <product name> [--file <page.html|page.md>] [--format html|md]   (or the text on stdin)
  *       → { name_found, occurrences, sentences, generic: [{ line, text }], generic_ratio, threshold, pass, next }
- *   redesign-checklist check --before <file> --after <file> [--name <product name>] [--strict]
+ *   redesign-checklist check --before <file> --after <file> [--name <product name>] [--strict] [--format html|md] [--before-format html|md] [--after-format html|md]
  *       → { violations: [{ rule, detail, line }], template, pass, next }
  *
  * list prints the do-not limits of a redesign (do not change what the product does, keep the section order and the
  * names the code relies on, invent nothing, add no visual the screen needs, no looping motion, keep accessibility)
  * and the closing checklist, each item with a way to check it.
  *
- * template-test replaces every occurrence of the product name (case-insensitive) in the visible copy (HTML tags,
+ * template-test replaces every occurrence of the product name (case-insensitive, whole word only: not inside a longer word) in the visible copy (HTML tags,
  * comments, scripts and styles, or markdown code and markup, are left out) with a placeholder, splits the copy into
  * sentences, and asks of each sentence that still has content words whether it reads as any product: it is
  * `generic` when every content word (stop words and the placeholder removed) is in GENERIC_WORDS (streamline,
@@ -22,7 +22,7 @@
  * when the name occurs at least once and generic_ratio <= MAX_GENERIC_RATIO (0.3). `line` is a 1-based line of the
  * input. Text with no sentence that has a content word gives generic_ratio 0.
  *
- * check compares two versions (HTML or markdown, sniffed from the text) for mechanical do-not violations, each as
+ * check compares two versions (HTML or markdown, sniffed from the text by landing-sections' own sniff, which skips a BOM, front matter, comments and <?..?>, {%..%}, {#..#} prologs; --format forces both, --before-format / --after-format force one side, each html or md) for mechanical do-not violations, each as
  * { rule, detail, line }: `section-dropped` / `section-reordered` (sections found by landing-sections' detection;
  * when the before page has fewer than two known sections, by heading text order instead), `field-removed` (a form
  * field `name` attribute in before and not in after), `link-removed` (an href or markdown link target in before and
@@ -34,17 +34,17 @@
  * on stdout, with `exit: 2`), the blocking mode of the review step.
  *
  * Input is read from --file (or stdin for template-test), at most 8 MiB each. Binary input (NUL bytes), empty input,
- * an unreadable file, a missing or empty or duplicate flag value, an unknown argument or an unknown subcommand exit 1.
+ * an unreadable file, a missing or empty or duplicate flag value, a --format value other than html or md, an unknown argument or an unknown subcommand exit 1.
  * Built from ideas audited by /w-bbs (run 2026-10-30-unslop); no foreign code.
  */
 import fs from 'fs/promises';
 import { constants as fsc } from 'fs';
 import path from 'path';
 import { KitExit } from './kit-exit.js';
-import { checkText } from './landing-sections.js';
+import { checkText, sniff } from './landing-sections.js';
 
 export const verb = 'redesign-checklist';
-export const usage = 'cli.js redesign-checklist list | template-test --name <product> [--file <page>]  (text on stdin or --file) | check --before <file> --after <file> [--name <product>] [--strict]  (advisory exit 0; --strict exits 2 when pass is false)';
+export const usage = 'cli.js redesign-checklist list | template-test --name <product> [--file <page>] [--format html|md]  (text on stdin or --file) | check --before <file> --after <file> [--name <product>] [--strict] [--format|--before-format|--after-format html|md]  (advisory exit 0; --strict exits 2 when pass is false)';
 
 const MAX_BYTES = 8 * 1024 * 1024;
 export const MAX_GENERIC_RATIO = 0.3;
@@ -112,11 +112,6 @@ const decode = s => s.replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt
 const blank = s => s.replace(/[^\n]/g, ' ');
 const TAG = /<(\/?)([a-zA-Z][\w:-]*)((?:[^<>"']|"[^"]*"|'[^']*')*)>/g;
 
-function sniff(text) {
-  const t = text.replace(/^﻿/, '').replace(/^---[ \t]*\n[\s\S]*?\n---[ \t]*(\n|$)/, '').replace(/^\s*(<!--[\s\S]*?-->\s*)*/, '');
-  return /^<(!doctype\b|[a-z][a-z0-9-]*)/i.test(t.slice(0, 64)) ? 'html' : 'md';
-}
-
 /** Visible copy with the line structure kept: tags and comments become blanks, block tags a BREAK marker. */
 function visibleHtml(raw) {
   const t = raw
@@ -142,6 +137,7 @@ function visibleMarkdown(raw) {
       .replace(/<[^<>\n]*>/g, ' ')
       .replace(/`([^`\n]*)`/g, '$1')
       .replace(/^[ \t>#*+-]+/, '')
+      .replace(/^\d{1,9}[.)][ \t]+/, '')
       .replace(/[*_~]+/g, ''));
   }
   return out.join('\n');
@@ -164,9 +160,10 @@ const isGeneric = w => STEMS.some(f => GENERIC_WORDS.has(f(w)));
 
 /** The swap-the-product-name test on a text (type md or html, sniffed when omitted). */
 export function templateTest(raw, name, type) {
+  if (type !== undefined && type !== 'md' && type !== 'html') throw bad('format must be md or html');
   const nm = String(name).trim();
   const visible = visibleText(raw, type || sniff(raw));
-  const re = new RegExp(esc(nm), 'gi');
+  const re = new RegExp('(?<![\\p{L}\\p{N}])' + esc(nm) + '(?![\\p{L}\\p{N}])', 'giu');
   let occurrences = 0;
   const swapped = visible.replace(re, () => { occurrences++; return PLACEHOLDER; });
   const generic = [];
@@ -192,7 +189,18 @@ export function templateTest(raw, name, type) {
   return { name_found, occurrences, sentences, generic, generic_ratio, threshold: MAX_GENERIC_RATIO, pass, next };
 }
 
-const lineOf = (text, idx) => { let n = 1; for (let i = text.indexOf('\n'); i !== -1 && i < idx; i = text.indexOf('\n', i + 1)) n++; return n; };
+let nlCache = { text: null, offsets: [] };
+const lineOf = (text, idx) => {
+  if (nlCache.text !== text) {
+    const offsets = [];
+    for (let i = text.indexOf('\n'); i !== -1; i = text.indexOf('\n', i + 1)) offsets.push(i);
+    nlCache = { text, offsets };
+  }
+  const o = nlCache.offsets;
+  let lo = 0, hi = o.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (o[mid] < idx) lo = mid + 1; else hi = mid; }
+  return lo + 1;
+};
 
 function firstLines(text, re, group = 1) {
   const m = new Map();
@@ -273,7 +281,7 @@ function orderChanged(beforeIds, afterIds) {
 
 /** Compare two versions of a page for mechanical do-not violations. */
 export function compare(before, after, opts = {}) {
-  const tb = sniff(before), ta = sniff(after);
+  const tb = opts.beforeFormat || opts.format || sniff(before), ta = opts.afterFormat || opts.format || sniff(after);
   const violations = [];
   const sb = checkText(before, tb), sa = checkText(after, ta);
   let idsB, idsA, lineB, lineA, what;
@@ -343,6 +351,7 @@ function clean(text, where) {
   return text;
 }
 
+const FORMATS = ['--format', '--before-format', '--after-format'];
 function parseFlags(rest, valued, booleans = []) {
   const o = {};
   while (rest.length) {
@@ -355,6 +364,7 @@ function parseFlags(rest, valued, booleans = []) {
       if (!rest.length || rest[0].startsWith('--')) throw bad(`${a} needs a value`);
       o[a] = rest.shift();
       if (!o[a].trim()) throw bad(`${a} needs a non-empty value`);
+      if (FORMATS.includes(a) && o[a] !== 'md' && o[a] !== 'html') throw bad(`${a} must be md or html`);
     } else throw bad(`unexpected argument "${a}"\n${usage}`);
   }
   return o;
@@ -368,7 +378,7 @@ export async function run(args, io) {
     return { do_not: DO_NOT.map(d => ({ ...d })), checklist: CHECKLIST.map(c => ({ ...c })), template_test: { how: TEMPLATE_TEST_HOW } };
   }
   if (cmd === 'template-test') {
-    const f = parseFlags(rest, ['--name', '--file']);
+    const f = parseFlags(rest, ['--name', '--file', '--format']);
     if (f['--name'] === undefined) throw bad(`template-test needs --name <product name>\n${usage}`);
     let text;
     if (f['--file'] !== undefined) text = await readBounded(f['--file'], cwd);
@@ -377,14 +387,14 @@ export async function run(args, io) {
       if (buf.length > MAX_BYTES) throw bad('input is larger than 8 MiB');
       text = clean(buf.toString('utf-8'), 'standard input');
     }
-    return templateTest(text, f['--name']);
+    return templateTest(text, f['--name'], f['--format']);
   }
   if (cmd === 'check') {
-    const f = parseFlags(rest, ['--before', '--after', '--name'], ['--strict']);
+    const f = parseFlags(rest, ['--before', '--after', '--name', '--format', '--before-format', '--after-format'], ['--strict']);
     if (f['--before'] === undefined || f['--after'] === undefined) throw bad(`check needs --before <file> and --after <file>\n${usage}`);
     const before = await readBounded(f['--before'], cwd);
     const after = await readBounded(f['--after'], cwd);
-    const r = compare(before, after, { name: f['--name'] });
+    const r = compare(before, after, { name: f['--name'], format: f['--format'], beforeFormat: f['--before-format'], afterFormat: f['--after-format'] });
     if (f['--strict'] && !r.pass) r.exit = 2;
     return r;
   }

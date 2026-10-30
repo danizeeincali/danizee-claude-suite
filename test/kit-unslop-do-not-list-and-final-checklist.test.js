@@ -160,3 +160,62 @@ describe('check', () => {
     await exit(() => run(['bogus'], io()));
   });
 });
+
+describe('review r1 regressions', () => {
+  it('product name matches whole words only', () => {
+    const r = templateTest('<p>Search everything faster. Streamline your workflow.</p>', 'Arc');
+    assert.equal(r.name_found, false);
+    assert.equal(r.occurrences, 0);
+    const ok = templateTest('<p>Arc, the browser. Try Arc today.</p>', 'Arc');
+    assert.equal(ok.occurrences, 2);
+    assert.equal(templateTest('<p>Notional value of inbox bloom.</p>', 'Notion').name_found, false);
+  });
+  it('shares landing-sections sniff and agrees on prologs', async () => {
+    const ls = await import('../src/lib/kit/landing-sections.js');
+    assert.equal(typeof ls.sniff, 'function');
+    const jinja = '{% extends "base.html" %}\n<section id="hero"><a href="/signup">Go</a></section>\n<section id="faq"><h2>FAQ</h2></section>';
+    assert.equal(ls.sniff(jinja), 'html');
+    const after = jinja.replace('<a href="/signup">Go</a>', '');
+    const r = compare(jinja, after);
+    assert.deepEqual(r.violations.map(v => v.rule), ['link-removed']);
+    const php = '<?php echo 1; ?>\n<p><a href="/x">x</a></p>';
+    assert.deepEqual(compare(php, '<?php echo 1; ?>\n<p>x</p>').violations.map(v => v.rule), ['link-removed']);
+  });
+  it('--format forces the type for template-test and check', async () => {
+    const d = await tmp();
+    const r1 = '<p align="center"><img src="a.png"></p>\n\n## Install\n\nSee [docs](https://x.y/docs).\n\n## Usage\n\nRun it.\n';
+    const r2 = '<p align="center"><img src="a.png"></p>\n\n## Usage\n\nRun it.\n\n## Install\n\nSee docs.\n';
+    await fs.writeFile(path.join(d, 'r1.md'), r1);
+    await fs.writeFile(path.join(d, 'r2.md'), r2);
+    const plain = await run(['check', '--before', 'r1.md', '--after', 'r2.md'], io('', d));
+    assert.equal(plain.pass, true);
+    for (const flags of [['--format', 'md'], ['--before-format', 'md', '--after-format', 'md']]) {
+      const r = await run(['check', '--before', 'r1.md', '--after', 'r2.md', '--strict', ...flags], io('', d));
+      assert.equal(r.pass, false);
+      assert.equal(r.exit, 2);
+      assert.ok(r.violations.some(v => v.rule === 'link-removed'));
+      assert.ok(r.violations.some(v => v.rule === 'section-reordered'));
+    }
+    const t = await run(['template-test', '--name', 'Acme', '--format', 'md'], io('<b>Acme</b> pallets', d));
+    assert.equal(t.name_found, true);
+    await exit(() => run(['template-test', '--name', 'Acme', '--format', 'xml'], io('Acme', d)));
+    await exit(() => run(['check', '--before', 'r1.md', '--after', 'r2.md', '--format', 'rst'], io('', d)));
+    await exit(() => run(['check', '--before', 'r1.md', '--after', 'r2.md', '--format', 'md', '--format', 'md'], io('', d)));
+  });
+  it('ordered-list markers are not invented data', () => {
+    const b = '# T\n\n- Open the file\n- Save it\n';
+    const a = '# T\n\n1. Open the file\n2) Save it\n';
+    assert.deepEqual(compare(b, a).violations, []);
+    assert.deepEqual(compare('<ul><li>Open the file</li><li>Save it</li></ul>', '<ol><li>Open the file</li><li>Save it</li></ol>').violations, []);
+    assert.equal(compare(b, '# T\n\n- Open 3 files\n').violations[0].rule, 'invented-data');
+  });
+  it('line lookup is fast on large inputs and still correct', () => {
+    const n = 20000;
+    const mk = k => Array.from({ length: n }, (_, i) => `<a href="/p${i}">l</a><input name="f${i}">`).join('\n') + (k ? '' : '\n<a href="/last">x</a>');
+    const t0 = Date.now();
+    const r = compare(mk(0), mk(1));
+    assert.ok(Date.now() - t0 < 3000);
+    assert.equal(r.violations.length, 1);
+    assert.equal(r.violations[0].line, n + 1);
+  });
+});
