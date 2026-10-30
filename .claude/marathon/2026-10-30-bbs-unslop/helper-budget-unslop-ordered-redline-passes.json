@@ -7,13 +7,13 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 160,
-    "cost": 231412
+    "steps": 220,
+    "cost": 284427
   },
   "clock": {
-    "depth": 0,
-    "startedAt": null,
-    "elapsedMs": 288613
+    "depth": 1,
+    "startedAt": 1793403812494,
+    "elapsedMs": 379358
   },
   "helpers": {
     "build-unslop-ordered-redline-passes": {
@@ -38,6 +38,30 @@
       "reserved": {
         "steps": 0,
         "cost": 0
+      }
+    },
+    "fix-r1-unslop-ordered-redline-passes": {
+      "steps": 60,
+      "cost": 53015,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r2-unslop-ordered-redline-passes": {
+      "steps": 0,
+      "cost": 0,
+      "ok": 0,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 80,
+        "cost": 150000
       }
     }
   }

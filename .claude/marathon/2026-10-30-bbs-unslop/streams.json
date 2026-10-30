@@ -31,10 +31,13 @@
     },
     {
       "name": "unslop-triage-and-refine-only-gate",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-triage-and-refine-only-gate.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract, failing tests, verb",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-triage-and-refine-only-gate",
+      "phase": "build",
+      "base": "b67b1e322ae3e966871c10cb30b0ad3110d790d7"
     },
     {
       "name": "unslop-ordered-redline-passes",
@@ -48,10 +51,13 @@
     },
     {
       "name": "unslop-design-tokens",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-design-tokens.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract, failing tests, verb",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-design-tokens",
+      "phase": "build",
+      "base": "b67b1e322ae3e966871c10cb30b0ad3110d790d7"
     },
     {
       "name": "unslop-glyph-and-duotone-effects",
@@ -97,10 +103,13 @@
     },
     {
       "name": "unslop-do-not-list-and-final-checklist",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-do-not-list-and-final-checklist.md",
-      "next": "read the brief, write the contract and failing tests",
-      "tasks": []
+      "next": "builder writes contract, failing tests, verb",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-do-not-list-and-final-checklist",
+      "phase": "build",
+      "base": "b67b1e322ae3e966871c10cb30b0ad3110d790d7"
     },
     {
       "name": "integration",
