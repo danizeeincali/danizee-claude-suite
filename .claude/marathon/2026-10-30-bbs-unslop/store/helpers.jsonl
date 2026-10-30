@@ -1,3 +1,9 @@
 {"role":"build","model":"sonnet","stream":"unslop-slop-audit","budget":150000,"event":"spawn","id":"dd444ae3-7c4c-4bd0-80c4-514ec326d6bd","ts":"2026-10-30T23:35:36.964Z"}
 {"role":"build","model":"sonnet","stream":"unslop-direction-brief","budget":150000,"event":"spawn","id":"54434972-b81e-4db3-bd1f-b0166b71195b","ts":"2026-10-30T23:35:37.415Z"}
 {"role":"build","model":"sonnet","stream":"unslop-ordered-redline-passes","budget":150000,"event":"spawn","id":"b8342aa6-5ab9-479b-ae04-7306971c4b9a","ts":"2026-10-30T23:35:37.748Z"}
+{"helper_id":"b8342aa6-5ab9-479b-ae04-7306971c4b9a","tokens":150000,"outcome":"green","event":"done","id":"57730d18-debf-4720-a7b4-c57d77588dde","ts":"2026-10-30T23:38:30.743Z"}
+{"role":"review","model":"opus","stream":"unslop-ordered-redline-passes","budget":150000,"event":"spawn","id":"be28e7fe-2ba2-46b6-aa4d-b5d39dd8486d","ts":"2026-10-30T23:38:52.731Z"}
+{"helper_id":"54434972-b81e-4db3-bd1f-b0166b71195b","tokens":82334,"outcome":"green","event":"done","id":"367dd1d7-7ba1-44de-9a2a-01b24af00365","ts":"2026-10-30T23:39:21.170Z"}
+{"role":"review","model":"opus","stream":"unslop-direction-brief","budget":150000,"event":"spawn","id":"a96c02ed-745b-47ed-8b04-1622cb7c2930","ts":"2026-10-30T23:39:28.349Z"}
+{"helper_id":"be28e7fe-2ba2-46b6-aa4d-b5d39dd8486d","tokens":81412,"outcome":"green","event":"done","id":"9efa08a8-44e3-42b2-ae78-b94bc75b7fcf","ts":"2026-10-30T23:41:16.675Z"}
+{"helper_id":"a96c02ed-745b-47ed-8b04-1622cb7c2930","tokens":78100,"outcome":"green","event":"done","id":"75be223f-b327-42c4-8f70-49f400d44b58","ts":"2026-10-30T23:41:23.899Z"}
