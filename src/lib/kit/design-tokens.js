@@ -30,7 +30,7 @@
  * padding, gap, row-gap or column-gap that is not a multiple of 4), HEAVY_WEIGHT (font-weight 700 or more,
  * including bold), TOO_MANY_WEIGHTS (more than 2 distinct font-weight values; reported at the third), MULTIPLE_ACCENTS
  * (saturated colors, OKLCH chroma 0.09 or more, from more than one hue family, 25 degrees apart; reported at the
- * first color of the second family), TOO_MANY_SHADOWS (more than 2 box-shadow declarations other than none;
+ * first color of the second family), TOO_MANY_SHADOWS (more than 2 distinct box-shadow values other than none, compared case- and space-insensitively without !important;
  * reported at the third), and the hint PURE_GREY (an rgb color with r=g=b that is not black or white, where a
  * tinted ramp is expected). Hints have severity "hint" and never count against `ok`; every other issue has
  * severity "issue". `line` is 1-based. Exit 0 always for check unless --strict is given and an issue (not a hint)
@@ -302,7 +302,7 @@ export function checkCss(raw) {
   const issues = [];
   const push = (code, line, value, fix, severity = 'issue') => issues.push({ code, severity, line, value, fix });
   const weights = new Map();
-  let shadows = 0;
+  const shadows = new Set();
   const families = []; // { hue, line, value }
   const DECL = /(^|[;{}\s])(-{0,2}[a-zA-Z][\w-]*)[ \t\r\n]*:[ \t\r\n]*([^;{}]*)/g;
   // precomputed line starts for speed
@@ -336,9 +336,12 @@ export function checkCss(raw) {
         }
       }
     }
-    if (prop === 'box-shadow' && !/^(none|inherit|initial|unset)$/i.test(value)) {
-      shadows++;
-      if (shadows === 3) push('TOO_MANY_SHADOWS', line, `box-shadow: ${value}`, 'keep at most two quiet shadows (--shadow-sm, --shadow-md)');
+    if (prop === 'box-shadow') {
+      const sv = value.replace(/\s*!important$/i, '').trim().replace(/\s+/g, ' ').toLowerCase();
+      if (!/^(none|inherit|initial|unset)$/.test(sv) && !shadows.has(sv)) {
+        shadows.add(sv);
+        if (shadows.size === 3) push('TOO_MANY_SHADOWS', line, `box-shadow: ${value}`, 'keep at most two quiet shadows (--shadow-sm, --shadow-md)');
+      }
     }
     if (COLOR_PROPS.test(prop)) {
       for (const c of value.matchAll(COLOR_RE)) {

@@ -218,6 +218,17 @@ describe('check', () => {
     assert.equal(r.ok, true);
     assert.deepEqual([r.counts.issues, r.counts.hints], [0, 2]);
   });
+  it('counts distinct box-shadow values, not declarations, and ignores none !important', async () => {
+    const reuse = await chk('.a{box-shadow:var(--shadow-sm)} .b{box-shadow:var(--shadow-md)} .c{box-shadow:var(--shadow-sm)}');
+    assert.deepEqual(reuse.issues.filter(i => i.code === 'TOO_MANY_SHADOWS'), []);
+    assert.equal(reuse.ok, true);
+    const resets = await chk('.a{box-shadow:none!important}.b{box-shadow:none !important}.c{box-shadow:0 1px #14191e}.d{box-shadow:0 2px #14191e}');
+    assert.deepEqual(resets.issues.filter(i => i.code === 'TOO_MANY_SHADOWS'), []);
+    const dup = await chk('.a{box-shadow:0 1px #14191e}.b{box-shadow:0  1PX #14191E !important}.c{box-shadow:0 2px #14191e}');
+    assert.deepEqual(dup.issues.filter(i => i.code === 'TOO_MANY_SHADOWS'), []);
+    const three = await chk('.a{box-shadow:none!important}.b{box-shadow:0 1px #14191e}.c{box-shadow:0 2px #14191e}.d{box-shadow:0 3px #14191e}');
+    assert.deepEqual(three.issues.filter(i => i.code === 'TOO_MANY_SHADOWS').map(i => i.line), [1]);
+  });
   it('flags more than two box-shadow declarations', async () => {
     const two = await chk('.a{box-shadow:0 1px #14191e}.b{box-shadow:0 2px #14191e}.c{box-shadow:none}');
     assert.deepEqual(two.issues, []);
