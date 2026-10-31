@@ -7,13 +7,13 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 180,
-    "cost": 336090
+    "steps": 360,
+    "cost": 705456
   },
   "clock": {
     "depth": 1,
-    "startedAt": 1793406113833,
-    "elapsedMs": 1516550
+    "startedAt": 1793408364229,
+    "elapsedMs": 3741949
   },
   "helpers": {
     "build-unslop-story-video-authoring": {
@@ -53,6 +53,42 @@
       }
     },
     "review-r2-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 87658,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r2-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 183801,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r3-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 97907,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r3-unslop-story-video-authoring": {
       "steps": 0,
       "cost": 0,
       "ok": 0,
@@ -60,8 +96,8 @@
       "grants": 1,
       "skipped": 0,
       "reserved": {
-        "steps": 80,
-        "cost": 150000
+        "steps": 40,
+        "cost": 100000
       }
     }
   }

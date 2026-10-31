@@ -31,3 +31,6 @@
 {"key":"packaged_unslop-glyph-and-duotone-effects","value":true,"id":"b8929e70-7127-4228-8a07-21f7faa7243f","ts":"2026-10-31T00:12:00.818Z"}
 {"key":"egress_zero_unslop-glyph-and-duotone-effects","value":true,"id":"97d48452-f19d-472a-b211-473a24d8e44a","ts":"2026-10-31T00:12:00.984Z"}
 {"key":"callers_unslop-glyph-and-duotone-effects","value":0,"id":"b017e433-e59c-40e9-b956-5c2b1aa4a9bc","ts":"2026-10-31T00:12:01.171Z"}
+{"key":"packaged_unslop-story-video-renderer","value":true,"id":"74ff214b-15cc-4a63-92fe-6bb0d3178a33","ts":"2026-10-31T00:42:02.630Z"}
+{"key":"egress_zero_unslop-story-video-renderer","value":true,"id":"22a8add8-6d73-433f-83fb-2c00ff95abaf","ts":"2026-10-31T00:42:02.759Z"}
+{"key":"callers_unslop-story-video-renderer","value":0,"id":"c40f53f2-840f-429a-8c39-17d153463c9a","ts":"2026-10-31T00:42:02.895Z"}

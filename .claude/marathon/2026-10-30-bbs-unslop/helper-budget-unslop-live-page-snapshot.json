@@ -7,13 +7,13 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 120,
-    "cost": 247285
+    "steps": 360,
+    "cost": 703415
   },
   "clock": {
     "depth": 1,
-    "startedAt": 1793406116187,
-    "elapsedMs": 1532026
+    "startedAt": 1793409048318,
+    "elapsedMs": 4287750
   },
   "helpers": {
     "build-unslop-live-page-snapshot": {
@@ -41,6 +41,54 @@
       }
     },
     "fix-r1-unslop-live-page-snapshot": {
+      "steps": 60,
+      "cost": 177900,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r2-unslop-live-page-snapshot": {
+      "steps": 60,
+      "cost": 94317,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r2-unslop-live-page-snapshot": {
+      "steps": 60,
+      "cost": 91259,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r3-unslop-live-page-snapshot": {
+      "steps": 60,
+      "cost": 92654,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r3-unslop-live-page-snapshot": {
       "steps": 0,
       "cost": 0,
       "ok": 0,
@@ -48,7 +96,7 @@
       "grants": 1,
       "skipped": 0,
       "reserved": {
-        "steps": 60,
+        "steps": 40,
         "cost": 100000
       }
     }
