@@ -27,7 +27,8 @@
  *            default; any other kind with --animate is exit 1) adds a shimmer: pixels are sampled once at load and only
  *            floor(5% of the cells) cells per tick get a neighbouring glyph from the atlas, 10 ticks per second (TICK 100 ms).
  *            It pauses when the canvas is off screen (IntersectionObserver) or the tab is hidden, and never starts (and stops
- *            if it changes) under prefers-reduced-motion: reduce.
+ *            if it changes) under prefers-reduced-motion: reduce. If a tick throws, or the script falls back to the plain image, the shimmer is dead:
+ *            the timer is cleared and no later visibility, intersection or motion event restarts it.
  * Every canvas script runs once when the image has loaded (no animation loop unless --animate, no resize handler), keeps the original <img>
  * (visually hidden, its alt text intact) and marks the canvas aria-hidden, caps the grid at 40000 cells (the cell grows
  * until it fits), caps devicePixelRatio at 2, and falls back to the plain image when the canvas is tainted (cross-origin
@@ -36,7 +37,8 @@
  * check validates the palette (2 or 3 valid hex colors), reports the darkest and lightest color and their WCAG contrast
  * ratio, and warns under 3 (exit 0; a warning is not an error).
  * Exit codes: 0 answer printed; 1 bad input (unknown kind, bad palette, unsafe selector, bad chars or cell, unknown or
- * duplicate flag, unbalanced quotes or brackets in the selector, --animate on a kind other than glyph,
+ * duplicate flag, unbalanced quotes or brackets in the selector, a selector with an empty list item, a leading or
+ *   trailing combinator or a ':' with no name, a --chars ramp with no visible character, --animate on a kind other than glyph,
  * a third color for halftone). Input is only flags; nothing is read from files or stdin.
  * Built from ideas audited by /w-bbs (run 2026-10-30-unslop); no foreign code.
  */
@@ -139,6 +141,28 @@ function checkSelector(sel) {
   }
   if (q) throw bad('--selector has an unterminated quote');
   if (stack.length) throw bad('--selector has unbalanced brackets');
+  // shape: no empty list item, no leading/trailing combinator, no pseudo without a name
+  const parts = [], plains = [];
+  let cur = '', plain = '', depth = 0, br = 0;
+  q = '';
+  for (const ch of s) {
+    if (q) { cur += ch; if (ch === q) q = ''; continue; }
+    if (ch === '"' || ch === "'") q = ch;
+    else if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    else if (ch === '[') br++;
+    else if (ch === ']') br--;
+    if (ch === ',' && depth === 0 && br === 0) { parts.push(cur); plains.push(plain); cur = ''; plain = ''; continue; }
+    cur += ch;
+    if (!q && br === 0 && ch !== '"' && ch !== "'") plain += ch;
+  }
+  parts.push(cur); plains.push(plain);
+  for (const p of parts) {
+    const t = p.trim();
+    if (!t) throw bad('--selector has an empty item (stray comma)');
+    if (/^[>+~]|[>+~]$/.test(t)) throw bad('--selector must not start or end with a combinator (> + ~)');
+  }
+  if (plains.some(pl => pl.replace(/::?[A-Za-z_-][\w-]*/g, '').includes(':'))) throw bad('--selector has a ":" with no pseudo-class or pseudo-element name');
   return s;
 }
 
@@ -146,6 +170,7 @@ function checkChars(str) {
   const chars = Array.from(str);
   if (chars.length < 2 || chars.length > 64) throw bad(`--chars needs 2 to 64 characters, got ${chars.length}`);
   if (chars.some(c => /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(c))) throw bad('--chars must not contain control characters');
+  if (!chars.some(c => !/[\s\u00ad\u200b-\u200f\u2060\ufeff]/.test(c))) throw bad('--chars needs at least one visible character (not only spaces or zero-width characters)');
   return chars;
 }
 
@@ -198,12 +223,12 @@ function canvasScript(kind, pal, selector, cell, chars, animate) {
     'var DPR=Math.min(window.devicePixelRatio||1,2);',
     animate ? `var ANIM=1,STEPS=${ANIMATE.steps},TICK=${1000 / ANIMATE.steps},SHARE=${ANIMATE.share};` : '',
     `var BGL=${kind === 'halftone' ? 1 : 0};`,
-    'var img=null,list=[],cv=null,ran=false;',
+    'var img=null,list=[],cv=null,ran=false;' + (animate ? 'var dead=0,halt=null;' : ''),
     'try{list=document.querySelectorAll(SEL);}catch(e){}',
     'for(var q=0;q<list.length;q++){if(list[q].tagName==="IMG"&&!list[q].__ie){img=list[q];break;}}',
     'if(!img)return;img.__ie=1;',
     'function rgb(c){return "rgb("+c[0]+","+c[1]+","+c[2]+")";}',
-    'function fallback(){if(cv&&cv.parentNode)cv.parentNode.removeChild(cv);cv=null;img.classList.remove("ie-done");}',
+    'function fallback(){' + (animate ? 'dead=1;if(halt)halt();' : '') + 'if(cv&&cv.parentNode)cv.parentNode.removeChild(cv);cv=null;img.classList.remove("ie-done");}',
     'function grid(w,h){var c=CELL,cols,rows;do{cols=Math.max(1,Math.round(w/c));rows=Math.max(1,Math.round(h/c));c+=1;}while(cols*rows>MAXC);return{cols:cols,rows:rows};}',
     'function sample(cols,rows){var s=document.createElement("canvas");s.width=cols;s.height=rows;var sc=s.getContext("2d");sc.drawImage(img,0,0,cols,rows);return sc.getImageData(0,0,cols,rows).data;}',
     'function lum(d,i){var a=d[i+3]/255;return (0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2])/255*a+BGL*(1-a);}',
@@ -215,9 +240,10 @@ function canvasScript(kind, pal, selector, cell, chars, animate) {
     'var mq=window.matchMedia?window.matchMedia("(prefers-reduced-motion: reduce)"):null;',
     'var N=g.cols*g.rows,per=Math.floor(N*SHARE),vis=true,timer=0;',
     'if(per<1||(mq&&mq.matches))return;',
-    'function tick(){try{for(var t=0;t<per;t++){var c=Math.floor(Math.random()*N),i=c%g.cols,j=(c-i)/g.cols,l=lum(d,c*4),b=Math.floor(l*(n-1)+0.5),ix=Math.max(0,Math.min(n-1,b+Math.floor(Math.random()*3)-1)),row=k>1&&l>=0.5?1:0;x.fillStyle=rgb(P[0]);x.fillRect(i*pw,j*ph,pw,ph);x.drawImage(at,ix*pw,row*ph,pw,ph,i*pw,j*ph,pw,ph);}}catch(e){stop();}}',
+    'function tick(){try{for(var t=0;t<per;t++){var c=Math.floor(Math.random()*N),i=c%g.cols,j=(c-i)/g.cols,l=lum(d,c*4),b=Math.floor(l*(n-1)+0.5),ix=Math.max(0,Math.min(n-1,b+Math.floor(Math.random()*3)-1)),row=k>1&&l>=0.5?1:0;x.fillStyle=rgb(P[0]);x.fillRect(i*pw,j*ph,pw,ph);x.drawImage(at,ix*pw,row*ph,pw,ph,i*pw,j*ph,pw,ph);}}catch(e){dead=1;stop();}}',
     'function stop(){if(timer){clearInterval(timer);timer=0;}}',
-    'function sync(){var on=vis&&!document.hidden&&!(mq&&mq.matches);if(on&&!timer)timer=setInterval(tick,TICK);else if(!on)stop();}',
+    'halt=stop;',
+    'function sync(){if(dead){stop();return;}var on=vis&&!document.hidden&&!(mq&&mq.matches);if(on&&!timer)timer=setInterval(tick,TICK);else if(!on)stop();}',
     'document.addEventListener("visibilitychange",sync);',
     'if(mq&&mq.addEventListener)mq.addEventListener("change",sync);',
     'if(window.IntersectionObserver){vis=false;new IntersectionObserver(function(e){vis=e[e.length-1].isIntersecting;sync();}).observe(cv);}else sync();',

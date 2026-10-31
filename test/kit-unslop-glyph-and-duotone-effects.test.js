@@ -201,19 +201,21 @@ describe('image-effects errors', () => {
 // ---- review r1 fixes ----
 
 /** Run an emitted script against a small fake DOM; returns the recorded calls. */
-function harness(js, { w = 4, h = 2, pixels, reduced = false, noIO = false, hidden = false } = {}) {
-  const log = { arcs: 0, draws: 0, intervals: [], cleared: 0, observers: [], canvases: [], listeners: {} };
+function harness(js, { w = 4, h = 2, pixels, reduced = false, noIO = false, hidden = false, throwGet = false, throwDraw = false, loadLater = false } = {}) {
+  const log = { inserts: 0, removed: [], imgClasses: new Set(), imgEvents: {}, arcs: 0, draws: 0, intervals: [], cleared: 0, observers: [], canvases: [], listeners: {} };
   const px = pixels || new Uint8ClampedArray(w * h * 4).fill(255);
   const mkCanvas = () => {
     const cv = { style: {}, width: 0, height: 0, className: '', attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, parentNode: null,
       getContext: () => ({ scale() {}, fillRect() {}, beginPath() {}, arc() { log.arcs++; }, fill() {}, fillText() {},
-        drawImage() { log.draws++; }, getImageData: (x, y, cw, ch) => ({ data: px.length === cw * ch * 4 ? px : new Uint8ClampedArray(cw * ch * 4).fill(255).map((v, i) => px[i % px.length]) }),
+        drawImage() { if (throwDraw && log.armed) throw new Error('draw'); log.draws++; }, getImageData: (x, y, cw, ch) => { if (throwGet) { const e = new Error('The canvas has been tainted by cross-origin data.'); e.name = 'SecurityError'; throw e; } return ({ data: px.length === cw * ch * 4 ? px : new Uint8ClampedArray(cw * ch * 4).fill(255).map((v, i) => px[i % px.length]) }); },
         createImageData: (cw, ch) => ({ data: new Uint8ClampedArray(cw * ch * 4) }), putImageData() {} }) };
     log.canvases.push(cv);
     return cv;
   };
-  const img = { tagName: 'IMG', complete: true, naturalWidth: 400, naturalHeight: 200, clientWidth: 400, classList: { add() {}, remove() {} },
-    parentNode: { insertBefore(c) { c.parentNode = this; } }, nextSibling: null, addEventListener() {} };
+  const img = { tagName: 'IMG', complete: true, naturalWidth: 400, naturalHeight: 200, clientWidth: 400, classList: { add: c => log.imgClasses.add(c), remove: c => log.imgClasses.delete(c) },
+    parentNode: { insertBefore(c) { c.parentNode = this; log.inserts++; }, removeChild(c) { c.parentNode = null; log.removed.push(c); } }, nextSibling: null,
+    addEventListener: (t, f) => { (log.imgEvents[t] ||= []).push(f); } };
+  if (loadLater) { img.complete = false; img.naturalWidth = 0; }
   const document = { hidden, querySelectorAll: () => [img], createElement: () => mkCanvas(),
     addEventListener: (t, f) => { (log.listeners[t] ||= []).push(f); } };
   const window = { devicePixelRatio: 1, document,
@@ -224,6 +226,7 @@ function harness(js, { w = 4, h = 2, pixels, reduced = false, noIO = false, hidd
   if (noIO) delete window.IntersectionObserver;
   vm.runInNewContext(js, { ...ctx, IntersectionObserver: window.IntersectionObserver });
   log.document = document;
+  log.img = img;
   return log;
 }
 
@@ -375,5 +378,89 @@ describe('review r1: header wording', () => {
     assert.match(src, /canvas kinds treat the first matching <img> only/);
     const d = (await run(['list'])).effects.find(e => e.id === 'duotone');
     assert.match(d.notes, /every element the selector matches/);
+  });
+});
+
+describe('review r2: fallback runs for real', () => {
+  for (const kind of ['glyph', 'halftone', 'dither']) {
+    it(`${kind}: a throwing getImageData leaves the plain image (no canvas, no ie-done)`, async () => {
+      const r = await run(['emit', '--kind', kind, '--palette', PAL]);
+      const log = harness(r.js, { throwGet: true });
+      assert.equal(log.inserts, 0, 'no canvas inserted');
+      assert.ok(!log.imgClasses.has('ie-done'));
+      assert.equal(log.intervals.length, 0);
+      // control: without the throw the canvas is inserted and the class set
+      const ok = harness(r.js);
+      assert.equal(ok.inserts, 1);
+      assert.ok(ok.imgClasses.has('ie-done'));
+    });
+  }
+  it('a failure after the canvas is mounted removes the canvas and the class', async () => {
+    const r = await run(['emit', '--kind', 'glyph', '--palette', PAL, '--animate']);
+    const bad = r.js.replace('new IntersectionObserver', 'new IntersectionObserverX');
+    const log = harness(bad);
+    assert.equal(log.inserts, 1);
+    assert.equal(log.removed.length, 1, 'canvas removed again');
+    assert.ok(!log.imgClasses.has('ie-done'));
+  });
+});
+
+describe('review r2: a dead animation stays dead', () => {
+  const fire = (log, ev) => (log.listeners[ev] || []).forEach(f => f());
+  it('a failing tick stops the timer and later visibility or intersection events do not restart it', async () => {
+    const r = await run(['emit', '--kind', 'glyph', '--palette', PAL, '--animate']);
+    const log = harness(r.js, { throwDraw: true });
+    const { cb, el } = log.observers[0];
+    cb([{ isIntersecting: true, target: el }]);
+    assert.equal(log.intervals.length, 1);
+    log.armed = true;
+    log.intervals[0].f(); // throws inside, caught
+    assert.equal(log.cleared, 1);
+    log.armed = false;
+    fire(log, 'visibilitychange');
+    cb([{ isIntersecting: false, target: el }]);
+    cb([{ isIntersecting: true, target: el }]);
+    fire(log, 'visibilitychange');
+    assert.equal(log.intervals.length, 1, 'never restarted');
+  });
+  it('fallback() after the shimmer started stops the timer and keeps it stopped', async () => {
+    const r = await run(['emit', '--kind', 'glyph', '--palette', PAL, '--animate']);
+    const log = harness(r.js, { loadLater: true });
+    log.img.naturalWidth = 400; log.img.naturalHeight = 200;
+    log.imgEvents.load.forEach(f => f());
+    const { cb, el } = log.observers[0];
+    cb([{ isIntersecting: true, target: el }]);
+    assert.equal(log.intervals.length, 1);
+    log.imgEvents.error.forEach(f => f()); // fallback
+    assert.equal(log.cleared, 1, 'timer cleared');
+    assert.ok(!log.imgClasses.has('ie-done'));
+    cb([{ isIntersecting: false, target: el }]);
+    cb([{ isIntersecting: true, target: el }]);
+    fire(log, 'visibilitychange');
+    assert.equal(log.intervals.length, 1, 'never restarted');
+  });
+});
+
+describe('review r2: invalid selectors and blank ramps', () => {
+  it('refuses a leading or trailing combinator or comma, an empty compound, and an empty pseudo', async () => {
+    for (const s of ['img,', ',img', 'img,,a', 'img >', '> img', 'img +', '~ img', 'a::', 'a:', 'a: b', 'a:,b', 'img[x]>', 'a, , b', ':not(:)'])
+      await rejects(['emit', '--kind', 'duotone', '--palette', PAL, '--selector', s]);
+    for (const s of ['img', 'a > b', 'a+b, c~d', 'a::before', 'li:nth-child(2n+1)', 'img[alt="a>"]', 'a:not(.b, .c)'])
+      assert.equal((await run(['emit', '--kind', 'duotone', '--palette', PAL, '--selector', s])).kind, 'duotone', s);
+  });
+  it('refuses a --chars ramp with no visible character', async () => {
+    for (const c of ['  ', '\u00a0\u00a0', '\u200b\u200c\u200d', ' \ufeff', '\u3000\u3000'])
+      await rejects(['emit', '--kind', 'glyph', '--palette', PAL, '--chars', c]);
+    assert.equal((await run(['emit', '--kind', 'glyph', '--palette', PAL, '--chars', ' .'])).kind, 'glyph');
+  });
+});
+
+describe('review r2: header documents the new refusals', () => {
+  it('lists the selector shape and blank-ramp refusals in the exit codes', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('../src/lib/kit/image-effects.js', import.meta.url), 'utf8');
+    assert.match(src, /empty list item, a leading or\s+\*\s+trailing combinator/);
+    assert.match(src, /--chars ramp with no visible character/);
+    assert.match(src, /stops for good|stays stopped|dead/i);
   });
 });
