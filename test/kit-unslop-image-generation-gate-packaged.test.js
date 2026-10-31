@@ -18,18 +18,24 @@ describe('image-gate — packaged end to end', () => {
     assert.equal(r.json.status, 'pending');
     assert.match(r.json.question, /1200x800/);
     const id = r.json.id;
+    const same = ['--prompt-file', 'prompt.txt', '--model', 'imagegen-1', '--size', '1200x800', '--asset', 'assets/boat.png'];
 
-    const blocked = pkg.kit(['image-gate', 'check', ...base, '--id', id]);
+    const blocked = pkg.kit(['image-gate', 'check', ...base, ...same, '--id', id]);
     assert.equal(blocked.code, 2);
     assert.equal(blocked.json.approved, false);
 
     assert.equal(pkg.kit(['image-gate', 'approve', ...base, '--id', id]).code, 0);
-    const ok = pkg.kit(['image-gate', 'check', ...base, '--id', id]);
+    const ok = pkg.kit(['image-gate', 'check', ...base, ...same, '--id', id]);
     assert.equal(ok.code, 0);
     assert.equal(ok.json.approved, true);
+    assert.equal(pkg.kit(['image-gate', 'check', ...base, ...same]).code, 0);
+    fs.writeFileSync(path.join(pkg.dir, 'edited.txt'), 'A different boat entirely');
+    const changed = pkg.kit(['image-gate', 'check', ...base, '--prompt-file', 'edited.txt', '--model', 'imagegen-1', '--size', '1200x800', '--asset', 'assets/boat.png']);
+    assert.equal(changed.code, 2);
+    assert.equal(changed.json.approved, false);
     assert.equal(pkg.kit(['image-gate', 'used', ...base, '--id', id]).code, 0);
-    assert.equal(pkg.kit(['image-gate', 'check', ...base, '--id', id]).json.status, 'used');
-    assert.equal(pkg.kit(['image-gate', 'check', ...base, '--id', id]).code, 2);
+    assert.equal(pkg.kit(['image-gate', 'check', ...base, ...same, '--id', id]).json.status, 'used');
+    assert.equal(pkg.kit(['image-gate', 'check', ...base, ...same, '--id', id]).code, 2);
     assert.equal(pkg.kit(['image-gate', 'approve', ...base, '--id', id]).code, 2);
     const reroll = pkg.kit(['image-gate', 'request', ...base, '--prompt-file', 'prompt.txt', '--model', 'imagegen-1', '--size', '1200x800', '--asset', 'assets/boat.png']);
     assert.equal(reroll.json.reroll, true);
@@ -54,7 +60,7 @@ describe('image-gate — packaged end to end', () => {
     }
     assert.equal(pkg.kit(['image-gate', 'request', ...base, '--prompt-file', 'nope.txt', '--model', 'm', '--size', '10x10']).code, 1);
     assert.equal(pkg.kit(['image-gate', 'nope']).code, 1);
-    assert.equal(pkg.kit(['image-gate', 'check', ...base, '--id', 'abcdef012345']).code, 2);
+    assert.equal(pkg.kit(['image-gate', 'check', ...base, '--prompt-file', 'prompt.txt', '--model', 'zzz', '--size', '10x10', '--id', 'abcdef012345']).code, 2);
     assert.deepEqual(pkg.egress(), []);
   });
 });

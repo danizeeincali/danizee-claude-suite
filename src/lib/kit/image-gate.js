@@ -6,7 +6,7 @@
  *   image-gate request --state <file> --prompt-file <txt> --model <name> --size <WxH> [--service <name>] [--asset <relative path>] [--est-cost <text>]
  *   image-gate approve --state <file> --id <id>
  *   image-gate decline --state <file> --id <id>
- *   image-gate check   --state <file> --id <id>
+ *   image-gate check   --state <file> --prompt-file <txt> --model <name> --size <WxH> [--service <name>] [--asset <relative path>] [--est-cost <text>] [--id <id>]
  *   image-gate used    --state <file> --id <id>
  *   image-gate slot    --width <n> --height <n> [--radius <px>]
  *   image-gate report  --state <file>
@@ -16,8 +16,10 @@
  * not empty, no NUL bytes). `--size` is WxH in pixels (for example 1024x1024). `--asset` is where the result is saved:
  * a relative path inside the project with an image extension (png, jpg, jpeg, webp, avif, gif, svg); absolute paths,
  * `..` segments, URLs, backslashes and temporary folders (tmp, temp, var/tmp, .tmp, .cache) are refused (exit 1),
- * because results go into the project's assets, not a temporary URL. Default asset: assets/generated/<id>.png.
- * The id is the first 12 hex of sha256 over prompt, model and size, so the same request always has the same id.
+ * because results go into the project's assets, not a temporary URL. Default asset: assets/generated/<12 hex of the id over the other five fields>.png.
+ * The id is the first 12 hex of sha256 over every field the user is shown (prompt, model, size, service, est_cost and
+ * asset), so the same request always has the same id and any change to one of them is a new request that needs its own
+ * approval. The default asset is derived from the other five fields.
  * Output { id, status: "pending", show: { prompt, model, size, service, asset, est_cost }, question, next }:
  * `question` is the single yes/no to put to the user, with prompt, model and size in it; wait for the answer, then run
  * approve or decline. Asking again for an id that is still pending or already answered returns that record (no new
@@ -27,8 +29,13 @@
  * APPROVE / DECLINE record the user's answer with a timestamp. Only a pending request can change: any other status
  * is refused (exit 2). An unknown id is exit 1.
  *
- * CHECK. Exit 0 { approved: true, id, status: "approved", show } only when approved. Exit 2 { approved: false, id,
- * status, next } for pending, declined, used or unknown (status "unknown"; also when the state file does not exist yet):
+ * CHECK takes the exact request the step is about to send: the same --prompt-file, --model and --size (and the same
+ * --service, --asset and --est-cost if request had them; --id is optional and, when given, must equal the recomputed
+ * id). The id is recomputed from those values, so a prompt file, model, size, service, cost or asset that changed after
+ * approval is a different id and check exits 2 (status "unknown"). Send the image tool exactly show.prompt, show.model
+ * and show.size from the answer. Exit 0 { approved: true, id, status: "approved", show } only when that recomputed id
+ * is an approved record. Exit 2 { approved: false, id, status, next } for pending, declined, used, unknown (also when
+ * the state file does not exist yet) or an --id that differs from the recomputed one (status "mismatch"):
  * the workflow must not call the image tool. One approval covers one run: after the tool ran, call `used`; check then
  * exits 2 with status "used". USED marks an approved request consumed (exit 2 if it is not approved); a reroll needs a
  * new request.
@@ -44,7 +51,8 @@
  *
  * STATE is a JSON file ({ version: 1, requests: { <id>: {...} } }) written by temp file + rename under the shared state
  * lock (./state-lock.js); check, report and status read without a lock. Unknown flags, duplicate flags, a flag without
- * a value, missing files, binary or oversize input and a corrupt state are exit 1 (message on stderr, nothing on stdout).
+ * a value, missing files, binary or oversize input and a corrupt state are exit 1 (a state is corrupt when a record's id is not the id recomputed from its content, or an
+ * approved, declined or used record has no answered_at) (message on stderr, nothing on stdout).
  * Exit codes: 0 answer printed, 1 bad input or broken state, 2 only from check (blocking) and refused state changes.
  * Built from ideas audited by /w-bbs (run 2026-10-30-unslop); no foreign code.
  */
@@ -56,8 +64,9 @@ import { withStateLock, readJsonState, writeJsonAtomic } from './state-lock.js';
 
 export const verb = 'image-gate';
 export const usage = 'cli.js image-gate request --state <file> --prompt-file <txt> --model <name> --size <WxH> [--service <name>] [--asset <relative path>] [--est-cost <text>]  |  '
-  + 'approve|decline|check|used --state <file> --id <id>  |  slot --width <n> --height <n> [--radius <px>]  |  report|status --state <file>   '
-  + '(approval gate before any image-generation tool; never calls a service; request returns the one yes/no question to ask, check exits 0 only when approved and 2 otherwise, '
+  + 'check --state <file> --prompt-file <txt> --model <name> --size <WxH> [--service <name>] [--asset <relative path>] [--est-cost <text>] [--id <id>]  |  '
+  + 'approve|decline|used --state <file> --id <id>  |  slot --width <n> --height <n> [--radius <px>]  |  report|status --state <file>   '
+  + '(approval gate before any image-generation tool; never calls a service; request returns the one yes/no question to ask, check needs the exact request (prompt file, model, size, plus service, asset and est-cost if given) and exits 0 only when its recomputed id is approved, 2 otherwise, '
   + 'one approval covers one run (used), a reroll needs a changed prompt; slot gives an empty aria-hidden box of exact size and radius for a declined image; '
   + 'exit 0 done, 1 bad input or broken state, 2 check not approved or refused state change)';
 
@@ -69,8 +78,8 @@ const STATUSES = ['pending', 'approved', 'declined', 'used'];
 const bad = (m) => new KitExit(m, 1);
 const refused = (m) => new KitExit(m, 2);
 
-export function idOf(prompt, model, size) {
-  return crypto.createHash('sha256').update([prompt, model, size].join('\0')).digest('hex').slice(0, 12);
+export function idOf(prompt, model, size, service, estCost, asset) {
+  return crypto.createHash('sha256').update([prompt, model, size, service, estCost ?? '', asset].join('\0')).digest('hex').slice(0, 12);
 }
 
 /** The asset path rule: relative, inside the project, an image file, not a temporary or remote location. */
@@ -101,7 +110,7 @@ const SPECS = {
   request: { flags: ['state', 'prompt-file', 'model', 'size', 'service', 'asset', 'est-cost'], required: ['state', 'prompt-file', 'model', 'size'] },
   approve: { flags: ['state', 'id'], required: ['state', 'id'] },
   decline: { flags: ['state', 'id'], required: ['state', 'id'] },
-  check: { flags: ['state', 'id'], required: ['state', 'id'] },
+  check: { flags: ['state', 'prompt-file', 'model', 'size', 'service', 'asset', 'est-cost', 'id'], required: ['state', 'prompt-file', 'model', 'size'] },
   used: { flags: ['state', 'id'], required: ['state', 'id'] },
   slot: { flags: ['width', 'height', 'radius'], required: ['width', 'height'] },
   report: { flags: ['state'], required: ['state'] },
@@ -138,6 +147,9 @@ function validateState(s, file) {
     if (!r || typeof r !== 'object' || r.id !== id) throw corrupt(`request ${id}`);
     if (!STATUSES.includes(r.status)) throw corrupt(`request ${id} has an unknown status`);
     for (const k of ['prompt', 'model', 'size', 'asset', 'service']) if (typeof r[k] !== 'string') throw corrupt(`request ${id} lacks ${k}`);
+    if (r.est_cost !== undefined && r.est_cost !== null && typeof r.est_cost !== 'string') throw corrupt(`request ${id} has a bad est_cost`);
+    if (idOf(r.prompt, r.model, r.size, r.service, r.est_cost, r.asset) !== id) throw corrupt(`request ${id} does not match its content`);
+    if (r.status !== 'pending' && typeof r.answered_at !== 'string') throw corrupt(`request ${id} is ${r.status} but has no answered_at`);
   }
   return s;
 }
@@ -193,8 +205,8 @@ async function doRequest(f, io, cwd, state) {
   if (!/^[1-9]\d{1,4}x[1-9]\d{1,4}$/.test(size)) throw bad('--size must look like 1024x1024 (width x height in pixels)');
   const service = f.service === undefined ? DEFAULT_SERVICE : oneLine('--service', f.service, 100);
   const estCost = f['est-cost'] === undefined ? null : oneLine('--est-cost', f['est-cost'], 200);
-  const id = idOf(prompt, model, size);
-  const asset = f.asset === undefined ? `assets/generated/${id}.png` : checkAsset(f.asset);
+  const asset = f.asset === undefined ? `assets/generated/${idOf(prompt, model, size, service, estCost, '')}.png` : checkAsset(f.asset);
+  const id = idOf(prompt, model, size, service, estCost, asset);
   return { prompt, model, size, service, estCost, id, asset };
 }
 
@@ -276,9 +288,12 @@ export async function run(args, io = {}) {
     return { count: items.length, requests: items, next: items.length ? 'Put each prompt, model, size and save_as in the final report; none of it goes on the page.' : 'Nothing to report: no pending or declined image requests.' };
   }
   if (cmd === 'check') {
-    if (!/^[0-9a-f]{12}$/.test(f.id)) throw bad('--id must be the 12-hex id that request printed');
-    const r = (await loadState(file)).requests[f.id];
-    if (!r) return { approved: false, id: f.id, status: 'unknown', next: 'No such request: do not call the image tool. Run image-gate request first.', exit: 2 };
+    if (f.id !== undefined && !/^[0-9a-f]{12}$/.test(f.id)) throw bad('--id must be the 12-hex id that request printed');
+    const q = await doRequest(f, io, cwd);
+    if (f.id !== undefined && f.id !== q.id) return { approved: false, id: q.id, status: 'mismatch', next: `The request you are about to send has id ${q.id}, not ${f.id}: it differs from what was approved. Do not call the image tool; run image-gate request for this exact request and ask again.`, exit: 2 };
+    const st = await loadState(file);
+    const r = Object.hasOwn(st.requests, q.id) ? st.requests[q.id] : undefined;
+    if (!r) return { approved: false, id: q.id, status: 'unknown', next: 'No approved request matches this exact prompt, model, size, service, cost and asset: do not call the image tool. Run image-gate request first (a changed request needs a new approval).', exit: 2 };
     if (r.status === 'approved') return { approved: true, id: r.id, status: 'approved', show: showOf(r) };
     const why = { pending: 'Not answered yet: ask the user the question from request.', declined: 'The user declined: leave an empty slot.', used: 'Already used: one approval covers one run. Change the prompt and request again.' };
     return { approved: false, id: r.id, status: r.status, next: `Do not call the image tool. ${why[r.status]}`, exit: 2 };

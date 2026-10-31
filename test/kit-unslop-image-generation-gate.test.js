@@ -19,6 +19,8 @@ describe('image-gate', () => {
   afterEach(async () => { await fs.rm(dir, { recursive: true, force: true }); });
   const req = (...extra) => g('request', '--state', 'st.json', '--prompt-file', 'p.txt', '--model', 'imagegen-1', '--size', '1024x768', ...extra);
 
+  const chk = (id, ...extra) => g('check', '--state', 'st.json', '--prompt-file', 'p.txt', '--model', 'imagegen-1', '--size', '1024x768', ...(id ? ['--id', id] : []), ...extra);
+
   it('exports the verb and usage', () => {
     assert.equal(verb, 'image-gate');
     assert.match(usage, /image-gate/);
@@ -27,7 +29,7 @@ describe('image-gate', () => {
   it('request records a pending request with a stable id and one question', async () => {
     const r = await req('--service', 'a text-to-image API', '--asset', 'assets/hero.webp', '--est-cost', 'about 4 cents');
     assert.equal(r.status, 'pending');
-    assert.equal(r.id, idOf('A quiet harbour at dawn, flat colour, teal and sand', 'imagegen-1', '1024x768'));
+    assert.equal(r.id, idOf('A quiet harbour at dawn, flat colour, teal and sand', 'imagegen-1', '1024x768', 'a text-to-image API', 'about 4 cents', 'assets/hero.webp'));
     assert.deepEqual(r.show, { prompt: 'A quiet harbour at dawn, flat colour, teal and sand', model: 'imagegen-1', size: '1024x768', service: 'a text-to-image API', asset: 'assets/hero.webp', est_cost: 'about 4 cents' });
     assert.match(r.question, /Prompt: "A quiet harbour/);
     assert.match(r.question, /imagegen-1/);
@@ -35,7 +37,7 @@ describe('image-gate', () => {
     assert.match(r.question, /about 4 cents/);
     assert.match(r.question, /assets\/hero\.webp/);
     assert.match(r.question, /Yes or no\?$/);
-    const again = await req('--service', 'a text-to-image API', '--asset', 'assets/hero.webp');
+    const again = await req('--service', 'a text-to-image API', '--asset', 'assets/hero.webp', '--est-cost', 'about 4 cents');
     assert.equal(again.id, r.id);
     assert.equal(again.status, 'pending');
     assert.equal((await g('status', '--state', 'st.json')).count, 1);
@@ -43,7 +45,8 @@ describe('image-gate', () => {
 
   it('defaults the asset to assets/generated/<id>.png and est_cost to null', async () => {
     const r = await req();
-    assert.equal(r.show.asset, `assets/generated/${r.id}.png`);
+    assert.equal(r.show.asset, `assets/generated/${idOf('A quiet harbour at dawn, flat colour, teal and sand', 'imagegen-1', '1024x768', 'any connected image-generation tool', null, '')}.png`);
+    assert.equal(r.id, idOf('A quiet harbour at dawn, flat colour, teal and sand', 'imagegen-1', '1024x768', 'any connected image-generation tool', null, r.show.asset));
     assert.equal(r.show.est_cost, null);
     assert.match(r.question, /may cost money/);
   });
@@ -58,20 +61,20 @@ describe('image-gate', () => {
 
   it('check blocks until approved, then passes; used consumes it', async () => {
     const { id } = await req();
-    const pending = await g('check', '--state', 'st.json', '--id', id);
+    const pending = await chk(id);
     assert.equal(pending.exit, 2);
     assert.equal(pending.approved, false);
     assert.equal(pending.status, 'pending');
     const ap = await g('approve', '--state', 'st.json', '--id', id);
     assert.equal(ap.status, 'approved');
     assert.ok(ap.at);
-    const ok = await g('check', '--state', 'st.json', '--id', id);
+    const ok = await chk(id);
     assert.equal(ok.exit, undefined);
     assert.equal(ok.approved, true);
     assert.equal(ok.show.model, 'imagegen-1');
     const used = await g('used', '--state', 'st.json', '--id', id);
     assert.equal(used.status, 'used');
-    const after = await g('check', '--state', 'st.json', '--id', id);
+    const after = await chk(id);
     assert.equal(after.exit, 2);
     assert.equal(after.status, 'used');
     assert.equal(after.approved, false);
@@ -92,7 +95,7 @@ describe('image-gate', () => {
     const { id } = await req('--asset', 'assets/hero.png');
     const d = await g('decline', '--state', 'st.json', '--id', id);
     assert.equal(d.status, 'declined');
-    const c = await g('check', '--state', 'st.json', '--id', id);
+    const c = await chk(id, '--asset', 'assets/hero.png');
     assert.deepEqual([c.exit, c.status, c.approved], [2, 'declined', false]);
     const rep = await g('report', '--state', 'st.json');
     assert.equal(rep.count, 1);
@@ -114,13 +117,13 @@ describe('image-gate', () => {
   });
 
   it('unknown id: check exits 2 with status unknown, state changes exit 1; missing state is unknown too', async () => {
-    const c = await g('check', '--state', 'none.json', '--id', 'abcdef012345');
+    const c = await g('check', '--state', 'none.json', '--prompt-file', 'p.txt', '--model', 'm', '--size', '10x10');
     assert.deepEqual([c.exit, c.status], [2, 'unknown']);
     await req();
     await exit(() => g('approve', '--state', 'st.json', '--id', 'abcdef012345'));
     await exit(() => g('decline', '--state', 'st.json', '--id', 'abcdef012345'));
     await exit(() => g('used', '--state', 'st.json', '--id', 'abcdef012345'));
-    await exit(() => g('check', '--state', 'st.json', '--id', 'nope'));
+    await exit(() => chk('nope'));
   });
 
   it('report lists pending and declined only; status lists all', async () => {
@@ -178,6 +181,7 @@ describe('image-gate', () => {
     await exit(() => g('request', '--state', 'st.json', '--prompt-file', 'p.txt', '--model', 'm\nx', '--size', '10x10'));
     await exit(() => g('status', 'extra'));
     await exit(() => g('check', '--state', 'st.json'));
+    await exit(() => g('check', '--state', 'st.json', '--id', 'abcdef012345'));
   });
 
   it('rejects an empty, binary or oversize prompt file', async () => {
@@ -189,13 +193,15 @@ describe('image-gate', () => {
     for (const f of ['e.txt', 'b.txt', 'big.txt', 'long.txt']) await exit(() => r(f));
   });
 
+  const chk2 = (state) => g('check', '--state', state, '--prompt-file', 'p.txt', '--model', 'imagegen-1', '--size', '1024x768');
+
   it('a corrupt or foreign state is exit 1', async () => {
     await fs.writeFile(path.join(dir, 'bad.json'), '{nope');
     await exit(() => g('status', '--state', 'bad.json'));
     await fs.writeFile(path.join(dir, 'v.json'), JSON.stringify({ version: 2, requests: {} }));
     await exit(() => g('status', '--state', 'v.json'));
     await fs.writeFile(path.join(dir, 'r.json'), JSON.stringify({ version: 1, requests: { a: { id: 'a', status: 'weird' } } }));
-    await exit(() => g('check', '--state', 'r.json', '--id', 'abcdef012345'));
+    await exit(() => chk2('r.json'));
   });
 
   it('parallel requests all keep their writes and leave no temp files', async () => {
@@ -206,5 +212,87 @@ describe('image-gate', () => {
     }));
     assert.equal((await g('status', '--state', 'st.json')).count, n);
     assert.deepEqual((await fs.readdir(dir)).filter((f) => f.includes('.tmp') || f.endsWith('.lock')), []);
+  });
+
+  it('check recomputes the id: a changed prompt, model, size, service, cost or asset exits 2 and no --id is needed', async () => {
+    const { id } = await req('--service', 's1', '--est-cost', '$1', '--asset', 'assets/a.png');
+    await g('approve', '--state', 'st.json', '--id', id);
+    const same = ['--service', 's1', '--est-cost', '$1', '--asset', 'assets/a.png'];
+    const ok = await chk(null, ...same);
+    assert.equal(ok.exit, undefined);
+    assert.equal(ok.approved, true);
+    assert.equal(ok.id, id);
+    assert.equal((await chk(id, ...same)).approved, true);
+    for (const other of [['--service', 's2', '--est-cost', '$1', '--asset', 'assets/a.png'], ['--service', 's1', '--est-cost', '$5', '--asset', 'assets/a.png'],
+      ['--service', 's1', '--est-cost', '$1', '--asset', 'assets/b.png'], ['--service', 's1', '--asset', 'assets/a.png'], []]) {
+      const c = await chk(null, ...other);
+      assert.deepEqual([c.exit, c.approved, c.status], [2, false, 'unknown']);
+    }
+    const c = await g('check', '--state', 'st.json', '--prompt-file', 'p.txt', '--model', 'imagegen-2', '--size', '1024x768', '--service', 's1', '--est-cost', '$1', '--asset', 'assets/a.png');
+    assert.deepEqual([c.exit, c.approved], [2, false]);
+    const sz = await g('check', '--state', 'st.json', '--prompt-file', 'p.txt', '--model', 'imagegen-1', '--size', '512x512', '--service', 's1', '--est-cost', '$1', '--asset', 'assets/a.png');
+    assert.equal(sz.exit, 2);
+    const wrongId = await chk(id, '--service', 's2');
+    assert.deepEqual([wrongId.exit, wrongId.status], [2, 'mismatch']);
+  });
+
+  it('check exits 2 when the prompt file was edited after approval', async () => {
+    const { id } = await req();
+    await g('approve', '--state', 'st.json', '--id', id);
+    assert.equal((await chk(id)).approved, true);
+    await fs.writeFile(path.join(dir, 'p.txt'), 'A loud neon city, glossy 3D');
+    const c = await chk(id);
+    assert.deepEqual([c.exit, c.approved], [2, false]);
+    assert.match(c.next, /Do not call the image tool/);
+  });
+
+  it('request with a different service, cost or asset is a new pending request, not the old approval', async () => {
+    const a = await req('--service', 'cheap', '--est-cost', '$0.01');
+    await g('approve', '--state', 'st.json', '--id', a.id);
+    const b = await req('--service', 'pricey', '--est-cost', '$5', '--asset', 'img/hero.png');
+    assert.notEqual(b.id, a.id);
+    assert.equal(b.status, 'pending');
+    assert.match(b.question, /pricey/);
+    assert.equal(b.show.asset, 'img/hero.png');
+    assert.equal((await chk(null, '--service', 'pricey', '--est-cost', '$5', '--asset', 'img/hero.png')).exit, 2);
+    assert.equal((await chk(null, '--service', 'cheap', '--est-cost', '$0.01')).approved, true);
+    const c = await req('--service', 'cheap', '--est-cost', '$0.01', '--asset', 'img/other.png');
+    assert.equal(c.status, 'pending');
+    assert.notEqual(c.id, a.id);
+  });
+
+  it('validateState recomputes ids and requires answered_at', async () => {
+    const { id } = await req();
+    await g('approve', '--state', 'st.json', '--id', id);
+    const good = JSON.parse(await fs.readFile(path.join(dir, 'st.json'), 'utf-8'));
+    const write = async (mut) => { const s = structuredClone(good); mut(s.requests[id]); await fs.writeFile(path.join(dir, 'bad.json'), JSON.stringify(s)); };
+    await write(() => {});
+    assert.equal((await chk2('bad.json')).approved, true);
+    await write((r) => { r.prompt = 'something the user never saw'; });
+    await exit(() => chk2('bad.json'));
+    await exit(() => g('status', '--state', 'bad.json'));
+    await write((r) => { r.size = '1x1'; });
+    await exit(() => g('status', '--state', 'bad.json'));
+    await write((r) => { r.service = 'other'; });
+    await exit(() => g('status', '--state', 'bad.json'));
+    await write((r) => { r.est_cost = '$99'; });
+    await exit(() => g('status', '--state', 'bad.json'));
+    await write((r) => { r.asset = 'assets/x.png'; });
+    await exit(() => g('status', '--state', 'bad.json'));
+    await write((r) => { delete r.answered_at; });
+    await exit(() => chk2('bad.json'));
+    await write((r) => { r.status = 'declined'; delete r.answered_at; });
+    await exit(() => g('report', '--state', 'bad.json'));
+    await write((r) => { r.status = 'used'; delete r.answered_at; });
+    await exit(() => g('status', '--state', 'bad.json'));
+    await write((r) => { r.est_cost = 5; });
+    await exit(() => g('status', '--state', 'bad.json'));
+  });
+
+  it('header documents check needing the exact request, the mismatch status and the corrupt-state rules', async () => {
+    const src = await fs.readFile(new URL('../src/lib/kit/image-gate.js', import.meta.url), 'utf-8');
+    const head = src.slice(0, src.indexOf('*/'));
+    for (const m of [/CHECK takes the exact request/, /"mismatch"/, /status "unknown"/, /answered_at/, /every field the user is shown/]) assert.match(head, m);
+    assert.match(usage, /check --state <file> --prompt-file/);
   });
 });
