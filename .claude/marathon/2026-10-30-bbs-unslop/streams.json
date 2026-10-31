@@ -11,12 +11,12 @@
     },
     {
       "name": "unslop-slop-audit",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-slop-audit.md",
-      "next": "builder writes contract, failing tests, verb",
+      "next": "integration wires it",
       "tasks": [],
       "isolation": "../danizee-claude-suite-unslop-slop-audit",
-      "phase": "build",
+      "phase": "done",
       "base": "e2d81ce5fe4cf53073d5faffcd9dd5cbc7b1dcbd"
     },
     {
@@ -61,12 +61,12 @@
     },
     {
       "name": "unslop-glyph-and-duotone-effects",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-glyph-and-duotone-effects.md",
-      "next": "builder writes contract, failing tests, verb",
+      "next": "integration wires it",
       "tasks": [],
       "isolation": "../danizee-claude-suite-unslop-glyph-and-duotone-effects",
-      "phase": "build",
+      "phase": "done",
       "base": "53e5f6acc5f98261def53b24780b1f0fe6b1d46f"
     },
     {
@@ -81,12 +81,12 @@
     },
     {
       "name": "unslop-image-generation-gate",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-image-generation-gate.md",
-      "next": "builder writes contract, failing tests, verb",
+      "next": "integration wires it",
       "tasks": [],
       "isolation": "../danizee-claude-suite-unslop-image-generation-gate",
-      "phase": "build",
+      "phase": "done",
       "base": "53e5f6acc5f98261def53b24780b1f0fe6b1d46f"
     },
     {

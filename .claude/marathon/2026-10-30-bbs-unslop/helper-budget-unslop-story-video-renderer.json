@@ -7,13 +7,13 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 60,
-    "cost": 87788
+    "steps": 300,
+    "cost": 380166
   },
   "clock": {
     "depth": 1,
-    "startedAt": 1793404927501,
-    "elapsedMs": 354020
+    "startedAt": 1793406081183,
+    "elapsedMs": 1430926
   },
   "helpers": {
     "build-unslop-story-video-renderer": {
@@ -29,6 +29,54 @@
       }
     },
     "review-r1-unslop-story-video-renderer": {
+      "steps": 60,
+      "cost": 89463,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r1-unslop-story-video-renderer": {
+      "steps": 60,
+      "cost": 68088,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r2-unslop-story-video-renderer": {
+      "steps": 60,
+      "cost": 71284,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r2-unslop-story-video-renderer": {
+      "steps": 60,
+      "cost": 63543,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r3-unslop-story-video-renderer": {
       "steps": 0,
       "cost": 0,
       "ok": 0,

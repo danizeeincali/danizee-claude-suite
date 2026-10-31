@@ -7,13 +7,13 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 60,
-    "cost": 106901
+    "steps": 180,
+    "cost": 336090
   },
   "clock": {
     "depth": 1,
-    "startedAt": 1793405044159,
-    "elapsedMs": 472690
+    "startedAt": 1793406113833,
+    "elapsedMs": 1516550
   },
   "helpers": {
     "build-unslop-story-video-authoring": {
@@ -29,6 +29,30 @@
       }
     },
     "review-r1-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 89858,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r1-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 139331,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r2-unslop-story-video-authoring": {
       "steps": 0,
       "cost": 0,
       "ok": 0,

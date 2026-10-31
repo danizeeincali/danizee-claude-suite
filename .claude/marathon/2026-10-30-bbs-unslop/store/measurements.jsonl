@@ -22,3 +22,12 @@
 {"key":"packaged_unslop-visual-direction","value":true,"id":"4c3594b6-065f-4cff-8435-b6ceeeebd3b4","ts":"2026-10-31T00:03:52.996Z"}
 {"key":"egress_zero_unslop-visual-direction","value":true,"id":"a0602dae-c35f-4eb2-8536-60046dc34576","ts":"2026-10-31T00:03:53.164Z"}
 {"key":"callers_unslop-visual-direction","value":0,"id":"d5e16343-6fd2-4db1-a6d0-cc5f00a93359","ts":"2026-10-31T00:03:53.318Z"}
+{"key":"packaged_unslop-image-generation-gate","value":true,"id":"a7d7d05c-214c-4886-a318-aa6c77eaa590","ts":"2026-10-31T00:10:10.411Z"}
+{"key":"egress_zero_unslop-image-generation-gate","value":true,"id":"ad1faf42-e54f-4a33-849f-cd788cfff1a5","ts":"2026-10-31T00:10:10.550Z"}
+{"key":"callers_unslop-image-generation-gate","value":0,"id":"9bce4a13-8952-458e-9768-4f2e1495da6d","ts":"2026-10-31T00:10:10.680Z"}
+{"key":"packaged_unslop-slop-audit","value":true,"id":"a1400df3-81a6-4087-ad66-39431d0af520","ts":"2026-10-31T00:11:38.581Z"}
+{"key":"egress_zero_unslop-slop-audit","value":true,"id":"0738758f-18b3-423e-ac97-559423784890","ts":"2026-10-31T00:11:38.736Z"}
+{"key":"callers_unslop-slop-audit","value":0,"id":"e5834087-55d1-42a4-ba8e-4ae307dc2507","ts":"2026-10-31T00:11:38.867Z"}
+{"key":"packaged_unslop-glyph-and-duotone-effects","value":true,"id":"b8929e70-7127-4228-8a07-21f7faa7243f","ts":"2026-10-31T00:12:00.818Z"}
+{"key":"egress_zero_unslop-glyph-and-duotone-effects","value":true,"id":"97d48452-f19d-472a-b211-473a24d8e44a","ts":"2026-10-31T00:12:00.984Z"}
+{"key":"callers_unslop-glyph-and-duotone-effects","value":0,"id":"b017e433-e59c-40e9-b956-5c2b1aa4a9bc","ts":"2026-10-31T00:12:01.171Z"}

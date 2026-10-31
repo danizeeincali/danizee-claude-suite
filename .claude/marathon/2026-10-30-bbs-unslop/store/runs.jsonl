@@ -38,3 +38,15 @@
 {"kind":"unit","status":"green","stream":"unslop-triage-and-refine-only-gate","commit":"97b2515","id":"c824a34a-d7b2-4d7f-a0a7-a7c2d08f09fe","ts":"2026-10-31T00:03:40.100Z"}
 {"kind":"unit","status":"green","stream":"unslop-visual-direction","commit":"c9c8606","id":"7e17c3c7-d49e-4f29-8c26-ac3e4f2cc593","ts":"2026-10-31T00:03:49.443Z"}
 {"kind":"unit","status":"green","stream":"unslop-story-video-authoring","commit":"22412fc","id":"e2e59009-3b02-4aa4-b965-116684347581","ts":"2026-10-31T00:03:59.296Z"}
+{"kind":"unit","status":"green","stream":"unslop-glyph-and-duotone-effects","commit":"3031db4","id":"b3b8568b-8528-4577-80d0-d6d3278092dc","ts":"2026-10-31T00:05:51.913Z"}
+{"kind":"unit","status":"green","stream":"unslop-glyph-and-duotone-effects","commit":"3031db4","id":"ce82fa3a-759c-4c77-ba51-b97f098fc1b8","ts":"2026-10-31T00:05:56.366Z"}
+{"kind":"unit","status":"green","stream":"unslop-story-video-renderer","commit":"f75b595","id":"dd5a7b97-75cb-440b-9e8d-0e855520b636","ts":"2026-10-31T00:08:23.678Z"}
+{"kind":"unit","status":"green","stream":"unslop-story-video-renderer","commit":"f75b595","id":"a71f1129-48ae-474e-95a4-897e0a89c391","ts":"2026-10-31T00:08:31.075Z"}
+{"kind":"unit","status":"green","stream":"unslop-image-generation-gate","commit":"bc56b28","id":"ccbb39ed-277d-4a46-91e7-5204b71d2954","ts":"2026-10-31T00:10:04.314Z"}
+{"kind":"unit","status":"green","stream":"unslop-slop-audit","commit":"a323ffc","id":"e6d53638-73ef-4103-bec4-fc3b9f398693","ts":"2026-10-31T00:11:34.576Z"}
+{"kind":"unit","status":"green","stream":"unslop-glyph-and-duotone-effects","commit":"2c70c07","id":"daff439f-5cbd-444b-a794-9e0ee5c3b329","ts":"2026-10-31T00:11:56.071Z"}
+{"kind":"unit","status":"green","stream":"unslop-live-page-snapshot","commit":"e21343f","id":"71f36de8-f5ac-4e5b-bb54-4acd8d0c65da","ts":"2026-10-31T00:13:41.992Z"}
+{"kind":"unit","status":"green","stream":"unslop-story-video-renderer","commit":"eda1832","id":"48bb2c8c-8e04-48f3-a9ba-4a40ab37c310","ts":"2026-10-31T00:20:59.164Z"}
+{"kind":"unit","status":"green","stream":"unslop-story-video-renderer","commit":"eda1832","id":"4ab87973-5736-4762-b0b2-9d555ed1ea99","ts":"2026-10-31T00:21:17.864Z"}
+{"kind":"unit","status":"green","stream":"unslop-story-video-authoring","commit":"d279191","id":"49674974-06e8-4277-b0d5-c369ac292f82","ts":"2026-10-31T00:21:41.004Z"}
+{"kind":"unit","status":"green","stream":"unslop-story-video-authoring","commit":"d279191","id":"d786c480-8185-42c5-baec-75901662cff2","ts":"2026-10-31T00:21:50.721Z"}

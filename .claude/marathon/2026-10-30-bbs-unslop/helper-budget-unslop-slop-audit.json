@@ -7,13 +7,13 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 300,
-    "cost": 402743
+    "steps": 420,
+    "cost": 542696
   },
   "clock": {
-    "depth": 1,
-    "startedAt": 1793404517519,
-    "elapsedMs": 1123428
+    "depth": 0,
+    "startedAt": null,
+    "elapsedMs": 2092671
   },
   "helpers": {
     "build-unslop-slop-audit": {
@@ -77,15 +77,27 @@
       }
     },
     "review-r3-unslop-slop-audit": {
-      "steps": 0,
-      "cost": 0,
-      "ok": 0,
+      "steps": 60,
+      "cost": 89586,
+      "ok": 1,
       "failed": 0,
       "grants": 1,
       "skipped": 0,
       "reserved": {
-        "steps": 80,
-        "cost": 150000
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r3-unslop-slop-audit": {
+      "steps": 60,
+      "cost": 50367,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
       }
     }
   }
