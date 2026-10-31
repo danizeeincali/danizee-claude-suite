@@ -25,6 +25,7 @@ describe('header contract', () => {
     for (const c of ['bad-title', 'bad-format', 'unknown-key', 'bad-shape', 'step-count', 'step-id', 'step-id-duplicate', 'step-label', 'step-empty', 'css-selector', 'css-prop', 'css-value', 'css-content', 'pill-radius', 'swap-length', 'swap-count', 'swap-selector-reuse', 'tween-range', 'hold-range', 'easing', 'intro-outro', 'duration', 'redline-label', 'redline-measure', 'redline-selector-reuse', 'redline-missing', 'credit-length']) assert.ok(head.includes(c), c);
     for (const f of ['--file', '--strict', '--page', '--out', 'template', 'duration_ms', 'timeline', 'problems', 'story-duration-ms', 'prefers-reduced-motion', '8 MiB', 'no foreign code']) assert.ok(head.includes(f), f);
     for (const f of ['notes', 'credit-missing', 'camera', 'stripped: { scripts, links }', '{ out, bytes, duration_ms, steps, format, stripped }', 'same file as --page or --file', 'story-format', '--format wide', 'no crop', 'Redesign by the author', 'data-story-camera']) assert.ok(head.includes(f), f);
+    for (const f of ['swap-replaced', 'swap-ink', 'REPLACED', 'data-story-marks', '<story-swap>', '<story-tag>', '<story-layer>', '--story-aN', 'document.fonts', 'window load event', 'x + w']) assert.ok(head.includes(f), f);
     assert.ok(head.includes(sp.DEFAULT_CREDIT));
     assert.equal(verb, 'story-plan');
     assert.ok(sp.usage.includes('story-plan'));
@@ -229,7 +230,9 @@ describe('emit', () => {
   });
   it('has the duration meta, no script, one layer per step, a credit', () => {
     assert.ok(r.html.includes(`<meta name="story-duration-ms" content="${r.duration_ms}">`));
-    assert.ok(!/<script/i.test(r.html));
+    // The page's own script is gone; the only script is the emitted one that places the swap text and redline tags.
+    assert.ok(!r.html.includes('alert(1)'));
+    assert.deepEqual(r.html.match(/<script[^>]*>/gi), ['<script data-story-marks>']);
     assert.ok(!/<link/i.test(r.html));
     assert.ok(!/<iframe/i.test(r.html));
     assert.ok(!/\son[a-z]+\s*=/i.test(r.html));
@@ -303,7 +306,9 @@ describe('emit', () => {
   it('css string escaping: labels cannot break out of the style', () => {
     const s = mk(); s.steps[1].redline = { selector: '.card', label: 'a"</style><script>x' };
     const h = emit(s, PAGE).html;
-    assert.ok(!/<script/i.test(h));
+    assert.ok(!/<script>x/i.test(h));
+    assert.deepEqual(h.match(/<script[^>]*>/gi), ['<script data-story-marks>']);
+    assert.ok(h.includes('content:"a\\"\\3c /style\\3e \\3c script\\3e x"'));
     assert.equal((h.match(/<\/style>/g) || []).length, 1 + 1 + 3);
   });
   it('refuses a story that is not ok', () => {
@@ -455,14 +460,19 @@ describe('review r1 regressions', () => {
     for (const m of motion.matchAll(/html\.story-play :is\([^)]*\)\{([^}]*)\}/g)) {
       assert.ok(!/(^|;)\s*(position|outline|display|width|height)\s*:/.test(m[1]), m[0]);
     }
-    assert.match(steps, /:is\(\.btn\)\{anchor-name:--story-r3;anchor-scope:--story-r3\}/);
-    assert.match(steps, /::after\{content:"mixed radii  12px";position:absolute;position-anchor:--story-r3;left:anchor\(left,0px\);top:anchor\(top,0px\)/);
+    // The tag is an overlay <story-tag> anchored to the element (a unique anchor-name per matched element, set by the
+    // emitted script), never the element's own ::after.
+    assert.ok(!/:is\([^)]*\)::(before|after)/.test(steps));
+    assert.match(steps, /story-tag\[data-story-tag="r3"\]\{position:absolute;left:anchor\(left,0px\);top:anchor\(top,0px\)/);
+    assert.ok(steps.includes('story-tag[data-story-tag="r3"]::before{content:"mixed radii  12px"}'));
+    assert.match(h, /e\.style\.setProperty\("anchor-name"/);
+    assert.match(h, /t\.style\.setProperty\("position-anchor",a\)/);
     assert.match(steps, /@keyframes story-r3\{0%,100%\{outline-style:solid;[^}]*outline-color:transparent\}/);
   });
   it('swap text is one line as wide as the new text, at the old text position (no insets, no width:100%)', () => {
     const h = emit(swapStory('Start free trial today'), PAGE).html;
-    const rule = /:is\(\.btn\)::before\{([^}]*)\}/.exec(h)[1];
-    assert.match(rule, /content:"Start free trial today"/);
+    const rule = /story-swap\[data-story-swap="w3"\]\{([^}]*)\}/.exec(h)[1];
+    assert.ok(h.includes('story-swap[data-story-swap="w3"]::before{content:"Start free trial today"}'));
     assert.match(rule, /white-space:nowrap/);
     assert.match(rule, /width:max-content/);
     assert.ok(!/width:100%/.test(rule));
@@ -580,10 +590,178 @@ describe('browser probe (skipped when playwright cannot be resolved; STORY_PLAN_
       await at(0);
       assert.deepEqual(await rects(), before);
       await at(check(template()).duration_ms);
-      const sw = await p.evaluate(() => { const e = document.querySelector('.btn'), s = getComputedStyle(e, '::before'); return { ws: s.whiteSpace, h: parseFloat(s.height), fs: parseFloat(s.fontSize), pos: getComputedStyle(e).position }; });
+      const sw = await p.evaluate(() => { const e = document.querySelector('.btn'), s = getComputedStyle(e.querySelector(':scope > story-swap')); return { ws: s.whiteSpace, h: parseFloat(s.height), fs: parseFloat(s.fontSize), pos: getComputedStyle(e).position }; });
       assert.equal(sw.ws, 'nowrap');
       assert.ok(sw.h < sw.fs * 2, `swap text is ${sw.h}px tall at ${sw.fs}px`);
       assert.equal(sw.pos, 'absolute');
     } finally { await b.close(); }
+  });
+});
+
+describe('review r2 regressions', () => {
+  const base = { title: 't', format: 'square', credit: 'x' };
+  const st = (id, over) => ({ id, label: id, ...over });
+  const mixedSelectors = { ...base, steps: [st('a', { css: { h1: { color: 'rgb(0,0,255)' } } }), st('b', { swap: { selector: '.hero h1', text: 'Hello' } }), st('c', { css: { '.q': { opacity: '0.5' } } })] };
+  const colorAfterSwap = { ...base, steps: [st('a', { swap: { selector: '.btn', text: 'Start free' } }), st('b', { css: { '.btn': { color: 'rgb(255,255,255)', 'background-color': 'rgb(0,0,0)' } } }), st('c', { css: { '.q': { opacity: '0.5' } } })] };
+  const pseudoStory = { ...base, steps: [st('a', { css: { '.row': { padding: '10px' } }, redline: { selector: '.row', label: 'pad' } }), st('b', { swap: { selector: '.btn', text: 'Start' } }), st('c', { css: { '.q': { opacity: '0.5' } }, redline: { selector: 'img', label: 'img' } })] };
+  const cameraStory = { ...base, camera: { selector: '.card' }, steps: [st('a', { css: { '.card': { 'background-color': 'red' } } }), st('b', { css: { '.q': { color: 'red' } } }), st('c', { css: { '.q': { opacity: '0.5' } } })] };
+
+  it('two selector strings for one element share one animation list (custom property slots, no inheritance)', () => {
+    assert.equal(check(mixedSelectors).ok, true);
+    const h = emit(mixedSelectors, '<body><div class="hero"><h1>Hi</h1></div><p class="q">q</p></body>').html;
+    assert.ok(h.includes('html.story-play *{--story-a1:none;--story-a2:none;--story-a3:none;--story-a4:none}'));
+    assert.ok(h.includes('html.story-play :is(h1,.hero h1,.q){animation:var(--story-a1,none),var(--story-a2,none),var(--story-a4,none),var(--story-a3,none)}'));
+    assert.ok(h.includes('html.story-play :is(h1){--story-a1:story-s1-0 600ms ease-in-out 500ms 1 normal forwards}'));
+    assert.ok(h.includes('html.story-play :is(.hero h1){--story-a2:story-w2 600ms ease-in-out 2000ms 1 normal forwards;--story-a3:story-w2-hide 0ms linear 2600ms 1 normal forwards}'));
+    assert.ok(!/:is\([^)]*\)\{animation:story-/.test(h), 'no per-selector animation shorthand that another selector could override');
+  });
+  it('a swap hide slot comes after every other slot, so a later colour step cannot bring the old text back; check notes swap-ink', () => {
+    const h = emit(colorAfterSwap, '<body><button class="btn">Go</button><p class="q">q</p></body>').html;
+    const list = /:is\(\.btn,\.q\)\{animation:([^}]*)\}/.exec(h)[1].split(/,(?=var)/);
+    assert.deepEqual(list, ['var(--story-a1,none)', 'var(--story-a3,none)', 'var(--story-a4,none)', 'var(--story-a2,none)']);
+    assert.ok(h.includes('--story-a2:story-w1-hide 0ms linear 1100ms 1 normal forwards'));
+    assert.match(h, /@media \(prefers-reduced-motion:reduce\)\{html\.story-play :is\(\.btn\):not\(#story-nil#story-nil#story-nil\)\{color:transparent !important\}\}/);
+    const c = check(colorAfterSwap);
+    assert.equal(c.ok, true);
+    assert.deepEqual(c.notes.map(n => n.code), ['swap-ink']);
+    assert.match(c.notes[0].message, /^b: "\.btn"/);
+  });
+  it('swap and redline never style the element\'s own ::before/::after; the overlay base rules ship with the page', () => {
+    const h = emit(pseudoStory, '<style>.btn::before{content:"\\2192 "}</style><body><div class="row"></div><button class="btn">Go</button></body>').html;
+    const steps = h.slice(h.indexOf('<style data-story-step'));
+    assert.ok(!/::(before|after)/.test(steps.replace(/story-(swap|tag)\[[^\]]*\]::before/g, '')));
+    assert.ok(h.includes('story-layer{display:contents !important}'));
+    assert.ok(h.includes('@supports not (anchor-name:--story-a){story-tag{display:none !important}}'));
+    assert.match(h, /e\.insertBefore\(n,e\.firstChild\)/);
+    assert.match(h, /if\(k\)P\.appendChild\(L\)/);
+  });
+  it('the selector camera measures on load and again when fonts are ready, from the t=0 state, without timers', () => {
+    const h = emit(cameraStory, '<body><img src="big.svg"><div class="card">c</div><p class="q">q</p></body>').html;
+    const scr = /<script data-story-camera>([\s\S]*?)<\/script>/.exec(h)[1];
+    assert.ok(scr.includes('if(document.readyState==="complete")fit();else addEventListener("load",fit);'));
+    assert.ok(scr.includes('document.fonts.ready.then(function(){if(document.readyState==="complete")fit()})'));
+    assert.ok(scr.includes('P.style.transform="";P.style.height="";'));
+    assert.ok(scr.includes('x.currentTime=0'));
+    assert.ok(!/setTimeout|setInterval|requestAnimationFrame|Date|performance/.test(scr));
+    assert.equal((h.match(/<script/g) || []).length, 1);
+  });
+  it('check refuses a camera rect past the page\'s right edge', () => {
+    const cam = (camera, format = 'square') => codes(check({ ...cameraStory, camera, format })).includes('camera');
+    for (const c of [{ x: 1080, y: 0, w: 540, h: 540 }, { x: 600, y: 0, w: 540, h: 540 }, { x: 10, y: 0, w: 2160, h: 2160 }, { x: 1500, y: 0, w: 960, h: 540 }]) assert.ok(cam(c, c.x === 1500 ? 'wide' : 'square'), JSON.stringify(c));
+    for (const c of [{ x: 540, y: 0, w: 540, h: 540 }, { x: 0, y: 3000, w: 1080, h: 1080 }, { x: 0, y: 0, w: 4320, h: 4320 }]) assert.ok(!cam(c), JSON.stringify(c));
+    assert.ok(!cam({ x: 960, y: 0, w: 960, h: 540 }, 'wide'));
+  });
+  it('check flags a swap on an element that cannot hold text (img, input, video, ...); a redline on one is fine', () => {
+    const sw = sel => codes(check({ ...base, steps: [st('a', { swap: { selector: sel, text: 'x' } }), st('b', { css: { '.q': { opacity: '0' } } }), st('c', { css: { '.q': { opacity: '1' } } })] }));
+    for (const sel of ['img', 'input', '.card img', 'div > video.hero', '.a, input[type="text"]', 'textarea', 'svg', 'select:focus', 'br']) assert.ok(sw(sel).includes('swap-replaced'), sel);
+    for (const sel of ['.img', '.card', 'button', 'a[href="img"]', 'p:not(img)', '#input', 'img-box']) assert.ok(!sw(sel).includes('swap-replaced'), sel);
+    assert.deepEqual(sp.lastTypes('.a img, b > input:hover, .c'), ['img', 'input']);
+    for (const tag of sp.REPLACED) assert.ok(sw(`.wrap > ${tag}`).includes('swap-replaced'), tag);
+    assert.equal(check(pseudoStory).ok, true);
+  });
+
+  describe('browser probes (skipped when playwright cannot be resolved)', () => {
+    const browser = async (t, fn) => {
+      let pw = null;
+      try { pw = await import(process.env.STORY_PLAN_PLAYWRIGHT || 'playwright'); } catch { /* not installed */ }
+      const chromium = pw && (pw.chromium || (pw.default && pw.default.chromium));
+      if (!chromium) { t.skip('playwright not resolvable'); return; }
+      let b;
+      try { b = await chromium.launch(); } catch (e) { t.skip(`browser did not start: ${String(e.message).split('\n')[0]}`); return; }
+      try { await fn(b, await tmp()); } finally { await b.close(); }
+    };
+    const open = async (b, file, opts = {}) => {
+      const p = await b.newPage({ viewport: { width: 1080, height: 1080 }, ...opts });
+      await p.goto(`file://${file}`);
+      p.at = ms => p.evaluate(ms => document.getAnimations().forEach(a => { a.pause(); a.currentTime = ms; }), ms);
+      return p;
+    };
+
+    it('selector camera: an image without dimensions above the target is loaded before the measure, also under a paused fake clock', async t => browser(t, async (b, dir) => {
+      await fs.writeFile(path.join(dir, 'big.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="600" height="300"><rect width="600" height="300" fill="#36c"/></svg>');
+      await fs.writeFile(path.join(dir, 's.html'), emit(cameraStory, '<body style="margin:0"><img src="big.svg"><div class="card" style="width:200px;height:100px;background:#eee">c</div><p class="q">q</p></body>').html);
+      const read = p => p.evaluate(() => {
+        const a = document.getElementById('story-page'), tr = a.style.transform;
+        a.style.transform = '';
+        const top = document.querySelector('.card').getBoundingClientRect().top - a.getBoundingClientRect().top;
+        a.style.transform = tr;
+        return { tr, top };
+      });
+      const want = top => { const y = top - 24, h = 148, s = Math.min(4, 1080 / 248, 1080 / h); return `translate(${(1080 - 248 * s) / 2 - (-24) * s}px, ${(1080 - h * s) / 2 - y * s}px) scale(${s})`; };
+      const live = await read(await open(b, path.join(dir, 's.html')));
+      assert.ok(live.top >= 300, `card sits below the 300px image, at ${live.top}`);
+      assert.equal(live.tr, want(live.top));
+      // As story-render drives it: a fake clock paused before load, then every animation paused at t=0 for frame 0.
+      const ctx = await b.newContext({ viewport: { width: 1080, height: 1080 } });
+      const p = await ctx.newPage();
+      await p.clock.install({ time: 0 });
+      await p.clock.pauseAt(1000);
+      await p.goto(`file://${path.join(dir, 's.html')}`);
+      await p.evaluate(() => document.getAnimations().forEach(a => { a.pause(); a.currentTime = 0; }));
+      const f0 = await read(p);
+      assert.equal(f0.tr, live.tr);
+      await ctx.close();
+    }));
+
+    it('h1 and .hero h1: both steps run on the one element', async t => browser(t, async (b, dir) => {
+      await fs.writeFile(path.join(dir, 's.html'), emit(mixedSelectors, '<body><div class="hero"><h1 style="color:rgb(255,0,0)">Hi</h1></div><p class="q">q</p></body>').html);
+      const p = await open(b, path.join(dir, 's.html'));
+      const color = () => p.evaluate(() => getComputedStyle(document.querySelector('h1')).color);
+      assert.deepEqual(await p.evaluate(() => document.querySelector('h1').getAnimations().map(a => a.animationName)), ['story-s1-0', 'story-w2', 'story-w2-hide']);
+      assert.deepEqual(await p.evaluate(() => document.querySelector('.q').getAnimations().map(a => a.animationName)), ['story-s3-0']);
+      await p.at(0); assert.equal(await color(), 'rgb(255, 0, 0)');
+      await p.at(1100); assert.equal(await color(), 'rgb(0, 0, 255)');
+      await p.at(check(mixedSelectors).duration_ms); assert.equal(await color(), 'rgba(0, 0, 0, 0)');
+    }));
+
+    it('a colour step after a swap keeps the old text hidden, with and without reduced motion', async t => browser(t, async (b, dir) => {
+      await fs.writeFile(path.join(dir, 's.html'), emit(colorAfterSwap, '<body><button class="btn" style="color:rgb(0,0,0)">Go</button><p class="q">q</p></body>').html);
+      const D = check(colorAfterSwap).duration_ms;
+      const probe = p => p.evaluate(() => { const e = document.querySelector('.btn'), n = e.querySelector(':scope > story-swap'); return { old: getComputedStyle(e).color, bg: getComputedStyle(e).backgroundColor, text: getComputedStyle(n, '::before').content, ink: getComputedStyle(n).color, op: getComputedStyle(n).opacity }; });
+      const p = await open(b, path.join(dir, 's.html'));
+      await p.at(D);
+      assert.deepEqual(await probe(p), { old: 'rgba(0, 0, 0, 0)', bg: 'rgb(0, 0, 0)', text: '"Start free"', ink: 'rgb(17, 17, 17)', op: '1' });
+      const r = await open(b, path.join(dir, 's.html'), { reducedMotion: 'reduce' });
+      assert.deepEqual(await probe(r), { old: 'rgba(0, 0, 0, 0)', bg: 'rgb(0, 0, 0)', text: '"Start free"', ink: 'rgb(17, 17, 17)', op: '1' });
+    }));
+
+    it('frame 0 is pixel-identical to the original with an icon ::before and a clearfix ::after on the swapped and redlined elements', async t => browser(t, async (b, dir) => {
+      const img = 'data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="40"><rect width="80" height="40" fill="#c33"/></svg>').toString('base64');
+      const orig = `<!doctype html><html><head><style>body{margin:0;font:16px sans-serif}.btn::before{content:"\\2192 "}.row{background:#def}.row::after{content:"";display:table;clear:both}.f{float:left;height:100px;width:50px;background:#9ab}.row>:last-child{margin-bottom:0}</style></head><body><div class="row"><div class="f"></div></div><p class="after">below</p><button class="btn">Go</button><p class="q">q</p><img src="${img}" style="margin:40px"></body></html>`;
+      await fs.writeFile(path.join(dir, 'o.html'), orig);
+      await fs.writeFile(path.join(dir, 's.html'), emit(pseudoStory, orig).html);
+      const probe = () => ({ icon: getComputedStyle(document.querySelector('.btn'), '::before').content, rowH: document.querySelector('.row').getBoundingClientRect().height, belowY: document.querySelector('.after').getBoundingClientRect().y, btn: JSON.stringify(document.querySelector('.btn').getBoundingClientRect()) });
+      const o = await open(b, path.join(dir, 'o.html'));
+      const want = await o.evaluate(probe);
+      const shot0 = await o.screenshot();
+      assert.equal(want.rowH, 100);
+      const p = await open(b, path.join(dir, 's.html'));
+      await p.at(0);
+      assert.deepEqual(await p.evaluate(probe), want);
+      // Pixel compare. Chromium antialiases an element that has an opacity/filter/transform animation (even one not yet
+      // started, or plain will-change) up to 1 level differently, so a channel may differ by 1; a lost icon or clearfix
+      // differs by far more. The same compare at the end must find the icon and swap text changed (it is not blind).
+      const diff = async (x, y) => o.evaluate(async ([x, y]) => {
+        const load = src => new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = src; });
+        const [ia, ib] = await Promise.all([load(x), load(y)]);
+        const px = i => { const c = document.createElement('canvas'); c.width = i.width; c.height = i.height; const g = c.getContext('2d'); g.drawImage(i, 0, 0); return g.getImageData(0, 0, i.width, i.height).data; };
+        const da = px(ia), db = px(ib);
+        let m = 0; for (let k = 0; k < da.length; k++) m = Math.max(m, Math.abs(da[k] - db[k]));
+        return m;
+      }, [x, y].map(buf => `data:image/png;base64,${buf.toString('base64')}`));
+      assert.ok(await diff(await p.screenshot(), shot0) <= 1, 'frame 0 differs from the original screen');
+      // Inside the redline windows the tags sit on their elements (the img too), and the page's pseudo-elements stay.
+      const tl = check(pseudoStory).timeline;
+      const tag = (key, sel) => p.evaluate(([key, sel]) => { const t = document.querySelector(`story-tag[data-story-tag="${key}"]`).getBoundingClientRect(), e = document.querySelector(sel).getBoundingClientRect(); return { dx: Math.round(t.left - e.left), dy: Math.round(t.bottom - e.top), op: Number(getComputedStyle(document.querySelector(`story-tag[data-story-tag="${key}"]`)).opacity) }; }, [key, sel]);
+      await p.at(tl[0].start_ms + 700);
+      assert.deepEqual(await tag('r1', '.row'), { dx: 0, dy: 0, op: 1 });
+      assert.equal(await p.evaluate(() => getComputedStyle(document.querySelector('.row'), '::after').display), 'table');
+      await p.at(tl[2].start_ms + 700);
+      assert.deepEqual(await tag('r3', 'img'), { dx: 0, dy: 0, op: 1 });
+      await p.at(check(pseudoStory).duration_ms);
+      const end = await p.evaluate(() => ({ icon: getComputedStyle(document.querySelector('.btn'), '::before').content, text: getComputedStyle(document.querySelector('.btn > story-swap'), '::before').content, op: getComputedStyle(document.querySelector('.btn > story-swap')).opacity }));
+      assert.deepEqual(end, { icon: want.icon, text: '"Start"', op: '1' });
+      assert.ok(await diff(await p.screenshot(), shot0) > 100, 'the end frame shows the swap');
+    }));
   });
 });

@@ -28,7 +28,8 @@ describe('story-plan — packaged end to end', () => {
     assert.equal(e.code, 0);
     assert.equal(e.json.duration_ms, c.json.duration_ms);
     assert.ok(e.json.html.includes(`<meta name="story-duration-ms" content="${c.json.duration_ms}">`));
-    assert.ok(!/<script/i.test(e.json.html));
+    assert.ok(!/<script>1/i.test(e.json.html));
+    assert.deepEqual(e.json.html.match(/<script[^>]*>/gi), ['<script data-story-marks>']);
     assert.equal((e.json.html.match(/<style data-story-step=/g) || []).length, 3);
 
     const o = pkg.kit(['story-plan', 'emit', '--file', 'story.json', '--page', 'page.html', '--out', 'story.html']);
