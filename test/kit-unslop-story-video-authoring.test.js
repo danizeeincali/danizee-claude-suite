@@ -24,6 +24,8 @@ describe('header contract', () => {
     const head = src.slice(0, src.indexOf('*/'));
     for (const c of ['bad-title', 'bad-format', 'unknown-key', 'bad-shape', 'step-count', 'step-id', 'step-id-duplicate', 'step-label', 'step-empty', 'css-selector', 'css-prop', 'css-value', 'css-content', 'pill-radius', 'swap-length', 'swap-count', 'swap-selector-reuse', 'tween-range', 'hold-range', 'easing', 'intro-outro', 'duration', 'redline-label', 'redline-measure', 'redline-selector-reuse', 'redline-missing', 'credit-length']) assert.ok(head.includes(c), c);
     for (const f of ['--file', '--strict', '--page', '--out', 'template', 'duration_ms', 'timeline', 'problems', 'story-duration-ms', 'prefers-reduced-motion', '8 MiB', 'no foreign code']) assert.ok(head.includes(f), f);
+    for (const f of ['notes', 'credit-missing', 'camera', 'stripped: { scripts, links }', '{ out, bytes, duration_ms, steps, format, stripped }', 'same file as --page or --file', 'story-format', '--format wide', 'no crop', 'Redesign by the author', 'data-story-camera']) assert.ok(head.includes(f), f);
+    assert.ok(head.includes(sp.DEFAULT_CREDIT));
     assert.equal(verb, 'story-plan');
     assert.ok(sp.usage.includes('story-plan'));
     const mod = await fs.readFile(path.join(ROOT, '.claude/helpers/kit/story-plan.js'), 'utf-8');
@@ -249,7 +251,7 @@ describe('emit', () => {
     assert.equal((r.html.match(/<\/html>/g) || []).length, 1);
     const wide = emit(mk({ format: 'wide', credit: undefined }), PAGE).html;
     assert.match(wide, /width:1920px;height:1080px/);
-    assert.ok(!wide.includes('id="story-credit"'));
+    assert.ok(wide.includes(`<div id="story-credit">${sp.DEFAULT_CREDIT}</div>`));
   });
   it('animation timings in the CSS match the timeline', () => {
     const tl = check(story).timeline;
@@ -424,5 +426,164 @@ describe('real CLI path', () => {
     await fs.writeFile(path.join(dir, 'big.json'), Buffer.alloc(8 * 1024 * 1024 + 1, 0x20));
     assert.equal(cli(['story-plan', 'check', '--file', 'big.json'], '', dir).status, 1);
     assert.ok(JSON.parse(cli(['help'], '', dir).stdout).verbs.includes('story-plan'));
+  });
+});
+
+describe('review r1 regressions', () => {
+  const swapStory = (text, sel = '.btn') => { const s = mk(); s.steps[2].swap = { selector: sel, text }; return s; };
+  it('--out that is the same file as --page or --file is refused (path, symlink, hard link)', async () => {
+    const dir = await tmp();
+    await fs.writeFile(path.join(dir, 's.json'), JSON.stringify(template()));
+    await fs.writeFile(path.join(dir, 'p.html'), PAGE);
+    await fs.symlink(path.join(dir, 'p.html'), path.join(dir, 'sym.html'));
+    await fs.link(path.join(dir, 'p.html'), path.join(dir, 'hard.html'));
+    for (const out of ['p.html', './p.html', path.join(dir, 'p.html'), 'sym.html', 'hard.html', 's.json']) {
+      await assert.rejects(run(['emit', '--file', 's.json', '--page', 'p.html', '--out', out], io('', dir)), e => e instanceof KitExit && e.code === 1 && /same file as --(page|file)/.test(e.message), out);
+    }
+    assert.equal(await fs.readFile(path.join(dir, 'p.html'), 'utf-8'), PAGE);
+    assert.equal(await fs.readFile(path.join(dir, 's.json'), 'utf-8'), JSON.stringify(template()));
+    const cli = spawnSync(process.execPath, [CLI, 'story-plan', 'emit', '--file', 's.json', '--page', 'p.html', '--out', 'p.html'], { cwd: dir, encoding: 'utf-8' });
+    assert.equal(cli.status, 1);
+    assert.match(cli.stderr, /refusing to overwrite an input/);
+    assert.equal(await fs.readFile(path.join(dir, 'p.html'), 'utf-8'), PAGE);
+  });
+  it('redline and swap never set position on the element; the outline lives only in the animation', () => {
+    const h = emit(mk(), PAGE).html;
+    const steps = h.slice(h.indexOf('<style data-story-step'));
+    assert.ok(!/position\s*:\s*relative/.test(steps));
+    const motion = steps.split('</style>').map(x => x.split('@media (prefers-reduced-motion:reduce)')[0]).join('\n');
+    for (const m of motion.matchAll(/html\.story-play :is\([^)]*\)\{([^}]*)\}/g)) {
+      assert.ok(!/(^|;)\s*(position|outline|display|width|height)\s*:/.test(m[1]), m[0]);
+    }
+    assert.match(steps, /:is\(\.btn\)\{anchor-name:--story-r3;anchor-scope:--story-r3\}/);
+    assert.match(steps, /::after\{content:"mixed radii  12px";position:absolute;position-anchor:--story-r3;left:anchor\(left,0px\);top:anchor\(top,0px\)/);
+    assert.match(steps, /@keyframes story-r3\{0%,100%\{outline-style:solid;[^}]*outline-color:transparent\}/);
+  });
+  it('swap text is one line as wide as the new text, at the old text position (no insets, no width:100%)', () => {
+    const h = emit(swapStory('Start free trial today'), PAGE).html;
+    const rule = /:is\(\.btn\)::before\{([^}]*)\}/.exec(h)[1];
+    assert.match(rule, /content:"Start free trial today"/);
+    assert.match(rule, /white-space:nowrap/);
+    assert.match(rule, /width:max-content/);
+    assert.ok(!/width:100%/.test(rule));
+    assert.ok(!/(^|;)(left|top|right|bottom|inset)\s*:/.test(rule));
+  });
+  it('a comment or attribute that mentions <script>/<style> does not cut the page; a missing close drops only the open tag', () => {
+    const c = preparePage('<body><!-- analytics <script> removed --><div class=card>kept</div><p>after</p></body>');
+    assert.ok(c.body.includes('<!-- analytics <script> removed -->'));
+    assert.ok(c.body.includes('<div class=card>kept</div><p>after</p>'));
+    assert.equal(c.stripped.scripts, 0);
+    const a = preparePage('<body><div title="<style>">one</div><p data-x=\'<script>\'>two</p><span>three</span></body>');
+    assert.ok(a.body.includes('<div title="<style>">one</div>'));
+    assert.ok(a.body.includes('<span>three</span>'));
+    assert.equal(a.css, '');
+    const u = preparePage('<body><p>a</p><style>.x{}<p>b</p><script src=x><p>c</p><iframe><p>d</p><embed src=y><p>e</p></body>');
+    for (const t of ['<p>a</p>', '<p>b</p>', '<p>c</p>', '<p>d</p>', '<p>e</p>']) assert.ok(u.body.includes(t), t);
+    assert.ok(!/<style|<script|<iframe|<embed/i.test(u.body));
+    const cm = preparePage('<!-- <body class=fake> --><body class="real"><!-- <style>.no{}</style> --><style>.yes{}</style>ok<!-- </body> --></body>');
+    assert.equal(cm.bodyAttrs, 'class="real"');
+    assert.equal(cm.css, '.yes{}');
+    assert.ok(cm.body.includes('ok<!-- </body> -->'));
+    const t = preparePage('<head><title>about <script> tags</title></head><body>x<script>bad()</script></body>');
+    assert.equal(t.body, 'x');
+    const e = emit(mk(), '<!-- analytics <script> removed --><div class=card>kept</div>').html;
+    assert.ok(e.includes('<div class=card>kept</div>'));
+    assert.ok(e.includes('id="story-credit"'));
+  });
+  it('the scanner stays linear on 8 MiB of unclosed comments, styles, quotes and close-less tags', () => {
+    const t0 = Date.now();
+    for (const unit of ['<style>', '<iframe>', '<title>', '<!--', '<a x="', '<p title="<style>">', '<textarea>']) preparePage(unit.repeat(Math.floor(8 * 1024 * 1024 / unit.length)));
+    assert.ok(Date.now() - t0 < 15000, `took ${Date.now() - t0}ms`);
+  });
+  it('html/:root font-size stays on the real <html> so rem matches', () => {
+    const p = preparePage('<style>html{font-size:62.5%;background:#eee} :root , .x{font-size:20px;color:red}@media (min-width:1px){html{font-size:50%}}body{font-size:1.6rem}/* html{font-size:1px} */</style><body>x</body>');
+    assert.ok(p.css.includes('#story-page{background:#eee}html{font-size:62.5%}'), p.css);
+    assert.ok(p.css.includes('.x{font-size:20px;color:red}#story-page{color:red}html{font-size:20px}'), p.css);
+    assert.ok(p.css.includes('@media (min-width:1px){#story-page{}html{font-size:50%}}'), p.css);
+    assert.ok(p.css.includes('#story-page{font-size:1.6rem}'));
+    assert.ok(!p.css.includes('html{font-size:1px}'), 'a commented-out rule is not lifted');
+    assert.ok(!/#story-page\{[^}]*font-size:62\.5%/.test(p.css));
+    const h = emit(mk(), '<style>html{font-size:62.5%}</style><body><p>x</p></body>').html;
+    assert.match(h, /<style data-story-page>\n#story-page\{\}html\{font-size:62\.5%\}/);
+  });
+  it('no credit: emit shows the default credit and check notes credit-missing (advisory)', async () => {
+    for (const credit of [undefined, '', '  ']) {
+      const s = mk({ credit }); if (credit === undefined) delete s.credit;
+      const c = check(s);
+      assert.equal(c.ok, true);
+      assert.deepEqual(c.notes.map(n => n.code), ['credit-missing']);
+      assert.ok(emit(s, PAGE).html.includes(`<div id="story-credit">${sp.DEFAULT_CREDIT}</div>`));
+      assert.equal((await run(['check', '--strict'], io(JSON.stringify(s)))).exit, undefined);
+    }
+    assert.deepEqual(check(template()).notes, []);
+    assert.ok(emit(mk({ credit: 'By Ada' }), PAGE).html.includes('<div id="story-credit">By Ada</div>'));
+  });
+  it('camera: validated by check, applied as a transform on #story-page; default no crop', () => {
+    const only = (camera, format = 'square') => { const r = check(mk({ camera, format })); assert.ok(codes(r).includes('camera'), JSON.stringify(camera)); assert.equal(r.ok, false); };
+    for (const c of [null, 'x', [], {}, { selector: '' }, { selector: '.a{' }, { selector: 5 }, { selector: '.a', x: 1 }, { x: 0, y: 0, w: 100 }, { x: 0, y: 0, w: 100, h: '1' }, { x: -1, y: 0, w: 500, h: 500 }, { x: 0, y: 0, w: 0, h: 500 }, { x: 0, y: 0, w: 100, h: 100 }, { x: 0, y: 0, w: 5000, h: 5000 }, { x: 0, y: 0, w: 500, h: 500, z: 1 }]) only(c);
+    assert.equal(check(mk({ camera: { selector: '.card' } })).ok, true);
+    assert.equal(check(mk({ camera: { x: 0, y: 0, w: 270, h: 270 } })).ok, true);
+    assert.equal(check(mk({ camera: { x: 0, y: 0, w: 4320, h: 4320 } })).ok, true);
+    const none = emit(mk(), PAGE).html;
+    assert.ok(!/transform-origin/.test(none.slice(0, none.indexOf('<style data-story-page>'))));
+    assert.ok(!none.includes('data-story-camera'));
+    const rect = emit(mk({ camera: { x: 100, y: 1200, w: 540, h: 270 } }), PAGE).html;
+    assert.deepEqual(sp.cameraFit({ x: 100, y: 1200, w: 540, h: 270 }, { w: 1080, h: 1080 }), { scale: 2, tx: -200, ty: -2130 });
+    assert.ok(rect.includes('#story-page{height:1470px;transform-origin:0 0;transform:translate(-200px,-2130px) scale(2)}'));
+    const sel = emit(mk({ camera: { selector: '.card' } }), PAGE).html;
+    const scr = /<script data-story-camera>([\s\S]*?)<\/script>/.exec(sel);
+    assert.ok(scr && scr[1].includes('querySelector(".card")'));
+    assert.equal((sel.match(/<script/g) || []).length, 1);
+    assert.ok(!/setTimeout|setInterval|requestAnimationFrame|Date|performance/.test(scr[1]));
+    const wide = emit(mk({ format: 'wide', camera: { x: 0, y: 0, w: 960, h: 540 } }), PAGE).html;
+    assert.ok(wide.includes('transform:translate(0px,0px) scale(2)'));
+  });
+  it('the page declares its format and emit reports format and stripped', async () => {
+    assert.ok(emit(mk(), PAGE).html.includes('<meta name="story-format" content="square">'));
+    const w = emit(mk({ format: 'wide' }), PAGE);
+    assert.ok(w.html.includes('<meta name="story-format" content="wide">'));
+    assert.equal(w.format, 'wide');
+    assert.deepEqual(w.stripped, { scripts: 2, links: 1 });
+    const dir = await tmp();
+    await fs.writeFile(path.join(dir, 's.json'), JSON.stringify(mk({ format: 'wide' })));
+    await fs.writeFile(path.join(dir, 'p.html'), PAGE);
+    const o = await run(['emit', '--file', 's.json', '--page', 'p.html', '--out', 'o.html'], io('', dir));
+    assert.deepEqual(Object.keys(o).sort(), ['bytes', 'duration_ms', 'format', 'out', 'steps', 'stripped']);
+    assert.equal(o.format, 'wide');
+    assert.deepEqual(o.stripped, { scripts: 2, links: 1 });
+    const r = await run(['emit', '--file', 's.json', '--page', 'p.html'], io('', dir));
+    assert.deepEqual(Object.keys(r).sort(), ['duration_ms', 'format', 'html', 'steps', 'stripped']);
+    const c = await run(['check', '--file', 's.json'], io('', dir));
+    assert.deepEqual(Object.keys(c).sort(), ['duration_ms', 'notes', 'ok', 'problems', 'timeline']);
+  });
+});
+
+describe('browser probe (skipped when playwright cannot be resolved; STORY_PLAN_PLAYWRIGHT may name its module path)', () => {
+  it('the first frame matches the original page; rem matches; a longer swap stays on one line', async t => {
+    let pw = null;
+    try { pw = await import(process.env.STORY_PLAN_PLAYWRIGHT || 'playwright'); } catch { /* not installed */ }
+    const chromium = pw && (pw.chromium || (pw.default && pw.default.chromium));
+    if (!chromium) { t.skip('playwright not resolvable'); return; }
+    let b;
+    try { b = await chromium.launch(); } catch (e) { t.skip(`browser did not start: ${String(e.message).split('\n')[0]}`); return; }
+    try {
+      const dir = await tmp();
+      const orig = '<!doctype html><html><head><style>html{font-size:62.5%}body{margin:0;font:1.6rem sans-serif}.card{position:relative;padding:2rem;height:12rem;width:40rem;background:#eee;margin:40px}.btn{position:absolute;right:10px;top:10px;padding:8px 12px}</style></head><body><!-- analytics <script> removed --><h1>Pricing</h1><div class="card"><button class="btn">Go</button></div></body></html>';
+      await fs.writeFile(path.join(dir, 'o.html'), orig);
+      await fs.writeFile(path.join(dir, 's.html'), emit(template(), orig).html);
+      const p = await b.newPage({ viewport: { width: 1080, height: 1080 } });
+      const rects = () => p.evaluate(() => ['.btn', '.card', 'h1'].map(s => { const r = document.querySelector(s).getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round); }));
+      await p.goto(`file://${path.join(dir, 'o.html')}`);
+      const before = await rects();
+      await p.goto(`file://${path.join(dir, 's.html')}`);
+      const at = ms => p.evaluate(ms => document.getAnimations().forEach(a => { a.pause(); a.currentTime = ms; }), ms);
+      await at(0);
+      assert.deepEqual(await rects(), before);
+      await at(check(template()).duration_ms);
+      const sw = await p.evaluate(() => { const e = document.querySelector('.btn'), s = getComputedStyle(e, '::before'); return { ws: s.whiteSpace, h: parseFloat(s.height), fs: parseFloat(s.fontSize), pos: getComputedStyle(e).position }; });
+      assert.equal(sw.ws, 'nowrap');
+      assert.ok(sw.h < sw.fs * 2, `swap text is ${sw.h}px tall at ${sw.fs}px`);
+      assert.equal(sw.pos, 'absolute');
+    } finally { await b.close(); }
   });
 });

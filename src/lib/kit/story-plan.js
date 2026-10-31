@@ -4,12 +4,14 @@
  * timeline of at most ten seconds. Pure: it reads the files named and writes only to --out; no network.
  *
  *   story-plan check [--file <story.json>] [--strict]   (or the JSON on stdin, at most 8 MiB)
- *       → { ok, duration_ms, problems: [{ step?, code, message }], timeline: [{ id, start_ms, end_ms, tween_end_ms }] }
+ *       → { ok, duration_ms, problems: [{ step?, code, message }], notes: [{ code, message }], timeline: [{ id, start_ms, end_ms, tween_end_ms }] }
  *   story-plan emit [--file <story.json>] --page <original.html> [--out <file>]
- *       → { html, duration_ms, steps }   (with --out: { out, bytes, duration_ms, steps }, the html is written to the file)
+ *       → { html, duration_ms, steps, format, stripped: { scripts, links } }
+ *         (with --out: { out, bytes, duration_ms, steps, format, stripped }, the html is written to the file; an --out that
+ *         is the same file as --page or --file (same path, a symlink or a hard link) is refused with exit 1)
  *   story-plan template                                  → an example story.json that passes check
  *
- * Story: { title, format: "square"|"wide", easing?, intro_ms?, outro_ms?, credit?, steps: [
+ * Story: { title, format: "square"|"wide", easing?, intro_ms?, outro_ms?, credit?, camera?, steps: [
  *   { id, label, css: { "<selector>": { "<prop>": "<value>" } }, swap?: { selector, text, ink? },
  *     redline?: { selector, label, measure? }, tween_ms?, hold_ms? } ] }
  * Rules (each break is a problem with a `code`, a `step` where one step is at fault, and a `message` that says how to fix it):
@@ -32,15 +34,31 @@
  *   redline-label, redline-measure, redline-selector-reuse   a redline names the slop the step removes (label 1-40 chars; measure up to 20)
  *   redline-missing             a step that changes spacing (gap, padding, margin) or corners (radius) has a redline
  *   credit-length               credit at most 60 chars
+ *   camera                      camera is { selector } or { x, y, w, h } (page pixels, x/y 0-20000, w/h above 0) zooming
+ *                               0.25x-4x; it crops the frame close on the part that changes most
+ * Notes (advisory: they never make ok false nor fail --strict):
+ *   credit-missing              no credit (or a blank one): every video carries a credit, so emit shows
+ *                               "Redesign by the author" until credit names the author
  * Timeline: step i starts when the one before it ends; its css tween runs start..tween_end, then it holds until end.
  * Exit codes: check is advisory (exit 0, even when ok is false) unless --strict, which exits 2 when not ok;
  * emit exits 1 when the story is not ok; a bad flag, a duplicate flag, an unreadable or binary or oversize (8 MiB) or
  * empty input, JSON that is not an object, or a missing/unreadable --page exits 1 with the message on stderr.
- * emit: the original page (scripts, links, iframes and on* handlers removed) sits in a 1080x1080 or 1920x1080 frame;
- * one <style data-story-step> per step plays on CSS animations only (no JS), started by the class story-play on <html>, so
- * a faked clock renders it deterministically; redlines are an outline plus a small tag on the step's selector (the
- * selector gets position:relative; it needs a pseudo-element, so not img or input); the page declares
- * <meta name="story-duration-ms">; under prefers-reduced-motion the final state is shown.
+ * emit: the original page (scripts, links, iframes, objects, embeds and on* handlers removed; comments and quoted
+ * attribute values are skipped, and a missing close tag drops only the open tag) sits in a 1080x1080 or 1920x1080 frame;
+ * html/body/:root rules apply to the page container, except font-size on html/:root, which stays on the real <html> so
+ * rem lengths match the original. One <style data-story-step> per step plays on CSS animations only, started by the class
+ * story-play on <html>, so a faked clock renders it deterministically. No step rule touches layout before or outside its
+ * window: a redline is an outline that lives only in its animation plus a small tag (::after) anchored to the element
+ * with CSS anchor positioning (falling back to the element's own box when it is positioned, and to the tag's static
+ * position in browsers without anchors); a swap fades the old text out and the new text in on ::before at the old
+ * text's static position, one line as wide as the new text. Neither sets position on the element (it needs a
+ * pseudo-element, so not img or input). Every page carries #story-credit (credit, or the default above).
+ * Camera: without camera there is no crop (the page sits at 0,0 at 1:1). { x, y, w, h } is fitted and centred with a
+ * transform on #story-page; { selector } is measured once at load by the page's only script (<script data-story-camera>,
+ * no timers, a 24px margin, zoom clamped to 0.25x-4x; no match means no crop).
+ * The page declares <meta name="story-duration-ms"> and <meta name="story-format" content="square|wide">; story-render
+ * reads the duration but not the format, so render a wide story with `story-render render --format wide`.
+ * Under prefers-reduced-motion the final state is shown.
  * Built from ideas audited by /w-bbs (run 2026-10-30-unslop); no foreign code.
  */
 import fs from 'fs/promises';
@@ -56,9 +74,13 @@ export const MAX_DURATION_MS = 10000;
 export const MAX_TWEEN_MS = 900;
 export const MAX_SWAPS = 3;
 export const FORMATS = { square: { w: 1080, h: 1080 }, wide: { w: 1920, h: 1080 } };
+export const DEFAULT_CREDIT = 'Redesign by the author';
+export const CAMERA_MIN_SCALE = 0.25;
+export const CAMERA_MAX_SCALE = 4;
+const CAMERA_MARGIN = 24;
 const DEFAULTS = { tween_ms: 600, hold_ms: 900, intro_ms: 500, outro_ms: 1000, easing: 'ease-in-out' };
 const EASINGS = { linear: 'linear', ease: 'ease', 'ease-in': 'ease-in', 'ease-out': 'ease-out', 'ease-in-out': 'ease-in-out', in: 'ease-in', out: 'ease-out', 'in-out': 'ease-in-out' };
-const TOP_KEYS = ['title', 'format', 'easing', 'intro_ms', 'outro_ms', 'credit', 'steps'];
+const TOP_KEYS = ['title', 'format', 'easing', 'intro_ms', 'outro_ms', 'credit', 'camera', 'steps'];
 const STEP_KEYS = ['id', 'label', 'css', 'swap', 'redline', 'tween_ms', 'hold_ms'];
 const SPACING = /^(gap|row-gap|column-gap|padding(-(top|right|bottom|left))?|margin(-(top|right|bottom|left))?)$/;
 const RADIUS = /^border(-(top|bottom)-(left|right))?-radius$/;
@@ -100,6 +122,21 @@ export function timeline(story) {
 const BAD_SELECTOR = /[{};<@\\]|\/\*|::|:(before|after|first-line|first-letter)\b/i;
 const BAD_VALUE = /[;{}<>@\\\n\r]|url\s*\(|expression|\/\*|!important|image-set|import/i;
 
+function checkCamera(c, f, add) {
+  const shape = 'camera is { selector } or { x, y, w, h } (page pixels): the part of the page to crop close on';
+  if (!isObj(c)) { add('camera', shape); return; }
+  const keys = Object.keys(c);
+  if (keys.length === 1 && keys[0] === 'selector') {
+    if (typeof c.selector !== 'string' || !c.selector.trim() || c.selector.length > 200 || BAD_SELECTOR.test(c.selector)) add('camera', 'camera selector must be a plain selector of at most 200 characters');
+    return;
+  }
+  const rect = ['x', 'y', 'w', 'h'];
+  if (keys.length !== 4 || !rect.every(k => own(c, k) && typeof c[k] === 'number' && Number.isFinite(c[k]))) { add('camera', shape); return; }
+  if (c.x < 0 || c.y < 0 || c.x > 20000 || c.y > 20000 || c.w <= 0 || c.h <= 0) { add('camera', 'camera x and y are 0-20000 and w and h are above 0'); return; }
+  const s = Math.min(f.w / c.w, f.h / c.h);
+  if (s > CAMERA_MAX_SCALE || s < CAMERA_MIN_SCALE) add('camera', `camera ${c.w}x${c.h} zooms ${Math.round(s * 100) / 100}x; keep the zoom within ${CAMERA_MIN_SCALE}x-${CAMERA_MAX_SCALE}x of the frame`);
+}
+
 /** Validate a parsed story. Returns { ok, duration_ms, problems, timeline }. */
 export function check(story) {
   const problems = [];
@@ -111,6 +148,9 @@ export function check(story) {
   if (easingCss(story.easing) === null) add('easing', 'easing must be one of linear, ease, ease-in, ease-out, ease-in-out or a cubic-bezier array [x1,y1,x2,y2] with x within 0..1; one easing is shared by every step');
   for (const k of ['intro_ms', 'outro_ms']) if (story[k] !== undefined && !isInt(story[k], 0, 5000)) add('intro-outro', `${k} must be a whole number from 0 to 5000`);
   if (story.credit !== undefined && (typeof story.credit !== 'string' || story.credit.length > 60)) add('credit-length', 'credit must be a string of at most 60 characters');
+  const notes = [];
+  if (story.credit === undefined || (typeof story.credit === 'string' && !story.credit.trim())) notes.push({ code: 'credit-missing', message: `no credit: emit shows "${DEFAULT_CREDIT}"; set credit to name the author` });
+  if (story.camera !== undefined) checkCamera(story.camera, FORMATS[story.format] || FORMATS.square, add);
   const steps = story.steps;
   if (!Array.isArray(steps)) {
     add('step-count', 'steps must be an array of three to five steps');
@@ -178,7 +218,7 @@ export function check(story) {
   }
   const tl = timeline(story);
   if (tl.duration_ms > MAX_DURATION_MS) add('duration', `total ${tl.duration_ms} ms is over ${MAX_DURATION_MS} ms: shorten holds, tweens, intro or outro`);
-  return { ok: problems.length === 0, duration_ms: tl.duration_ms, problems, timeline: tl.timeline };
+  return { ok: problems.length === 0, duration_ms: tl.duration_ms, problems, notes, timeline: tl.timeline };
 }
 
 export function template() {
@@ -203,88 +243,141 @@ const escHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').repl
 const escCssStr = s => String(s).replace(/[\\"]/g, '\\$&').replace(/[\n\r]/g, ' ').replace(/</g, '\\3c ').replace(/>/g, '\\3e ');
 const q = n => (n === 0 ? '0ms' : `${n}ms`);
 
-/** Remove whole elements by tag name (open tag to the matching close tag, no nesting needed for these), by index scan: linear. */
-function stripElements(html, names) {
-  let out = '', i = 0, count = 0;
-  const lower = html.toLowerCase();
-  const re = new RegExp(`<(${names.join('|')})(?=[\\s/>])`, 'g');
-  for (;;) {
-    re.lastIndex = i;
-    const m = re.exec(lower);
-    if (!m) break;
-    out += html.slice(i, m.index);
-    count++;
-    const name = m[1];
-    const gt = lower.indexOf('>', m.index);
-    if (gt < 0) { i = html.length; break; }
-    if (name === 'link') { i = gt + 1; continue; }
-    const close = lower.indexOf(`</${name}`, gt);
-    if (close < 0) { i = html.length; break; }
-    const end = lower.indexOf('>', close);
-    i = end < 0 ? html.length : end + 1;
-  }
-  return { html: out + html.slice(i), count };
-}
+const DROP_ELEMENTS = new Set(['script', 'iframe', 'object', 'embed']);
+const RCDATA = new Set(['title', 'textarea']);
 
-function pullStyles(html) {
-  const lower = html.toLowerCase();
-  const styles = [];
-  let out = '', i = 0;
-  for (;;) {
-    const m = /<style(?=[\s/>])/g;
-    m.lastIndex = i;
-    const f = m.exec(lower);
-    if (!f) break;
-    out += html.slice(i, f.index);
-    const gt = lower.indexOf('>', f.index);
-    if (gt < 0) { i = html.length; break; }
-    const close = lower.indexOf('</style', gt);
-    styles.push(html.slice(gt + 1, close < 0 ? html.length : close));
-    if (close < 0) { i = html.length; break; }
-    const end = lower.indexOf('>', close);
-    i = end < 0 ? html.length : end + 1;
-  }
-  return { html: out + html.slice(i), styles };
-}
-
-/** html/body selectors in the page's own styles now mean the page container. */
-function scopeCss(css) {
-  return css
-    .replace(/(^|[,}{;\s])html\s*>?\s*body(?![\w-])/gi, '$1#story-page')
-    .replace(/(^|[,}{;\s])(html|body|:root)(?![\w-])/gi, '$1#story-page');
-}
-
-function bodyOf(html) {
-  const lower = html.toLowerCase();
-  let attrs = '';
-  let inner = html;
-  const b = /<body(?=[\s/>])/.exec(lower);
-  if (b) {
-    const gt = lower.indexOf('>', b.index);
-    if (gt >= 0) {
-      attrs = html.slice(b.index + 5, gt);
-      const close = lower.lastIndexOf('</body');
-      inner = html.slice(gt + 1, close > gt ? close : html.length);
+/** Index of the '>' that ends the tag whose attributes start at j (quoted attribute values may hold '>' or '<'), or -1. Linear. */
+function tagEnd(s, j) {
+  const n = s.length;
+  for (let k = j; k < n;) {
+    const c = s.charCodeAt(k);
+    if (c === 62) return k; // >
+    if (c === 61) { // = : a value follows, maybe quoted
+      k++;
+      while (k < n && /\s/.test(s[k])) k++;
+      if (s[k] === '"' || s[k] === "'") { const e = s.indexOf(s[k], k + 1); if (e < 0) return -1; k = e + 1; }
+      continue;
     }
-  } else {
-    const h = lower.indexOf('</head>');
-    if (h >= 0) inner = html.slice(h + 7);
-    inner = inner.replace(/<\/?html[^>]*>/gi, '');
+    k++;
   }
-  const keep = [];
-  for (const m of attrs.matchAll(/\b(class|style)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi)) keep.push(`${m[1].toLowerCase()}="${escHtml(m[2] ?? m[3] ?? m[4] ?? '')}"`);
-  return { inner: inner.replace(/<!doctype[^>]*>/gi, ''), attrs: keep.join(' ') };
+  return -1;
+}
+
+/**
+ * One linear pass over the page: comments, quoted attribute values and title/textarea text are copied as they are (so a
+ * "<script" or "<style" mentioned there is left alone); script/iframe/object/embed elements and link tags are dropped;
+ * style contents are pulled out; doctype and html tags are dropped; the body tag and the last </body> are located.
+ * When a close tag is missing only the open tag is dropped (never the rest of the page).
+ */
+function scanPage(html) {
+  const lower = html.toLowerCase();
+  const n = html.length;
+  const styles = [];
+  const noClose = new Set();
+  const closeAt = (name, from) => {
+    if (noClose.has(name)) return -1;
+    const c = lower.indexOf(`</${name}`, from);
+    if (c < 0) noClose.add(name);
+    return c;
+  };
+  let out = '', last = 0, i = 0, scripts = 0, links = 0, bodyStart = -1, bodyEnd = -1, headEnd = -1, bodyAttrs = '';
+  const flush = to => { out += html.slice(last, to); last = to; };
+  for (;;) {
+    const lt = html.indexOf('<', i);
+    if (lt < 0) break;
+    if (lower.startsWith('<!--', lt)) { const e = html.indexOf('-->', lt + 4); i = e < 0 ? n : e + 3; continue; }
+    if (lower.startsWith('<!doctype', lt)) { const e = html.indexOf('>', lt); flush(lt); i = last = e < 0 ? n : e + 1; continue; }
+    const m = /^<(\/?)([a-z][a-z0-9:-]*)/.exec(lower.slice(lt, lt + 64));
+    if (!m) { i = lt + 1; continue; }
+    const closing = m[1] === '/', name = m[2];
+    const gt = tagEnd(html, lt + m[0].length);
+    const after = gt < 0 ? n : gt + 1;
+    if (closing) {
+      if (name === 'body') { flush(lt); bodyEnd = out.length; }
+      else if (name === 'head') { flush(after); headEnd = out.length; }
+      else if (name === 'html') { flush(lt); last = after; }
+      i = after;
+      continue;
+    }
+    if (name === 'html') { flush(lt); i = last = after; continue; }
+    if (name === 'body' && bodyStart < 0) { flush(lt); bodyAttrs = html.slice(lt + 5, gt < 0 ? n : gt); i = last = after; bodyStart = out.length; continue; }
+    if (name === 'link') { flush(lt); links++; i = last = after; continue; }
+    if (DROP_ELEMENTS.has(name)) {
+      flush(lt); scripts++;
+      i = last = after;
+      if (name === 'embed' || gt < 0) continue;
+      const c = closeAt(name, after);
+      if (c >= 0) { const e = html.indexOf('>', c); i = last = e < 0 ? n : e + 1; }
+      continue;
+    }
+    if (name === 'style') {
+      flush(lt);
+      i = last = after;
+      if (gt < 0) continue;
+      const c = closeAt('style', after);
+      if (c >= 0) { styles.push(html.slice(after, c)); const e = html.indexOf('>', c); i = last = e < 0 ? n : e + 1; }
+      continue;
+    }
+    if (RCDATA.has(name) && gt >= 0) { const c = closeAt(name, after); i = c < 0 ? after : c; continue; }
+    i = after;
+  }
+  flush(n);
+  let inner;
+  if (bodyStart >= 0) inner = out.slice(bodyStart, bodyEnd > bodyStart ? bodyEnd : out.length);
+  else inner = headEnd >= 0 ? out.slice(headEnd) : out;
+  return { inner, bodyAttrs, styles, scripts, links };
+}
+
+const ROOT_MARK = '\u0000story-root\u0000';
+const ROOT_SEL = /^(html|:root)$/i;
+
+/**
+ * font-size on html/:root rules stays on the story page's real <html> (so rem matches the original screen); the rest of
+ * those rules is scoped to #story-page like any html/body rule. One linear pass over the rule text.
+ */
+function liftRootFontSize(css) {
+  let out = '', last = 0, segStart = 0, openAt = -1, sel = '';
+  for (let i = 0; i < css.length; i++) {
+    const c = css[i];
+    if (c === '/' && css[i + 1] === '*') { const e = css.indexOf('*/', i + 2); i = e < 0 ? css.length : e + 1; continue; }
+    if (c === '{') { sel = css.slice(segStart, i); openAt = i; segStart = i + 1; continue; }
+    if (c === ';' && openAt < 0) { segStart = i + 1; continue; }
+    if (c !== '}') continue;
+    if (openAt >= 0) {
+      const body = css.slice(openAt + 1, i);
+      const sels = sel.split(',').map(x => x.trim());
+      const roots = sels.filter(x => ROOT_SEL.test(x)), others = sels.filter(x => !ROOT_SEL.test(x));
+      const decls = body.split(';');
+      const sizes = decls.filter(d => /^\s*font-size\s*:/i.test(d));
+      if (roots.length && sizes.length) {
+        const rest = decls.filter(d => !/^\s*font-size\s*:/i.test(d)).join(';');
+        const lead = sel.slice(0, sel.length - sel.trimStart().length);
+        out += css.slice(last, openAt - sel.length) + lead
+          + (others.length ? `${others.join(',')}{${body}}` : '')
+          + `${roots.join(',')}{${rest}}${ROOT_MARK}{${sizes.map(d => d.trim()).join(';')}}`;
+        last = i + 1;
+      }
+    }
+    openAt = -1; segStart = i + 1;
+  }
+  return out + css.slice(last);
+}
+
+/** html/body selectors in the page's own styles now mean the page container (root font-size stays on <html>). */
+function scopeCss(css) {
+  return liftRootFontSize(css)
+    .replace(/(^|[,}{;\s])html\s*>?\s*body(?![\w-])/gi, '$1#story-page')
+    .replace(/(^|[,}{;\s])(html|body|:root)(?![\w-])/gi, '$1#story-page')
+    .split(ROOT_MARK).join('html');
 }
 
 /** The original page, made safe to play: scripts, links, iframes, objects and on* handlers removed. */
 export function preparePage(html) {
-  let h = html.replace(/^﻿/, '');
-  const s1 = stripElements(h, ['script', 'iframe', 'object', 'embed']);
-  const s2 = stripElements(s1.html, ['link']);
-  const withoutHandlers = s2.html.replace(TAG, (tag, name, attrs) => `<${name}${attrs.replace(HANDLER, '')}>`);
-  const st = pullStyles(withoutHandlers);
-  const body = bodyOf(st.html);
-  return { body: body.inner, bodyAttrs: body.attrs, css: st.styles.map(scopeCss).join('\n'), stripped: { scripts: s1.count, links: s2.count } };
+  const sc = scanPage(html.replace(/^﻿/, ''));
+  const inner = sc.inner.replace(TAG, (tag, name, attrs) => `<${name}${attrs.replace(HANDLER, '')}>`);
+  const keep = [];
+  for (const m of sc.bodyAttrs.matchAll(/\b(class|style)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi)) keep.push(`${m[1].toLowerCase()}="${escHtml(m[2] ?? m[3] ?? m[4] ?? '')}"`);
+  return { body: inner, bodyAttrs: keep.join(' '), css: sc.styles.map(scopeCss).join('\n'), stripped: { scripts: sc.scripts, links: sc.links } };
 }
 
 function stepLayers(story) {
@@ -320,14 +413,19 @@ function stepLayers(story) {
     const win = Math.max(1, t.end_ms - t.start_ms);
     if (s.redline) {
       const r = s.redline, name = `story-r${i + 1}`;
-      keyframes.push(`@keyframes ${name}{0%{outline-color:transparent}10%{outline-color:#e5484d}90%{outline-color:#e5484d}100%{outline-color:transparent}}`);
+      const ol = c => `outline-style:solid;outline-width:2px;outline-offset:3px;outline-color:${c}`;
+      keyframes.push(`@keyframes ${name}{0%,100%{${ol('transparent')}}10%,90%{${ol('#e5484d')}}}`);
       keyframes.push(`@keyframes ${name}-tag{0%{opacity:0}10%{opacity:1}90%{opacity:1}100%{opacity:0}}`);
       push(r.selector, `${name} ${q(win)} linear ${q(t.start_ms)} 1 normal forwards`);
       touched.add(r.selector);
       const label = r.measure ? `${r.label}  ${r.measure}` : r.label;
-      rules.push(`html.story-play :is(${r.selector}){position:relative;outline:2px solid transparent;outline-offset:3px}`);
-      rules.push(`html.story-play :is(${r.selector})::before{content:"${escCssStr(label)}";position:absolute;left:0;top:0;transform:translateY(-100%);font:600 12px/1.4 ui-monospace,Menlo,monospace;color:#fff;background:#e5484d;padding:1px 6px;border-radius:2px;white-space:nowrap;pointer-events:none;z-index:9;opacity:0;animation:${name}-tag ${q(win)} linear ${q(t.start_ms)} 1 normal forwards}`);
-      reduced.push(`html.story-play :is(${r.selector}){outline:none !important;animation-name:none !important}`, `html.story-play :is(${r.selector})::before{display:none !important}`);
+      // No layout property is set on the element: the outline lives only in the animation, and the tag is anchored to the
+      // element (anchor positioning, falling back to its own padding box when the element is itself positioned, and to its
+      // static position where anchors are not supported), so the element stays where the page put it.
+      const anchor = `--story-r${i + 1}`;
+      rules.push(`html.story-play :is(${r.selector}){anchor-name:${anchor};anchor-scope:${anchor}}`);
+      rules.push(`html.story-play :is(${r.selector})::after{content:"${escCssStr(label)}";position:absolute;position-anchor:${anchor};left:anchor(left,0px);top:anchor(top,0px);transform:translateY(-100%);font:600 12px/1.4 ui-monospace,Menlo,monospace;color:#fff;background:#e5484d;padding:1px 6px;border-radius:2px;white-space:nowrap;pointer-events:none;z-index:9;opacity:0;animation:${name}-tag ${q(win)} linear ${q(t.start_ms)} 1 normal forwards}`);
+      reduced.push(`html.story-play :is(${r.selector}){outline:none !important;animation-name:none !important}`, `html.story-play :is(${r.selector})::after{display:none !important}`);
     }
     if (s.swap) {
       const w = s.swap, name = `story-w${i + 1}`;
@@ -336,9 +434,10 @@ function stepLayers(story) {
       push(w.selector, `${name} ${q(tween)} ${ease} ${q(t.start_ms)} 1 normal forwards`);
       touched.add(w.selector);
       const ink = w.ink && w.ink.trim() ? w.ink.trim() : '#111';
-      rules.push(`html.story-play :is(${w.selector}){position:relative}`);
-      rules.push(`html.story-play :is(${w.selector})::after{content:"${escCssStr(w.text)}";position:absolute;left:0;top:0;width:100%;text-align:inherit;color:${ink};opacity:0;animation:${name}-in ${q(tween)} ${ease} ${q(t.start_ms)} 1 normal forwards}`);
-      reduced.push(`html.story-play :is(${w.selector}){color:transparent !important}`, `html.story-play :is(${w.selector})::after{opacity:1 !important;animation:none !important}`);
+      // The new text sits at the old text's static position (no insets, so the element keeps its own position) and is
+      // as wide as the new text itself: one line, never wrapped to the old text's width.
+      rules.push(`html.story-play :is(${w.selector})::before{content:"${escCssStr(w.text)}";position:absolute;white-space:nowrap;width:max-content;color:${ink};pointer-events:none;opacity:0;animation:${name}-in ${q(tween)} ${ease} ${q(t.start_ms)} 1 normal forwards}`);
+      reduced.push(`html.story-play :is(${w.selector}){color:transparent !important}`, `html.story-play :is(${w.selector})::before{opacity:1 !important;animation:none !important}`);
     }
     for (const sel of touched) rules.push(`html.story-play :is(${sel}){animation:${anims.get(sel).join(',')}}`);
     for (const sel of Object.keys(s.css || {})) {
@@ -350,6 +449,30 @@ function stepLayers(story) {
   return layers;
 }
 
+/** The credit shown on every video: the story's credit, or DEFAULT_CREDIT when it has none (check notes credit-missing). */
+function creditText(story) {
+  return typeof story.credit === 'string' && story.credit.trim() ? story.credit : DEFAULT_CREDIT;
+}
+
+/** The crop for a camera rectangle { x, y, w, h } in page pixels: the scale that fits it in the frame, centred. */
+export function cameraFit(c, f) {
+  const s = Math.min(f.w / c.w, f.h / c.h);
+  const r = n => Math.round(n * 1000) / 1000;
+  return { scale: r(s), tx: r((f.w - c.w * s) / 2 - c.x * s), ty: r((f.h - c.h * s) / 2 - c.y * s) };
+}
+
+function cameraCss(c, f) {
+  if (!c || !own(c, 'w')) return '';
+  const { scale, tx, ty } = cameraFit(c, f);
+  return `\n#story-page{height:${Math.max(f.h, Math.ceil(c.y + c.h))}px;transform-origin:0 0;transform:translate(${tx}px,${ty}px) scale(${scale})}`;
+}
+
+/** A selector camera needs the element's box, which only the browser knows: one measure at load (no clock, no timers). */
+function cameraScript(sel, f) {
+  const js = JSON.stringify(sel).replace(/</g, '\\u003c');
+  return `<script data-story-camera>(function(){try{var p=document.getElementById("story-page"),e=p.querySelector(${js});if(!e)return;var a=p.getBoundingClientRect(),r=e.getBoundingClientRect(),m=${CAMERA_MARGIN},x=r.left-a.left-m,y=r.top-a.top-m,w=r.width+2*m,h=r.height+2*m,s=Math.max(${CAMERA_MIN_SCALE},Math.min(${CAMERA_MAX_SCALE},${f.w}/w,${f.h}/h));p.style.height=Math.max(${f.h},Math.ceil(y+h))+"px";p.style.transformOrigin="0 0";p.style.transform="translate("+((${f.w}-w*s)/2-x*s)+"px,"+((${f.h}-h*s)/2-y*s)+"px) scale("+s+")"}catch(_){}})()</script>`;
+}
+
 /** Build the single-file story page. The story must pass check; the page is the original HTML text. */
 export function emit(story, pageHtml) {
   const res = check(story);
@@ -358,11 +481,12 @@ export function emit(story, pageHtml) {
   const page = preparePage(pageHtml);
   const layers = stepLayers(story);
   const D = res.duration_ms;
-  const credit = story.credit ? `<div id="story-credit">${escHtml(story.credit)}</div>` : '';
+  const credit = `<div id="story-credit">${escHtml(creditText(story))}</div>`;
+  const cam = cameraCss(story.camera, f);
   const creditStart = Math.max(0, D - num(story.outro_ms, DEFAULTS.outro_ms));
   const base = `html,body{margin:0;padding:0;background:#0b0b0c;overflow:hidden}
 #story-frame{position:relative;width:${f.w}px;height:${f.h}px;margin:0 auto;overflow:hidden;background:#fff}
-#story-page{position:absolute;left:0;top:0;width:${f.w}px;height:${f.h}px;overflow:hidden;box-sizing:border-box}
+#story-page{position:absolute;left:0;top:0;width:${f.w}px;height:${f.h}px;overflow:hidden;box-sizing:border-box}${cam}
 #story-credit{position:absolute;right:24px;bottom:16px;z-index:20;font:500 14px/1.2 system-ui,sans-serif;color:#fff;background:rgba(0,0,0,.6);padding:4px 10px;border-radius:999px;opacity:0}
 @keyframes story-credit{from{opacity:0}to{opacity:1}}
 html.story-play #story-credit{animation:story-credit 300ms linear ${q(creditStart)} 1 normal forwards}
@@ -374,6 +498,7 @@ html.story-play #story-credit{animation:story-credit 300ms linear ${q(creditStar
 <meta charset="utf-8">
 <meta name="viewport" content="width=${f.w}">
 <meta name="story-duration-ms" content="${D}">
+<meta name="story-format" content="${story.format}">
 <title>${escHtml(story.title)}</title>
 <style data-story-frame>
 ${base}
@@ -389,11 +514,11 @@ ${styles}
 ${page.body}
 </div>
 ${credit}
-</div>
+</div>${story.camera && own(story.camera, 'selector') ? `\n${cameraScript(story.camera.selector, f)}` : ''}
 </body>
 </html>
 `;
-  return { html, duration_ms: D, steps: story.steps.length, stripped: page.stripped };
+  return { html, duration_ms: D, steps: story.steps.length, format: story.format, stripped: page.stripped };
 }
 
 // ---------- io ----------
@@ -463,6 +588,21 @@ async function readStory(flags, io) {
   return story;
 }
 
+/** --out must not name the --page or --file input: the same path, the same real path, or the same device and inode. */
+async function refuseInputAsOut(outPath, cwd, flags) {
+  const real = async p => { try { return await fs.realpath(p); } catch { return null; } };
+  const stat = async p => { try { return await fs.stat(p, { bigint: true }); } catch { return null; } };
+  const ost = await stat(outPath), oreal = await real(outPath);
+  for (const flag of ['--page', '--file']) {
+    if (flags[flag] === undefined) continue;
+    const inPath = path.resolve(cwd, flags[flag]);
+    const ist = await stat(inPath);
+    const same = inPath === outPath || (oreal !== null && oreal === await real(inPath))
+      || (ost && ist && ost.ino !== 0n && ost.dev === ist.dev && ost.ino === ist.ino);
+    if (same) throw bad(`--out ${outPath} is the same file as ${flag}; refusing to overwrite an input`);
+  }
+}
+
 export async function run(args, io) {
   const [cmd, ...rest] = args;
   const cwd = io.cwd || process.cwd();
@@ -487,8 +627,9 @@ export async function run(args, io) {
     const r = emit(story, pageText);
     if (flags['--out'] === undefined) return r;
     const outPath = path.resolve(cwd, flags['--out']);
+    await refuseInputAsOut(outPath, cwd, flags);
     try { await fs.writeFile(outPath, r.html); } catch (e) { throw bad(`cannot write ${outPath}: ${e.code || e.message}`); }
-    return { out: outPath, bytes: Buffer.byteLength(r.html), duration_ms: r.duration_ms, steps: r.steps, stripped: r.stripped };
+    return { out: outPath, bytes: Buffer.byteLength(r.html), duration_ms: r.duration_ms, steps: r.steps, format: r.format, stripped: r.stripped };
   }
   throw bad(`first argument must be check, emit or template\n${usage}`);
 }
