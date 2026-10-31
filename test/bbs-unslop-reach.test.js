@@ -113,6 +113,7 @@ before(() => {
   // a new screen with no before version, made only of sentences that would fit any product
   fx.genericPage = write('new-generic.html', '<h1>The best platform for your workflow</h1><p>Unlock seamless productivity for your team today.</p><p>Powerful tools that help you grow.</p>\n');
   fx.STREAM = 'ui';
+  fx.MT_STREAM = 'none';
   fx.SCREENS = `${fx.slopScreen}\n${fx.cleanScreen}`;
 });
 after(() => { fs.rmSync(dir, { recursive: true, force: true }); });
@@ -439,6 +440,7 @@ function imageGate(file, heading) {
     assert.deepEqual(queued.json.requests.map(r => r.status), ['pending'], 'the pending request is in the end-of-run report');
     assert.match(check.text, /pending \(still queued: keep the slot and go on; never ask mid-loop\)/);
   }
+  if (file === WF.plan) inMarathon(req);
   assert.equal(run(slice(file, heading, 'image-gate', 'approve'), { IMG_STATE: state, IMG_ID: id }).status, 0);
   assert.equal(run(check, { IMG_STATE: state, IMG_MODEL: 'image-model-b' }).status, 2, 'a changed model needs its own yes');
   const claimed = run(check, { IMG_STATE: state });
@@ -461,6 +463,32 @@ function imageGate(file, heading) {
   assert.equal(rep.status, 0);
   assert.equal(rep.json.requests[0].status, 'declined');
   assert.match(rep.json.requests[0].prompt, /paper ledger/);
+}
+
+/**
+ * /pt's image gate when /pt runs as the build of a /w-marathon stream (/w-marathon 4.3 says so and names the
+ * stream): the request is queued with an empty slot and a checklist.md line, never asked; outside /mt it asks.
+ */
+function inMarathon(req) {
+  assert.match(req.text, /\*\*When \/pt runs as the build of a \/w-marathon stream\*\* \(\/w-marathon 4\.3 says so[^)]*\), put that stream's name in `MT_STREAM`/);
+  assert.match(req.text, /then never ask and never wait[^:]*: queue the request as \/w-marathon 4\.3c says \(place the empty slot[^)]*`checklist\.md`[^)]*\) and go on/);
+  // /mt 4.3 is what tells /pt, by the stream's name
+  assert.match(step(WF.marathon, H.mLoop), /build through `\/pt` \([^)]*tell it that it runs as the build of \/w-marathon stream <s>, so its image generation gate gets `MT_STREAM=<s>` and queues instead of asking\)/);
+  const state = fresh('image-gate-mt.json');
+  const queued = run(req, { IMG_STATE: state, MT_STREAM: 'ui' });
+  assert.equal(queued.status, 0);
+  assert.equal(queued.json.status, 'pending', 'the request is still recorded, so a later yes can approve it');
+  assert.match(queued.stderr, /inside \/w-marathon stream ui: do not ask and do not wait: place the empty slot, add '- \[ \] image <id>: yes or no for assets\/generated\/hero\.png' to checklist\.md/);
+  const alone = run(req, { IMG_STATE: fresh('image-gate-pt.json') });
+  assert.doesNotMatch(alone.stderr, /do not ask/, 'outside /w-marathon the question is asked as before');
+  // without the kit, inside /w-marathon: queue, never ask
+  const { dir } = project({ kit: false });
+  try {
+    const noKit = runBlock(req, { IMG_STATE: state, MT_STREAM: 'ui' }, { cwd: dir });
+    assert.equal(noKit.status, 0);
+    assert.match(noKit.stdout, /^kit not installed[^\n]*inside \/w-marathon stream ui: do not ask: queue the yes or no[^\n]*checklist\.md, leave the slot empty, and call no image tool before a yes/);
+    assert.match(runBlock(req, { IMG_STATE: state }, { cwd: dir }).stdout, /^kit not installed[^\n]*: ask the user yes or no/);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }
 
 function storyRender(file, heading) {
@@ -649,6 +677,29 @@ describe('slop audit gate in /w-marathon', () => {
     assert.ok(interview.includes(m[0]), 'the Interview adds the same line for UI streams');
   });
 
+  it('a fix round (4.7 -> 4.4) that makes a screen dirty runs the audit again and leaves the gate unmet', async () => {
+    const s = slice(WF.marathon, H.mLoop, 'slop-audit', 'scan');
+    assert.match(s.text, /\*\*A fix round \(4\.7 → 4\.4\) on a UI stream that touched a screen file runs this block again before 4\.4, over every changed screen file of the stream/);
+    const loop = step(WF.marathon, H.mLoop);
+    const fix = loop.slice(loop.indexOf('**4.7 Fix round.**'));
+    assert.match(fix.split('\n')[0], /On a UI stream whose fixes touched a screen file, run the 4\.3c slop audit block again over every changed screen file of the stream \(and score fidelity again as 4\.3b says\) before 4\.4: a fix that makes a screen dirty records `slop_<s>=false` and the gate stays unmet\. Back to 4\.4\./);
+    const { dir, runDir } = project();
+    try {
+      const a = write('fix-a.html', fs.readFileSync(fx.cleanScreen, 'utf-8'));
+      const b = write('fix-b.html', fs.readFileSync(fx.cleanScreen, 'utf-8'));
+      const screens = `${a}\n${b}`;
+      assert.equal(runBlock(s, { SCREENS: screens }, { cwd: dir }).status, 0);
+      assert.equal(await slopMet(runDir, 'ui'), true, 'the 4.3c pass before the fix was clean');
+      // the fixer rewrites one screen and brings slop in
+      fs.writeFileSync(b, fs.readFileSync(fx.slopScreen, 'utf-8'));
+      assert.equal(await slopMet(runDir, 'ui'), true, 'without the re-run the stale true would meet the gate: why 4.7 runs it again');
+      const again = runBlock(s, { SCREENS: screens }, { cwd: dir });
+      assert.equal(again.status, 2, 'the re-run stops on the fixed screen');
+      assert.match(again.stdout, /recorded slop_ui=false/);
+      assert.equal(await slopMet(runDir, 'ui'), false, 'a fix round that made a screen dirty leaves the gate unmet');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
   it('the Interview adds the slop_<s> line only when the kit is installed', () => {
     const b = blockAfter(WF.marathon, H.mInterview, '**🧹 Slop finish line');
     assert.match(b.text, /only when the kit is installed/);
@@ -723,6 +774,18 @@ describe('without the kit', () => {
       } finally { fs.rmSync(empty, { recursive: true, force: true }); }
     });
   }
+});
+
+describe('delivered notes', () => {
+  it('reach-tests.md names the reach test of every wired row, since bbs integrate refuses --reach on workflow surfaces', () => {
+    const notes = fs.readFileSync(path.join(ROOT, '.claude/bbs/runs/2026-10-30-unslop/reach-tests.md'), 'utf-8');
+    assert.match(notes, /`node \.claude\/helpers\/bbs\/cli\.js integrate --reach` refuses workflow surfaces/);
+    assert.match(notes, /test\/bbs-unslop-reach\.test\.js/);
+    for (const row of ROWS) {
+      const name = `${row.power} › ${short(row.file)} › ${row.heading} (${row.mode})`;
+      assert.ok(notes.includes(`| ${row.power} | /${short(row.file)} · ${row.heading} | ${row.mode} | ${name} |`), `reach-tests.md lists ${name}`);
+    }
+  });
 });
 
 describe('source and installed copies', () => {
