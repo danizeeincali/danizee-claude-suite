@@ -7,13 +7,13 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 60,
-    "cost": 78943
+    "steps": 120,
+    "cost": 156903
   },
   "clock": {
     "depth": 1,
-    "startedAt": 1793404492049,
-    "elapsedMs": 298167
+    "startedAt": 1793404842162,
+    "elapsedMs": 646419
   },
   "helpers": {
     "build-unslop-glyph-and-duotone-effects": {
@@ -29,6 +29,18 @@
       }
     },
     "review-r1-unslop-glyph-and-duotone-effects": {
+      "steps": 60,
+      "cost": 77960,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r1-unslop-glyph-and-duotone-effects": {
       "steps": 0,
       "cost": 0,
       "ok": 0,
@@ -36,8 +48,8 @@
       "grants": 1,
       "skipped": 0,
       "reserved": {
-        "steps": 80,
-        "cost": 150000
+        "steps": 60,
+        "cost": 100000
       }
     }
   }

@@ -13,3 +13,12 @@
 {"key":"packaged_unslop-do-not-list-and-final-checklist","value":true,"id":"1372528b-3ee9-4b83-9cff-cb49e7b4e728","ts":"2026-10-30T23:58:26.646Z"}
 {"key":"egress_zero_unslop-do-not-list-and-final-checklist","value":true,"id":"3ab2d4d9-280a-4492-90dc-22c00efdef45","ts":"2026-10-30T23:58:26.776Z"}
 {"key":"callers_unslop-do-not-list-and-final-checklist","value":0,"id":"2de98db6-5b62-40c4-ab62-1962ff3deb3f","ts":"2026-10-30T23:58:26.905Z"}
+{"key":"packaged_unslop-design-tokens","value":true,"id":"934889fa-e99c-4ede-8c94-b02f4af37ab6","ts":"2026-10-31T00:03:23.667Z"}
+{"key":"egress_zero_unslop-design-tokens","value":true,"id":"a396991d-63ee-4f35-999e-88a18269a8a6","ts":"2026-10-31T00:03:23.782Z"}
+{"key":"callers_unslop-design-tokens","value":0,"id":"f9e79c64-04b4-448b-9f02-866bf5416c5d","ts":"2026-10-31T00:03:23.903Z"}
+{"key":"packaged_unslop-triage-and-refine-only-gate","value":true,"id":"17f5c163-9daa-41e9-9e8d-6cf9ae91abb4","ts":"2026-10-31T00:03:43.728Z"}
+{"key":"egress_zero_unslop-triage-and-refine-only-gate","value":true,"id":"b528a38c-c11b-4d98-9106-a24472b9d860","ts":"2026-10-31T00:03:43.841Z"}
+{"key":"callers_unslop-triage-and-refine-only-gate","value":0,"id":"676f7d01-0442-4cea-9684-4cde07029b22","ts":"2026-10-31T00:03:43.952Z"}
+{"key":"packaged_unslop-visual-direction","value":true,"id":"4c3594b6-065f-4cff-8435-b6ceeeebd3b4","ts":"2026-10-31T00:03:52.996Z"}
+{"key":"egress_zero_unslop-visual-direction","value":true,"id":"a0602dae-c35f-4eb2-8536-60046dc34576","ts":"2026-10-31T00:03:53.164Z"}
+{"key":"callers_unslop-visual-direction","value":0,"id":"d5e16343-6fd2-4db1-a6d0-cc5f00a93359","ts":"2026-10-31T00:03:53.318Z"}

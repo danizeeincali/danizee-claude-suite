@@ -7,13 +7,13 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 120,
-    "cost": 143592
+    "steps": 180,
+    "cost": 212721
   },
   "clock": {
     "depth": 1,
-    "startedAt": 1793404726242,
-    "elapsedMs": 528394
+    "startedAt": 1793404866971,
+    "elapsedMs": 650963
   },
   "helpers": {
     "build-unslop-image-generation-gate": {
@@ -41,6 +41,18 @@
       }
     },
     "fix-r1-unslop-image-generation-gate": {
+      "steps": 60,
+      "cost": 69129,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r2-unslop-image-generation-gate": {
       "steps": 0,
       "cost": 0,
       "ok": 0,
@@ -48,8 +60,8 @@
       "grants": 1,
       "skipped": 0,
       "reserved": {
-        "steps": 60,
-        "cost": 100000
+        "steps": 80,
+        "cost": 150000
       }
     }
   }

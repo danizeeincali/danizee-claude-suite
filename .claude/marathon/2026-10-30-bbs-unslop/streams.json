@@ -31,12 +31,12 @@
     },
     {
       "name": "unslop-triage-and-refine-only-gate",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-triage-and-refine-only-gate.md",
-      "next": "builder writes contract, failing tests, verb",
+      "next": "integration wires it",
       "tasks": [],
       "isolation": "../danizee-claude-suite-unslop-triage-and-refine-only-gate",
-      "phase": "build",
+      "phase": "done",
       "base": "b67b1e322ae3e966871c10cb30b0ad3110d790d7"
     },
     {
@@ -51,12 +51,12 @@
     },
     {
       "name": "unslop-design-tokens",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-design-tokens.md",
-      "next": "builder writes contract, failing tests, verb",
+      "next": "integration wires it",
       "tasks": [],
       "isolation": "../danizee-claude-suite-unslop-design-tokens",
-      "phase": "build",
+      "phase": "done",
       "base": "b67b1e322ae3e966871c10cb30b0ad3110d790d7"
     },
     {
@@ -71,12 +71,12 @@
     },
     {
       "name": "unslop-visual-direction",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-visual-direction.md",
-      "next": "builder writes contract, failing tests, verb",
+      "next": "integration wires it",
       "tasks": [],
       "isolation": "../danizee-claude-suite-unslop-visual-direction",
-      "phase": "build",
+      "phase": "done",
       "base": "53e5f6acc5f98261def53b24780b1f0fe6b1d46f"
     },
     {
