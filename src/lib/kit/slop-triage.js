@@ -9,7 +9,8 @@
  *       → exit 0 { confirmed: true, grade, at, choice?, graded_as? } when the state file records { confirmed: true, grade, at };
  *         exit 2 { confirmed: false, why, exit: 2 } otherwise (no file, or not confirmed): the stop-before-edit gate.
  *   slop-triage confirm --state <file.json> --grade <heavy|light|refine-only> [--choice <option text>]
- *       → writes { confirmed: true, grade, choice, at } atomically (temp file + rename) and prints it.
+ *       → writes { confirmed: true, grade, choice, at } durably (guarded-fs: temp file, fsync, rename, folder fsync) and prints it.
+ *         Temp files a killed run left beside the state file (`<state>.*.tmp`, `.<state>.*.tmp`) older than a minute are removed.
  *         The default choice is "Go with this direction". "Only refine, keep the design" is also a yes, but it is
  *         recorded as grade "refine-only", so a caller that branches on the gate's grade runs no redesign. Every
  *         record carries graded_as, the grade you passed.
@@ -40,8 +41,8 @@
 import fs from 'fs/promises';
 import { constants as fsc, fstatSync } from 'fs';
 import path from 'path';
-import { randomUUID } from 'crypto';
 import { KitExit } from './kit-exit.js';
+import { guardedWrite } from './guarded-fs.js';
 
 export const verb = 'slop-triage';
 export const usage = 'cli.js slop-triage grade [--file <audit.json>] [--lines <n>] | gate --state <file.json> (exit 2 when not confirmed) | confirm --state <file.json> --grade <heavy|light|refine-only> [--choice <text>]';
@@ -300,16 +301,40 @@ export async function run(args, io) {
   throw bad(`first argument must be grade, gate or confirm\n${usage}`);
 }
 
-/** Write the state file atomically (temp file + rename). The temp name has a random suffix; only our own temp file is ever removed. */
-async function writeState(target, rec) {
-  const tmp = `${target}.${process.pid}.${randomUUID()}.tmp`;
-  let created = false;
+/** Temp files older than this, left beside the state file by a killed confirm, are removed on the next confirm. */
+export const STALE_TMP_MS = 60 * 1000;
+
+/** Best effort: remove `<state>.*.tmp` and `.<state>.*.tmp` siblings (a killed run's leftovers) older than STALE_TMP_MS. */
+async function cleanStaleTmp(target) {
+  const dir = path.dirname(target);
+  const base = path.basename(target);
   try {
-    await fs.writeFile(tmp, JSON.stringify(rec, null, 2) + '\n', { flag: 'wx' });
-    created = true;
-    await fs.rename(tmp, target);
-  } catch (e) {
-    if (created) await fs.rm(tmp, { force: true }).catch(() => {});
-    throw bad(`cannot write ${target}: ${e.code || e.message}`);
+    for (const n of await fs.readdir(dir)) {
+      if (!n.endsWith('.tmp') || !(n.startsWith(`${base}.`) || n.startsWith(`.${base}.`))) continue;
+      const p = path.join(dir, n);
+      try {
+        const st = await fs.lstat(p);
+        if (st.isFile() && Date.now() - st.mtimeMs > STALE_TMP_MS) await fs.unlink(p);
+      } catch { /* best effort */ }
+    }
+  } catch { /* best effort */ }
+}
+
+/** Write the state file durably and atomically: the kit's guarded write (temp file, fsync, rename, folder fsync). */
+async function writeState(target, rec) {
+  await cleanStaleTmp(target);
+  // Another confirm renaming over the same name between our rename and guarded-fs's identity check is a refusal (exit 2)
+  // that is no swap: write again, the last writer wins.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await guardedWrite(target, JSON.stringify(rec, null, 2) + '\n', { root: path.dirname(target) });
+      return;
+    } catch (e) {
+      if (e instanceof KitExit && e.code === 2 && /does not hold the file that was written/.test(e.message) && attempt < 12) {
+        await new Promise(r => setTimeout(r, 2 + Math.floor(Math.random() * 8)));
+        continue;
+      }
+      throw bad(`cannot write ${target}: ${e.message}`);
+    }
   }
 }

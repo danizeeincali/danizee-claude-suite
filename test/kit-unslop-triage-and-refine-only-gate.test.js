@@ -447,3 +447,33 @@ describe('the header contract is asserted', () => {
     assert.match(header, /REVOKES/); assert.match(header, /recorded as grade "refine-only"/); assert.match(header, /total must equal hits\.length/);
   });
 });
+
+describe('confirm durability and stale temp cleanup', () => {
+  it('fsyncs the temp file and the folder before confirm returns', async () => {
+    const dir = await tmp();
+    const probe = await fs.open(path.join(dir, 'probe'), 'w');
+    const proto = Object.getPrototypeOf(probe);
+    await probe.close();
+    const real = proto.sync; let n = 0;
+    proto.sync = function (...a) { n++; return real.apply(this, a); };
+    try { await run(['confirm', '--state', 's.json', '--grade', 'heavy'], io('', dir)); } finally { proto.sync = real; }
+    assert.ok(n >= 2, `expected file and folder fsync, saw ${n}`);
+    n = 0; proto.sync = function (...a) { n++; return real.apply(this, a); };
+    try { await exit(() => run(['confirm', '--state', 's.json', '--grade', 'heavy', '--choice', 'Change the direction'], io('', dir)), 2); } finally { proto.sync = real; }
+    assert.ok(n >= 2, `revoke fsync, saw ${n}`);
+  });
+  it('removes stale <state>.*.tmp leftovers (older than a minute), keeps fresh and unrelated files', async () => {
+    const dir = await tmp();
+    const old = new Date(Date.now() - 5 * 60 * 1000);
+    const stale = ['s.json.123.abc.tmp', '.s.json.123.deadbeef.tmp'];
+    for (const n of [...stale, 's.json.456.fresh.tmp', 'other.json.1.x.tmp', 'keep.txt']) await fs.writeFile(path.join(dir, n), 'x');
+    for (const n of [...stale, 'other.json.1.x.tmp']) await fs.utimes(path.join(dir, n), old, old);
+    await run(['confirm', '--state', 's.json', '--grade', 'heavy'], io('', dir));
+    const left = (await fs.readdir(dir)).sort();
+    assert.deepEqual(left, ['keep.txt', 'other.json.1.x.tmp', 's.json', 's.json.456.fresh.tmp']);
+  });
+  it('the header documents the durable write and the cleanup', () => {
+    const header = fsSync.readFileSync(path.join(ROOT, '.claude/helpers/kit/slop-triage.js'), 'utf-8').split('*/')[0];
+    assert.match(header, /fsync/); assert.match(header, /older than a minute/);
+  });
+});
