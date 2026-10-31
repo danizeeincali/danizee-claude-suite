@@ -1,6 +1,7 @@
 /**
  * Preload (`node --import <this>`) for the packaged checks: any network attempt or any child process
- * other than node, a local git subcommand, or an executable inside $KIT_EGRESS_ALLOW_DIR is logged
+ * other than node, a local git subcommand, or an executable inside $KIT_EGRESS_ALLOW_DIR (or inside one of the absolute
+ * folders listed in $KIT_EGRESS_ALLOW_EXEC, path-delimiter separated, e.g. a browser a verb launches) is logged
  * to $KIT_EGRESS_LOG (one JSON line) and refused with an error. Child node processes inherit this
  * preload through NODE_OPTIONS, which the harness sets.
  */
@@ -11,6 +12,7 @@ import path from 'path';
 const require = createRequire(import.meta.url);
 const LOG = process.env.KIT_EGRESS_LOG;
 const ALLOW_DIR = process.env.KIT_EGRESS_ALLOW_DIR ? path.resolve(process.env.KIT_EGRESS_ALLOW_DIR) : null;
+const ALLOW_EXEC = (process.env.KIT_EGRESS_ALLOW_EXEC || '').split(path.delimiter).filter(p => p && path.isAbsolute(p)).map(p => path.resolve(p));
 const GIT_NETWORK = new Set(['fetch', 'clone', 'pull', 'push', 'ls-remote', 'remote', 'submodule', 'archive']);
 
 function block(kind, detail) {
@@ -45,6 +47,7 @@ function allowedCommand(file, args) {
     return !GIT_NETWORK.has(String(sub));
   }
   if (ALLOW_DIR && path.isAbsolute(cmd) && path.resolve(cmd).startsWith(ALLOW_DIR + path.sep)) return true;
+  if (path.isAbsolute(cmd) && ALLOW_EXEC.some(d => path.resolve(cmd).startsWith(d + path.sep))) return true;
   return false;
 }
 const cp = require('child_process');

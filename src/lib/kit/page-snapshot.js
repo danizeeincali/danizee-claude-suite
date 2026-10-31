@@ -2,8 +2,8 @@
  * page-snapshot — save a live page as ONE standalone static HTML copy plus a screenshot, so a redesign can start from a
  * link: work on the copy, compare against the screenshot. The page is loaded in headless Chromium at a set viewport, the
  * network is given time to settle and fonts to load, then the rendered document is copied: stylesheets are inlined into
- * <style>, images and CSS url() assets become data: URIs under a size cap, scripts, iframes, srcset and <base> are dropped,
- * and links are made absolute. Nothing runs when the copy is opened. Scripted or canvas-drawn animated backgrounds do
+ * <style>, images and CSS url() assets become data: URIs under a size cap, scripts, iframes, embedding elements (embed,
+ * object, applet, portal, frame, frameset: each listed in skipped), srcset and <base> are dropped, and links are made absolute. Nothing runs when the copy is opened. Scripted or canvas-drawn animated backgrounds do
  * not survive the copy: describe them from the screenshot.
  *
  *   page-snapshot plan --url <url> [--out <dir>]
@@ -20,24 +20,35 @@
  *       page.html carries <meta name="snapshot-source" content="<url>" data-at="<iso time>">. Each asset embeds at most
  *       2 MiB (--max-asset-bytes) and the copy embeds at most 20 MiB in all (--max-total-bytes); an asset over either cap,
  *       an asset the page never loaded, or one of an unsupported type keeps its absolute URL and is listed in skipped with
- *       the reason. --theme forces prefers-color-scheme to light or dark in the browser and in the copy's media queries.
+ *       the reason. A stylesheet link that did not load (blocked or failed), or is disabled or alternate, is dropped from the
+ *       copy and listed in skipped. --theme forces prefers-color-scheme to light or dark in the browser, in the copy's media
+ *       queries and in the media= attributes of <style>, <link> and <source> (the other scheme becomes a query that never
+ *       matches).
  *       --full-page screenshots the whole scrollable page. The page's rendered DOM may not exceed 8 MiB.
  *       Network policy: file:// and http(s)://localhost or 127.0.0.1 are allowed and everything else is blocked at the
  *       browser (no name but localhost resolves, no proxy, non-local requests and WebSockets aborted). Any other URL is
  *       refused with exit 2 and nothing is launched, unless --allow-remote is given; then only the given URL's own origin
  *       and the asset origins the page itself requests are reached: no links are followed after the load, no form or other
- *       non-GET request is sent, WebSockets, service workers, downloads and iframes are blocked, and the context is fresh
- *       (no cookies, credentials or storage state). Asset bytes are the ones the browser itself received, nothing is fetched
- *       by Node. Loads playwright only if the project can resolve it (it is not a dependency of this suite); if not,
+ *       non-GET request is sent, WebSockets, service workers, downloads, popups and iframes are blocked, and the context is
+ *       fresh (no cookies, credentials or storage state). In remote mode no request other than to the page's own origin may
+ *       reach a host that is loopback, private, link-local, CGNAT, unique-local, multicast, reserved or unspecified (IPv4 and
+ *       IPv6, IPv4-mapped and numeric forms included), or a localhost name: Node resolves each other DNS name first (a
+ *       failed lookup counts as private), redirects are held to the same check, and a response the browser got from such
+ *       an address anyway is never copied; a page that ends up on one exits 2. Remote mode connects without a proxy.
+ *       Each refused request's origin is in blocked_origins (file:// for file URLs). Known gap: a name whose answer changes
+ *       between Node's lookup and the browser's (DNS rebinding), or a redirect inside a web worker, can reach such a host
+ *       with that request; its body is dropped, and a stylesheet from it is dropped from the copy. Asset bytes are the ones the browser itself received, nothing
+ *       is fetched by Node (DNS lookups only). Loads playwright only if the project can resolve it (it is not a dependency of this suite); if not,
  *       returns { captured:false, reason:"playwright not installed: page-snapshot capture needs it", exit:4 }.
  *
  * Exit codes: 0 answer printed · 1 bad input or broken state (bad flag, unparseable URL, HTTP error, DOM over 8 MiB, --out
- * a symlink or a file, page could not load) · 2 URL refused by the network policy (not local and no --allow-remote, or an
- * unsupported scheme, credentials in the URL) · 4 playwright or its browser is missing.
+ * a symlink or a file, page could not load) · 2 URL refused by the network policy (not local and no --allow-remote, an
+ * unsupported scheme, credentials in the URL, or a remote page that led the browser to a private address) · 4 playwright or its browser is missing.
  *
  * Built from ideas audited by /w-bbs (run 2026-10-30-unslop); no foreign code.
  */
 import crypto from 'node:crypto';
+import dns from 'node:dns';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -83,8 +94,10 @@ function checkConsent(target, allowRemote) {
   }
 }
 
-/** Should a browser request be let through? mode is 'local' (file or localhost page) or 'remote'. */
-export function allowRequest(rawUrl, mode, pageProtocol = 'file:') {
+/** Should a browser request be let through? mode is 'local' (file or localhost page) or 'remote'. In remote mode a host that
+ * is loopback, private, link-local, CGNAT, unique-local, multicast, reserved or unspecified (or a localhost name) is refused
+ * unless it is the page's own origin (pageOrigin), which the user agreed to. DNS names are checked separately (hostVerdict). */
+export function allowRequest(rawUrl, mode, pageProtocol = 'file:', pageOrigin = null) {
   let u;
   try { u = new URL(rawUrl); } catch { return false; }
   if (u.protocol === 'data:' || u.protocol === 'blob:' || u.protocol === 'about:') return true;
@@ -92,7 +105,86 @@ export function allowRequest(rawUrl, mode, pageProtocol = 'file:') {
     if (u.protocol === 'file:') return pageProtocol === 'file:' && u.hostname === '';
     return isLocalHttp(u);
   }
-  return (u.protocol === 'http:' || u.protocol === 'https:') && !u.username && !u.password;
+  if ((u.protocol !== 'http:' && u.protocol !== 'https:') || u.username || u.password) return false;
+  return u.origin === pageOrigin || !isPrivateHost(u.hostname);
+}
+
+// ---------------------------------------------------------------- private address ranges
+
+/** Dotted-quad IPv4 (the canonical form URL gives every numeric, decimal, octal or hex host) to 4 numbers, or null. */
+export function parseIPv4(s) {
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(s);
+  if (!m) return null;
+  const a = m.slice(1).map(Number);
+  return a.every((x) => x <= 255) ? a : null;
+}
+/** IPv6 text (no brackets, no zone) to 8 numbers, or null. Accepts :: and a trailing dotted IPv4. */
+export function parseIPv6(s) {
+  let t = String(s).toLowerCase().replace(/%.*$/, '');
+  if (!/^[0-9a-f:.]+$/.test(t) || !t.includes(':')) return null;
+  let tail = [];
+  const v4 = /(\d{1,3}(?:\.\d{1,3}){3})$/.exec(t);
+  if (v4) {
+    const a = parseIPv4(v4[1]);
+    if (!a) return null;
+    tail = [(a[0] << 8) | a[1], (a[2] << 8) | a[3]];
+    t = t.slice(0, -v4[1].length);
+    if (t.endsWith(':') && !t.endsWith('::')) t = t.slice(0, -1);
+  }
+  const halves = t.split('::');
+  if (halves.length > 2) return null;
+  const part = (x) => (x === '' ? [] : x.split(':'));
+  const head = part(halves[0]);
+  const rest = halves.length === 2 ? part(halves[1]) : [];
+  if ([...head, ...rest].some((g) => !/^[0-9a-f]{1,4}$/.test(g))) return null;
+  const known = head.length + rest.length + tail.length;
+  if (halves.length === 1 ? known !== 8 : known > 7) return null;
+  const fill = new Array(8 - known).fill(0);
+  return [...head, ...(halves.length === 2 ? fill : []), ...rest].map((g) => parseInt(g, 16)).concat(tail);
+}
+function privateV4([a, b, c]) {
+  return a === 0 || a === 10 || a === 127 || a >= 224 // unspecified, private, loopback, multicast and reserved
+    || (a === 100 && b >= 64 && b <= 127) // CGNAT
+    || (a === 169 && b === 254) // link-local and cloud metadata
+    || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) // private
+    || (a === 192 && b === 0 && c === 0) || (a === 198 && (b === 18 || b === 19)); // IETF and benchmarking
+}
+/** Is an IP address (v4 or v6 text) one a remote capture must never reach? Text that is not an address is not private. */
+export function isPrivateAddress(ip) {
+  const s = String(ip).replace(/^\[|\]$/g, '');
+  const v4 = parseIPv4(s);
+  if (v4) return privateV4(v4);
+  const g = parseIPv6(s);
+  if (!g) return false;
+  const embedded = (hi, lo) => privateV4([g[hi] >> 8, g[hi] & 255, g[lo] >> 8, g[lo] & 255]);
+  if (g.slice(0, 6).every((x) => x === 0)) return true; // ::, ::1 and IPv4-compatible ::a.b.c.d
+  if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) return true; // IPv4-mapped: a page has no reason to use it
+  if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) return embedded(6, 7); // NAT64
+  if (g[0] === 0x2002) return privateV4([g[1] >> 8, g[1] & 255, g[2] >> 8, g[2] & 255]); // 6to4
+  return (g[0] & 0xfe00) === 0xfc00 || (g[0] & 0xffc0) === 0xfe80 || (g[0] & 0xffc0) === 0xfec0 || (g[0] & 0xff00) === 0xff00;
+}
+/** Is a URL host (as URL.hostname gives it, or raw text: numeric forms are normalized here) private or a localhost name? */
+export function isPrivateHost(host) {
+  let h = String(host).toLowerCase();
+  if (!h.startsWith('[')) { try { h = new URL(`http://${h}/`).hostname; } catch { return true; } }
+  if (h.startsWith('[')) return isPrivateAddress(h.slice(1, -1));
+  const name = h.replace(/\.$/, '');
+  if (name === 'localhost' || name.endsWith('.localhost') || name === '') return true;
+  return isPrivateAddress(name);
+}
+const isIpLiteral = (h) => h.startsWith('[') || parseIPv4(h) !== null;
+
+/** Resolve a DNS name (not an IP literal) and say whether any address it answers is private. A failed lookup counts as
+ * private, so a name Node cannot vet is not loaded. cache maps host to a promise of the verdict. */
+export function hostVerdict(host, lookup, cache) {
+  const h = String(host).toLowerCase();
+  if (isPrivateHost(h)) return Promise.resolve(true);
+  if (isIpLiteral(h)) return Promise.resolve(false);
+  if (!cache.has(h)) {
+    cache.set(h, Promise.resolve().then(() => lookup(h.replace(/\.$/, ''), { all: true, verbatim: true }))
+      .then((list) => !Array.isArray(list) || list.length === 0 || list.some((r) => isPrivateAddress(r && r.address)), () => true));
+  }
+  return cache.get(h);
 }
 
 // ---------------------------------------------------------------- pure string work
@@ -231,7 +323,7 @@ const cssQuote = (s) => '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').repl
  * A snapshot's byte budget and ledger. lookup(url) returns { mime, body:Buffer } | { tooBig:true, bytes } | null.
  */
 export function makeBudget({ lookup = null, maxAsset = MAX_ASSET_BYTES, maxTotal = MAX_TOTAL_BYTES } = {}) {
-  return { lookup, maxAsset, maxTotal, used: 0, inlined: new Map(), skipped: new Map(), removed: { scripts: 0, iframes: 0 } };
+  return { lookup, maxAsset, maxTotal, used: 0, inlined: new Map(), skipped: new Map(), removed: { scripts: 0, iframes: 0, embedded: 0 } };
 }
 
 const SAFE_MIME = /^(image\/[\w.+-]+|font\/[\w.+-]+|application\/(x-)?font[\w.+-]*|application\/vnd\.ms-fontobject|application\/octet-stream|binary\/octet-stream)$/i;
@@ -271,6 +363,9 @@ export function transformCss(css, { base, budget = null, theme = null }) {
 }
 
 const URL_ATTRS = new Set(['href', 'src', 'poster', 'action', 'formaction', 'background', 'xlink:href']);
+/** Elements that load and run another document (or a plugin): removed from the copy like iframe, each listed in skipped. */
+export const EMBEDDING = Object.freeze(['embed', 'object', 'applet', 'portal', 'frame', 'frameset']);
+const MEDIA_TAGS = new Set(['style', 'link', 'source']);
 
 /**
  * Rewrite a serialized DOM into the static copy: scripts, iframes, <base>, refresh and CSP metas, preloads, on* handlers,
@@ -287,6 +382,14 @@ export function transformHtml(html, { base, budget = null, theme = null, headIns
         if (budget) { budget.removed.iframes++; const s = getAttr(t, 'src'); if (s) skip(budget, absolutizeUrl(s, base), 'iframe removed from the static copy'); }
         return SKIP;
       }
+      if (EMBEDDING.includes(nm)) {
+        if (budget) {
+          budget.removed.embedded++;
+          const s = getAttr(t, 'src') || getAttr(t, 'data') || getAttr(t, 'code');
+          skip(budget, s ? absolutizeUrl(s, base) : `(<${nm}> without a source)`, `<${nm}> removed from the static copy`);
+        }
+        return SKIP;
+      }
       if (nm === 'base') return SKIP;
       if (nm === 'meta') {
         const he = (getAttr(t, 'http-equiv') || '').toLowerCase();
@@ -297,6 +400,10 @@ export function transformHtml(html, { base, budget = null, theme = null, headIns
         if (rel.some((r) => ['modulepreload', 'preload', 'prefetch', 'prerender', 'dns-prefetch', 'preconnect'].includes(r))) return SKIP;
       }
       if (nm === 'source' && hasAttr(t, 'srcset') && !hasAttr(t, 'src')) return SKIP;
+      if (theme && MEDIA_TAGS.has(nm)) {
+        const m = getAttr(t, 'media');
+        if (m !== null) { const fm = forceScheme(m, theme); if (fm !== m) setAttr(t, 'media', fm); }
+      }
       dropAttrs(t, (a) => a.name.startsWith('on') || a.name === 'srcset' || a.name === 'sizes' || a.name === 'imagesrcset' || a.name === 'imagesizes' || a.name === 'integrity' || a.name === 'nonce');
       const imageish = nm === 'img' || nm === 'image' || (nm === 'input' && (getAttr(t, 'type') || '').toLowerCase() === 'image')
         || (nm === 'link' && /\bicon\b/i.test(getAttr(t, 'rel') || ''));
@@ -333,20 +440,38 @@ export function sourceMeta(url, at) {
   return `<meta charset="utf-8"><meta name="snapshot-source" content="${encodeAttr(url)}" data-at="${encodeAttr(at)}">`;
 }
 
-/** Assemble the standalone document from the browser's DOM report (see snapshotDom). pendingCss maps a placeholder number to css text or null. */
-export function buildSnapshot(dom, { url, at, lookup = null, pendingCss = {}, theme = null, maxAsset, maxTotal }) {
-  const budget = makeBudget({ lookup, maxAsset, maxTotal });
-  let html = dom.html;
-  for (const p of dom.pending || []) {
-    const marker = `<style data-snapshot-pending="${p.n}"></style>`;
+export const PENDING_UNREAD = 'stylesheet could not be read; linked instead';
+export const PENDING_BLOCKED = 'stylesheet from a blocked private or loopback address; dropped from the copy';
+const PRIVATE_SHEET = PENDING_BLOCKED.split(';')[0];
+
+/**
+ * Put each pending stylesheet in its placeholder, in ONE pass over the document. pendingCss maps a placeholder number to
+ * css text, null (unread: kept as a link) or false (blocked: dropped). Returns { html, skipped:[[url, reason]] }; the result
+ * can be passed to buildSnapshot as resolved so a two-pass build substitutes once.
+ */
+export function resolvePending(dom, pendingCss = {}) {
+  const byN = new Map((dom.pending || []).map((p) => [String(p.n), p]));
+  const skipped = [];
+  for (const d of dom.dropped || []) skipped.push([d.href, d.reason]);
+  const html = byN.size === 0 ? dom.html : dom.html.replace(/<style data-snapshot-pending="(\d+)"><\/style>/g, (m, n) => {
+    const p = byN.get(n);
+    if (!p) return m;
     const css = pendingCss[p.n];
     const media = p.media && p.media !== 'all' ? ` media="${encodeAttr(p.media)}"` : '';
-    let rep;
-    if (typeof css === 'string') rep = `<style${media} data-snapshot-href="${encodeAttr(p.href)}">${css.replace(/<\/style/gi, '<\\/style')}</style>`;
-    else { skip(budget, p.href, 'stylesheet could not be read; linked instead'); rep = `<link rel="stylesheet"${media} href="${encodeAttr(p.href)}">`; }
-    html = html.split(marker).join(rep);
-  }
-  const body = transformHtml(html, { base: dom.baseUri, budget, theme, headInsert: sourceMeta(url, at) });
+    if (typeof css === 'string') return `<style${media} data-snapshot-href="${encodeAttr(p.href)}">${css.replace(/<\/style/gi, '<\\/style')}</style>`;
+    if (css === false) { skipped.push([p.href, PENDING_BLOCKED]); return ''; }
+    skipped.push([p.href, PENDING_UNREAD]);
+    return `<link rel="stylesheet"${media} href="${encodeAttr(p.href)}">`;
+  });
+  return { html, skipped };
+}
+
+/** Assemble the standalone document from the browser's DOM report (see snapshotDom and resolvePending). */
+export function buildSnapshot(dom, { url, at, lookup = null, pendingCss = {}, resolved = null, theme = null, maxAsset, maxTotal }) {
+  const budget = makeBudget({ lookup, maxAsset, maxTotal });
+  const r = resolved || resolvePending(dom, pendingCss);
+  for (const [u, reason] of r.skipped) skip(budget, u, reason);
+  const body = transformHtml(r.html, { base: dom.baseUri, budget, theme, headInsert: sourceMeta(url, at) });
   return { html: `${dom.doctype || '<!DOCTYPE html>'}\n${body}\n`, budget };
 }
 
@@ -355,10 +480,13 @@ export function buildSnapshot(dom, { url, at, lookup = null, pendingCss = {}, th
 /**
  * Runs inside the page (no closures): clones the document, replaces each readable stylesheet link with a <style> holding its
  * CSSOM text (imports expanded, constructed sheets appended), marks sheets the browser will not let script read as
- * pending, resolves srcset images to the chosen source, and reports the document's base URL.
+ * pending, resolves srcset images to the chosen source, and reports the document's base URL. A stylesheet link that is
+ * disabled or alternate, has no sheet, or whose URL is in failedUrls (urls or [url, reason] pairs: requests that were
+ * blocked, failed, got an HTTP error or came from a private address) is removed and reported in dropped.
  */
-export function snapshotDom() {
+export function snapshotDom(failedUrls) {
   const doc = document;
+  const failed = new Map((failedUrls || []).map((x) => (Array.isArray(x) ? x : [x, ''])));
   const clone = doc.documentElement.cloneNode(true);
   const pending = [];
   const sheetText = (sheet, depth) => {
@@ -383,11 +511,19 @@ export function snapshotDom() {
     const text = sheetText(s.sheet, 0);
     if (text) cloneStyles[i].textContent = text;
   });
+  const dropped = [];
   const origLinks = doc.documentElement.querySelectorAll('link[rel~="stylesheet" i]');
   const cloneLinks = clone.querySelectorAll('link[rel~="stylesheet" i]');
   origLinks.forEach((l, i) => {
     const c = cloneLinks[i];
-    if (!l.sheet || l.disabled) return;
+    const alternate = /(^|\s)alternate(\s|$)/i.test(l.getAttribute('rel') || '');
+    const failure = failed.get(l.href) ?? failed.get(l.href.split('#')[0]);
+    if (l.disabled || alternate || !l.sheet || failure !== undefined) {
+      const why = l.disabled || alternate ? 'stylesheet is disabled or alternate' : failure || 'stylesheet did not load (blocked or failed)';
+      dropped.push({ href: l.href || '(link without href)', reason: `${why}; dropped from the copy` });
+      c.remove();
+      return;
+    }
     const text = sheetText(l.sheet, 0);
     const st = doc.createElement('style');
     const media = l.getAttribute('media');
@@ -416,6 +552,7 @@ export function snapshotDom() {
     html: clone.outerHTML,
     baseUri: doc.baseURI,
     pending,
+    dropped,
     title: doc.title,
   };
 }
@@ -483,7 +620,10 @@ async function writeAtomic(dest, data) {
   }
 }
 
-const origin = (u) => { try { return new URL(u).origin; } catch { return '(unparseable url)'; } };
+/** The origin a blocked request is listed under: file: URLs (whose URL.origin is the string "null") are listed as file://. */
+export const blockedOrigin = (u) => {
+  try { const x = new URL(u); return x.protocol === 'file:' ? 'file://' : x.origin === 'null' ? `${x.protocol}//${x.host}` : x.origin; } catch { return '(unparseable url)'; }
+};
 
 async function readLocalAsset(url, maxAsset) {
   try {
@@ -512,7 +652,8 @@ export async function capture(o, io = {}) {
   const timeout = o.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   let browser;
   try {
-    try { browser = await pw.chromium.launch({ headless: true, args: mode === 'local' ? [...LAUNCH_ARGS] : [] }); } catch (e) {
+    // remote mode connects directly (no proxy) so the address the browser reached is the server's own and can be checked
+    try { browser = await pw.chromium.launch({ headless: true, args: mode === 'local' ? [...LAUNCH_ARGS] : ['--no-proxy-server'] }); } catch (e) {
       return { captured: false, reason: `playwright browser could not start: ${firstLine(e)}`, exit: 4 };
     }
     const ctxOpts = { viewport: { width: o.width, height: o.height }, serviceWorkers: 'block', acceptDownloads: false, permissions: [] };
@@ -520,20 +661,72 @@ export async function capture(o, io = {}) {
     const ctx = await browser.newContext(ctxOpts);
     if (typeof ctx.routeWebSocket !== 'function') return { captured: false, reason: 'playwright >= 1.48 required', exit: 4 };
     const blocked = new Set();
-    const noteBlocked = (u) => { if (blocked.size < 50) blocked.add(origin(u)); };
+    const noteBlocked = (u) => { if (blocked.size < 50) blocked.add(blockedOrigin(u)); };
+    const remote = mode === 'remote';
+    const pageOrigin = new URL(target.href).origin;
+    const lookup = io.lookup || dns.promises.lookup;
+    const verdicts = new Map();
+    // remote: is this URL's host private (loopback, private, link-local, ... or a DNS name answering such an address)?
+    const privateUrl = async (u) => {
+      let x;
+      try { x = new URL(u); } catch { return true; }
+      if (x.protocol !== 'http:' && x.protocol !== 'https:') return false;
+      if (x.origin === pageOrigin) return false;
+      return hostVerdict(x.hostname, lookup, verdicts);
+    };
+    const tainted = new Set(); // URLs the browser reached on a private address although Node could not stop the request
+    // Requests that were blocked, failed, got an HTTP error or came from a private address: a stylesheet link to one is
+    // dropped from the copy (even one whose CORS headers let the page read it).
+    const failedUrls = new Map();
     let loaded = false;
-    await ctx.route('**/*', (route) => {
+    let page = null;
+    let navRefused = null; // remote: the origin of a page navigation (a redirect) the address policy refused
+    const frameOf = (req) => { try { return req.frame(); } catch { return null; } }; // a worker request has no frame
+    await ctx.route('**/*', async (route) => {
       const req = route.request();
       const u = req.url();
       const method = req.method();
-      const sub = req.isNavigationRequest() && req.frame() && req.frame().parentFrame();
+      const fr = req.isNavigationRequest() ? frameOf(req) : null;
+      const sub = fr && fr.parentFrame();
+      const popup = fr && page && fr.page() !== page;
       const lateNav = req.isNavigationRequest() && loaded;
-      if (!allowRequest(u, mode, target.protocol) || (method !== 'GET' && method !== 'HEAD') || sub || lateNav) { noteBlocked(u); return route.abort(); }
-      return route.continue();
+      if (!allowRequest(u, mode, target.protocol, remote ? pageOrigin : null) || (method !== 'GET' && method !== 'HEAD') || sub || popup || lateNav
+        || (remote && await privateUrl(u))) { noteBlocked(u); return route.abort().catch(() => {}); }
+      return route.continue().catch(() => {});
     });
     await ctx.routeWebSocket(/.*/, (ws) => { noteBlocked(ws.url()); return ws.close(); });
-    const page = await ctx.newPage();
+    page = await ctx.newPage();
+    // Request routing never sees redirect targets, so in remote mode the page's own DevTools session also pauses every
+    // request, redirects included, and fails any that the address policy (literal or DNS answer) refuses.
+    if (remote) {
+      try {
+        const cdp = await ctx.newCDPSession(page);
+        cdp.on('Fetch.requestPaused', (e) => {
+          const u = e.request.url;
+          (async () => {
+            const ok = allowRequest(u, mode, target.protocol, pageOrigin) && !(await privateUrl(u));
+            if (!ok) { noteBlocked(u); if (e.resourceType === 'Document' && !loaded) navRefused = blockedOrigin(u); }
+            await cdp.send(ok ? 'Fetch.continueRequest' : 'Fetch.failRequest', ok ? { requestId: e.requestId } : { requestId: e.requestId, errorReason: 'BlockedByClient' });
+          })().catch(() => { /* the request or the page is gone */ });
+        });
+        await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] });
+      } catch (e) {
+        return { captured: false, reason: `the browser cannot apply the remote address guard: ${firstLine(e)}`, exit: 4 };
+      }
+    }
+    // remote: did the browser actually connect to a private address for this response (DNS rebinding, redirect to a name)?
+    const reachedPrivate = async (r) => {
+      if (!remote) return false;
+      const key = r.url().split('#')[0];
+      if (tainted.has(key)) return true;
+      if (blockedOrigin(key) === pageOrigin) return false;
+      let sa = null;
+      try { sa = await r.serverAddr(); } catch { /* no address known */ }
+      if ((sa && isPrivateAddress(sa.ipAddress)) || await privateUrl(key)) { tainted.add(key); failedUrls.set(key, PRIVATE_SHEET); return true; }
+      return false;
+    };
 
+    page.on('requestfailed', (rq) => { if (!failedUrls.has(rq.url())) failedUrls.set(rq.url(), ''); });
     // The bytes the browser itself received for images, fonts and stylesheets: nothing is fetched again.
     const captured = new Map();
     const bodies = [];
@@ -544,8 +737,10 @@ export async function capture(o, io = {}) {
           const req = r.request();
           if (!['image', 'font', 'stylesheet'].includes(req.resourceType())) return;
           const st = r.status();
+          if (st >= 400 && !failedUrls.has(r.url())) failedUrls.set(r.url(), '');
           if (st !== 0 && (st < 200 || st > 299)) return;
           const key = r.url().split('#')[0];
+          if (await reachedPrivate(r)) { noteBlocked(key); return; }
           const h = r.headers();
           const cl = Number(h['content-length']);
           if (Number.isFinite(cl) && cl > maxAsset && req.resourceType() !== 'stylesheet') { captured.set(key, { tooBig: true, bytes: cl }); return; }
@@ -559,8 +754,13 @@ export async function capture(o, io = {}) {
     });
 
     let resp;
-    try { resp = await page.goto(target.href, { waitUntil: 'load', timeout }); } catch (e) { throw bad(`could not load ${target.href}: ${firstLine(e)}`); }
+    const ledToPrivate = (o2) => bad(`url refused: ${target.href} led the browser to a private or loopback address (${o2})`, 2);
+    try { resp = await page.goto(target.href, { waitUntil: 'load', timeout }); } catch (e) {
+      if (navRefused) throw ledToPrivate(navRefused);
+      throw bad(`could not load ${target.href}: ${firstLine(e)}`);
+    }
     if (resp && typeof resp.ok === 'function' && !resp.ok() && resp.status() !== 0) throw bad(`page returned HTTP ${resp.status()}`);
+    if (resp && await reachedPrivate(resp)) throw ledToPrivate(blockedOrigin(resp.url()));
     let networkIdle = true;
     const settle = async (ms) => { try { await page.waitForLoadState('networkidle', { timeout: ms }); } catch { networkIdle = false; } };
     await settle(Math.min(timeout, 10000));
@@ -580,29 +780,30 @@ export async function capture(o, io = {}) {
 
     let png;
     try { png = await page.screenshot({ type: 'png', fullPage: !!o.fullPage, timeout: 15000 }); } catch (e) { throw bad(`the screenshot failed: ${firstLine(e)}`); }
-    const dom = await page.evaluate(snapshotDom);
+    const dom = await page.evaluate(snapshotDom, [...failedUrls].slice(0, 5000));
     if (Buffer.byteLength(dom.html) > MAX_HTML_BYTES) throw bad(`the rendered page is larger than ${MAX_HTML_BYTES} bytes`);
     const finalUrl = page.url();
     const at = (io.now ? io.now() : new Date()).toISOString();
 
     const fileMode = target.protocol === 'file:';
     const local = new Map();
-    const lookup = (u) => captured.get(u) || local.get(u) || null;
+    const assetLookup = (u) => captured.get(u) || local.get(u) || null;
     const pendingCss = {};
     for (const p of dom.pending) {
       const key = p.href.split('#')[0];
+      if (remote && (tainted.has(key) || await privateUrl(key))) { pendingCss[p.n] = false; continue; }
       let hit = captured.get(key);
       if (!hit && fileMode && /^file:/i.test(key)) hit = await readLocalAsset(key, maxAsset);
       pendingCss[p.n] = hit && hit.body && !hit.tooBig ? hit.body.toString('utf-8') : null;
     }
-    const opts = { url: target.href, at, pendingCss, theme: o.theme || null, maxAsset, maxTotal };
+    const opts = { url: target.href, at, resolved: resolvePending(dom, pendingCss), theme: o.theme || null, maxAsset, maxTotal };
     if (fileMode) {
       // a file:// page's assets are read from disk (images and fonts only); first pass learns which ones the copy asks for
       const need = new Set();
       buildSnapshot(dom, { ...opts, lookup: (u) => { need.add(u); return captured.get(u) || null; } });
       for (const u of need) if (/^file:/i.test(u) && !captured.has(u)) { const hit = await readLocalAsset(u, maxAsset); if (hit) local.set(u, hit); }
     }
-    const built = buildSnapshot(dom, { ...opts, lookup });
+    const built = buildSnapshot(dom, { ...opts, lookup: assetLookup });
     const b = built.budget;
 
     await fs.mkdir(out, { recursive: true });

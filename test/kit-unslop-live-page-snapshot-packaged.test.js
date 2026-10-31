@@ -40,22 +40,25 @@ describe('page-snapshot — packaged end to end', () => {
     assert.deepEqual(pkg.egress(), []);
   });
 
-  it('captures a file:// page with the installed verb (or says playwright is missing: exit 4)', { skip: browserOk ? false : 'playwright cannot be resolved here' }, async () => {
+  it('captures a file:// page with the installed verb under the egress preload; the remote reference is blocked at the browser', { skip: browserOk ? false : 'playwright cannot be resolved here' }, async () => {
     const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
     await fs.mkdir(path.join(pkg.dir, 'site'), { recursive: true });
-    await fs.writeFile(path.join(pkg.dir, 'site', 'a.html'), '<!doctype html><title>A</title><link rel="stylesheet" href="s.css"><h1>Hi</h1><img src="i.png"><script>1</script>');
+    await fs.writeFile(path.join(pkg.dir, 'site', 'a.html'), '<!doctype html><title>A</title><link rel="stylesheet" href="s.css"><h1>Hi</h1><img src="i.png"><img src="http://blocked.invalid/x.png"><script>1</script>');
     await fs.writeFile(path.join(pkg.dir, 'site', 's.css'), 'h1{color:rgb(1, 2, 3)}');
     await fs.writeFile(path.join(pkg.dir, 'site', 'i.png'), png);
     const url = pathToFileURL(path.join(pkg.dir, 'site', 'a.html')).href;
-    // The egress preload refuses every child process but node and git, and the browser is one, so this run goes without it.
-    // The page is file:// and the verb blocks all non-local requests at the browser; the preload runs above prove the Node side.
-    const env = { ...process.env };
-    delete env.NODE_OPTIONS;
-    const sp = spawnSync(process.execPath, [pkg.cli, 'page-snapshot', 'capture', '--url', url, '--out', 'snap'], { cwd: pkg.dir, encoding: 'utf-8', env });
-    assert.equal(sp.status, 0, sp.stderr);
-    const r = { json: JSON.parse(sp.stdout) };
+    // The egress preload stays on (Node side: no socket, DNS or other child process); it lets through only the Playwright
+    // browsers folder, so the launch, the route handler, response capture and file writing all run guarded.
+    const browsers = path.resolve(pw.chromium.executablePath(), '..', '..', '..');
+    const before = pkg.egress().length;
+    const r = pkg.kit(['page-snapshot', 'capture', '--url', url, '--out', 'snap'], undefined, { extraEnv: { KIT_EGRESS_ALLOW_EXEC: browsers } });
+    assert.equal(r.code, 0, r.err);
+    assert.ok(r.json, r.out);
     assert.equal(r.json.captured, true);
-    assert.deepEqual(r.json.blocked_origins, []);
+    // the browser blocker took effect on the remote reference, and nothing on the Node side tried to leave the machine
+    assert.deepEqual(r.json.blocked_origins, ['http://blocked.invalid']);
+    assert.equal(pkg.egress().length, before);
+    assert.deepEqual(pkg.egress(), []);
     assert.equal(r.json.inlined_count, 1);
     const html = await fs.readFile(path.join(pkg.dir, 'snap', 'page.html'), 'utf-8');
     assert.ok(!/<script/.test(html));
@@ -64,5 +67,23 @@ describe('page-snapshot — packaged end to end', () => {
     assert.deepEqual((await fs.readdir(path.join(pkg.dir, 'snap'))).sort(), ['manifest.json', 'page.html', 'screenshot.png']);
   });
 
-  it('ends with zero egress (the preload-guarded runs above)', () => { assert.deepEqual(pkg.egress(), []); });
+  it('the preload is on for a capture past the URL policy: with no browser allowed the launch is refused and logged', { skip: browserOk ? false : 'playwright cannot be resolved here' }, async () => {
+    // a separate log, so the suite's own egress log keeps its zero; this run shows the guard is live, not bypassed
+    const probeLog = path.join(pkg.dir, 'probe-egress.jsonl');
+    const c = pkg.kit(['page-snapshot', 'capture', '--url', pathToFileURL(path.join(pkg.dir, 'site', 'a.html')).href, '--out', 'snap3'], undefined, { extraEnv: { KIT_EGRESS_LOG: probeLog } });
+    assert.equal(c.code, 4, c.err);
+    assert.match(c.json.reason, /browser could not start/);
+    const rows = (await fs.readFile(probeLog, 'utf-8')).split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    assert.ok(rows.length >= 1, 'the preload logged nothing');
+    // only the refused browser launch: no socket, DNS lookup or fetch from the Node side
+    assert.deepEqual(rows.filter((x) => !/^child_process\./.test(x.kind)), []);
+  });
+
+  it('ends with zero egress after a final guarded run (plan on a local URL, past the refusal path)', () => {
+    const l = pkg.kit(['page-snapshot', 'plan', '--url', pathToFileURL(path.join(pkg.dir, 'site', 'a.html')).href, '--out', 'snap2']);
+    assert.equal(l.code, 0, l.err);
+    assert.equal(l.json.local, true);
+    assert.equal(l.json.needs_consent, false);
+    assert.deepEqual(pkg.egress(), []);
+  });
 });

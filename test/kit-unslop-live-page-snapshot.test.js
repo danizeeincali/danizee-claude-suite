@@ -13,6 +13,7 @@ import { resolvePlaywright, LAUNCH_ARGS } from '../src/lib/kit/frame-capture.js'
 import { KitExit } from '../src/lib/kit/kit-exit.js';
 
 const { run, plan, transformHtml, transformCss, scanHtml, forceScheme, absolutizeUrl, inlineAsset, makeBudget, buildSnapshot, allowRequest, classifyUrl } = ps;
+const { isPrivateHost, isPrivateAddress, hostVerdict, resolvePending, blockedOrigin, EMBEDDING } = ps;
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, '..');
 const code = async (p) => { try { await p; return 0; } catch (e) { assert.ok(e instanceof KitExit, String(e)); return e.code; } };
@@ -100,10 +101,16 @@ describe('page-snapshot URL policy', () => {
       } finally { await fs.rm(dir, { recursive: true, force: true }); }
     });
   }
-  it('with --allow-remote a remote http(s) URL passes the policy and reaches the launcher', async () => {
-    const spy = spyResolver();
-    await assert.rejects(run(['capture', '--url', 'https://example.com/', '--out', '/tmp/ps-never', '--allow-remote'], { resolvePlaywright: spy.fn }), /must not launch|could not start/).catch(() => {});
-    assert.equal(spy.resolved, 1);
+  it('with --allow-remote a remote http(s) URL passes the policy, reaches the launcher, and a failed launch is exit 4', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ps-rl-'));
+    try {
+      const spy = spyResolver();
+      // the spy launcher throws: capture reports it as a browser that could not start (it resolves, it does not reject)
+      const r = await run(['capture', '--url', 'https://example.com/', '--out', 'o', '--allow-remote'], { cwd: dir, resolvePlaywright: spy.fn });
+      assert.deepEqual(r, { captured: false, reason: 'playwright browser could not start: must not launch', exit: 4 });
+      assert.deepEqual([spy.resolved, spy.launched], [1, 1]);
+      await assert.rejects(fs.stat(path.join(dir, 'o')), { code: 'ENOENT' });
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
   it('classifyUrl and allowRequest', () => {
     assert.equal(classifyUrl('file:///a/b.html').local, true);
@@ -156,13 +163,15 @@ describe('page-snapshot flags and path handling', () => {
       assert.equal(spy.launched, 0);
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
-  it('local pages launch with the egress-blocking args; remote pages do not; the context is fresh', async () => {
+  it('local pages launch with the egress-blocking args; remote pages get only --no-proxy-server; the context is fresh', async () => {
     const seen = [];
     const mk = () => ({ chromium: { launch: async (o) => ({ close: async () => {}, newContext: async (c) => { seen.push({ launch: o, ctx: c }); throw new Error('stop'); } }) } });
     await assert.rejects(run(['capture', '--url', 'http://127.0.0.1:9/', '--out', '/tmp/ps-never', '--width', '800', '--theme', 'dark'], { resolvePlaywright: async () => mk() }), /stop/);
     await assert.rejects(run(['capture', '--url', 'https://example.com/', '--out', '/tmp/ps-never', '--allow-remote'], { resolvePlaywright: async () => mk() }), /stop/);
     assert.deepEqual(seen[0].launch.args, [...LAUNCH_ARGS]);
-    assert.deepEqual(seen[1].launch.args, []);
+    // remote mode connects directly (no proxy) so the address the browser reached can be checked; no local resolver rules
+    assert.deepEqual(seen[1].launch.args, ['--no-proxy-server']);
+    assert.ok(!seen[1].launch.args.some((x) => x.startsWith('--host-resolver-rules')));
     for (const s of seen) {
       assert.equal(s.ctx.serviceWorkers, 'block');
       assert.equal(s.ctx.acceptDownloads, false);
@@ -317,6 +326,135 @@ describe('page-snapshot linear time on the 8 MiB worst-case shapes', () => {
       assert.ok(Date.now() - t0 < 5000, `${name} took ${Date.now() - t0} ms`);
     });
   }
+});
+
+
+describe('page-snapshot review r1: remote address policy (unit)', () => {
+  it('isPrivateHost: loopback, private, link-local, CGNAT, unique-local, unspecified in every numeric form, and localhost names', () => {
+    const priv = ['127.0.0.1', '127.0.0.2', '2130706433', '0x7f.1', '0177.0.0.1', '017700000001', '10.1.2.3', '172.16.0.1', '172.31.255.255',
+      '192.168.1.5', '169.254.169.254', '100.64.0.1', '100.127.255.255', '0.0.0.0', '0', '224.0.0.1', '255.255.255.255', '192.0.0.8', '198.18.0.1',
+      '[::1]', '[::]', '[::ffff:127.0.0.1]', '[::ffff:7f00:1]', '[::ffff:a9fe:a9fe]', '[::127.0.0.1]', '[fc00::1]', '[fd12:3456::1]', '[fe80::1]',
+      '[febf::1]', '[fec0::1]', '[ff02::1]', '[64:ff9b::a00:1]', '[2002:c0a8:101::1]', 'localhost', 'LOCALHOST', 'localhost.', 'a.localhost', 'x.y.localhost.'];
+    for (const h of priv) assert.equal(isPrivateHost(h), true, h);
+    const pub = ['example.com', '8.8.8.8', '1.1.1.1', '172.15.255.255', '172.32.0.1', '100.63.255.255', '100.128.0.1', '169.253.1.1', '11.0.0.1',
+      '192.169.0.1', '[2001:4860:4860::8888]', '[2606:4700::1111]', '[64:ff9b::808:808]', 'localhost.example.com', '10.example.com', '127.0.0.1.nip.io'];
+    for (const h of pub) assert.equal(isPrivateHost(h), false, h);
+    assert.equal(isPrivateAddress('::ffff:10.0.0.1'), true);
+    assert.equal(isPrivateAddress('fe80::1%eth0'), true);
+    assert.equal(isPrivateAddress('93.184.216.34'), false);
+    assert.equal(isPrivateAddress('not an ip'), false);
+  });
+  it('allowRequest remote: private hosts refused unless they are the page origin; local mode unchanged', () => {
+    for (const u of ['http://127.0.0.1:9/secret', 'http://2130706433/', 'http://0x7f000001/', 'http://[::1]/', 'http://[::ffff:127.0.0.1]/', 'http://169.254.169.254/latest/meta-data/',
+      'http://10.0.0.1/', 'https://192.168.0.1/', 'http://100.100.1.1/', 'http://[fd00::1]/', 'http://[fe80::1]/', 'http://0.0.0.0:8080/', 'http://localhost/', 'http://a.localhost/']) {
+      assert.equal(allowRequest(u, 'remote', 'http:', 'http://127.0.0.2:8080'), false, u);
+      assert.equal(allowRequest(u, 'remote'), false, u);
+    }
+    assert.equal(allowRequest('http://127.0.0.2:8080/s.css', 'remote', 'http:', 'http://127.0.0.2:8080'), true);
+    assert.equal(allowRequest('http://127.0.0.2:8081/s.css', 'remote', 'http:', 'http://127.0.0.2:8080'), false);
+    assert.equal(allowRequest('https://cdn.example.com/x.css', 'remote', 'https:', 'https://example.com'), true);
+    assert.equal(allowRequest('http://127.0.0.1:9/x', 'local'), true);
+  });
+  it('hostVerdict: a DNS name answering a private address is private, a failed or empty lookup is private, results are cached', async () => {
+    const calls = [];
+    const answers = { 'evil.test': [{ address: '127.0.0.1', family: 4 }], 'mixed.test': [{ address: '93.184.216.34', family: 4 }, { address: '::1', family: 6 }],
+      'meta.test': [{ address: '::ffff:169.254.169.254', family: 6 }], 'cdn.test': [{ address: '93.184.216.34', family: 4 }, { address: '2606:2800:220:1::1', family: 6 }], 'empty.test': [] };
+    const lookup = async (h, o) => { calls.push([h, o]); if (h in answers) return answers[h]; throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' }); };
+    const cache = new Map();
+    assert.equal(await hostVerdict('evil.test', lookup, cache), true);
+    assert.equal(await hostVerdict('mixed.test', lookup, cache), true);
+    assert.equal(await hostVerdict('meta.test', lookup, cache), true);
+    assert.equal(await hostVerdict('empty.test', lookup, cache), true);
+    assert.equal(await hostVerdict('nx.test', lookup, cache), true);
+    assert.equal(await hostVerdict('cdn.test', lookup, cache), false);
+    assert.equal(await hostVerdict('cdn.test.', lookup, cache), false);
+    assert.equal(await hostVerdict('CDN.test', lookup, cache), false);
+    assert.equal(await hostVerdict('127.0.0.1', lookup, cache), true);
+    assert.equal(await hostVerdict('8.8.8.8', lookup, cache), false);
+    assert.equal(await hostVerdict('localhost', lookup, cache), true);
+    assert.deepEqual(calls.map((c) => c[0]), ['evil.test', 'mixed.test', 'meta.test', 'empty.test', 'nx.test', 'cdn.test', 'cdn.test']);
+    assert.deepEqual(calls[0][1], { all: true, verbatim: true });
+  });
+  it('blockedOrigin lists file URLs as file://, never the string "null"', () => {
+    assert.equal(blockedOrigin('file:///tmp/x/obj.html'), 'file://');
+    assert.equal(blockedOrigin('https://a.test:8443/x?y'), 'https://a.test:8443');
+    assert.equal(blockedOrigin('ws://a.test/s'), 'ws://a.test');
+    assert.equal(blockedOrigin('nope'), '(unparseable url)');
+  });
+});
+
+describe('page-snapshot review r1: copy rewriting (unit)', () => {
+  const base = 'https://site.test/dir/page.html';
+  it('embed, object, applet, portal, frame and frameset are removed and each listed in skipped', () => {
+    assert.deepEqual([...EMBEDDING], ['embed', 'object', 'applet', 'portal', 'frame', 'frameset']);
+    const b = makeBudget({ lookup: () => null });
+    const out = transformHtml('<body><embed src="obj.html" type="text/html"><object data="logo.svg" type="image/svg+xml"><p>fallback</p></object>'
+      + '<applet code="A.class"></applet><portal src="https://x.test/"></portal><frameset><frame src="f.html"></frameset><EMBED SRC=up.html><embed></body>', { base, budget: b });
+    assert.ok(!/<(embed|object|applet|portal|frame|frameset)\b/i.test(out), out);
+    assert.ok(out.includes('<p>fallback</p>'));
+    const sk = Object.fromEntries(b.skipped);
+    assert.equal(sk['https://site.test/dir/obj.html'], '<embed> removed from the static copy');
+    assert.equal(sk['https://site.test/dir/logo.svg'], '<object> removed from the static copy');
+    assert.equal(sk['https://site.test/dir/A.class'], '<applet> removed from the static copy');
+    assert.equal(sk['https://x.test/'], '<portal> removed from the static copy');
+    assert.equal(sk['https://site.test/dir/f.html'], '<frame> removed from the static copy');
+    assert.equal(sk['https://site.test/dir/up.html'], '<embed> removed from the static copy');
+    assert.equal(sk['(<frameset> without a source)'], '<frameset> removed from the static copy');
+    assert.equal(sk['(<embed> without a source)'], '<embed> removed from the static copy');
+    assert.equal(b.removed.embedded, 8);
+  });
+  it('--theme rewrites media= on <style>, <link> and <source>, including a pending sheet placeholder', () => {
+    const html = '<head><link rel="stylesheet" href="d.css" media="(prefers-color-scheme: dark)"><style media="screen and (prefers-color-scheme:dark)">h1{color:red}</style>'
+      + '<style media="(prefers-color-scheme: light)">h1{color:blue}</style></head><picture><source src="d.png" media="(prefers-color-scheme: dark)"></picture>';
+    const light = transformHtml(html, { base, theme: 'light' });
+    assert.ok(!light.includes('prefers-color-scheme'), light);
+    assert.match(light, /<link rel="stylesheet" href="https:\/\/site.test\/dir\/d.css" media="\(max-width: -1px\)">/);
+    assert.match(light, /<style media="screen and \(max-width: -1px\)">/);
+    assert.match(light, /<style media="\(min-width: 0px\)">h1\{color:blue\}/);
+    assert.match(light, /<source src="https:\/\/site.test\/dir\/d.png" media="\(max-width: -1px\)">/);
+    const dark = transformHtml(html, { base, theme: 'dark' });
+    assert.match(dark, /<style media="screen and \(min-width: 0px\)">/);
+    assert.ok(transformHtml(html, { base }).includes('media="(prefers-color-scheme: dark)"'), 'no theme: left alone');
+    const dom = { html: '<html><head><style data-snapshot-pending="0"></style><style data-snapshot-pending="1"></style></head><body></body></html>', baseUri: base,
+      pending: [{ n: 0, href: 'https://cdn.test/dark.css', media: '(prefers-color-scheme: dark)' }, { n: 1, href: 'https://cdn.test/unread.css', media: '(prefers-color-scheme: dark)' }] };
+    const built = buildSnapshot(dom, { url: base, at: 'T', pendingCss: { 0: 'h1{color:red}', 1: null }, theme: 'light' }).html;
+    assert.ok(!built.includes('prefers-color-scheme'), built);
+    assert.match(built, /<style media="\(max-width: -1px\)" data-snapshot-href="https:\/\/cdn.test\/dark.css">h1\{color:red\}<\/style>/);
+    assert.match(built, /<link rel="stylesheet" media="\(max-width: -1px\)" href="https:\/\/cdn.test\/unread.css">/);
+  });
+  it('resolvePending: a blocked sheet is dropped, an unread one linked, failed/disabled links from the DOM are listed in skipped', () => {
+    const dom = { html: '<html><head><style data-snapshot-pending="0"></style><style data-snapshot-pending="1"></style><style data-snapshot-pending="2"></style>'
+      + '<style data-snapshot-pending="9"></style></head></html>', baseUri: 'https://s.test/',
+      pending: [{ n: 0, href: 'https://s.test/a.css', media: 'all' }, { n: 1, href: 'http://127.0.0.1/secret', media: 'all' }, { n: 2, href: 'https://cdn.test/u.css', media: 'print' }],
+      dropped: [{ href: 'https://s.test/missing.css', reason: 'stylesheet did not load (blocked or failed); dropped from the copy' }, { href: 'https://s.test/alt.css', reason: 'stylesheet is disabled or alternate; dropped from the copy' }] };
+    const r = resolvePending(dom, { 0: 'a{b:c}', 1: false, 2: null });
+    assert.equal(r.html, '<html><head><style data-snapshot-href="https://s.test/a.css">a{b:c}</style><link rel="stylesheet" media="print" href="https://cdn.test/u.css"><style data-snapshot-pending="9"></style></head></html>');
+    assert.deepEqual(r.skipped, [['https://s.test/missing.css', 'stylesheet did not load (blocked or failed); dropped from the copy'], ['https://s.test/alt.css', 'stylesheet is disabled or alternate; dropped from the copy'],
+      ['http://127.0.0.1/secret', ps.PENDING_BLOCKED], ['https://cdn.test/u.css', ps.PENDING_UNREAD]]);
+    const b = buildSnapshot(dom, { url: 'https://s.test/', at: 'T', resolved: r }).budget;
+    assert.deepEqual([...b.skipped.keys()], ['https://s.test/missing.css', 'https://s.test/alt.css', 'http://127.0.0.1/secret', 'https://cdn.test/u.css']);
+  });
+  it('resolvePending is one linear pass: 1000 pending sheets in an 8 MiB DOM', () => {
+    const MB8 = 8 * 1048576;
+    const n = 1000;
+    const chunk = '<style data-snapshot-pending="N"></style>';
+    const filler = '<div class="x">' + 'y'.repeat(Math.floor(MB8 / n) - 60) + '</div>';
+    let html = '<html><body>';
+    for (let i = 0; i < n; i++) html += chunk.replace('N', String(i)) + filler;
+    html += '</body></html>';
+    assert.ok(html.length >= MB8 - 100000 && html.length <= MB8 + 100000, String(html.length));
+    const pending = Array.from({ length: n }, (_, i) => ({ n: i, href: `https://s.test/${i}.css`, media: 'all' }));
+    const pendingCss = Object.fromEntries(pending.map((p) => [p.n, `.c${p.n}{color:red}`]));
+    const t0 = Date.now();
+    const r = resolvePending({ html, pending, baseUri: 'https://s.test/' }, pendingCss);
+    const t1 = Date.now() - t0;
+    assert.ok(t1 < 2000, `resolvePending took ${t1} ms`);
+    assert.ok(!r.html.includes('data-snapshot-pending'));
+    assert.ok(r.html.includes('<style data-snapshot-href="https://s.test/999.css">.c999{color:red}</style>'));
+    const t2 = Date.now();
+    buildSnapshot({ html, pending, baseUri: 'https://s.test/' }, { url: 'https://s.test/', at: 'T', resolved: r, lookup: () => null });
+    assert.ok(Date.now() - t2 < 5000, `buildSnapshot took ${Date.now() - t2} ms`);
+  });
 });
 
 // ---------------------------------------------------------------- real browser
@@ -502,5 +640,164 @@ describe('page-snapshot real capture', { skip: browserOk ? false : 'playwright o
 describe('page-snapshot scanHtml basics', () => {
   it('an unclosed tag leaves the rest verbatim', () => {
     assert.equal(scanHtml('<p>a</p><img src="x', {}), '<p>a</p><img src="x');
+  });
+});
+
+describe('page-snapshot review r1: real captures', { skip: browserOk ? false : 'playwright or its browser cannot be resolved here' }, () => {
+  let dir; let loop; let lp; let pub; let pp; const loopHits = []; let loop6 = null;
+  const SECRET = 'AWS_SECRET=hunter2-from-loopback';
+  // a resolver that maps test names to loopback in the browser only, as a DNS name pointing at a private address would
+  const mappedPw = (rules) => async () => ({ chromium: { launch: (o) => pw.chromium.launch({ ...o, args: [...(o.args || []), `--host-resolver-rules=${rules}`] }) } });
+  const fakeLookup = (answers) => async (h) => { if (h in answers) return answers[h].map((a) => ({ address: a, family: a.includes(':') ? 6 : 4 })); throw Object.assign(new Error('ENOTFOUND'), { code: 'ENOTFOUND' }); };
+  before(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ps-r1-'));
+    const loopHandler = (req, res) => { loopHits.push(req.url); res.writeHead(200, { 'content-type': req.url.endsWith('.png') ? 'image/png' : 'text/plain' }); res.end(req.url.endsWith('.png') ? PNG : `h1{color:red} /* ${SECRET} */`); };
+    loop = http.createServer(loopHandler);
+    await new Promise((r) => loop.listen(0, '127.0.0.1', r));
+    lp = loop.address().port;
+    try { loop6 = http.createServer(loopHandler); await new Promise((r, j) => { loop6.once('error', j); loop6.listen(lp, '::1', r); }); } catch { loop6 = null; }
+    pub = http.createServer((req, res) => {
+      const html = (b) => { res.writeHead(200, { 'content-type': 'text/html' }); res.end(b); };
+      if (req.url === '/probe') {
+        return html(`<!doctype html><title>Probe</title><link rel="stylesheet" href="http://127.0.0.1:${lp}/secret"><link rel="stylesheet" href="/redir.css">`
+          + `<link rel="stylesheet" href="http://evil.test:${lp}/dns-secret"><img src="http://[::1]:${lp}/v6.png"><img src="http://2130706433:${lp}/dec.png">`
+          + `<img src="http://0x7f.1:${lp}/hex.png"><img src="http://[::ffff:127.0.0.1]:${lp}/mapped.png"><img src="http://localhost:${lp}/name.png"><img src="/ok.png">`
+          + `<script>fetch("http://127.0.0.1:${lp}/fetch").catch(()=>{});</script><h1>probe</h1>`);
+      }
+      if (req.url === '/redir.css') { res.writeHead(302, { location: `http://127.0.0.1:${lp}/redir-secret` }); return res.end(); }
+      if (req.url === '/redir-name.css') { res.writeHead(302, { location: `http://evil.test:${lp}/redir-name-secret` }); return res.end(); }
+      if (req.url === '/names') return html(`<!doctype html><link rel="stylesheet" href="/redir-name.css"><link rel="stylesheet" href="http://rebind.test:${lp}/rebind-secret"><h1>n</h1>`);
+      if (req.url === '/go') { res.writeHead(302, { location: `http://evil.test:${lp}/landing` }); return res.end(); }
+      if (req.url === '/go-literal') { res.writeHead(302, { location: `http://127.0.0.1:${lp}/landing` }); return res.end(); }
+      if (req.url === '/go-rebind') { res.writeHead(302, { location: `http://rebind.test:${lp}/landing` }); return res.end(); }
+      if (req.url === '/ok.png') { res.writeHead(200, { 'content-type': 'image/png' }); return res.end(PNG); }
+      res.writeHead(404); res.end();
+    });
+    await new Promise((r) => pub.listen(0, '127.0.0.2', r));
+    pp = pub.address().port;
+  });
+  after(async () => {
+    await new Promise((r) => loop.close(r)); if (loop6) await new Promise((r) => loop6.close(r));
+    await new Promise((r) => pub.close(r)); await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it('SSRF probe: a 127.0.0.2 page asking for 127.0.0.1 (link, redirect, numeric and IPv6 forms, a DNS name, fetch) never reaches loopback', async () => {
+    loopHits.length = 0;
+    const out = path.join(dir, 'probe');
+    const r = await run(['capture', '--url', `http://127.0.0.2:${pp}/probe`, '--out', out, '--allow-remote'],
+      { cwd: dir, lookup: fakeLookup({ 'evil.test': ['127.0.0.1'] }), resolvePlaywright: mappedPw('MAP evil.test 127.0.0.1') });
+    assert.equal(r.captured, true);
+    assert.deepEqual(loopHits, [], `loopback was reached: ${loopHits.join(', ')}`);
+    const html = await fs.readFile(path.join(out, 'page.html'), 'utf-8');
+    assert.ok(!html.includes('hunter2'), 'the secret is in page.html');
+    for (const o of [`http://127.0.0.1:${lp}`, `http://evil.test:${lp}`, `http://[::1]:${lp}`, `http://localhost:${lp}`, `http://[::ffff:7f00:1]:${lp}`]) assert.ok(r.blocked_origins.includes(o), `${o} not in ${r.blocked_origins}`);
+    const man = JSON.parse(await fs.readFile(path.join(out, 'manifest.json'), 'utf-8'));
+    assert.deepEqual(man.blocked_origins, r.blocked_origins);
+    assert.ok(man.inlined.some((x) => x.url === `http://127.0.0.2:${pp}/ok.png`), 'the page origin itself is still reached');
+  });
+
+  it('a redirect to a DNS name on loopback and a rebinding name: bodies never copied, the sheets dropped and listed', async () => {
+    loopHits.length = 0;
+    const out = path.join(dir, 'names');
+    const r = await run(['capture', '--url', `http://127.0.0.2:${pp}/names`, '--out', out, '--allow-remote'],
+      { cwd: dir, lookup: fakeLookup({ 'evil.test': ['127.0.0.1'], 'rebind.test': ['93.184.216.34'] }), resolvePlaywright: mappedPw('MAP evil.test 127.0.0.1, MAP rebind.test 127.0.0.1') });
+    assert.equal(r.captured, true);
+    const html = await fs.readFile(path.join(out, 'page.html'), 'utf-8');
+    assert.ok(!html.includes('hunter2'), 'the secret is in page.html');
+    assert.ok(!html.includes('rebind.test') && !html.includes('redir-name-secret'), 'a sheet from a private address is still linked');
+    assert.ok(r.blocked_origins.includes(`http://evil.test:${lp}`) && r.blocked_origins.includes(`http://rebind.test:${lp}`), String(r.blocked_origins));
+    const man = JSON.parse(await fs.readFile(path.join(out, 'manifest.json'), 'utf-8'));
+    assert.ok(man.skipped.some((x) => x.url === `http://rebind.test:${lp}/rebind-secret` && x.reason === ps.PENDING_BLOCKED), JSON.stringify(man.skipped));
+  });
+
+  it('a remote page whose navigation redirects to a private address (a name, a literal, a rebinding name) exits 2 and writes nothing', async () => {
+    for (const [p, expectHits] of [['/go', 0], ['/go-literal', 0], ['/go-rebind', 1]]) {
+      loopHits.length = 0;
+      const out = path.join(dir, 'go' + p.replace(/\W/g, ''));
+      assert.equal(await code(run(['capture', '--url', `http://127.0.0.2:${pp}${p}`, '--out', out, '--allow-remote'],
+        { cwd: dir, lookup: fakeLookup({ 'evil.test': ['127.0.0.1'], 'rebind.test': ['93.184.216.34'] }), resolvePlaywright: mappedPw('MAP evil.test 127.0.0.1, MAP rebind.test 127.0.0.1') })), 2, p);
+      await assert.rejects(fs.stat(path.join(out, 'page.html')), { code: 'ENOENT' });
+      // rebinding is the documented gap: the browser connects before Node can know, the page is still refused
+      assert.equal(loopHits.length, expectHits, `${p}: ${loopHits}`);
+    }
+  });
+
+  async function openCopy(file, colorScheme) {
+    const b = await pw.chromium.launch({ headless: true });
+    try {
+      const ctx = await b.newContext({ colorScheme });
+      await ctx.route('**/*', (rt) => { const u = rt.request().url(); return u.startsWith('file:') || u.startsWith('data:') ? rt.continue() : rt.abort(); });
+      const page = await ctx.newPage();
+      await page.goto(pathToFileURL(file).href);
+      await page.waitForTimeout(400);
+      // what the embedded documents ran: each child frame's own title, which only its script sets
+      const ran = [];
+      for (const fr of page.frames()) if (fr !== page.mainFrame()) ran.push(await fr.evaluate(() => document.title).catch(() => '(unreadable)'));
+      const info = await page.evaluate(() => ({ title: document.title, color: getComputedStyle(document.querySelector('h1')).color }));
+      return { ...info, frames: page.frames().length - 1, ran };
+    } finally { await b.close(); }
+  }
+
+  it('the copy does not run an embedded document: embed, object and frame are removed, blocked file requests listed as file://', async () => {
+    const site = path.join(dir, 'emb');
+    await fs.mkdir(site, { recursive: true });
+    await fs.writeFile(path.join(site, 'obj.html'), '<script>document.title = "PWNED-OBJ"</script>');
+    await fs.writeFile(path.join(site, 'a.html'), '<!doctype html><title>Orig</title><h1>x</h1><embed src="obj.html" type="text/html"><object data="obj.html" type="text/html"></object>');
+    // the attack itself works when the original is opened (each embedded document runs its script), so the probe is live
+    assert.deepEqual((await openCopy(path.join(site, 'a.html'))).ran, ['PWNED-OBJ', 'PWNED-OBJ']);
+    const out = path.join(dir, 'embout');
+    const r = await run(['capture', '--url', pathToFileURL(path.join(site, 'a.html')).href, '--out', out], { cwd: dir });
+    assert.equal(r.captured, true);
+    assert.ok(!r.blocked_origins.includes('null'), String(r.blocked_origins));
+    assert.ok(r.blocked_origins.includes('file://'), String(r.blocked_origins));
+    const html = await fs.readFile(path.join(out, 'page.html'), 'utf-8');
+    assert.ok(!/<(embed|object)\b/i.test(html), html);
+    const opened = await openCopy(path.join(out, 'page.html'));
+    assert.equal(opened.title, 'Orig');
+    assert.equal(opened.frames, 0);
+    assert.deepEqual(opened.ran, []);
+    const man = JSON.parse(await fs.readFile(path.join(out, 'manifest.json'), 'utf-8'));
+    const objUrl = pathToFileURL(path.join(site, 'obj.html')).href;
+    assert.ok(man.skipped.some((x) => x.url === objUrl && /removed from the static copy/.test(x.reason)), JSON.stringify(man.skipped));
+  });
+
+  it('--theme light: a dark-only media= link (pending sheet) and style do not apply when the copy is opened in dark mode; --theme dark the reverse', async () => {
+    const site = path.join(dir, 'theme');
+    await fs.mkdir(site, { recursive: true });
+    await fs.writeFile(path.join(site, 'dark.css'), 'h1{color:rgb(255, 0, 255)}');
+    await fs.writeFile(path.join(site, 'a.html'), '<!doctype html><link rel="stylesheet" href="dark.css" media="(prefers-color-scheme: dark)"><style media="(prefers-color-scheme: dark)">h1{background:rgb(0, 0, 9)}</style><h1>t</h1>');
+    const out = path.join(dir, 'themeout');
+    const r = await run(['capture', '--url', pathToFileURL(path.join(site, 'a.html')).href, '--out', out, '--theme', 'light'], { cwd: dir });
+    assert.equal(r.captured, true);
+    const html = await fs.readFile(path.join(out, 'page.html'), 'utf-8');
+    assert.ok(!html.includes('prefers-color-scheme'), html);
+    assert.ok(html.includes('rgb(255, 0, 255)'), 'the sheet is still in the copy');
+    assert.equal((await openCopy(path.join(out, 'page.html'), 'dark')).color, 'rgb(0, 0, 0)');
+    const outD = path.join(dir, 'themedark');
+    await run(['capture', '--url', pathToFileURL(path.join(site, 'a.html')).href, '--out', outD, '--theme', 'dark'], { cwd: dir });
+    assert.equal((await openCopy(path.join(outD, 'page.html'), 'light')).color, 'rgb(255, 0, 255)');
+  });
+
+  it('failed, blocked, disabled and alternate stylesheet links are dropped from the copy and listed in skipped', async () => {
+    const site = path.join(dir, 'links');
+    await fs.mkdir(site, { recursive: true });
+    await fs.writeFile(path.join(site, 's.css'), 'h1{color:rgb(1, 2, 3)}');
+    await fs.writeFile(path.join(site, 'alt.css'), 'h1{color:rgb(9, 9, 9)}');
+    await fs.writeFile(path.join(site, 'off.css'), 'h1{color:rgb(8, 8, 8)}');
+    await fs.writeFile(path.join(site, 'a.html'), '<!doctype html><link rel="stylesheet" href="s.css"><link rel="stylesheet" href="missing.css">'
+      + '<link rel="stylesheet" href="http://blocked.invalid/b.css"><link rel="alternate stylesheet" title="alt" href="alt.css"><link rel="stylesheet" href="off.css" disabled><h1>l</h1>');
+    const out = path.join(dir, 'linksout');
+    const r = await run(['capture', '--url', pathToFileURL(path.join(site, 'a.html')).href, '--out', out], { cwd: dir });
+    assert.equal(r.captured, true);
+    const html = await fs.readFile(path.join(out, 'page.html'), 'utf-8');
+    assert.ok(!/<link[^>]+stylesheet/i.test(html), html);
+    assert.ok(html.includes('rgb(1, 2, 3)'));
+    const man = JSON.parse(await fs.readFile(path.join(out, 'manifest.json'), 'utf-8'));
+    const reason = (u) => (man.skipped.find((x) => x.url === u) || {}).reason;
+    const f = (n) => pathToFileURL(path.join(site, n)).href;
+    assert.match(reason(f('missing.css')) || '', /did not load.*dropped from the copy/);
+    assert.match(reason('http://blocked.invalid/b.css') || '', /did not load.*dropped from the copy/);
+    assert.match(reason(f('alt.css')) || '', /disabled or alternate.*dropped from the copy/);
+    assert.match(reason(f('off.css')) || '', /disabled or alternate.*dropped from the copy/);
   });
 });
