@@ -214,6 +214,7 @@ function maskCode(text, format) {
 const TAG_RE = /<\/?[A-Za-z][\w:.-]*(?:[^<>"'{}]|"[^"]*"|'[^']*'|\{[^{}]*\}|\{[^{}]*\{[^{}]*\}[^{}]*\})*>/g;
 
 const KW_BEFORE_TAG = new Set(['return', 'yield', 'case', 'default', 'else', 'typeof', 'await', 'of', 'in', 'do', 'void', 'throw']);
+const MAX_JSX_DEPTH = 400; // deeper element nesting is scanned as text, not recursed into
 
 /**
  * JSX only: keeps the text children of JSX elements (and a lone string literal child such as {"Hi"}) and
@@ -290,7 +291,18 @@ function jsxVisible(src) {
   };
 
   // Parses the element whose '<' is at i; returns the index after it, or -1 when it is not an element.
+  const failed = new Set(); // '<' offsets already known not to parse (keeps retries linear)
+  let level = 0; // element nesting depth; beyond MAX_JSX_DEPTH the element is treated as text
   const parseElement = i => {
+    if (failed.has(i)) return -1;
+    if (level >= MAX_JSX_DEPTH) return -1;
+    level++;
+    let e;
+    try { e = parseElementInner(i); } finally { level--; }
+    if (e < 0) failed.add(i);
+    return e;
+  };
+  const parseElementInner = i => {
     let j = i + 1;
     let name = '';
     if (src[j] !== '>') {
@@ -303,7 +315,7 @@ function jsxVisible(src) {
         if (j >= n) return -1;
         if (src[j] === '/' && src[j + 1] === '>') return j + 2;
         if (src[j] === '>') break;
-        if (src[j] === '{') { j = scanCode(j + 1, true) + 1; continue; } // {...props}
+        if (src[j] === '{') { j = scanCode(j + 1, true) + 1; if (j > n) return n; continue; } // {...props}; unclosed runs to the end
         const am = /^[\w:.-]+/.exec(src.slice(j, j + 200));
         if (!am) return -1;
         j += am[0].length;
@@ -313,7 +325,7 @@ function jsxVisible(src) {
           k++;
           while (k < n && ws(src[k])) k++;
           if (src[k] === '"' || src[k] === "'") { const e = src.indexOf(src[k], k + 1); if (e < 0) return -1; j = e + 1; }
-          else if (src[k] === '{') j = scanCode(k + 1, true) + 1;
+          else if (src[k] === '{') { j = scanCode(k + 1, true) + 1; if (j > n) return n; }
           else if (src[k] === '<') { const e = parseElement(k); if (e < 0) return -1; j = e; }
           else return -1;
         }

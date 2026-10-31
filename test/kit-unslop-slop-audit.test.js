@@ -516,4 +516,31 @@ export const H = () => <h1>Projects</h1>;
     scanText(big.slice(0, 8 * 1024 * 1024), undefined);
     assert.ok(Date.now() - t0 < 5000);
   });
+  it('an unclosed attribute brace is linear (361-byte nested shape and a truncated 2 MB render-prop page)', () => {
+    const tiny = 'export default () => {\n' + 'return <a b={'.repeat(26);
+    let t0 = Date.now();
+    scanText(tiny, 'jsx');
+    assert.ok(Date.now() - t0 < 2000, 'tiny nested');
+    const page = '<Slot render={(p) => '.repeat(8) + 'x'.repeat(2 * 1024 * 1024);
+    t0 = Date.now();
+    scanText('export default () => <div>' + page, 'jsx');
+    assert.ok(Date.now() - t0 < 4000, 'truncated page');
+    const retry = '<a x={<b y={<c z={1} />} />} 5>'.repeat(1) ;
+    const deep = Array.from({ length: 30 }, () => '<a x={').join('') + '1' + '} 5>'.repeat(30);
+    t0 = Date.now();
+    scanText('const A = () => ' + deep, 'jsx');
+    assert.ok(Date.now() - t0 < 2000, 'failed retries');
+    assert.ok(retry.length > 0);
+  });
+  it('about 3000 unclosed elements degrade to text, never a stack overflow', async () => {
+    const src = 'const A = () => <div className="x">\n' + '<p>Welcome back!<br>\n'.repeat(3000);
+    const r = scanText(src, 'jsx');
+    assert.ok(Array.isArray(r.hits));
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'sa-deep-'));
+    try {
+      await fs.writeFile(path.join(dir, 'd.jsx'), src);
+      const out = await run(['scan', '--file', 'd.jsx', '--format', 'jsx'], io('', dir));
+      assert.ok(Array.isArray(out.hits));
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
 });
