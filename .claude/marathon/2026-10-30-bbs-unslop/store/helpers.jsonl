@@ -170,3 +170,16 @@
 {"helper_id":"4f96cbc3-04e9-4723-8e52-79ec54c8143e","tokens":56628,"outcome":"green","event":"done","id":"866c2c42-8322-4df7-bf96-333560a61a9e","ts":"2026-10-31T01:58:01.974Z"}
 {"role":"review","model":"opus","stream":"unslop-story-video-authoring","budget":150000,"event":"spawn","id":"001e3b01-7b10-4569-8990-af94ffd2df96","ts":"2026-10-31T01:58:55.715Z"}
 {"helper_id":"abb9610c-83c1-4ea5-99d1-683809f26e0f","tokens":106797,"outcome":"green","event":"done","id":"43cb58dd-7d5a-47e6-b116-c33c6268c484","ts":"2026-10-31T01:59:02.227Z"}
+{"helper_id":"9e147dd6-641f-41ee-b6f5-cf1d08c09b85","tokens":90676,"outcome":"green","event":"done","id":"acea6d1e-2901-41c0-aa59-a9405798af31","ts":"2026-10-31T02:05:15.658Z"}
+{"role":"fix","model":"sonnet","stream":"unslop-live-page-snapshot","budget":100000,"event":"spawn","id":"4303cea4-fe6f-4b0f-b39f-f7866786c6e7","ts":"2026-10-31T02:05:17.242Z"}
+{"helper_id":"001e3b01-7b10-4569-8990-af94ffd2df96","tokens":86581,"outcome":"green","event":"done","id":"34d71e8f-a683-4299-be72-25d797563a1d","ts":"2026-10-31T02:05:24.635Z"}
+{"role":"fix","model":"sonnet","stream":"unslop-story-video-authoring","budget":100000,"event":"spawn","id":"adeeaacc-fd1d-4cf7-b561-7c0bbb62788e","ts":"2026-10-31T02:05:25.989Z"}
+{"helper_id":"adeeaacc-fd1d-4cf7-b561-7c0bbb62788e","tokens":56444,"outcome":"green","event":"done","id":"d96eae9a-7213-4c13-bffe-5f39e7a81925","ts":"2026-10-31T02:10:23.657Z"}
+{"helper_id":"4303cea4-fe6f-4b0f-b39f-f7866786c6e7","tokens":75530,"outcome":"green","event":"done","id":"4cbe5e10-99d0-47d8-8927-a85346022e40","ts":"2026-10-31T02:11:14.707Z"}
+{"role":"review","model":"opus","stream":"unslop-live-page-snapshot","budget":150000,"event":"spawn","id":"96835708-d25b-4b19-ba84-e63363da9d2a","ts":"2026-10-31T02:15:35.349Z"}
+{"role":"build","model":"opus","stream":"integration","budget":120000,"event":"spawn","id":"6eda24b7-5180-4464-a2c8-c3b46e624920","ts":"2026-10-31T02:16:04.369Z"}
+{"helper_id":"96835708-d25b-4b19-ba84-e63363da9d2a","tokens":85707,"outcome":"green","event":"done","id":"bf0b1967-af23-48e3-888e-37859f556359","ts":"2026-10-31T02:24:25.583Z"}
+{"role":"fix","model":"sonnet","stream":"unslop-live-page-snapshot","budget":100000,"event":"spawn","id":"ed3919db-e2e9-4638-8161-d0c1ad4adaa3","ts":"2026-10-31T02:24:27.217Z"}
+{"helper_id":"6eda24b7-5180-4464-a2c8-c3b46e624920","tokens":136241,"outcome":"green","event":"done","id":"7e50ce5b-1820-4b9c-bf7a-440814538af6","ts":"2026-10-31T02:24:38.471Z"}
+{"helper_id":"ed3919db-e2e9-4638-8161-d0c1ad4adaa3","tokens":55780,"outcome":"green","event":"done","id":"69e4ffd4-8d6b-4ab9-8d3e-6c5a94d02716","ts":"2026-10-31T21:03:11.323Z"}
+{"role":"build","model":"opus","stream":"integration","budget":120000,"event":"spawn","id":"bbbd4780-fd2d-4ac7-9bbf-aba0be91e4df","ts":"2026-10-31T21:06:43.952Z"}

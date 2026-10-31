@@ -91,12 +91,12 @@
     },
     {
       "name": "unslop-live-page-snapshot",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-live-page-snapshot.md",
-      "next": "builder writes contract, failing tests, verb",
+      "next": "integration wires it",
       "tasks": [],
       "isolation": "../danizee-claude-suite-unslop-live-page-snapshot",
-      "phase": "build",
+      "phase": "done",
       "base": "242ee1cf5725f5bc97e601a2c135695ba47a4e7b"
     },
     {
@@ -111,12 +111,12 @@
     },
     {
       "name": "unslop-story-video-authoring",
-      "state": "active",
+      "state": "done",
       "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-story-video-authoring.md",
-      "next": "builder writes contract, failing tests, verb",
+      "next": "integration wires it",
       "tasks": [],
       "isolation": "../danizee-claude-suite-unslop-story-video-authoring",
-      "phase": "build",
+      "phase": "done",
       "base": "242ee1cf5725f5bc97e601a2c135695ba47a4e7b"
     },
     {

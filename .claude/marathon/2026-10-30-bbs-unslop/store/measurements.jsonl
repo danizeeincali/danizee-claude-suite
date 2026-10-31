@@ -34,3 +34,9 @@
 {"key":"packaged_unslop-story-video-renderer","value":true,"id":"74ff214b-15cc-4a63-92fe-6bb0d3178a33","ts":"2026-10-31T00:42:02.630Z"}
 {"key":"egress_zero_unslop-story-video-renderer","value":true,"id":"22a8add8-6d73-433f-83fb-2c00ff95abaf","ts":"2026-10-31T00:42:02.759Z"}
 {"key":"callers_unslop-story-video-renderer","value":0,"id":"c40f53f2-840f-429a-8c39-17d153463c9a","ts":"2026-10-31T00:42:02.895Z"}
+{"key":"packaged_unslop-story-video-authoring","value":true,"id":"03bc8bab-2612-41d5-8cd6-4a9988c5be4c","ts":"2026-10-31T02:11:07.479Z"}
+{"key":"egress_zero_unslop-story-video-authoring","value":true,"id":"aa4c55de-0c49-4f8c-9d2e-1d270fc0ead0","ts":"2026-10-31T02:11:07.608Z"}
+{"key":"callers_unslop-story-video-authoring","value":0,"id":"f7e9f365-2610-46c2-97c9-1f7dbde8a171","ts":"2026-10-31T02:11:07.737Z"}
+{"key":"packaged_unslop-live-page-snapshot","value":true,"id":"67d18dda-7d4f-4591-a64f-7e1744d0e87a","ts":"2026-10-31T21:06:18.930Z"}
+{"key":"egress_zero_unslop-live-page-snapshot","value":true,"id":"ab4cd96c-f0b8-4b1c-88ea-4f7172bd90e6","ts":"2026-10-31T21:06:19.109Z"}
+{"key":"callers_unslop-live-page-snapshot","value":0,"id":"1dfa2452-60b6-4b55-98e9-ede84a5478ce","ts":"2026-10-31T21:06:19.271Z"}

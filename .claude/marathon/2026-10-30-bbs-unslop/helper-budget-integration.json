@@ -7,13 +7,13 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 300,
-    "cost": 742215
+    "steps": 360,
+    "cost": 878456
   },
   "clock": {
-    "depth": 0,
-    "startedAt": null,
-    "elapsedMs": 3796714
+    "depth": 1,
+    "startedAt": 1793480804233,
+    "elapsedMs": 4310636
   },
   "helpers": {
     "build-integration-1": {
@@ -74,6 +74,30 @@
       "reserved": {
         "steps": 0,
         "cost": 0
+      }
+    },
+    "build-integration-2": {
+      "steps": 60,
+      "cost": 136241,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "build-integration-3": {
+      "steps": 0,
+      "cost": 0,
+      "ok": 0,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 40,
+        "cost": 120000
       }
     }
   }
