@@ -50,9 +50,19 @@
  * emit exits 1 when the story is not ok; a bad flag, a duplicate flag, an unreadable or binary or oversize (8 MiB) or
  * empty input, JSON that is not an object, or a missing/unreadable --page exits 1 with the message on stderr.
  * emit: the original page (scripts, links, iframes, objects, embeds and on* handlers removed; comments and quoted
- * attribute values are skipped, and a missing close tag drops only the open tag) sits in a 1080x1080 or 1920x1080 frame;
- * html/body/:root rules apply to the page container, except font-size on html/:root, which stays on the real <html> so
- * rem lengths match the original. One <style data-story-step> per step plays on CSS animations only, started by the class
+ * attribute values are skipped, and a missing close tag drops only the open tag; loading="lazy" is rewritten to eager,
+ * because a video frames the whole page and nothing may wait for a scroll to load) sits in a 1080x1080 or 1920x1080
+ * frame. The page's html/:root rules apply to #story-page (the root, the frame's size) and its body rules, class and
+ * style to #story-body inside it, except font-size on html/:root, which stays on the real <html> so rem lengths match the
+ * original. #story-body keeps the browser's default body margin (8px, collapsing with its children's margins as the
+ * original body's does) unless the page sets its own, so frame 0 and a camera rect line up with the original screen.
+ * When no html/:root rule sets a background, the body's background paints the whole page as in the original (CSS
+ * background propagation): an unused ::before (else ::after) of #story-body inherits it over all of #story-page, under
+ * everything, and the body box itself paints it only under its text (background-clip:text). Limits: a page that styles
+ * both body::before and body::after, or gives its html a background only through a class, gets no propagation; a body
+ * with position set confines the propagated background to its own box; a translucent body background is painted twice
+ * under the body's glyph edges, so there frame 0 can differ from the original by a few colour levels (an opaque one,
+ * the usual case, is exact). One <style data-story-step> per step plays on CSS animations only, started by the class
  * story-play on <html>, so a faked clock renders it deterministically. Animation stack: each animation a step adds to an
  * element is a slot (custom property --story-aN set by that step's selector, reset on * so it never inherits) and one rule
  * for the union of all step selectors lists every slot in step order, so an element matched by two different selector
@@ -62,18 +72,25 @@
  * animation plus a tag, a <story-tag> in one <story-layer> (display:contents) at the end of #story-page, anchored to its
  * element with CSS anchor positioning (a unique anchor-name per matched element; browsers without anchor positioning
  * show the outline but no tag); a swap fades the old text out (the element's opacity and blur, then its colour held
- * transparent) and the new text in on a <story-swap> inserted as the element's first child, out of flow at the old
- * text's static position, inheriting its font, one line as wide as the new text. Neither sets position on the element.
+ * transparent) and the new text in on a <story-swap> inserted as the element's first child, out of flow, inheriting its
+ * font, one line as wide as the new text. The script then moves it (a translate in the element's own pixels, measured
+ * from a Range over the old text in the t=0 state, when the page has parsed, on load and once fonts are ready) over the
+ * old text: centred on it when the element centres its text (text-align, or justify-content on a flex/grid element, as
+ * in a <button> or a flex-centred one), aligned to its right edge for right/end, else to its left edge, and centred on
+ * it vertically. Neither sets position on the element. The swap's fade-out and hide slots on the element are gated on
+ * the class story-marks, which the script adds to <html>: where the script does not run (scripts blocked, a sandboxed
+ * preview) there is no swap and the old text stays; a redline then shows its outline but no tag.
  * Limits of the inserted swap child: a page rule that picks the element's children by position (:first-child,
- * :nth-child, > *) counts it too; a page ::before on the element stays and the new text follows it (one that inherits the
- * colour fades out with the old text); two swaps that reach one element through different selector strings both show
+ * :nth-child, > *) counts it too; a page ::before on the element stays and the new text sits over the old text after it
+ * (one that inherits the colour fades out with the old text); two swaps that reach one element through different selector strings both show
  * (swap-selector-reuse catches only the same string). Chromium antialiases an element that has an opacity/filter/transform animation up
  * to one colour level differently even before it starts, so frame 0 can differ from the original by that much there.
  * The page's only script (<script data-story-marks>, or <script data-story-camera> when the camera follows a selector)
  * is emitted only when a step swaps or redlines or the camera follows a selector; it inserts those elements while the
- * page parses. Every page carries #story-credit (credit, or the default above).
+ * page parses. A story of css-only steps, with no camera or a rect camera, carries no <script> at all. Every page carries #story-credit (credit, or the default above).
  * Camera: without camera there is no crop (the page sits at 0,0 at 1:1). { x, y, w, h } is fitted and centred with a
- * transform on #story-page; { selector } is measured on the window load event (images loaded) and again once
+ * transform on #story-page; { selector } is measured on the window load event (every image loaded, lazy ones included,
+ * since they are made eager) and again once
  * document.fonts is ready, each time from the t=0 state (the transform is cleared and every animation is seeked to 0 for
  * the measure, then put back); no timers or animation frames, a 24px margin, zoom clamped to 0.25x-4x; no match means no
  * crop. story-render has no readiness signal to wait on, but it captures after the load event (page.goto waits for
@@ -413,18 +430,40 @@ function liftRootFontSize(css) {
   return out + css.slice(last);
 }
 
-/** html/body selectors in the page's own styles now mean the page container (root font-size stays on <html>). */
+/**
+ * In the page's own styles html and :root now mean #story-page (the root and canvas) and body means #story-body (the
+ * body, inside it); root font-size stays on the real <html>.
+ */
 function scopeCss(css) {
   return liftRootFontSize(css)
-    .replace(/(^|[,}{;\s])html\s*>?\s*body(?![\w-])/gi, '$1#story-page')
-    .replace(/(^|[,}{;\s])(html|body|:root)(?![\w-])/gi, '$1#story-page')
+    .replace(/(^|[,}{;\s])html\s*>?\s*body(?![\w-])/gi, '$1#story-body')
+    .replace(/(^|[,}{;\s])body(?![\w-])/gi, '$1#story-body')
+    .replace(/(^|[,}{;\s])(html|:root)(?![\w-])/gi, '$1#story-page')
     .split(ROOT_MARK).join('html');
 }
 
-/** The original page, made safe to play: scripts, links, iframes, objects and on* handlers removed. */
+/** Whether a scoped rule for the root (#story-page alone in its selector list) declares a background. One linear pass. */
+function rootHasBackground(css) {
+  let selStart = 0, open = -1, sel = '';
+  for (let i = 0; i < css.length; i++) {
+    const c = css[i];
+    if (c === '{') { sel = css.slice(selStart, i); open = i; selStart = i + 1; } else if (c === '}') {
+      if (open >= 0 && /background/i.test(css.slice(open + 1, i)) && sel.split(',').some(x => x.trim() === '#story-page')) return true;
+      open = -1; selStart = i + 1;
+    } else if (c === ';' && open < 0) selStart = i + 1;
+  }
+  return false;
+}
+
+const LAZY = /(\sloading\s*=\s*)(?:"\s*lazy\s*"|'\s*lazy\s*'|lazy(?![^\s>]))/gi;
+
+/**
+ * The original page, made safe to play: scripts, links, iframes, objects and on* handlers removed, and loading="lazy"
+ * rewritten to eager (a video frames the whole page, so every image must count toward the load event).
+ */
 export function preparePage(html) {
   const sc = scanPage(html.replace(/^﻿/, ''));
-  const inner = sc.inner.replace(TAG, (tag, name, attrs) => `<${name}${attrs.replace(HANDLER, '')}>`);
+  const inner = sc.inner.replace(TAG, (tag, name, attrs) => `<${name}${attrs.replace(HANDLER, '').replace(LAZY, '$1"eager"')}>`);
   const keep = [];
   for (const m of sc.bodyAttrs.matchAll(/\b(class|style)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi)) keep.push(`${m[1].toLowerCase()}="${escHtml(m[2] ?? m[3] ?? m[4] ?? '')}"`);
   return { body: inner, bodyAttrs: keep.join(' '), css: sc.styles.map(scopeCss).join('\n'), stripped: { scripts: sc.scripts, links: sc.links } };
@@ -449,12 +488,14 @@ function stepLayers(story) {
     const t = tl[i];
     const tween = t.tween_end_ms - t.start_ms;
     const rules = [], reduced = [], keyframes = [];
-    const sets = new Map(); // selector -> custom property declarations of this step
-    const slot = (sel, anim, late = false) => {
+    const sets = new Map(); // rule prefix + selector -> custom property declarations of this step
+    // gated: the slot plays only once the marks script has run (html.story-marks), so without the script nothing fades.
+    const slot = (sel, anim, late = false, gated = false) => {
       const n = slots.length + 1;
       slots.push({ n, sel, late });
-      if (!sets.has(sel)) sets.set(sel, []);
-      sets.get(sel).push(`--story-a${n}:${anim}`);
+      const key = `html.story-play${gated ? '.story-marks' : ''} :is(${sel})`;
+      if (!sets.has(key)) sets.set(key, []);
+      sets.get(key).push(`--story-a${n}:${anim}`);
     };
     let k = 0;
     for (const [sel, props] of Object.entries(s.css || {})) {
@@ -494,18 +535,18 @@ function stepLayers(story) {
       keyframes.push(`@keyframes ${name}{0%{opacity:1;filter:blur(0)}49%{opacity:0;filter:blur(8px);color:inherit}50%{opacity:0;filter:blur(8px);color:transparent}100%{opacity:1;filter:blur(0);color:transparent}}`);
       keyframes.push(`@keyframes ${name}-in{0%,49%{opacity:0}100%{opacity:1}}`);
       keyframes.push(`@keyframes ${name}-hide{to{color:transparent}}`);
-      slot(w.selector, `${name} ${q(tween)} ${ease} ${q(t.start_ms)} 1 normal forwards`);
+      slot(w.selector, `${name} ${q(tween)} ${ease} ${q(t.start_ms)} 1 normal forwards`, false, true);
       // From the end of the swap tween on, the old text is held transparent by a slot that sits after every other one.
-      slot(w.selector, `${name}-hide 0ms linear ${q(t.tween_end_ms)} 1 normal forwards`, true);
+      slot(w.selector, `${name}-hide 0ms linear ${q(t.tween_end_ms)} 1 normal forwards`, true, true);
       const ink = w.ink && w.ink.trim() ? w.ink.trim() : '#111';
       marks.swaps.push([w.selector, key]);
-      // The new text is a <story-swap> inserted as the element's first child (out of flow, so nothing moves): it sits at
-      // the old text's static position, inherits the element's font, and is one line as wide as the new text.
+      // The new text is a <story-swap> inserted as the element's first child (out of flow, so nothing moves): it inherits
+      // the element's font, is one line as wide as the new text, and the script moves it over the old text.
       rules.push(`html.story-play story-swap[data-story-swap="${key}"]{position:absolute;white-space:nowrap;width:max-content;color:${ink};pointer-events:none;opacity:0;animation:${name}-in ${q(tween)} ${ease} ${q(t.start_ms)} 1 normal forwards}`);
       rules.push(`html.story-play story-swap[data-story-swap="${key}"]::before{content:"${escCssStr(w.text)}"}`);
       reduced.push(`html.story-play story-swap[data-story-swap="${key}"]{opacity:1 !important;animation:none !important}`);
     }
-    for (const [sel, decl] of sets) rules.push(`html.story-play :is(${sel}){${decl.join(';')}}`);
+    for (const [key, decl] of sets) rules.push(`${key}{${decl.join(';')}}`);
     for (const sel of Object.keys(s.css || {})) {
       const decl = [...final.get(sel)].map(([p, v]) => `${p}:${v} !important`).join(';');
       reduced.push(`html.story-play :is(${sel}){animation:none !important;${decl}}`);
@@ -528,7 +569,7 @@ function stackCss(slots, marks) {
   if (marks.tags.length) out.push('@supports not (anchor-name:--story-a){story-tag{display:none !important}}');
   // Under reduced motion a swapped element's old text stays hidden even when a later step's final colour is !important.
   const swapSels = [...new Set(marks.swaps.map(x => x[0]))];
-  if (swapSels.length) out.push(`@media (prefers-reduced-motion:reduce){${swapSels.map(x => `html.story-play :is(${x}):not(#story-nil#story-nil#story-nil){color:transparent !important}`).join('\n')}}`);
+  if (swapSels.length) out.push(`@media (prefers-reduced-motion:reduce){${swapSels.map(x => `html.story-play.story-marks :is(${x}):not(#story-nil#story-nil#story-nil){color:transparent !important}`).join('\n')}}`);
   return '\n' + out.join('\n');
 }
 
@@ -544,13 +585,25 @@ function runtimeScript(story, f, marks) {
   if (!cam && !marks.swaps.length && !marks.tags.length) return '';
   const j = v => JSON.stringify(v).replace(/</g, '\\u003c');
   const parts = ['var P=document.getElementById("story-page");if(!P)return;'];
+  // z(fn) runs fn in the t=0 state: every animation is seeked to 0, then put back.
+  parts.push('function z(f){var an=document.getAnimations?document.getAnimations():[],ct=an.map(function(x){return x.currentTime});an.forEach(function(x){if(x.currentTime!==null)x.currentTime=0});try{f()}catch(_){}an.forEach(function(x,i){if(ct[i]!==null)x.currentTime=ct[i]})}');
   if (marks.swaps.length || marks.tags.length) {
-    parts.push(`var Q=function(s){try{return Array.prototype.slice.call(P.querySelectorAll(s))}catch(_){return[]}},O=/^story-/,V=/^(${REPLACED.join('|')})$/;`);
-    if (marks.swaps.length) parts.push(`${j(marks.swaps)}.forEach(function(w){Q(w[0]).forEach(function(e){if(e.namespaceURI!=="http://www.w3.org/1999/xhtml"||V.test(e.localName)||O.test(e.localName))return;var n=document.createElement("story-swap");n.setAttribute("data-story-swap",w[1]);n.setAttribute("aria-hidden","true");e.insertBefore(n,e.firstChild)})});`);
+    parts.push(`var Q=function(s){try{return Array.prototype.slice.call(P.querySelectorAll(s))}catch(_){return[]}},O=/^story-/,V=/^(${REPLACED.join('|')})$/,S=[];`);
+    if (marks.swaps.length) {
+      parts.push(`${j(marks.swaps)}.forEach(function(w){Q(w[0]).forEach(function(e){if(e.namespaceURI!=="http://www.w3.org/1999/xhtml"||V.test(e.localName)||O.test(e.localName))return;var n=document.createElement("story-swap");n.setAttribute("data-story-swap",w[1]);n.setAttribute("aria-hidden","true");e.insertBefore(n,e.firstChild);S.push([e,n])})});`);
+      // Each swap is moved (a translate, in the element's own pixels) over the old text's range: centred on it, or
+      // aligned to its right or left edge as the element aligns its text (flex/grid justify-content first), and centred
+      // on it vertically.
+      parts.push('function place(){S.forEach(function(p){var e=p[0],n=p[1];n.style.transform="";var r=document.createRange();r.selectNodeContents(e);r.setStartAfter(n);var o=r.getBoundingClientRect(),q=n.getBoundingClientRect(),b=e.getBoundingClientRect(),k=e.offsetWidth?b.width/e.offsetWidth:1;if(!(o.width||o.height)||!k)return;var c=getComputedStyle(e),rtl=c.direction==="rtl",a=c.textAlign,J=/flex|grid/.test(c.display)?c.justifyContent:"",m=/center/.test(J)?"c":/(flex-)?end|right/.test(J)?"r":/^(flex-)?start|left/.test(J)?"l":a==="center"||a==="-webkit-center"?"c":a==="right"||a==="-webkit-right"||(a==="end"&&!rtl)||(a==="start"&&rtl)?"r":"l",dx=m==="c"?(o.left+o.right-q.left-q.right)/2:m==="r"?o.right-q.right:o.left-q.left,dy=(o.top+o.bottom-q.top-q.bottom)/2;n.style.transform="translate("+dx/k+"px,"+dy/k+"px)"})}');
+      // Placed now (the page has parsed), again on load and once fonts are ready (a web font changes both widths).
+      parts.push('z(place);if(document.readyState!=="complete")addEventListener("load",function(){z(place)});if(document.fonts&&document.fonts.ready)document.fonts.ready.then(function(){z(place)});');
+    }
     if (marks.tags.length) parts.push(`var L=document.createElement("story-layer"),k=0;L.setAttribute("aria-hidden","true");${j(marks.tags)}.forEach(function(r){Q(r[0]).forEach(function(e){if(O.test(e.localName))return;var a="--story-t"+(k++),c=getComputedStyle(e).getPropertyValue("anchor-name");e.style.setProperty("anchor-name",c&&c!=="none"?c+","+a:a);var t=document.createElement("story-tag");t.setAttribute("data-story-tag",r[1]);t.style.setProperty("position-anchor",a);L.appendChild(t)})});if(k)P.appendChild(L);`);
+    // The swap and hide slots on the elements are gated on this class: without the script the old text simply stays.
+    parts.push('document.documentElement.classList.add("story-marks");');
   }
   if (cam) {
-    parts.push(`function fit(){try{var e=P.querySelector(${j(cam)});if(!e)return;var an=document.getAnimations?document.getAnimations():[],ct=an.map(function(x){return x.currentTime});an.forEach(function(x,i){if(ct[i]!==null)x.currentTime=0});P.style.transform="";P.style.height="";var a=P.getBoundingClientRect(),r=e.getBoundingClientRect();an.forEach(function(x,i){if(ct[i]!==null)x.currentTime=ct[i]});var m=${CAMERA_MARGIN},x=r.left-a.left-m,y=r.top-a.top-m,w=r.width+2*m,h=r.height+2*m,s=Math.max(${CAMERA_MIN_SCALE},Math.min(${CAMERA_MAX_SCALE},${f.w}/w,${f.h}/h));P.style.height=Math.max(${f.h},Math.ceil(y+h))+"px";P.style.transformOrigin="0 0";P.style.transform="translate("+((${f.w}-w*s)/2-x*s)+"px,"+((${f.h}-h*s)/2-y*s)+"px) scale("+s+")"}catch(_){}}`);
+    parts.push(`function fit(){try{var e=P.querySelector(${j(cam)});if(!e)return;var a,r;z(function(){P.style.transform="";P.style.height="";a=P.getBoundingClientRect();r=e.getBoundingClientRect()});var m=${CAMERA_MARGIN},x=r.left-a.left-m,y=r.top-a.top-m,w=r.width+2*m,h=r.height+2*m,s=Math.max(${CAMERA_MIN_SCALE},Math.min(${CAMERA_MAX_SCALE},${f.w}/w,${f.h}/h));P.style.height=Math.max(${f.h},Math.ceil(y+h))+"px";P.style.transformOrigin="0 0";P.style.transform="translate("+((${f.w}-w*s)/2-x*s)+"px,"+((${f.h}-h*s)/2-y*s)+"px) scale("+s+")"}catch(_){}}`);
     parts.push('if(document.readyState==="complete")fit();else addEventListener("load",fit);if(document.fonts&&document.fonts.ready)document.fonts.ready.then(function(){if(document.readyState==="complete")fit()});');
   }
   return `<script data-story-${cam ? 'camera' : 'marks'}>(function(){${parts.join('')}})()</script>`;
@@ -585,9 +638,18 @@ export function emit(story, pageHtml) {
   const credit = `<div id="story-credit">${escHtml(creditText(story))}</div>`;
   const cam = cameraCss(story.camera, f);
   const creditStart = Math.max(0, D - num(story.outro_ms, DEFAULTS.outro_ms));
+  // The page's body keeps the browser's default margin (8px, collapsing with its children's margins as in the original)
+  // unless the page sets its own. When the page gives its root no background, the body's background paints the whole
+  // page as in the original (CSS background propagation): a pseudo-element of #story-body the page does not use
+  // inherits it over all of #story-page, under everything, and the body box itself paints it only under its text.
+  const pseudo = !rootHasBackground(page.css) && (!/#story-body[^{},]*::?before/i.test(page.css) ? 'before' : !/#story-body[^{},]*::?after/i.test(page.css) ? 'after' : null);
+  const canvas = pseudo ? `
+#story-body{-webkit-background-clip:text !important;background-clip:text !important}
+#story-body::${pseudo}{content:"" !important;display:block !important;position:absolute !important;inset:0 !important;margin:0 !important;padding:0 !important;border:0 !important;width:auto !important;height:auto !important;min-width:0 !important;min-height:0 !important;max-width:none !important;max-height:none !important;transform:none !important;opacity:1 !important;filter:none !important;box-shadow:none !important;outline:0 !important;z-index:-2147483647 !important;pointer-events:none !important;background:inherit !important;-webkit-background-clip:border-box !important;background-clip:border-box !important}` : '';
   const base = `html,body{margin:0;padding:0;background:#0b0b0c;overflow:hidden}
-#story-frame{position:relative;width:${f.w}px;height:${f.h}px;margin:0 auto;overflow:hidden;background:#fff}
+#story-frame{position:relative;width:${f.w}px;height:${f.h}px;margin:0 auto;overflow:hidden;background:#fff;isolation:isolate}
 #story-page{position:absolute;left:0;top:0;width:${f.w}px;height:${f.h}px;overflow:hidden;box-sizing:border-box}${cam}
+:where(#story-body){display:block;margin:8px}${canvas}
 #story-credit{position:absolute;right:24px;bottom:16px;z-index:20;font:500 14px/1.2 system-ui,sans-serif;color:#fff;background:rgba(0,0,0,.6);padding:4px 10px;border-radius:999px;opacity:0}
 @keyframes story-credit{from{opacity:0}to{opacity:1}}
 html.story-play #story-credit{animation:story-credit 300ms linear ${q(creditStart)} 1 normal forwards}
@@ -612,8 +674,10 @@ ${styles}
 </head>
 <body>
 <div id="story-frame">
-<div id="story-page"${page.bodyAttrs ? ' ' + page.bodyAttrs : ''}>
+<div id="story-page">
+<div id="story-body"${page.bodyAttrs ? ' ' + page.bodyAttrs : ''}>
 ${page.body}
+</div>
 </div>
 ${credit}
 </div>${script ? `\n${script}` : ''}

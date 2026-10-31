@@ -249,7 +249,9 @@ describe('emit', () => {
     assert.match(r.html, /#story-frame\{[^}]*width:1080px;height:1080px/);
     assert.ok(r.html.includes('<h1>Hi</h1>'));
     assert.ok(r.html.includes('class="app"'));
-    assert.ok(r.html.includes('#story-page{margin:0;background:#eee}'));
+    // html/:root rules go to #story-page (the root), body rules, class and style to #story-body inside it.
+    assert.ok(r.html.includes('#story-body{margin:0;background:#eee}'));
+    assert.ok(r.html.includes('<div id="story-page">\n<div id="story-body" class="app">\n<h1>Hi</h1>'));
     assert.equal((r.html.match(/<body>/g) || []).length, 1);
     assert.equal((r.html.match(/<\/html>/g) || []).length, 1);
     const wide = emit(mk({ format: 'wide', credit: undefined }), PAGE).html;
@@ -317,7 +319,7 @@ describe('emit', () => {
   it('is deterministic', () => { assert.equal(emit(story, PAGE).html, r.html); });
   it('page prep: bare fragments, unclosed script and 8 MiB of tag-like text stay linear', () => {
     assert.ok(emit(mk(), '<p>just a fragment</p><script>x').html.includes('<p>just a fragment</p>'));
-    assert.equal(preparePage('<style>html body{color:red} html{x:1}</style><body>ok</body>').css, '#story-page{color:red} #story-page{x:1}');
+    assert.equal(preparePage('<style>html body{color:red} html{x:1}</style><body>ok</body>').css, '#story-body{color:red} #story-page{x:1}');
     const t0 = Date.now();
     emit(mk(), '<a '.repeat(2 * 1024 * 1024));
     emit(mk(), '<a "'.repeat(1024 * 1024));
@@ -510,7 +512,7 @@ describe('review r1 regressions', () => {
     assert.ok(p.css.includes('#story-page{background:#eee}html{font-size:62.5%}'), p.css);
     assert.ok(p.css.includes('.x{font-size:20px;color:red}#story-page{color:red}html{font-size:20px}'), p.css);
     assert.ok(p.css.includes('@media (min-width:1px){#story-page{}html{font-size:50%}}'), p.css);
-    assert.ok(p.css.includes('#story-page{font-size:1.6rem}'));
+    assert.ok(p.css.includes('#story-body{font-size:1.6rem}'));
     assert.ok(!p.css.includes('html{font-size:1px}'), 'a commented-out rule is not lifted');
     assert.ok(!/#story-page\{[^}]*font-size:62\.5%/.test(p.css));
     const h = emit(mk(), '<style>html{font-size:62.5%}</style><body><p>x</p></body>').html;
@@ -612,7 +614,8 @@ describe('review r2 regressions', () => {
     assert.ok(h.includes('html.story-play *{--story-a1:none;--story-a2:none;--story-a3:none;--story-a4:none}'));
     assert.ok(h.includes('html.story-play :is(h1,.hero h1,.q){animation:var(--story-a1,none),var(--story-a2,none),var(--story-a4,none),var(--story-a3,none)}'));
     assert.ok(h.includes('html.story-play :is(h1){--story-a1:story-s1-0 600ms ease-in-out 500ms 1 normal forwards}'));
-    assert.ok(h.includes('html.story-play :is(.hero h1){--story-a2:story-w2 600ms ease-in-out 2000ms 1 normal forwards;--story-a3:story-w2-hide 0ms linear 2600ms 1 normal forwards}'));
+    // The swap's element-side slots play only once the marks script has run (html.story-marks).
+    assert.ok(h.includes('html.story-play.story-marks :is(.hero h1){--story-a2:story-w2 600ms ease-in-out 2000ms 1 normal forwards;--story-a3:story-w2-hide 0ms linear 2600ms 1 normal forwards}'));
     assert.ok(!/:is\([^)]*\)\{animation:story-/.test(h), 'no per-selector animation shorthand that another selector could override');
   });
   it('a swap hide slot comes after every other slot, so a later colour step cannot bring the old text back; check notes swap-ink', () => {
@@ -620,7 +623,7 @@ describe('review r2 regressions', () => {
     const list = /:is\(\.btn,\.q\)\{animation:([^}]*)\}/.exec(h)[1].split(/,(?=var)/);
     assert.deepEqual(list, ['var(--story-a1,none)', 'var(--story-a3,none)', 'var(--story-a4,none)', 'var(--story-a2,none)']);
     assert.ok(h.includes('--story-a2:story-w1-hide 0ms linear 1100ms 1 normal forwards'));
-    assert.match(h, /@media \(prefers-reduced-motion:reduce\)\{html\.story-play :is\(\.btn\):not\(#story-nil#story-nil#story-nil\)\{color:transparent !important\}\}/);
+    assert.match(h, /@media \(prefers-reduced-motion:reduce\)\{html\.story-play\.story-marks :is\(\.btn\):not\(#story-nil#story-nil#story-nil\)\{color:transparent !important\}\}/);
     const c = check(colorAfterSwap);
     assert.equal(c.ok, true);
     assert.deepEqual(c.notes.map(n => n.code), ['swap-ink']);
@@ -762,6 +765,172 @@ describe('review r2 regressions', () => {
       const end = await p.evaluate(() => ({ icon: getComputedStyle(document.querySelector('.btn'), '::before').content, text: getComputedStyle(document.querySelector('.btn > story-swap'), '::before').content, op: getComputedStyle(document.querySelector('.btn > story-swap')).opacity }));
       assert.deepEqual(end, { icon: want.icon, text: '"Start"', op: '1' });
       assert.ok(await diff(await p.screenshot(), shot0) > 100, 'the end frame shows the swap');
+    }));
+  });
+});
+
+describe('review r3 regressions', () => {
+  const base = { title: 't', format: 'square', credit: 'x' };
+  const st = (id, over) => ({ id, label: id, ...over });
+  const cssOnly = { ...base, steps: [st('a', { css: { h1: { color: 'rgb(0,0,255)' } } }), st('b', { css: { '.q': { opacity: '0.5' } } }), st('c', { css: { '.q': { 'letter-spacing': '1px' } } })] };
+  const swapsA = { ...base, steps: [st('a', { swap: { selector: 'h1', text: 'Simple pricing' } }), st('b', { swap: { selector: 'p.r', text: 'Go' } }), st('c', { swap: { selector: 'button.btn', text: 'Go' } })] };
+  const swapsB = { ...base, camera: { x: 0, y: 0, w: 540, h: 540 }, steps: [st('a', { swap: { selector: '.flex', text: 'Go' } }), st('b', { swap: { selector: 'p.l', text: 'Go' } }), st('c', { css: { '.q': { opacity: '0.5' } } })] };
+
+  it('a css-only story emits no <script> at all, with no camera and with a rect camera', () => {
+    assert.equal(check(cssOnly).ok, true);
+    const page = '<body><h1>Hi</h1><p class="q">q</p><script>x()</script></body>';
+    assert.equal(emit(cssOnly, page).html.match(/<script/gi), null);
+    assert.equal(emit({ ...cssOnly, camera: { x: 0, y: 0, w: 540, h: 540 } }, page).html.match(/<script/gi), null);
+    assert.equal(emit({ ...cssOnly, camera: { selector: 'h1' } }, page).html.match(/<script/gi).length, 1);
+  });
+  it('loading="lazy" is rewritten to eager in every quoting form; other attributes stay', () => {
+    const b = preparePage('<body><img loading="lazy" src="a.png"><img src=b.png loading=lazy><img LOADING = \'lazy\' alt="loading=lazy"><img loading="eager" src="c.png"><img data-loading="lazy"></body>').body;
+    assert.ok(!/\sloading\s*=\s*["']?lazy/i.test(b.replace('alt="loading=lazy"', '')), b);
+    assert.equal((b.match(/loading\s*=\s*"eager"/gi) || []).length, 4, b);
+    assert.ok(b.includes('alt="loading=lazy"') && b.includes('data-loading="lazy"') && b.includes('src=b.png'), b);
+  });
+  it('the swap slots on the element are gated on html.story-marks, which only the script adds', () => {
+    const h = emit(swapsA, '<body><h1>Pricing</h1><p class="r">Right</p><button class="btn">Get started</button></body>').html;
+    assert.match(h, /html\.story-play\.story-marks :is\(h1\)\{--story-a1:story-w1 [^}]*;--story-a2:story-w1-hide /);
+    assert.ok(!/html\.story-play :is\((h1|p\.r|button\.btn)\)\{--story-a/.test(h));
+    assert.ok(h.includes('document.documentElement.classList.add("story-marks")'));
+    assert.ok(!/class="[^"]*story-marks/.test(h));
+    const scr = /<script data-story-marks>([\s\S]*?)<\/script>/.exec(h)[1];
+    assert.ok(scr.includes('createRange()') && scr.includes('z(place);'), 'swaps are placed from a Range over the old text');
+    assert.ok(!/setTimeout|setInterval|requestAnimationFrame|Date|performance/.test(scr));
+  });
+  it('body rules go to #story-body, which keeps the browser margin by default; background propagates only without a root background', () => {
+    const h = emit(cssOnly, '<style>body{background:#eee}</style><body class="app"><h1>Hi</h1></body>').html;
+    assert.ok(h.includes(':where(#story-body){display:block;margin:8px}'));
+    assert.ok(!/html,body\{margin:0[^}]*\}[\s\S]*#story-body\{margin:0/.test(h.split('<style data-story-page>')[0]));
+    assert.ok(h.includes('#story-body::before{content:"" !important;'));
+    assert.ok(h.includes('#story-body{-webkit-background-clip:text !important;background-clip:text !important}'));
+    const root = emit(cssOnly, '<style>html{background:#ddd}body{background:#fff}</style><body><h1>Hi</h1></body>').html;
+    assert.ok(!root.includes('background-clip:text'));
+    const both = emit(cssOnly, '<style>body::before{content:"a"}</style><body><h1>Hi</h1></body>').html;
+    assert.ok(both.includes('#story-body::after{content:"" !important;') && !both.includes('#story-body::before{content:"" !important;'));
+  });
+
+  describe('browser probes (skipped when playwright cannot be resolved)', () => {
+    const browser = async (t, fn, opts) => {
+      let pw = null;
+      try { pw = await import(process.env.STORY_PLAN_PLAYWRIGHT || 'playwright'); } catch { /* not installed */ }
+      const chromium = pw && (pw.chromium || (pw.default && pw.default.chromium));
+      if (!chromium) { t.skip('playwright not resolvable'); return; }
+      let b;
+      try { b = await chromium.launch(); } catch (e) { t.skip(`browser did not start: ${String(e.message).split('\n')[0]}`); return; }
+      try { await fn(b, await tmp()); } finally { await b.close(); }
+    };
+    const open = async (b, file, opts = {}) => {
+      const ctx = await b.newContext({ viewport: { width: 1080, height: 1080 }, ...opts });
+      const p = await ctx.newPage();
+      await p.goto(`file://${file}`);
+      p.at = ms => p.evaluate(ms => document.getAnimations().forEach(a => { a.pause(); a.currentTime = ms; }), ms);
+      return p;
+    };
+    const maxDiff = async (p, x, y) => p.evaluate(async ([x, y]) => {
+      const load = src => new Promise(r => { const i = new Image(); i.onload = () => r(i); i.src = src; });
+      const [ia, ib] = await Promise.all([load(x), load(y)]);
+      const px = i => { const c = document.createElement('canvas'); c.width = i.width; c.height = i.height; const g = c.getContext('2d'); g.drawImage(i, 0, 0); return g.getImageData(0, 0, i.width, i.height).data; };
+      const da = px(ia), db = px(ib);
+      let m = 0; for (let k = 0; k < da.length; k++) m = Math.max(m, Math.abs(da[k] - db[k]));
+      return m;
+    }, [x, y].map(buf => `data:image/png;base64,${buf.toString('base64')}`));
+    // Old text = a Range over the element's contents after the <story-swap>; new text = the <story-swap> box.
+    const where = p => p.evaluate(() => [...document.querySelectorAll('story-swap')].map(s => {
+      const e = s.parentElement, r = document.createRange();
+      r.selectNodeContents(e); r.setStartAfter(s);
+      const o = r.getBoundingClientRect(), n = s.getBoundingClientRect();
+      return { el: e.localName + (e.className ? '.' + e.className : ''), o: [o.left, o.right, (o.top + o.bottom) / 2, o.width], n: [n.left, n.right, (n.top + n.bottom) / 2, n.width] };
+    }));
+    const near = (a, b, what) => assert.ok(Math.abs(a - b) <= 1, `${what}: ${a} vs ${b}`);
+    const checkPlace = (got, modes) => {
+      assert.equal(got.length, Object.keys(modes).length, JSON.stringify(got));
+      for (const g of got) {
+        const m = modes[g.el];
+        assert.ok(m, g.el);
+        assert.ok(Math.abs(g.o[3] - g.n[3]) > 20, `${g.el}: the new text differs in width, so the check can tell the modes apart`);
+        if (m === 'center') near((g.o[0] + g.o[1]) / 2, (g.n[0] + g.n[1]) / 2, `${g.el} centre`);
+        if (m === 'right') near(g.o[1], g.n[1], `${g.el} right edge`);
+        if (m === 'left') near(g.o[0], g.n[0], `${g.el} left edge`);
+        near(g.o[2], g.n[2], `${g.el} vertical centre`);
+      }
+    };
+
+    it('the swapped-in text lands on the old text: centred h1, right-aligned p, a <button>, a flex-centred button, a left p under a 2x camera', async t => browser(t, async (b, dir) => {
+      const pa = '<!doctype html><html><head><style>h1{text-align:center;font:40px sans-serif}p.r{text-align:right;font:18px sans-serif}.btn{width:300px;font:20px sans-serif;padding:10px}</style></head><body><h1>Pricing that scales</h1><p class="r">Right aligned words here</p><div class="card"><button class="btn">Get started now</button></div></body></html>';
+      await fs.writeFile(path.join(dir, 'a.html'), emit(swapsA, pa).html);
+      const a = await open(b, path.join(dir, 'a.html'));
+      for (const ms of [0, check(swapsA).duration_ms]) { await a.at(ms); checkPlace(await where(a), { h1: 'center', 'p.r': 'right', 'button.btn': 'center' }); }
+      const pb = '<!doctype html><html><head><style>.flex{display:flex;justify-content:center;align-items:center;width:300px;height:60px;font:20px sans-serif}p.l{font:18px sans-serif;margin:30px}</style></head><body><button class="flex">Get started now</button><p class="l">Left aligned words here</p><p class="q">q</p></body></html>';
+      await fs.writeFile(path.join(dir, 'b.html'), emit(swapsB, pb).html);
+      const c = await open(b, path.join(dir, 'b.html'));
+      await c.at(0);
+      checkPlace(await where(c), { 'button.flex': 'center', 'p.l': 'left' });
+    }));
+
+    it('a loading=lazy image above a selector camera target loads before the measure, so the target stays in frame', async t => browser(t, async (b, dir) => {
+      await fs.writeFile(path.join(dir, 'big.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600"><rect width="400" height="600" fill="red"/></svg>');
+      const story = { ...base, camera: { selector: '#target' }, steps: [st('a', { css: { '.btn': { color: '#ff0' } } }), st('b', { swap: { selector: '.btn', text: 'Go' } }), st('c', { css: { '.card': { opacity: '0.9' } } })] };
+      const page = '<!doctype html><html><head><style>.btn{display:block;width:300px;text-align:center;font:20px sans-serif}</style></head><body><div class="card"><a class="btn">Get started now</a></div><div style="height:1500px">filler</div><img loading="lazy" src="big.svg"><h2 id="target">Target heading</h2></body></html>';
+      const h = emit(story, page).html;
+      assert.ok(h.includes('<img loading="eager" src="big.svg">'));
+      await fs.writeFile(path.join(dir, 's.html'), h);
+      const p = await open(b, path.join(dir, 's.html'));
+      await p.at(0);
+      const r = await p.evaluate(() => ({ img: document.querySelector('img').complete && document.querySelector('img').naturalHeight, t: document.getElementById('target').getBoundingClientRect().toJSON() }));
+      assert.equal(r.img, 600);
+      assert.ok(r.t.top >= 0 && r.t.bottom <= 1080, JSON.stringify(r.t));
+    }));
+
+    it('with JavaScript disabled a swapped element keeps its old text (no blank button)', async t => browser(t, async (b, dir) => {
+      const page = '<!doctype html><html><head><style>.btn{color:rgb(0,0,0);font:20px sans-serif}</style></head><body><h1 style="color:rgb(10,20,30)">Pricing</h1><p class="r">r</p><button class="btn">Get started</button></body></html>';
+      await fs.writeFile(path.join(dir, 's.html'), emit(swapsA, page).html);
+      const D = check(swapsA).duration_ms;
+      const probe = p => p.evaluate(() => ['h1', '.btn'].map(s => { const c = getComputedStyle(document.querySelector(s)); return [c.color, c.opacity, c.filter]; }).concat([document.querySelectorAll('story-swap').length, document.documentElement.className]));
+      for (const reducedMotion of ['no-preference', 'reduce']) {
+        const p = await open(b, path.join(dir, 's.html'), { javaScriptEnabled: false, reducedMotion });
+        for (const ms of [0, 2000, D]) {
+          await p.evaluate(ms => document.getAnimations().forEach(a => { a.pause(); a.currentTime = ms; }), ms).catch(() => {});
+          assert.deepEqual(await probe(p), [['rgb(10, 20, 30)', '1', 'none'], ['rgb(0, 0, 0)', '1', 'none'], 0, 'story-play'], `${reducedMotion} at ${ms}`);
+        }
+      }
+      // The same page with JavaScript on does swap (the gate opens).
+      const on = await open(b, path.join(dir, 's.html'));
+      await on.at(D);
+      assert.deepEqual((await on.evaluate(() => [getComputedStyle(document.querySelector('.btn')).color, document.querySelectorAll('story-swap').length])), ['rgba(0, 0, 0, 0)', 3]);
+    }));
+
+    it('a page without a margin reset: frame 0 matches the original (body, class and root backgrounds) and a camera rect lines up', async t => browser(t, async (b, dir) => {
+      const story = { ...base, steps: [st('a', { swap: { selector: 'h1', text: 'New' } }), st('b', { css: { '.q': { opacity: '0.5' } }, redline: { selector: '.q', label: 'q' } }), st('c', { css: { '.q': { opacity: '1' } } })] };
+      const body = '<h1>Pricing that scales</h1><p class="q">Some text in a paragraph.</p><div class="box" style="width:200px;height:100px;background:#36c;margin-left:30px"></div>';
+      const pages = {
+        plain: `<!doctype html><html><head><style>h1{font:32px sans-serif}</style></head><body>${body}</body></html>`,
+        bodybg: `<!doctype html><html><head><style>body{background:#f0e6d2;font:16px sans-serif}</style></head><body>${body}</body></html>`,
+        classbg: `<!doctype html><html><head><style>.tint{background-color:rgb(249 250 251)}</style></head><body class="tint">${body}</body></html>`,
+        rootbg: `<!doctype html><html><head><style>html{background:#ddd}body{background:#fff}</style></head><body>${body}</body></html>`,
+      };
+      for (const [name, orig] of Object.entries(pages)) {
+        await fs.writeFile(path.join(dir, `${name}-o.html`), orig);
+        await fs.writeFile(path.join(dir, `${name}-s.html`), emit(story, orig).html);
+        const o = await open(b, path.join(dir, `${name}-o.html`));
+        const rects = p => p.evaluate(() => ['h1', '.q', '.box'].map(s => { const r = document.querySelector(s).getBoundingClientRect(); return [r.x, r.y, r.width, r.height]; }));
+        const want = await rects(o);
+        assert.equal(want[0][0], 8, `${name}: the original keeps the 8px body margin`);
+        const p = await open(b, path.join(dir, `${name}-s.html`));
+        await p.at(0);
+        assert.deepEqual(await rects(p), want, name);
+        assert.ok(await maxDiff(o, await p.screenshot(), await o.screenshot()) <= 1, `${name}: frame 0 differs from the original screen`);
+        const box = want[2];
+        // A 2x crop measured on the original: the box must land where the original's pixels say it is, scaled.
+        const cam = { x: 0, y: Math.max(0, Math.round(box[1]) - 100), w: 540, h: 540 };
+        await fs.writeFile(path.join(dir, `${name}-c.html`), emit({ ...story, camera: cam }, orig).html);
+        const c = await open(b, path.join(dir, `${name}-c.html`));
+        await c.at(0);
+        const s = Math.min(1080 / cam.w, 1080 / cam.h);
+        const got = (await rects(c))[2];
+        for (const [i, v] of [(1080 - cam.w * s) / 2 + (box[0] - cam.x) * s, (1080 - cam.h * s) / 2 + (box[1] - cam.y) * s, box[2] * s, box[3] * s].entries()) near(got[i], v, `${name}: camera rect [${i}]`);
+      }
     }));
   });
 });
