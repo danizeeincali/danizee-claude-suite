@@ -21,6 +21,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { stepSection } from '../.claude/helpers/bbs/wiring.js';
 import { validateFinishLine, evaluateGate } from '../.claude/helpers/marathon/gate.js';
+import { readAll } from '../.claude/helpers/marathon/store.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const KIT = '.claude/helpers/kit/cli.js';
@@ -109,6 +110,10 @@ before(() => {
   fx.badAfter = write('after-bad.html', page(' Trusted by 10,000 teams.', false));
   fx.AFTER = fx.goodAfter;
   fx.PRODUCT_NAME = 'Ledgerly';
+  // a new screen with no before version, made only of sentences that would fit any product
+  fx.genericPage = write('new-generic.html', '<h1>The best platform for your workflow</h1><p>Unlock seamless productivity for your team today.</p><p>Powerful tools that help you grow.</p>\n');
+  fx.STREAM = 'ui';
+  fx.SCREENS = `${fx.slopScreen}\n${fx.cleanScreen}`;
 });
 after(() => { fs.rmSync(dir, { recursive: true, force: true }); });
 
@@ -163,6 +168,69 @@ function run(s, over = {}) {
   let json = null;
   try { json = JSON.parse(r.stdout); } catch { /* not JSON */ }
   return { status: r.status, stdout: r.stdout, stderr: r.stderr, json };
+}
+
+const q = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
+
+/**
+ * Run the WHOLE bash block of a slice (every line, as the workflow runs it), each NAME='<...>' placeholder filled
+ * from the fixtures except the names in `keep`, which stay unfilled. `cwd` defaults to the project root.
+ */
+function runBlock(s, over = {}, { cwd = ROOT, keep = [] } = {}) {
+  const map = { ...fx, ...over };
+  const script = s.block.map(l => l.replace(/^([A-Za-z_][A-Za-z0-9_]*)='<[^']*>'/, (m, name) => {
+    if (keep.includes(name)) return m;
+    assert.ok(name in map, `no fixture for ${name}`);
+    return `${name}=${q(map[name])}`;
+  })).join('\n');
+  const r = spawnSync('bash', ['-c', script], { cwd, encoding: 'utf-8', timeout: 120000 });
+  if (!keep.length) assert.doesNotMatch(r.stderr, /is still the placeholder/, `a filled placeholder did not reach the command: ${r.stderr}`);
+  return { status: r.status, stdout: r.stdout, stderr: r.stderr };
+}
+
+/** The first bash block after the line that contains `marker` in the step under `heading`, with its paragraphs. */
+function blockAfter(file, heading, marker) {
+  const lines = step(file, heading).split('\n');
+  const at = lines.findIndex(l => l.includes(marker));
+  assert.ok(at >= 0, `${file} › ${heading} has no "${marker}"`);
+  let i = at;
+  while (i < lines.length && !/^\s*```bash/.test(lines[i])) i++;
+  let j = i + 1;
+  while (j < lines.length && !/^\s*```/.test(lines[j])) j++;
+  let k = j + 1;
+  while (k < lines.length && lines[k].trim() === '') k++;
+  let e = k;
+  while (e < lines.length && lines[e].trim() !== '') e++;
+  return { text: [...lines.slice(at, j + 1), ...lines.slice(k, e)].join('\n'), block: lines.slice(i + 1, j) };
+}
+
+/** A scratch project with the suite's helpers (kit and marathon) linked in and one marathon run made by `init`. */
+function project({ kit = true } = {}) {
+  const p = fs.mkdtempSync(path.join(os.tmpdir(), 'unslop-proj-'));
+  fs.mkdirSync(path.join(p, '.claude'));
+  if (!kit) return { dir: p, runDir: null };
+  // copied, not linked: the CLIs run only when invoked by their real path
+  for (const h of ['kit', 'marathon']) fs.cpSync(path.join(ROOT, '.claude/helpers', h), path.join(p, '.claude/helpers', h), { recursive: true });
+  const r = spawnSync('node', ['.claude/helpers/marathon/cli.js', 'init', 'reach'], { cwd: p, encoding: 'utf-8' });
+  assert.equal(r.status, 0, r.stderr);
+  return { dir: p, runDir: path.join(p, JSON.parse(r.stdout).runDir) };
+}
+
+/** The loop's finish-line line for slop, with `<s>` filled. */
+const slopLine = (stream) => {
+  const t = slice(WF.marathon, H.mLoop, 'slop-audit', 'scan').text;
+  const m = t.match(/\{"id": "slop_<s>"[^`]*\}/);
+  assert.ok(m, 'the step gives the finish-line line');
+  return { raw: m[0], line: JSON.parse(m[0].replace(/<s>/g, stream)) };
+};
+
+/** Whether `slop_<stream>` is met by the gate, read from the run's real measurement rows. */
+async function slopMet(runDir, stream) {
+  const finishLine = { lines: [slopLine(stream).line] };
+  const green = Array.from({ length: 5 }, () => ({ kind: 'unit', status: 'green', stream }));
+  const measurements = await readAll(runDir, 'measurements');
+  return evaluateGate({ finishLine, runs: green, reviews: [], findings: [], helpers: [], measurements, stream })
+    .lines.find(l => l.id === `slop_${stream}`).status === 'met';
 }
 
 /** Run `verb prefix` from its step under `heading` of `file`. */
@@ -350,6 +418,27 @@ function imageGate(file, heading) {
   assert.match(asked.json.question, /Model: image-model-a\nSize: 1600x900/);
   const id = asked.json.id;
   assert.equal(run(check, { IMG_STATE: state }).status, 2, 'no yes yet: the image tool is not called');
+  assert.match(check.text, /Without the kit the exit 2 means no recorded approval: ask the yes\/no in plain words[^.]*; on a yes the call may go ahead, on a no leave the slot empty\./, 'the no-kit exit 2 and the text agree');
+  if (file === WF.marathon) {
+    // no question mid-loop: the request is queued, the slot goes in, the loop goes on
+    const gateText = all.slice(all.indexOf('**🛑 Image generation gate'), all.indexOf('Put each `report` row', all.indexOf('**🛑 Image generation gate')));
+    assert.ok(gateText.length > 1000, 'the image gate part of the step');
+    assert.doesNotMatch(gateText, /AskUserQuestion/);
+    assert.doesNotMatch(gateText, /wait for the answer|and wait\b/);
+    assert.match(req.text, /Never ask it in the middle of the loop and never wait for it/);
+    assert.match(req.text, /`checklist\.md` as a human job/);
+    assert.match(req.text, /collected only at the run's existing human-in-the-loop points: the once-only Interview[^.]* or the end-of-run report and handoff/);
+    assert.match(req.text, /Only after the owner's yes is recorded with `approve` may a later loop pass run `check` and, after `check` exits 0, call the image service/);
+    const pendingSlot = slice(file, heading, 'image-gate', 'slot');
+    assert.match(pendingSlot.text, /While the request is pending/);
+    assert.doesNotMatch(pendingSlot.block.join('\n'), /image-gate decline/, 'the pending slot is placed without a decline');
+    const placed = run(pendingSlot);
+    assert.equal(placed.status, 0);
+    assert.equal(placed.json.html, '<div class="img-slot" aria-hidden="true"></div>');
+    const queued = run(slice(file, heading, 'image-gate', 'report'), { IMG_STATE: state });
+    assert.deepEqual(queued.json.requests.map(r => r.status), ['pending'], 'the pending request is in the end-of-run report');
+    assert.match(check.text, /pending \(still queued: keep the slot and go on; never ask mid-loop\)/);
+  }
   assert.equal(run(slice(file, heading, 'image-gate', 'approve'), { IMG_STATE: state, IMG_ID: id }).status, 0);
   assert.equal(run(check, { IMG_STATE: state, IMG_MODEL: 'image-model-b' }).status, 2, 'a changed model needs its own yes');
   const claimed = run(check, { IMG_STATE: state });
@@ -397,9 +486,10 @@ function storyRender(file, heading) {
   assert.match(play.json.play_url, /^file:\/\/.*\?play=1$/);
 }
 
-function slopAudit(file, heading) {
+async function slopAudit(file, heading) {
   const s = slice(file, heading, 'slop-audit', 'scan');
   gated(s.text, 'slop-audit', { gate: UI, blocking: true });
+  if (file === WF.marathon) return slopPass(s);
   assert.match(s.line, /slop-audit scan --strict --file "\$SCREEN"; RC=\$\?; \(exit \$RC\); fi$/, 'the guard keeps the exit status, so the step really stops');
   assert.match(s.text, /manual/);
   const bad = run(s, { SCREEN: fx.slopScreen });
@@ -410,6 +500,51 @@ function slopAudit(file, heading) {
   assert.equal(good.status, 0);
   assert.equal(good.json.total, 0);
   assert.equal(run(slice(file, heading, 'slop-audit', 'signs')).status, 0);
+}
+
+/**
+ * /mt: one block scans every changed screen file and records ONE slop_<s> measure for the pass, false when any file
+ * has unresolved signs, so a clean file scanned after a dirty one can never meet the gate.
+ */
+async function slopPass(s) {
+  assert.match(s.text, /manual/);
+  assert.match(s.text, /every changed screen file of the stream/);
+  assert.match(s.text, /Never scan the files one by one with separate records/);
+  assert.match(s.line, /while IFS= read -r SCREEN; do .*slop-audit scan --strict --file "\$SCREEN"; .*done <<< "\$SCREENS"/, 'every file in one run');
+  assert.equal((s.block.join('\n').match(/record measure/g) || []).length, 1, 'one record per pass');
+  const { dir, runDir } = project();
+  try {
+    const last = async () => (await readAll(runDir, 'measurements')).filter(m => m.key === 'slop_ui').at(-1);
+    // a dirty file, then a clean one
+    const mixed = runBlock(s, { SCREENS: `${fx.slopScreen}\n${fx.cleanScreen}` }, { cwd: dir });
+    assert.equal(mixed.status, 2, 'one dirty file stops the pass');
+    assert.match(mixed.stdout, /2 file\(s\) scanned, worst exit 2, recorded slop_ui=false/);
+    assert.equal((await last()).value, false);
+    assert.equal(await slopMet(runDir, 'ui'), false, 'a dirty file then a clean file leaves the gate unmet');
+    // the other order
+    assert.equal(runBlock(s, { SCREENS: `${fx.cleanScreen}\n${fx.slopScreen}` }, { cwd: dir }).status, 2);
+    assert.equal(await slopMet(runDir, 'ui'), false);
+    // every file clean: met
+    const clean2 = write('clean2.html', fs.readFileSync(fx.cleanScreen, 'utf-8'));
+    const ok = runBlock(s, { SCREENS: `${fx.cleanScreen}\n${clean2}\n` }, { cwd: dir });
+    assert.equal(ok.status, 0, ok.stderr);
+    assert.equal((await last()).value, true);
+    assert.equal(await slopMet(runDir, 'ui'), true, 'a whole clean pass meets the gate');
+    // a later pass with a dirty file takes it back
+    assert.equal(runBlock(s, { SCREENS: `${fx.cleanScreen}\n${fx.slopScreen}` }, { cwd: dir }).status, 2);
+    assert.equal(await slopMet(runDir, 'ui'), false);
+    // wrong input records false, never a stale true
+    runBlock(s, { SCREENS: fx.cleanScreen }, { cwd: dir });
+    const empty = write('empty.html', '');
+    assert.equal(runBlock(s, { SCREENS: `${fx.cleanScreen}\n${empty}` }, { cwd: dir }).status, 1);
+    assert.equal(await slopMet(runDir, 'ui'), false, 'an unreadable file is never read as a pass');
+    // an unfilled placeholder records nothing
+    const before = (await readAll(runDir, 'measurements')).length;
+    const unfilled = runBlock(s, {}, { cwd: dir, keep: ['STREAM'] });
+    assert.equal(unfilled.status, 1);
+    assert.match(unfilled.stderr, /slop audit refused/);
+    assert.equal((await readAll(runDir, 'measurements')).length, before);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 }
 
 function checklist(file, heading, { blocking }) {
@@ -430,6 +565,20 @@ function checklist(file, heading, { blocking }) {
   assert.equal(bad.status, blocking ? 2 : 0, blocking ? 'a failed check stops the review' : 'advisory: the run goes on');
   assert.equal(bad.json.pass, false);
   assert.deepEqual(bad.json.violations.map(v => v.rule).sort(), ['invented-data', 'link-removed']);
+  if (file === WF.plan) {
+    // a new screen with no before version: template-test has no --strict, so the block reads pass itself
+    const t = slice(file, heading, 'redesign-checklist', 'template-test');
+    assert.doesNotMatch(t.line, /--strict/);
+    assert.match(t.text, /`pass: false` stops the review exactly like exit 2/);
+    assert.match(t.text, /\*\*Exit 2 stops the review/);
+    assert.match(c.text, /run the second block instead/);
+    const generic = run(t, { AFTER: fx.genericPage });
+    assert.equal(generic.json.pass, false);
+    assert.equal(generic.status, 2, 'a failed template test on a new screen stops the review');
+    const fine = run(t, { AFTER: fx.goodAfter });
+    assert.equal(fine.json.pass, true);
+    assert.equal(fine.status, 0);
+  }
 }
 
 // ---------- the rows of integration.md wired in this pass ----------
@@ -476,7 +625,7 @@ describe('second pass (not wired yet)', () => {
 });
 
 describe('slop audit gate in /w-marathon', () => {
-  it('unresolved signs keep the scripted stream gate unmet however many green test runs follow', () => {
+  it('unresolved signs keep the scripted stream gate unmet however many green test runs follow', async () => {
     const t = slice(WF.marathon, H.mLoop, 'slop-audit', 'scan').text;
     assert.match(t, /record measure key=slop_<s> value=false/);
     assert.match(t, /record measure key=slop_<s> value=true/);
@@ -489,10 +638,56 @@ describe('slop audit gate in /w-marathon', () => {
     const met = (measurements) => evaluateGate({ finishLine, runs: green, reviews: [], findings: [], helpers: [], measurements, stream: 'ui' })
       .lines.find(l => l.id === 'slop_ui').status === 'met';
     assert.equal(met([{ key: 'slop_ui', value: false }]), false);
-    assert.equal(met([{ key: 'slop_ui', value: false }, { key: 'slop_ui', value: true }]), true);
+    // a stream with a dirty file and a clean file, through the real block: the gate stays unmet
+    const { dir, runDir } = project();
+    try {
+      const s = slice(WF.marathon, H.mLoop, 'slop-audit', 'scan');
+      assert.equal(runBlock(s, { SCREENS: `${fx.slopScreen}\n${fx.cleanScreen}` }, { cwd: dir }).status, 2);
+      assert.equal(await slopMet(runDir, 'ui'), false, 'a clean file scanned after a dirty one never meets the gate');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
     const interview = step(WF.marathon, H.mInterview);
     assert.ok(interview.includes(m[0]), 'the Interview adds the same line for UI streams');
   });
+
+  it('the Interview adds the slop_<s> line only when the kit is installed', () => {
+    const b = blockAfter(WF.marathon, H.mInterview, '**🧹 Slop finish line');
+    assert.match(b.text, /only when the kit is installed/);
+    assert.match(b.block.join('\n'), /^if \[ ! -f \.claude\/helpers\/kit\/cli\.js \]; then echo "kit not installed/m);
+    // with the kit: the printed line is the loop's line for this stream, and it is a valid finish-line line
+    const withKit = runBlock(b, { STREAM: 'ui' });
+    assert.equal(withKit.status, 0, withKit.stderr);
+    const line = JSON.parse(withKit.stdout.trim());
+    assert.deepEqual(line, slopLine('ui').line);
+    assert.deepEqual(validateFinishLine({ lines: [line] }), []);
+    // without the kit: no line, and it says so
+    const { dir } = project({ kit: false });
+    try {
+      const noKit = runBlock(b, { STREAM: 'ui' }, { cwd: dir });
+      assert.equal(noKit.status, 0);
+      assert.match(noKit.stdout, /^kit not installed[^\n]*no slop_ui finish line added/);
+      assert.doesNotMatch(noKit.stdout, /\{"id"/, 'no slop line is printed, so the gate never waits on a measure no step records');
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    // an unfilled name is refused, never printed as slop_<...>
+    const unfilled = runBlock(b, {}, { keep: ['STREAM'] });
+    assert.equal(unfilled.status, 1);
+    assert.doesNotMatch(unfilled.stdout, /slop_</);
+  });
+});
+
+describe('triage scan with an unfilled AUDIT', () => {
+  for (const [file, heading] of [[WF.plan, H.interview], [WF.marathon, H.mKickoff]]) {
+    it(`${short(file)}: refuses to write a file named after the placeholder`, () => {
+      const s = slice(file, heading, 'slop-audit', 'scan');
+      const { dir } = project();
+      try {
+        const r = runBlock(s, { SCREEN: fx.slopScreen }, { cwd: dir, keep: ['AUDIT'] });
+        assert.match(r.stderr, /scan refused: AUDIT is still the placeholder/);
+        assert.match(r.stderr, /grade refused: AUDIT is still the placeholder/);
+        assert.notEqual(r.status, 0);
+        assert.deepEqual(fs.readdirSync(dir).filter(n => n.startsWith('<')), [], 'no stray file named after the placeholder');
+      } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    });
+  }
 });
 
 describe('without the kit', () => {
