@@ -7,7 +7,8 @@
  * lines with bash, then checks the power's effect. On that slice alone it also checks the step is gated on the work the
  * row names (UI, landing page, dashboard), carries the kit-missing fallback and says advisory or blocking as the row
  * does. Where one verb feeds another, the fixture is the real producer's output, made by running the producer's own
- * workflow step (slop-audit scan for slop-triage, design-brief assume for direction from-brief).
+ * workflow step (slop-audit scan for slop-triage, design-brief assume for direction from-brief, story-plan template
+ * for story-plan check/emit, and the page story-plan emit wrote for the story-render step at /pt Build).
  *
  * The table ROWS holds one entry per integration.md row; PENDING lists the rows of the second pass (their verbs are
  * still in review). To wire one later, add its fixtures to `before`, move its entry from PENDING to ROWS with a `check`.
@@ -101,6 +102,12 @@ before(() => {
   fx.SLOT_RADIUS = '12';
   fx.STORY = write('story.html', '<!doctype html><html><head><meta name="story-duration-ms" content="1000"></head><body><p>Before, then after.</p></body></html>\n');
   fx.VIDEO_OUT = path.join(dir, 'story.mp4');
+  fx.STORY_FORMAT = 'square';
+  // the original screen a story plan is layered on (the template's .card, h1 and .btn are on it)
+  fx.ORIGINAL = write('original.html', [
+    '<!doctype html><html lang="en"><head><title>Pricing</title><style>.card{padding:13px;gap:7px;border-radius:3px}.btn{border-radius:2px}</style>',
+    '<script>alert(1)</script></head><body><div class="card"><h1>Plans</h1><button class="btn">Go</button></div></body></html>', ''].join('\n'));
+  fx.STORY_OUT = path.join(dir, 'story-page.html');
   const page = (extra, signup = true) => [
     '<section id="hero"><h1>Ledgerly keeps freelance invoices in order</h1>',
     `<p>Ledgerly sends the reminder for you.${extra}</p>${signup ? '<a href="/signup">Start a ledger</a>' : ''}</section>`,
@@ -514,6 +521,89 @@ function storyRender(file, heading) {
   assert.match(play.json.play_url, /^file:\/\/.*\?play=1$/);
 }
 
+const STORY_GATE = /When the task redesigns UI and the user asks for a before-and-after story video|When the stream redesigns UI and its plan ships a before-and-after story video/;
+
+/**
+ * Story video authoring: the story JSON is the real producer's (the /pt Spec `story-plan template` block), check and
+ * emit run from the row's own block, and the page emit wrote goes into the story-render step at /pt Build (its plan
+ * block), with the format emit printed, so a wide story renders at 1920x1080.
+ */
+function storyPlan(file, heading) {
+  const c = slice(file, heading, 'story-plan', 'check');
+  const e = slice(file, heading, 'story-plan', 'emit');
+  assert.deepEqual(c.block, e.block, 'check and emit run in one block');
+  // /pt leads with the template block, so its paragraph sits before that block
+  const text = file === WF.plan ? `${slice(file, heading, 'story-plan', 'template').text}\n${c.text}` : c.text;
+  gated(text, 'story-plan', { gate: STORY_GATE, blocking: false });
+  assert.match(text, /three to five/);
+  assert.match(text, /CSS-only steps|only a CSS change/);
+  assert.match(text, /redline/);
+  assert.match(text, /from the original screen/);
+  assert.match(text, /exits 0 even when `ok` is false: read `ok` and `problems`, never the exit code/);
+  assert.match(text, /Story video renderer/, 'the step hands the page to the renderer');
+  assert.match(text, /`STORY_FORMAT`[^.]*`--format wide` for a wide story/, 'the hand-off carries the format');
+  // the real producer: the template block of /pt Spec
+  const tpl = run(slice(WF.plan, H.spec, 'story-plan', 'template'));
+  assert.equal(tpl.status, 0, tpl.stderr);
+  assert.equal(tpl.json.steps.length, 3);
+  const square = write(`story-${short(file)}.json`, tpl.stdout);
+  const ok = run(c, { STORY_PLAN: square });
+  assert.equal(ok.status, 0);
+  assert.equal(ok.json.ok, true, JSON.stringify(ok.json.problems));
+  assert.deepEqual(ok.json.timeline.map(t => t.id), ['color', 'space', 'corners']);
+  const out = fresh(`story-page-${short(file)}.html`);
+  const em = run(e, { STORY_PLAN: square, STORY_OUT: out });
+  assert.equal(em.status, 0, em.stderr);
+  assert.deepEqual([em.json.out, em.json.format, em.json.steps, em.json.duration_ms], [out, 'square', 3, ok.json.duration_ms]);
+  assert.equal(em.json.stripped.scripts, 1, 'the original page script is taken out');
+  const html = fs.readFileSync(out, 'utf-8');
+  assert.match(html, /<meta name="story-duration-ms" content="6400">/);
+  assert.match(html, /<meta name="story-format" content="square">/);
+  assert.doesNotMatch(html, /alert\(1\)/);
+  // a story that breaks a rule: check is advisory (exit 0, ok false), emit refuses and writes nothing
+  const broken = { ...tpl.json, steps: tpl.json.steps.slice(0, 2) };
+  const bad = write(`story-bad-${short(file)}.json`, JSON.stringify(broken));
+  const no = run(c, { STORY_PLAN: bad });
+  assert.equal(no.status, 0, 'check is advisory');
+  assert.equal(no.json.ok, false);
+  assert.ok(no.json.problems.some(p => p.code === 'step-count' && p.message), 'each problem says how to fix it');
+  const badOut = fresh(`story-page-bad-${short(file)}.html`);
+  assert.equal(run(e, { STORY_PLAN: bad, STORY_OUT: badOut }).status, 1, 'emit refuses a story that is not ok');
+  assert.equal(fs.existsSync(badOut), false);
+  assert.equal(run(e, { STORY_PLAN: square, STORY_OUT: fx.ORIGINAL }).status, 1, 'an --out that is the --page is refused');
+  assert.match(fs.readFileSync(fx.ORIGINAL, 'utf-8'), /alert\(1\)/, 'the original screen is untouched');
+  // the chain: the page emit wrote, fed to the story-render step at /pt Build with the format emit printed
+  const render = slice(WF.plan, H.build, 'story-render', 'plan');
+  assert.match(render.text, /from the Story video authoring step at CHECKPOINT 3: Spec, put its `out` in `STORY` and the `format` its `emit` printed in `STORY_FORMAT`/);
+  const sq = run(render, { STORY: em.json.out, STORY_FORMAT: em.json.format });
+  assert.equal(sq.status, 0, sq.stderr);
+  assert.deepEqual([sq.json.size.w, sq.json.size.h, sq.json.duration_ms, sq.json.frames], [1080, 1080, 6400, 192]);
+  const wide = write(`story-wide-${short(file)}.json`, JSON.stringify({ ...tpl.json, format: 'wide' }));
+  const wideOut = fresh(`story-page-wide-${short(file)}.html`);
+  const wem = run(e, { STORY_PLAN: wide, STORY_OUT: wideOut });
+  assert.equal(wem.status, 0, wem.stderr);
+  assert.equal(wem.json.format, 'wide');
+  const wr = run(render, { STORY: wem.json.out, STORY_FORMAT: wem.json.format });
+  assert.equal(wr.status, 0, wr.stderr);
+  assert.deepEqual([wr.json.format, wr.json.size.w, wr.json.size.h], ['wide', 1920, 1080], 'a wide story renders wide');
+  if (file === WF.plan) {
+    // /pt inside /mt: the step is skipped there and never asks; /mt 4.3c authors it
+    assert.match(text, /\*\*When \/pt runs as the build of a \/w-marathon stream\*\* \(\/w-marathon 4\.3 says so\), skip this step and never ask about a video: \/w-marathon 4\.3c authors the story after the passes, unattended\./);
+    assert.match(step(WF.marathon, H.mLoop), /\*\*🎞️ Story video authoring \(advisory; UI streams that ship a redesign story only\):\*\*/);
+  } else {
+    // unattended: decided at the Interview, never asked mid-loop, gaps go to the report and checklist.md
+    assert.match(text, /decided at the Interview: never ask about it in the loop/);
+    assert.match(text, /\*\*It never asks mid-loop and never waits\*\*/);
+    assert.match(text, /`- \[ \] story: <what is missing>` line in `checklist\.md`/);
+    assert.match(text, /on the loop pass where `redline-passes next` reports every pass done/, 'after the passes are done');
+    assert.doesNotMatch(text, /AskUserQuestion|wait for the answer/);
+    assert.match(text, /the stream's gate never waits on it/);
+    const loop = step(WF.marathon, H.mLoop);
+    assert.ok(loop.indexOf('**🎞️ Story video authoring') > loop.indexOf('**🧹 Slop audit'), 'after the slop audit, in 4.3c');
+    assert.ok(loop.indexOf('**🎞️ Story video authoring') < loop.indexOf('**4.4 Record runs.**'), 'before 4.4');
+  }
+}
+
 async function slopAudit(file, heading) {
   const s = slice(file, heading, 'slop-audit', 'scan');
   gated(s.text, 'slop-audit', { gate: UI, blocking: true });
@@ -628,6 +718,8 @@ const ROWS = [
   { power: 'unslop image generation gate', file: WF.plan, heading: H.build, mode: 'blocking', check: imageGate },
   { power: 'unslop image generation gate', file: WF.marathon, heading: H.mLoop, mode: 'blocking', check: imageGate },
   { power: 'unslop story video renderer', file: WF.plan, heading: H.build, mode: 'advisory', check: storyRender },
+  { power: 'unslop story video authoring', file: WF.plan, heading: H.spec, mode: 'advisory', check: storyPlan },
+  { power: 'unslop story video authoring', file: WF.marathon, heading: H.mLoop, mode: 'advisory', check: storyPlan },
   { power: 'unslop do-not list and final checklist', file: WF.plan, heading: H.review, mode: 'blocking', check: (f, h) => checklist(f, h, { blocking: true }) },
   { power: 'unslop do-not list and final checklist', file: WF.marathon, heading: H.mChecklist, mode: 'advisory', check: (f, h) => checklist(f, h, { blocking: false }) }
 ];
@@ -635,9 +727,7 @@ const ROWS = [
 // ---------- second pass: verbs still in review (add fixtures and a check, then move the entry to ROWS) ----------
 const PENDING = [
   { power: 'unslop live page snapshot', verb: 'page-snapshot', file: WF.plan, heading: H.search, mode: 'advisory' },
-  { power: 'unslop live page snapshot', verb: 'page-snapshot', file: WF.marathon, heading: H.mSearch, mode: 'advisory' },
-  { power: 'unslop story video authoring', verb: 'story-plan', file: WF.plan, heading: H.spec, mode: 'advisory' },
-  { power: 'unslop story video authoring', verb: 'story-plan', file: WF.marathon, heading: H.mLoop, mode: 'advisory' }
+  { power: 'unslop live page snapshot', verb: 'page-snapshot', file: WF.marathon, heading: H.mSearch, mode: 'advisory' }
 ];
 
 const short = (f) => path.basename(f, '.md');
@@ -742,7 +832,7 @@ describe('triage scan with an unfilled AUDIT', () => {
 });
 
 describe('without the kit', () => {
-  const VERBS = ['slop-audit', 'direction', 'slop-triage', 'redline-passes', 'design-tokens', 'image-effects', 'visual-direction', 'image-gate', 'story-render', 'redesign-checklist'];
+  const VERBS = ['slop-audit', 'direction', 'slop-triage', 'redline-passes', 'design-tokens', 'image-effects', 'visual-direction', 'image-gate', 'story-render', 'story-plan', 'redesign-checklist'];
   const blocks = (file) => {
     const lines = fs.readFileSync(path.join(ROOT, file), 'utf-8').split('\n');
     const out = [];

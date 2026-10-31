@@ -1,6 +1,6 @@
 {
   "run": "2026-10-30-unslop",
-  "ts": "2026-10-31T01:10:03.124Z",
+  "ts": "2026-10-31T02:19:48.643Z",
   "powers": {
     "unslop slop audit": {
       "verb": "slop-audit",
@@ -49,6 +49,11 @@
     },
     "unslop do-not list and final checklist": {
       "verb": "redesign-checklist",
+      "entry": null,
+      "reach": []
+    },
+    "unslop story video authoring": {
+      "verb": "story-plan",
       "entry": null,
       "reach": []
     }

@@ -33,16 +33,21 @@ targets. The bbs CLI was left unchanged. This file is where the proving test for
 | unslop image generation gate | /w-plan-tdd-swarm · ⛔ CHECKPOINT 5: Build | blocking | unslop image generation gate › w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build (blocking) |
 | unslop image generation gate | /w-marathon · ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met | blocking | unslop image generation gate › w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met (blocking) |
 | unslop story video renderer | /w-plan-tdd-swarm · ⛔ CHECKPOINT 5: Build | advisory | unslop story video renderer › w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build (advisory) |
+| unslop story video authoring | /w-plan-tdd-swarm · ⛔ CHECKPOINT 3: Spec | advisory | unslop story video authoring › w-plan-tdd-swarm › ⛔ CHECKPOINT 3: Spec (advisory) |
+| unslop story video authoring | /w-marathon · ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met | advisory | unslop story video authoring › w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met (advisory) |
 | unslop do-not list and final checklist | /w-plan-tdd-swarm · ⛔ CHECKPOINT 6: Review | blocking | unslop do-not list and final checklist › w-plan-tdd-swarm › ⛔ CHECKPOINT 6: Review (blocking) |
 | unslop do-not list and final checklist | /w-marathon · Completion Checklist | advisory | unslop do-not list and final checklist › w-marathon › Completion Checklist (advisory) |
 
-Not wired yet (listed as `it.todo` under "second pass (not wired yet)"): unslop live page snapshot (`page-snapshot`)
-and unslop story video authoring (`story-plan`).
+Not wired yet (listed as `it.todo` under "second pass (not wired yet)"): unslop live page snapshot (`page-snapshot`).
 
 Other tests in the same file that back the rows above:
 
 - slop audit gate in /w-marathon › unresolved signs keep the scripted stream gate unmet however many green test runs follow
 - slop audit gate in /w-marathon › a fix round (4.7 -> 4.4) that makes a screen dirty runs the audit again and leaves the gate unmet
 - slop audit gate in /w-marathon › the Interview adds the slop_<s> line only when the kit is installed
+- the story video authoring rows feed the real producer chain: the /pt Spec `story-plan template` block writes the story,
+  the row's own block runs `check` and `emit`, and the page `emit` wrote goes into the story-render plan block at /pt
+  CHECKPOINT 5: Build with the `format` emit printed (a wide story plans at 1920x1080); the /pt Build story-render block
+  now takes `STORY_FORMAT` for that hand-off, since story-render reads the page's duration but not its format
 - the /pt image gate inside a /w-marathon build (`MT_STREAM` set: the request is queued, never asked) is checked inside "unslop image generation gate › w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build (blocking)"
 - triage scan with an unfilled AUDIT (both workflows), without the kit (both workflows), source and installed copies
