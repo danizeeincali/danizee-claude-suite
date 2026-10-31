@@ -25,6 +25,11 @@
  *       queries and in the media= attributes of <style>, <link> and <source> (the other scheme becomes a query that never
  *       matches).
  *       --full-page screenshots the whole scrollable page. The page's rendered DOM may not exceed 8 MiB.
+ *       --timeout-ms (default 30000, 1000 to 120000) bounds the load, the settle and every asset body wait together: a body
+ *       still unfinished when the budget is spent (at least 0.5 s after the settle; a streaming or stalled image, say) is
+ *       dropped, keeps its absolute URL and is listed in skipped as "body did not finish in time"; the files are still
+ *       written and the exit is 0. An asset reached through redirects is stored under every URL of its redirect chain, so
+ *       an element naming the first URL inlines it (each hop held to the address check below).
  *       Network policy: file:// and http(s)://localhost or 127.0.0.1 are allowed and everything else is blocked at the
  *       browser (no name but localhost resolves, no proxy, non-local requests and WebSockets aborted). Any other URL is
  *       refused with exit 2 and nothing is launched, unless --allow-remote is given; then only the given URL's own origin
@@ -34,7 +39,12 @@
  *       reach a host that is loopback, private, link-local, CGNAT, unique-local, multicast, reserved or unspecified (IPv4 and
  *       IPv6, IPv4-mapped and numeric forms included), or a localhost name: Node resolves each other DNS name first (a
  *       failed lookup counts as private), redirects are held to the same check, and a response the browser got from such
- *       an address anyway is never copied; a page that ends up on one exits 2. Remote mode connects without a proxy.
+ *       an address anyway is never copied; a page that ends up on one exits 2. Remote mode connects directly, without a
+ *       proxy, even when HTTP_PROXY, HTTPS_PROXY or ALL_PROXY is set (through a proxy the address the browser reached would be
+ *       the proxy's, and the check above would mean nothing); when such a variable is set and the remote page does not load,
+ *       the exit-1 error says remote mode connects directly, without the configured proxy. Known limit: on a network that
+ *       only allows egress through a proxy a remote capture cannot work, and there is no flag to use the proxy (it would
+ *       weaken the address check; the owner decides).
  *       Each refused request's origin is in blocked_origins (file:// for file URLs). Known gap: a name whose answer changes
  *       between Node's lookup and the browser's (DNS rebinding), or a redirect inside a web worker, can reach such a host
  *       with that request; its body is dropped, and a stylesheet from it is dropped from the copy. Asset bytes are the ones the browser itself received, nothing
@@ -42,8 +52,11 @@
  *       returns { captured:false, reason:"playwright not installed: page-snapshot capture needs it", exit:4 }.
  *
  * Exit codes: 0 answer printed · 1 bad input or broken state (bad flag, unparseable URL, HTTP error, DOM over 8 MiB, --out
- * a symlink or a file, page could not load) · 2 URL refused by the network policy (not local and no --allow-remote, an
- * unsupported scheme, credentials in the URL, or a remote page that led the browser to a private address) · 4 playwright or its browser is missing.
+ * a symlink or a file, page could not load, with a proxy hint in remote mode when a proxy variable is set) · 2 URL refused
+ * by the network policy (not local and no --allow-remote, an unsupported scheme, credentials in the URL, or a remote page
+ * that led the browser to a private address) · 4 the browser cannot be used: playwright not installed, its browser could
+ * not start, "playwright >= 1.48 required" (no WebSocket routing), or "the browser cannot apply the remote address guard"
+ * (remote mode, no DevTools request interception). Exit 4 prints { captured:false, reason, exit:4 }.
  *
  * Built from ideas audited by /w-bbs (run 2026-10-30-unslop); no foreign code.
  */
@@ -56,12 +69,16 @@ import { KitExit } from './kit-exit.js';
 import { resolvePlaywright, LAUNCH_ARGS } from './frame-capture.js';
 
 export const verb = 'page-snapshot';
-export const usage = 'cli.js page-snapshot plan --url <url> [--out <dir>] | capture --url <url> --out <dir> [--width 1440] [--height 900] [--full-page] [--allow-remote] [--theme light|dark] [--timeout-ms <ms>] [--max-asset-bytes <n>] [--max-total-bytes <n>]  (JSON out; exit 1 bad input; exit 2 URL refused, remote needs --allow-remote; exit 4 playwright missing)';
+export const usage = 'cli.js page-snapshot plan --url <url> [--out <dir>] | capture --url <url> --out <dir> [--width 1440] [--height 900] [--full-page] [--allow-remote] [--theme light|dark] [--timeout-ms <ms>] [--max-asset-bytes <n>] [--max-total-bytes <n>]  (JSON out; exit 1 bad input or page could not load (remote mode connects directly, without a configured HTTP(S)_PROXY, and says so); exit 2 URL refused, remote needs --allow-remote; exit 4 playwright not installed, browser could not start, playwright >= 1.48 required, or the browser cannot apply the remote address guard; --timeout-ms also bounds asset bodies: a late one is listed in skipped as "body did not finish in time")';
 
 export const NOT_INSTALLED = 'playwright not installed: page-snapshot capture needs it';
 export const MAX_ASSET_BYTES = 2 * 1048576;
 export const MAX_TOTAL_BYTES = 20 * 1048576;
 export const MAX_HTML_BYTES = 8 * 1048576;
+export const BODY_LATE = 'body did not finish in time';
+export const BODY_GRACE_MS = 500;
+export const PROXY_HINT = 'remote mode connects directly, without the configured proxy';
+const PROXY_VARS = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy'];
 export const OUT_FILES = Object.freeze(['page.html', 'screenshot.png', 'manifest.json']);
 const MAX_STORED_BYTES = 64 * 1048576;
 const MAX_LISTED = 1000;
@@ -320,7 +337,7 @@ const CSS_IMPORT = /@import\s*(["'])([^"'\\\n]*)\1/gi;
 const cssQuote = (s) => '"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\a ') + '"';
 
 /**
- * A snapshot's byte budget and ledger. lookup(url) returns { mime, body:Buffer } | { tooBig:true, bytes } | null.
+ * A snapshot's byte budget and ledger. lookup(url) returns { mime, body:Buffer } | { tooBig:true, bytes } | { late:true } | null.
  */
 export function makeBudget({ lookup = null, maxAsset = MAX_ASSET_BYTES, maxTotal = MAX_TOTAL_BYTES } = {}) {
   return { lookup, maxAsset, maxTotal, used: 0, inlined: new Map(), skipped: new Map(), removed: { scripts: 0, iframes: 0, embedded: 0 } };
@@ -338,6 +355,7 @@ export function inlineAsset(abs, b) {
   const key = abs.split('#')[0];
   const hit = b.lookup(key);
   if (!hit) return skip(b, abs, 'the page never loaded it');
+  if (hit.late) return skip(b, abs, BODY_LATE);
   const bytes = hit.tooBig ? hit.bytes : hit.body.length;
   if (hit.tooBig || bytes > b.maxAsset) return skip(b, abs, `over the per-asset cap (${b.maxAsset} bytes)`);
   let mime = String(hit.mime || '').split(';')[0].trim().toLowerCase();
@@ -650,6 +668,7 @@ export async function capture(o, io = {}) {
   const maxAsset = o.maxAsset ?? MAX_ASSET_BYTES;
   const maxTotal = o.maxTotal ?? MAX_TOTAL_BYTES;
   const timeout = o.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const env = io.env || process.env;
   let browser;
   try {
     // remote mode connects directly (no proxy) so the address the browser reached is the server's own and can be checked
@@ -728,10 +747,16 @@ export async function capture(o, io = {}) {
 
     page.on('requestfailed', (rq) => { if (!failedUrls.has(rq.url())) failedUrls.set(rq.url(), ''); });
     // The bytes the browser itself received for images, fonts and stylesheets: nothing is fetched again.
+    // Each body is stored under every URL of its request's redirect chain, so an element that names the first URL (an
+    // image behind a 302) finds it; every hop is held to the same private-address check.
     const captured = new Map();
     const bodies = [];
+    const waiting = new Map(); // body jobs still reading: job id -> the keys it would store
+    let bodiesClosed = false; // set when the body wait ran out: a late job stores nothing
     let stored = 0;
+    let jobs = 0;
     page.on('response', (r) => {
+      const id = jobs++;
       bodies.push((async () => {
         try {
           const req = r.request();
@@ -741,23 +766,37 @@ export async function capture(o, io = {}) {
           if (st !== 0 && (st < 200 || st > 299)) return;
           const key = r.url().split('#')[0];
           if (await reachedPrivate(r)) { noteBlocked(key); return; }
+          const keys = [key];
+          for (let q = req.redirectedFrom(); q && keys.length < 21; q = q.redirectedFrom()) {
+            const k = q.url().split('#')[0];
+            if (remote && (tainted.has(k) || await privateUrl(k))) { noteBlocked(k); return; }
+            if (!keys.includes(k)) keys.push(k);
+          }
+          const put = (v) => { if (!bodiesClosed) for (const k of keys) captured.set(k, v); };
           const h = r.headers();
           const cl = Number(h['content-length']);
-          if (Number.isFinite(cl) && cl > maxAsset && req.resourceType() !== 'stylesheet') { captured.set(key, { tooBig: true, bytes: cl }); return; }
+          if (Number.isFinite(cl) && cl > maxAsset && req.resourceType() !== 'stylesheet') return put({ tooBig: true, bytes: cl });
+          if (bodiesClosed) return;
+          waiting.set(id, keys);
           const body = await r.body();
-          if (body.length > maxAsset && req.resourceType() !== 'stylesheet') { captured.set(key, { tooBig: true, bytes: body.length }); return; }
-          if (stored + body.length > MAX_STORED_BYTES) { captured.set(key, { tooBig: true, bytes: body.length }); return; }
+          waiting.delete(id);
+          if (body.length > maxAsset && req.resourceType() !== 'stylesheet') return put({ tooBig: true, bytes: body.length });
+          if (bodiesClosed) return;
+          if (stored + body.length > MAX_STORED_BYTES) return put({ tooBig: true, bytes: body.length });
           stored += body.length;
-          captured.set(key, { mime: h['content-type'] || mimeForPath(key) || '', body });
-        } catch { /* a response without a body (redirect, aborted) is simply not stored */ }
+          put({ mime: h['content-type'] || mimeForPath(key) || '', body });
+        } catch { waiting.delete(id); /* a response without a body (redirect, aborted) is simply not stored */ }
       })());
     });
 
+    const deadline = Date.now() + timeout;
     let resp;
     const ledToPrivate = (o2) => bad(`url refused: ${target.href} led the browser to a private or loopback address (${o2})`, 2);
     try { resp = await page.goto(target.href, { waitUntil: 'load', timeout }); } catch (e) {
       if (navRefused) throw ledToPrivate(navRefused);
-      throw bad(`could not load ${target.href}: ${firstLine(e)}`);
+      const proxyVar = remote ? PROXY_VARS.find((v) => env[v]) : null;
+      const hint = proxyVar ? ` (${PROXY_HINT}: ${proxyVar} is set but not used, so a network that only allows egress through a proxy cannot reach the page)` : '';
+      throw bad(`could not load ${target.href}: ${firstLine(e)}${hint}`);
     }
     if (resp && typeof resp.ok === 'function' && !resp.ok() && resp.status() !== 0) throw bad(`page returned HTTP ${resp.status()}`);
     if (resp && await reachedPrivate(resp)) throw ledToPrivate(blockedOrigin(resp.url()));
@@ -776,7 +815,19 @@ export async function capture(o, io = {}) {
       } catch { /* a page that cannot scroll is captured as it is */ }
     }
     loaded = true;
-    await Promise.all(bodies);
+    // every body wait is bounded by what is left of --timeout-ms (at least BODY_GRACE_MS): a body still streaming then is
+    // dropped and listed in skipped, and the capture goes on
+    let timer;
+    const left = Math.max(BODY_GRACE_MS, deadline - Date.now());
+    const allIn = await Promise.race([
+      Promise.all(bodies).then(() => true),
+      new Promise((r) => { timer = setTimeout(() => r(false), left); }),
+    ]);
+    clearTimeout(timer);
+    if (!allIn) {
+      bodiesClosed = true;
+      for (const keys of waiting.values()) for (const k of keys) if (!captured.has(k)) captured.set(k, { late: true });
+    }
 
     let png;
     try { png = await page.screenshot({ type: 'png', fullPage: !!o.fullPage, timeout: 15000 }); } catch (e) { throw bad(`the screenshot failed: ${firstLine(e)}`); }

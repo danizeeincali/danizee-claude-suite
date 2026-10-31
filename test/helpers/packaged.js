@@ -32,6 +32,7 @@ export async function installPackaged({ git = true } = {}) {
     NODE_OPTIONS: `${process.env.NODE_OPTIONS || ''} --import ${PRELOAD}`.trim(),
     KIT_EGRESS_LOG: log,
     KIT_EGRESS_ALLOW_DIR: dir,
+    KIT_EGRESS_ALLOW_EXEC: '', // an ambient value never widens a test's guard: only a test passing it in extra gets the allowance
     ...extra
   });
   const cli = path.join(dir, '.claude', 'helpers', 'kit', 'cli.js');

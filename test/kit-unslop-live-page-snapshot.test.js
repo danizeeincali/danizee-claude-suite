@@ -801,3 +801,130 @@ describe('page-snapshot review r1: real captures', { skip: browserOk ? false : '
     assert.match(reason(f('off.css')) || '', /disabled or alternate.*dropped from the copy/);
   });
 });
+
+// ---------------------------------------------------------------- review r2
+const errOf = async (p) => { try { await p; return null; } catch (e) { assert.ok(e instanceof KitExit, String(e)); return e; } };
+
+describe('page-snapshot review r2: exit 4 table and fakes', () => {
+  const src = readFileSync(path.join(ROOT, 'src/lib/kit/page-snapshot.js'), 'utf-8');
+  const header = src.slice(0, src.indexOf('*/'));
+  const flat = header.replace(/\n \*\s*/g, ' ');
+  it('the header and usage list every exit-4 cause, the proxy hint, the body timeout and the proxy known limit', () => {
+    for (const t of ['playwright not installed', 'browser could not start', 'playwright >= 1.48 required', 'the browser cannot apply the remote address guard']) {
+      assert.ok(flat.includes(t), `header: ${t}`);
+      assert.ok(ps.usage.includes(t), `usage: ${t}`);
+    }
+    assert.ok(flat.includes(ps.PROXY_HINT), 'header names the proxy hint');
+    assert.ok(ps.usage.includes('without a configured HTTP(S)_PROXY'), 'usage names the proxy behaviour');
+    assert.ok(flat.includes('Known limit') && /no flag to use the proxy/.test(flat), 'proxy known limit');
+    assert.ok(flat.includes(`"${ps.BODY_LATE}"`) && ps.usage.includes(ps.BODY_LATE), 'body timeout documented');
+    assert.match(flat, /4 the browser cannot be used/);
+  });
+  it('a late body marker is skipped as "body did not finish in time"', () => {
+    const b = makeBudget({ lookup: () => ({ late: true }) });
+    assert.equal(inlineAsset('https://s.test/live.jpg', b), null);
+    assert.equal(b.skipped.get('https://s.test/live.jpg'), ps.BODY_LATE);
+  });
+  const fakePw = (ctx) => async () => ({ chromium: { launch: async () => ({ newContext: async () => ctx, close: async () => {} }) } });
+  it('exit 4 "playwright >= 1.48 required" when the context cannot route WebSockets', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ps-r2-'));
+    try {
+      const r = await run(['capture', '--url', 'file:///x.html', '--out', path.join(dir, 'o')], { cwd: dir, resolvePlaywright: fakePw({}) });
+      assert.deepEqual(r, { captured: false, reason: 'playwright >= 1.48 required', exit: 4 });
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+  it('exit 4 "the browser cannot apply the remote address guard" when DevTools interception is unavailable', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ps-r2-'));
+    try {
+      const page = { on() {}, url: () => 'about:blank' };
+      const ctx = { routeWebSocket: async () => {}, route: async () => {}, newPage: async () => page, newCDPSession: async () => { throw new Error('no CDP here'); } };
+      const r = await run(['capture', '--url', 'https://example.com/', '--out', path.join(dir, 'o'), '--allow-remote'], { cwd: dir, resolvePlaywright: fakePw(ctx) });
+      assert.equal(r.exit, 4);
+      assert.equal(r.captured, false);
+      assert.match(r.reason, /^the browser cannot apply the remote address guard: no CDP here$/);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe('page-snapshot review r2: real captures', { skip: browserOk ? false : 'playwright or its browser cannot be resolved here' }, () => {
+  let dir; let srv; let port; let rem; let rp; const sockets = new Set();
+  const handler = (req, res) => {
+    if (req.url === '/live') {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      return res.end('<!doctype html><title>Live</title><img id="ok" src="/ok.png"><img id="r" src="/redir.png"><h1>live</h1>'
+        + '<script>addEventListener("load", () => { const i = new Image(); i.src = "/stream.png"; document.body.appendChild(i); });</script>');
+    }
+    if (req.url === '/stream.png') {
+      // an asset whose body never finishes (a camera feed, a stalled chunked response)
+      res.writeHead(200, { 'content-type': 'image/png' });
+      res.write(PNG.subarray(0, 8));
+      const t = setInterval(() => res.write(Buffer.from([0])), 200);
+      res.on('close', () => clearInterval(t));
+      return;
+    }
+    if (req.url === '/redir.png') { res.writeHead(302, { location: '/b.png' }); return res.end(); }
+    if (req.url === '/ok.png' || req.url === '/b.png') { res.writeHead(200, { 'content-type': 'image/png' }); return res.end(PNG); }
+    res.writeHead(404); res.end();
+  };
+  const listen = async (host) => { const s = http.createServer(handler); s.on('connection', (c) => { sockets.add(c); c.on('close', () => sockets.delete(c)); }); await new Promise((r) => s.listen(0, host, r)); return s; };
+  before(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ps-r2-real-'));
+    srv = await listen('127.0.0.1'); port = srv.address().port;
+    rem = await listen('127.0.0.2'); rp = rem.address().port;
+  });
+  after(async () => {
+    for (const c of sockets) c.destroy();
+    await new Promise((r) => srv.close(r)); await new Promise((r) => rem.close(r));
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it('a body that never finishes is dropped within --timeout-ms; the files are written and the capture exits 0', { timeout: 60000 }, async () => {
+    const out = path.join(dir, 'stream');
+    const t0 = Date.now();
+    const r = await run(['capture', '--url', `http://127.0.0.1:${port}/live`, '--out', out, '--timeout-ms', '3000'], { cwd: dir });
+    const took = Date.now() - t0;
+    assert.ok(took < 3000 + ps.BODY_GRACE_MS + 6000, `capture took ${took} ms`);
+    assert.equal(r.captured, true);
+    assert.equal(r.network_idle, false);
+    const man = JSON.parse(await fs.readFile(path.join(out, 'manifest.json'), 'utf-8'));
+    const reason = (u) => (man.skipped.find((x) => x.url === u) || {}).reason;
+    assert.equal(reason(`http://127.0.0.1:${port}/stream.png`), ps.BODY_LATE, JSON.stringify(man.skipped));
+    assert.ok(man.inlined.some((x) => x.url === `http://127.0.0.1:${port}/ok.png`), 'a finished body is still inlined');
+    const html = await fs.readFile(path.join(out, 'page.html'), 'utf-8');
+    assert.ok(html.includes(`http://127.0.0.1:${port}/stream.png`), 'the late asset keeps its absolute URL');
+    assert.deepEqual((await fs.readdir(out)).sort(), ['manifest.json', 'page.html', 'screenshot.png']);
+  });
+
+  it('an image behind a 302 is inlined under the URL the element names (local and remote same-origin)', { timeout: 60000 }, async () => {
+    for (const [base, extra] of [[`http://127.0.0.1:${port}`, []], [`http://127.0.0.2:${rp}`, ['--allow-remote']]]) {
+      const out = path.join(dir, 'redir' + extra.length);
+      const r = await run(['capture', '--url', `${base}/live`, '--out', out, '--timeout-ms', '2000', ...extra], { cwd: dir });
+      assert.equal(r.captured, true);
+      const man = JSON.parse(await fs.readFile(path.join(out, 'manifest.json'), 'utf-8'));
+      assert.ok(man.inlined.some((x) => x.url === `${base}/redir.png`), `${base}: ${JSON.stringify(man.inlined)}`);
+      assert.ok(!man.skipped.some((x) => x.url === `${base}/redir.png`), `${base}: ${JSON.stringify(man.skipped)}`);
+      const html = await fs.readFile(path.join(out, 'page.html'), 'utf-8');
+      assert.ok(!html.includes(`${base}/redir.png`), 'the redirected image keeps its remote URL');
+    }
+  });
+
+  it('a remote page that does not load names the bypassed proxy when a proxy variable is set, and only then', { timeout: 60000 }, async () => {
+    const s = http.createServer(); await new Promise((r) => s.listen(0, '127.0.0.2', r));
+    const dead = s.address().port; await new Promise((r) => s.close(r));
+    const url = `http://127.0.0.2:${dead}/`;
+    const go = (env) => errOf(run(['capture', '--url', url, '--out', path.join(dir, 'dead'), '--allow-remote', '--timeout-ms', '5000'], { cwd: dir, env }));
+    for (const v of ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'ALL_PROXY']) {
+      const e = await go({ [v]: 'http://proxy.test:3128' });
+      assert.equal(e && e.code, 1, v);
+      assert.match(e.message, /^could not load /);
+      assert.ok(e.message.includes(ps.PROXY_HINT) && e.message.includes(`${v} is set`), e.message);
+    }
+    const plain = await go({});
+    assert.equal(plain && plain.code, 1);
+    assert.ok(!plain.message.includes(ps.PROXY_HINT), plain.message);
+    // a local page never gets the hint: local mode does not involve the proxy question
+    const local = await errOf(run(['capture', '--url', `http://127.0.0.1:${dead}/`, '--out', path.join(dir, 'dead2'), '--timeout-ms', '5000'], { cwd: dir, env: { HTTPS_PROXY: 'http://p' } }));
+    assert.equal(local && local.code, 1);
+    assert.ok(!local.message.includes(ps.PROXY_HINT), local.message);
+  });
+});

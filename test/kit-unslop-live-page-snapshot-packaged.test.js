@@ -79,6 +79,25 @@ describe('page-snapshot — packaged end to end', () => {
     assert.deepEqual(rows.filter((x) => !/^child_process\./.test(x.kind)), []);
   });
 
+  it('review r2: an ambient KIT_EGRESS_ALLOW_EXEC never reaches a packaged run; only extraEnv sets it', { skip: browserOk ? false : 'playwright cannot be resolved here' }, async () => {
+    const browsers = path.resolve(pw.chromium.executablePath(), '..', '..', '..');
+    const saved = process.env.KIT_EGRESS_ALLOW_EXEC;
+    process.env.KIT_EGRESS_ALLOW_EXEC = browsers;
+    try {
+      assert.equal(pkg.env().KIT_EGRESS_ALLOW_EXEC, '');
+      assert.equal(pkg.env({ KIT_EGRESS_ALLOW_EXEC: browsers }).KIT_EGRESS_ALLOW_EXEC, browsers);
+      // with the browsers folder exported in the parent, a run that does not pass it is still refused the launch
+      const probeLog = path.join(pkg.dir, 'probe-ambient.jsonl');
+      const c = pkg.kit(['page-snapshot', 'capture', '--url', pathToFileURL(path.join(pkg.dir, 'site', 'a.html')).href, '--out', 'snap4'], undefined, { extraEnv: { KIT_EGRESS_LOG: probeLog } });
+      assert.equal(c.code, 4, c.err);
+      assert.match(c.json.reason, /browser could not start/);
+      const rows = (await fs.readFile(probeLog, 'utf-8')).split('\n').filter(Boolean).map((l) => JSON.parse(l));
+      assert.ok(rows.some((x) => /^child_process\./.test(x.kind)), 'the launch was not refused');
+    } finally {
+      if (saved === undefined) delete process.env.KIT_EGRESS_ALLOW_EXEC; else process.env.KIT_EGRESS_ALLOW_EXEC = saved;
+    }
+  });
+
   it('ends with zero egress after a final guarded run (plan on a local URL, past the refusal path)', () => {
     const l = pkg.kit(['page-snapshot', 'plan', '--url', pathToFileURL(path.join(pkg.dir, 'site', 'a.html')).href, '--out', 'snap2']);
     assert.equal(l.code, 0, l.err);
