@@ -1,11 +1,13 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { EventEmitter } from 'node:events';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { run, verb, usage, parseStoryDuration, buildFfmpegArgs, frameCount, planStory, probeFfmpeg, FORMATS, FFMPEG_MISSING } from '../src/lib/kit/story-render.js';
+import { run, verb, usage, parseStoryDuration, buildFfmpegArgs, frameCount, planStory, probeFfmpeg, encodeTimeoutS, FORMATS, FFMPEG_MISSING } from '../src/lib/kit/story-render.js';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -236,7 +238,7 @@ const framesDirs = async () => (await fs.readdir(os.tmpdir())).filter((n) => n.s
 describe('story-render encode step with frames from a fake browser', () => {
   let bindir;
   before(async () => { bindir = path.join(dir, 'bin'); await fs.mkdir(bindir); });
-  const ffmpeg = async (body) => { await fs.writeFile(path.join(bindir, 'ffmpeg'), `#!/bin/sh\nfor a; do last="$a"; done\n[ "$1" = "-version" ] && echo fake && exit 0\n${body}\n`); await fs.chmod(path.join(bindir, 'ffmpeg'), 0o755); };
+  const ffmpeg = async (body) => { await fs.writeFile(path.join(bindir, 'ffmpeg'), `#!/bin/sh\nfor a; do last="$a"; done\n[ "$1" = "-version" ] && echo fake && exit 0\n[ "$2" = "-encoders" ] && echo " V....D libx264" && exit 0\n${body}\n`); await fs.chmod(path.join(bindir, 'ffmpeg'), 0o755); };
   it('a failing ffmpeg encode exits 1 with the stderr tail, removes the .part.mp4 and the temp frames', async () => {
     await ffmpeg('head -c 100 /dev/zero > "$last"\necho "line1" >&2\necho "Encoder exploded" >&2\nexit 3');
     const f = await write('enc1.html', story(1000));
@@ -313,7 +315,7 @@ describe('story-render header contract', () => {
     const src = await fs.readFile(path.join(HERE, '..', 'src', 'lib', 'kit', 'story-render.js'), 'utf-8');
     const header = src.slice(0, src.indexOf('*/'));
     for (const k of ['file', 'format', 'size', 'fps', 'frames', 'duration_ms', 'duration_source', 'ffmpeg_args', 'out', 'bytes', 'frames_dir', 'url', 'play_url', 'contract', 'next', 'exit:4', 'blocked_origins', 'warnings']) assert.ok(header.includes(k), k);
-    for (const k of ['story-duration-ms', 'data-story-duration-ms', '?play=1', '--keep-frames', '--ffmpeg', '--max-seconds', 'libx264', 'yuv420p', '+faststart']) assert.ok(header.includes(k), k);
+    for (const k of ['story-duration-ms', 'data-story-duration-ms', '?play=1', '--keep-frames', '--ffmpeg', '--max-seconds', '--encode-timeout-s', 'interrupted by SIG', 'SIGKILL after', 'hide_banner -encoders', 'libx264', 'yuv420p', '+faststart']) assert.ok(header.includes(k), k);
     assert.ok(header.trimEnd().endsWith('Built from ideas audited by /w-bbs (run 2026-10-30-unslop); no foreign code.'));
     const mirror = await fs.readFile(path.join(HERE, '..', '.claude', 'helpers', 'kit', 'story-render.js'));
     assert.ok(mirror.equals(Buffer.from(src)));
@@ -357,7 +359,7 @@ describe('story-render end to end (real playwright + ffmpeg)', () => {
 describe('story-render r2 failure paths', () => {
   let bindir;
   before(async () => { bindir = path.join(dir, 'bin2'); await fs.mkdir(bindir); });
-  const ffmpeg = async (body) => { await fs.writeFile(path.join(bindir, 'ffmpeg'), `#!/bin/sh\nfor a; do last="$a"; done\n[ "$1" = "-version" ] && echo fake && exit 0\n${body}\n`); await fs.chmod(path.join(bindir, 'ffmpeg'), 0o755); };
+  const ffmpeg = async (body) => { await fs.writeFile(path.join(bindir, 'ffmpeg'), `#!/bin/sh\nfor a; do last="$a"; done\n[ "$1" = "-version" ] && echo fake && exit 0\n[ "$2" = "-encoders" ] && echo " V....D libx264" && exit 0\n${body}\n`); await fs.chmod(path.join(bindir, 'ffmpeg'), 0o755); };
   it('a signal-killed ffmpeg is named, not "exit null"', async () => {
     await ffmpeg('kill -KILL $$');
     const f = await write('r2a.html', story(1000));
@@ -416,23 +418,26 @@ describe('story-render r2 failure paths', () => {
     const f = await write('r2e.html', story(1000));
     const base = ['SIGINT', 'SIGTERM'].map((s) => process.listenerCount(s));
     for (const sig of ['SIGINT', 'SIGTERM']) {
+      const target = new EventEmitter(); // injected: no real signal ever reaches the test runner
       const before = await framesDirs();
-      let raised = null, release;
+      let raised = null, release, err = '';
       const gate = new Promise((r) => { release = r; });
       const slowExec = async (cmd, args) => {
-        if (args[0] === '-version') return { code: 0, stderr: '' };
+        if (args[0] === '-version' || args.includes('-encoders')) return { code: 0, stderr: '', stdout: ' V....D libx264' };
         await fs.writeFile(args.at(-1), 'partial');
-        process.emit(sig, sig);
+        target.emit(sig, sig);
         await gate;
         return { code: 1, stderr: 'interrupted' };
       };
-      const pr = run(['render', '--file', f, '--out', 'r2e.mp4', '--fps', '5'], { cwd: dir, exec: slowExec, resolvePlaywright: async () => fakeBrowser(), reraise: (s) => { raised = s; } });
+      const pr = run(['render', '--file', f, '--out', 'r2e.mp4', '--fps', '5'], { cwd: dir, exec: slowExec, resolvePlaywright: async () => fakeBrowser(), reraise: (s) => { raised = s; }, signalTarget: target, stderr: { write: (m) => { err += m; } } });
       await new Promise((r) => setTimeout(r, 300));
       assert.equal(raised, sig);
+      assert.equal(err, `story-render: interrupted by ${sig}\n`);
       assert.deepEqual(await framesDirs(), before, 'frames folder removed synchronously');
       assert.deepEqual((await fs.readdir(dir)).filter((n) => n.endsWith('.part.mp4')), []);
+      assert.deepEqual(['SIGINT', 'SIGTERM'].map((s) => target.listenerCount(s)), [0, 0]);
       assert.deepEqual(['SIGINT', 'SIGTERM'].map((s) => process.listenerCount(s)), base);
-      release(); await assert.rejects(pr);
+      release(); await assert.rejects(pr, (e) => e instanceof KitExit && e.message === `interrupted by ${sig}`);
     }
   });
   it('a real child process killed by SIGTERM mid-render leaves no temp files and dies by the signal', async () => {
@@ -441,7 +446,7 @@ describe('story-render r2 failure paths', () => {
     await fs.writeFile(script, `import { run } from ${JSON.stringify(mod)};
 const fake = { chromium: { launch: async () => ({ close: async () => {}, newContext: async () => ({ route: async () => {}, routeWebSocket: async () => {}, newPage: async () => ({ clock: { install: async () => {}, pauseAt: async () => {}, runFor: async () => {} }, goto: async () => ({ ok: () => true, status: () => 200 }), evaluate: async () => {}, screenshot: async () => Buffer.from('89504e470d0a1a0a', 'hex') }) }) }) } };
 import fs from 'node:fs';
-run(['render', '--file', ${JSON.stringify(path.join(dir, 'r2e.html'))}, '--out', ${JSON.stringify(path.join(dir, 'r2f.mp4'))}, '--fps', '5'], { exec: async (c, a) => { if (a[0] === '-version') return { code: 0, stderr: '' }; fs.writeFileSync(a.at(-1), 'x'); console.log('READY'); setInterval(() => {}, 1000); await new Promise(() => {}); }, resolvePlaywright: async () => fake });
+run(['render', '--file', ${JSON.stringify(path.join(dir, 'r2e.html'))}, '--out', ${JSON.stringify(path.join(dir, 'r2f.mp4'))}, '--fps', '5'], { exec: async (c, a) => { if (a[0] === '-version' || a.includes('-encoders')) return { code: 0, stderr: '', stdout: ' V....D libx264' }; fs.writeFileSync(a.at(-1), 'x'); console.log('READY'); setInterval(() => {}, 1000); await new Promise(() => {}); }, resolvePlaywright: async () => fake });
 `);
     const before = await framesDirs();
     const { spawn } = await import('node:child_process');
@@ -453,5 +458,99 @@ run(['render', '--file', ${JSON.stringify(path.join(dir, 'r2e.html'))}, '--out',
     assert.equal(r.s, 'SIGTERM', JSON.stringify(r));
     assert.deepEqual(await framesDirs(), before);
     assert.deepEqual((await fs.readdir(dir)).filter((n) => n.endsWith('.part.mp4')), []);
+  });
+});
+
+describe('story-render r3 fixes', () => {
+  let bindir;
+  before(async () => { bindir = path.join(dir, 'bin3'); await fs.mkdir(bindir); });
+  const alive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
+  const ffmpegStub = async (body) => { await fs.writeFile(path.join(bindir, 'ffmpeg'), `#!/bin/sh\n[ "$1" = "-version" ] && echo fake && exit 0\n[ "$2" = "-encoders" ] && echo " V....D libx264" && exit 0\n${body}\n`); await fs.chmod(path.join(bindir, 'ffmpeg'), 0o755); };
+  for (const [name, body] of [['obeys SIGTERM', 'exec sleep 60'], ['ignores SIGTERM (needs SIGKILL)', "trap '' TERM\necho $$ > \"$PIDFILE\"\nwhile :; do sleep 1; done"]]) {
+    it(`a signal kills the running ffmpeg child (real process that ${name}) before re-raising, with --keep-frames named`, async () => {
+      const pidfile = path.join(dir, `pid-${name.length}`);
+      await ffmpegStub(name.startsWith('obeys') ? `echo $$ > "${pidfile}"\n${body}` : body.replace('$PIDFILE', pidfile));
+      const f = await write(`r3a${name.length}.html`, story(1000));
+      const target = new EventEmitter();
+      let err = '', pidAtReraise = null, reraised = null;
+      await withPath(bindir, async () => {
+        const pr = run(['render', '--file', f, '--out', `r3a${name.length}.mp4`, '--fps', '5', '--keep-frames'], { cwd: dir, resolvePlaywright: async () => fakeBrowser(), signalTarget: target, killGraceMs: 300, stderr: { write: (m) => { err += m; } },
+          reraise: (s) => { reraised = s; pidAtReraise = Number(fsSync.readFileSync(pidfile, 'utf-8')); } });
+        const t0 = Date.now();
+        while (!fsSync.existsSync(pidfile) || !fsSync.readFileSync(pidfile, 'utf-8').trim()) { assert.ok(Date.now() - t0 < 15000, 'ffmpeg stub never started'); await new Promise((r) => setTimeout(r, 20)); }
+        const pid = Number(fsSync.readFileSync(pidfile, 'utf-8'));
+        assert.ok(alive(pid));
+        target.emit('SIGTERM', 'SIGTERM');
+        let kept = null;
+        await assert.rejects(pr, (e) => { const m = /^interrupted by SIGTERM; frames kept in (\S+)$/.exec(e.message); kept = m && m[1]; return !!m && !/screenshot/.test(e.message); });
+        assert.equal(reraised, 'SIGTERM');
+        assert.equal(pidAtReraise, pid);
+        assert.equal(alive(pid), false, 'ffmpeg child is gone by the time the signal is re-raised');
+        assert.match(err, new RegExp(`^story-render: interrupted by SIGTERM; frames kept in ${kept}\n$`));
+        await fs.rm(kept, { recursive: true, force: true });
+      });
+    });
+  }
+  it('real node process: SIGTERM to node alone leaves no ffmpeg orphan and prints "interrupted by SIGTERM", not a screenshot error', async () => {
+    const pidfile = path.join(dir, 'pid-real');
+    await ffmpegStub(`echo $$ > "${pidfile}"\nexec sleep 60`);
+    const f = await write('r3b.html', story(1000));
+    const script = path.join(dir, 'sigchild2.mjs');
+    const mod = path.join(HERE, '..', 'src', 'lib', 'kit', 'story-render.js');
+    await fs.writeFile(script, `import { run } from ${JSON.stringify(mod)};
+const fake = { chromium: { launch: async () => ({ close: async () => {}, newContext: async () => ({ route: async () => {}, routeWebSocket: async () => {}, newPage: async () => ({ clock: { install: async () => {}, pauseAt: async () => {}, runFor: async () => {} }, goto: async () => ({ ok: () => true, status: () => 200 }), evaluate: async () => {}, screenshot: async () => Buffer.from('89504e470d0a1a0a', 'hex') }) }) }) } };
+run(['render', '--file', ${JSON.stringify(f)}, '--out', ${JSON.stringify(path.join(dir, 'r3b.mp4'))}, '--fps', '5'], { resolvePlaywright: async () => fake, killGraceMs: 300 }).catch(() => {});
+`);
+    await fs.rm(pidfile, { force: true });
+    const { spawn } = await import('node:child_process');
+    let err = '';
+    const child = spawn(process.execPath, [script], { stdio: ['ignore', 'ignore', 'pipe'], env: { ...process.env, PATH: `${bindir}${path.delimiter}${process.env.PATH}` } });
+    child.stderr.on('data', (d) => { err += d; });
+    const exited = new Promise((res) => child.on('exit', (c, s) => res({ c, s })));
+    const t0 = Date.now();
+    while (!fsSync.existsSync(pidfile) || !fsSync.readFileSync(pidfile, 'utf-8').trim()) { assert.ok(Date.now() - t0 < 15000); await new Promise((r) => setTimeout(r, 20)); }
+    const pid = Number(fsSync.readFileSync(pidfile, 'utf-8'));
+    child.kill('SIGTERM');
+    const r = await exited;
+    assert.equal(r.s, 'SIGTERM', JSON.stringify(r));
+    assert.equal(alive(pid), false, 'ffmpeg orphan');
+    assert.match(err, /story-render: interrupted by SIGTERM/);
+    assert.doesNotMatch(err, /screenshot/);
+  });
+  it('probe: an ffmpeg without libx264 is exit 4 before any frame is captured, with the reason', async () => {
+    await ffmpegStub('exit 0');
+    await fs.writeFile(path.join(bindir, 'ffmpeg'), '#!/bin/sh\n[ "$1" = "-version" ] && echo fake && exit 0\n[ "$2" = "-encoders" ] && printf " V....D libx265  x\\n V....D libx264rgb  y\\n" && exit 0\nexit 1\n');
+    const f = await write('r3c.html', story(1000));
+    let captured = false;
+    await withPath(bindir, async () => {
+      const r = await run(['render', '--file', f, '--out', 'r3c.mp4'], { cwd: dir, resolvePlaywright: async () => { captured = true; return null; } });
+      assert.equal(r.exit, 4);
+      assert.equal(r.out, null);
+      assert.match(r.reason, /no libx264 encoder/);
+      assert.equal(captured, false);
+      const p = await probeFfmpeg('ffmpeg');
+      assert.equal(p.ok, false);
+    });
+    await ffmpegStub('exit 0');
+    assert.equal((await withPath(bindir, () => probeFfmpeg('ffmpeg'))).ok, true);
+  });
+  it('encode timeout scales with frames and size, floor 600 s, and --encode-timeout-s overrides it', async () => {
+    assert.equal(encodeTimeoutS(30, FORMATS.square), 600);
+    assert.equal(encodeTimeoutS(7200, FORMATS.wide), 1440);
+    assert.equal(encodeTimeoutS(7200, FORMATS.square), 810);
+    assert.ok(encodeTimeoutS(7200, FORMATS.wide) > encodeTimeoutS(7200, FORMATS.square));
+    const f = await write('r3d.html', story(120000));
+    const seen = [];
+    const mk = () => async (cmd, args, t) => { if (args[0] === '-version' || args.includes('-encoders')) return { code: 0, stderr: '', stdout: ' V....D libx264' }; seen.push(t); return { code: 1, stderr: 'stop' }; };
+    const cmdline = ['render', '--file', f, '--out', 'r3d.mp4', '--max-seconds', '120', '--fps', '60', '--format', 'wide'];
+    // capture is fast with the fake browser only for a few frames; use a short story for the timeout plumbing
+    const g = await write('r3e.html', story(1000));
+    await assert.rejects(run(['render', '--file', g, '--out', 'r3e.mp4', '--fps', '5'], { cwd: dir, exec: mk(), resolvePlaywright: async () => fakeBrowser() }), /ffmpeg failed/);
+    await assert.rejects(run(['render', '--file', g, '--out', 'r3e.mp4', '--fps', '5', '--encode-timeout-s', '1234'], { cwd: dir, exec: mk(), resolvePlaywright: async () => fakeBrowser() }), /ffmpeg failed/);
+    assert.deepEqual(seen, [600000, 1234000]);
+    assert.ok(cmdline.length);
+    assert.equal(await code(run(['render', '--file', g, '--out', 'x.mp4', '--encode-timeout-s', '0'], { cwd: dir })), 1);
+    assert.equal(await code(run(['render', '--file', g, '--out', 'x.mp4', '--encode-timeout-s', 'abc'], { cwd: dir })), 1);
+    assert.equal(await code(run(['render', '--file', g, '--out', 'x.mp4', '--encode-timeout-s', '86401'], { cwd: dir })), 1);
   });
 });

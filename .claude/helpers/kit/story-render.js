@@ -14,20 +14,25 @@
  *       A page with none of these, a value that is not a positive whole number, or a duration over
  *       --max-seconds is refused (exit 1) with a message saying what to change.
  *   story-render render --file <story.html> --out <file.mp4> [--format square|wide] [--fps <n>] [--max-seconds <n>]
- *                       [--ffmpeg <path>] [--keep-frames]
+ *                       [--ffmpeg <path>] [--keep-frames] [--encode-timeout-s <n>]
  *       → { out, frames, duration_ms, size, bytes, format, fps, ffmpeg, blocked_origins } (plus frames_dir with --keep-frames, and
  *       warnings when blocked_origins is not empty: one entry per blocked origin, since its fonts/images are missing from the video).
  *       Captures the frames through frame-capture into a temp directory (the story is loaded from its file:// URL;
  *       only local requests (file://, localhost) are allowed, everything else is blocked in the browser and listed in blocked_origins), then encodes them with ffmpeg spawned from an argv array
  *       without a shell. The temp frames are removed afterwards unless --keep-frames. --out must end in .mp4 and is
- *       written through a temp name and renamed. ffmpeg is probed with `ffmpeg -version` (or `<path> -version`
- *       with --ffmpeg) before any frame is captured; if missing, the result is
- *       { out:null, frames:0, reason:"ffmpeg not found: ...", exit:4 }. If playwright cannot be resolved the
+ *       written through a temp name and renamed. ffmpeg is probed with `ffmpeg -version` and `ffmpeg -hide_banner -encoders`
+ *       (or `<path> ...` with --ffmpeg) before any frame is captured; a missing ffmpeg, or a build without the libx264
+ *       encoder, gives
+ *       { out:null, frames:0, reason:"ffmpeg not found: ..." (or "... has no libx264 encoder ..."), exit:4 }. If playwright cannot be resolved the
  *       frame-capture result passes through the same way (exit 4, out:null). A failed encode exits 1 with the
- *       tail of ffmpeg's stderr; a killed or timed-out ffmpeg is named ("killed by SIGKILL", "timed out after 600 s"), a hanging
+ *       tail of ffmpeg's stderr; a killed or timed-out ffmpeg is named ("killed by SIGKILL", "timed out after N s"), a hanging
  *       `-version` is reported as "ffmpeg did not answer" (exit 4), and an ffmpeg that exits 0 without writing the file exits 1 saying so.
  *       With --keep-frames every failure message names the kept frames folder (the exit-4 capture result also carries frames_dir).
- *       SIGINT/SIGTERM during a render remove the temp frames folder (unless --keep-frames) and the .part.mp4, then re-raise the signal.
+ *       Encode timeout: max(600 s, ceil(frames x 0.2 s x (w x h) / (1920 x 1080))), e.g. 7200 wide frames = 1440 s; --encode-timeout-s <n>
+ *       (1..86400) overrides it.
+ *       SIGINT/SIGTERM during a render stop a running ffmpeg child (SIGTERM, then SIGKILL after a 2 s grace), remove the temp frames
+ *       folder (unless --keep-frames) and the .part.mp4, print "story-render: interrupted by SIGTERM" (plus "; frames kept in <dir>"
+ *       with --keep-frames) instead of a capture error, then re-raise the signal.
  *   story-render play --file <story.html> [--format square|wide]
  *       → { url, play_url, contract, next }. Prints the file:// URL to open; it starts no browser. The contract:
  *       a story page opened with the query `?play=1` runs live at real speed (real clock, animations running,
@@ -49,7 +54,7 @@ import { KitExit } from './kit-exit.js';
 import { capture } from './frame-capture.js';
 
 export const verb = 'story-render';
-export const usage = 'cli.js story-render plan --file <story.html> [--format square|wide] [--fps <n>] [--max-seconds <n>] | render --file <story.html> --out <file.mp4> [--format square|wide] [--fps <n>] [--max-seconds <n>] [--ffmpeg <path>] [--keep-frames] | play --file <story.html> [--format square|wide]  (JSON out; exit 1 bad input; exit 4 ffmpeg or playwright missing)';
+export const usage = 'cli.js story-render plan --file <story.html> [--format square|wide] [--fps <n>] [--max-seconds <n>] | render --file <story.html> --out <file.mp4> [--format square|wide] [--fps <n>] [--max-seconds <n>] [--ffmpeg <path>] [--keep-frames] [--encode-timeout-s <n>] | play --file <story.html> [--format square|wide]  (JSON out; exit 1 bad input; exit 4 ffmpeg or playwright missing)';
 
 export const MAX_INPUT_BYTES = 8 * 1048576;
 export const FORMATS = Object.freeze({ square: { w: 1080, h: 1080 }, wide: { w: 1920, h: 1080 } });
@@ -59,6 +64,11 @@ const MAX_FPS = 60;
 const MAX_MAX_SECONDS = 120;
 const MAX_TAG_CHARS = 8192;
 export const FFMPEG_MISSING = 'ffmpeg not found: story-render render needs it';
+export const SIGNAL_GRACE_MS = 2000;
+const MAX_ENCODE_TIMEOUT_S = 86400;
+/** Encode timeout in seconds: scales with frames and pixels (0.2 s per 1920x1080 frame), never under 600 s. */
+export const encodeTimeoutS = (frames, size) => Math.max(600, Math.ceil((frames * 0.2 * size.w * size.h) / (1920 * 1080)));
+const liveChildren = new Set();
 
 const bad = (m, code = 1) => new KitExit(m, code);
 
@@ -217,16 +227,19 @@ async function readStory(file, io) {
 }
 
 /** Run a program with an argv array (never a shell). Resolves { code, stderr, error }; stderr keeps the last 4 KiB. */
-function exec(cmd, args, timeoutMs = 600000) {
+function exec(cmd, args, timeoutMs = 600000, opts = {}) {
   return new Promise((resolve) => {
     let stderr = '';
+    let stdout = '';
     let child;
-    try { child = spawn(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'], shell: false }); } catch (error) { resolve({ code: null, stderr, error }); return; }
+    try { child = spawn(cmd, args, { stdio: ['ignore', opts.stdout ? 'pipe' : 'ignore', 'pipe'], shell: false }); } catch (error) { resolve({ code: null, stderr, error }); return; }
+    liveChildren.add(child);
     let timedOut = false;
     const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, timeoutMs);
     child.stderr.on('data', (d) => { stderr = (stderr + d).slice(-4096); });
-    child.on('error', (error) => { clearTimeout(timer); resolve({ code: null, stderr, error }); });
-    child.on('close', (code, signal) => { clearTimeout(timer); resolve({ code, signal, timedOut, timeoutMs, stderr }); });
+    if (opts.stdout) child.stdout.on('data', (d) => { if (stdout.length < 1048576) stdout += d; });
+    child.on('error', (error) => { clearTimeout(timer); liveChildren.delete(child); resolve({ code: null, stderr, error }); });
+    child.on('close', (code, signal) => { clearTimeout(timer); liveChildren.delete(child); resolve({ code, signal, timedOut, timeoutMs, stderr, ...(opts.stdout ? { stdout } : {}) }); });
   });
 }
 
@@ -243,7 +256,21 @@ export async function probeFfmpeg(bin = 'ffmpeg', io = {}) {
   const r = await (io.exec || exec)(bin, ['-version'], 10000);
   if (r.timedOut) return { ok: false, ffmpeg: bin, reason: `ffmpeg did not answer: "${bin} -version" ${describeExit(r)}; check that ${bin} is a working ffmpeg or pass --ffmpeg <path>` };
   if (r.error || r.code !== 0) return { ok: false, ffmpeg: bin, reason: `${FFMPEG_MISSING} (${describeExit(r)} running "${bin} -version"); install ffmpeg or pass --ffmpeg <path>` };
+  const enc = await (io.exec || exec)(bin, ['-hide_banner', '-encoders'], 10000, { stdout: true });
+  if (enc.timedOut) return { ok: false, ffmpeg: bin, reason: `ffmpeg did not answer: "${bin} -encoders" ${describeExit(enc)}; check that ${bin} is a working ffmpeg or pass --ffmpeg <path>` };
+  if (!enc.error && enc.code === 0 && typeof enc.stdout === 'string' && !/^\s*[A-Z.]{6}\s+libx264\b/m.test(enc.stdout)) {
+    return { ok: false, ffmpeg: bin, reason: `${bin} has no libx264 encoder (ffmpeg not usable: story-render render needs libx264); install an ffmpeg build with libx264 or pass --ffmpeg <path>` };
+  }
   return { ok: true, ffmpeg: bin };
+}
+
+/** SIGTERM every live child, wait up to graceMs for them to close, then SIGKILL the rest. */
+async function stopChildren(graceMs) {
+  const kids = [...liveChildren];
+  for (const c of kids) { try { c.kill('SIGTERM'); } catch { /* gone */ } }
+  const t0 = Date.now();
+  while (Date.now() - t0 < graceMs && kids.some((c) => c.exitCode === null && c.signalCode === null)) await new Promise((r) => setTimeout(r, 20));
+  for (const c of kids) { if (c.exitCode === null && c.signalCode === null) { try { c.kill('SIGKILL'); } catch { /* gone */ } } }
 }
 
 export async function render(o, io = {}) {
@@ -265,9 +292,16 @@ export async function render(o, io = {}) {
     try { rmSync(tmpOut, { force: true }); } catch { /* best effort */ }
     if (!o.keepFrames) { try { rmSync(framesDir, { recursive: true, force: true }); } catch { /* best effort */ } }
   };
-  const onSignal = (sig) => {
+  const kept = o.keepFrames ? `; frames kept in ${framesDir}` : '';
+  let interrupted = null;
+  let signalDone = null;
+  const onSignal = async (sig) => {
+    if (interrupted) return;
+    interrupted = sig;
+    try { (io.stderr || process.stderr).write(`story-render: interrupted by ${sig}${kept}\n`); } catch { /* best effort */ }
+    for (const [s2, h] of handlers) sigTarget.removeListener(s2, h);
+    await stopChildren(io.killGraceMs ?? SIGNAL_GRACE_MS);
     cleanupSync();
-    for (const [s2, h] of handlers) process.removeListener(s2, h);
     if (io.reraise) { io.reraise(sig); return; }
     // Re-raise with the default action; if the signal is swallowed, still exit the way a signalled process would (128 + signo).
     setImmediate(() => {
@@ -275,13 +309,14 @@ export async function render(o, io = {}) {
       setTimeout(() => process.exit(128 + (os.constants.signals[sig] || 15)), 100);
     });
   };
-  const handlers = ['SIGINT', 'SIGTERM'].map((s2) => [s2, () => onSignal(s2)]);
-  for (const [s2, h] of handlers) process.on(s2, h);
-  const kept = o.keepFrames ? `; frames kept in ${framesDir}` : '';
+  const sigTarget = io.signalTarget || process;
+  const handlers = ['SIGINT', 'SIGTERM'].map((s2) => [s2, () => { signalDone = onSignal(s2); }]);
+  for (const [s2, h] of handlers) sigTarget.on(s2, h);
   try {
     const cap = await capture({ url: pathToFileURL(abs).href, out: framesDir, fps: p.fps, frames: p.frames, warmup: 0, loopMs: null, width: p.size.w, height: p.size.h, scale: 1 }, io);
+    if (interrupted) { await signalDone; throw bad(`interrupted by ${interrupted}${kept}`, 1); }
     if (cap.exit) return { out: null, frames: 0, reason: `${cap.reason}${kept}`, exit: cap.exit, ...(o.keepFrames ? { frames_dir: framesDir } : {}) };
-    const enc = await (io.exec || exec)(bin, buildFfmpegArgs({ framesDir, out: tmpOut, fps: p.fps }));
+    const enc = await (io.exec || exec)(bin, buildFfmpegArgs({ framesDir, out: tmpOut, fps: p.fps }), (o.encodeTimeoutS || encodeTimeoutS(p.frames, p.size)) * 1000);
     if (enc.error || enc.code !== 0) throw bad(`ffmpeg failed (${describeExit(enc)}): ${String(enc.stderr || '').trim().split('\n').slice(-5).join(' | ')}`);
     const made = await fs.stat(tmpOut).catch(() => null);
     if (!made || !made.isFile() || !made.size) throw bad(`ffmpeg exited 0 but wrote no output (${made ? 'empty file' : 'no file'} at ${tmpOut})`);
@@ -293,10 +328,11 @@ export async function render(o, io = {}) {
     if (o.keepFrames) res.frames_dir = framesDir;
     return res;
   } catch (e) {
+    if (interrupted) { await signalDone; throw bad(`interrupted by ${interrupted}${kept}`, 1); }
     if (o.keepFrames && e && typeof e.message === 'string' && !e.message.includes(framesDir)) e.message += kept;
     throw e;
   } finally {
-    for (const [s2, h] of handlers) process.removeListener(s2, h);
+    if (!interrupted) for (const [s2, h] of handlers) sigTarget.removeListener(s2, h);
     await fs.rm(tmpOut, { force: true }).catch(() => {});
     if (!o.keepFrames) await fs.rm(framesDir, { recursive: true, force: true }).catch(() => {});
   }
@@ -312,8 +348,8 @@ export async function run(args, io = {}) {
     return planStory({ html, file: abs, ...planOpts(f) });
   }
   if (sub === 'render') {
-    const f = parseFlags(rest, ['file', 'out', 'format', 'fps', 'max-seconds', 'ffmpeg'], ['keep-frames']);
-    return render({ file: f.file, out: f.out, ffmpeg: f.ffmpeg, keepFrames: !!f['keep-frames'], ...planOpts(f) }, io);
+    const f = parseFlags(rest, ['file', 'out', 'format', 'fps', 'max-seconds', 'ffmpeg', 'encode-timeout-s'], ['keep-frames']);
+    return render({ file: f.file, out: f.out, ffmpeg: f.ffmpeg, keepFrames: !!f['keep-frames'], encodeTimeoutS: intFlag(f, 'encode-timeout-s', 1, MAX_ENCODE_TIMEOUT_S, 0), ...planOpts(f) }, io);
   }
   if (sub === 'play') {
     const f = parseFlags(rest, ['file', 'format']);

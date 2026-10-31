@@ -41,7 +41,7 @@ describe('story-render — packaged end to end', () => {
 
     // a stand-in ffmpeg (a script inside the project) lets the render path run without any real encoder
     const fake = path.join(pkg.dir, 'fake-ffmpeg.sh');
-    await fs.writeFile(fake, '#!/bin/sh\nfor a; do last="$a"; done\n[ "$1" = "-version" ] && echo fake && exit 0\nhead -c 4096 /dev/zero > "$last"\n');
+    await fs.writeFile(fake, '#!/bin/sh\nfor a; do last="$a"; done\n[ "$1" = "-version" ] && echo fake && exit 0\n[ "$2" = "-encoders" ] && echo " V....D libx264" && exit 0\nhead -c 4096 /dev/zero > "$last"\n');
     await fs.chmod(fake, 0o755);
     // The packaged harness forbids spawning a browser, so the render part runs only where playwright cannot be resolved
     // (NODE_PATH cleared): it must then stop cleanly with exit 4 before writing anything.
