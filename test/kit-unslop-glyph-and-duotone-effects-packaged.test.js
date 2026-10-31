@@ -42,4 +42,22 @@ describe('image-effects — packaged end to end', () => {
     }
     assert.deepEqual(pkg.egress(), []);
   });
+
+  it('review r1: --animate, a dashed --chars ramp, halftone with 3 colors and an unbalanced selector through the CLI', () => {
+    const a = pkg.kit(['image-effects', 'emit', '--kind', 'glyph', '--palette', '#0b1020,#f5c542', '--animate', '--chars', '--==##']);
+    assert.equal(a.code, 0);
+    assert.doesNotThrow(() => new vm.Script(a.json.js));
+    assert.match(a.json.js, /STEPS=10,TICK=100,SHARE=0.05/);
+    assert.ok(a.json.js.includes('"--==##"'));
+    assert.match(pkg.kit(['image-effects', 'list']).json.paletteOrder, /sort/);
+    for (const args of [
+      ['image-effects', 'emit', '--kind', 'dither', '--palette', '#000,#fff', '--animate'],
+      ['image-effects', 'emit', '--kind', 'halftone', '--palette', '#000,#888,#fff'],
+      ['image-effects', 'emit', '--kind', 'duotone', '--palette', '#000,#fff', '--selector', 'img[alt="x]']
+    ]) {
+      const r = pkg.kit(args);
+      assert.equal(r.code, 1);
+      assert.equal(r.out, '');
+    }
+  });
 });

@@ -2,51 +2,65 @@
  * image-effects — list and emit one-treatment image effects for the main visual of a page: glyph grid, halftone,
  * ordered dither or duotone, each as a self-contained snippet written for the product's own palette.
  *
- *   image-effects list                                                                         → { effects, rule }
+ *   image-effects list                                                                         → { effects, rule, paletteOrder }
  *   image-effects emit  --kind <glyph|halftone|dither|duotone> --palette <#hex,#hex[,#hex]>
- *                       [--selector <css selector>] [--chars <string>] [--cell <px>]           → { kind, html?, css, js?, notes }
+ *                       [--selector <css selector>] [--chars <string>] [--cell <px>]
+ *                       [--animate]                                                            → { kind, html?, css, js?, notes }
  *   image-effects check --kind <glyph|halftone|dither|duotone> --palette <#hex,#hex[,#hex]>    → { kind, ok, palette, darkest, lightest, contrast, warnings, fix? }
  *
- * list prints the four treatments (id, label, when, cost, notes) and the rule: one treatment, on the main visual only.
- * emit prints a snippet to paste into the page. The palette is 2 or 3 hex colors (#rgb or #rrggbb). The selector (default
- * "img[data-image-effect]") names the image; only the first match is treated. Kinds:
+ * list prints the four treatments (id, label, when, cost, notes), the rule (one treatment, on the main visual only) and
+ * paletteOrder, the one palette-order rule below.
+ * emit prints a snippet to paste into the page. The palette is 2 or 3 hex colors (#rgb or #rrggbb); halftone takes exactly 2
+ * (a third color is refused, exit 1). Palette order: dither and glyph read brightness against the palette, so they sort it dark
+ * to light whatever order you give; duotone and halftone are positional and use the order given (first = dark / ink, last =
+ * light / paper), and emit adds a note when that order runs light to dark. The selector (default "img[data-image-effect]")
+ * names the image; the canvas kinds treat the first matching <img> only (and their `display:block` rule reaches every match),
+ * while duotone's CSS rule filters every element the selector matches. Kinds:
  *   duotone  html: a hidden inline SVG <filter> (feColorMatrix to luminance, then feComponentTransfer tables mapping dark
  *            to the first color and light to the last, in the order given); css: `filter:url(#id)` on the selector. No js.
  *   halftone js: samples the image on a grid of --cell css px (default 8) and draws dots, bigger where the picture is darker,
- *            in palette[0] on palette[1].
+ *            in palette[0] on palette[1]. Transparent pixels count as white (paper), so they get no dots.
  *   dither   js: ordered Bayer 4x4 dithering to the palette colors sorted dark to light; --cell is the pixel size in device
  *            pixels (default 3).
  *   glyph    js: maps brightness to characters from --chars (default " .:-=+*#%@", sparse to dense; 2 to 64 characters),
- *            from a prebuilt atlas; light ink on the darkest palette color. --cell default 8.
- * Every canvas script runs once when the image has loaded (no animation loop, no resize handler), keeps the original <img>
+ *            from a prebuilt atlas; light ink on the darkest palette color. --cell default 8. --animate (glyph only, off by
+ *            default; any other kind with --animate is exit 1) adds a shimmer: pixels are sampled once at load and only
+ *            floor(5% of the cells) cells per tick get a neighbouring glyph from the atlas, 10 ticks per second (TICK 100 ms).
+ *            It pauses when the canvas is off screen (IntersectionObserver) or the tab is hidden, and never starts (and stops
+ *            if it changes) under prefers-reduced-motion: reduce.
+ * Every canvas script runs once when the image has loaded (no animation loop unless --animate, no resize handler), keeps the original <img>
  * (visually hidden, its alt text intact) and marks the canvas aria-hidden, caps the grid at 40000 cells (the cell grows
  * until it fits), caps devicePixelRatio at 2, and falls back to the plain image when the canvas is tainted (cross-origin
- * SecurityError) or anything else throws. The only motion is a short fade-in, switched off under prefers-reduced-motion.
+ * SecurityError) or anything else throws. The canvas gets the image's own aspect ratio (CSS aspect-ratio). The only motion
+ * is a short fade-in (switched off under prefers-reduced-motion) and, with --animate, the glyph shimmer.
  * check validates the palette (2 or 3 valid hex colors), reports the darkest and lightest color and their WCAG contrast
  * ratio, and warns under 3 (exit 0; a warning is not an error).
  * Exit codes: 0 answer printed; 1 bad input (unknown kind, bad palette, unsafe selector, bad chars or cell, unknown or
- * duplicate flag). Input is only flags; nothing is read from files or stdin.
+ * duplicate flag, unbalanced quotes or brackets in the selector, --animate on a kind other than glyph,
+ * a third color for halftone). Input is only flags; nothing is read from files or stdin.
  * Built from ideas audited by /w-bbs (run 2026-10-30-unslop); no foreign code.
  */
 import { KitExit } from './kit-exit.js';
 
 export const verb = 'image-effects';
-export const usage = 'cli.js image-effects list | image-effects emit --kind <glyph|halftone|dither|duotone> --palette <#hex,#hex[,#hex]> [--selector <css>] [--chars <string>] [--cell <px>] | image-effects check --kind <kind> --palette <#hex,#hex[,#hex]>';
+export const usage = 'cli.js image-effects list | image-effects emit --kind <glyph|halftone|dither|duotone> --palette <#hex,#hex[,#hex]> [--selector <css>] [--chars <string>] [--cell <px>] [--animate] | image-effects check --kind <kind> --palette <#hex,#hex[,#hex]>';
 
 export const KINDS = ['glyph', 'halftone', 'dither', 'duotone'];
 export const MAX_CELLS = 40000;
 export const DEFAULT_SELECTOR = 'img[data-image-effect]';
+export const ANIMATE = { steps: 10, share: 0.05, minSteps: 8, maxSteps: 12 };
 export const DEFAULT_CHARS = ' .:-=+*#%@';
 const DEFAULT_CELL = { glyph: 8, halftone: 8, dither: 3 };
 const bad = m => new KitExit(m, 1);
 
 const EFFECTS = [
-  { id: 'glyph', label: 'Glyph grid', when: 'Developer, finance or technical products where the image can be built from the product\'s own characters (code symbols, money signs).', cost: 'Medium: one atlas and one pass over at most 40000 cells at load.', notes: 'Pass --chars with characters from the product\'s own material, sparse to dense. Light ink on the darkest palette color.' },
-  { id: 'halftone', label: 'Halftone dots', when: 'Editorial, print or poster looks.', cost: 'Low: one pass over the grid at load.', notes: 'Dots in palette[0] on palette[1], bigger where the picture is darker.' },
-  { id: 'dither', label: 'Ordered dither', when: 'Retro or technical looks with two or three flat colors.', cost: 'Low: one pass at load; the canvas is small and scaled up unsmoothed.', notes: 'Bayer 4x4 pattern to the palette sorted dark to light.' },
-  { id: 'duotone', label: 'Duotone', when: 'Any generated or stock image that must match the palette; the simplest option.', cost: 'Lowest: a CSS filter, no JavaScript.', notes: 'Dark maps to the first color, light to the last. Works on any element, including cross-origin images.' }
+  { id: 'glyph', label: 'Glyph grid', when: 'Developer, finance or technical products where the image can be built from the product\'s own characters (code symbols, money signs).', cost: 'Medium: one atlas and one pass over at most 40000 cells at load.', notes: 'Pass --chars with characters from the product\'s own material, sparse to dense. Light ink on the darkest palette color. Opt-in --animate shimmers at most 5% of the cells at 10 steps a second, paused off screen and under reduced motion.' },
+  { id: 'halftone', label: 'Halftone dots', when: 'Editorial, print or poster looks.', cost: 'Low: one pass over the grid at load.', notes: 'Dots in palette[0] on palette[1], bigger where the picture is darker; exactly 2 colors; transparent areas get no dots.' },
+  { id: 'dither', label: 'Ordered dither', when: 'Retro or technical looks with two or three flat colors.', cost: 'Low: one pass at load; the canvas is small and scaled up unsmoothed.', notes: 'Bayer 4x4 pattern to the palette sorted dark to light (order given is ignored).' },
+  { id: 'duotone', label: 'Duotone', when: 'Any generated or stock image that must match the palette; the simplest option.', cost: 'Lowest: a CSS filter, no JavaScript.', notes: 'Dark maps to the first color, light to the last (order given). Applies to every element the selector matches. Works on any element, including cross-origin images.' }
 ];
 const RULE = 'Use one treatment, on the main visual only; never as decoration elsewhere on the page.';
+const PALETTE_ORDER = 'Dither and glyph sort the palette dark to light, so the order you give does not matter. Duotone and halftone use the order given: first = dark (halftone: dot ink), last = light (halftone: paper); halftone takes exactly 2 colors.';
 
 // ---- palette ----
 
@@ -87,6 +101,12 @@ export function parsePalette(str) {
 const byLuma = pal => [...pal].sort((a, b) => relLuminance(a) - relLuminance(b));
 
 /** Contrast between the darkest and the lightest palette color. */
+function palForKind(kind, str) {
+  const pal = parsePalette(str);
+  if (kind === 'halftone' && pal.length !== 2) throw bad('--kind halftone takes exactly 2 colors (dots, then paper); a third color would be ignored');
+  return pal;
+}
+
 export function paletteReport(pal) {
   const s = byLuma(pal);
   const ratio = contrastRatio(s[0], s[s.length - 1]);
@@ -108,6 +128,17 @@ function checkSelector(sel) {
   const s = sel.trim();
   if (s.length > 200) throw bad('--selector is longer than 200 characters');
   if (!/^[A-Za-z0-9_\-\s#.:>+~*,()\[\]="'^$|]+$/.test(s)) throw bad('--selector may use letters, digits, spaces and # . : > + ~ * , ( ) [ ] = " \' ^ $ | - _ only');
+  const close = { ']': '[', ')': '(' };
+  const stack = [];
+  let q = '';
+  for (const ch of s) {
+    if (q) { if (ch === q) q = ''; continue; }
+    if (ch === '"' || ch === "'") q = ch;
+    else if (ch === '[' || ch === '(') stack.push(ch);
+    else if (ch === ']' || ch === ')') { if (stack.pop() !== close[ch]) throw bad('--selector has unbalanced brackets'); }
+  }
+  if (q) throw bad('--selector has an unterminated quote');
+  if (stack.length) throw bad('--selector has unbalanced brackets');
   return s;
 }
 
@@ -157,7 +188,7 @@ function duotone(pal, selector) {
   return { html, css: `${selector}{filter:url(#${id})}`, id, tables: t };
 }
 
-function canvasScript(kind, pal, selector, cell, chars) {
+function canvasScript(kind, pal, selector, cell, chars, animate) {
   const sorted = byLuma(pal);
   const colors = kind === 'halftone' ? pal : sorted;
   const head = [
@@ -165,17 +196,33 @@ function canvasScript(kind, pal, selector, cell, chars) {
     `var SEL=${jsLit(selector)},P=${JSON.stringify(colors)},CELL=${cell},MAXC=${MAX_CELLS};`,
     kind === 'glyph' ? `var CH=Array.from(${jsLit(chars.join(''))});` : '',
     'var DPR=Math.min(window.devicePixelRatio||1,2);',
-    'var img=null,list=document.querySelectorAll(SEL),cv=null,ran=false;',
+    animate ? `var ANIM=1,STEPS=${ANIMATE.steps},TICK=${1000 / ANIMATE.steps},SHARE=${ANIMATE.share};` : '',
+    `var BGL=${kind === 'halftone' ? 1 : 0};`,
+    'var img=null,list=[],cv=null,ran=false;',
+    'try{list=document.querySelectorAll(SEL);}catch(e){}',
     'for(var q=0;q<list.length;q++){if(list[q].tagName==="IMG"&&!list[q].__ie){img=list[q];break;}}',
     'if(!img)return;img.__ie=1;',
     'function rgb(c){return "rgb("+c[0]+","+c[1]+","+c[2]+")";}',
     'function fallback(){if(cv&&cv.parentNode)cv.parentNode.removeChild(cv);cv=null;img.classList.remove("ie-done");}',
     'function grid(w,h){var c=CELL,cols,rows;do{cols=Math.max(1,Math.round(w/c));rows=Math.max(1,Math.round(h/c));c+=1;}while(cols*rows>MAXC);return{cols:cols,rows:rows};}',
     'function sample(cols,rows){var s=document.createElement("canvas");s.width=cols;s.height=rows;var sc=s.getContext("2d");sc.drawImage(img,0,0,cols,rows);return sc.getImageData(0,0,cols,rows).data;}',
-    'function lum(d,i){return (0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2])/255*(d[i+3]/255);}',
-    'function mount(){cv.className="ie-canvas"+('+ (kind === 'dither' ? '" ie-pixel"' : '""') + ');cv.setAttribute("aria-hidden","true");img.parentNode.insertBefore(cv,img.nextSibling);img.classList.add("ie-done");}',
+    'function lum(d,i){var a=d[i+3]/255;return (0.2126*d[i]+0.7152*d[i+1]+0.0722*d[i+2])/255*a+BGL*(1-a);}',
+    'function mount(nw,nh){cv.style.aspectRatio=nw+" / "+nh;cv.className="ie-canvas"+('+ (kind === 'dither' ? '" ie-pixel"' : '""') + ');cv.setAttribute("aria-hidden","true");img.parentNode.insertBefore(cv,img.nextSibling);img.classList.add("ie-done");}',
     'function size(w,h){var d=Math.min(DPR,4096/Math.max(w,h));return d>0?d:1;}'
   ];
+  const motion = animate ? [
+    'function motion(x,d,g,at,pw,ph,n,k){',
+    'var mq=window.matchMedia?window.matchMedia("(prefers-reduced-motion: reduce)"):null;',
+    'var N=g.cols*g.rows,per=Math.floor(N*SHARE),vis=true,timer=0;',
+    'if(per<1||(mq&&mq.matches))return;',
+    'function tick(){try{for(var t=0;t<per;t++){var c=Math.floor(Math.random()*N),i=c%g.cols,j=(c-i)/g.cols,l=lum(d,c*4),b=Math.floor(l*(n-1)+0.5),ix=Math.max(0,Math.min(n-1,b+Math.floor(Math.random()*3)-1)),row=k>1&&l>=0.5?1:0;x.fillStyle=rgb(P[0]);x.fillRect(i*pw,j*ph,pw,ph);x.drawImage(at,ix*pw,row*ph,pw,ph,i*pw,j*ph,pw,ph);}}catch(e){stop();}}',
+    'function stop(){if(timer){clearInterval(timer);timer=0;}}',
+    'function sync(){var on=vis&&!document.hidden&&!(mq&&mq.matches);if(on&&!timer)timer=setInterval(tick,TICK);else if(!on)stop();}',
+    'document.addEventListener("visibilitychange",sync);',
+    'if(mq&&mq.addEventListener)mq.addEventListener("change",sync);',
+    'if(window.IntersectionObserver){vis=false;new IntersectionObserver(function(e){vis=e[e.length-1].isIntersecting;sync();}).observe(cv);}else sync();',
+    '}'
+  ] : [];
   const bodies = {
     halftone: [
       'function render(){',
@@ -186,7 +233,7 @@ function canvasScript(kind, pal, selector, cell, chars) {
       'var x=cv.getContext("2d");x.scale(dp,dp);x.fillStyle=rgb(P[1]);x.fillRect(0,0,w,h);x.fillStyle=rgb(P[0]);',
       'var cw=w/g.cols,ch=h/g.rows,rmax=Math.max(cw,ch)*0.7;',
       'for(var j=0;j<g.rows;j++)for(var i=0;i<g.cols;i++){var r=Math.sqrt(1-lum(d,(j*g.cols+i)*4))*rmax;if(r<0.2)continue;x.beginPath();x.arc((i+0.5)*cw,(j+0.5)*ch,r,0,6.283185307);x.fill();}',
-      'mount();}'
+      'mount(nw,nh);}'
     ],
     dither: [
       'var B=[0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5];',
@@ -197,7 +244,7 @@ function canvasScript(kind, pal, selector, cell, chars) {
       'cv=document.createElement("canvas");cv.width=g.cols;cv.height=g.rows;',
       'var x=cv.getContext("2d"),o=x.createImageData(g.cols,g.rows),od=o.data;',
       'for(var j=0;j<g.rows;j++)for(var i=0;i<g.cols;i++){var p=(j*g.cols+i)*4,v=lum(d,p)*(k-1),a=Math.min(k-2,Math.floor(v)),t=(B[(j&3)*4+(i&3)]+0.5)/16,c=P[v-a>t?a+1:a];od[p]=c[0];od[p+1]=c[1];od[p+2]=c[2];od[p+3]=255;}',
-      'x.putImageData(o,0,0);mount();}'
+      'x.putImageData(o,0,0);mount(nw,nh);}'
     ],
     glyph: [
       'function render(){',
@@ -211,7 +258,7 @@ function canvasScript(kind, pal, selector, cell, chars) {
       'cv=document.createElement("canvas");cv.width=g.cols*pw;cv.height=g.rows*ph;',
       'var x=cv.getContext("2d");x.fillStyle=rgb(P[0]);x.fillRect(0,0,cv.width,cv.height);',
       'for(var j=0;j<g.rows;j++)for(var i=0;i<g.cols;i++){var l=lum(d,(j*g.cols+i)*4),ix=Math.min(n-1,Math.floor(l*(n-1)+0.5)),row=k>1&&l>=0.5?1:0;x.drawImage(at,ix*pw,row*ph,pw,ph,i*pw,j*ph,pw,ph);}',
-      'mount();}'
+      'mount(nw,nh);' + (animate ? 'motion(x,d,g,at,pw,ph,n,k);' : '') + '}'
     ]
   };
   const tail = [
@@ -219,36 +266,40 @@ function canvasScript(kind, pal, selector, cell, chars) {
     'if(img.complete&&img.naturalWidth)go();else{img.addEventListener("load",go,{once:true});img.addEventListener("error",fallback,{once:true});}',
     '})();'
   ];
-  return [...head.filter(Boolean), ...bodies[kind], ...tail].join('\n');
+  return [...head.filter(Boolean), ...motion, ...bodies[kind], ...tail].join('\n');
 }
 
 /** Build the snippet for one kind. */
 export function emitEffect(kind, paletteStr, opts = {}) {
   if (!KINDS.includes(kind)) throw bad(`--kind must be one of ${KINDS.join(', ')}`);
-  const pal = parsePalette(paletteStr);
+  const pal = palForKind(kind, paletteStr);
   const selector = opts.selector === undefined ? DEFAULT_SELECTOR : checkSelector(opts.selector);
   if (opts.chars !== undefined && kind !== 'glyph') throw bad('--chars only applies to --kind glyph');
   if (opts.cell !== undefined && kind === 'duotone') throw bad('--cell does not apply to --kind duotone');
+  if (opts.animate && kind !== 'glyph') throw bad('--animate only applies to --kind glyph');
   const chars = kind === 'glyph' ? checkChars(opts.chars === undefined ? DEFAULT_CHARS : opts.chars) : null;
   const rep = paletteReport(pal);
   const notes = [RULE, ...rep.warnings];
   if (kind === 'duotone') {
     const d = duotone(pal, selector);
     notes.push('Dark maps to the first color and light to the last, in the order given. Put the SVG once in the body; the CSS goes in a stylesheet. No script is needed and the alt text is untouched.');
+    if (pal[0] && relLuminance(pal[0]) > relLuminance(pal[pal.length - 1])) notes.push('The palette runs light to dark, so the image comes out inverted (dark areas get the first, lighter color). Put the darker color first for a normal picture.');
     return { kind, html: d.html, css: d.css, notes };
   }
   const cell = checkCell(opts.cell, kind);
   const ink = { halftone: 'Dots use the first color on the second.', dither: 'Colors are sorted dark to light.', glyph: 'The darkest color is the background; the others are the ink.' }[kind];
+  if (kind === 'halftone' && relLuminance(pal[0]) > relLuminance(pal[1])) notes.push('The dots are lighter than the paper (the palette runs light to dark), so the picture reads as a negative. Put the darker color first for dark dots on light paper.');
+  if (kind === 'glyph' && opts.animate) notes.push(`Animated: pixels are sampled once; at most ${ANIMATE.share * 100}% of the cells change per tick, ${ANIMATE.steps} ticks a second; paused off screen and when the tab is hidden; never runs under prefers-reduced-motion.`);
   notes.push(ink,
     'Place the <script> after the image. It runs once on load, treats the first matching <img> only, keeps that <img> (visually hidden, alt text intact) and marks the canvas aria-hidden.',
     `The grid is capped at ${MAX_CELLS} cells and devicePixelRatio at 2; a cross-origin image without CORS falls back to the plain image. The canvas is not redrawn on resize.`,
     'The fade-in is switched off under prefers-reduced-motion.');
-  return { kind, css: [`${selector}{display:block}`, ...CANVAS_CSS].join('\n'), js: canvasScript(kind, pal, selector, cell, chars), notes };
+  return { kind, css: [`${selector}{display:block}`, ...CANVAS_CSS].join('\n'), js: canvasScript(kind, pal, selector, cell, chars, !!opts.animate), notes };
 }
 
 export function checkPalette(kind, paletteStr) {
   if (!KINDS.includes(kind)) throw bad(`--kind must be one of ${KINDS.join(', ')}`);
-  const pal = parsePalette(paletteStr);
+  const pal = palForKind(kind, paletteStr);
   const rep = paletteReport(pal);
   const out = { kind, ok: rep.warnings.length === 0, palette: pal.map(toHex), ...rep };
   if (!out.ok) out.fix = 'Pick a darker darkest color or a lighter lightest color until the contrast ratio reaches 3:1.';
@@ -257,7 +308,8 @@ export function checkPalette(kind, paletteStr) {
 
 // ---- CLI ----
 
-const KNOWN = { list: [], emit: ['kind', 'palette', 'selector', 'chars', 'cell'], check: ['kind', 'palette'] };
+const KNOWN = { list: [], emit: ['kind', 'palette', 'selector', 'chars', 'cell', 'animate'], check: ['kind', 'palette'] };
+const BOOLEAN = new Set(['animate']);
 
 function parse(args) {
   const [sub, ...rest] = args;
@@ -270,10 +322,12 @@ function parse(args) {
     const k = a.slice(2);
     if (!known.includes(k)) throw bad(`unknown option "${a}" for ${sub}${known.length ? ` (allowed: ${known.map(x => '--' + x).join(', ')})` : ' (it takes no options)'}`);
     if (Object.prototype.hasOwnProperty.call(flags, k)) throw bad(`${a} given twice`);
+    if (BOOLEAN.has(k)) { flags[k] = true; continue; }
     if (i + 1 >= rest.length) throw bad(`${a} needs a value`);
     const v = rest[++i];
     if (v === '') throw bad(`${a} has an empty value`);
-    if (v.startsWith('--')) throw bad(`${a} needs a value, got "${v}"`);
+    // a --chars ramp may start with "--" (e.g. "--==##"), unless it is another flag of this subcommand
+    if (v.startsWith('--') && (k !== 'chars' || known.includes(v.slice(2)))) throw bad(`${a} needs a value, got "${v}"`);
     flags[k] = v;
   }
   return { sub, flags };
@@ -281,8 +335,8 @@ function parse(args) {
 
 export async function run(args) {
   const { sub, flags } = parse(args);
-  if (sub === 'list') return { effects: EFFECTS.map(e => ({ ...e })), rule: RULE };
+  if (sub === 'list') return { effects: EFFECTS.map(e => ({ ...e })), rule: RULE, paletteOrder: PALETTE_ORDER };
   if (flags.kind === undefined) throw bad(`--kind is required (${KINDS.join(', ')})`);
   if (sub === 'check') return checkPalette(flags.kind, flags.palette);
-  return emitEffect(flags.kind, flags.palette, { selector: flags.selector, chars: flags.chars, cell: flags.cell });
+  return emitEffect(flags.kind, flags.palette, { selector: flags.selector, chars: flags.chars, cell: flags.cell, animate: flags.animate });
 }

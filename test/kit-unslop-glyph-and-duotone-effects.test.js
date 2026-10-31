@@ -197,3 +197,183 @@ describe('image-effects errors', () => {
     await rejects(['emit', '--kind', 'glyph', '--palette', '\u0000\u0001�']);
   });
 });
+
+// ---- review r1 fixes ----
+
+/** Run an emitted script against a small fake DOM; returns the recorded calls. */
+function harness(js, { w = 4, h = 2, pixels, reduced = false, noIO = false, hidden = false } = {}) {
+  const log = { arcs: 0, draws: 0, intervals: [], cleared: 0, observers: [], canvases: [], listeners: {} };
+  const px = pixels || new Uint8ClampedArray(w * h * 4).fill(255);
+  const mkCanvas = () => {
+    const cv = { style: {}, width: 0, height: 0, className: '', attrs: {}, setAttribute(k, v) { this.attrs[k] = v; }, parentNode: null,
+      getContext: () => ({ scale() {}, fillRect() {}, beginPath() {}, arc() { log.arcs++; }, fill() {}, fillText() {},
+        drawImage() { log.draws++; }, getImageData: (x, y, cw, ch) => ({ data: px.length === cw * ch * 4 ? px : new Uint8ClampedArray(cw * ch * 4).fill(255).map((v, i) => px[i % px.length]) }),
+        createImageData: (cw, ch) => ({ data: new Uint8ClampedArray(cw * ch * 4) }), putImageData() {} }) };
+    log.canvases.push(cv);
+    return cv;
+  };
+  const img = { tagName: 'IMG', complete: true, naturalWidth: 400, naturalHeight: 200, clientWidth: 400, classList: { add() {}, remove() {} },
+    parentNode: { insertBefore(c) { c.parentNode = this; } }, nextSibling: null, addEventListener() {} };
+  const document = { hidden, querySelectorAll: () => [img], createElement: () => mkCanvas(),
+    addEventListener: (t, f) => { (log.listeners[t] ||= []).push(f); } };
+  const window = { devicePixelRatio: 1, document,
+    matchMedia: q => ({ matches: reduced && /reduce/.test(q), addEventListener() {} }),
+    IntersectionObserver: noIO ? undefined : function (cb) { this.observe = el => { log.observers.push({ cb, el }); }; } };
+  const ctx = { window, document, Math, Array, setInterval: (f, ms) => { log.intervals.push({ f, ms }); return log.intervals.length; },
+    clearInterval: () => { log.cleared++; } };
+  if (noIO) delete window.IntersectionObserver;
+  vm.runInNewContext(js, { ...ctx, IntersectionObserver: window.IntersectionObserver });
+  log.document = document;
+  return log;
+}
+
+describe('review r1: halftone transparency', () => {
+  it('a transparent pixel gets no dot while an opaque black pixel does', async () => {
+    const r = await run(['emit', '--kind', 'halftone', '--palette', '#0b1020,#f5f0e0', '--cell', '2']);
+    // 400x200 at cell 2 -> big grid; use 2 distinct pixels cycled by the fake
+    const transparent = harness(r.js, { pixels: new Uint8ClampedArray([0, 0, 0, 0]) });
+    assert.equal(transparent.arcs, 0, 'transparent areas draw no dots');
+    const black = harness(r.js, { pixels: new Uint8ClampedArray([0, 0, 0, 255]) });
+    assert.ok(black.arcs > 0, 'opaque black draws dots');
+  });
+  it('dither and glyph still treat transparent as dark', async () => {
+    const g = await run(['emit', '--kind', 'glyph', '--palette', PAL]);
+    assert.match(g.js, /var BGL=0;/);
+    const h = await run(['emit', '--kind', 'halftone', '--palette', PAL]);
+    assert.match(h.js, /var BGL=1;/);
+  });
+});
+
+describe('review r1: glyph --animate', () => {
+  it('default glyph has no timers and --animate is refused elsewhere', async () => {
+    const r = await run(['emit', '--kind', 'glyph', '--palette', PAL]);
+    assert.ok(!/setInterval|IntersectionObserver|ANIM/.test(r.js));
+    for (const k of ['halftone', 'dither', 'duotone']) await rejects(['emit', '--kind', k, '--palette', PAL, '--animate']);
+    await rejects(['emit', '--kind', 'glyph', '--palette', PAL, '--animate', '--animate']);
+    await rejects(['check', '--kind', 'glyph', '--palette', PAL, '--animate']);
+    await rejects(['emit', '--kind', 'glyph', '--palette', PAL, '--chars', '--animate']);
+  });
+  it('the animated script parses and its timing constants match the contract', async () => {
+    const r = await run(['emit', '--kind', 'glyph', '--palette', PAL, '--animate']);
+    parses(r.js);
+    const m = /STEPS=(\d+),TICK=([\d.]+),SHARE=([\d.]+)/.exec(r.js);
+    assert.ok(m, 'constants present');
+    const [steps, tick, share] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    assert.ok(steps >= 8 && steps <= 12);
+    assert.equal(steps, 10);
+    assert.equal(tick, 1000 / steps);
+    assert.ok(share <= 0.05);
+    assert.deepEqual(ie.ANIMATE, { steps: 10, share: 0.05, minSteps: 8, maxSteps: 12 });
+    assert.match(r.js, /IntersectionObserver/);
+    assert.match(r.js, /visibilitychange/);
+    assert.match(r.js, /document\.hidden/);
+    assert.match(r.js, /prefers-reduced-motion: reduce/);
+    assert.match(r.js, /clearInterval/);
+    assert.ok(r.notes.some(n => /Animated/.test(n)));
+  });
+  it('runs on a timer, redraws at most 5% of the cells per tick, and only while visible', async () => {
+    const r = await run(['emit', '--kind', 'glyph', '--palette', PAL, '--animate']);
+    const log = harness(r.js);
+    assert.equal(log.intervals.length, 0, 'does not start until the canvas is on screen');
+    assert.equal(log.observers.length, 1);
+    const { cb, el } = log.observers[0];
+    cb([{ isIntersecting: true, target: el }]);
+    assert.equal(log.intervals.length, 1);
+    assert.equal(log.intervals[0].ms, 100);
+    const before = log.draws;
+    log.intervals[0].f();
+    const changed = log.draws - before;
+    const total = Math.round(400 / 8) * Math.round(200 / 8);
+    assert.ok(changed > 0 && changed <= Math.floor(total * 0.05), `${changed} of ${total} cells`);
+    cb([{ isIntersecting: false, target: el }]);
+    assert.equal(log.cleared, 1, 'paused off screen');
+  });
+  it('pauses when the tab is hidden and resumes', async () => {
+    const r = await run(['emit', '--kind', 'glyph', '--palette', PAL, '--animate']);
+    const log = harness(r.js);
+    log.observers[0].cb([{ isIntersecting: true }]);
+    assert.equal(log.intervals.length, 1);
+    log.document.hidden = true;
+    log.listeners.visibilitychange.forEach(f => f());
+    assert.equal(log.cleared, 1);
+    log.document.hidden = false;
+    log.listeners.visibilitychange.forEach(f => f());
+    assert.equal(log.intervals.length, 2);
+  });
+  it('never runs under prefers-reduced-motion', async () => {
+    const r = await run(['emit', '--kind', 'glyph', '--palette', PAL, '--animate']);
+    const log = harness(r.js, { reduced: true });
+    assert.equal(log.observers.length, 0);
+    assert.equal(log.intervals.length, 0);
+  });
+  it('without IntersectionObserver it still starts (visible by default)', async () => {
+    const r = await run(['emit', '--kind', 'glyph', '--palette', PAL, '--animate']);
+    const log = harness(r.js, { noIO: true });
+    assert.equal(log.intervals.length, 1);
+  });
+});
+
+describe('review r1: palette order', () => {
+  it('list documents the one rule', async () => {
+    const r = await run(['list']);
+    assert.match(r.paletteOrder, /dither and glyph sort/i);
+    assert.match(r.paletteOrder, /duotone and halftone use the order given/i);
+  });
+  it('halftone refuses a third color (emit and check)', async () => {
+    await rejects(['emit', '--kind', 'halftone', '--palette', '#000,#888,#fff']);
+    await rejects(['check', '--kind', 'halftone', '--palette', '#000,#888,#fff']);
+    assert.equal((await run(['check', '--kind', 'halftone', '--palette', '#000,#fff'])).ok, true);
+    assert.equal((await run(['emit', '--kind', 'glyph', '--palette', '#000,#888,#fff'])).kind, 'glyph');
+  });
+  it('notes flag a light-to-dark order for duotone and halftone only', async () => {
+    for (const k of ['duotone', 'halftone']) {
+      const r = await run(['emit', '--kind', k, '--palette', '#f5c542,#0b1020']);
+      assert.ok(r.notes.some(n => /light to dark/.test(n)), k);
+      const ok = await run(['emit', '--kind', k, '--palette', '#0b1020,#f5c542']);
+      assert.ok(!ok.notes.some(n => /light to dark/.test(n)), k);
+    }
+    const d = await run(['emit', '--kind', 'dither', '--palette', '#f5c542,#0b1020']);
+    assert.ok(!d.notes.some(n => /light to dark/.test(n)));
+  });
+});
+
+describe('review r1: aspect ratio', () => {
+  it('every canvas kind sets the CSS aspect-ratio from the natural size', async () => {
+    for (const kind of ['glyph', 'halftone', 'dither']) {
+      const r = await run(['emit', '--kind', kind, '--palette', PAL, '--cell', '64']);
+      assert.match(r.js, /cv\.style\.aspectRatio=nw\+" \/ "\+nh/);
+      const log = harness(r.js);
+      assert.equal(log.canvases.at(-1).style.aspectRatio, '400 / 200', kind);
+    }
+  });
+});
+
+describe('review r1: selector and --chars', () => {
+  it('unbalanced quotes or brackets are refused', async () => {
+    for (const s of ['img[alt="x]', 'img[alt=x', 'a)', 'a:not(b', 'a[b)', "img[alt='x]", 'img[alt="a"]"'])
+      await rejects(['emit', '--kind', 'duotone', '--palette', PAL, '--selector', s]);
+    for (const s of ['img[alt="a]b"]', ".hero img:not([src$='.svg'])", 'img[data-x]'])
+      assert.equal((await run(['emit', '--kind', 'duotone', '--palette', PAL, '--selector', s])).kind, 'duotone');
+  });
+  it('the script does not throw at top level when querySelectorAll throws', async () => {
+    const r = await run(['emit', '--kind', 'dither', '--palette', PAL]);
+    assert.match(r.js, /try\{list=document\.querySelectorAll\(SEL\);\}catch\(e\)\{\}/);
+  });
+  it('--chars may start with "--" but not be another flag', async () => {
+    const r = await run(['emit', '--kind', 'glyph', '--palette', PAL, '--chars', '--==##']);
+    assert.ok(r.js.includes('"--==##"'));
+    await rejects(['emit', '--kind', 'glyph', '--chars', '--palette', PAL]);
+    await rejects(['emit', '--kind', 'glyph', '--palette', '--kind', 'x']);
+  });
+});
+
+describe('review r1: header wording', () => {
+  it('says duotone applies to every match and canvas kinds to the first', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('../src/lib/kit/image-effects.js', import.meta.url), 'utf8');
+    assert.match(src, /duotone's CSS rule filters every element the selector matches/);
+    assert.match(src, /canvas kinds treat the first matching <img> only/);
+    const d = (await run(['list'])).effects.find(e => e.id === 'duotone');
+    assert.match(d.notes, /every element the selector matches/);
+  });
+});
