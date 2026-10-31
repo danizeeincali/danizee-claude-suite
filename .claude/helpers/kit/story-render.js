@@ -24,7 +24,10 @@
  *       with --ffmpeg) before any frame is captured; if missing, the result is
  *       { out:null, frames:0, reason:"ffmpeg not found: ...", exit:4 }. If playwright cannot be resolved the
  *       frame-capture result passes through the same way (exit 4, out:null). A failed encode exits 1 with the
- *       tail of ffmpeg's stderr (and, with --keep-frames, the kept frames folder).
+ *       tail of ffmpeg's stderr; a killed or timed-out ffmpeg is named ("killed by SIGKILL", "timed out after 600 s"), a hanging
+ *       `-version` is reported as "ffmpeg did not answer" (exit 4), and an ffmpeg that exits 0 without writing the file exits 1 saying so.
+ *       With --keep-frames every failure message names the kept frames folder (the exit-4 capture result also carries frames_dir).
+ *       SIGINT/SIGTERM during a render remove the temp frames folder (unless --keep-frames) and the .part.mp4, then re-raise the signal.
  *   story-render play --file <story.html> [--format square|wide]
  *       → { url, play_url, contract, next }. Prints the file:// URL to open; it starts no browser. The contract:
  *       a story page opened with the query `?play=1` runs live at real speed (real clock, animations running,
@@ -36,6 +39,7 @@
  * Built from ideas audited by /w-bbs (run 2026-10-30-unslop); no foreign code.
  */
 import fs from 'node:fs/promises';
+import { rmSync } from 'node:fs';
 import { constants as FS } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -218,17 +222,27 @@ function exec(cmd, args, timeoutMs = 600000) {
     let stderr = '';
     let child;
     try { child = spawn(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'], shell: false }); } catch (error) { resolve({ code: null, stderr, error }); return; }
-    const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs);
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; child.kill('SIGKILL'); }, timeoutMs);
     child.stderr.on('data', (d) => { stderr = (stderr + d).slice(-4096); });
     child.on('error', (error) => { clearTimeout(timer); resolve({ code: null, stderr, error }); });
-    child.on('close', (code) => { clearTimeout(timer); resolve({ code, stderr }); });
+    child.on('close', (code, signal) => { clearTimeout(timer); resolve({ code, signal, timedOut, timeoutMs, stderr }); });
   });
+}
+
+/** Words for how a finished process went wrong: the spawn error, a timeout, a signal, or the exit code. */
+function describeExit(r) {
+  if (r.error) return r.error.code || r.error.message;
+  if (r.timedOut) return `timed out after ${Math.round((r.timeoutMs || 0) / 1000)} s and was killed${r.signal ? ' by ' + r.signal : ''}`;
+  if (r.signal) return `killed by ${r.signal}`;
+  return 'exit ' + r.code;
 }
 
 /** Probe ffmpeg with `-version`. Returns { ok, ffmpeg, version? , reason? }. */
 export async function probeFfmpeg(bin = 'ffmpeg', io = {}) {
   const r = await (io.exec || exec)(bin, ['-version'], 10000);
-  if (r.error || r.code !== 0) return { ok: false, ffmpeg: bin, reason: `${FFMPEG_MISSING} (${r.error ? r.error.code || r.error.message : 'exit ' + r.code} running "${bin} -version"); install ffmpeg or pass --ffmpeg <path>` };
+  if (r.timedOut) return { ok: false, ffmpeg: bin, reason: `ffmpeg did not answer: "${bin} -version" ${describeExit(r)}; check that ${bin} is a working ffmpeg or pass --ffmpeg <path>` };
+  if (r.error || r.code !== 0) return { ok: false, ffmpeg: bin, reason: `${FFMPEG_MISSING} (${describeExit(r)} running "${bin} -version"); install ffmpeg or pass --ffmpeg <path>` };
   return { ok: true, ffmpeg: bin };
 }
 
@@ -247,11 +261,30 @@ export async function render(o, io = {}) {
   if (!probe.ok) return { out: null, frames: 0, reason: probe.reason, exit: 4 };
   const framesDir = await fs.mkdtemp(path.join(os.tmpdir(), 'story-render-'));
   const tmpOut = `${out}.${process.pid}.part.mp4`;
+  const cleanupSync = () => {
+    try { rmSync(tmpOut, { force: true }); } catch { /* best effort */ }
+    if (!o.keepFrames) { try { rmSync(framesDir, { recursive: true, force: true }); } catch { /* best effort */ } }
+  };
+  const onSignal = (sig) => {
+    cleanupSync();
+    for (const [s2, h] of handlers) process.removeListener(s2, h);
+    if (io.reraise) { io.reraise(sig); return; }
+    // Re-raise with the default action; if the signal is swallowed, still exit the way a signalled process would (128 + signo).
+    setImmediate(() => {
+      process.kill(process.pid, sig);
+      setTimeout(() => process.exit(128 + (os.constants.signals[sig] || 15)), 100);
+    });
+  };
+  const handlers = ['SIGINT', 'SIGTERM'].map((s2) => [s2, () => onSignal(s2)]);
+  for (const [s2, h] of handlers) process.on(s2, h);
+  const kept = o.keepFrames ? `; frames kept in ${framesDir}` : '';
   try {
     const cap = await capture({ url: pathToFileURL(abs).href, out: framesDir, fps: p.fps, frames: p.frames, warmup: 0, loopMs: null, width: p.size.w, height: p.size.h, scale: 1 }, io);
-    if (cap.exit) return { out: null, frames: 0, reason: cap.reason, exit: cap.exit };
+    if (cap.exit) return { out: null, frames: 0, reason: `${cap.reason}${kept}`, exit: cap.exit, ...(o.keepFrames ? { frames_dir: framesDir } : {}) };
     const enc = await (io.exec || exec)(bin, buildFfmpegArgs({ framesDir, out: tmpOut, fps: p.fps }));
-    if (enc.error || enc.code !== 0) throw bad(`ffmpeg failed (${enc.error ? enc.error.code || enc.error.message : 'exit ' + enc.code}): ${enc.stderr.trim().split('\n').slice(-5).join(' | ')}${o.keepFrames ? `; frames kept in ${framesDir}` : ''}`);
+    if (enc.error || enc.code !== 0) throw bad(`ffmpeg failed (${describeExit(enc)}): ${String(enc.stderr || '').trim().split('\n').slice(-5).join(' | ')}`);
+    const made = await fs.stat(tmpOut).catch(() => null);
+    if (!made || !made.isFile() || !made.size) throw bad(`ffmpeg exited 0 but wrote no output (${made ? 'empty file' : 'no file'} at ${tmpOut})`);
     await fs.rename(tmpOut, out);
     const bytes = (await fs.stat(out)).size;
     const res = { out, frames: p.frames, duration_ms: p.duration_ms, size: p.size, bytes, format: p.format, fps: p.fps, ffmpeg: bin };
@@ -259,7 +292,11 @@ export async function render(o, io = {}) {
     if (res.blocked_origins.length) res.warnings = res.blocked_origins.map((x) => `blocked remote origin ${x}: its fonts/images/scripts are missing from the video`);
     if (o.keepFrames) res.frames_dir = framesDir;
     return res;
+  } catch (e) {
+    if (o.keepFrames && e && typeof e.message === 'string' && !e.message.includes(framesDir)) e.message += kept;
+    throw e;
   } finally {
+    for (const [s2, h] of handlers) process.removeListener(s2, h);
     await fs.rm(tmpOut, { force: true }).catch(() => {});
     if (!o.keepFrames) await fs.rm(framesDir, { recursive: true, force: true }).catch(() => {});
   }
