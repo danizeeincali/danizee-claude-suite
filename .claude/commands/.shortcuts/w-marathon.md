@@ -137,6 +137,25 @@ if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/he
 
 Exit 0 printed the answer; exit 1 is wrong input or a broken state: report it and fix the input, never read it as a pass. The step is advisory: whatever it prints, the workflow goes on.
 
+**🧭 Direction brief (advisory, UI / landing page / dashboard streams only):** When a stream builds UI, a landing page or a dashboard, derive its five-line direction (product, character, world, moments, signature) from the product and confirm it in this single interview batch: `template` prints what each line asks, and `from-brief --file "$BRIEF"` prefills product from the design brief above and returns the other four as questions (`todo: true`; delete the `BRIEF` and `from-brief` lines when there is no brief). Propose an answer for each line from what the product is and put the five lines to the owner in the same batch as the design brief ("Confirm or change"), never as a later question. Skip this for non-UI work. Before running a block, put the real path or value in place of each `NAME='<...>'` placeholder at its top; shell variables do not persist between Bash calls, so run the block as one. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+```bash
+BRIEF='<the design brief JSON>'; [ -f "$BRIEF" ] || echo "BRIEF is still the placeholder or does not exist: put the path of the design brief JSON in place of <the design brief JSON>" >&2
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js direction template; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js direction from-brief --file "$BRIEF"; RC=$?; (exit $RC); fi
+```
+
+Then write the confirmed lines as `Product: ...`, `Character: ...`, `World: ...`, `Moments: ...`, `Signature: ...` to `"$DIRECTION"`, check them, and put them in the stream plan once `ok` is true:
+
+```bash
+DIRECTION='<the direction file you wrote>'; [ -f "$DIRECTION" ] || echo "DIRECTION is still the placeholder or does not exist: put the path of the direction file you wrote in place of <the direction file you wrote>" >&2
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js direction check --file "$DIRECTION"; RC=$?; (exit $RC); fi
+```
+
+Exit 0 printed the answer (`check` exits 0 even when `ok` is false: fix each `problems` row with its `fix` and check again); exit 1 is wrong input (an unknown key, a brief that is not a design brief): fix it, never read it as a pass. The step is advisory: the interview goes on.
+
+**🧹 Slop finish line (UI / landing page / dashboard streams only):** When a stream builds UI, a landing page or a dashboard, add the line `{"id": "slop_<s>", "label": "<s>: no unresolved slop signs", "type": "bool", "op": "is", "value": true, "owner": "build", "stream": "<s>", "source": "measure:slop_<s>"}` to the finish line you show the owner, so the blocking slop audit in 4.3c decides the stream's gate. Skip this for non-UI streams.
+
 End with: "What did I forget to ask about?"
 
 **REQUIRED OUTPUT:** the four kickoff lines verbatim, the stream list, the tolerance, the human jobs, the budget.
@@ -150,6 +169,29 @@ End with: "What did I forget to ask about?"
 3. One row per stream: `cli.js stream <name> state=queued plan=<path> next="<first step>"`.
 4. `cli.js status` → prints `status.md`.
 5. **Print kickoff.md, finish-line.json, checklist.md and status.md inline.**
+
+**🩺 Slop triage and refine-only option (advisory, UI / landing page / dashboard streams only):** When a stream redesigns UI, a landing page or a dashboard that already exists, grade the existing screen before the kickoff question: scan it into `"$AUDIT"` and `grade` it (heavy, light or refine-only, with `why` and a `plan`). Add one line per such stream to the USER GATE question below ("<stream>: <grade>, <why>") and offer its `confirm.options` there, "Only refine, keep the design" included, so this stays the last question. After the answer, record it per stream with the second block (state in `.claude/marathon/<run-id>/triage-<s>.json`): "Only refine, keep the design" is recorded as `refine-only`, and that stream's loop then makes only the listed refinements and no redesign. Skip this for non-UI streams and for screens that do not exist yet. Before running a block, put the real path or value in place of each `NAME='<...>'` placeholder at its top; shell variables do not persist between Bash calls, so run the block as one. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+```bash
+SCREEN='<the existing screen file>'; [ -f "$SCREEN" ] || echo "SCREEN is still the placeholder or does not exist: put the path of the existing screen file in place of <the existing screen file>" >&2
+AUDIT='<a new file path for the audit JSON>'; case "$AUDIT" in '<'*) echo "AUDIT is still the placeholder: put a new file path for the audit JSON in place of <a new file path for the audit JSON>" >&2;; esac
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js slop-audit scan --file "$SCREEN" > "$AUDIT"; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js slop-triage grade --file "$AUDIT"; RC=$?; (exit $RC); fi
+```
+
+The block runs several commands, so read each command's own output and error line, not the block's final status. Exit 0 printed the grade; exit 1 is wrong input (an empty or binary screen file, an audit file that is not `slop-audit scan` output): report it and fix the input, never read it as a pass. The step is advisory: whatever it prints, the kickoff goes on.
+
+After the owner answers, record it per stream (`GRADE` is the `grade` printed, `CHOICE` the option the owner picked):
+
+```bash
+TRIAGE_STATE='<a path for the triage state file>'; case "$TRIAGE_STATE" in '<'*) echo "TRIAGE_STATE is still the placeholder: put a path for the triage state file in place of <a path for the triage state file>" >&2;; esac
+GRADE='<the grade that grade printed>'; case "$GRADE" in '<'*) echo "GRADE is still the placeholder: put the grade that grade printed in place of <the grade that grade printed>" >&2;; esac
+CHOICE='<the option the user picked, word for word>'; case "$CHOICE" in '<'*) echo "CHOICE is still the placeholder: put the option the user picked, word for word in place of <the option the user picked, word for word>" >&2;; esac
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js slop-triage confirm --state "$TRIAGE_STATE" --grade "$GRADE" --choice "$CHOICE"; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js slop-triage gate --state "$TRIAGE_STATE"; RC=$?; (exit $RC); fi
+```
+
+The block runs several commands, so read each command's own output and error line, not the block's final status. `confirm` exit 0 recorded a yes, and `gate` then exits 0 with the `grade` to build to (`refine-only`: only the listed refinements, no redesign). `confirm` exit 2 is "Change the direction": any earlier yes is revoked and `gate` exits 2; grade again once the new direction is written down. `confirm` exit 1 saying the revoke may have failed means the old answer still stands; any other exit 1 is wrong input: fix it. The gate is advisory in this workflow: the kickoff goes on.
 
 **USER GATE:** AskUserQuestion — "Kickoff written (printed above). Nothing, go?"
 Options: ["Nothing, go.", "Edit the finish line", "Change the streams"]
@@ -230,7 +272,153 @@ REGIONS='<the containers JSON you wrote>'; [ -f "$REGIONS" ] || echo "REGIONS is
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js fidelity --ref "$REF" --actual "$ACTUAL" --regions "$REGIONS"; RC=$?; (exit $RC); fi
 ```
 
-Exit 0: the frame and every container meet the target, go on. **Exit 2 stops: a score under target is an unmet build gate, and the stream is not done until it passes**: record every score with `cli.js record measure key=fidelity_<s> value=false` (exit 2) or `value=true` (exit 0). The stream's finish line carries `{"id": "fidelity_<s>", "label": "<s>: reference fidelity met", "type": "bool", "op": "is", "value": true, "owner": "build", "stream": "<s>", "source": "measure:fidelity_<s>"}` (added at the Interview for every UI stream with a reference design), so the scripted gate (4.8) stays unmet until the latest score passes; test runs never write this measure, and a fix round (4.7 → 4.4) on such a stream scores fidelity again before 4.4; fix the regions it lists with `pass: false` (a low `structural_psnr` means a misplaced layer, a high one a small offset) and score again. Exit 1 is wrong input (size mismatch, not a PNG): fix it and score again, never read it as a pass. This is the one blocking design step in this loop; with no kit it is skipped like every kit step.
+Exit 0: the frame and every container meet the target, go on. **Exit 2 stops: a score under target is an unmet build gate, and the stream is not done until it passes**: record every score with `cli.js record measure key=fidelity_<s> value=false` (exit 2) or `value=true` (exit 0). The stream's finish line carries `{"id": "fidelity_<s>", "label": "<s>: reference fidelity met", "type": "bool", "op": "is", "value": true, "owner": "build", "stream": "<s>", "source": "measure:fidelity_<s>"}` (added at the Interview for every UI stream with a reference design), so the scripted gate (4.8) stays unmet until the latest score passes; test runs never write this measure, and a fix round (4.7 → 4.4) on such a stream scores fidelity again before 4.4; fix the regions it lists with `pass: false` (a low `structural_psnr` means a misplaced layer, a high one a small offset) and score again. Exit 1 is wrong input (size mismatch, not a PNG): fix it and score again, never read it as a pass. With no kit it is skipped like every kit step.
+
+**4.3c Unslop kit (UI / landing page / dashboard streams only).** When the stream builds UI, a landing page or a dashboard, run the steps below inside the worktree on each loop pass, after 4.3b and before 4.4; skip all of them for non-UI streams. Each is advisory except the image generation gate and the slop audit, which block.
+
+**🎚️ Design tokens (advisory, UI streams only):** When the stream builds UI, a landing page or a dashboard and the project has no design system of its own, pull spacing, color, radius and motion values from the token sheet: `emit` prints them as CSS custom properties (once per stream, into the stream's stylesheet; `TOKEN_KIND` is `landing` or `app`, `HUE` the brand hue), and `check --file "$CSS"` lints the stream's stylesheet against the sheet each pass: fix each `issues` row (off-grid spacing, heavy weights, a second accent, extra shadows). When the project already has a system, use it and skip this. Skip this for non-UI work. Before running a block, put the real path or value in place of each `NAME='<...>'` placeholder at its top; shell variables do not persist between Bash calls, so run the block as one. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+```bash
+TOKEN_KIND='<app or landing>'; case "$TOKEN_KIND" in '<'*) echo "TOKEN_KIND is still the placeholder: put app or landing in place of <app or landing>" >&2;; esac
+HUE='<the brand hue, 0 to 359>'; case "$HUE" in '<'*) echo "HUE is still the placeholder: put the brand hue, 0 to 359 in place of <the brand hue, 0 to 359>" >&2;; esac
+CSS='<the stream stylesheet>'; [ -f "$CSS" ] || echo "CSS is still the placeholder or does not exist: put the path of the stream stylesheet in place of <the stream stylesheet>" >&2
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js design-tokens emit --kind "$TOKEN_KIND" --hue "$HUE" --format css; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js design-tokens check --file "$CSS"; RC=$?; (exit $RC); fi
+```
+
+The block runs several commands, so read each command's own output and error line, not the block's final status. Exit 0 printed the answer (`check` exits 0 even with issues: fix them on this pass); exit 1 is wrong input: fix it, never read it as a pass. The step is advisory: the loop goes on.
+
+**📐 Ordered redline passes (advisory, UI / landing page / dashboard streams only):** When the stream builds UI, a landing page or a dashboard, run one ordered pass per loop iteration, from spacing to motion (spacing, color, icons, copy, type, layout, details, visuals, motion): `next --state "$PASSES"` names this iteration's pass (keep the progress file in `.claude/marathon/<run-id>/passes-<s>.json`), apply it across the whole screen, then `mark` it (second block). When the triage grade is refine-only, make only its listed refinements instead. Skip this for non-UI work. Before running a block, put the real path or value in place of each `NAME='<...>'` placeholder at its top; shell variables do not persist between Bash calls, so run the block as one. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+```bash
+PASSES='<a path for the passes progress file>'; case "$PASSES" in '<'*) echo "PASSES is still the placeholder: put a path for the passes progress file in place of <a path for the passes progress file>" >&2;; esac
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js redline-passes plan; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js redline-passes next --state "$PASSES"; RC=$?; (exit $RC); fi
+```
+
+The block runs several commands, so read each command's own output and error line, not the block's final status. Exit 0 printed the answer; a `next` with `ok: false` names a `problem` (a pass unknown, repeated or out of order in the progress file) and its `fix`: repair the file as `fix` says. `next: null` means all nine are done. Exit 1 is a broken progress file: fix it, never read it as a pass. The step is advisory: the loop goes on.
+
+After the pass is finished across the whole screen, record it (`PASS` is the pass id `next` printed):
+
+```bash
+PASSES='<a path for the passes progress file>'; case "$PASSES" in '<'*) echo "PASSES is still the placeholder: put a path for the passes progress file in place of <a path for the passes progress file>" >&2;; esac
+PASS='<the pass id next printed>'; case "$PASS" in '<'*) echo "PASS is still the placeholder: put the pass id next printed in place of <the pass id next printed>" >&2;; esac
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js redline-passes mark --state "$PASSES" --pass "$PASS"; RC=$?; (exit $RC); fi
+```
+
+`mark` exit 0 recorded the pass and names the `next` one; exit 2 refused a pass that is not the next in order or is already done (the file is left as it was): do the pass `next` names first. Exit 1 is an unknown pass id or a broken file. Advisory: the loop goes on.
+
+**🖼️ Visual direction (advisory; landing page streams only):** When the stream builds a landing page, choose the visual style and write the prompt recipe only after the screen works without it: write the screen context to `"$VISUAL_CTX"` (`{screen, has_product_ui, works_without_visual, slot, direction}`) and run `decide`: until `works_without_visual` is true it says no visual (build the screen first). Skip this for non-UI work and dashboards, where it is advisory. Before running a block, put the real path or value in place of each `NAME='<...>'` placeholder at its top; shell variables do not persist between Bash calls, so run the block as one. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+```bash
+VISUAL_CTX='<the screen context JSON you wrote>'; [ -f "$VISUAL_CTX" ] || echo "VISUAL_CTX is still the placeholder or does not exist: put the path of the screen context JSON you wrote in place of <the screen context JSON you wrote>" >&2
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js visual-direction decide --file "$VISUAL_CTX"; RC=$?; (exit $RC); fi
+```
+
+When a visual is needed, write `{sentence, style: photo|illustration|render|collage, palette: [hex], aspect}` to `"$VISUAL_PROMPT"` and print the recipe: it checks the one-sentence brief and prints the `prompt`, `negative`, `size` and `placement` the image gate below asks about:
+
+```bash
+VISUAL_PROMPT='<the prompt context JSON you wrote>'; [ -f "$VISUAL_PROMPT" ] || echo "VISUAL_PROMPT is still the placeholder or does not exist: put the path of the prompt context JSON you wrote in place of <the prompt context JSON you wrote>" >&2
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js visual-direction prompt --file "$VISUAL_PROMPT"; RC=$?; (exit $RC); fi
+```
+
+Exit 0 printed the answer; exit 1 is wrong input (a sentence that fails the sentence check, an unknown key, a bad palette or aspect): fix it, never read it as a pass. The step is advisory: the loop goes on.
+
+**🌗 Glyph and duotone effects (advisory; landing page streams with a hero image only):** When the stream builds a landing page with a hero image, apply a single duotone or glyph treatment (or halftone or dither) to the main visual only, in the visuals pass: set `EFFECT`, `PALETTE` (the page's ink and paper colors) and `SELECTOR` (the hero image), `check` the palette contrast and paste the snippet `emit` prints. Never more than one treatment, never on other images. Skip this for non-UI work and for a hero with no image. Before running a block, put the real path or value in place of each `NAME='<...>'` placeholder at its top; shell variables do not persist between Bash calls, so run the block as one. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+```bash
+EFFECT='<glyph, halftone, dither or duotone>'; case "$EFFECT" in '<'*) echo "EFFECT is still the placeholder: put glyph, halftone, dither or duotone in place of <glyph, halftone, dither or duotone>" >&2;; esac
+PALETTE='<the ink and paper colors as #hex,#hex, dark first>'; case "$PALETTE" in '<'*) echo "PALETTE is still the placeholder: put the ink and paper colors as #hex,#hex, dark first in place of <the ink and paper colors as #hex,#hex, dark first>" >&2;; esac
+SELECTOR='<the CSS selector of the hero image>'; case "$SELECTOR" in '<'*) echo "SELECTOR is still the placeholder: put the CSS selector of the hero image in place of <the CSS selector of the hero image>" >&2;; esac
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js image-effects list; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js image-effects check --kind "$EFFECT" --palette "$PALETTE"; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js image-effects emit --kind "$EFFECT" --palette "$PALETTE" --selector "$SELECTOR"; RC=$?; (exit $RC); fi
+```
+
+The block runs several commands, so read each command's own output and error line, not the block's final status. Exit 0 printed the answer (`check` warns when the contrast is under 3 and still exits 0: pick colors further apart); exit 1 is wrong input (an unknown kind, a bad palette, a third color for halftone, an unsafe selector): fix it, never read it as a pass. The step is advisory: the loop goes on.
+
+**🛑 Image generation gate (BLOCKING for UI / landing page streams that generate an image):** When the stream is UI or landing page work and an image would be generated (a paid image service or any image tool), require approval of the prompt, model and size first. No image service may be called until `image-gate check` exits 0 for that exact request. Write the prompt to `"$PROMPT_FILE"`, set `IMG_MODEL` and `IMG_SIZE` (WxH) to what the image tool will be sent and `IMG_ASSET` to the relative project path the result is saved to, and keep the ledger in `"$IMG_STATE"` (`.claude/kit/image-gate.json`). `request` prints one yes/no `question` that shows the service, model, size, estimated cost and file name first and the prompt after them: put it to the user exactly as printed (AskUserQuestion) and wait for the answer. Skip this when no image is generated, and for non-UI work. Before running a block, put the real path or value in place of each `NAME='<...>'` placeholder at its top; shell variables do not persist between Bash calls, so run the block as one. If `.claude/helpers/kit/cli.js` is missing, say so in one line, then ask the same yes/no in plain words with the prompt, model and size, and call no image tool before a yes.
+
+```bash
+PROMPT_FILE='<the prompt text file you wrote>'; [ -f "$PROMPT_FILE" ] || echo "PROMPT_FILE is still the placeholder or does not exist: put the path of the prompt text file you wrote in place of <the prompt text file you wrote>" >&2
+IMG_STATE='<the gate ledger path, .claude/kit/image-gate.json>'; case "$IMG_STATE" in '<'*) echo "IMG_STATE is still the placeholder: put the gate ledger path, .claude/kit/image-gate.json in place of <the gate ledger path, .claude/kit/image-gate.json>" >&2;; esac
+IMG_MODEL='<the model the image tool will be sent>'; case "$IMG_MODEL" in '<'*) echo "IMG_MODEL is still the placeholder: put the model the image tool will be sent in place of <the model the image tool will be sent>" >&2;; esac
+IMG_SIZE='<the size the image tool will be sent, WxH>'; case "$IMG_SIZE" in '<'*) echo "IMG_SIZE is still the placeholder: put the size the image tool will be sent, WxH in place of <the size the image tool will be sent, WxH>" >&2;; esac
+IMG_ASSET='<the project path the image is saved to, e.g. assets/generated/hero.png>'; case "$IMG_ASSET" in '<'*) echo "IMG_ASSET is still the placeholder: put the project path the image is saved to, e.g. assets/generated/hero.png in place of <the project path the image is saved to, e.g. assets/generated/hero.png>" >&2;; esac
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): gate not kept by the kit: ask the user yes or no with the prompt, model and size in plain words, and call no image tool before a yes"; (exit 0); else node .claude/helpers/kit/cli.js image-gate request --state "$IMG_STATE" --prompt-file "$PROMPT_FILE" --model "$IMG_MODEL" --size "$IMG_SIZE" --asset "$IMG_ASSET"; RC=$?; (exit $RC); fi
+```
+
+Exit 0 printed the request (`id`, `status: pending`, `question`, `next`); asking again for the same request returns the same record, and `reroll: true` means it was already used: change the prompt instead of rerolling the same one. Exit 1 is wrong input (an empty prompt or one with hidden control characters, an absolute, `..` or temporary asset path): fix it.
+
+On yes, record the approval:
+
+```bash
+IMG_STATE='<the gate ledger path, .claude/kit/image-gate.json>'; case "$IMG_STATE" in '<'*) echo "IMG_STATE is still the placeholder: put the gate ledger path, .claude/kit/image-gate.json in place of <the gate ledger path, .claude/kit/image-gate.json>" >&2;; esac
+IMG_ID='<the id request printed>'; case "$IMG_ID" in '<'*) echo "IMG_ID is still the placeholder: put the id request printed in place of <the id request printed>" >&2;; esac
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): gate not kept by the kit: ask the user yes or no with the prompt, model and size in plain words, and call no image tool before a yes"; (exit 0); else node .claude/helpers/kit/cli.js image-gate approve --state "$IMG_STATE" --id "$IMG_ID"; RC=$?; (exit $RC); fi
+```
+
+On no, record the decline and leave an empty slot of the image's exact layout size (`SLOT_W`, `SLOT_H`, `SLOT_RADIUS`) in its place:
+
+```bash
+IMG_STATE='<the gate ledger path, .claude/kit/image-gate.json>'; case "$IMG_STATE" in '<'*) echo "IMG_STATE is still the placeholder: put the gate ledger path, .claude/kit/image-gate.json in place of <the gate ledger path, .claude/kit/image-gate.json>" >&2;; esac
+IMG_ID='<the id request printed>'; case "$IMG_ID" in '<'*) echo "IMG_ID is still the placeholder: put the id request printed in place of <the id request printed>" >&2;; esac
+SLOT_W='<the image width in px>'; case "$SLOT_W" in '<'*) echo "SLOT_W is still the placeholder: put the image width in px in place of <the image width in px>" >&2;; esac
+SLOT_H='<the image height in px>'; case "$SLOT_H" in '<'*) echo "SLOT_H is still the placeholder: put the image height in px in place of <the image height in px>" >&2;; esac
+SLOT_RADIUS='<the layout radius in px>'; case "$SLOT_RADIUS" in '<'*) echo "SLOT_RADIUS is still the placeholder: put the layout radius in px in place of <the layout radius in px>" >&2;; esac
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): gate not kept by the kit: ask the user yes or no with the prompt, model and size in plain words, and call no image tool before a yes"; (exit 0); else node .claude/helpers/kit/cli.js image-gate decline --state "$IMG_STATE" --id "$IMG_ID"; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): gate not kept by the kit: ask the user yes or no with the prompt, model and size in plain words, and call no image tool before a yes"; (exit 0); else node .claude/helpers/kit/cli.js image-gate slot --width "$SLOT_W" --height "$SLOT_H" --radius "$SLOT_RADIUS"; RC=$?; (exit $RC); fi
+```
+
+Declined means an empty slot, not a stalled loop: the stream goes on with the slot. Put the `slot` `html` and `css` on the page (no text inside it) and the prompt, model, size and file name in the final report, never on the page. `approve` and `decline` exit 2 when the request was already answered.
+
+Right before the image call, claim the approval with the exact request about to be sent (the same prompt file, model, size and asset):
+
+```bash
+PROMPT_FILE='<the prompt text file you wrote>'; [ -f "$PROMPT_FILE" ] || echo "PROMPT_FILE is still the placeholder or does not exist: put the path of the prompt text file you wrote in place of <the prompt text file you wrote>" >&2
+IMG_STATE='<the gate ledger path, .claude/kit/image-gate.json>'; case "$IMG_STATE" in '<'*) echo "IMG_STATE is still the placeholder: put the gate ledger path, .claude/kit/image-gate.json in place of <the gate ledger path, .claude/kit/image-gate.json>" >&2;; esac
+IMG_MODEL='<the model the image tool will be sent>'; case "$IMG_MODEL" in '<'*) echo "IMG_MODEL is still the placeholder: put the model the image tool will be sent in place of <the model the image tool will be sent>" >&2;; esac
+IMG_SIZE='<the size the image tool will be sent, WxH>'; case "$IMG_SIZE" in '<'*) echo "IMG_SIZE is still the placeholder: put the size the image tool will be sent, WxH in place of <the size the image tool will be sent, WxH>" >&2;; esac
+IMG_ASSET='<the project path the image is saved to, e.g. assets/generated/hero.png>'; case "$IMG_ASSET" in '<'*) echo "IMG_ASSET is still the placeholder: put the project path the image is saved to, e.g. assets/generated/hero.png in place of <the project path the image is saved to, e.g. assets/generated/hero.png>" >&2;; esac
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): gate not kept by the kit: ask the user yes or no with the prompt, model and size in plain words, and call no image tool before a yes"; (exit 2); else node .claude/helpers/kit/cli.js image-gate check --state "$IMG_STATE" --prompt-file "$PROMPT_FILE" --model "$IMG_MODEL" --size "$IMG_SIZE" --asset "$IMG_ASSET"; RC=$?; (exit $RC); fi
+```
+
+**Exit 2 stops: do not call the image tool.** The `status` says why: pending (ask first), declined (use the slot), claimed or used (this approval is spent: request again), unknown (the prompt, model, size or asset changed since the yes: request again and ask again), mismatch. Exit 0 claimed the approval for this one call: send the image tool exactly `show.prompt`, `show.model` and `show.size`, and save the image to `show.asset`. Exit 1 is wrong input or a broken ledger: fix it, never read it as a yes.
+
+After the call, when an image was made, mark the request used:
+
+```bash
+IMG_STATE='<the gate ledger path, .claude/kit/image-gate.json>'; case "$IMG_STATE" in '<'*) echo "IMG_STATE is still the placeholder: put the gate ledger path, .claude/kit/image-gate.json in place of <the gate ledger path, .claude/kit/image-gate.json>" >&2;; esac
+IMG_ID='<the id request printed>'; case "$IMG_ID" in '<'*) echo "IMG_ID is still the placeholder: put the id request printed in place of <the id request printed>" >&2;; esac
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): gate not kept by the kit: ask the user yes or no with the prompt, model and size in plain words, and call no image tool before a yes"; (exit 0); else node .claude/helpers/kit/cli.js image-gate used --state "$IMG_STATE" --id "$IMG_ID"; RC=$?; (exit $RC); fi
+```
+
+When the call failed before any image was made, release the claim once, so `check` may claim it again without a new yes:
+
+```bash
+IMG_STATE='<the gate ledger path, .claude/kit/image-gate.json>'; case "$IMG_STATE" in '<'*) echo "IMG_STATE is still the placeholder: put the gate ledger path, .claude/kit/image-gate.json in place of <the gate ledger path, .claude/kit/image-gate.json>" >&2;; esac
+IMG_ID='<the id request printed>'; case "$IMG_ID" in '<'*) echo "IMG_ID is still the placeholder: put the id request printed in place of <the id request printed>" >&2;; esac
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): gate not kept by the kit: ask the user yes or no with the prompt, model and size in plain words, and call no image tool before a yes"; (exit 0); else node .claude/helpers/kit/cli.js image-gate release --state "$IMG_STATE" --id "$IMG_ID"; RC=$?; (exit $RC); fi
+```
+
+`used` and `release` exit 0 on success and exit 2 on a refused change (release works once per request; after that a failed call needs a new request and a new yes). Before the final report, list every request still pending, claimed or declined:
+
+```bash
+IMG_STATE='<the gate ledger path, .claude/kit/image-gate.json>'; case "$IMG_STATE" in '<'*) echo "IMG_STATE is still the placeholder: put the gate ledger path, .claude/kit/image-gate.json in place of <the gate ledger path, .claude/kit/image-gate.json>" >&2;; esac
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): gate not kept by the kit: ask the user yes or no with the prompt, model and size in plain words, and call no image tool before a yes"; (exit 0); else node .claude/helpers/kit/cli.js image-gate report --state "$IMG_STATE"; RC=$?; (exit $RC); fi
+```
+
+Put each `report` row (prompt, model, size, `save_as`) in the final report. This step is blocking: with the kit installed, no image call happens without a `check` that exited 0.
+
+**🧹 Slop audit (BLOCKING for UI / landing page / dashboard streams):** When the stream builds UI, a landing page or a dashboard, run the slop audit on every changed screen file each loop pass: `scan --strict --file "$SCREEN"` prints one `hits` row per sign with its `fix`; fix them on this pass and check the `manual` signs by eye. Skip this for non-UI streams, where it is advisory. Before running a block, put the real path or value in place of each `NAME='<...>'` placeholder at its top; shell variables do not persist between Bash calls, so run the block as one. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+```bash
+SCREEN='<the changed screen file>'; [ -f "$SCREEN" ] || echo "SCREEN is still the placeholder or does not exist: put the path of the changed screen file in place of <the changed screen file>" >&2
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js slop-audit signs; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js slop-audit scan --strict --file "$SCREEN"; RC=$?; (exit $RC); fi
+```
+
+Exit 0: no sign the scan can see, record `cli.js record measure key=slop_<s> value=true`. **Exit 2 stops: unresolved signs are an unmet build gate, and the stream is not done until the scan exits 0**: record `cli.js record measure key=slop_<s> value=false`. The stream's finish line carries `{"id": "slop_<s>", "label": "<s>: no unresolved slop signs", "type": "bool", "op": "is", "value": true, "owner": "build", "stream": "<s>", "source": "measure:slop_<s>"}` (added at the Interview for every UI stream), so the scripted gate (4.8) stays unmet until the latest scan is clean. Exit 1 is wrong input: fix it, never read it as a pass.
 
 **4.4 Record runs.** After every test run: `cli.js record run kind=unit|e2e|build status=green|red stream=<s>`. Each test run uses its own temp folder, cleaned up afterwards.
 
@@ -419,6 +607,19 @@ Any other non-zero exit (for example 127, or a signal) is a failure of that step
 - [ ] `cli.js seen-twice` run after every review; promotions recorded
 - [ ] `waitingOnHuman` lines listed once, never retried
 - [ ] `/bc` run after every stream; nothing pushed without `/bcp`
+- [ ] UI / landing page / dashboard streams: do-not limits and the template-fit test confirmed with `redesign-checklist` before the stream closed (advisory for non-UI streams)
+
+**✅ Do-not list and final checklist (advisory, UI / landing page / dashboard streams only):** When a stream built UI, a landing page or a dashboard, confirm the do-not limits and the template-fit test before closing it: `list` prints the do-not limits and the closing checklist (each with how to check it), and `check` compares the screen before the stream (`"$BEFORE"`, from the stream's base) with the screen after it (`"$AFTER"`) and runs the swap-the-product-name template test on the new copy. For a new screen, run `template-test --name "$PRODUCT_NAME" --file "$AFTER"` instead. Skip this for non-UI streams. Before running a block, put the real path or value in place of each `NAME='<...>'` placeholder at its top; shell variables do not persist between Bash calls, so run the block as one. If `.claude/helpers/kit/cli.js` is missing, say so in one line and continue; the kit is advisory and never blocks a workflow that worked before.
+
+```bash
+BEFORE='<the screen file before the change>'; [ -f "$BEFORE" ] || echo "BEFORE is still the placeholder or does not exist: put the path of the screen file before the change in place of <the screen file before the change>" >&2
+AFTER='<the screen file after the change>'; [ -f "$AFTER" ] || echo "AFTER is still the placeholder or does not exist: put the path of the screen file after the change in place of <the screen file after the change>" >&2
+PRODUCT_NAME='<the product name>'; case "$PRODUCT_NAME" in '<'*) echo "PRODUCT_NAME is still the placeholder: put the product name in place of <the product name>" >&2;; esac
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js redesign-checklist list; RC=$?; (exit $RC); fi
+if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else node .claude/helpers/kit/cli.js redesign-checklist check --before "$BEFORE" --after "$AFTER" --name "$PRODUCT_NAME"; RC=$?; (exit $RC); fi
+```
+
+The block runs several commands, so read each command's own output and error line, not the block's final status. Exit 0 printed the answer: put each `violations` row and a failing `template` test in the stream's closing note and fix what you can before `/bc`; exit 1 is wrong input: fix it, never read it as a pass. The step is advisory: the run goes on.
 
 ⚠️ Workflow INCOMPLETE until all boxes checked
 
