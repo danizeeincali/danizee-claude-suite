@@ -163,14 +163,14 @@ describe('page-snapshot flags and path handling', () => {
       assert.equal(spy.launched, 0);
     } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
-  it('local pages launch with the egress-blocking args; remote pages get only --no-proxy-server; the context is fresh', async () => {
+  it('local pages launch with the egress-blocking args; remote pages get only --no-proxy-server (both with the WebRTC flag); the context is fresh', async () => {
     const seen = [];
     const mk = () => ({ chromium: { launch: async (o) => ({ close: async () => {}, newContext: async (c) => { seen.push({ launch: o, ctx: c }); throw new Error('stop'); } }) } });
     await assert.rejects(run(['capture', '--url', 'http://127.0.0.1:9/', '--out', '/tmp/ps-never', '--width', '800', '--theme', 'dark'], { resolvePlaywright: async () => mk() }), /stop/);
     await assert.rejects(run(['capture', '--url', 'https://example.com/', '--out', '/tmp/ps-never', '--allow-remote'], { resolvePlaywright: async () => mk() }), /stop/);
-    assert.deepEqual(seen[0].launch.args, [...LAUNCH_ARGS]);
+    assert.deepEqual(seen[0].launch.args, [...LAUNCH_ARGS, ps.WEBRTC_FLAG]);
     // remote mode connects directly (no proxy) so the address the browser reached can be checked; no local resolver rules
-    assert.deepEqual(seen[1].launch.args, ['--no-proxy-server']);
+    assert.deepEqual(seen[1].launch.args, ['--no-proxy-server', ps.WEBRTC_FLAG]);
     assert.ok(!seen[1].launch.args.some((x) => x.startsWith('--host-resolver-rules')));
     for (const s of seen) {
       assert.equal(s.ctx.serviceWorkers, 'block');
@@ -218,7 +218,8 @@ describe('page-snapshot string rewriting', () => {
   });
   it('script content with angle brackets and comments does not confuse the walker', () => {
     const out = transformHtml('<!-- <script> --><p>1</p><script>if (a<b && "</p>") {}</script><p>2</p><!-- unterminated', { base });
-    assert.equal(out, '<!-- <script> --><p>1</p><p>2</p><!-- unterminated');
+    // comments are removed, and an unterminated one removes the rest (the parser reads it as a comment to the end)
+    assert.equal(out, '<p>1</p><p>2</p>');
   });
   it('keeps svg attribute case and untouched tags verbatim', () => {
     const html = '<svg viewBox="0 0 1 1" xmlns:xlink="x"><path d="M0 0"/></svg><p class=\'a "b"\'>t</p>';
@@ -545,7 +546,8 @@ describe('page-snapshot real capture', { skip: browserOk ? false : 'playwright o
 
     // opens standalone: nothing but the file itself is requested
     const s = await openStandalone(path.join(out, 'page.html'));
-    assert.deepEqual(s.reqs, [pathToFileURL(path.join(out, 'page.html')).href, 'http://blocked.invalid/x.png'], 'only the file itself and the one asset listed in skipped');
+    // the copy's CSP (img-src data:) keeps even the asset listed in skipped from being requested: only the file itself
+    assert.deepEqual(s.reqs, [pathToFileURL(path.join(out, 'page.html')).href], 'only the file itself');
     assert.equal(s.ran, false);
     assert.equal(s.scripts, 0);
     assert.equal(s.title, 'changed by script');
@@ -638,8 +640,8 @@ describe('page-snapshot real capture', { skip: browserOk ? false : 'playwright o
 });
 
 describe('page-snapshot scanHtml basics', () => {
-  it('an unclosed tag leaves the rest verbatim', () => {
-    assert.equal(scanHtml('<p>a</p><img src="x', {}), '<p>a</p><img src="x');
+  it('an unclosed tag drops the rest (fails closed, as the parser drops a tag cut off by the end of the input)', () => {
+    assert.equal(scanHtml('<p>a</p><img src="x', {}), '<p>a</p>');
   });
 });
 
@@ -837,7 +839,7 @@ describe('page-snapshot review r2: exit 4 table and fakes', () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ps-r2-'));
     try {
       const page = { on() {}, url: () => 'about:blank' };
-      const ctx = { routeWebSocket: async () => {}, route: async () => {}, newPage: async () => page, newCDPSession: async () => { throw new Error('no CDP here'); } };
+      const ctx = { routeWebSocket: async () => {}, route: async () => {}, addInitScript: async () => {}, newPage: async () => page, newCDPSession: async () => { throw new Error('no CDP here'); } };
       const r = await run(['capture', '--url', 'https://example.com/', '--out', path.join(dir, 'o'), '--allow-remote'], { cwd: dir, resolvePlaywright: fakePw(ctx) });
       assert.equal(r.exit, 4);
       assert.equal(r.captured, false);
@@ -1017,5 +1019,325 @@ describe('page-snapshot review r3: one --timeout-ms deadline for the whole captu
     assert.equal(reasonIn(man, `http://127.0.0.1:${port}/stall.png`), ps.BODY_LATE, JSON.stringify(man.skipped));
     assert.equal(reasonIn(man, `http://127.0.0.1:${port}/f.woff2`), ps.BODY_LATE, JSON.stringify(man.skipped));
     assert.deepEqual((await fs.readdir(out)).sort(), ['manifest.json', 'page.html', 'screenshot.png']);
+  });
+});
+
+// ---------------------------------------------------------------- review r4: the copy runs nothing, no side channel, no hang
+const HANDLER = /<[a-z][^>]*\son[a-z]+\s*=/i; // an on* attribute inside a tag (escaped text such as &lt;img onerror&gt; is inert)
+const ACTIVE = /<script|<noscript|<!--|javascript:|vbscript:/i;
+
+describe('page-snapshot review r4: the text pass fails closed (unit)', () => {
+  const base = 'https://site.test/dir/page.html';
+  const clean = (html) => transformHtml(html, { base, budget: makeBudget({ lookup: () => null }) });
+  it('comments end the way the parser ends them (<!-->, <!--->, --!>), so a script-made comment cannot hide markup', () => {
+    for (const html of ['<p>a</p><!--><img src=x onerror="window.__y=2">-->', '<!---><img src=x onerror="b()">-->', '<!-- x --!><img src=x onerror="c()">-->']) {
+      const out = clean(html);
+      assert.ok(!HANDLER.test(out) && !ACTIVE.test(out), `${html} -> ${out}`);
+      assert.match(out, /<img src="https:\/\/site\.test\/dir\/x">/, out);
+    }
+  });
+  it('noscript is raw text and removed with its content; the probe "<noscript><!--</noscript><script>" leaves no script or handler', () => {
+    const out = clean('<p>hi</p><noscript><!--</noscript><script>window.__x=1</script><p onclick="x()">z</p>');
+    assert.ok(!HANDLER.test(out) && !ACTIVE.test(out), out);
+    assert.equal(out, '<p>hi</p><p>z</p>');
+  });
+  it('an unterminated comment, tag or quoted value drops the rest instead of keeping it verbatim', () => {
+    assert.equal(clean('<p>a</p><!-- <script>x()</script><img onerror=y()>'), '<p>a</p>');
+    assert.equal(clean('<p>a</p><img title="x <script>z()</script>'), '<p>a</p>');
+    assert.equal(clean('<p>a</p><img src=x onerror=y() '), '<p>a</p>');
+  });
+  it('bogus comments end at their first ">" as in the parser, and "/" ends an attribute name', () => {
+    for (const html of ['<! <a title="> <img src=x onerror=alert(1)> ">', '<? <a title="> <img src=x onerror=alert(1)> ">', '</ <a title="> <img src=x onerror=alert(1)> ">', '<img a/onerror=alert(1)>']) {
+      const out = clean(html);
+      assert.ok(!HANDLER.test(out), `${html} -> ${out}`);
+    }
+  });
+  it('kept raw text cannot be read as markup: "<" in style, title and textarea is escaped (an SVG style or title parses as markup)', () => {
+    const out = clean('<svg><style>.a{}<a onclick="x()">t</a></style><title><a onclick="y()"></a></title></svg><textarea><!--</textarea><img src=x onerror=z()>-->');
+    assert.ok(!/<a\b/.test(out), out);
+    assert.ok(!HANDLER.test(out.replace(/\\3c [^<]*/g, '').replace(/&lt;[^<]*/g, '')), out);
+    assert.ok(out.includes('.a{}\\3c a onclick'), out);
+    assert.ok(out.includes('<title>&lt;a onclick'), out);
+    assert.ok(out.includes('<textarea>&lt;!--</textarea><img src="https://site.test/dir/x">'), out);
+    assert.ok(!/<(xmp|noembed|noframes|plaintext)/i.test(clean('<xmp><img onerror=a()></xmp><noembed>x</noembed><noframes>y</noframes><plaintext><b>')), 'dropped raw elements');
+  });
+  it('script URLs are neutralized however they are written, and SVG animations that set an href or a handler are dropped', () => {
+    const out = clean('<a href="java&#x09;script:alert(1)">1</a><a href="  JaVaScRiPt:x">2</a><a href="&#106;avascript:x">3</a><a href="vbscript:x">4</a>'
+      + '<svg><a xlink:href="javascript:x"><text>t</text></a><animate attributeName="href" to="javascript:x"/><set attributeName="onclick" to="x()"/></svg>'
+      + '<form action="java&Tab;script:x"><button formaction="javascript:y">b</button></form><object data="javascript:z"></object>');
+    assert.ok(!/script:|&#x09;|&#106;|&Tab;/i.test(out), out);
+    assert.ok(!/<(animate|set)\b/i.test(out), out);
+    assert.ok(ps.isScriptUrl('\u0001 java\nscript:x') && !ps.isScriptUrl('https://x.test/javascript:'));
+  });
+  it('every meta with http-equiv is dropped, not only refresh and CSP', () => {
+    const out = clean('<head><meta http-equiv="set-cookie" content="a=b"><meta http-equiv="X-UA-Compatible" content="IE=edge"><meta name="viewport" content="w"></head>');
+    assert.ok(!/http-equiv/i.test(out), out);
+    assert.ok(out.includes('<meta name="viewport" content="w">'));
+  });
+  it('the copy opens its head with the CSP backstop, after cleaning, before anything from the page; no script-src', () => {
+    assert.equal(ps.SNAPSHOT_CSP, "default-src 'none'; img-src data:; style-src 'unsafe-inline' data:; font-src data:; media-src data:; base-uri 'none'; form-action 'none'");
+    assert.ok(!/script-src/.test(ps.SNAPSHOT_CSP));
+    const dom = { doctype: '<!DOCTYPE html>', baseUri: base, html: '<html><head><meta http-equiv="Content-Security-Policy" content="script-src *"><title>t</title></head><body>b</body></html>' };
+    const { html } = buildSnapshot(dom, { url: base, at: 'T' });
+    const meta = `<meta http-equiv="Content-Security-Policy" content="${ps.encodeAttr(ps.SNAPSHOT_CSP)}">`;
+    assert.ok(html.startsWith(`<!DOCTYPE html>\n<html><head><meta charset="utf-8"><meta name="snapshot-source" content="${base}" data-at="T">${meta}<title>`), html);
+    assert.equal(html.split('Content-Security-Policy').length - 1, 1, 'the page\'s own CSP meta is gone');
+    // no usable <head> (removed by a script, or one hidden in a template): the insert opens the document, where the parser puts it in the head
+    for (const body of ['<html><body><p>x</p></body></html>', '<p>x</p><template><head></head></template>', '<html><p>x</p><head></head></html>']) {
+      const out = buildSnapshot({ ...dom, html: body }, { url: base, at: 'T' }).html;
+      assert.ok(out.startsWith(`<!DOCTYPE html>\n<meta charset="utf-8">`) && out.includes(meta), out);
+    }
+    const src = readFileSync(path.join(ROOT, 'src/lib/kit/page-snapshot.js'), 'utf-8');
+    const flat = src.slice(0, src.indexOf('*/')).replace(/\s*\n\s*\*\s*/g, ' ');
+    assert.ok(flat.includes(`<meta http-equiv="Content-Security-Policy" content="${ps.SNAPSHOT_CSP}">`), 'header documents the CSP');
+  });
+  it('the in-page removals are counted and listed in skipped like the text pass does', () => {
+    const dom = { baseUri: base, html: '<html><head></head><body></body></html>',
+      removed: [{ tag: 'script', src: null }, { tag: 'iframe', src: 'https://site.test/f.html' }, { tag: 'object', src: 'https://site.test/o.svg' }, { tag: 'embed', src: null }, { tag: 'noscript', src: null }] };
+    const b = buildSnapshot(dom, { url: base, at: 'T' }).budget;
+    assert.deepEqual(b.removed, { scripts: 1, iframes: 1, embedded: 2 });
+    assert.equal(b.skipped.get('https://site.test/f.html'), 'iframe removed from the static copy');
+    assert.equal(b.skipped.get('https://site.test/o.svg'), '<object> removed from the static copy');
+    assert.equal(b.skipped.get('(<embed> without a source)'), '<embed> removed from the static copy');
+  });
+  it('the header and usage name the DOM-copy timeout exit, the WebRTC flag and every neutered API', () => {
+    const src = readFileSync(path.join(ROOT, 'src/lib/kit/page-snapshot.js'), 'utf-8');
+    const flat = src.slice(0, src.indexOf('*/')).replace(/\s*\n\s*\*\s*/g, ' ');
+    assert.ok(flat.includes(`exit 1 "${ps.NO_ANSWER}"`) && flat.includes(`"${ps.NO_ANSWER}")`), 'exit 1 cause in the header');
+    assert.ok(ps.usage.includes(ps.NO_ANSWER));
+    assert.ok(flat.includes(ps.WEBRTC_FLAG));
+    for (const k of ps.NEUTERED_APIS) assert.ok(flat.includes(k), k);
+    assert.ok(flat.includes(`(at least ${ps.DOM_FLOOR_MS / 1000} s)`) && flat.includes(`(at least ${ps.DNS_FLOOR_MS / 1000} s;`));
+  });
+  const MB8 = 8 * 1048576;
+  const shapes = {
+    'closed comments without "--!>"': '<!--a-->'.repeat(Math.floor(MB8 / 8)),
+    'closed comments without "-->"': '<!--a--!>'.repeat(Math.floor(MB8 / 9)),
+    'empty comments': '<!-->'.repeat(Math.floor(MB8 / 5)),
+    'bogus comments': '<!x>'.repeat(Math.floor(MB8 / 4)),
+    'unterminated bogus comments': '<?'.repeat(Math.floor(MB8 / 2)),
+    'title full of "<"': '<title>' + '<'.repeat(MB8) + '</title>',
+    'attribute slashes': '<img ' + 'a/'.repeat(Math.floor(MB8 / 2)) + '>',
+  };
+  for (const [name, html] of Object.entries(shapes)) {
+    it(`linear on 8 MiB: ${name}`, () => {
+      const t0 = Date.now();
+      transformHtml(html, { base, budget: makeBudget({ lookup: () => null }), theme: 'dark' });
+      assert.ok(Date.now() - t0 < 5000, `${name} took ${Date.now() - t0} ms`);
+    });
+  }
+});
+
+describe('page-snapshot review r4: bounded DOM copy and pending address checks (fakes)', () => {
+  const fake = ({ dom, hangDom = false }) => {
+    const page = {
+      on() {}, url: () => 'https://example.com/',
+      goto: async () => ({ ok: () => true, status: () => 200, url: () => 'https://example.com/', serverAddr: async () => ({ ipAddress: '93.184.216.34' }) }),
+      waitForLoadState: async () => {},
+      evaluate: (fn) => (fn === ps.snapshotDom ? (hangDom ? new Promise(() => {}) : Promise.resolve(dom)) : Promise.resolve(true)),
+      screenshot: async () => PNG,
+    };
+    const inits = [];
+    const ctx = { route: async () => {}, routeWebSocket: async () => {}, addInitScript: async (s) => { inits.push(s); }, newPage: async () => page,
+      newCDPSession: async () => ({ on() {}, send: async () => ({}), detach: async () => {} }) };
+    return { inits, resolve: async () => ({ chromium: { launch: async () => ({ newContext: async () => ctx, close: async () => {} }) } }) };
+  };
+  const dom = { doctype: '<!DOCTYPE html>', baseUri: 'https://example.com/', html: '<html><head><style data-snapshot-pending="0"></style></head><body>x</body></html>',
+    pending: [{ n: 0, href: 'https://cdn.hang.test/s.css', media: 'all' }], dropped: [], removed: [] };
+  it('a DNS lookup that never answers for a pending stylesheet is bounded: the sheet is dropped as private and the capture ends', { timeout: 20000 }, async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ps-r4-'));
+    try {
+      const f = fake({ dom });
+      const t0 = Date.now();
+      const r = await run(['capture', '--url', 'https://example.com/', '--out', path.join(dir, 'o'), '--allow-remote', '--timeout-ms', '1000'],
+        { cwd: dir, resolvePlaywright: f.resolve, lookup: () => new Promise(() => {}) });
+      assert.ok(Date.now() - t0 <= 1000 + ps.DEADLINE_MARGIN_MS, `took ${Date.now() - t0} ms`);
+      assert.equal(r.captured, true);
+      const man = JSON.parse(await fs.readFile(path.join(dir, 'o', 'manifest.json'), 'utf-8'));
+      assert.deepEqual(man.skipped, [{ url: 'https://cdn.hang.test/s.css', reason: ps.PENDING_BLOCKED }]);
+      assert.equal(f.inits.length, 1);
+      for (const k of ps.NEUTERED_APIS) assert.ok(f.inits[0].includes(`"${k}"`), k);
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+  it('a DOM copy that never answers fails with exit 1 "the page did not answer in time" and writes nothing', { timeout: 20000 }, async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ps-r4-'));
+    try {
+      const t0 = Date.now();
+      const e = await errOf(run(['capture', '--url', 'https://example.com/', '--out', path.join(dir, 'o'), '--allow-remote', '--timeout-ms', '1000'],
+        { cwd: dir, resolvePlaywright: fake({ dom, hangDom: true }).resolve, lookup: async () => [{ address: '93.184.216.34', family: 4 }] }));
+      assert.ok(Date.now() - t0 <= 1000 + ps.DEADLINE_MARGIN_MS, `took ${Date.now() - t0} ms`);
+      assert.equal(e && e.code, 1);
+      assert.ok(e.message.startsWith(ps.NO_ANSWER), e.message);
+      assert.equal(await fs.stat(path.join(dir, 'o')).then(() => true, () => false), false, 'nothing written');
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe('page-snapshot review r4: real probes', { skip: browserOk ? false : 'playwright or its browser cannot be resolved here' }, () => {
+  let dir; let srv; let port; let rem; let rp; let tcp; let udp; const hits = []; const beacons = []; const sockets = new Set();
+  const rtcPage = (tp, up) => '<!doctype html><title>rtc</title><body><p id=p>x</p><script>'
+    + 'document.body.setAttribute("data-rtc", typeof RTCPeerConnection + "," + typeof WebTransport + "," + typeof Worker);'
+    + `function go(P){ try { const pc = new P({ iceServers: [{ urls: ["turn:127.0.0.3:${tp}?transport=tcp"], username: "u", credential: "c" }, { urls: ["stun:127.0.0.3:${up}"] }] });`
+    + ' pc.createDataChannel("d"); pc.createOffer().then((o) => pc.setLocalDescription(o)); } catch (e) {} }'
+    + 'go(window.RTCPeerConnection); go(window.webkitRTCPeerConnection);'
+    + 'const f = document.createElement("iframe"); document.body.appendChild(f); try { go(f.contentWindow.RTCPeerConnection); } catch (e) {}'
+    + `try { new WebTransport("https://127.0.0.3:${up}/x").ready.catch(() => {}); } catch (e) {}`
+    + `try { const W = window.Worker || f.contentWindow.Worker; new W(URL.createObjectURL(new Blob(["try { new WebTransport('https://127.0.0.3:${up}/w').ready.catch(() => {}); } catch (e) {}"], { type: "text/javascript" }))); } catch (e) {}`
+    + '</script></body>';
+  before(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ps-r4-real-'));
+    tcp = (await import('node:net')).createServer((c) => { hits.push('tcp'); c.destroy(); });
+    await new Promise((r) => tcp.listen(0, '127.0.0.3', r));
+    udp = (await import('node:dgram')).createSocket('udp4'); udp.on('message', () => hits.push('udp'));
+    await new Promise((r) => udp.bind(0, '127.0.0.3', r));
+    const handler = (req, res) => {
+      if (req.url === '/rtc') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end(rtcPage(tcp.address().port, udp.address().port)); }
+      beacons.push(req.url); res.writeHead(200, { 'content-type': 'image/png' }); res.end(PNG);
+    };
+    const listen = async (host) => { const s = http.createServer(handler); s.on('connection', (c) => { sockets.add(c); c.on('close', () => sockets.delete(c)); }); await new Promise((r) => s.listen(0, host, r)); return s; };
+    srv = await listen('127.0.0.1'); port = srv.address().port;
+    rem = await listen('127.0.0.2'); rp = rem.address().port;
+  });
+  after(async () => {
+    for (const c of sockets) c.destroy();
+    await new Promise((r) => srv.close(r)); await new Promise((r) => rem.close(r)); await new Promise((r) => tcp.close(r)); udp.close();
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  /** Open a saved copy with scripts on; bypassCSP true tests the cleaners alone, false the copy as it is. */
+  async function openCopy(file, { bypassCSP }) {
+    const b = await pw.chromium.launch({ headless: true });
+    try {
+      const reqs = [];
+      const ctx = await b.newContext({ bypassCSP });
+      // every request is let through, so only the copy itself (its cleaning or its CSP) can stop one
+      await ctx.route('**/*', (r) => { reqs.push(r.request().url()); return r.continue(); });
+      const page = await ctx.newPage();
+      await page.goto(pathToFileURL(file).href);
+      await page.waitForTimeout(400);
+      await page.mouse.click(5, 5).catch(() => {});
+      const ran = await page.evaluate(() => JSON.stringify([window.__x, window.__y, window.__h, window.__s, window.__c]));
+      return { ran, reqs };
+    } finally { await b.close(); }
+  }
+  const nothingRan = '[null,null,null,null,null]';
+
+  it('the reviewer probes (script-made comments, noscript "<!--", a page that tampers with the DOM pass) run nothing when the copy is opened', { timeout: 120000 }, async () => {
+    const probes = {
+      a: '<!doctype html><html><head><title>t</title></head><body><p>hi</p>\n<noscript><!--</noscript><script>window.__x=1</script>\n'
+        + '<script>document.body.appendChild(document.createComment(\'><img src=x onerror="window.__y=1">\'));</script></body></html>',
+      b: '<!doctype html><html><head><title>t</title></head><body><p>hi</p><script>document.body.appendChild(document.createComment(\'><img src=x onerror="window.__y=2">\'));'
+        + 'document.body.appendChild(document.createComment(\'-><img src=x onerror="window.__h=1">\')); document.body.appendChild(document.createComment(\'x--!><img src=x onerror="window.__s=1">\'));</script></body></html>',
+      c: '<!doctype html><html><head><title>t</title></head><body><p>hi</p>\n<noscript><!--</noscript><script>window.__x=1</script><p onclick="window.__c=1" style="position:fixed;inset:0">z</p>\n</body></html>',
+      // template content, xmp, a javascript: link with a tab, a meta refresh
+      t: '<!doctype html><html><head><meta http-equiv="refresh" content="0;url=javascript:window.__s=1"></head><body><template id=tp><p>in</p></template><xmp><img src=x onerror="window.__h=1"></xmp>'
+        + '<a href="java&#x09;script:window.__c=1" style="position:fixed;inset:0">l</a><script>document.getElementById("tp").content.appendChild(document.createComment(\'</template><img src=x onerror="window.__y=1">\'))</script></body></html>',
+      // a hostile page disables the DOM pass's removals: the text pass and the CSP still hold
+      h: '<!doctype html><html><head></head><body><p>hi</p><script>Element.prototype.removeAttributeNode = function () {}; Element.prototype.remove = function () {}; CharacterData.prototype.remove = function () {};'
+        + 'document.body.appendChild(document.createComment(\'><img src=x onerror="window.__y=1">\')); const i = document.createElement("img"); i.src = "x"; i.setAttribute("onerror", "window.__h=1"); document.body.appendChild(i);</script></body></html>',
+    };
+    for (const [k, html] of Object.entries(probes)) {
+      const src = path.join(dir, `${k}.html`);
+      await fs.writeFile(src, html);
+      const out = path.join(dir, `out-${k}`);
+      const r = await run(['capture', '--url', pathToFileURL(src).href, '--out', out, '--timeout-ms', '3000'], { cwd: dir });
+      assert.equal(r.captured, true, k);
+      const copy = await fs.readFile(path.join(out, 'page.html'), 'utf-8');
+      assert.ok(!HANDLER.test(copy) && !ACTIVE.test(copy), `${k}: ${copy}`);
+      for (const bypassCSP of [true, false]) {
+        const o = await openCopy(path.join(out, 'page.html'), { bypassCSP });
+        assert.equal(o.ran, nothingRan, `${k} bypassCSP=${bypassCSP}`);
+      }
+    }
+  });
+
+  it('the in-page pass alone removes comments, scripts, noscript, handlers and script URLs and puts <head> first', { timeout: 60000 }, async () => {
+    const b = await pw.chromium.launch({ headless: true });
+    try {
+      const page = await b.newPage();
+      await page.setContent('<!doctype html><html><head><meta http-equiv="refresh" content="9"><base href="https://x.test/"></head><body onload="1"><noscript><p>n</p></noscript>'
+        + '<template><script>1</script><p onclick="2">t</p></template><xmp><b></xmp><svg><a href=" javascript:3"><text>s</text></a><set attributeName="onclick" to="4"/><script>5</script></svg>'
+        + '<object data="o.svg"></object><iframe src="f.html"></iframe><script>document.body.appendChild(document.createComment("--><img onerror=6>")); document.documentElement.insertBefore(document.createTextNode("t"), document.head);</script></body></html>');
+      const dom = await page.evaluate(ps.snapshotDom, []);
+      assert.ok(!/<!--|<script|<noscript|<iframe|<object|<base|http-equiv|javascript:|<set\b|<xmp/i.test(dom.html) && !HANDLER.test(dom.html), dom.html);
+      assert.ok(dom.html.startsWith('<html><head>'), dom.html.slice(0, 40));
+      assert.ok(dom.html.includes('<pre>&lt;b&gt;</pre>'), 'xmp kept as pre');
+      assert.deepEqual(dom.removed.map((x) => x.tag).sort(), ['base', 'iframe', 'noscript', 'object', 'script', 'script', 'script']);
+      assert.ok(dom.removed.some((x) => x.tag === 'iframe' && x.src === 'https://x.test/f.html'));
+    } finally { await b.close(); }
+  });
+
+  it('the CSP backstop: a handler, a script and remote assets injected after cleaning run nothing and request nothing', { timeout: 60000 }, async () => {
+    const src = path.join(dir, 'plain.html');
+    await fs.writeFile(src, '<!doctype html><html><head><title>p</title><style>h1{color:red}</style></head><body><h1>x</h1></body></html>');
+    const out = path.join(dir, 'out-csp');
+    assert.equal((await run(['capture', '--url', pathToFileURL(src).href, '--out', out, '--timeout-ms', '3000'], { cwd: dir })).captured, true);
+    const file = path.join(out, 'page.html');
+    const base = `http://127.0.0.1:${port}`;
+    const injected = (await fs.readFile(file, 'utf-8')).replace('<h1>', `<img src="x" onerror="window.__h=1"><script>window.__s=1</script><img src="${base}/beacon.png">`
+      + `<link rel="stylesheet" href="${base}/s.css"><div style="background:url(${base}/bg.png);position:fixed;inset:0" onclick="window.__c=1"></div><h1>`);
+    await fs.writeFile(file, injected);
+    beacons.length = 0;
+    const o = await openCopy(file, { bypassCSP: false });
+    assert.equal(o.ran, nothingRan);
+    assert.deepEqual(o.reqs, [pathToFileURL(file).href], 'only the file itself was requested');
+    assert.deepEqual(beacons, []);
+    // control: the same copy without its CSP does run the injected script and fetch the assets
+    const ctl = await openCopy(file, { bypassCSP: true });
+    assert.notEqual(ctl.ran, nothingRan);
+    assert.ok(beacons.length > 0);
+  });
+
+  it('WebRTC (STUN over UDP, TURN over TCP), WebTransport and workers reach nothing, in remote and local mode', { timeout: 60000 }, async () => {
+    for (const [url, extra] of [[`http://127.0.0.2:${rp}/rtc`, ['--allow-remote']], [`http://127.0.0.1:${port}/rtc`, []]]) {
+      hits.length = 0;
+      const out = path.join(dir, 'rtc' + extra.length);
+      const r = await run(['capture', '--url', url, '--out', out, '--timeout-ms', '3000', ...extra], { cwd: dir });
+      assert.equal(r.captured, true);
+      await new Promise((res) => setTimeout(res, 500));
+      assert.deepEqual(hits, [], `${url}: the 127.0.0.3 listener saw ${hits.join(',')}`);
+      const html = await fs.readFile(path.join(out, 'page.html'), 'utf-8');
+      assert.ok(html.includes('data-rtc="undefined,undefined,undefined"'), html.slice(0, 400));
+    }
+  });
+
+  it('the control: the same page in a plain browser does reach the 127.0.0.3 listener (the probe is real)', { timeout: 60000 }, async () => {
+    hits.length = 0;
+    const b = await pw.chromium.launch({ headless: true, args: ['--no-proxy-server'] });
+    try {
+      const page = await b.newPage();
+      await page.goto(`http://127.0.0.2:${rp}/rtc`);
+      await page.waitForTimeout(1500);
+    } finally { await b.close(); }
+    assert.ok(hits.length > 0);
+  });
+
+  const T = 2000;
+  const cli = path.join(HERE, '../.claude/helpers/kit/cli.js');
+  const runCli = (args) => new Promise((resolve) => {
+    execFile(process.execPath, [cli, 'page-snapshot', 'capture', ...args], { cwd: ROOT, timeout: 40000 }, (err, stdout, stderr) => resolve({ code: err ? (err.code ?? 1) : 0, stdout, stderr }));
+  });
+  it('a page that keeps its main thread busy when the DOM copy runs ends within --timeout-ms plus the margin: exit 1, nothing written', { timeout: 60000 }, async () => {
+    const src = path.join(dir, 'busy.html');
+    await fs.writeFile(src, '<!doctype html><html><body><p>busy</p><script>Object.defineProperty(document, "documentElement", { configurable: true, get() { for (;;); } });</script></body></html>');
+    const out = path.join(dir, 'out-busy');
+    const t0 = Date.now();
+    const res = await runCli(['--url', pathToFileURL(src).href, '--out', out, '--timeout-ms', String(T)]);
+    const took = Date.now() - t0;
+    assert.ok(took <= T + ps.DEADLINE_MARGIN_MS, `took ${took} ms`);
+    assert.equal(res.code, 1, res.stderr);
+    assert.ok(res.stderr.includes(ps.NO_ANSWER), res.stderr);
+    assert.equal(await fs.stat(out).then(() => true, () => false), false, 'nothing written');
+  });
+  it('the reviewer busy-loop probes (a loop from 200 to 900 ms) all end within --timeout-ms plus the margin', { timeout: 120000 }, async () => {
+    for (const ms of [200, 520, 540, 900]) {
+      const src = path.join(dir, `g${ms}.html`);
+      await fs.writeFile(src, `<!doctype html><html><body><p>busy</p><script>setTimeout(() => { for (;;); }, ${ms});</script></body></html>`);
+      const t0 = Date.now();
+      const res = await runCli(['--url', pathToFileURL(src).href, '--out', path.join(dir, `out-g${ms}`), '--timeout-ms', String(T)]);
+      const took = Date.now() - t0;
+      assert.ok(took <= T + ps.DEADLINE_MARGIN_MS, `${ms}: took ${took} ms`);
+      assert.ok(res.code === 0 || res.code === 1, `${ms}: exit ${res.code} ${res.stderr}`);
+    }
   });
 });

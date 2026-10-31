@@ -5,6 +5,19 @@
  * <style>, images and CSS url() assets become data: URIs under a size cap, scripts, iframes, embedding elements (embed,
  * object, applet, portal, frame, frameset: each listed in skipped), srcset and <base> are dropped, and links are made absolute. Nothing runs when the copy is opened. Scripted or canvas-drawn animated backgrounds do
  * not survive the copy: describe them from the screenshot.
+ * The copy is made safe in three layers. (1) In the page, before the DOM is serialized, the copy's clone is cleaned: every
+ * comment node is removed, so is every script, noscript, noembed, noframes, iframe, embedding element, plaintext, base,
+ * meta with http-equiv or charset, SVG animation that sets an href or a handler, and every on* attribute; javascript: and
+ * vbscript: URLs are emptied, template contents are cleaned too, and <head> is made the first child of <html>. This runs in
+ * the page's own script world, so a hostile page can tamper with it; the next two layers do not depend on it. (2) The
+ * serialized text is cleaned again, failing closed: comments are removed, ended the way the HTML parser ends them (<!-->,
+ * <!---> and --!> included); bogus comments are removed to their first >; noscript is raw text and removed with its
+ * content like script; "<" in kept raw text is escaped (style text as \3c, title and textarea as &lt;), so it can never be
+ * read as markup; an unterminated comment or tag drops the rest of the document. (3) page.html opens its <head> with the
+ * charset, the snapshot-source meta and <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src
+ * data:; style-src 'unsafe-inline' data:; font-src data:; media-src data:; base-uri 'none'; form-action 'none'">, before
+ * anything from the page, so no script runs and nothing is fetched when it is opened even if a handler got through. An
+ * asset left as an absolute URL (listed in skipped) is therefore not loaded when the copy is opened either.
  *
  *   page-snapshot plan --url <url> [--out <dir>]
  *       → { url, local, needs_consent, out_files:[...], viewport:{width,height}, next }. No browser and no network.
@@ -25,16 +38,25 @@
  *       queries and in the media= attributes of <style>, <link> and <source> (the other scheme becomes a query that never
  *       matches).
  *       --full-page screenshots the whole scrollable page. The page's rendered DOM may not exceed 8 MiB.
+ *       In both modes WebRTC, WebTransport and workers are taken away from the page: an init script deletes
+ *       RTCPeerConnection, webkitRTCPeerConnection, RTCDataChannel, WebTransport, Worker and SharedWorker in every frame
+ *       (about:blank ones included) before any page script runs, and Chromium is launched with
+ *       --force-webrtc-ip-handling-policy=disable_non_proxied_udp. Their STUN/TURN (UDP and TCP) and QUIC traffic never passes
+ *       the request routes below, so without this a page could reach any address with them; a page that needs a worker to
+ *       render is captured without it.
  *       --timeout-ms (default 30000, 1000 to 120000) is one deadline for the whole capture, counted from the start of the
  *       navigation: the document itself must arrive within it (else exit 1, could not load), and every later wait (the load
  *       event, the network settle, document.fonts.ready, the --full-page scroll, every asset body, the screenshot) gets at
- *       most what is left. The load event is not required: an image, stylesheet or font of the original markup, or one
+ *       most what is left; so do the DOM copy that follows the screenshot (at least 1 s) and the address checks of pending
+ *       stylesheets (at least 0.5 s; one still open then counts as private and the sheet is dropped). A page whose main thread
+ *       does not answer the DOM copy in time (a busy loop, say) fails with exit 1 "the page did not answer in time" and nothing
+ *       is written: a screenshot without the copy is not the snapshot asked for. The load event is not required: an image, stylesheet or font of the original markup, or one
  *       requested later, whose body is still unfinished when the budget is spent (at least 0.5 s after the settle; a
  *       streaming or stalled image or font, say) is dropped, keeps its absolute URL and is listed in skipped as "body did
  *       not finish in time"; network_idle is then false, the files are still written and the exit is 0. With a font still
  *       loading the screenshot is taken without waiting for it (the fallback face is drawn); the screenshot always gets at
  *       least 2 s. A capture ends within --timeout-ms plus 6 s (the fixed margin covers the browser start, the 0.5 s body
- *       grace, the 2 s screenshot floor and writing the copy). An asset reached through redirects is stored under every URL of its redirect chain, so
+ *       grace, the 2 s screenshot floor, the DOM copy and address-check floors and writing the copy). An asset reached through redirects is stored under every URL of its redirect chain, so
  *       an element naming the first URL inlines it (each hop held to the address check below).
  *       Network policy: file:// and http(s)://localhost or 127.0.0.1 are allowed and everything else is blocked at the
  *       browser (no name but localhost resolves, no proxy, non-local requests and WebSockets aborted). Any other URL is
@@ -52,13 +74,14 @@
  *       only allows egress through a proxy a remote capture cannot work, and there is no flag to use the proxy (it would
  *       weaken the address check; the owner decides).
  *       Each refused request's origin is in blocked_origins (file:// for file URLs). Known gap: a name whose answer changes
- *       between Node's lookup and the browser's (DNS rebinding), or a redirect inside a web worker, can reach such a host
+ *       between Node's lookup and the browser's (DNS rebinding) can reach such a host
  *       with that request; its body is dropped, and a stylesheet from it is dropped from the copy. Asset bytes are the ones the browser itself received, nothing
  *       is fetched by Node (DNS lookups only). Loads playwright only if the project can resolve it (it is not a dependency of this suite); if not,
  *       returns { captured:false, reason:"playwright not installed: page-snapshot capture needs it", exit:4 }.
  *
  * Exit codes: 0 answer printed · 1 bad input or broken state (bad flag, unparseable URL, HTTP error, DOM over 8 MiB, --out
- * a symlink or a file, page could not load, with a proxy hint in remote mode when a proxy variable is set) · 2 URL refused
+ * a symlink or a file, page could not load, with a proxy hint in remote mode when a proxy variable is set, "the page did
+ * not answer in time") · 2 URL refused
  * by the network policy (not local and no --allow-remote, an unsupported scheme, credentials in the URL, or a remote page
  * that led the browser to a private address) · 4 the browser cannot be used: playwright not installed, its browser could
  * not start, "playwright >= 1.48 required" (no WebSocket routing), or "the browser cannot apply the remote address guard"
@@ -75,7 +98,7 @@ import { KitExit } from './kit-exit.js';
 import { resolvePlaywright, LAUNCH_ARGS } from './frame-capture.js';
 
 export const verb = 'page-snapshot';
-export const usage = 'cli.js page-snapshot plan --url <url> [--out <dir>] | capture --url <url> --out <dir> [--width 1440] [--height 900] [--full-page] [--allow-remote] [--theme light|dark] [--timeout-ms <ms>] [--max-asset-bytes <n>] [--max-total-bytes <n>]  (JSON out; exit 1 bad input or page could not load (remote mode connects directly, without a configured HTTP(S)_PROXY, and says so); exit 2 URL refused, remote needs --allow-remote; exit 4 playwright not installed, browser could not start, playwright >= 1.48 required, or the browser cannot apply the remote address guard; --timeout-ms is one deadline for the whole capture (load, settle, fonts, asset bodies, screenshot; it ends within --timeout-ms plus 6 s): a late body, in the markup or later, is listed in skipped as "body did not finish in time" and the exit is 0)';
+export const usage = 'cli.js page-snapshot plan --url <url> [--out <dir>] | capture --url <url> --out <dir> [--width 1440] [--height 900] [--full-page] [--allow-remote] [--theme light|dark] [--timeout-ms <ms>] [--max-asset-bytes <n>] [--max-total-bytes <n>]  (JSON out; exit 1 bad input, page could not load or the page did not answer in time (remote mode connects directly, without a configured HTTP(S)_PROXY, and says so); exit 2 URL refused, remote needs --allow-remote; exit 4 playwright not installed, browser could not start, playwright >= 1.48 required, or the browser cannot apply the remote address guard; --timeout-ms is one deadline for the whole capture (load, settle, fonts, asset bodies, screenshot; it ends within --timeout-ms plus 6 s): a late body, in the markup or later, is listed in skipped as "body did not finish in time" and the exit is 0)';
 
 export const NOT_INSTALLED = 'playwright not installed: page-snapshot capture needs it';
 export const MAX_ASSET_BYTES = 2 * 1048576;
@@ -87,6 +110,18 @@ export const BODY_GRACE_MS = 500;
 export const SCREENSHOT_FLOOR_MS = 2000;
 /** How far past --timeout-ms a capture may run (browser start, the body grace, the screenshot floor, writing the copy). */
 export const DEADLINE_MARGIN_MS = 6000;
+/** The least time the in-page DOM copy gets, and the least the pending-stylesheet address checks get, once the deadline is spent. */
+export const DOM_FLOOR_MS = 1000;
+export const DNS_FLOOR_MS = 500;
+/** The exit-1 message when the page's main thread does not answer the DOM copy in time (nothing is written then). */
+export const NO_ANSWER = 'the page did not answer in time';
+/** Chromium flag: WebRTC may not send UDP except through a proxy (none is configured), on top of the init script below. */
+export const WEBRTC_FLAG = '--force-webrtc-ip-handling-policy=disable_non_proxied_udp';
+/** Page APIs that open connections no request route sees (WebRTC ICE over UDP and TCP, WebTransport over QUIC, and
+ * workers, which can use WebTransport where the init script does not run): removed from every frame before any page script. */
+export const NEUTERED_APIS = Object.freeze(['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel', 'WebTransport', 'Worker', 'SharedWorker']);
+const NEUTER_SCRIPT = `(() => { for (const k of ${JSON.stringify(NEUTERED_APIS)}) { try { delete globalThis[k]; } catch {} `
+  + `try { if (k in globalThis) Object.defineProperty(globalThis, k, { value: undefined, configurable: false, writable: false }); } catch {} } })();`;
 export const PROXY_HINT = 'remote mode connects directly, without the configured proxy';
 const PROXY_VARS = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy'];
 export const OUT_FILES = Object.freeze(['page.html', 'screenshot.png', 'manifest.json']);
@@ -220,8 +255,29 @@ export const asciiLower = (s) => s.replace(/[A-Z]+/g, (m) => m.toLowerCase());
 const isAlpha = (c) => (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
 const isWs = (c) => c === 32 || c === 9 || c === 10 || c === 13 || c === 12;
 const SKIP = Symbol('skip');
-const RAW_TEXT = new Set(['script', 'style', 'textarea', 'title', 'iframe', 'xmp', 'noembed', 'noframes']);
+/** Elements whose content the scanner does not parse as markup. Their content is never kept unexamined: script, iframe,
+ * noscript, noembed, noframes, xmp and plaintext are removed with their content, style keeps its CSS with every "<"
+ * escaped (\3c), and title and textarea keep their text with every "<" escaped (&lt;). */
+const RAW_TEXT = new Set(['script', 'style', 'textarea', 'title', 'iframe', 'xmp', 'noembed', 'noframes', 'noscript', 'plaintext']);
+/** Removed with their content in both passes (the in-page DOM pass and the text pass). */
+export const DROPPED_RAW = Object.freeze(['script', 'iframe', 'noscript', 'noembed', 'noframes', 'xmp', 'plaintext']);
+const ANIMATION = new Set(['animate', 'set', 'animatemotion', 'animatetransform', 'animatecolor', 'discard']);
+/** Attributes whose value is a URL (javascript: there is neutralized) and SVG animation values that can set one. */
+const JS_URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'xlink:href', 'data', 'poster', 'background', 'codebase', 'cite', 'ping', 'srcdoc', 'lowsrc', 'dynsrc', 'archive', 'classid', 'to', 'from', 'values', 'by']);
 
+/** Is a (decoded) attribute value a javascript: or vbscript: URL, the way a browser's URL parser reads it (tabs and newlines
+ * removed anywhere, leading controls and spaces trimmed, numeric and common named character references decoded)? */
+export function isScriptUrl(v) {
+  const d = String(v).replace(/&(#x[0-9a-f]+|#\d+|tab|newline|colon);?/gi, (m, e) => {
+    const k = e.toLowerCase();
+    if (k === 'tab') return '\t';
+    if (k === 'newline') return '\n';
+    if (k === 'colon') return ':';
+    const n = k[1] === 'x' ? parseInt(k.slice(2), 16) : parseInt(k.slice(1), 10);
+    return n > 0 && n < 0x110000 ? String.fromCodePoint(n) : '';
+  });
+  return /^(javascript|vbscript):/i.test(d.replace(/[\t\n\r]/g, '').replace(/^[\x00-\x20]+/, ''));
+}
 export const decodeAttr = (v) => v.replace(/&(amp|quot|#39|#x27|lt|gt);/gi, (m, e) => ({ amp: '&', quot: '"', '#39': "'", '#x27': "'", lt: '<', gt: '>' })[e.toLowerCase()]);
 export const encodeAttr = (v) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
@@ -234,10 +290,13 @@ export function absolutizeUrl(value, base) {
 
 /**
  * One linear walk over serialized HTML. tag(t) is called for each start tag with
- * t = { name, rawName, attrs:[{name, rawName, value|null}], self, changed } and may mutate t.attrs (set t.changed) or return a
+ * t = { name, rawName, attrs:[{name, rawName, value|null}], self, changed, start, end } and may mutate t.attrs (set t.changed) or return a
  * replacement string for the whole tag, or SKIP to remove it (a raw-text element is removed with its content).
- * raw(t, content) may return replacement content for a raw-text element (style, textarea, ...). A tag that is never closed
- * ends the walk and the rest is kept verbatim, so every input costs one pass.
+ * raw(t, content) may return replacement content for a raw-text element (style, textarea, ...).
+ * It fails closed: whatever a browser would not read as markup the walk does not keep unexamined. Comments are removed,
+ * ended the way the HTML parser ends them ("<!-->" and "<!--->" at once, otherwise at the first "-->" or "--!>"); a bogus
+ * comment ("<!x", "<?x", "</ x") is removed up to its first ">"; an unterminated comment or tag removes the rest of the
+ * document (the parser drops it too). Every input costs one pass.
  */
 export function scanHtml(html, { tag, raw }) {
   const lower = asciiLower(html);
@@ -246,13 +305,48 @@ export function scanHtml(html, { tag, raw }) {
   let copy = 0;
   let i = 0;
   const replace = (a, b, text) => { out.push(html.slice(copy, a), text); copy = b; };
+  // indexOf with a memo per needle, so that many comments cost one pass even when one of the two end markers never occurs
+  const memo = new Map();
+  const find = (needle, from) => {
+    const m = memo.get(needle);
+    if (m !== undefined && (m < 0 || m >= from)) return m;
+    const r = html.indexOf(needle, from);
+    memo.set(needle, r);
+    return r;
+  };
+  let cut = false; // the rest of the document is dropped
   while (i < n) {
     const lt = html.indexOf('<', i);
     if (lt < 0) break;
-    if (html.startsWith('<!--', lt)) { const e = html.indexOf('-->', lt + 4); if (e < 0) break; i = e + 3; continue; }
-    const isEnd = html.charCodeAt(lt + 1) === 47;
+    if (html.startsWith('<!--', lt)) {
+      let end;
+      if (html.startsWith('>', lt + 4)) end = lt + 5;
+      else if (html.startsWith('->', lt + 4)) end = lt + 6;
+      else {
+        const a = find('-->', lt + 4);
+        const b = find('--!>', lt + 4);
+        end = a < 0 && b < 0 ? -1 : (b < 0 || (a >= 0 && a < b)) ? a + 3 : b + 4;
+      }
+      if (end < 0) { replace(lt, n, ''); cut = true; break; }
+      replace(lt, end, '');
+      i = end;
+      continue;
+    }
+    const c1 = html.charCodeAt(lt + 1);
+    const isEnd = c1 === 47;
     const ns = lt + (isEnd ? 2 : 1);
-    if (!isAlpha(html.charCodeAt(ns))) { i = lt + 1; continue; }
+    if (!isAlpha(html.charCodeAt(ns))) {
+      if (c1 === 33 || c1 === 63 || (isEnd && ns < n)) {
+        // a bogus comment: the parser ends it at the first ">" ("</>" is dropped the same way)
+        const e = find('>', ns);
+        if (e < 0) { replace(lt, n, ''); cut = true; break; }
+        replace(lt, e + 1, '');
+        i = e + 1;
+        continue;
+      }
+      i = lt + 1;
+      continue;
+    }
     let p = ns;
     for (let c; p < n && !isWs((c = html.charCodeAt(p))) && c !== 62 && c !== 47; p++);
     const rawName = html.slice(ns, p);
@@ -267,7 +361,7 @@ export function scanHtml(html, { tag, raw }) {
       const as = p;
       for (; p < n; p++) {
         c = html.charCodeAt(p);
-        if (isWs(c) || c === 61 || c === 62 || (c === 47 && html.charCodeAt(p + 1) === 62)) break;
+        if (isWs(c) || c === 61 || c === 62 || c === 47) break;
       }
       if (p === as) p++;
       const an = html.slice(as, p);
@@ -292,7 +386,7 @@ export function scanHtml(html, { tag, raw }) {
       }
       attrs.push({ name: an.toLowerCase(), rawName: an, value });
     }
-    if (!closed) break;
+    if (!closed) { replace(lt, n, ''); cut = true; break; }
     const name = asciiLower(rawName);
     const isRaw = !isEnd && !self && RAW_TEXT.has(name);
     let contentEnd = p;
@@ -305,7 +399,7 @@ export function scanHtml(html, { tag, raw }) {
     }
     let t = null;
     if (!isEnd) {
-      t = { name, rawName, attrs, self, changed: false };
+      t = { name, rawName, attrs, self, changed: false, start: lt, end: p };
       const res = tag ? tag(t) : undefined;
       if (res === SKIP) { replace(lt, isRaw ? closeEnd : p, ''); i = isRaw ? closeEnd : p; continue; }
       if (typeof res === 'string') replace(lt, p, res);
@@ -316,7 +410,7 @@ export function scanHtml(html, { tag, raw }) {
       i = contentEnd;
     } else i = p;
   }
-  out.push(html.slice(copy));
+  if (!cut) out.push(html.slice(copy));
   return out.join('');
 }
 
@@ -401,10 +495,26 @@ const MEDIA_TAGS = new Set(['style', 'link', 'source']);
  * sources inlined as data URIs when budget.lookup is set. headInsert is placed right after <head>.
  */
 export function transformHtml(html, { base, budget = null, theme = null, headInsert = '' }) {
+  // headInsert goes right after <head> only when that <head> is where the parser opens the head (the first tag, or the
+  // second after <html>, with only whitespace before it); otherwise it opens the document, which the parser also puts in
+  // the head. So the copy's CSP always applies, whatever the page's markup looked like.
   let headDone = false;
-  return scanHtml(html, {
+  let decided = false;
+  let seen = 0;
+  let htmlEnd = -1;
+  const blank = (a, b) => /^[ \t\n\r\f]*$/.test(html.slice(a, b));
+  const html2 = scanHtml(html, {
     tag(t) {
       const nm = t.name;
+      let here = false;
+      if (!decided) {
+        if (seen === 0 && nm === 'html' && blank(0, t.start)) htmlEnd = t.end;
+        else {
+          here = nm === 'head' && ((seen === 0 && blank(0, t.start)) || (seen === 1 && htmlEnd >= 0 && blank(htmlEnd, t.start)));
+          decided = true;
+        }
+        seen++;
+      }
       if (nm === 'script') { if (budget) budget.removed.scripts++; return SKIP; }
       if (nm === 'iframe') {
         if (budget) { budget.removed.iframes++; const s = getAttr(t, 'src'); if (s) skip(budget, absolutizeUrl(s, base), 'iframe removed from the static copy'); }
@@ -418,11 +528,10 @@ export function transformHtml(html, { base, budget = null, theme = null, headIns
         }
         return SKIP;
       }
+      if (DROPPED_RAW.includes(nm)) return SKIP;
       if (nm === 'base') return SKIP;
-      if (nm === 'meta') {
-        const he = (getAttr(t, 'http-equiv') || '').toLowerCase();
-        if (he === 'refresh' || he === 'content-security-policy' || he === 'content-type' || hasAttr(t, 'charset')) return SKIP;
-      }
+      if (nm === 'meta' && (hasAttr(t, 'http-equiv') || hasAttr(t, 'charset'))) return SKIP;
+      if (ANIMATION.has(nm) && /^((xlink:)?href|on)/i.test(getAttr(t, 'attributename') || '')) return SKIP;
       if (nm === 'link') {
         const rel = (getAttr(t, 'rel') || '').toLowerCase().split(/\s+/);
         if (rel.some((r) => ['modulepreload', 'preload', 'prefetch', 'prerender', 'dns-prefetch', 'preconnect'].includes(r))) return SKIP;
@@ -444,28 +553,35 @@ export function transformHtml(html, { base, budget = null, theme = null, headIns
         } else if (URL_ATTRS.has(a.name)) {
           const v = decodeAttr(a.value);
           let next;
-          if (/^\s*javascript:/i.test(v)) next = a.name === 'href' || a.name === 'action' || a.name === 'formaction' ? '#' : '';
+          if (isScriptUrl(v)) next = a.name === 'href' || a.name === 'action' || a.name === 'formaction' ? '#' : '';
           else {
             next = absolutizeUrl(v, base);
             if (wantsInline && budget) next = inlineAsset(next, budget) || next;
           }
           if (next !== v) { a.value = encodeAttr(next); t.changed = true; }
-        }
+        } else if (JS_URL_ATTRS.has(a.name) && isScriptUrl(decodeAttr(a.value))) { a.value = ''; t.changed = true; }
       }
-      if (nm === 'head' && !headDone && headInsert) { headDone = true; return serializeTag(t) + headInsert; }
+      if (here && headInsert) { headDone = true; return serializeTag(t) + headInsert; }
       return undefined;
     },
     raw(t, content) {
-      if (t.name !== 'style') return undefined;
+      // nothing in raw text may read as markup if a browser parses it differently (an SVG <style> or <title> is markup)
+      if (t.name === 'title' || t.name === 'textarea') return content.replace(/</g, '&lt;');
+      if (t.name !== 'style') return '';
       const sheetBase = getAttr(t, 'data-snapshot-href') || base;
-      return transformCss(content, { base: sheetBase, budget, theme }).replace(/<\/style/gi, '<\\/style');
+      return transformCss(content, { base: sheetBase, budget, theme }).replace(/</g, '\\3c ');
     },
   });
+  // no <head> start tag (a page script removed it): the head insert opens the document, where the parser puts it in <head>
+  return headDone || !headInsert ? html2 : headInsert + html2;
 }
 
-/** The head insert: utf-8 charset and the source meta. */
+/** The copy's own Content-Security-Policy: no script of any kind, and nothing but data: and inline styles is loaded. */
+export const SNAPSHOT_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline' data:; font-src data:; media-src data:; base-uri 'none'; form-action 'none'";
+/** The head insert: utf-8 charset, the source meta and the copy's CSP, before anything from the page. */
 export function sourceMeta(url, at) {
-  return `<meta charset="utf-8"><meta name="snapshot-source" content="${encodeAttr(url)}" data-at="${encodeAttr(at)}">`;
+  return `<meta charset="utf-8"><meta name="snapshot-source" content="${encodeAttr(url)}" data-at="${encodeAttr(at)}">`
+    + `<meta http-equiv="Content-Security-Policy" content="${encodeAttr(SNAPSHOT_CSP)}">`;
 }
 
 export const PENDING_UNREAD = 'stylesheet could not be read; linked instead';
@@ -497,6 +613,12 @@ export function resolvePending(dom, pendingCss = {}) {
 /** Assemble the standalone document from the browser's DOM report (see snapshotDom and resolvePending). */
 export function buildSnapshot(dom, { url, at, lookup = null, pendingCss = {}, resolved = null, theme = null, maxAsset, maxTotal }) {
   const budget = makeBudget({ lookup, maxAsset, maxTotal });
+  // what the in-page pass already removed is counted and listed the same way the text pass would have
+  for (const x of dom.removed || []) {
+    if (x.tag === 'script') budget.removed.scripts++;
+    else if (x.tag === 'iframe') { budget.removed.iframes++; if (x.src) skip(budget, x.src, 'iframe removed from the static copy'); }
+    else if (EMBEDDING.includes(x.tag)) { budget.removed.embedded++; skip(budget, x.src || `(<${x.tag}> without a source)`, `<${x.tag}> removed from the static copy`); }
+  }
   const r = resolved || resolvePending(dom, pendingCss);
   for (const [u, reason] of r.skipped) skip(budget, u, reason);
   const body = transformHtml(r.html, { base: dom.baseUri, budget, theme, headInsert: sourceMeta(url, at) });
@@ -511,6 +633,12 @@ export function buildSnapshot(dom, { url, at, lookup = null, pendingCss = {}, re
  * pending, resolves srcset images to the chosen source, and reports the document's base URL. A stylesheet link that is
  * disabled or alternate, has no sheet, or whose URL is in failedUrls (urls or [url, reason] pairs: requests that were
  * blocked, failed, got an HTTP error or came from a private address) is removed and reported in dropped.
+ * Then the clone is cleaned in the DOM, before it is serialized (the main guard; the text pass is defence in depth): every
+ * comment, processing instruction and CDATA node is removed; script, noscript, noembed, noframes, iframe, embed, object,
+ * applet, portal, frame, frameset, plaintext and base elements are removed (reported in removed); xmp becomes pre; every
+ * meta with http-equiv or charset, every SVG animation that sets an href or a handler, every on* attribute is removed;
+ * javascript: and vbscript: URLs are emptied ("#" for links); template contents are cleaned the same way; <head> is made
+ * the first child of <html>, so the copy's own head insert (charset, source, CSP) comes before anything from the page.
  */
 export function snapshotDom(failedUrls) {
   const doc = document;
@@ -574,6 +702,42 @@ export function snapshotDom(failedUrls) {
   const origImgs = doc.documentElement.querySelectorAll('img');
   const cloneImgs = clone.querySelectorAll('img');
   origImgs.forEach((im, i) => { if (im.currentSrc) cloneImgs[i].setAttribute('src', im.currentSrc); });
+  const removed = [];
+  const DROP = new Set(['script', 'noscript', 'noembed', 'noframes', 'iframe', 'embed', 'object', 'applet', 'portal', 'frame', 'frameset', 'plaintext', 'base']);
+  const ANIM = new Set(['animate', 'set', 'animatemotion', 'animatetransform', 'animatecolor', 'discard']);
+  const URLISH = new Set(['href', 'src', 'action', 'formaction', 'xlink:href', 'data', 'poster', 'background', 'codebase', 'cite', 'ping', 'srcdoc', 'lowsrc', 'dynsrc', 'archive', 'classid', 'to', 'from', 'values', 'by']);
+  const LINKISH = new Set(['href', 'xlink:href', 'action', 'formaction']);
+  const scriptUrl = (v) => /^(javascript|vbscript):/i.test(String(v).replace(/[\t\n\r]/g, '').replace(/^[\x00-\x20]+/, ''));
+  const absUrl = (v) => { try { return new URL(v, doc.baseURI).href; } catch { return v; } };
+  const stack = [clone];
+  while (stack.length) {
+    const node = stack.pop();
+    for (const ch of Array.from(node.childNodes)) {
+      if (ch.nodeType !== 1) { if (ch.nodeType !== 3) ch.remove(); continue; }
+      const nm = String(ch.localName).toLowerCase();
+      if (DROP.has(nm)) {
+        const s = ch.getAttribute('src') || ch.getAttribute('data') || ch.getAttribute('code');
+        if (removed.length < 5000) removed.push({ tag: nm, src: s ? absUrl(s) : null });
+        ch.remove();
+        continue;
+      }
+      if (nm === 'meta' && (ch.hasAttribute('http-equiv') || ch.hasAttribute('charset'))) { ch.remove(); continue; }
+      if (ANIM.has(nm) && /^((xlink:)?href|on)/i.test(ch.getAttribute('attributeName') || '')) { ch.remove(); continue; }
+      if (nm === 'xmp') { const pre = doc.createElement('pre'); pre.textContent = ch.textContent; ch.replaceWith(pre); continue; }
+      for (const a of Array.from(ch.attributes)) {
+        const an = a.name.toLowerCase();
+        if (an.startsWith('on')) ch.removeAttributeNode(a);
+        else if (URLISH.has(an) && scriptUrl(a.value)) a.value = LINKISH.has(an) ? '#' : '';
+      }
+      if (nm === 'template' && ch.content) stack.push(ch.content);
+      stack.push(ch);
+    }
+  }
+  if (String(clone.localName).toLowerCase() === 'html') {
+    let head = Array.from(clone.children).find((c) => String(c.localName).toLowerCase() === 'head');
+    if (!head) head = doc.createElement('head');
+    clone.insertBefore(head, clone.firstChild);
+  }
   const dt = doc.doctype;
   return {
     doctype: dt ? new XMLSerializer().serializeToString(dt) : '<!DOCTYPE html>',
@@ -581,6 +745,7 @@ export function snapshotDom(failedUrls) {
     baseUri: doc.baseURI,
     pending,
     dropped,
+    removed,
     title: doc.title,
   };
 }
@@ -704,13 +869,15 @@ export async function capture(o, io = {}) {
   let browser;
   try {
     // remote mode connects directly (no proxy) so the address the browser reached is the server's own and can be checked
-    try { browser = await pw.chromium.launch({ headless: true, args: mode === 'local' ? [...LAUNCH_ARGS] : ['--no-proxy-server'] }); } catch (e) {
+    try { browser = await pw.chromium.launch({ headless: true, args: mode === 'local' ? [...LAUNCH_ARGS, WEBRTC_FLAG] : ['--no-proxy-server', WEBRTC_FLAG] }); } catch (e) {
       return { captured: false, reason: `playwright browser could not start: ${firstLine(e)}`, exit: 4 };
     }
     const ctxOpts = { viewport: { width: o.width, height: o.height }, serviceWorkers: 'block', acceptDownloads: false, permissions: [] };
     if (o.theme) ctxOpts.colorScheme = o.theme;
     const ctx = await browser.newContext(ctxOpts);
     if (typeof ctx.routeWebSocket !== 'function') return { captured: false, reason: 'playwright >= 1.48 required', exit: 4 };
+    // WebRTC, WebTransport and workers are taken away in every frame (about:blank ones too) before any page script runs
+    await ctx.addInitScript(NEUTER_SCRIPT);
     const blocked = new Set();
     const noteBlocked = (u) => { if (blocked.size < 50) blocked.add(blockedOrigin(u)); };
     const remote = mode === 'remote';
@@ -897,7 +1064,11 @@ export async function capture(o, io = {}) {
         ? await page.screenshot({ type: 'png', fullPage: !!o.fullPage, timeout: shotMs })
         : await bounded(devtoolsScreenshot(ctx, page, !!o.fullPage), shotMs, null).then((b) => { if (!b) throw new Error(`timed out after ${shotMs} ms`); return b; });
     } catch (e) { throw bad(`the screenshot failed: ${firstLine(e)}`); }
-    const dom = await page.evaluate(snapshotDom, [...failedUrls].slice(0, 5000));
+    // the DOM copy runs on the page's main thread: a page that keeps it busy (a loop after the screenshot) never answers,
+    // so it gets what is left of the deadline (at least DOM_FLOOR_MS); then the capture fails with exit 1 and writes nothing
+    const domMs = Math.max(DOM_FLOOR_MS, left());
+    const dom = await bounded(page.evaluate(snapshotDom, [...failedUrls].slice(0, 5000)), domMs, null);
+    if (!dom || typeof dom.html !== 'string') throw bad(`${NO_ANSWER}: the DOM copy did not finish within ${domMs} ms; nothing was written`);
     if (Buffer.byteLength(dom.html) > MAX_HTML_BYTES) throw bad(`the rendered page is larger than ${MAX_HTML_BYTES} bytes`);
     const finalUrl = page.url();
     const at = (io.now ? io.now() : new Date()).toISOString();
@@ -906,9 +1077,11 @@ export async function capture(o, io = {}) {
     const local = new Map();
     const assetLookup = (u) => captured.get(u) || local.get(u) || null;
     const pendingCss = {};
-    for (const p of dom.pending) {
-      const key = p.href.split('#')[0];
-      if (remote && (tainted.has(key) || await privateUrl(key))) { pendingCss[p.n] = false; continue; }
+    // the address checks of pending sheets share one bound: a lookup still open then counts as private (the sheet is dropped)
+    const dnsUntil = Date.now() + Math.max(DNS_FLOOR_MS, left());
+    for (const p of Array.isArray(dom.pending) ? dom.pending : []) {
+      const key = String(p.href).split('#')[0];
+      if (remote && (tainted.has(key) || await bounded(privateUrl(key), dnsUntil - Date.now(), true))) { pendingCss[p.n] = false; continue; }
       let hit = captured.get(key);
       if (!hit && fileMode && /^file:/i.test(key)) hit = await readLocalAsset(key, maxAsset);
       pendingCss[p.n] = hit && hit.body && !hit.tooBig ? hit.body.toString('utf-8') : null;
