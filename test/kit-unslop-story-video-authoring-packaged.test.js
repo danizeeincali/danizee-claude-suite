@@ -29,12 +29,15 @@ describe('story-plan — packaged end to end', () => {
     assert.equal(e.json.duration_ms, c.json.duration_ms);
     assert.ok(e.json.html.includes(`<meta name="story-duration-ms" content="${c.json.duration_ms}">`));
     assert.ok(!/<script>1/i.test(e.json.html));
-    assert.deepEqual(e.json.html.match(/<script[^>]*>/gi), ['<script data-story-marks>']);
+    // Each emit carries a fresh random CSP nonce, which the verb's own script alone carries.
+    const unnonce = h => h.replace(/nonce="[A-Za-z0-9+/=]{24}"/g, 'nonce="N"').replace(/'nonce-[A-Za-z0-9+/=]{24}'/g, "'nonce-N'");
+    assert.deepEqual(unnonce(e.json.html).match(/<script[^>]*>/gi), ['<script data-story-marks nonce="N">']);
+    assert.match(unnonce(e.json.html), /<head>\n<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-N'; object-src 'none'; base-uri 'none'; form-action 'none'; connect-src 'none'">/);
     assert.equal((e.json.html.match(/<style data-story-step=/g) || []).length, 3);
 
     const o = pkg.kit(['story-plan', 'emit', '--file', 'story.json', '--page', 'page.html', '--out', 'story.html']);
     assert.equal(o.code, 0);
-    assert.equal(fs.readFileSync(path.join(pkg.dir, 'story.html'), 'utf-8'), e.json.html);
+    assert.equal(unnonce(fs.readFileSync(path.join(pkg.dir, 'story.html'), 'utf-8')), unnonce(e.json.html));
 
     const badStory = JSON.stringify({ ...t.json, steps: t.json.steps.slice(0, 1) });
     const adv = pkg.kit(['story-plan', 'check'], badStory);

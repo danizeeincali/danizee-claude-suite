@@ -44,7 +44,8 @@
  *   credit-missing              no credit (or a blank one): every video carries a credit, so emit shows
  *                               "Redesign by the author" until credit names the author
  *   swap-ink                    a step changes color on a swap selector in or after the step that swaps it: the old text
- *                               stays hidden (the swap's hide slot is last) and the new text keeps swap.ink (default #111)
+ *                               stays hidden (the swap's hide slot is last) and the new text keeps swap.ink (without an
+ *                               ink: the element's own computed colour when the swap starts)
  * Timeline: step i starts when the one before it ends; its css tween runs start..tween_end, then it holds until end.
  * Exit codes: check is advisory (exit 0, even when ok is false) unless --strict, which exits 2 when not ok;
  * emit exits 1 when the story is not ok; a bad flag, a duplicate flag, an unreadable or binary or oversize (8 MiB) or
@@ -52,10 +53,13 @@
  * emit: the original page (scripts, links, iframes, objects, embeds, noscript, <base> and <meta http-equiv> tags anywhere
  * (counted in stripped.links), on* handlers and javascript: URLs removed; tags are read as a browser reads them, so a handler
  * after '/' or a quote or after a '<' in an unquoted value is found, and a tag that never ends is dropped when it holds
- * an on*= attribute; comments and quoted
- * attribute values are skipped, and a missing close tag drops only the open tag; loading="lazy" is rewritten to eager,
+ * an on*= attribute; comments are skipped where a browser ends them ('-->', '--!>', '<!-->', '<!--->') and quoted
+ * attribute values are skipped; title/textarea/xmp/plaintext text is cleaned as markup too (inside <svg>/<math> it is
+ * markup), and a tag or comment that runs across a title/textarea/xmp close is cut at that close; a missing close tag
+ * drops only the open tag; loading="lazy" is rewritten to eager,
  * because a video frames the whole page and nothing may wait for a scroll to load) sits in a 1080x1080 or 1920x1080
- * frame. The page's html/:root rules apply to #story-page (the root, the frame's size) and its body rules, class and
+ * frame. The page's <html lang> and dir are kept on the emitted <html> (lang="en" only when the page has none; dir
+ * only ltr, rtl or auto), and the body's class, style, dir and lang on #story-body. The page's html/:root rules apply to #story-page (the root, the frame's size) and its body rules, class and
  * style to #story-body inside it, except font-size on html/:root, which stays on the real <html> so rem lengths match the
  * original. #story-body keeps the browser's default body margin (8px, collapsing with its children's margins as the
  * original body's does) unless the page sets its own, so frame 0 and a camera rect line up with the original screen.
@@ -101,12 +105,22 @@
  * when it arrives, which can be after frame 0.
  * The page declares <meta name="story-duration-ms"> and <meta name="story-format" content="square|wide">; story-render
  * reads the duration but not the format, so render a wide story with `story-render render --format wide`.
- * Under prefers-reduced-motion the final state is shown.
+ * Under prefers-reduced-motion the final state is shown: every step's final values, the redline outline and tag hidden,
+ * and a swapped element with no blur or fade (animation none) showing only its new text, in its final colour.
+ * A swap without ink: the script sets the new text's colour to the element's computed colour at the swap's start (under
+ * reduced motion, its final colour), so a light label on a dark button stays light.
+ * Content-Security-Policy backstop: a <meta http-equiv="Content-Security-Policy"> is the first child of <head>, with
+ * script-src limited to a random nonce made for each emit (crypto.randomBytes) that only the verb's own <script
+ * data-story-marks>/<script data-story-camera> carries, plus object-src 'none', base-uri 'none', form-action 'none' and
+ * connect-src 'none'. Any handler, javascript: URL or script a scanner misses therefore never runs; styles, images and
+ * fonts (file:, data: and the rest) are not restricted. Because the nonce is random, two emits of one story differ only
+ * in the nonce.
  * Built from ideas audited by /w-bbs (run 2026-10-30-unslop); no foreign code.
  */
 import fs from 'fs/promises';
 import { constants as fsc, fstatSync } from 'fs';
 import path from 'path';
+import { randomBytes } from 'crypto';
 import { KitExit } from './kit-exit.js';
 
 export const verb = 'story-plan';
@@ -312,8 +326,11 @@ const escCssStr = s => String(s).replace(/[\\"]/g, '\\$&').replace(/[\n\r]/g, ' 
 const q = n => (n === 0 ? '0ms' : `${n}ms`);
 
 const DROP_ELEMENTS = new Set(['script', 'iframe', 'object', 'embed', 'noscript', 'noembed', 'noframes']);
-const RCDATA = new Set(['title', 'textarea']);
+// Raw-text candidates: in HTML their text runs to the close tag, but inside <svg>/<math> (foreign content) the same tags
+// hold live markup. Both scanners read their contents as markup (so a handler there is found either way), and until
+// the close, no tag or comment may run across a '</title', '</textarea' or '</xmp' (where the HTML reading resumes).
 const RAWTEXT = new Set(['title', 'textarea', 'xmp']);
+const FENCES = ['</title', '</textarea', '</xmp'];
 const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'xlink:href']);
 const ON_ATTR = /\bon[a-z]+\s*=/i;
 
@@ -334,15 +351,58 @@ function tagEnd(s, j) {
   return -1;
 }
 
+/** indexOf with a memo per needle: for scans whose start only moves forward the total cost stays linear. */
+function finder(text) {
+  const memo = new Map();
+  return (needle, from) => {
+    const m = memo.get(needle);
+    if (m && from >= m.from && (m.at < 0 || m.at >= from)) return m.at;
+    const at = text.indexOf(needle, from);
+    memo.set(needle, { from, at });
+    return at;
+  };
+}
+
+/** Where a comment that opens at lt ends (the index after it), as a browser ends it: '<!-->', '<!--->', '-->' or '--!>'. */
+function commentEnd(lower, lt, find) {
+  if (lower.startsWith('<!-->', lt)) return lt + 5;
+  if (lower.startsWith('<!--->', lt)) return lt + 6;
+  const a = find('-->', lt + 4), b = find('--!>', lt + 4);
+  if (a < 0 && b < 0) return lower.length;
+  return a >= 0 && (b < 0 || a < b) ? a + 3 : b + 4;
+}
+
 /**
- * One linear pass over the page: comments, quoted attribute values and title/textarea text are copied as they are (so a
- * "<script" or "<style" mentioned there is left alone); script/iframe/object/embed elements and link tags are dropped;
- * style contents are pulled out; doctype and html tags are dropped; the body tag and the last </body> are located.
- * When a close tag is missing only the open tag is dropped (never the rest of the page).
+ * The fences of a scan: after a title/textarea/xmp start tag, up to its close, the next FENCES position. A tag or comment
+ * that runs across a fence is read differently in HTML (text, then markup from the fence on) and in svg/math (one tag),
+ * so the scanners never let one span it.
+ */
+function fences(find) {
+  let armed = -1;
+  return {
+    arm(name, from) { const c = find(`</${name}`, from); if (c > armed) armed = c; },
+    at(pos) {
+      if (pos >= armed) return -1;
+      let f = -1;
+      for (const nd of FENCES) { const x = find(nd, pos); if (x >= 0 && (f < 0 || x < f)) f = x; }
+      return f >= 0 && f <= armed ? f : -1;
+    },
+  };
+}
+
+/**
+ * One linear pass over the page: comments (ended as a browser ends them) and quoted attribute values are copied as they
+ * are (so a "<script" or "<style" mentioned there is left alone); script/iframe/object/embed elements and link tags are
+ * dropped; style contents are pulled out; doctype and html tags are dropped (the html tag's attributes are kept for lang
+ * and dir); the body tag and the last </body> are located. title/textarea/xmp text is scanned as markup (inside svg/math
+ * it is markup), and a tag running across its close is dropped up to the close. When a close tag is missing only the
+ * open tag is dropped (never the rest of the page).
  */
 function scanPage(html) {
   const lower = html.toLowerCase();
   const n = html.length;
+  const find = finder(lower), fence = fences(find);
+  let htmlAttrs = null;
   const styles = [];
   const noClose = new Set();
   const closeAt = (name, from) => {
@@ -356,13 +416,19 @@ function scanPage(html) {
   for (;;) {
     const lt = html.indexOf('<', i);
     if (lt < 0) break;
-    if (lower.startsWith('<!--', lt)) { const e = html.indexOf('-->', lt + 2); i = e < 0 ? n : e + 3; continue; }
+    if (lower.startsWith('<!--', lt)) {
+      const e = commentEnd(lower, lt, find), f = fence.at(lt);
+      i = f > lt && f < e ? lt + 1 : e; // a comment across a fence is text in the HTML reading: scan inside it
+      continue;
+    }
     if (lower.startsWith('<!doctype', lt)) { const e = html.indexOf('>', lt); flush(lt); i = last = e < 0 ? n : e + 1; continue; }
     const m = /^<(\/?)([a-z][a-z0-9:-]*)/.exec(lower.slice(lt, lt + 64));
     if (!m) { i = lt + 1; continue; }
     const closing = m[1] === '/', name = m[2];
     const gt = tagEnd(html, lt + m[0].length);
     const after = gt < 0 ? n : gt + 1;
+    const f = fence.at(lt);
+    if (f > lt && f < after) { flush(lt); i = last = f; continue; }
     if (closing) {
       if (name === 'body') { flush(lt); bodyEnd = out.length; }
       else if (name === 'head') { flush(after); headEnd = out.length; }
@@ -370,7 +436,7 @@ function scanPage(html) {
       i = after;
       continue;
     }
-    if (name === 'html') { flush(lt); i = last = after; continue; }
+    if (name === 'html') { if (htmlAttrs === null) htmlAttrs = html.slice(lt + 5, gt < 0 ? n : gt); flush(lt); i = last = after; continue; }
     if (name === 'body' && bodyStart < 0) { flush(lt); bodyAttrs = html.slice(lt + 5, gt < 0 ? n : gt); i = last = after; bodyStart = out.length; continue; }
     if (name === 'link' || name === 'base' || (name === 'meta' && lower.slice(lt, after).includes('http-equiv'))) { flush(lt); links++; i = last = after; continue; }
     if (DROP_ELEMENTS.has(name)) {
@@ -378,7 +444,8 @@ function scanPage(html) {
       i = last = after;
       if (name === 'embed' || gt < 0) continue;
       const c = closeAt(name, after);
-      if (c >= 0) { const e = html.indexOf('>', c); i = last = e < 0 ? n : e + 1; }
+      // Past a fence (e.g. a <script> mentioned in a <title>'s text) only the open tag goes.
+      if (c >= 0 && !(f >= 0 && c > f)) { const e = html.indexOf('>', c); i = last = e < 0 ? n : e + 1; }
       continue;
     }
     if (name === 'style') {
@@ -386,17 +453,17 @@ function scanPage(html) {
       i = last = after;
       if (gt < 0) continue;
       const c = closeAt('style', after);
-      if (c >= 0) { styles.push(html.slice(after, c)); const e = html.indexOf('>', c); i = last = e < 0 ? n : e + 1; }
+      if (c >= 0 && !(f >= 0 && c > f)) { styles.push(html.slice(after, c)); const e = html.indexOf('>', c); i = last = e < 0 ? n : e + 1; }
       continue;
     }
-    if (RCDATA.has(name) && gt >= 0) { const c = closeAt(name, after); i = c < 0 ? after : c; continue; }
+    if (RAWTEXT.has(name) && gt >= 0) fence.arm(name, after);
     i = after;
   }
   flush(n);
   let inner;
   if (bodyStart >= 0) inner = out.slice(bodyStart, bodyEnd > bodyStart ? bodyEnd : out.length);
   else inner = headEnd >= 0 ? out.slice(headEnd) : out;
-  return { inner, bodyAttrs, styles, scripts, links };
+  return { inner, bodyAttrs, htmlAttrs: htmlAttrs || '', styles, scripts, links };
 }
 
 const ROOT_MARK = '\u0000story-root\u0000';
@@ -473,17 +540,23 @@ function isScriptUrl(v) {
  * Every start tag in the body markup, read the way a browser reads it (a name ends at whitespace, '/' or '>'; attributes are
  * separated by whitespace or '/'; an unquoted value runs to whitespace or '>' and may hold '<' or quotes): on* attributes and
  * javascript: URLs are removed and loading="lazy" becomes "eager". A tag that never ends is dropped when it holds an on*=
- * attribute. Comments and title/textarea/xmp text are skipped as a browser skips them. One linear pass.
+ * attribute. Comments are skipped where a browser ends them ('-->', '--!>', '<!-->', '<!--->'). title/textarea/xmp/
+ * plaintext text is cleaned as markup too, because inside <svg>/<math> it is markup; up to a title/textarea/xmp close no
+ * tag or comment may run across it (a tag that does is dropped up to the close). One linear pass.
  */
 function cleanTags(s) {
   const n = s.length, lower = s.toLowerCase();
   const ws = c => c === ' ' || c === '\t' || c === '\n' || c === '\f' || c === '\r' || c === '\v' || c === '\u00a0';
-  const noClose = new Set();
+  const find = finder(lower), fence = fences(find);
   let out = '', last = 0, i = 0;
   for (;;) {
     const lt = s.indexOf('<', i);
     if (lt < 0) break;
-    if (lower.startsWith('<!--', lt)) { const e = s.indexOf('-->', lt + 2); i = e < 0 ? n : e + 3; continue; }
+    if (lower.startsWith('<!--', lt)) {
+      const e = commentEnd(lower, lt, find), f = fence.at(lt);
+      i = f > lt && f < e ? lt + 1 : e;
+      continue;
+    }
     if (!/[a-zA-Z]/.test(s[lt + 1] || '')) { i = lt + 1; continue; }
     let k = lt + 1;
     while (k < n && !ws(s[k]) && s[k] !== '/' && s[k] !== '>') k++;
@@ -520,6 +593,8 @@ function cleanTags(s) {
       if (/^on/.test(an) || (URL_ATTRS.has(an) && isScriptUrl(value))) { tag.push(sep.replace(/\s+/g, '')); continue; }
       tag.push(sep, an === 'loading' && value.trim().toLowerCase() === 'lazy' ? 'loading="eager"' : s.slice(start, end));
     }
+    const f = fence.at(lt);
+    if (f > lt && (!closed || f < k)) { out += s.slice(last, lt); last = i = f; continue; }
     out += s.slice(last, lt);
     if (!closed) {
       const rest = s.slice(lt);
@@ -529,12 +604,7 @@ function cleanTags(s) {
     }
     out += tag.join('');
     last = i = k;
-    if (name === 'plaintext') break;
-    if (RAWTEXT.has(name)) {
-      let c = -1;
-      if (!noClose.has(name)) { c = lower.indexOf(`</${name}`, k); if (c < 0) noClose.add(name); }
-      i = c < 0 ? k : c;
-    }
+    if (RAWTEXT.has(name)) fence.arm(name, k);
   }
   return out + s.slice(last);
 }
@@ -547,9 +617,24 @@ function cleanTags(s) {
 export function preparePage(html) {
   const sc = scanPage(html.replace(/^﻿/, ''));
   const inner = cleanTags(sc.inner);
-  const keep = [];
-  for (const m of sc.bodyAttrs.matchAll(/\b(class|style)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi)) keep.push(`${m[1].toLowerCase()}="${escHtml(m[2] ?? m[3] ?? m[4] ?? '')}"`);
-  return { body: inner, bodyAttrs: keep.join(' '), css: sc.styles.map(scopeCss).join('\n'), stripped: { scripts: sc.scripts, links: sc.links } };
+  const b = pickAttrs(sc.bodyAttrs), h = pickAttrs(sc.htmlAttrs);
+  const keep = ['class', 'style', 'dir', 'lang'].filter(k => own(b, k)).map(k => `${k}="${escHtml(b[k])}"`);
+  // The page's language and direction: lang falls back to "en" only when the page's <html> has none.
+  const lang = own(h, 'lang') ? h.lang : 'en', dir = own(h, 'dir') ? h.dir : null;
+  return { body: inner, bodyAttrs: keep.join(' '), lang, dir, css: sc.styles.map(scopeCss).join('\n'), stripped: { scripts: sc.scripts, links: sc.links } };
+}
+
+/** class, style, dir (ltr, rtl or auto only) and lang from a tag's attribute text; the first of each wins, as in a browser. */
+function pickAttrs(src) {
+  const got = {};
+  for (const m of src.matchAll(/(?:^|[\s/"'])(class|style|dir|lang)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi)) {
+    const k = m[1].toLowerCase();
+    if (own(got, k)) continue;
+    const v = m[2] ?? m[3] ?? m[4] ?? '';
+    if (k === 'dir') { if (/^(ltr|rtl|auto)$/i.test(v.trim())) got.dir = v.trim().toLowerCase(); continue; }
+    got[k] = v;
+  }
+  return got;
 }
 
 /**
@@ -621,13 +706,16 @@ function stepLayers(story) {
       slot(w.selector, `${name} ${q(tween)} ${ease} ${q(t.start_ms)} 1 normal forwards`, false, true);
       // From the end of the swap tween on, the old text is held transparent by a slot that sits after every other one.
       slot(w.selector, `${name}-hide 0ms linear ${q(t.tween_end_ms)} 1 normal forwards`, true, true);
-      const ink = w.ink && w.ink.trim() ? w.ink.trim() : '#111';
-      marks.swaps.push([w.selector, key]);
+      const ink = w.ink && w.ink.trim() ? w.ink.trim() : null;
+      // Without an ink the script gives the new text the element's own computed colour when the swap starts.
+      marks.swaps.push([w.selector, key, ink ? null : t.start_ms]);
       // The new text is a <story-swap> inserted as the element's first child (out of flow, so nothing moves): it inherits
       // the element's font, is one line as wide as the new text, and the script moves it over the old text.
-      rules.push(`html.story-play story-swap[data-story-swap="${key}"]{position:absolute;white-space:nowrap;width:max-content;color:${ink};pointer-events:none;opacity:0;animation:${name}-in ${q(tween)} ${ease} ${q(t.start_ms)} 1 normal forwards}`);
+      rules.push(`html.story-play story-swap[data-story-swap="${key}"]{position:absolute;white-space:nowrap;width:max-content;${ink ? `color:${ink};` : ''}pointer-events:none;opacity:0;animation:${name}-in ${q(tween)} ${ease} ${q(t.start_ms)} 1 normal forwards}`);
       rules.push(`html.story-play story-swap[data-story-swap="${key}"]::before{content:"${escCssStr(w.text)}"}`);
-      reduced.push(`html.story-play story-swap[data-story-swap="${key}"]{opacity:1 !important;animation:none !important}`);
+      // Reduced motion: the swapped element itself shows its final state too (no blur-out or fade); the stack's reduced
+      // rule holds its old text transparent.
+      reduced.push(`html.story-play story-swap[data-story-swap="${key}"]{opacity:1 !important;animation:none !important}`, `html.story-play :is(${w.selector}){animation:none !important}`);
     }
     for (const [key, decl] of sets) rules.push(`${key}{${decl.join(';')}}`);
     for (const sel of Object.keys(s.css || {})) {
@@ -663,7 +751,7 @@ function stackCss(slots, marks) {
  * camera, measures the element on the window load event and again once document.fonts is ready (each time from the
  * t=0 state: animations are seeked to 0 for the measure and put back). No timers and no clock reads.
  */
-function runtimeScript(story, f, marks) {
+function runtimeScript(story, f, marks, nonce) {
   const cam = story.camera && own(story.camera, 'selector') ? story.camera.selector : null;
   if (!cam && !marks.swaps.length && !marks.tags.length) return '';
   const j = v => JSON.stringify(v).replace(/</g, '\\u003c');
@@ -673,7 +761,10 @@ function runtimeScript(story, f, marks) {
   if (marks.swaps.length || marks.tags.length) {
     parts.push(`var Q=function(s){try{return Array.prototype.slice.call(P.querySelectorAll(s))}catch(_){return[]}},O=/^story-/,V=/^(${REPLACED.join('|')})$/,S=[];`);
     if (marks.swaps.length) {
-      parts.push(`${j(marks.swaps)}.forEach(function(w){Q(w[0]).forEach(function(e){if(e.namespaceURI!=="http://www.w3.org/1999/xhtml"||V.test(e.localName)||O.test(e.localName))return;var n=document.createElement("story-swap");n.setAttribute("data-story-swap",w[1]);n.setAttribute("aria-hidden","true");e.insertBefore(n,e.firstChild);S.push([e,n])})});`);
+      parts.push(`${j(marks.swaps)}.forEach(function(w){Q(w[0]).forEach(function(e){if(e.namespaceURI!=="http://www.w3.org/1999/xhtml"||V.test(e.localName)||O.test(e.localName))return;var n=document.createElement("story-swap");n.setAttribute("data-story-swap",w[1]);n.setAttribute("aria-hidden","true");e.insertBefore(n,e.firstChild);S.push([e,n,w[2]])})});`);
+      // A swap without an ink takes the element's computed colour at the swap's start (read before story-marks gates
+      // the hide on, so the old text's colour is still visible to getComputedStyle).
+      if (marks.swaps.some(w => w[2] !== null)) parts.push('z(function(){var an=document.getAnimations?document.getAnimations():[];S.forEach(function(p){if(p[2]===null)return;an.forEach(function(x){if(x.currentTime!==null)x.currentTime=p[2]});p[1].style.color=getComputedStyle(p[0]).color})});');
       // Each swap is moved (a translate, in the element's own pixels) over the old text's range: centred on it, or
       // aligned to its right or left edge as the element aligns its text (flex/grid justify-content first), and centred
       // on it vertically.
@@ -689,7 +780,7 @@ function runtimeScript(story, f, marks) {
     parts.push(`function fit(){try{var e=P.querySelector(${j(cam)});if(!e)return;var a,r;z(function(){P.style.transform="";P.style.height="";a=P.getBoundingClientRect();r=e.getBoundingClientRect()});var m=${CAMERA_MARGIN},x=r.left-a.left-m,y=r.top-a.top-m,w=r.width+2*m,h=r.height+2*m,s=Math.max(${CAMERA_MIN_SCALE},Math.min(${CAMERA_MAX_SCALE},${f.w}/w,${f.h}/h));P.style.height=Math.max(${f.h},Math.ceil(y+h))+"px";P.style.transformOrigin="0 0";P.style.transform="translate("+((${f.w}-w*s)/2-x*s)+"px,"+((${f.h}-h*s)/2-y*s)+"px) scale("+s+")"}catch(_){}}`);
     parts.push('if(document.readyState==="complete")fit();else addEventListener("load",fit);if(document.fonts&&document.fonts.ready)document.fonts.ready.then(function(){if(document.readyState==="complete")fit()});');
   }
-  return `<script data-story-${cam ? 'camera' : 'marks'}>(function(){${parts.join('')}})()</script>`;
+  return `<script data-story-${cam ? 'camera' : 'marks'} nonce="${nonce}">(function(){${parts.join('')}})()</script>`;
 }
 
 /** The credit shown on every video: the story's credit, or DEFAULT_CREDIT when it has none (check notes credit-missing). */
@@ -737,11 +828,16 @@ export function emit(story, pageHtml) {
 @keyframes story-credit{from{opacity:0}to{opacity:1}}
 html.story-play #story-credit{animation:story-credit 300ms linear ${q(creditStart)} 1 normal forwards}
 @media (prefers-reduced-motion:reduce){html.story-play #story-credit{opacity:1;animation:none}}${stack}`;
-  const script = runtimeScript(story, f, marks);
+  // Content-Security-Policy backstop: whatever a scanner misses cannot run. Only the verb's own script carries the
+  // per-emit random nonce; no plugins, no <base>, no form posts, no fetch/XHR/WebSocket. Styles, images and fonts load.
+  const nonce = randomBytes(18).toString('base64');
+  const csp = `script-src 'nonce-${nonce}'; object-src 'none'; base-uri 'none'; form-action 'none'; connect-src 'none'`;
+  const script = runtimeScript(story, f, marks, nonce);
   const styles = layers.map(l => `<style data-story-step="${escHtml(l.id)}" data-start-ms="${l.start}" data-end-ms="${l.end}">\n${l.css}\n</style>`).join('\n');
   const html = `<!doctype html>
-<html lang="en" class="story-play">
+<html lang="${escHtml(page.lang)}"${page.dir ? ` dir="${page.dir}"` : ''} class="story-play">
 <head>
+<meta http-equiv="Content-Security-Policy" content="${csp}">
 <meta charset="utf-8">
 <meta name="viewport" content="width=${f.w}">
 <meta name="story-duration-ms" content="${D}">

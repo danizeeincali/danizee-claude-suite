@@ -32,6 +32,9 @@ const ATTACKS = [
   `<!--><img src=x onerror=alert(1)>`,
 ];
 const tmp = async () => fs.mkdtemp(path.join(os.tmpdir(), 'story-plan-'));
+// Each emit carries a fresh random CSP nonce (review r5); comparisons of two emits replace it with N, and nonceOf reads it.
+const unnonce = h => h.replace(/nonce="[A-Za-z0-9+/=]{24}"/g, 'nonce="N"').replace(/'nonce-[A-Za-z0-9+/=]{24}'/g, "'nonce-N'");
+const nonceOf = h => /<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-([A-Za-z0-9+/=]{24})'/.exec(h)[1];
 
 describe('header contract', () => {
   it('documents every code, flag and exit that the code produces', async () => {
@@ -247,7 +250,7 @@ describe('emit', () => {
     assert.ok(r.html.includes(`<meta name="story-duration-ms" content="${r.duration_ms}">`));
     // The page's own script is gone; the only script is the emitted one that places the swap text and redline tags.
     assert.ok(!r.html.includes('alert(1)'));
-    assert.deepEqual(r.html.match(/<script[^>]*>/gi), ['<script data-story-marks>']);
+    assert.deepEqual(unnonce(r.html).match(/<script[^>]*>/gi), ['<script data-story-marks nonce="N">']);
     assert.ok(!/<link/i.test(r.html));
     assert.ok(!/<iframe/i.test(r.html));
     assert.ok(!/\son[a-z]+\s*=/i.test(r.html));
@@ -324,14 +327,18 @@ describe('emit', () => {
     const s = mk(); s.steps[1].redline = { selector: '.card', label: 'a"</style><script>x' };
     const h = emit(s, PAGE).html;
     assert.ok(!/<script>x/i.test(h));
-    assert.deepEqual(h.match(/<script[^>]*>/gi), ['<script data-story-marks>']);
+    assert.deepEqual(unnonce(h).match(/<script[^>]*>/gi), ['<script data-story-marks nonce="N">']);
     assert.ok(h.includes('content:"a\\"\\3c /style\\3e \\3c script\\3e x"'));
     assert.equal((h.match(/<\/style>/g) || []).length, 1 + 1 + 3);
   });
   it('refuses a story that is not ok', () => {
     assert.throws(() => emit(mk({ format: 'x' }), PAGE), e => e instanceof KitExit && e.code === 1 && /bad-format/.test(e.message));
   });
-  it('is deterministic', () => { assert.equal(emit(story, PAGE).html, r.html); });
+  it('is deterministic', () => {
+    const again = emit(story, PAGE).html;
+    assert.equal(unnonce(again), unnonce(r.html));
+    assert.notEqual(nonceOf(again), nonceOf(r.html), 'only the CSP nonce differs, and it does');
+  });
   it('page prep: bare fragments, unclosed script and 8 MiB of tag-like text stay linear', () => {
     assert.ok(emit(mk(), '<p>just a fragment</p><script>x').html.includes('<p>just a fragment</p>'));
     assert.equal(preparePage('<style>html body{color:red} html{x:1}</style><body>ok</body>').css, '#story-body{color:red} #story-page{x:1}');
@@ -400,10 +407,10 @@ describe('run: check and emit', () => {
     assert.equal(o.html, undefined);
     assert.equal(o.out, path.join(dir, 'out.html'));
     const written = await fs.readFile(o.out, 'utf-8');
-    assert.equal(written, r.html);
+    assert.equal(unnonce(written), unnonce(r.html));
     assert.equal(o.bytes, Buffer.byteLength(written));
     const viaStdin = await run(['emit', '--page', 'p.html'], io(JSON.stringify(template()), dir));
-    assert.equal(viaStdin.html, r.html);
+    assert.equal(unnonce(viaStdin.html), unnonce(r.html));
     await exit(() => run(['emit', '--file', 's.json'], io('', dir)));
     await exit(() => run(['emit', '--file', 's.json', '--page', 'nope.html'], io('', dir)));
     await fs.writeFile(path.join(dir, 'empty.html'), '  ');
@@ -588,7 +595,7 @@ describe('review r1 regressions', () => {
     assert.deepEqual(sp.cameraFit({ x: 100, y: 1200, w: 540, h: 270 }, { w: 1080, h: 1080 }), { scale: 2, tx: -200, ty: -2130 });
     assert.ok(rect.includes('#story-page{height:1470px;transform-origin:0 0;transform:translate(-200px,-2130px) scale(2)}'));
     const sel = emit(mk({ camera: { selector: '.card' } }), PAGE).html;
-    const scr = /<script data-story-camera>([\s\S]*?)<\/script>/.exec(sel);
+    const scr = /<script data-story-camera nonce="[^"]+">([\s\S]*?)<\/script>/.exec(sel);
     assert.ok(scr && scr[1].includes('querySelector(".card")'));
     assert.equal((sel.match(/<script/g) || []).length, 1);
     assert.ok(!/setTimeout|setInterval|requestAnimationFrame|Date|performance/.test(scr[1]));
@@ -711,7 +718,7 @@ describe('review r2 regressions', () => {
   });
   it('the selector camera measures on load and again when fonts are ready, from the t=0 state, without timers', () => {
     const h = emit(cameraStory, '<body><img src="big.svg"><div class="card">c</div><p class="q">q</p></body>').html;
-    const scr = /<script data-story-camera>([\s\S]*?)<\/script>/.exec(h)[1];
+    const scr = /<script data-story-camera nonce="[^"]+">([\s\S]*?)<\/script>/.exec(h)[1];
     assert.ok(scr.includes('if(document.readyState==="complete")fit();else addEventListener("load",fit);'));
     assert.ok(scr.includes('document.fonts.ready.then(function(){if(document.readyState==="complete")fit()})'));
     assert.ok(scr.includes('P.style.transform="";P.style.height="";'));
@@ -794,9 +801,11 @@ describe('review r2 regressions', () => {
       const probe = p => p.evaluate(() => { const e = document.querySelector('.btn'), n = e.querySelector(':scope > story-swap'); return { old: getComputedStyle(e).color, bg: getComputedStyle(e).backgroundColor, text: getComputedStyle(n, '::before').content, ink: getComputedStyle(n).color, op: getComputedStyle(n).opacity }; });
       const p = await open(b, path.join(dir, 's.html'));
       await p.at(D);
-      assert.deepEqual(await probe(p), { old: 'rgba(0, 0, 0, 0)', bg: 'rgb(0, 0, 0)', text: '"Start free"', ink: 'rgb(17, 17, 17)', op: '1' });
+      // No swap.ink: the new text takes the element's own colour when the swap starts (black here; check notes swap-ink
+      // because step b turns the background black), and under reduced motion the element's final colour (white).
+      assert.deepEqual(await probe(p), { old: 'rgba(0, 0, 0, 0)', bg: 'rgb(0, 0, 0)', text: '"Start free"', ink: 'rgb(0, 0, 0)', op: '1' });
       const r = await open(b, path.join(dir, 's.html'), { reducedMotion: 'reduce' });
-      assert.deepEqual(await probe(r), { old: 'rgba(0, 0, 0, 0)', bg: 'rgb(0, 0, 0)', text: '"Start free"', ink: 'rgb(17, 17, 17)', op: '1' });
+      assert.deepEqual(await probe(r), { old: 'rgba(0, 0, 0, 0)', bg: 'rgb(0, 0, 0)', text: '"Start free"', ink: 'rgb(255, 255, 255)', op: '1' });
     }));
 
     it('frame 0 is pixel-identical to the original with an icon ::before and a clearfix ::after on the swapped and redlined elements', async t => browser(t, async (b, dir) => {
@@ -866,7 +875,7 @@ describe('review r3 regressions', () => {
     assert.ok(!/html\.story-play :is\((h1|p\.r|button\.btn)\)\{--story-a/.test(h));
     assert.ok(h.includes('document.documentElement.classList.add("story-marks")'));
     assert.ok(!/class="[^"]*story-marks/.test(h));
-    const scr = /<script data-story-marks>([\s\S]*?)<\/script>/.exec(h)[1];
+    const scr = /<script data-story-marks nonce="[^"]+">([\s\S]*?)<\/script>/.exec(h)[1];
     assert.ok(scr.includes('createRange()') && scr.includes('z(place);'), 'swaps are placed from a Range over the old text');
     assert.ok(!/setTimeout|setInterval|requestAnimationFrame|Date|performance/.test(scr));
   });
@@ -1004,4 +1013,191 @@ describe('review r3 regressions', () => {
       }
     }));
   });
+});
+
+describe('review r5 regressions', () => {
+  const base = { title: 't', format: 'square', credit: 'x' };
+  const st = (id, over) => ({ id, label: id, ...over });
+  const swapOnly = { ...base, steps: [st('a', { css: { '.q': { opacity: '0.5' } } }), st('b', { swap: { selector: '.btn', text: 'Start free' } }), st('c', { css: { '.q': { opacity: '1' } } })] };
+  // A browser ends a comment at '--!>' too, and inside <svg>/<math> title, textarea, xmp and plaintext hold live markup.
+  const R5_ATTACKS = [
+    `<!-- x --!><img src=x onerror=alert(51)> -->`,
+    `<!-- x --!><script>alert(52)</script> -->`,
+    `<!--><img src=x onerror=alert(53)>`,
+    `<!---><img src=x onerror=alert(54)>`,
+    `<svg><title><img src=x onerror=alert(55)></title></svg>`,
+    `<svg><textarea><img src=x onerror=alert(56)></textarea></svg>`,
+    `<math><mi><title><img src=x onerror=alert(57)></title></mi></math>`,
+    `<svg><title><script>alert(58)</script></title></svg>`,
+    `<svg><xmp><img src=x onerror=alert(59)></xmp></svg>`,
+    `<svg><plaintext><img src=x onerror=alert(60)></plaintext></svg>`,
+    `<textarea><p title="</textarea><img src=x onerror=alert(61)>"></textarea>`,
+    `<xmp><a title="</xmp><script>alert(62)</script>">x</a></xmp>`,
+    `<title><!--</title><img src=x onerror=alert(63)>--></title>`,
+    `<svg><title><a title="</title><img src=x onerror=alert(64)>"></a></title></svg>`,
+  ];
+  const browser = async (t, fn) => {
+    let pw = null;
+    try { pw = await import(process.env.STORY_PLAN_PLAYWRIGHT || 'playwright'); } catch { /* not installed */ }
+    const chromium = pw && (pw.chromium || (pw.default && pw.default.chromium));
+    if (!chromium) { t.skip('playwright not resolvable'); return; }
+    let b;
+    try { b = await chromium.launch(); } catch (e) { t.skip(`browser did not start: ${String(e.message).split('\n')[0]}`); return; }
+    try { await fn(b, await tmp()); } finally { await b.close(); }
+  };
+  const open = async (b, file, opts = {}) => {
+    const ctx = await b.newContext({ viewport: { width: 1080, height: 1080 }, ...opts });
+    const p = await ctx.newPage();
+    p.dialogs = [];
+    p.on('dialog', d => { p.dialogs.push(d.message()); d.dismiss(); });
+    await p.goto(`file://${file}`);
+    p.at = ms => p.evaluate(ms => document.getAnimations().forEach(a => { a.pause(); a.currentTime = ms; }), ms);
+    return p;
+  };
+
+  it('comments end at --!>, <!--> and <!--->; title/textarea/xmp/plaintext text is cleaned as markup (svg/math)', () => {
+    for (const a of R5_ATTACKS) {
+      const p = preparePage(`<body>${a}<p class=ok onclick=x()>kept</p></body>`);
+      assert.ok(!/(?:\s|\/|['"])on[a-z]+\s*=/i.test(p.body), `${a} -> ${p.body}`);
+      assert.ok(!/<script/i.test(p.body), `${a} -> ${p.body}`);
+      assert.ok(p.body.includes('<p class=ok >kept</p>') || p.body.includes('<p class=ok>kept</p>'), `${a} -> ${p.body}`);
+    }
+    // A <script> mentioned in an HTML title's text still costs only the open tag, and a script holding '</textarea>' in
+    // a string, outside any textarea, is still dropped whole.
+    assert.equal(preparePage('<head><title>about <script> tags</title></head><body>x<script>bad()</script></body>').body, 'x');
+    assert.equal(preparePage('<body>a<script>var s="</textarea>"</script>b<textarea>t</textarea></body>').body, 'ab<textarea>t</textarea>');
+    assert.equal(preparePage('<body><textarea>plain <b>text</b></textarea><p>after</p></body>').body, '<textarea>plain <b>text</b></textarea><p>after</p>');
+  });
+  it('the r5 scanner paths stay linear on 8 MiB', () => {
+    const t0 = Date.now();
+    for (const unit of ['<textarea><!--', '<title><a b="', '<!-- --!', '<svg><title>', '<xmp><p x="</xmp>', '<!-->', '<title></title', '<textarea>', '</textarea>']) preparePage(unit.repeat(Math.floor(8 * 1024 * 1024 / unit.length)));
+    assert.ok(Date.now() - t0 < 15000, `took ${Date.now() - t0}ms`);
+  });
+  it('the cleaned r5 attacks run nothing in a browser, even with no CSP around them', async t => browser(t, async (b, dir) => {
+    const body = preparePage(`<body>${R5_ATTACKS.join('')}<p>end</p></body>`).body;
+    await fs.writeFile(path.join(dir, 'plain.html'), `<!doctype html><html><body>${body}</body></html>`);
+    const p = await open(b, path.join(dir, 'plain.html'));
+    await p.waitForTimeout(300);
+    assert.deepEqual(p.dialogs, []);
+    // And the same attacks uncleaned do fire, so the probe is not blind.
+    await fs.writeFile(path.join(dir, 'raw.html'), `<!doctype html><html><body>${R5_ATTACKS.join('')}</body></html>`);
+    const r = await open(b, path.join(dir, 'raw.html'));
+    await r.waitForTimeout(300);
+    assert.ok(r.dialogs.length >= 5, JSON.stringify(r.dialogs));
+  }));
+
+  it('CSP: a meta as the first child of <head>, a fresh nonce per emit carried only by the verb\'s script', () => {
+    const h = emit(mk(), PAGE).html, h2 = emit(mk(), PAGE).html;
+    const n = nonceOf(h);
+    assert.ok(h.includes(`<head>\n<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-${n}'; object-src 'none'; base-uri 'none'; form-action 'none'; connect-src 'none'">\n<meta charset="utf-8">`));
+    assert.notEqual(nonceOf(h2), n);
+    assert.deepEqual(h.match(/nonce="[^"]*"/g), [`nonce="${n}"`]);
+    assert.ok(h.includes(`<script data-story-marks nonce="${n}">`));
+    const cam = emit(mk({ camera: { selector: '.card' } }), PAGE).html;
+    assert.ok(cam.includes(`<script data-story-camera nonce="${nonceOf(cam)}">`));
+    // A css-only story has no script but still carries the policy.
+    const cssOnly = { ...base, steps: [st('a', { css: { h1: { color: 'red' } } }), st('b', { css: { '.q': { opacity: '0.5' } } }), st('c', { css: { '.q': { opacity: '1' } } })] };
+    const c = emit(cssOnly, '<body><h1>x</h1></body>').html;
+    assert.ok(c.includes('<meta http-equiv="Content-Security-Policy"') && !/<script/i.test(c));
+  });
+  it('CSP: a handler and a script injected after cleaning run nothing; the verb\'s script, styles and images still work', async t => browser(t, async (b, dir) => {
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+    await fs.writeFile(path.join(dir, 'dot.png'), png);
+    const page = `<!doctype html><html><head><style>.card{background-color:rgb(1,2,3)}</style></head><body><div class="card"><button class="btn">Go</button></div><h1>Hi</h1><img id="f" src="dot.png"><img id="d" src="data:image/png;base64,${png.toString('base64')}"></body></html>`;
+    const injected = `<img src=x onerror="alert('handler')"><svg onload="alert('svg')"></svg><script>alert('script')</script><a id="js" href="javascript:alert('url')">j</a><form id="fm" action="http://example.com/"><button>s</button></form>`;
+    await fs.writeFile(path.join(dir, 's.html'), emit(template(), page).html.replace('</body>', `${injected}</body>`));
+    const p = await open(b, path.join(dir, 's.html'));
+    const reqs = [];
+    p.on('request', r => { if (!r.url().startsWith('file:') && !r.url().startsWith('data:')) reqs.push(r.url()); });
+    await p.waitForTimeout(300);
+    await p.click('#js').catch(() => {});
+    await p.waitForTimeout(200);
+    assert.deepEqual(p.dialogs, []);
+    await p.at(0);
+    const st8 = await p.evaluate(() => ({
+      marks: document.documentElement.classList.contains('story-marks'),
+      swaps: document.querySelectorAll('story-swap').length,
+      tags: document.querySelectorAll('story-tag').length,
+      bg: getComputedStyle(document.querySelector('.card')).backgroundColor,
+      f: document.getElementById('f').naturalWidth,
+      d: document.getElementById('d').naturalWidth,
+    }));
+    assert.deepEqual(st8, { marks: true, swaps: 1, tags: 2, bg: 'rgb(1, 2, 3)', f: 1, d: 1 });
+    assert.deepEqual(reqs, []);
+  }));
+
+  it('reduced motion: a swap-only selector gets animation none, so the element itself shows its final state', () => {
+    const h = emit(swapOnly, '<body><button class="btn">Go</button><p class="q">q</p></body>').html;
+    const layer = /<style data-story-step="b"[\s\S]*?<\/style>/.exec(h)[0];
+    assert.match(layer.split('@media (prefers-reduced-motion:reduce)')[1], /html\.story-play :is\(\.btn\)\{animation:none !important\}/);
+  });
+  it('reduced motion: mid-tween the swapped element has no blur and full opacity, and shows only the new text', async t => browser(t, async (b, dir) => {
+    await fs.writeFile(path.join(dir, 's.html'), emit(swapOnly, '<!doctype html><html><head><style>.btn{color:rgb(0,0,0);font:20px sans-serif}</style></head><body><button class="btn">Get started</button><p class="q">q</p></body></html>').html);
+    const tl = check(swapOnly).timeline[1];
+    const probe = p => p.evaluate(() => { const e = document.querySelector('.btn'), c = getComputedStyle(e), n = getComputedStyle(e.querySelector('story-swap')); return [c.filter, c.opacity, c.color, n.opacity]; });
+    const r = await open(b, path.join(dir, 's.html'), { reducedMotion: 'reduce' });
+    for (const ms of [0, Math.round((tl.start_ms + tl.tween_end_ms) / 2), tl.end_ms]) {
+      await r.at(ms);
+      assert.deepEqual(await probe(r), ['none', '1', 'rgba(0, 0, 0, 0)', '1'], `reduce at ${ms}`);
+    }
+    // Without reduced motion the same moment is mid-blur, so the probe can tell.
+    const p = await open(b, path.join(dir, 's.html'));
+    await p.at(tl.start_ms + 250);
+    assert.notEqual((await probe(p))[0], 'none');
+  }));
+
+  it('the page\'s <html lang> and dir, and the body\'s dir and lang, are kept; lang="en" only when the page has none', () => {
+    const ar = emit(swapOnly, '<!doctype html><html lang="ar" dir="RTL"><body><h1>مرحبا</h1></body></html>').html;
+    assert.match(ar, /<html lang="ar" dir="rtl" class="story-play">/);
+    const he = emit(swapOnly, '<html lang=he><body dir="rtl" lang="he-IL" class="app"><h1>שלום</h1></body></html>').html;
+    assert.match(he, /<html lang="he" class="story-play">/);
+    assert.match(he, /<div id="story-body" class="app" dir="rtl" lang="he-IL">/);
+    assert.match(emit(swapOnly, '<body><h1>x</h1></body>').html, /<html lang="en" class="story-play">/);
+    assert.match(emit(swapOnly, '<html lang=\'"><x\' dir="sideways"><body>x</body></html>').html, /<html lang="&quot;&gt;&lt;x" class="story-play">/);
+    assert.match(emit(swapOnly, '<html data-lang="fr" lang="de"><body data-dir="rtl">x</body></html>').html, /<html lang="de" class="story-play">[\s\S]*<div id="story-body">/);
+  });
+  it('an rtl/ar page renders right to left with lang ar, and frame 0 lines up with the original', async t => browser(t, async (b, dir) => {
+    for (const [name, orig] of Object.entries({
+      html: '<!doctype html><html lang="ar" dir="rtl"><head><style>h1{font:32px sans-serif}</style></head><body><h1>مرحبا بالعالم</h1><p class="q">نص قصير</p><button class="btn">ابدأ</button></body></html>',
+      body: '<!doctype html><html lang="ar"><head><style>h1{font:32px sans-serif}</style></head><body dir="rtl"><h1>مرحبا بالعالم</h1><p class="q">نص قصير</p><button class="btn">ابدأ</button></body></html>',
+    })) {
+      await fs.writeFile(path.join(dir, `${name}-o.html`), orig);
+      await fs.writeFile(path.join(dir, `${name}-s.html`), emit(swapOnly, orig).html);
+      const read = p => p.evaluate(() => ({ lang: document.documentElement.lang, dir: getComputedStyle(document.querySelector('h1')).direction, rects: ['h1', '.q', '.btn'].map(s => { const r = document.querySelector(s).getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map(Math.round); }) }));
+      const want = await read(await open(b, path.join(dir, `${name}-o.html`)));
+      assert.equal(want.dir, 'rtl');
+      const p = await open(b, path.join(dir, `${name}-s.html`));
+      await p.at(0);
+      assert.deepEqual(await read(p), want, name);
+    }
+  }));
+
+  it('a swap without ink emits no colour for the new text; the script takes the element\'s colour at the swap start', () => {
+    const h = emit(swapOnly, '<body><button class="btn">Go</button><p class="q">q</p></body>').html;
+    const rule = /story-swap\[data-story-swap="w2"\]\{([^}]*)\}/.exec(h)[1];
+    assert.ok(!/(^|;)color:/.test(rule), rule);
+    assert.ok(!h.includes('#111'));
+    assert.ok(h.includes(`[[".btn","w2",${check(swapOnly).timeline[1].start_ms}]]`));
+    assert.ok(h.includes('p[1].style.color=getComputedStyle(p[0]).color'));
+    const inked = { ...swapOnly, steps: swapOnly.steps.map(s => (s.swap ? { ...s, swap: { ...s.swap, ink: 'rgb(9,9,9)' } } : s)) };
+    const hi = emit(inked, '<body><button class="btn">Go</button><p class="q">q</p></body>').html;
+    assert.match(/story-swap\[data-story-swap="w2"\]\{([^}]*)\}/.exec(hi)[1], /color:rgb\(9,9,9\);/);
+    assert.ok(hi.includes('[[".btn","w2",null]]') && !hi.includes('p[1].style.color'));
+  });
+  it('a white label on a blue button swapped without ink stays white (AA contrast kept); an ink still wins', async t => browser(t, async (b, dir) => {
+    const page = '<!doctype html><html><head><style>.btn{color:#fff;background:#1d4ed8;font:20px sans-serif;padding:10px}</style></head><body><button class="btn">Get started</button><p class="q">q</p></body></html>';
+    await fs.writeFile(path.join(dir, 's.html'), emit(swapOnly, page).html);
+    const inked = { ...swapOnly, steps: swapOnly.steps.map(s => (s.swap ? { ...s, swap: { ...s.swap, ink: 'rgb(255, 255, 0)' } } : s)) };
+    await fs.writeFile(path.join(dir, 'i.html'), emit(inked, page).html);
+    const D = check(swapOnly).duration_ms;
+    const ink = p => p.evaluate(() => getComputedStyle(document.querySelector('.btn > story-swap')).color);
+    for (const reducedMotion of ['no-preference', 'reduce']) {
+      const p = await open(b, path.join(dir, 's.html'), { reducedMotion });
+      await p.at(D);
+      assert.equal(await ink(p), 'rgb(255, 255, 255)', reducedMotion);
+      const i = await open(b, path.join(dir, 'i.html'), { reducedMotion });
+      await i.at(D);
+      assert.equal(await ink(i), 'rgb(255, 255, 0)', reducedMotion);
+    }
+  }));
 });
