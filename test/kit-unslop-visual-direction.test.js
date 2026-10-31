@@ -2,6 +2,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import os from 'os';
+import { spawnSync } from 'child_process';
+import { writeFileSync } from 'fs';
 import path from 'path';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
 import { run, verb, decide, checkSentence, buildPrompt, colorWord } from '../src/lib/kit/visual-direction.js';
@@ -195,5 +197,105 @@ describe('review r1 fixes', () => {
   it('STOP has no duplicate cool', async () => {
     const src = await fs.readFile(new URL('../src/lib/kit/visual-direction.js', import.meta.url), 'utf-8');
     assert.equal(src.match(/'cool'/g).length, 1);
+  });
+});
+
+describe('review r2 fixes', () => {
+  const CLI = new URL('../.claude/helpers/kit/cli.js', import.meta.url).pathname;
+  const cli = (cmd, obj, via = 'stdin', dir) => {
+    const text = typeof obj === 'string' ? obj : JSON.stringify(obj);
+    if (via === 'stdin') return spawnSync('node', [CLI, 'visual-direction', cmd], { input: text, encoding: 'utf-8' });
+    const f = path.join(dir, 'c.json');
+    writeFileSync(f, text);
+    return spawnSync('node', [CLI, 'visual-direction', cmd, '--file', f], { encoding: 'utf-8' });
+  };
+
+  it('light with banned style words is rejected (module and both CLI paths)', async () => {
+    await exit(() => call('prompt', { ...P, light: 'stunning neon cyberpunk glow, 8k cinematic' }));
+    assert.throws(() => buildPrompt({ ...P, light: 'a glowing neon lamp' }), e => e instanceof KitExit && /light has style words that read as slop: .*neon/.test(e.message));
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'vd2-'));
+    try {
+      for (const via of ['stdin', 'file']) {
+        const r = cli('prompt', { ...P, light: 'stunning neon cyberpunk glow, 8k cinematic' }, via, dir);
+        assert.equal(r.status, 1, via);
+        assert.equal(r.stdout, '');
+        assert.match(r.stderr, /light has style words/);
+      }
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+    assert.match(buildPrompt({ ...P, light: 'lamp light' }).prompt, /light: lamp light/);
+  });
+
+  it('non-Latin sentences pass the concrete-subject check', async () => {
+    for (const s of ['Плотник строгает доску на верстаке в утреннем свете.', 'Un artesano da forma a un cuenco de arcilla en un taller con luz de mañana.', 'Ein Töpfer formt eine Tonschale an einer Werkbank im Morgenlicht.']) {
+      const r = checkSentence(s);
+      assert.equal(r.ok, true, JSON.stringify(r));
+      assert.equal(buildPrompt({ ...P, sentence: s }).aspect, '16:9');
+    }
+    assert.ok(checkSentence('Плотник строгает доску. Он стоит.').problems.some(p => p.id === 'not-one-sentence'));
+    assert.ok(checkSentence('Плотник строгает доску на верстаке в утреннем свете.').hints.every(h => !/setting|light/.test(h)));
+  });
+
+  it('scripts without spaces get a hint, not a failure; banned ASCII words still hit', async () => {
+    const jp = '陶芸家が朝の光の中で木の作業台で粘土の鉢を形作る';
+    const r = checkSentence(jp);
+    assert.equal(r.ok, true);
+    assert.equal(r.problems.some(p => p.id === 'no-concrete-subject'), false);
+    assert.ok(r.hints.some(h => /without spaces/.test(h)));
+    assert.equal(buildPrompt({ ...P, sentence: jp }).aspect, '16:9');
+    assert.ok(checkSentence('陶芸家が neon の鉢を作る').problems.some(p => p.id === 'banned-words'));
+    assert.ok(checkSentence('陶芸家が鉢を作る。猫が見ている。').problems.some(p => p.id === 'not-one-sentence'));
+    assert.equal(checkSentence('陶芸家が鉢を作る。').problems.some(p => p.id === 'not-one-sentence'), false);
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'vd2-'));
+    try {
+      for (const via of ['stdin', 'file']) {
+        const o = cli('sentence', { sentence: jp }, via, dir);
+        assert.equal(o.status, 0, via);
+        assert.equal(JSON.parse(o.stdout).ok, true);
+      }
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('quoted questions, dotted abbreviations and numbers after a period are one sentence', () => {
+    for (const s of ['A sign reading "Open?" hangs on a wooden door in morning sun.', 'A flag of the U.S. Navy hangs on a wall in morning sun.', 'A brass kettle at No. 5 on a stove in morning sun.', 'A sign reading "Open!" hangs on a door in sun.'])
+      assert.equal(checkSentence(s).problems.some(p => p.id === 'not-one-sentence'), false, s);
+    assert.ok(checkSentence('Is it open? A kettle on a stove.').problems.some(p => p.id === 'not-one-sentence'));
+    assert.ok(checkSentence('A sign reading "Open?" Hangs on a door.').problems.some(p => p.id === 'not-one-sentence'));
+  });
+
+  it('light and avoid are capped', async () => {
+    await exit(() => call('prompt', { ...P, light: 'soft '.repeat(21) }));
+    assert.ok(buildPrompt({ ...P, light: 'soft '.repeat(20) }).prompt.includes('light:'));
+    await exit(() => call('prompt', { ...P, avoid: ['x'.repeat(41)] }));
+    assert.ok(buildPrompt({ ...P, avoid: ['x'.repeat(40)] }).negative.length > 0);
+    await exit(() => call('prompt', { ...P, avoid: Array.from({ length: 21 }, (_, i) => 'a' + i) }));
+    assert.ok(buildPrompt({ ...P, avoid: Array.from({ length: 20 }, (_, i) => 'a' + i) }).negative.includes('a19'));
+    await exit(() => call('prompt', { ...P, light: 'x '.repeat(3000000) }));
+  });
+
+  it('unknown context keys exit 1 naming the key, with a did-you-mean', async () => {
+    const base = { screen: 'dashboard', has_product_ui: false, works_without_visual: true };
+    assert.throws(() => decide({ ...base, slots: 'empty-state' }), e => e instanceof KitExit && e.code === 1 && /"slots"/.test(e.message) && /did you mean "slot"/.test(e.message));
+    assert.throws(() => buildPrompt({ ...P, 'headline-side': 'right' }), e => /"headline-side"/.test(e.message) && /did you mean "headline_side"/.test(e.message));
+    assert.throws(() => buildPrompt({ ...P, display_wdith: 600 }), e => /"display_wdith"/.test(e.message) && /did you mean "display_width"/.test(e.message));
+    assert.throws(() => buildPrompt({ ...P, zzzzzz: 1 }), e => /"zzzzzz"/.test(e.message) && !/did you mean/.test(e.message));
+    await exit(() => call('sentence', { sentence: GOOD, extra: 1 }));
+    await exit(() => call('decide', { ...base, direction: { world: 'x', mood: 'y' } }));
+    assert.equal((await call('decide', { ...base, slot: 'empty-state' })).needed, true);
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'vd2-'));
+    try {
+      for (const via of ['stdin', 'file']) {
+        const r = cli('decide', { ...base, slots: 'empty-state' }, via, dir);
+        assert.equal(r.status, 1, via);
+        assert.equal(r.stdout, '');
+        assert.match(r.stderr, /"slots".*did you mean "slot"/);
+      }
+    } finally { await fs.rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('header documents the r2 behaviour', async () => {
+    const src = await fs.readFile(new URL('../src/lib/kit/visual-direction.js', import.meta.url), 'utf-8');
+    for (const re of [/Unknown keys/, /at most 20 words/, /scripts without spaces/])
+      assert.match(src, re);
+    assert.equal((await fs.readFile(new URL('../.claude/helpers/kit/visual-direction.js', import.meta.url))).equals(await fs.readFile(new URL('../src/lib/kit/visual-direction.js', import.meta.url))), true);
   });
 });

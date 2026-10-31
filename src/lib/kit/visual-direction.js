@@ -33,11 +33,21 @@
  * the brief's example looks (painted background, cinematic object, soft 3D, ...), which are art directions that
  * map onto these. "cinematic" is banned inside the sentence because it is a vague quality word, whereas the brief
  * names a cinematic object as a direction: say what is physically there (a lit object, low angle) instead.
+ * Other languages: the checks use Unicode letters, so a Cyrillic, accented-Latin or other spaced-script sentence is
+ * judged like an English one (the setting and light hints are English-only and are skipped when the sentence has no
+ * Latin letters). For scripts without spaces (Chinese, Japanese, Thai, Lao, Khmer, Myanmar) the concrete-subject test
+ * cannot count words, so it is skipped and a hint is given instead of a failure; the Japanese/Chinese full stops
+ * (。 ！ ？) end a sentence. Banned ASCII style words are still caught anywhere in the text.
+ * Unknown keys: a key outside the subcommand's known set (decide: screen, has_product_ui, works_without_visual, slot,
+ * direction; sentence: sentence; prompt: the keys listed above; direction: world, character) exits 1 naming the key,
+ * with a did-you-mean when it is close to a known one (for example "slots" for "slot", "headline-side").
+ * Limits: light has at most 20 words and no banned style words (same list as the sentence); avoid has at most 20
+ * entries of at most 40 characters each; over a limit exits 1.
  * Direct callers: decide, checkSentence and buildPrompt throw a KitExit (code 1) for a non-object context or a
  * non-string sentence.
  *
  * Exit codes: 0 answer printed; 1 bad input (unknown subcommand or flag, duplicate flag, missing, unreadable,
- * binary, oversize or non-object input, invalid field; message on stderr, nothing on stdout).
+ * binary, oversize or non-object input, invalid or unknown field, light/avoid over a limit; message on stderr, nothing on stdout).
  * Built from ideas audited by /w-bbs (run 2026-10-30-unslop); no foreign code.
  */
 import fs from 'fs/promises';
@@ -86,23 +96,41 @@ const ABBREV = new Set(['mr', 'mrs', 'ms', 'dr', 'st', 'jr', 'sr', 'vs', 'a.m', 
 function hasSecondSentence(s) {
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
+    if (c === '。' || c === '！' || c === '？') {
+      let e = i + 1;
+      while (e < s.length && '」』"\')）]'.includes(s[e])) e++;
+      while (e < s.length && s[e] === ' ') e++;
+      if (e < s.length) return true;
+      continue;
+    }
     if (c !== '.' && c !== '!' && c !== '?') continue;
     let j = i + 1;
     while (j < s.length && '"\')]'.includes(s[j])) j++;
+    const closed = j > i + 1;
     if (j >= s.length || s[j] !== ' ') continue;
     while (j < s.length && s[j] === ' ') j++;
     if (j >= s.length) continue;
-    if (c === '.') {
+    if (c === '.' || closed) {
       if (/[a-z]/.test(s[j])) continue;
+    }
+    if (c === '.') {
+      if (/[0-9]/.test(s[j])) continue;
       let k = i;
       while (k > 0 && i - k < 8 && s[k - 1] !== ' ') k--;
       const tok = s.slice(k, i).replace(/^["'(\[]+/, '').toLowerCase();
-      if (ABBREV.has(tok) || /^[a-z]$/.test(tok)) continue;
+      if (ABBREV.has(tok) || /^[a-z]$/.test(tok) || /^[a-z](\.[a-z])+$/.test(tok)) continue;
     }
     return true;
   }
   return false;
 }
+
+/** The banned style words found in a text (also used for the light string). */
+function bannedHits(text) {
+  const lower = ` ${text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ')} `;
+  return BANNED.filter(b => lower.includes(` ${b.replace(/[^a-z0-9]+/g, ' ')} `) || (b === 'glowing' && /\bglow(s|ed|ing)?\b/.test(lower)) || (b === 'gradient' && /\bgradients\b/.test(lower)));
+}
+const UNSPACED = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Thai}\p{Script=Lao}\p{Script=Khmer}\p{Script=Myanmar}]/u;
 
 /** Check a visual sentence. Returns { ok, sentence, words, problems, hints }. */
 export function checkSentence(sentence) {
@@ -115,15 +143,17 @@ export function checkSentence(sentence) {
   if (!s) add('empty', 'the sentence is empty: write what is in the picture, where, and in what light');
   if (hasSecondSentence(s)) add('not-one-sentence', 'write ONE sentence; merge the second thought into the first or drop it');
   if (wc > 30) add('too-long', `${wc} words; the limit is 30 — cut to one subject, one setting, one light`);
-  const lower = ` ${s.toLowerCase().replace(/[^a-z0-9]+/g, ' ')} `;
-  const hit = BANNED.filter(b => lower.includes(` ${b.replace(/[^a-z0-9]+/g, ' ')} `) || (b === 'glowing' && /\bglow(s|ed|ing)?\b/.test(lower)) || (b === 'gradient' && /\bgradients\b/.test(lower)));
+  const hit = bannedHits(s);
   if (hit.length) add('banned-words', `style words that read as slop: ${hit.join(', ')} — say what is physically there instead`);
   if (s) {
-    const content = words(s.toLowerCase().replace(/[^a-z0-9' -]+/g, ' ')).filter(w => w.length > 2 && !STOP.has(w));
+    const content = words(s.toLowerCase().replace(/[^\p{L}\p{N}' -]+/gu, ' ')).filter(w => w.length > 2 && !STOP.has(w));
     const concrete = content.filter(w => !VAGUE.has(w) && !BANNED.includes(w));
-    if (concrete.length < 2) add('no-concrete-subject', 'no concrete subject: name a real thing (a brass kettle, a person at a workbench) rather than a mood or a concept');
-    if (!SETTING_WORDS.test(s)) hints.push('name the setting (where the subject is)');
-    if (!LIGHT_WORDS.test(s)) hints.push('name the light (for example "in low morning sun")');
+    if (UNSPACED.test(s)) hints.push('this script is written without spaces, so the word count and concrete-subject checks are skipped; keep to one subject, one setting and one light');
+    else if (concrete.length < 2) add('no-concrete-subject', 'no concrete subject: name a real thing (a brass kettle, a person at a workbench) rather than a mood or a concept');
+    if (/[a-z]/i.test(s)) {
+      if (!SETTING_WORDS.test(s)) hints.push('name the setting (where the subject is)');
+      if (!LIGHT_WORDS.test(s)) hints.push('name the light (for example "in low morning sun")');
+    }
   }
   return { ok: problems.length === 0, sentence: s, words: wc, problems, hints };
 }
@@ -131,6 +161,7 @@ export function checkSentence(sentence) {
 /** Decide whether a screen needs a visual and which kind. */
 export function decide(ctx) {
   if (!isObj(ctx)) throw bad('context must be an object');
+  checkKeys(ctx, 'decide', 'decide context');
   const screen = need(ctx, 'screen', v => SCREENS.includes(v), `one of ${SCREENS.join(', ')}`);
   const hasUi = needBool(ctx, 'has_product_ui');
   const works = needBool(ctx, 'works_without_visual');
@@ -141,6 +172,7 @@ export function decide(ctx) {
   if (ctx.direction !== undefined) {
     const d = ctx.direction;
     if (!isObj(d)) throw bad('direction must be an object { world, character }');
+    checkKeys(d, 'direction', 'direction');
     for (const k of ['world', 'character']) if (d[k] !== undefined && (typeof d[k] !== 'string' || !d[k].trim())) throw bad(`direction.${k} must be a non-empty string`);
     direction = { ...(d.world ? { world: d.world.trim() } : {}), ...(d.character ? { character: d.character.trim() } : {}) };
   }
@@ -184,6 +216,7 @@ export function colorWord(hex) {
 /** Build the image prompt and placement notes. */
 export function buildPrompt(ctx) {
   if (!isObj(ctx)) throw bad('context must be an object');
+  checkKeys(ctx, 'prompt', 'prompt context');
   if (typeof ctx.sentence !== 'string') throw bad('sentence must be a string');
   const chk = checkSentence(ctx.sentence);
   if (!chk.ok) throw bad(`sentence fails the check: ${chk.problems.map(p => p.id).join(', ')} — run the sentence subcommand and fix it first`);
@@ -193,9 +226,16 @@ export function buildPrompt(ctx) {
   if (!Array.isArray(pal) || pal.length < 1 || pal.length > 6 || !pal.every(h => typeof h === 'string' && /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(h))) throw bad('palette must be an array of 1 to 6 hex colors like "#1a2b3c"');
   const avoid = ctx.avoid === undefined ? [] : ctx.avoid;
   if (!Array.isArray(avoid) || !avoid.every(a => typeof a === 'string' && a.trim())) throw bad('avoid must be an array of non-empty strings');
+  if (avoid.length > 20) throw bad(`avoid has ${avoid.length} entries; the limit is 20`);
+  if (avoid.some(a => a.trim().length > 40)) throw bad('each avoid entry must be at most 40 characters');
   const side = ctx.headline_side === undefined ? 'left' : ctx.headline_side;
   if (side !== 'left' && side !== 'right') throw bad('headline_side must be left or right');
   if (ctx.light !== undefined && (typeof ctx.light !== 'string' || !ctx.light.trim())) throw bad('light must be a non-empty string');
+  if (ctx.light !== undefined) {
+    if (ctx.light.length > 400 || words(ctx.light).length > 20) throw bad('light is too long; the limit is 20 words');
+    const lh = bannedHits(ctx.light);
+    if (lh.length) throw bad(`light has style words that read as slop: ${lh.join(', ')} — say what is physically there instead`);
+  }
   const radius = ctx.radius_px === undefined ? 12 : ctx.radius_px;
   if (typeof radius !== 'number' || !Number.isFinite(radius) || radius < 0 || radius > 200) throw bad('radius_px must be a number from 0 to 200');
   let size = { ...SIZES[aspect] };
@@ -230,6 +270,31 @@ export function buildPrompt(ctx) {
   };
 }
 
+const KEYS = {
+  decide: ['screen', 'has_product_ui', 'works_without_visual', 'slot', 'direction'],
+  sentence: ['sentence'],
+  prompt: ['sentence', 'style', 'palette', 'aspect', 'avoid', 'light', 'headline_side', 'radius_px', 'display_width'],
+  direction: ['world', 'character'],
+};
+function lev(a, b) {
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[b.length];
+}
+function checkKeys(ctx, set, label) {
+  const known = KEYS[set];
+  for (const k of Object.keys(ctx)) {
+    if (known.includes(k)) continue;
+    const norm = k.toLowerCase().replace(/-/g, '_');
+    const near = known.map(n => [n, lev(norm, n)]).sort((a, b) => a[1] - b[1])[0];
+    const hint = near && near[1] <= Math.max(2, Math.floor(near[0].length / 4)) ? ` — did you mean "${near[0]}"?` : '';
+    throw bad(`unknown key "${k}" in ${label}${hint} (known: ${known.join(', ')})`);
+  }
+}
 function isObj(v) { return v !== null && typeof v === 'object' && !Array.isArray(v); }
 function need(ctx, key, ok, what) {
   if (!(key in ctx) || !ok(ctx[key])) throw bad(`${key} is required and must be ${what}`);
@@ -297,6 +362,7 @@ export async function run(args, io) {
   if (!isObj(ctx)) throw bad('input must be a JSON object');
   if (cmd === 'decide') return decide(ctx);
   if (cmd === 'prompt') return buildPrompt(ctx);
+  checkKeys(ctx, 'sentence', 'sentence context');
   if (typeof ctx.sentence !== 'string') throw bad('sentence is required and must be a string');
   return checkSentence(ctx.sentence);
 }
