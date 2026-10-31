@@ -9,7 +9,8 @@
  *       → { html, duration_ms, steps, format, stripped: { scripts, links } }
  *         (with --out: { out, bytes, duration_ms, steps, format, stripped }, the html is written to the file; an --out that
  *         is the same file as --page or --file (same path, a symlink or a hard link) is refused with exit 1)
- *   story-plan template                                  → an example story.json that passes check
+ *   story-plan template                                  → an example story.json that passes check (its swap changes a short
+ *         button label to a longer one: pick a swap whose element is wide enough for the new text, or shorten the text)
  *
  * Story: { title, format: "square"|"wide", easing?, intro_ms?, outro_ms?, credit?, camera?, steps: [
  *   { id, label, css: { "<selector>": { "<prop>": "<value>" } }, swap?: { selector, text, ink? },
@@ -25,7 +26,7 @@
  *                               letter-spacing, font-weight, border-radius (and corner forms), box-shadow, gap/row-gap/
  *                               column-gap, padding*, margin*. A gradient cannot tween: fade it out on its own layer.
  *   css-value                   values are short plain strings (no url(), no ; { } < > @ \ or !important);  css-content: no `content` property
- *   pill-radius                 a pill radius (999px and up) cannot tween: write half the element height
+ *   pill-radius                 a pill radius (500px and up, plain px or unitless) cannot tween: write half the element height
  *   swap-length, swap-count     swap text at most 80 chars; at most 3 swaps in all (text swaps are blur-out / blur-in);  swap-selector-reuse
  *   swap-replaced               a swap selector whose last compound names an element that cannot hold the new text (img,
  *                               input, video, textarea, select, svg, br and the other void/replaced elements; see REPLACED).
@@ -87,7 +88,10 @@
  * it vertically. Neither sets position on the element. The swap's fade-out and hide slots on the element are gated on
  * the class story-marks, which the script adds to <html>: where the script does not run (scripts blocked, a sandboxed
  * preview) there is no swap and the old text stays; a redline then shows its outline but no tag.
- * Limits of the inserted swap child: a page rule that picks the element's children by position (:first-child,
+ * Limits of the inserted swap child: the element keeps its size (the child sits outside layout), so new text wider than the
+ * element overflows it; widen the element with a padding step first, or pick a swap whose element is wide enough or shorten
+ * the text. (A swap-longer note is a documented gap: check sees only the story, not the old text, and finding the old text
+ * needs the page and a browser.) A page rule that picks the element's children by position (:first-child,
  * :nth-child, > *) counts it too; a page ::before on the element stays and the new text sits over the old text after it
  * (one that inherits the colour fades out with the old text); two swaps that reach one element through different selector strings both show
  * (swap-selector-reuse catches only the same string). Chromium antialiases an element that has an opacity/filter/transform animation up

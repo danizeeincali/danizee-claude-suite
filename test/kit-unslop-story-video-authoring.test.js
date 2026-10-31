@@ -43,6 +43,8 @@ describe('header contract', () => {
     for (const c of ['bad-title', 'bad-format', 'unknown-key', 'bad-shape', 'step-count', 'step-id', 'step-id-duplicate', 'step-label', 'step-empty', 'css-selector', 'css-prop', 'css-value', 'css-content', 'pill-radius', 'swap-length', 'swap-count', 'swap-selector-reuse', 'tween-range', 'hold-range', 'easing', 'intro-outro', 'duration', 'redline-label', 'redline-measure', 'redline-selector-reuse', 'redline-missing', 'credit-length']) assert.ok(head.includes(c), c);
     for (const f of ['--file', '--strict', '--page', '--out', 'template', 'duration_ms', 'timeline', 'problems', 'story-duration-ms', 'prefers-reduced-motion', '8 MiB', 'no foreign code']) assert.ok(head.includes(f), f);
     for (const f of ['notes', 'credit-missing', 'camera', 'stripped: { scripts, links }', '{ out, bytes, duration_ms, steps, format, stripped }', 'same file as --page or --file', 'story-format', '--format wide', 'no crop', 'Redesign by the author', 'data-story-camera']) assert.ok(head.includes(f), f);
+    assert.ok(head.includes('500px and up') && !head.includes('999px and up'));
+    assert.ok(head.includes('new text wider than the') && head.includes('overflows it') && head.includes('wide enough'));
     for (const f of ['swap-replaced', 'swap-ink', 'REPLACED', 'data-story-marks', '<story-swap>', '<story-tag>', '<story-layer>', '--story-aN', 'document.fonts', 'window load event', 'x + w']) assert.ok(head.includes(f), f);
     assert.ok(head.includes(sp.DEFAULT_CREDIT));
     assert.equal(verb, 'story-plan');
@@ -155,6 +157,7 @@ describe('check rules, one code each', () => {
     assert.equal(check(withStep({ css: { '.x': { opacity: 0.5 } } })).ok, true);
   });
   it('pill radii cannot tween', () => {
+    for (const [v, bad] of [['499px', false], ['499.9', false], ['500px', true], ['500', true]]) assert.equal(check(withStep({ css: { '.x': { 'border-radius': v } }, redline: { selector: '.x', label: 'r' } })).problems.some(p => p.code === 'pill-radius'), bad, v);
     only(withStep({ css: { '.x': { 'border-radius': '999px' } }, redline: { selector: '.x', label: 'pill' } }), 'pill-radius');
     only(withStep({ css: { '.x': { 'border-radius': '9999' } }, redline: { selector: '.x', label: 'pill' } }), 'pill-radius');
     assert.equal(check(withStep({ css: { '.x': { 'border-radius': '24px' } }, redline: { selector: '.x', label: 'ok' } })).ok, true);
