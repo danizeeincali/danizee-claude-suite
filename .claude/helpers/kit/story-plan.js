@@ -355,6 +355,21 @@ function tagEnd(s, j) {
   return -1;
 }
 
+/** Whether a selector run (text between { } or ,) names #story-body and then its ::before/::after: one pass over the css. */
+function usesBodyPseudo(css, kind) {
+  const lower = css.toLowerCase();
+  const re = new RegExp(`::?${kind}`, 'g');
+  let start = 0;
+  while (start <= lower.length) {
+    let end = start;
+    while (end < lower.length && lower[end] !== '{' && lower[end] !== '}' && lower[end] !== ',') end++;
+    const b = lower.indexOf('#story-body', start);
+    if (b >= 0 && b < end) { re.lastIndex = b + 11; const m = re.exec(lower); if (m && m.index < end) return true; }
+    start = end + 1;
+  }
+  return false;
+}
+
 /** indexOf with a memo per needle: for scans whose start only moves forward the total cost stays linear. */
 function finder(text) {
   const memo = new Map();
@@ -408,13 +423,7 @@ function scanPage(html) {
   const find = finder(lower), fence = fences(find);
   let htmlAttrs = null;
   const styles = [];
-  const noClose = new Set();
-  const closeAt = (name, from) => {
-    if (noClose.has(name)) return -1;
-    const c = lower.indexOf(`</${name}`, from);
-    if (c < 0) noClose.add(name);
-    return c;
-  };
+  const closeAt = (name, from) => find(`</${name}`, from); // through the memo: a rejected close is not searched for again
   let out = '', last = 0, i = 0, scripts = 0, links = 0, bodyStart = -1, bodyEnd = -1, headEnd = -1, bodyAttrs = '';
   const flush = to => { out += html.slice(last, to); last = to; };
   for (;;) {
@@ -820,7 +829,7 @@ export function emit(story, pageHtml) {
   // unless the page sets its own. When the page gives its root no background, the body's background paints the whole
   // page as in the original (CSS background propagation): a pseudo-element of #story-body the page does not use
   // inherits it over all of #story-page, under everything, and the body box itself paints it only under its text.
-  const pseudo = !rootHasBackground(page.css) && (!/#story-body[^{},]*::?before/i.test(page.css) ? 'before' : !/#story-body[^{},]*::?after/i.test(page.css) ? 'after' : null);
+  const pseudo = !rootHasBackground(page.css) && (!usesBodyPseudo(page.css, 'before') ? 'before' : !usesBodyPseudo(page.css, 'after') ? 'after' : null);
   const canvas = pseudo ? `
 #story-body{-webkit-background-clip:text !important;background-clip:text !important}
 #story-body::${pseudo}{content:"" !important;display:block !important;position:absolute !important;inset:0 !important;margin:0 !important;padding:0 !important;border:0 !important;width:auto !important;height:auto !important;min-width:0 !important;min-height:0 !important;max-width:none !important;max-height:none !important;transform:none !important;opacity:1 !important;filter:none !important;box-shadow:none !important;outline:0 !important;z-index:-2147483647 !important;pointer-events:none !important;background:inherit !important;-webkit-background-clip:border-box !important;background-clip:border-box !important}` : '';

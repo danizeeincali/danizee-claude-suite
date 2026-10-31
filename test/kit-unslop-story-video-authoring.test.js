@@ -532,6 +532,32 @@ describe('review r1 regressions', () => {
     for (const unit of ['<style>', '<iframe>', '<title>', '<!--', '<a x="', '<p title="<style>">', '<textarea>']) preparePage(unit.repeat(Math.floor(8 * 1024 * 1024 / unit.length)));
     assert.ok(Date.now() - t0 < 15000, `took ${Date.now() - t0}ms`);
   });
+  it('r7: open tags inside a title/textarea/xmp whose close lies past the fence stay linear at the 8 MiB cap', () => {
+    const t0 = Date.now();
+    for (const [tag, close] of [['script', 'script'], ['style', 'style'], ['iframe', 'iframe'], ['object', 'object']]) {
+      for (const wrap of ['title', 'textarea', 'xmp']) {
+        const open = `<${tag}>`;
+        const html = `<${wrap}>` + open.repeat(Math.floor(8 * 1024 * 1024 / open.length) - 8) + `</${wrap}></${close}>`;
+        preparePage(html);
+      }
+    }
+    assert.ok(Date.now() - t0 < 20000, `took ${Date.now() - t0}ms`);
+    const p = preparePage('<title>' + '<script>'.repeat(50000) + '</title></script><body>ok</body>');
+    assert.ok(p.body.includes('ok'));
+  });
+  it('r7: a very long selector run in the page css keeps emit linear and the pseudo-element probe correct', () => {
+    const t0 = Date.now();
+    emit(mk(), '<style>' + 'body '.repeat(300000) + '{color:red}</style><body>x</body>');
+    assert.ok(Date.now() - t0 < 5000, `took ${Date.now() - t0}ms`);
+    const hasBefore = h => /#story-body::before\{content:"" !important/.test(h);
+    const hasAfter = h => /#story-body::after\{content:"" !important/.test(h);
+    const a = emit(mk(), '<style>body::before{content:"a"}</style><body>x</body>').html;
+    assert.ok(!hasBefore(a) && hasAfter(a));
+    const b = emit(mk(), '<style>body:before,body:after{content:"a"}</style><body>x</body>').html;
+    assert.ok(!hasBefore(b) && !hasAfter(b));
+    const c = emit(mk(), '<style>body{color:red}p::before{content:"a"}</style><body>x</body>').html;
+    assert.ok(hasBefore(c));
+  });
   it('on* handlers and javascript: URLs are removed whatever separates them from the tag', () => {
     for (const a of ATTACKS) {
       const b = preparePage(`<body>${a}<p class=ok onclick=x()>kept</p></body>`).body;
