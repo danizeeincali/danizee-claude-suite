@@ -7,13 +7,13 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 60,
-    "cost": 205868
+    "steps": 300,
+    "cost": 742215
   },
   "clock": {
-    "depth": 1,
-    "startedAt": 1793409102833,
-    "elapsedMs": 1069080
+    "depth": 0,
+    "startedAt": null,
+    "elapsedMs": 3796714
   },
   "helpers": {
     "build-integration-1": {
@@ -29,15 +29,51 @@
       }
     },
     "review-r1-integration": {
-      "steps": 0,
-      "cost": 0,
-      "ok": 0,
+      "steps": 60,
+      "cost": 143898,
+      "ok": 1,
       "failed": 0,
       "grants": 1,
       "skipped": 0,
       "reserved": {
-        "steps": 80,
-        "cost": 200000
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r1-integration": {
+      "steps": 60,
+      "cost": 140850,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r2-integration": {
+      "steps": 60,
+      "cost": 144802,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r2-integration": {
+      "steps": 60,
+      "cost": 106797,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
       }
     }
   }

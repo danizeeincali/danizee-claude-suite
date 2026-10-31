@@ -7,13 +7,13 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 360,
-    "cost": 705456
+    "steps": 780,
+    "cost": 1418590
   },
   "clock": {
     "depth": 1,
-    "startedAt": 1793408364229,
-    "elapsedMs": 3741949
+    "startedAt": 1793411935972,
+    "elapsedMs": 7122793
   },
   "helpers": {
     "build-unslop-story-video-authoring": {
@@ -89,15 +89,99 @@
       }
     },
     "fix-r3-unslop-story-video-authoring": {
-      "steps": 0,
-      "cost": 0,
-      "ok": 0,
+      "steps": 60,
+      "cost": 135354,
+      "ok": 1,
       "failed": 0,
       "grants": 1,
       "skipped": 0,
       "reserved": {
-        "steps": 40,
-        "cost": 100000
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r4-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 92230,
+      "ok": 1,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r4-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 83333,
+      "ok": 1,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r5-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 86931,
+      "ok": 1,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r5-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 170181,
+      "ok": 1,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r6-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 88477,
+      "ok": 1,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r6-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 56628,
+      "ok": 1,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r7-unslop-story-video-authoring": {
+      "steps": 0,
+      "cost": 0,
+      "ok": 0,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
       }
     }
   }

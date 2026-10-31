@@ -1,9 +1,9 @@
 # Marathon 2026-10-30-bbs-unslop
 
 - State: RUNNING
-- Budget: 6,277,233 / 14,000,000 tokens
+- Budget: 7,787,916 / 14,000,000 tokens
 - Allowance: unknown (ceiling 100%)
-- Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
+- Gate (run-wide, all streams): 2/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
 - Next for you: Continue stream "unslop-live-page-snapshot" (next: builder writes contract, failing tests, verb) — /w-marathon --resume 2026-10-30-bbs-unslop.
 
@@ -21,9 +21,9 @@
 | unslop-image-generation-gate | ../danizee-claude-suite-unslop-image-generation-gate | .claude/bbs/runs/2026-10-30-unslop/briefs/unslop-image-generation-gate.md | done | met | done | integration wires it |  | 0 |
 | unslop-live-page-snapshot | ../danizee-claude-suite-unslop-live-page-snapshot | .claude/bbs/runs/2026-10-30-unslop/briefs/unslop-live-page-snapshot.md | active | clean 0/2 | build | builder writes contract, failing tests, verb |  | 0 |
 | unslop-story-video-renderer | ../danizee-claude-suite-unslop-story-video-renderer | .claude/bbs/runs/2026-10-30-unslop/briefs/unslop-story-video-renderer.md | done | met | done | integration wires it |  | 0 |
-| unslop-story-video-authoring | ../danizee-claude-suite-unslop-story-video-authoring | .claude/bbs/runs/2026-10-30-unslop/briefs/unslop-story-video-authoring.md | active | clean 0/2 | build | builder writes contract, failing tests, verb |  | 0 |
+| unslop-story-video-authoring | ../danizee-claude-suite-unslop-story-video-authoring | .claude/bbs/runs/2026-10-30-unslop/briefs/unslop-story-video-authoring.md | active | clean 1/2 | build | builder writes contract, failing tests, verb |  | 0 |
 | unslop-do-not-list-and-final-checklist | ../danizee-claude-suite-unslop-do-not-list-and-final-checklist | .claude/bbs/runs/2026-10-30-unslop/briefs/unslop-do-not-list-and-final-checklist.md | done | met | done | integration wires it |  | 0 |
-| integration | ../danizee-claude-suite-integration | .claude/bbs/runs/2026-10-30-unslop/integration.md | active | clean 0/2 | build | after every build stream is done: wire each power into its approved steps |  | 0 |
+| integration | ../danizee-claude-suite-integration | .claude/bbs/runs/2026-10-30-unslop/integration.md | active | clean 1/2 | build | after every build stream is done: wire each power into its approved steps |  | 0 |
 
 ## Finish line
 
@@ -69,7 +69,7 @@
 | unslop-image-generation-gate: clean reviews in a row | build | met | 2 | at_least 2 |
 | unslop-image-generation-gate: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | unslop-image-generation-gate: packaged check passes | build | met | true | is true |
-| unslop-live-page-snapshot: green unit runs in a row | build | met | 5 | at_least 1 |
+| unslop-live-page-snapshot: green unit runs in a row | build | met | 9 | at_least 1 |
 | unslop-live-page-snapshot: zero egress in the packaged check | build | failing | — | is true |
 | unslop-live-page-snapshot: clean reviews in a row | build | failing | 0 | at_least 2 |
 | unslop-live-page-snapshot: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
@@ -79,9 +79,9 @@
 | unslop-story-video-renderer: clean reviews in a row | build | met | 2 | at_least 2 |
 | unslop-story-video-renderer: wired into its target, reached by a user | build | failing | — | at_least 1 |
 | unslop-story-video-renderer: packaged check passes | build | met | true | is true |
-| unslop-story-video-authoring: green unit runs in a row | build | met | 5 | at_least 1 |
+| unslop-story-video-authoring: green unit runs in a row | build | met | 13 | at_least 1 |
 | unslop-story-video-authoring: zero egress in the packaged check | build | failing | — | is true |
-| unslop-story-video-authoring: clean reviews in a row | build | failing | 0 | at_least 2 |
+| unslop-story-video-authoring: clean reviews in a row | build | failing | 1 | at_least 2 |
 | unslop-story-video-authoring: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | unslop-story-video-authoring: packaged check passes | build | failing | — | is true |
 | unslop-do-not-list-and-final-checklist: green unit runs in a row | build | met | 4 | at_least 1 |
@@ -90,9 +90,9 @@
 | unslop-do-not-list-and-final-checklist: wired into all 2 targets, reached by a user | build | failing | — | at_least 2 |
 | unslop-do-not-list-and-final-checklist: packaged check passes | build | met | true | is true |
 | The owner was told what they got: delivered.md lists every power, wired, with its command | build | failing | — | is true |
-| Clean reviews in a row | build | failing | 0 | at_least 2 |
-| High findings in the latest review | build | failing | 1 | at_most 0 |
-| Open high findings | build | failing | 2 | at_most 0 |
+| Clean reviews in a row | build | met | 2 | at_least 2 |
+| High findings in the latest review | build | met | 0 | at_most 0 |
+| Open high findings | build | met | 0 | at_most 0 |
 
 ## Waiting on human
 

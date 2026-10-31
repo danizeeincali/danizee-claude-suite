@@ -5,3 +5,4 @@
 {"category":"performance","kind":"rule","ref":".claude/marathon/2026-10-30-bbs-unslop/rules.md","area":null,"id":"af1fb5e8-88f2-4ae6-afc9-c893082d2d4c","ts":"2026-10-30T23:52:37.763Z"}
 {"category":"facts","kind":"rule","ref":".claude/marathon/2026-10-30-bbs-unslop/rules.md","area":null,"id":"11db4b1c-ac00-4780-baa0-4a89b1a4f4a5","ts":"2026-10-31T00:09:00.735Z"}
 {"category":"security","kind":"rule","ref":".claude/marathon/2026-10-30-bbs-unslop/rules.md","area":null,"id":"04a22b0e-108a-413d-a986-45ed3ea0e450","ts":"2026-10-31T00:22:03.142Z"}
+{"category":"process","kind":"rule","ref":".claude/marathon/2026-10-30-bbs-unslop/rules.md","area":null,"id":"6262f42d-5dec-4abf-9247-2e92573fc919","ts":"2026-10-31T01:48:47.709Z"}
