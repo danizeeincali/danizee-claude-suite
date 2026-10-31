@@ -268,7 +268,9 @@ describe('page-snapshot string rewriting', () => {
     assert.ok(html.startsWith('<!DOCTYPE html>\n<html><head><meta charset="utf-8"><meta name="snapshot-source" content="https://site.test/dir/page.html?a=1&amp;b=2" data-at="2026-10-30T00:00:00.000Z">'));
     assert.match(html, /<style media="print" data-snapshot-href="https:\/\/cdn\.test\/s\.css">\.a\{background:url\("https:\/\/cdn\.test\/x\.png"\)\}<\/style>/);
     assert.match(html, /<link rel="stylesheet" href="https:\/\/cdn\.test\/t\.css">/);
-    assert.equal(budget.skipped.get('https://cdn.test/t.css'), 'stylesheet could not be read; linked instead');
+    assert.equal(budget.skipped.get('https://cdn.test/t.css'), 'stylesheet could not be read and is not in the copy (left as a link the copy\'s CSP does not load)');
+    assert.match(budget.skipped.get('https://cdn.test/t.css'), /not in the copy/);
+    assert.ok(!/linked instead/.test(budget.skipped.get('https://cdn.test/t.css')));
     assert.ok(!html.includes('windows-1252'));
   });
 });
@@ -1265,6 +1267,56 @@ describe('page-snapshot review r4: real probes', { skip: browserOk ? false : 'pl
       assert.deepEqual(dom.removed.map((x) => x.tag).sort(), ['base', 'iframe', 'noscript', 'object', 'script', 'script', 'script']);
       assert.ok(dom.removed.some((x) => x.tag === 'iframe' && x.src === 'https://x.test/f.html'));
     } finally { await b.close(); }
+  });
+
+  it('review r5: open shadow roots are copied as declarative shadow roots, cleaned; closed ones are listed in skipped', { timeout: 60000 }, async () => {
+    const src = path.join(dir, 'shadow.html');
+    await fs.writeFile(src, '<!doctype html><title>S</title><my-card id="a"><span slot="x">light</span></my-card><my-closed></my-closed><script>'
+      + 'const r = document.getElementById("a").attachShadow({ mode: "open" });'
+      + 'r.innerHTML = \'<style>button{color:rgb(1, 2, 3)}</style><button aria-label="Shadow button" onclick="window.x=1">Shadow text</button><script>1<\\/script><!-- c --><slot name="x"></slot><inner-el></inner-el>\';'
+      + 'const sheet = new CSSStyleSheet(); sheet.replaceSync("button{background:rgb(4, 5, 6)}"); r.adoptedStyleSheets = [sheet];'
+      + 'r.querySelector("inner-el").attachShadow({ mode: "open" }).innerHTML = \'<i aria-label="Nested">nested text</i>\';'
+      + 'document.querySelector("my-closed").attachShadow({ mode: "closed" }).innerHTML = "<b>hidden</b>";'
+      + '</script>');
+    const out = path.join(dir, 'out-shadow');
+    const r = await run(['capture', '--url', pathToFileURL(src).href, '--out', out, '--timeout-ms', '3000'], { cwd: dir });
+    assert.equal(r.captured, true);
+    const copy = await fs.readFile(path.join(out, 'page.html'), 'utf-8');
+    assert.ok(copy.includes('<template shadowrootmode="open">'), copy);
+    assert.ok(copy.includes('aria-label="Shadow button"') && copy.includes('Shadow text') && copy.includes('nested text') && copy.includes('aria-label="Nested"'), copy);
+    assert.ok(copy.includes('rgb(1, 2, 3)') && copy.includes('rgb(4, 5, 6)'), 'inline and adopted styles');
+    assert.ok(!HANDLER.test(copy) && !/<script|<!--\s*c/i.test(copy.replace(/<meta[^>]*>/g, '')), copy);
+    assert.ok(!copy.includes('hidden'));
+    const man = JSON.parse(await fs.readFile(path.join(out, 'manifest.json'), 'utf-8'));
+    assert.ok(man.skipped.some((x) => x.reason === ps.CLOSED_SHADOW && x.url.includes('my-closed')), JSON.stringify(man.skipped));
+    assert.equal(ps.CLOSED_SHADOW, 'closed shadow root not copied');
+    for (const bypassCSP of [true, false]) {
+      const b = await pw.chromium.launch({ headless: true });
+      try {
+        const page = await (await b.newContext({ bypassCSP })).newPage();
+        await page.goto(pathToFileURL(path.join(out, 'page.html')).href);
+        const got = await page.evaluate(() => {
+          const sr = document.getElementById('a').shadowRoot;
+          const btn = sr && sr.querySelector('button');
+          return { label: btn && btn.getAttribute('aria-label'), text: btn && btn.textContent, color: btn && getComputedStyle(btn).color, bg: btn && getComputedStyle(btn).backgroundColor,
+            nested: sr && sr.querySelector('inner-el').shadowRoot.textContent, x: window.x };
+        });
+        assert.deepEqual(got, { label: 'Shadow button', text: 'Shadow text', color: 'rgb(1, 2, 3)', bg: 'rgb(4, 5, 6)', nested: 'nested text', x: undefined }, `bypassCSP=${bypassCSP}`);
+      } finally { await b.close(); }
+    }
+  });
+
+  it('review r5: the fallback content of an <object> (img alt, text) stays in the copy, cleaned', { timeout: 60000 }, async () => {
+    const src = path.join(dir, 'objfb.html');
+    await fs.writeFile(src, '<!doctype html><title>O</title><object data="nope.svg"><img alt="Fallback chart" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" onerror="window.x=1">Fallback text<script>1</script></object>');
+    const out = path.join(dir, 'out-objfb');
+    const r = await run(['capture', '--url', pathToFileURL(src).href, '--out', out, '--timeout-ms', '3000'], { cwd: dir });
+    assert.equal(r.captured, true);
+    const copy = await fs.readFile(path.join(out, 'page.html'), 'utf-8');
+    assert.ok(!/<object\b/i.test(copy) && copy.includes('alt="Fallback chart"') && copy.includes('Fallback text'), copy);
+    assert.ok(!HANDLER.test(copy) && !/<script/i.test(copy.replace(/<meta[^>]*>/g, '')), copy);
+    const man = JSON.parse(await fs.readFile(path.join(out, 'manifest.json'), 'utf-8'));
+    assert.ok(man.skipped.some((x) => x.url.endsWith('/nope.svg') && /<object> removed/.test(x.reason)), JSON.stringify(man.skipped));
   });
 
   it('the CSP backstop: a handler, a script and remote assets injected after cleaning run nothing and request nothing', { timeout: 60000 }, async () => {

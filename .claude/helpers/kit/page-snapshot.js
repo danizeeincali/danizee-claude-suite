@@ -5,6 +5,14 @@
  * <style>, images and CSS url() assets become data: URIs under a size cap, scripts, iframes, embedding elements (embed,
  * object, applet, portal, frame, frameset: each listed in skipped), srcset and <base> are dropped, and links are made absolute. Nothing runs when the copy is opened. Scripted or canvas-drawn animated backgrounds do
  * not survive the copy: describe them from the screenshot.
+ * Shadow DOM: each open shadow root (web components) is copied as a declarative shadow root, <template shadowrootmode="open">
+ * holding the root's children (its <style>, sheet links, constructed/adopted sheets and nested open roots included),
+ * cleaned by the same DOM pass and text pass as the rest; the host's own children follow it. A closed shadow root (made by
+ * attachShadow({mode:"closed"}); an init script records those hosts) cannot be read by script: it is not copied and is
+ * listed in skipped as "closed shadow root not copied". A closed root the page declared in its own markup cannot be
+ * detected and is a known gap. The fallback content of an <object> (an img with its alt, text) is kept, cleaned, in place of
+ * the removed element, as the copy cannot load the object. A stylesheet the browser would not let script read (for example
+ * a cross-origin one) is not in the copy: it stays a <link> the copy's CSP does not load, and skipped says so.
  * The copy is made safe in three layers. (1) In the page, before the DOM is serialized, the copy's clone is cleaned: every
  * comment node is removed, so is every script, noscript, noembed, noframes, iframe, embedding element, plaintext, base,
  * meta with http-equiv or charset, SVG animation that sets an href or a handler, and every on* attribute; javascript: and
@@ -119,9 +127,15 @@ export const NO_ANSWER = 'the page did not answer in time';
 export const WEBRTC_FLAG = '--force-webrtc-ip-handling-policy=disable_non_proxied_udp';
 /** Page APIs that open connections no request route sees (WebRTC ICE over UDP and TCP, WebTransport over QUIC, and
  * workers, which can use WebTransport where the init script does not run): removed from every frame before any page script. */
+export const CLOSED_SHADOW_KEY = 'page-snapshot.closed-shadow-hosts';
+export const CLOSED_SHADOW = 'closed shadow root not copied';
 export const NEUTERED_APIS = Object.freeze(['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel', 'WebTransport', 'Worker', 'SharedWorker']);
 const NEUTER_SCRIPT = `(() => { for (const k of ${JSON.stringify(NEUTERED_APIS)}) { try { delete globalThis[k]; } catch {} `
-  + `try { if (k in globalThis) Object.defineProperty(globalThis, k, { value: undefined, configurable: false, writable: false }); } catch {} } })();`;
+  + `try { if (k in globalThis) Object.defineProperty(globalThis, k, { value: undefined, configurable: false, writable: false }); } catch {} } })();`
+  // remember the hosts of closed shadow roots (script cannot reach their content, so the copy lists them as not copied)
+  + `(() => { try { const set = new WeakSet(); Object.defineProperty(globalThis, Symbol.for(${JSON.stringify(CLOSED_SHADOW_KEY)}), { value: set }); `
+  + `const orig = Element.prototype.attachShadow; Element.prototype.attachShadow = function attachShadow(init) { const r = orig.call(this, init); `
+  + `try { if (init && init.mode === 'closed') set.add(this); } catch {} return r; }; } catch {} })();`;
 export const PROXY_HINT = 'remote mode connects directly, without the configured proxy';
 const PROXY_VARS = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy'];
 export const OUT_FILES = Object.freeze(['page.html', 'screenshot.png', 'manifest.json']);
@@ -584,7 +598,7 @@ export function sourceMeta(url, at) {
     + `<meta http-equiv="Content-Security-Policy" content="${encodeAttr(SNAPSHOT_CSP)}">`;
 }
 
-export const PENDING_UNREAD = 'stylesheet could not be read; linked instead';
+export const PENDING_UNREAD = 'stylesheet could not be read and is not in the copy (left as a link the copy\'s CSP does not load)';
 export const PENDING_BLOCKED = 'stylesheet from a blocked private or loopback address; dropped from the copy';
 const PRIVATE_SHEET = PENDING_BLOCKED.split(';')[0];
 
@@ -660,48 +674,76 @@ export function snapshotDom(failedUrls) {
     }
     return out;
   };
-  const origStyles = doc.documentElement.querySelectorAll('style');
-  const cloneStyles = clone.querySelectorAll('style');
-  origStyles.forEach((s, i) => {
-    if (!s.sheet) return;
-    const text = sheetText(s.sheet, 0);
-    if (text) cloneStyles[i].textContent = text;
-  });
   const dropped = [];
-  const origLinks = doc.documentElement.querySelectorAll('link[rel~="stylesheet" i]');
-  const cloneLinks = clone.querySelectorAll('link[rel~="stylesheet" i]');
-  origLinks.forEach((l, i) => {
-    const c = cloneLinks[i];
-    const alternate = /(^|\s)alternate(\s|$)/i.test(l.getAttribute('rel') || '');
-    const failure = failed.get(l.href) ?? failed.get(l.href.split('#')[0]);
-    if (l.disabled || alternate || !l.sheet || failure !== undefined) {
-      const why = l.disabled || alternate ? 'stylesheet is disabled or alternate' : failure || 'stylesheet did not load (blocked or failed)';
-      dropped.push({ href: l.href || '(link without href)', reason: `${why}; dropped from the copy` });
-      c.remove();
-      return;
-    }
-    const text = sheetText(l.sheet, 0);
-    const st = doc.createElement('style');
-    const media = l.getAttribute('media');
-    if (text === null) {
-      st.setAttribute('data-snapshot-pending', String(pending.length));
-      pending.push({ n: pending.length, href: l.href, media: media || 'all' });
-    } else {
-      if (media) st.setAttribute('media', media);
-      st.setAttribute('data-snapshot-href', l.href);
-      st.textContent = text;
-    }
-    c.replaceWith(st);
-  });
+  const closedHosts = (() => { try { return globalThis[Symbol.for('page-snapshot.closed-shadow-hosts')] || null; } catch { return null; } })();
+  // one scope is the document or one open shadow root: its styles and sheet links are inlined, its images resolved, and
+  // each open shadow root below it is copied as a declarative shadow root (<template shadowrootmode="open">)
+  const scope = (orig, cl, depth) => {
+    const oEls = Array.from(orig.querySelectorAll('*'));
+    const cEls = Array.from(cl.querySelectorAll('*'));
+    const origStyles = orig.querySelectorAll('style');
+    const cloneStyles = cl.querySelectorAll('style');
+    origStyles.forEach((s, i) => {
+      if (!s.sheet) return;
+      const text = sheetText(s.sheet, 0);
+      if (text) cloneStyles[i].textContent = text;
+    });
+    const origLinks = orig.querySelectorAll('link[rel~="stylesheet" i]');
+    const cloneLinks = cl.querySelectorAll('link[rel~="stylesheet" i]');
+    origLinks.forEach((l, i) => {
+      const c = cloneLinks[i];
+      const alternate = /(^|\s)alternate(\s|$)/i.test(l.getAttribute('rel') || '');
+      const failure = failed.get(l.href) ?? failed.get(l.href.split('#')[0]);
+      if (l.disabled || alternate || !l.sheet || failure !== undefined) {
+        const why = l.disabled || alternate ? 'stylesheet is disabled or alternate' : failure || 'stylesheet did not load (blocked or failed)';
+        dropped.push({ href: l.href || '(link without href)', reason: `${why}; dropped from the copy` });
+        c.remove();
+        return;
+      }
+      const text = sheetText(l.sheet, 0);
+      const st = doc.createElement('style');
+      const media = l.getAttribute('media');
+      if (text === null) {
+        st.setAttribute('data-snapshot-pending', String(pending.length));
+        pending.push({ n: pending.length, href: l.href, media: media || 'all' });
+      } else {
+        if (media) st.setAttribute('media', media);
+        st.setAttribute('data-snapshot-href', l.href);
+        st.textContent = text;
+      }
+      c.replaceWith(st);
+    });
+    const origImgs = orig.querySelectorAll('img');
+    const cloneImgs = cl.querySelectorAll('img');
+    origImgs.forEach((im, i) => { if (im.currentSrc) cloneImgs[i].setAttribute('src', im.currentSrc); });
+    oEls.forEach((o, i) => {
+      const c = cEls[i];
+      const sr = o.shadowRoot;
+      if (!sr) {
+        if (closedHosts && closedHosts.has && closedHosts.has(o)) dropped.push({ href: `(<${String(o.localName)}> shadow root)`, reason: 'closed shadow root not copied' });
+        return;
+      }
+      if (depth >= 8) { dropped.push({ href: `(<${String(o.localName)}> shadow root)`, reason: 'shadow root nested too deep; not copied' }); return; }
+      const tpl = doc.createElement('template');
+      tpl.setAttribute('shadowrootmode', 'open');
+      for (const ch of Array.from(sr.childNodes)) tpl.content.appendChild(ch.cloneNode(true));
+      scope(sr, tpl.content, depth + 1);
+      const sheets = Array.from(sr.adoptedStyleSheets || []).map((x) => sheetText(x, 0)).filter(Boolean);
+      if (sheets.length) {
+        const st = doc.createElement('style');
+        st.textContent = sheets.join('\n');
+        tpl.content.insertBefore(st, tpl.content.firstChild);
+      }
+      c.insertBefore(tpl, c.firstChild);
+    });
+  };
+  scope(doc.documentElement, clone, 0);
   const adopted = (doc.adoptedStyleSheets || []).map((s) => sheetText(s, 0)).filter(Boolean);
   if (adopted.length) {
     const st = doc.createElement('style');
     st.textContent = adopted.join('\n');
     (clone.querySelector('head') || clone).appendChild(st);
   }
-  const origImgs = doc.documentElement.querySelectorAll('img');
-  const cloneImgs = clone.querySelectorAll('img');
-  origImgs.forEach((im, i) => { if (im.currentSrc) cloneImgs[i].setAttribute('src', im.currentSrc); });
   const removed = [];
   const DROP = new Set(['script', 'noscript', 'noembed', 'noframes', 'iframe', 'embed', 'object', 'applet', 'portal', 'frame', 'frameset', 'plaintext', 'base']);
   const ANIM = new Set(['animate', 'set', 'animatemotion', 'animatetransform', 'animatecolor', 'discard']);
@@ -718,6 +760,14 @@ export function snapshotDom(failedUrls) {
       if (DROP.has(nm)) {
         const s = ch.getAttribute('src') || ch.getAttribute('data') || ch.getAttribute('code');
         if (removed.length < 5000) removed.push({ tag: nm, src: s ? absUrl(s) : null });
+        if (nm === 'object') {
+          // the fallback content of an object is what the page draws when the object does not load: keep it, cleaned
+          const kids = Array.from(ch.childNodes);
+          ch.replaceWith(...kids);
+          for (const k of kids) { if (k.nodeType !== 1 && k.nodeType !== 3) k.remove(); }
+          stack.push(node);
+          continue;
+        }
         ch.remove();
         continue;
       }
