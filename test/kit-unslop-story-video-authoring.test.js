@@ -16,6 +16,21 @@ const exit = async (p, code = 1) => assert.rejects(Promise.resolve().then(p), e 
 const codes = r => r.problems.map(p => p.code);
 const mk = (over = {}) => ({ ...template(), ...over });
 const PAGE = '<!doctype html><html><head><title>x</title><style>body{margin:0;background:#eee}.card{padding:10px}</style><link rel="stylesheet" href="https://x.test/a.css"><script>alert(1)</script></head><body class="app" onload="evil()"><h1 onclick="x()">Hi</h1><div class="card"><button class="btn" onmouseover="y()">Go</button></div><a href="javascript:alert(1)">z</a><iframe src="https://x.test"></iframe></body></html>';
+const ATTACKS = [
+  `<img/onerror="fetch('http://example.com/x')" src=x>`,
+  `<img src=x y=< onerror="fetch('http://example.com/y')">`,
+  `<img src="x"/onerror=alert(2)>`,
+  `<img\tonerror=alert(1) src=x>`,
+  `<img src=x\nonerror=alert(1)>`,
+  `<img src='x'onerror=alert(1)>`,
+  `<svg><animate onbegin=alert(3) /></svg>`,
+  `<a href=" javascript:alert(1)">x</a>`,
+  `<a href="&#106;avascript:alert(1)">y</a>`,
+  `<a href="jav&#x09;ascript:alert(1)">y</a>`,
+  `<form action=javascript:alert(1)><button formaction="java&Tab;script:alert(1)">z</button></form>`,
+  `<noscript><p title="</noscript><img src=x onerror=alert(1)>"></noscript>`,
+  `<!--><img src=x onerror=alert(1)>`,
+];
 const tmp = async () => fs.mkdtemp(path.join(os.tmpdir(), 'story-plan-'));
 
 describe('header contract', () => {
@@ -507,6 +522,36 @@ describe('review r1 regressions', () => {
     for (const unit of ['<style>', '<iframe>', '<title>', '<!--', '<a x="', '<p title="<style>">', '<textarea>']) preparePage(unit.repeat(Math.floor(8 * 1024 * 1024 / unit.length)));
     assert.ok(Date.now() - t0 < 15000, `took ${Date.now() - t0}ms`);
   });
+  it('on* handlers and javascript: URLs are removed whatever separates them from the tag', () => {
+    for (const a of ATTACKS) {
+      const b = preparePage(`<body>${a}<p class=ok onclick=x()>kept</p></body>`).body;
+      assert.ok(!/(?:\s|\/|['"])on[a-z]+\s*=/i.test(b), `${a} -> ${b}`);
+      assert.ok(!/javascript:/i.test(b.replace(/&#(x?)[0-9a-f]+;?/gi, '')) || !/(href|src|action)=/.test(b), `${a} -> ${b}`);
+      assert.ok(b.includes('<p class=ok >kept</p>') || b.includes('<p class=ok>kept</p>'), `${a} -> ${b}`);
+      assert.ok(!/\bon[a-z]+\s*=/i.test(emit(mk(), a).html.split('story-page')[0] || ''), a);
+    }
+    assert.ok(preparePage('<img src=x loading=lazy alt=a>').body.includes('loading="eager"'));
+    assert.ok(preparePage('<a href="https://x.test/?a=1&b=2" title="on x=1">k</a>').body.includes('href="https://x.test/?a=1&b=2" title="on x=1"'));
+  });
+  it('a tag that never ends and holds an on*= attribute is dropped', () => {
+    for (const t of ['<img src="x" onerror=alert(1)', '<img src="x onerror=alert(1)', '<img "onerror=alert(1)']) {
+      const b = preparePage(`<body><p>a</p>${t}`).body;
+      assert.ok(!/onerror/.test(b) || !/\bonerror\s*=/.test(b), b);
+    }
+    assert.equal(preparePage('<body><p>a</p><img src="x').body, '<p>a</p><img src="x');
+  });
+  it('<base> and <meta http-equiv> are dropped anywhere in the page and counted in stripped.links', () => {
+    const p = preparePage('<html><head><meta http-equiv="refresh" content="0;url=http://example.com/"><meta charset="utf-8"><base href="http://example.com/"></head><body><meta http-equiv="refresh" content="0;url=http://example.com/r"><base href="http://example.com/base/"><img src="rel.png"><META HTTP-EQUIV=refresh content=0></body></html>');
+    assert.ok(!/<base|http-equiv/i.test(p.body), p.body);
+    assert.ok(p.body.includes('<img src="rel.png">'));
+    assert.equal(p.stripped.links, 5);
+  });
+  it('the tag cleaner stays linear on 8 MiB of handler-like and unterminated tags', () => {
+    const t0 = Date.now();
+    for (const unit of ['<a x=<', '<img/on', '<a onerror=', '<a on', '<meta http-equiv', '<base ', '<noscript>', '<a b=c/', '<xmp>', '<a "', '<img/onerror=x ']) preparePage(unit.repeat(Math.floor(8 * 1024 * 1024 / unit.length)));
+    preparePage('on'.repeat(4 * 1024 * 1024));
+    assert.ok(Date.now() - t0 < 15000, `took ${Date.now() - t0}ms`);
+  });
   it('html/:root font-size stays on the real <html> so rem matches', () => {
     const p = preparePage('<style>html{font-size:62.5%;background:#eee} :root , .x{font-size:20px;color:red}@media (min-width:1px){html{font-size:50%}}body{font-size:1.6rem}/* html{font-size:1px} */</style><body>x</body>');
     assert.ok(p.css.includes('#story-page{background:#eee}html{font-size:62.5%}'), p.css);
@@ -567,6 +612,32 @@ describe('review r1 regressions', () => {
     assert.deepEqual(Object.keys(r).sort(), ['duration_ms', 'format', 'html', 'steps', 'stripped']);
     const c = await run(['check', '--file', 's.json'], io('', dir));
     assert.deepEqual(Object.keys(c).sort(), ['duration_ms', 'notes', 'ok', 'problems', 'timeline']);
+  });
+});
+
+describe('browser probe: stripped pages run no handlers and stay on the page (skipped when playwright cannot be resolved)', () => {
+  it('none of the handlers run and no base or refresh moves the page', async t => {
+    let pw = null;
+    try { pw = await import(process.env.STORY_PLAN_PLAYWRIGHT || 'playwright'); } catch { /* not installed */ }
+    const chromium = pw && (pw.chromium || (pw.default && pw.default.chromium));
+    if (!chromium) { t.skip('playwright not resolvable'); return; }
+    let b;
+    try { b = await chromium.launch(); } catch (e) { t.skip(`browser did not start: ${String(e.message).split('\n')[0]}`); return; }
+    try {
+      const dir = await tmp();
+      const orig = `<!doctype html><html><body><meta http-equiv="refresh" content="0;url=http://example.com/r"><base href="http://example.com/base/">${ATTACKS.join('')}<img src="rel.png"><div class=card><button class=btn>Go</button><h1>Hi</h1></div></body></html>`;
+      await fs.writeFile(path.join(dir, 's.html'), emit(template(), orig).html);
+      const p = await b.newPage();
+      const reqs = [], dialogs = [];
+      await p.route('**/*', r => { const u = r.request().url(); if (!u.startsWith('file:')) { reqs.push(u); return r.abort(); } return r.continue(); });
+      p.on('dialog', d => { dialogs.push(d.message()); d.dismiss(); });
+      const url = `file://${path.join(dir, 's.html')}`;
+      await p.goto(url);
+      await p.waitForTimeout(500);
+      assert.deepEqual(reqs, []);
+      assert.deepEqual(dialogs, []);
+      assert.equal(p.url(), url);
+    } finally { await b.close(); }
   });
 });
 

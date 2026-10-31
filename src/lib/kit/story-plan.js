@@ -49,7 +49,10 @@
  * Exit codes: check is advisory (exit 0, even when ok is false) unless --strict, which exits 2 when not ok;
  * emit exits 1 when the story is not ok; a bad flag, a duplicate flag, an unreadable or binary or oversize (8 MiB) or
  * empty input, JSON that is not an object, or a missing/unreadable --page exits 1 with the message on stderr.
- * emit: the original page (scripts, links, iframes, objects, embeds and on* handlers removed; comments and quoted
+ * emit: the original page (scripts, links, iframes, objects, embeds, noscript, <base> and <meta http-equiv> tags anywhere
+ * (counted in stripped.links), on* handlers and javascript: URLs removed; tags are read as a browser reads them, so a handler
+ * after '/' or a quote or after a '<' in an unquoted value is found, and a tag that never ends is dropped when it holds
+ * an on*= attribute; comments and quoted
  * attribute values are skipped, and a missing close tag drops only the open tag; loading="lazy" is rewritten to eager,
  * because a video frames the whole page and nothing may wait for a scroll to load) sits in a 1080x1080 or 1920x1080
  * frame. The page's html/:root rules apply to #story-page (the root, the frame's size) and its body rules, class and
@@ -130,8 +133,6 @@ const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isInt = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
 const bad = m => new KitExit(m, 1);
 
-const TAG = /<([a-zA-Z][\w:-]*)((?:[^<>"']|"[^"]*"|'[^']*')*)>/g;
-const HANDLER = /\s+(?:on[a-zA-Z]+|(?:href|src|action|formaction|xlink:href)(?=\s*=\s*["']?\s*javascript:))(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/gi;
 
 function tweenable(prop) { return TWEENABLE.has(prop) || SPACING.test(prop) || RADIUS.test(prop); }
 
@@ -310,8 +311,11 @@ const escHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').repl
 const escCssStr = s => String(s).replace(/[\\"]/g, '\\$&').replace(/[\n\r]/g, ' ').replace(/</g, '\\3c ').replace(/>/g, '\\3e ');
 const q = n => (n === 0 ? '0ms' : `${n}ms`);
 
-const DROP_ELEMENTS = new Set(['script', 'iframe', 'object', 'embed']);
+const DROP_ELEMENTS = new Set(['script', 'iframe', 'object', 'embed', 'noscript', 'noembed', 'noframes']);
 const RCDATA = new Set(['title', 'textarea']);
+const RAWTEXT = new Set(['title', 'textarea', 'xmp']);
+const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'xlink:href']);
+const ON_ATTR = /\bon[a-z]+\s*=/i;
 
 /** Index of the '>' that ends the tag whose attributes start at j (quoted attribute values may hold '>' or '<'), or -1. Linear. */
 function tagEnd(s, j) {
@@ -352,7 +356,7 @@ function scanPage(html) {
   for (;;) {
     const lt = html.indexOf('<', i);
     if (lt < 0) break;
-    if (lower.startsWith('<!--', lt)) { const e = html.indexOf('-->', lt + 4); i = e < 0 ? n : e + 3; continue; }
+    if (lower.startsWith('<!--', lt)) { const e = html.indexOf('-->', lt + 2); i = e < 0 ? n : e + 3; continue; }
     if (lower.startsWith('<!doctype', lt)) { const e = html.indexOf('>', lt); flush(lt); i = last = e < 0 ? n : e + 1; continue; }
     const m = /^<(\/?)([a-z][a-z0-9:-]*)/.exec(lower.slice(lt, lt + 64));
     if (!m) { i = lt + 1; continue; }
@@ -368,7 +372,7 @@ function scanPage(html) {
     }
     if (name === 'html') { flush(lt); i = last = after; continue; }
     if (name === 'body' && bodyStart < 0) { flush(lt); bodyAttrs = html.slice(lt + 5, gt < 0 ? n : gt); i = last = after; bodyStart = out.length; continue; }
-    if (name === 'link') { flush(lt); links++; i = last = after; continue; }
+    if (name === 'link' || name === 'base' || (name === 'meta' && lower.slice(lt, after).includes('http-equiv'))) { flush(lt); links++; i = last = after; continue; }
     if (DROP_ELEMENTS.has(name)) {
       flush(lt); scripts++;
       i = last = after;
@@ -455,7 +459,86 @@ function rootHasBackground(css) {
   return false;
 }
 
-const LAZY = /(\sloading\s*=\s*)(?:"\s*lazy\s*"|'\s*lazy\s*'|lazy(?![^\s>]))/gi;
+/** A URL attribute value after the entity and control-character tricks a browser undoes: does it start with javascript:? */
+function isScriptUrl(v) {
+  const d = v.replace(/&#x([0-9a-f]+);?|&#(\d+);?|&(tab|newline|colon);?/gi, (m, h, dec, w) => {
+    if (w) return { tab: '\t', newline: '\n', colon: ':' }[w.toLowerCase()];
+    const c = h ? parseInt(h, 16) : parseInt(dec, 10);
+    return c <= 0x10ffff ? String.fromCodePoint(c) : '';
+  });
+  return /^javascript:/i.test(d.replace(/[\u0000-\u0020\u007f-\u009f]/g, ''));
+}
+
+/**
+ * Every start tag in the body markup, read the way a browser reads it (a name ends at whitespace, '/' or '>'; attributes are
+ * separated by whitespace or '/'; an unquoted value runs to whitespace or '>' and may hold '<' or quotes): on* attributes and
+ * javascript: URLs are removed and loading="lazy" becomes "eager". A tag that never ends is dropped when it holds an on*=
+ * attribute. Comments and title/textarea/xmp text are skipped as a browser skips them. One linear pass.
+ */
+function cleanTags(s) {
+  const n = s.length, lower = s.toLowerCase();
+  const ws = c => c === ' ' || c === '\t' || c === '\n' || c === '\f' || c === '\r' || c === '\v' || c === '\u00a0';
+  const noClose = new Set();
+  let out = '', last = 0, i = 0;
+  for (;;) {
+    const lt = s.indexOf('<', i);
+    if (lt < 0) break;
+    if (lower.startsWith('<!--', lt)) { const e = s.indexOf('-->', lt + 2); i = e < 0 ? n : e + 3; continue; }
+    if (!/[a-zA-Z]/.test(s[lt + 1] || '')) { i = lt + 1; continue; }
+    let k = lt + 1;
+    while (k < n && !ws(s[k]) && s[k] !== '/' && s[k] !== '>') k++;
+    const name = lower.slice(lt + 1, k);
+    const tag = [s.slice(lt, k)];
+    let closed = false;
+    while (k < n) {
+      const sp = k;
+      while (k < n && (ws(s[k]) || s[k] === '/')) k++;
+      const sep = s.slice(sp, k);
+      if (k >= n) break;
+      if (s[k] === '>') { tag.push(sep, '>'); k++; closed = true; break; }
+      const start = k;
+      k++;
+      while (k < n && !ws(s[k]) && s[k] !== '/' && s[k] !== '>' && s[k] !== '=') k++;
+      const an = lower.slice(start, k);
+      let p = k;
+      while (p < n && ws(s[p])) p++;
+      let value = '', end = k, open = false;
+      if (s[p] === '=') {
+        p++;
+        while (p < n && ws(s[p])) p++;
+        if (s[p] === '"' || s[p] === "'") {
+          const e = s.indexOf(s[p], p + 1);
+          if (e < 0) { open = true; end = n; } else { value = s.slice(p + 1, e); end = e + 1; }
+        } else {
+          let e = p;
+          while (e < n && !ws(s[e]) && s[e] !== '>') e++;
+          value = s.slice(p, e); end = e;
+        }
+      }
+      if (open) { k = n; break; }
+      k = end;
+      if (/^on/.test(an) || (URL_ATTRS.has(an) && isScriptUrl(value))) { tag.push(sep.replace(/\s+/g, '')); continue; }
+      tag.push(sep, an === 'loading' && value.trim().toLowerCase() === 'lazy' ? 'loading="eager"' : s.slice(start, end));
+    }
+    out += s.slice(last, lt);
+    if (!closed) {
+      const rest = s.slice(lt);
+      out += ON_ATTR.test(rest) ? '' : rest;
+      last = n;
+      break;
+    }
+    out += tag.join('');
+    last = i = k;
+    if (name === 'plaintext') break;
+    if (RAWTEXT.has(name)) {
+      let c = -1;
+      if (!noClose.has(name)) { c = lower.indexOf(`</${name}`, k); if (c < 0) noClose.add(name); }
+      i = c < 0 ? k : c;
+    }
+  }
+  return out + s.slice(last);
+}
+
 
 /**
  * The original page, made safe to play: scripts, links, iframes, objects and on* handlers removed, and loading="lazy"
@@ -463,7 +546,7 @@ const LAZY = /(\sloading\s*=\s*)(?:"\s*lazy\s*"|'\s*lazy\s*'|lazy(?![^\s>]))/gi;
  */
 export function preparePage(html) {
   const sc = scanPage(html.replace(/^﻿/, ''));
-  const inner = sc.inner.replace(TAG, (tag, name, attrs) => `<${name}${attrs.replace(HANDLER, '').replace(LAZY, '$1"eager"')}>`);
+  const inner = cleanTags(sc.inner);
   const keep = [];
   for (const m of sc.bodyAttrs.matchAll(/\b(class|style)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi)) keep.push(`${m[1].toLowerCase()}="${escHtml(m[2] ?? m[3] ?? m[4] ?? '')}"`);
   return { body: inner, bodyAttrs: keep.join(' '), css: sc.styles.map(scopeCss).join('\n'), stripped: { scripts: sc.scripts, links: sc.links } };
