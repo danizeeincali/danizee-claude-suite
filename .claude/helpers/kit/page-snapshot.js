@@ -25,10 +25,16 @@
  *       queries and in the media= attributes of <style>, <link> and <source> (the other scheme becomes a query that never
  *       matches).
  *       --full-page screenshots the whole scrollable page. The page's rendered DOM may not exceed 8 MiB.
- *       --timeout-ms (default 30000, 1000 to 120000) bounds the load, the settle and every asset body wait together: a body
- *       still unfinished when the budget is spent (at least 0.5 s after the settle; a streaming or stalled image, say) is
- *       dropped, keeps its absolute URL and is listed in skipped as "body did not finish in time"; the files are still
- *       written and the exit is 0. An asset reached through redirects is stored under every URL of its redirect chain, so
+ *       --timeout-ms (default 30000, 1000 to 120000) is one deadline for the whole capture, counted from the start of the
+ *       navigation: the document itself must arrive within it (else exit 1, could not load), and every later wait (the load
+ *       event, the network settle, document.fonts.ready, the --full-page scroll, every asset body, the screenshot) gets at
+ *       most what is left. The load event is not required: an image, stylesheet or font of the original markup, or one
+ *       requested later, whose body is still unfinished when the budget is spent (at least 0.5 s after the settle; a
+ *       streaming or stalled image or font, say) is dropped, keeps its absolute URL and is listed in skipped as "body did
+ *       not finish in time"; network_idle is then false, the files are still written and the exit is 0. With a font still
+ *       loading the screenshot is taken without waiting for it (the fallback face is drawn); the screenshot always gets at
+ *       least 2 s. A capture ends within --timeout-ms plus 6 s (the fixed margin covers the browser start, the 0.5 s body
+ *       grace, the 2 s screenshot floor and writing the copy). An asset reached through redirects is stored under every URL of its redirect chain, so
  *       an element naming the first URL inlines it (each hop held to the address check below).
  *       Network policy: file:// and http(s)://localhost or 127.0.0.1 are allowed and everything else is blocked at the
  *       browser (no name but localhost resolves, no proxy, non-local requests and WebSockets aborted). Any other URL is
@@ -69,7 +75,7 @@ import { KitExit } from './kit-exit.js';
 import { resolvePlaywright, LAUNCH_ARGS } from './frame-capture.js';
 
 export const verb = 'page-snapshot';
-export const usage = 'cli.js page-snapshot plan --url <url> [--out <dir>] | capture --url <url> --out <dir> [--width 1440] [--height 900] [--full-page] [--allow-remote] [--theme light|dark] [--timeout-ms <ms>] [--max-asset-bytes <n>] [--max-total-bytes <n>]  (JSON out; exit 1 bad input or page could not load (remote mode connects directly, without a configured HTTP(S)_PROXY, and says so); exit 2 URL refused, remote needs --allow-remote; exit 4 playwright not installed, browser could not start, playwright >= 1.48 required, or the browser cannot apply the remote address guard; --timeout-ms also bounds asset bodies: a late one is listed in skipped as "body did not finish in time")';
+export const usage = 'cli.js page-snapshot plan --url <url> [--out <dir>] | capture --url <url> --out <dir> [--width 1440] [--height 900] [--full-page] [--allow-remote] [--theme light|dark] [--timeout-ms <ms>] [--max-asset-bytes <n>] [--max-total-bytes <n>]  (JSON out; exit 1 bad input or page could not load (remote mode connects directly, without a configured HTTP(S)_PROXY, and says so); exit 2 URL refused, remote needs --allow-remote; exit 4 playwright not installed, browser could not start, playwright >= 1.48 required, or the browser cannot apply the remote address guard; --timeout-ms is one deadline for the whole capture (load, settle, fonts, asset bodies, screenshot; it ends within --timeout-ms plus 6 s): a late body, in the markup or later, is listed in skipped as "body did not finish in time" and the exit is 0)';
 
 export const NOT_INSTALLED = 'playwright not installed: page-snapshot capture needs it';
 export const MAX_ASSET_BYTES = 2 * 1048576;
@@ -77,6 +83,10 @@ export const MAX_TOTAL_BYTES = 20 * 1048576;
 export const MAX_HTML_BYTES = 8 * 1048576;
 export const BODY_LATE = 'body did not finish in time';
 export const BODY_GRACE_MS = 500;
+/** The least time the screenshot gets, even when --timeout-ms is spent. */
+export const SCREENSHOT_FLOOR_MS = 2000;
+/** How far past --timeout-ms a capture may run (browser start, the body grace, the screenshot floor, writing the copy). */
+export const DEADLINE_MARGIN_MS = 6000;
 export const PROXY_HINT = 'remote mode connects directly, without the configured proxy';
 const PROXY_VARS = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'ALL_PROXY', 'all_proxy'];
 export const OUT_FILES = Object.freeze(['page.html', 'screenshot.png', 'manifest.json']);
@@ -655,6 +665,28 @@ async function readLocalAsset(url, maxAsset) {
   } catch { return null; }
 }
 
+/** Resolve to the promise's value, or to `fallback` once `ms` have passed (the promise is left to settle on its own). */
+async function bounded(p, ms, fallback) {
+  let timer;
+  try { return await Promise.race([p, new Promise((r) => { timer = setTimeout(() => r(fallback), Math.max(0, ms)); })]); } finally { clearTimeout(timer); }
+}
+
+/** A PNG of the viewport (or the whole page) through the page's DevTools session, without waiting for web fonts. */
+async function devtoolsScreenshot(ctx, page, fullPage) {
+  const cdp = await ctx.newCDPSession(page);
+  try {
+    const params = { format: 'png' };
+    if (fullPage) {
+      const m = await cdp.send('Page.getLayoutMetrics');
+      const c = m.cssContentSize || m.contentSize;
+      params.captureBeyondViewport = true;
+      params.clip = { x: 0, y: 0, width: Math.max(1, Math.ceil(c.width)), height: Math.max(1, Math.min(Math.ceil(c.height), 32767)), scale: 1 };
+    }
+    const r = await cdp.send('Page.captureScreenshot', params);
+    return Buffer.from(r.data, 'base64');
+  } finally { await cdp.detach().catch(() => {}); }
+}
+
 export async function capture(o, io = {}) {
   const target = classifyUrl(o.url);
   checkConsent(target, o.allowRemote);
@@ -755,6 +787,21 @@ export async function capture(o, io = {}) {
     let bodiesClosed = false; // set when the body wait ran out: a late job stores nothing
     let stored = 0;
     let jobs = 0;
+    // Image, font and stylesheet requests still in flight: Chromium may hold a response back (MIME sniffing a stalled body,
+    // say) so no response event comes; the body wait also waits for these, and one still open at the deadline is late.
+    const inflight = new Map(); // request -> { key, done }
+    const settleReq = (rq) => { const f = inflight.get(rq); if (f) { inflight.delete(rq); f.done(); } };
+    page.on('request', (rq) => {
+      try {
+        for (let q = rq.redirectedFrom(); q; q = q.redirectedFrom()) settleReq(q);
+        if (bodiesClosed || inflight.size >= 5000 || !['image', 'font', 'stylesheet'].includes(rq.resourceType())) return;
+        let done;
+        const p = new Promise((r) => { done = r; });
+        inflight.set(rq, { key: rq.url().split('#')[0], done, p });
+      } catch { /* a request without a frame or type */ }
+    });
+    page.on('requestfinished', settleReq);
+    page.on('requestfailed', settleReq);
     page.on('response', (r) => {
       const id = jobs++;
       bodies.push((async () => {
@@ -789,10 +836,15 @@ export async function capture(o, io = {}) {
       })());
     });
 
+    // ONE deadline for the whole capture: every wait after the start (load, settle, fonts, full-page scroll, asset bodies,
+    // screenshot) gets at most what is left of --timeout-ms, so a stalled font or image cannot stretch the run
     const deadline = Date.now() + timeout;
+    const left = () => Math.max(0, deadline - Date.now());
     let resp;
     const ledToPrivate = (o2) => bad(`url refused: ${target.href} led the browser to a private or loopback address (${o2})`, 2);
-    try { resp = await page.goto(target.href, { waitUntil: 'load', timeout }); } catch (e) {
+    // the document itself must arrive in time; the load event (every image, stylesheet and font of the markup) is then
+    // only waited for until the deadline, so one stalled asset in the original HTML does not fail the capture
+    try { resp = await page.goto(target.href, { waitUntil: 'domcontentloaded', timeout }); } catch (e) {
       if (navRefused) throw ledToPrivate(navRefused);
       const proxyVar = remote ? PROXY_VARS.find((v) => env[v]) : null;
       const hint = proxyVar ? ` (${PROXY_HINT}: ${proxyVar} is set but not used, so a network that only allows egress through a proxy cannot reach the page)` : '';
@@ -801,36 +853,50 @@ export async function capture(o, io = {}) {
     if (resp && typeof resp.ok === 'function' && !resp.ok() && resp.status() !== 0) throw bad(`page returned HTTP ${resp.status()}`);
     if (resp && await reachedPrivate(resp)) throw ledToPrivate(blockedOrigin(resp.url()));
     let networkIdle = true;
-    const settle = async (ms) => { try { await page.waitForLoadState('networkidle', { timeout: ms }); } catch { networkIdle = false; } };
-    await settle(Math.min(timeout, 10000));
-    try { await page.evaluate(() => (document.fonts && document.fonts.ready ? document.fonts.ready.then(() => true) : true)); } catch { /* fonts API missing */ }
+    const waitState = async (state, cap) => {
+      const ms = Math.min(cap, left());
+      if (ms <= 0) { networkIdle = false; return; }
+      try { await page.waitForLoadState(state, { timeout: ms }); } catch { networkIdle = false; }
+    };
+    await waitState('load', Infinity);
+    await waitState('networkidle', 10000);
+    // document.fonts.ready never resolves while a font body stalls: race it against the time left (in the page and here)
+    const fontsMs = left();
+    const fontsReady = fontsMs > 0 && await bounded(page.evaluate((ms) => (document.fonts && document.fonts.ready
+      ? Promise.race([document.fonts.ready.then(() => true), new Promise((r) => setTimeout(() => r(false), ms))])
+      : true), fontsMs).catch(() => true), fontsMs + 250, false) === true;
+    if (!fontsReady) networkIdle = false;
     if (o.fullPage) {
-      try {
-        await page.evaluate(async () => {
-          const h = Math.max(document.documentElement.scrollHeight, 0);
-          for (let y = 0; y < h; y += Math.max(window.innerHeight, 200)) { window.scrollTo(0, y); await new Promise((r) => setTimeout(r, 60)); }
-          window.scrollTo(0, 0);
-        });
-        await settle(Math.min(timeout, 5000));
-      } catch { /* a page that cannot scroll is captured as it is */ }
+      const ms = left();
+      const scrolled = ms > 0 && await bounded(page.evaluate(async (until) => {
+        const h = Math.max(document.documentElement.scrollHeight, 0);
+        for (let y = 0; y < h && Date.now() < until; y += Math.max(window.innerHeight, 200)) { window.scrollTo(0, y); await new Promise((r) => setTimeout(r, 60)); }
+        window.scrollTo(0, 0);
+        return true;
+      }, Date.now() + ms).catch(() => false), ms + 250, false);
+      if (scrolled) await waitState('networkidle', 5000);
+      else networkIdle = false;
     }
     loaded = true;
     // every body wait is bounded by what is left of --timeout-ms (at least BODY_GRACE_MS): a body still streaming then is
     // dropped and listed in skipped, and the capture goes on
-    let timer;
-    const left = Math.max(BODY_GRACE_MS, deadline - Date.now());
-    const allIn = await Promise.race([
-      Promise.all(bodies).then(() => true),
-      new Promise((r) => { timer = setTimeout(() => r(false), left); }),
-    ]);
-    clearTimeout(timer);
+    const allIn = await bounded(Promise.all([...bodies, ...[...inflight.values()].map((f) => f.p)]).then(() => Promise.all(bodies)).then(() => true),
+      Math.max(BODY_GRACE_MS, left()), false);
     if (!allIn) {
       bodiesClosed = true;
       for (const keys of waiting.values()) for (const k of keys) if (!captured.has(k)) captured.set(k, { late: true });
+      for (const f of inflight.values()) if (!captured.has(f.key)) captured.set(f.key, { late: true });
     }
 
+    // Playwright's screenshot waits for document.fonts.ready itself: with a font still stalled it would only time out,
+    // so then the picture is taken through DevTools, which does not wait for fonts (the fallback face is drawn)
     let png;
-    try { png = await page.screenshot({ type: 'png', fullPage: !!o.fullPage, timeout: 15000 }); } catch (e) { throw bad(`the screenshot failed: ${firstLine(e)}`); }
+    const shotMs = Math.max(SCREENSHOT_FLOOR_MS, left());
+    try {
+      png = fontsReady
+        ? await page.screenshot({ type: 'png', fullPage: !!o.fullPage, timeout: shotMs })
+        : await bounded(devtoolsScreenshot(ctx, page, !!o.fullPage), shotMs, null).then((b) => { if (!b) throw new Error(`timed out after ${shotMs} ms`); return b; });
+    } catch (e) { throw bad(`the screenshot failed: ${firstLine(e)}`); }
     const dom = await page.evaluate(snapshotDom, [...failedUrls].slice(0, 5000));
     if (Buffer.byteLength(dom.html) > MAX_HTML_BYTES) throw bad(`the rendered page is larger than ${MAX_HTML_BYTES} bytes`);
     const finalUrl = page.url();

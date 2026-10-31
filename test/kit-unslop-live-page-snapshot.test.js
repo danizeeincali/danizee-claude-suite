@@ -928,3 +928,94 @@ describe('page-snapshot review r2: real captures', { skip: browserOk ? false : '
     assert.ok(!local.message.includes(ps.PROXY_HINT), local.message);
   });
 });
+
+describe('page-snapshot review r3: one --timeout-ms deadline for the whole capture', { skip: browserOk ? false : 'playwright or its browser cannot be resolved here' }, () => {
+  let dir; let srv; let port; const sockets = new Set();
+  const FONT_LATE = '<!doctype html><style>@font-face{font-family:F;src:url(/f.woff2) format("woff2")} .late{font-family:F}</style>'
+    + '<h1 id=h>Hello</h1><script>addEventListener("load",()=>setTimeout(()=>document.getElementById("h").className="late",20))</script>';
+  const handler = (req, res) => {
+    if (req.url === '/font') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end(FONT_LATE); }
+    if (req.url === '/img') { res.writeHead(200, { 'content-type': 'text/html' }); return res.end('<!doctype html><h1>Hello</h1><img src="/ok.png"><img src="/stall.png">'); }
+    if (req.url === '/both') {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      // the load event never comes (stall.png), so the font is asked for once the DOM is ready
+      return res.end(FONT_LATE.replace('<h1 id=h>Hello</h1>', '<h1 id=h>Hello</h1><img src="/ok.png"><img src="/stall.png"><div style="height:3000px"></div>')
+        .replace('addEventListener("load"', 'addEventListener("DOMContentLoaded"'));
+    }
+    // a font and an image whose bodies stall after a few bytes (a degraded network, a CDN that hangs)
+    if (req.url === '/f.woff2') { res.writeHead(200, { 'content-type': 'font/woff2' }); res.write(Buffer.alloc(10)); return; }
+    if (req.url === '/stall.png') { res.writeHead(200, { 'content-type': 'image/png' }); res.write(PNG.subarray(0, 4)); return; }
+    if (req.url === '/ok.png') { res.writeHead(200, { 'content-type': 'image/png' }); return res.end(PNG); }
+    res.writeHead(404); res.end();
+  };
+  before(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), 'ps-r3-real-'));
+    srv = http.createServer(handler);
+    srv.on('connection', (c) => { sockets.add(c); c.on('close', () => sockets.delete(c)); });
+    await new Promise((r) => srv.listen(0, '127.0.0.1', r)); port = srv.address().port;
+  });
+  after(async () => {
+    for (const c of sockets) c.destroy();
+    await new Promise((r) => srv.close(r));
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+  const T = 3000;
+  const within = (took) => assert.ok(took <= T + ps.DEADLINE_MARGIN_MS, `capture took ${took} ms, more than --timeout-ms ${T} + ${ps.DEADLINE_MARGIN_MS} ms`);
+  const manifestOf = async (out) => JSON.parse(await fs.readFile(path.join(out, 'manifest.json'), 'utf-8'));
+  const reasonIn = (man, u) => (man.skipped.find((x) => x.url === u) || {}).reason;
+
+  it('the header states the fixed margin a capture may run past --timeout-ms', () => {
+    const src = readFileSync(path.join(HERE, '../src/lib/kit/page-snapshot.js'), 'utf-8');
+    const header = src.slice(0, src.indexOf('*/'));
+    assert.ok(Number.isInteger(ps.DEADLINE_MARGIN_MS) && ps.DEADLINE_MARGIN_MS > 0 && ps.DEADLINE_MARGIN_MS <= 10000);
+    assert.ok(header.replace(/\s*\n\s*\*\s*/g, ' ').includes(`within --timeout-ms plus ${ps.DEADLINE_MARGIN_MS / 1000} s`), 'header names the margin');
+  });
+
+  it('a stalled font requested after load does not hang: the capture ends within --timeout-ms plus the margin, exit 0', { timeout: 60000 }, async () => {
+    const out = path.join(dir, 'font');
+    const t0 = Date.now();
+    const r = await run(['capture', '--url', `http://127.0.0.1:${port}/font`, '--out', out, '--timeout-ms', String(T)], { cwd: dir });
+    within(Date.now() - t0);
+    assert.equal(r.captured, true);
+    assert.equal(r.network_idle, false);
+    const man = await manifestOf(out);
+    assert.equal(reasonIn(man, `http://127.0.0.1:${port}/f.woff2`), ps.BODY_LATE, JSON.stringify(man.skipped));
+    assert.deepEqual((await fs.readdir(out)).sort(), ['manifest.json', 'page.html', 'screenshot.png']);
+  });
+
+  it('a stalled image in the original markup is dropped and listed in skipped; the files are written and the exit is 0', { timeout: 60000 }, async () => {
+    const out = path.join(dir, 'img');
+    const t0 = Date.now();
+    const r = await run(['capture', '--url', `http://127.0.0.1:${port}/img`, '--out', out, '--timeout-ms', String(T)], { cwd: dir });
+    within(Date.now() - t0);
+    assert.equal(r.captured, true);
+    assert.equal(r.network_idle, false);
+    const man = await manifestOf(out);
+    assert.equal(man.network_idle, false);
+    assert.equal(reasonIn(man, `http://127.0.0.1:${port}/stall.png`), ps.BODY_LATE, JSON.stringify(man.skipped));
+    assert.ok(man.inlined.some((x) => x.url === `http://127.0.0.1:${port}/ok.png`), 'the finished image is still inlined');
+    const html = await fs.readFile(path.join(out, 'page.html'), 'utf-8');
+    assert.ok(html.includes(`http://127.0.0.1:${port}/stall.png`), 'the stalled image keeps its absolute URL');
+    assert.deepEqual((await fs.readdir(out)).sort(), ['manifest.json', 'page.html', 'screenshot.png']);
+  });
+
+  it('a stalled font plus a stalled original-markup image, --full-page, through the real CLI: exit 0 within --timeout-ms plus the margin', { timeout: 60000 }, async () => {
+    const out = path.join(dir, 'both');
+    const cli = path.join(HERE, '../.claude/helpers/kit/cli.js');
+    const t0 = Date.now();
+    const res = await new Promise((resolve) => {
+      execFile(process.execPath, [cli, 'page-snapshot', 'capture', '--url', `http://127.0.0.1:${port}/both`, '--out', out, '--timeout-ms', String(T), '--full-page'],
+        { cwd: path.join(HERE, '..'), timeout: 50000 }, (err, stdout, stderr) => resolve({ code: err ? (err.code ?? 1) : 0, stdout, stderr }));
+    });
+    within(Date.now() - t0);
+    assert.equal(res.code, 0, res.stderr);
+    const j = JSON.parse(res.stdout);
+    assert.equal(j.captured, true);
+    assert.equal(j.network_idle, false);
+    const man = await manifestOf(out);
+    assert.equal(man.viewport.full_page, true);
+    assert.equal(reasonIn(man, `http://127.0.0.1:${port}/stall.png`), ps.BODY_LATE, JSON.stringify(man.skipped));
+    assert.equal(reasonIn(man, `http://127.0.0.1:${port}/f.woff2`), ps.BODY_LATE, JSON.stringify(man.skipped));
+    assert.deepEqual((await fs.readdir(out)).sort(), ['manifest.json', 'page.html', 'screenshot.png']);
+  });
+});
