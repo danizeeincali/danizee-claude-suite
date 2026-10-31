@@ -1,0 +1,33 @@
+{
+  "format": "css",
+  "hits": [
+    {
+      "sign": "transition-all",
+      "group": "motion",
+      "line": 1,
+      "excerpt": ".btn { transition: all 0.3s ease; }",
+      "fix": "List the exact properties to transition (opacity, transform, color)."
+    }
+  ],
+  "counts": {
+    "surfaces": 0,
+    "type": 0,
+    "icons": 0,
+    "spacing": 0,
+    "copy": 0,
+    "components": 0,
+    "landing-hero": 0,
+    "motion": 1,
+    "template-look": 0
+  },
+  "total": 1,
+  "manual": [
+    "mixed-number-formats",
+    "rainbow-chart",
+    "pill-badge-hero",
+    "glossy-orb-logo",
+    "grey-neutrals",
+    "inter-default",
+    "leftover-brand-color"
+  ]
+}

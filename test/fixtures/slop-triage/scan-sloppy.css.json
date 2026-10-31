@@ -1,0 +1,54 @@
+{
+  "format": "css",
+  "hits": [
+    {
+      "sign": "purple-blue-gradient",
+      "group": "surfaces",
+      "line": 1,
+      "excerpt": "body { background: linear-gradient(135deg, #667eea, #764ba2); font-family: Inter, sans-serif; }",
+      "fix": "Use one flat brand or neutral surface; if a gradient stays, keep it to two close shades of one hue."
+    },
+    {
+      "sign": "off-grid-spacing",
+      "group": "spacing",
+      "line": 2,
+      "excerpt": "px rgba(0,0,0,.3); border-radius: 24px; padding: 13px; transition: all 0.3s ease; }",
+      "fix": "Snap to a multiple of 4 (4, 8, 12, 16, 24, 32 ...) or use the spacing scale."
+    },
+    {
+      "sign": "transition-all",
+      "group": "motion",
+      "line": 2,
+      "excerpt": "3); border-radius: 24px; padding: 13px; transition: all 0.3s ease; }",
+      "fix": "List the exact properties to transition (opacity, transform, color)."
+    },
+    {
+      "sign": "looping-pulse",
+      "group": "motion",
+      "line": 3,
+      "excerpt": ".hero { background: radial-gradient(circle, #f0f, #0ff); animation: pulse 1s infinite; }",
+      "fix": "Animate once on a state change, or not at all; no infinite loops on idle elements."
+    }
+  ],
+  "counts": {
+    "surfaces": 1,
+    "type": 0,
+    "icons": 0,
+    "spacing": 1,
+    "copy": 0,
+    "components": 0,
+    "landing-hero": 0,
+    "motion": 2,
+    "template-look": 0
+  },
+  "total": 4,
+  "manual": [
+    "mixed-number-formats",
+    "rainbow-chart",
+    "pill-badge-hero",
+    "glossy-orb-logo",
+    "grey-neutrals",
+    "inter-default",
+    "leftover-brand-color"
+  ]
+}
