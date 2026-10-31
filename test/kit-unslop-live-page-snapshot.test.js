@@ -1269,6 +1269,36 @@ describe('page-snapshot review r4: real probes', { skip: browserOk ? false : 'pl
     } finally { await b.close(); }
   });
 
+  it('review r6: adopted sheets come last (same property, shadow root and document); delegatesFocus and clonable carried; manual slotting listed', { timeout: 90000 }, async () => {
+    const src = path.join(dir, 'r6.html');
+    await fs.writeFile(src, '<!doctype html><title>R6</title><body><my-a id="a"><i>light</i></my-a><my-m id="m"><i id="u">unassigned</i></my-m><p id="d">doc</p><style>p{color:rgb(1, 1, 1)}</style><script>'
+      + 'const mk = (t) => { const s = new CSSStyleSheet(); s.replaceSync(t); return s; };'
+      + 'const r = document.getElementById("a").attachShadow({ mode: "open", delegatesFocus: true, clonable: true });'
+      + 'r.innerHTML = "<style>b{color:rgb(1, 1, 1)}</style><b id=b>x</b><slot></slot>"; r.adoptedStyleSheets = [mk("b{color:rgb(9, 9, 9)}")];'
+      + 'document.getElementById("m").attachShadow({ mode: "open", slotAssignment: "manual" }).innerHTML = "<slot></slot>";'
+      + 'document.adoptedStyleSheets = [mk("p{color:rgb(9, 9, 9)}")];'
+      + '</script></body>');
+    const out = path.join(dir, 'out-r6');
+    const r = await run(['capture', '--url', pathToFileURL(src).href, '--out', out, '--timeout-ms', '3000'], { cwd: dir });
+    assert.equal(r.captured, true);
+    const man = JSON.parse(await fs.readFile(path.join(out, 'manifest.json'), 'utf-8'));
+    assert.ok(man.skipped.some((x) => x.reason.startsWith('manual slot assignment not reproduced') && x.url.includes('my-m')), JSON.stringify(man.skipped));
+    const b = await pw.chromium.launch({ headless: true });
+    try {
+      const page = await b.newPage();
+      await page.goto(pathToFileURL(path.join(out, 'page.html')).href);
+      const got = await page.evaluate(() => {
+        const sr = document.getElementById('a').shadowRoot;
+        return { shadow: getComputedStyle(sr.getElementById('b')).color, doc: getComputedStyle(document.getElementById('d')).color,
+          focus: sr.delegatesFocus, clonable: sr.clonable };
+      });
+      assert.equal(got.shadow, 'rgb(9, 9, 9)');
+      assert.equal(got.doc, 'rgb(9, 9, 9)');
+      assert.equal(got.focus, true);
+      assert.equal(got.clonable, true);
+    } finally { await b.close(); }
+  });
+
   it('review r5: open shadow roots are copied as declarative shadow roots, cleaned; closed ones are listed in skipped', { timeout: 60000 }, async () => {
     const src = path.join(dir, 'shadow.html');
     await fs.writeFile(src, '<!doctype html><title>S</title><my-card id="a"><span slot="x">light</span></my-card><my-closed></my-closed><script>'

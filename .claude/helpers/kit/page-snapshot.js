@@ -7,7 +7,10 @@
  * not survive the copy: describe them from the screenshot.
  * Shadow DOM: each open shadow root (web components) is copied as a declarative shadow root, <template shadowrootmode="open">
  * holding the root's children (its <style>, sheet links, constructed/adopted sheets and nested open roots included),
- * cleaned by the same DOM pass and text pass as the rest; the host's own children follow it. A closed shadow root (made by
+ * cleaned by the same DOM pass and text pass as the rest; the host's own children follow it. Adopted sheets are placed last
+ * (the end of the root, the end of <body> for the document) so the cascade matches the live page; delegatesFocus and
+ * clonable are carried as shadowrootdelegatesfocus and shadowrootclonable; a root with slotAssignment "manual" is copied
+ * with named slotting (slot.assign() has no markup form) and listed in skipped as "manual slot assignment not reproduced; the copy uses named slotting". A closed shadow root (made by
  * attachShadow({mode:"closed"}); an init script records those hosts) cannot be read by script: it is not copied and is
  * listed in skipped as "closed shadow root not copied". A closed root the page declared in its own markup cannot be
  * detected and is a known gap. The fallback content of an <object> (an img with its alt, text) is kept, cleaned, in place of
@@ -125,10 +128,14 @@ export const DNS_FLOOR_MS = 500;
 export const NO_ANSWER = 'the page did not answer in time';
 /** Chromium flag: WebRTC may not send UDP except through a proxy (none is configured), on top of the init script below. */
 export const WEBRTC_FLAG = '--force-webrtc-ip-handling-policy=disable_non_proxied_udp';
+/** The WeakSet key (on globalThis) under which the init script records the hosts of closed shadow roots. */
+export const CLOSED_SHADOW_KEY = 'page-snapshot.closed-shadow-hosts';
+/** The skipped reason for a closed shadow root. */
+export const CLOSED_SHADOW = 'closed shadow root not copied';
+/** The skipped reason for a shadow root with manual slot assignment: slot.assign() cannot be written as markup, so the copy uses named slotting. */
+export const MANUAL_SLOTS = 'manual slot assignment not reproduced; the copy uses named slotting';
 /** Page APIs that open connections no request route sees (WebRTC ICE over UDP and TCP, WebTransport over QUIC, and
  * workers, which can use WebTransport where the init script does not run): removed from every frame before any page script. */
-export const CLOSED_SHADOW_KEY = 'page-snapshot.closed-shadow-hosts';
-export const CLOSED_SHADOW = 'closed shadow root not copied';
 export const NEUTERED_APIS = Object.freeze(['RTCPeerConnection', 'webkitRTCPeerConnection', 'RTCDataChannel', 'WebTransport', 'Worker', 'SharedWorker']);
 const NEUTER_SCRIPT = `(() => { for (const k of ${JSON.stringify(NEUTERED_APIS)}) { try { delete globalThis[k]; } catch {} `
   + `try { if (k in globalThis) Object.defineProperty(globalThis, k, { value: undefined, configurable: false, writable: false }); } catch {} } })();`
@@ -648,7 +655,8 @@ export function buildSnapshot(dom, { url, at, lookup = null, pendingCss = {}, re
  * disabled or alternate, has no sheet, or whose URL is in failedUrls (urls or [url, reason] pairs: requests that were
  * blocked, failed, got an HTTP error or came from a private address) is removed and reported in dropped.
  * Then the clone is cleaned in the DOM, before it is serialized (the main guard; the text pass is defence in depth): every
- * comment, processing instruction and CDATA node is removed; script, noscript, noembed, noframes, iframe, embed, object,
+ * comment, processing instruction and CDATA node is removed; script, noscript, noembed, noframes, iframe, embed, object
+ * (its fallback content kept),
  * applet, portal, frame, frameset, plaintext and base elements are removed (reported in removed); xmp becomes pre; every
  * meta with http-equiv or charset, every SVG animation that sets an href or a handler, every on* attribute is removed;
  * javascript: and vbscript: URLs are emptied ("#" for links); template contents are cleaned the same way; <head> is made
@@ -726,13 +734,16 @@ export function snapshotDom(failedUrls) {
       if (depth >= 8) { dropped.push({ href: `(<${String(o.localName)}> shadow root)`, reason: 'shadow root nested too deep; not copied' }); return; }
       const tpl = doc.createElement('template');
       tpl.setAttribute('shadowrootmode', 'open');
+      if (sr.delegatesFocus) tpl.setAttribute('shadowrootdelegatesfocus', '');
+      if (sr.clonable) tpl.setAttribute('shadowrootclonable', '');
+      if (sr.slotAssignment === 'manual') dropped.push({ href: `(<${String(o.localName)}> shadow root)`, reason: 'manual slot assignment not reproduced; the copy uses named slotting' });
       for (const ch of Array.from(sr.childNodes)) tpl.content.appendChild(ch.cloneNode(true));
       scope(sr, tpl.content, depth + 1);
       const sheets = Array.from(sr.adoptedStyleSheets || []).map((x) => sheetText(x, 0)).filter(Boolean);
       if (sheets.length) {
         const st = doc.createElement('style');
         st.textContent = sheets.join('\n');
-        tpl.content.insertBefore(st, tpl.content.firstChild);
+        tpl.content.appendChild(st);
       }
       c.insertBefore(tpl, c.firstChild);
     });
@@ -742,7 +753,7 @@ export function snapshotDom(failedUrls) {
   if (adopted.length) {
     const st = doc.createElement('style');
     st.textContent = adopted.join('\n');
-    (clone.querySelector('head') || clone).appendChild(st);
+    (clone.querySelector('body') || clone).appendChild(st);
   }
   const removed = [];
   const DROP = new Set(['script', 'noscript', 'noembed', 'noframes', 'iframe', 'embed', 'object', 'applet', 'portal', 'frame', 'frameset', 'plaintext', 'base']);
