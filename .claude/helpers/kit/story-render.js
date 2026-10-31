@@ -15,15 +15,16 @@
  *       --max-seconds is refused (exit 1) with a message saying what to change.
  *   story-render render --file <story.html> --out <file.mp4> [--format square|wide] [--fps <n>] [--max-seconds <n>]
  *                       [--ffmpeg <path>] [--keep-frames]
- *       → { out, frames, duration_ms, size, bytes, format, fps, ffmpeg } (plus frames_dir with --keep-frames).
- *       Captures the frames through frame-capture into a temp directory (only the file:// URL of the story is
- *       ever loaded; egress is blocked in the browser), then encodes them with ffmpeg spawned from an argv array
+ *       → { out, frames, duration_ms, size, bytes, format, fps, ffmpeg, blocked_origins } (plus frames_dir with --keep-frames, and
+ *       warnings when blocked_origins is not empty: one entry per blocked origin, since its fonts/images are missing from the video).
+ *       Captures the frames through frame-capture into a temp directory (the story is loaded from its file:// URL;
+ *       only local requests (file://, localhost) are allowed, everything else is blocked in the browser and listed in blocked_origins), then encodes them with ffmpeg spawned from an argv array
  *       without a shell. The temp frames are removed afterwards unless --keep-frames. --out must end in .mp4 and is
  *       written through a temp name and renamed. ffmpeg is probed with `ffmpeg -version` (or `<path> -version`
  *       with --ffmpeg) before any frame is captured; if missing, the result is
  *       { out:null, frames:0, reason:"ffmpeg not found: ...", exit:4 }. If playwright cannot be resolved the
  *       frame-capture result passes through the same way (exit 4, out:null). A failed encode exits 1 with the
- *       tail of ffmpeg's stderr.
+ *       tail of ffmpeg's stderr (and, with --keep-frames, the kept frames folder).
  *   story-render play --file <story.html> [--format square|wide]
  *       → { url, play_url, contract, next }. Prints the file:// URL to open; it starts no browser. The contract:
  *       a story page opened with the query `?play=1` runs live at real speed (real clock, animations running,
@@ -60,7 +61,7 @@ const bad = (m, code = 1) => new KitExit(m, code);
 /** Attributes of one tag's text (between "<name" and ">"). Names lower-cased; bounded input, linear scan. */
 function tagAttrs(text) {
   const out = new Map();
-  const re = /([^\s"'<>\/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>=`]+)))?/g;
+  const re = /([^\s"'<>\/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>=`][^\s>]*)))?/g;
   let m;
   while ((m = re.exec(text))) {
     const k = m[1].toLowerCase();
@@ -72,15 +73,19 @@ function tagAttrs(text) {
 /** The text of the first `<name ...>` tag(s) at or after `from`, honouring quotes, capped at MAX_TAG_CHARS. Returns [text,next] or null. */
 function readTag(html, start, nameLen) {
   let q = '';
+  let prev = ''; // last non-space char outside quotes: a quote opens a value only right after "="
   const end = Math.min(html.length, start + MAX_TAG_CHARS);
   for (let i = start + nameLen + 1; i < end; i++) {
     const c = html[i];
-    if (q) { if (c === q) q = ''; } else if (c === '"' || c === "'") q = c; else if (c === '>') return [html.slice(start + nameLen + 1, i), i + 1];
+    if (q) { if (c === q) { q = ''; prev = c; } continue; }
+    if ((c === '"' || c === "'") && prev === '=') { q = c; continue; }
+    if (c === '>') return [html.slice(start + nameLen + 1, i), i + 1];
+    if (!/\s/.test(c)) prev = c;
   }
   return null;
 }
 
-/** Every tag with the given lower-case name, in document order, as attribute maps. Comments and script/style bodies are skipped. */
+/** Every tag with the given lower-case name, in document order, as attribute maps. Comments and script/style/textarea/title/template/noscript bodies are skipped. */
 function eachTag(html, name, visit) {
   const lower = html.replace(/[A-Z]/g, (c) => c.toLowerCase()); // ASCII only: indices stay aligned with html
   const needle = '<' + name;
@@ -90,7 +95,7 @@ function eachTag(html, name, visit) {
     const lt = lower.indexOf('<', i);
     if (lt < 0) return;
     if (lower.startsWith('<!--', lt)) { const e = lower.indexOf('-->', lt + 4); if (e < 0) return; i = e + 3; continue; }
-    const raw = /^<(script|style)(?=[\s>\/])/.exec(lower.slice(lt, lt + 10));
+    const raw = /^<(script|style|textarea|title|template|noscript)(?=[\s>\/])/.exec(lower.slice(lt, lt + 12));
     if (raw && name !== raw[1]) { const e = lower.indexOf('</' + raw[1], lt + 1); if (e < 0) return; i = e + 2; continue; }
     if (lower.startsWith(needle, lt) && /[\s\/>]/.test(lower[lt + needle.length] || '>')) {
       const t = readTag(html, lt, needle.length - 1);
@@ -246,10 +251,12 @@ export async function render(o, io = {}) {
     const cap = await capture({ url: pathToFileURL(abs).href, out: framesDir, fps: p.fps, frames: p.frames, warmup: 0, loopMs: null, width: p.size.w, height: p.size.h, scale: 1 }, io);
     if (cap.exit) return { out: null, frames: 0, reason: cap.reason, exit: cap.exit };
     const enc = await (io.exec || exec)(bin, buildFfmpegArgs({ framesDir, out: tmpOut, fps: p.fps }));
-    if (enc.error || enc.code !== 0) throw bad(`ffmpeg failed (${enc.error ? enc.error.code || enc.error.message : 'exit ' + enc.code}): ${enc.stderr.trim().split('\n').slice(-5).join(' | ')}`);
+    if (enc.error || enc.code !== 0) throw bad(`ffmpeg failed (${enc.error ? enc.error.code || enc.error.message : 'exit ' + enc.code}): ${enc.stderr.trim().split('\n').slice(-5).join(' | ')}${o.keepFrames ? `; frames kept in ${framesDir}` : ''}`);
     await fs.rename(tmpOut, out);
     const bytes = (await fs.stat(out)).size;
     const res = { out, frames: p.frames, duration_ms: p.duration_ms, size: p.size, bytes, format: p.format, fps: p.fps, ffmpeg: bin };
+    res.blocked_origins = cap.blocked_origins || [];
+    if (res.blocked_origins.length) res.warnings = res.blocked_origins.map((x) => `blocked remote origin ${x}: its fonts/images/scripts are missing from the video`);
     if (o.keepFrames) res.frames_dir = framesDir;
     return res;
   } finally {

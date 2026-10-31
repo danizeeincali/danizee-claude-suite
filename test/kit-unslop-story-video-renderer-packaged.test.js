@@ -11,7 +11,7 @@ describe('story-render — packaged end to end', () => {
   before(async () => { pkg = await installPackaged(); });
   after(async () => { await pkg.cleanup(); });
 
-  it('plans, prints the play URL, renders when playwright resolves, refuses bad input, zero egress', async (t) => {
+  it('plans, prints the play URL, refuses bad input, stops with exit 4 before any render, zero egress', async (t) => {
     assert.ok(JSON.parse(pkg.kit(['help']).out).verbs.includes('story-render'));
     await fs.writeFile(path.join(pkg.dir, 'story.html'), story(1000));
     const p = pkg.kit(['story-render', 'plan', '--file', 'story.html', '--format', 'wide', '--fps', '30']);
@@ -47,13 +47,13 @@ describe('story-render — packaged end to end', () => {
     // (NODE_PATH cleared): it must then stop cleanly with exit 4 before writing anything.
     const args = ['story-render', 'render', '--file', 'story.html', '--out', 'o.mp4', '--ffmpeg', fake, '--fps', '5'];
     const r = pkg.kit(args, undefined, { extraEnv: { NODE_PATH: '' } });
-    if (r.code === 4) {
-      assert.match(r.json.reason, /playwright not installed/);
-      assert.equal(r.json.out, null);
-      await assert.rejects(fs.stat(path.join(pkg.dir, 'o.mp4')));
-    } else {
-      t.diagnostic('playwright resolves from the packaged temp project even without NODE_PATH; render not driven here');
-    }
+    // Either way (playwright missing, or resolvable but the harness forbids a browser) it is a definite exit-4 stop, nothing written.
+    assert.equal(r.code, 4, r.out + r.err);
+    assert.match(r.json.reason, /playwright not installed|browser could not start/);
+    assert.equal(r.json.out, null);
+    await assert.rejects(fs.stat(path.join(pkg.dir, 'o.mp4')));
+    // the render success path (capture, encode, rename) is covered by the unit tests: the fake-browser encode tests
+    // and the real playwright + ffmpeg end-to-end test
     assert.deepEqual(pkg.egress(), []);
   });
 });

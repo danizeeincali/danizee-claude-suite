@@ -31,6 +31,17 @@ describe('story-render metadata', () => {
     assert.equal(parseStoryDuration(h).duration_ms, 1200);
     assert.throws(() => parseStoryDuration('<style>/* <meta name="story-duration-ms" content="5"> */</style>'), KitExit);
   });
+  it('skips textarea, title, template and noscript content, and quotes inside unquoted values', () => {
+    for (const el of ['textarea', 'title', 'template', 'noscript']) {
+      const h = `<${el}><meta name="story-duration-ms" content="5000"></${el}><meta name="story-duration-ms" content="2000">`;
+      assert.equal(parseStoryDuration(h).duration_ms, 2000, el);
+    }
+    assert.equal(parseStoryDuration(`<html data-story-duration-ms=2000><template><body data-story-duration-ms=5></template>`).duration_ms, 2000);
+    const h = `<meta name=description content=it's fine><meta name="story-duration-ms" content="3000"><p>don't</p>`;
+    assert.equal(parseStoryDuration(h).duration_ms, 3000);
+    assert.equal(parseStoryDuration(`<meta name=story-duration-ms content=4000 title=it's>`).duration_ms, 4000);
+    assert.equal(parseStoryDuration(`<meta name = "story-duration-ms" content = '1100'>`).duration_ms, 1100);
+  });
   it('refuses missing, zero, negative, fractional, huge and non-numeric durations', () => {
     for (const bad of ['', 'abc', '0', '-5', '1.5', '1e3', '12345678901', ' ']) {
       assert.throws(() => parseStoryDuration(`<meta name="story-duration-ms" content="${bad}">`), (e) => e instanceof KitExit && e.code === 1, bad);
@@ -182,18 +193,91 @@ describe('story-render render (injected tools)', () => {
     assert.equal(await code(run(['render', '--file', f], io)), 1);
     assert.equal(await code(run(['render', '--file', f, '--out', 'o.gif'], io)), 1);
     assert.equal(await code(run(['render', '--file', f, '--out', 'nodir/o.mp4'], io)), 1);
-    assert.equal(await code(run(['render', '--file', f, '--out', 'x.mp4', '--max-seconds', '1', '--fps', '30'], { ...io })), 0);
+    const atCap = await run(['render', '--file', f, '--out', 'x.mp4', '--max-seconds', '1', '--fps', '30'], { ...io });
+    assert.equal(atCap.exit, 4);
+    assert.match(atCap.reason, /playwright not installed/);
     assert.equal(await code(run(['render', '--file', await write('r4.html', story(5000)), '--out', 'x.mp4', '--max-seconds', '1'], io)), 1);
     await fs.mkdir(path.join(dir, 'd.mp4'));
     assert.equal(await code(run(['render', '--file', f, '--out', 'd.mp4'], io)), 1);
   });
-  it('a failing ffmpeg exits 1 and leaves no partial file or temp frames', async () => {
+  it('a browser that cannot launch exits 4 with the reason, nothing written', async () => {
     const f = await write('r5.html', story(1000));
     const fakePw = { chromium: { launch: async () => { throw new Error('no browser'); } } };
     const io = { cwd: dir, exec: async () => ({ code: 0, stderr: '' }), resolvePlaywright: async () => fakePw };
     const r = await run(['render', '--file', f, '--out', 'o5.mp4'], io);
     assert.equal(r.exit, 4);
     assert.match(r.reason, /browser could not start/);
+  });
+});
+
+// A fake playwright that supplies real PNG-named frames, so the encode step runs for real against a fake ffmpeg on PATH.
+const fakeBrowser = (seen = []) => ({ chromium: { launch: async () => ({
+  close: async () => {},
+  newContext: async () => {
+    let handler = null;
+    return {
+      route: async (_g, h) => { handler = h; },
+      routeWebSocket: async () => {},
+      newPage: async () => ({
+        clock: { install: async () => {}, pauseAt: async () => {}, runFor: async () => {} },
+        goto: async (u) => {
+          for (const url of seen) await handler({ request: () => ({ url: () => url }), continue: async () => {}, abort: async () => {} });
+          return { ok: () => true, status: () => 200 };
+        },
+        evaluate: async () => {},
+        screenshot: async () => Buffer.from('89504e470d0a1a0a', 'hex'),
+      }),
+    };
+  },
+}) } });
+const withPath = async (extraDir, fn) => { const old = process.env.PATH; process.env.PATH = `${extraDir}${path.delimiter}${old}`; try { return await fn(); } finally { process.env.PATH = old; } };
+const framesDirs = async () => (await fs.readdir(os.tmpdir())).filter((n) => n.startsWith('story-render-') && !n.startsWith('story-render-t-'));
+
+describe('story-render encode step with frames from a fake browser', () => {
+  let bindir;
+  before(async () => { bindir = path.join(dir, 'bin'); await fs.mkdir(bindir); });
+  const ffmpeg = async (body) => { await fs.writeFile(path.join(bindir, 'ffmpeg'), `#!/bin/sh\nfor a; do last="$a"; done\n[ "$1" = "-version" ] && echo fake && exit 0\n${body}\n`); await fs.chmod(path.join(bindir, 'ffmpeg'), 0o755); };
+  it('a failing ffmpeg encode exits 1 with the stderr tail, removes the .part.mp4 and the temp frames', async () => {
+    await ffmpeg('head -c 100 /dev/zero > "$last"\necho "line1" >&2\necho "Encoder exploded" >&2\nexit 3');
+    const f = await write('enc1.html', story(1000));
+    const before = await framesDirs();
+    await withPath(bindir, async () => {
+      await assert.rejects(run(['render', '--file', f, '--out', 'enc1.mp4', '--fps', '5'], { cwd: dir, resolvePlaywright: async () => fakeBrowser() }),
+        (e) => e instanceof KitExit && e.code === 1 && /ffmpeg failed \(exit 3\)/.test(e.message) && /Encoder exploded/.test(e.message) && !/frames kept/.test(e.message));
+    });
+    assert.deepEqual((await fs.readdir(dir)).filter((n) => /enc1|\.part\.mp4$/.test(n) && !n.endsWith('.html')), []);
+    assert.deepEqual(await framesDirs(), before);
+  });
+  it('with --keep-frames a failed encode names the kept frames folder', async () => {
+    await ffmpeg('echo boom >&2\nexit 2');
+    const f = await write('enc2.html', story(1000));
+    let kept = null;
+    await withPath(bindir, async () => {
+      await assert.rejects(run(['render', '--file', f, '--out', 'enc2.mp4', '--fps', '5', '--keep-frames'], { cwd: dir, resolvePlaywright: async () => fakeBrowser() }), (e) => {
+        const m = /frames kept in (\S+)$/.exec(e.message); kept = m && m[1];
+        return e instanceof KitExit && e.code === 1 && !!m;
+      });
+    });
+    assert.equal((await fs.readdir(kept)).filter((n) => /^frame-\d+\.png$/.test(n)).length, 5);
+    await fs.rm(kept, { recursive: true, force: true });
+  });
+  it('a good encode returns blocked_origins and a warning per blocked origin', async () => {
+    await ffmpeg('head -c 2048 /dev/zero > "$last"');
+    const f = await write('enc3.html', story(1000));
+    await withPath(bindir, async () => {
+      const r = await run(['render', '--file', f, '--out', 'enc3.mp4', '--fps', '5'], { cwd: dir, resolvePlaywright: async () => fakeBrowser(['https://fonts.googleapis.com/css', 'https://fonts.gstatic.com/x.woff2', 'file:///tmp/a.png']) });
+      assert.equal(r.exit, undefined);
+      assert.deepEqual(r.blocked_origins, ['https://fonts.googleapis.com', 'https://fonts.gstatic.com']);
+      assert.equal(r.warnings.length, 2);
+      assert.match(r.warnings[0], /fonts\.googleapis\.com/);
+      assert.match(r.warnings[1], /fonts\.gstatic\.com/);
+      assert.equal(r.bytes, 2048);
+    });
+    await withPath(bindir, async () => {
+      const r = await run(['render', '--file', f, '--out', 'enc4.mp4', '--fps', '5'], { cwd: dir, resolvePlaywright: async () => fakeBrowser() });
+      assert.deepEqual(r.blocked_origins, []);
+      assert.equal(r.warnings, undefined);
+    });
   });
 });
 
@@ -228,7 +312,7 @@ describe('story-render header contract', () => {
   it('every documented output field and exit appears in the header and the code', async () => {
     const src = await fs.readFile(path.join(HERE, '..', 'src', 'lib', 'kit', 'story-render.js'), 'utf-8');
     const header = src.slice(0, src.indexOf('*/'));
-    for (const k of ['file', 'format', 'size', 'fps', 'frames', 'duration_ms', 'duration_source', 'ffmpeg_args', 'out', 'bytes', 'frames_dir', 'url', 'play_url', 'contract', 'next', 'exit:4']) assert.ok(header.includes(k), k);
+    for (const k of ['file', 'format', 'size', 'fps', 'frames', 'duration_ms', 'duration_source', 'ffmpeg_args', 'out', 'bytes', 'frames_dir', 'url', 'play_url', 'contract', 'next', 'exit:4', 'blocked_origins', 'warnings']) assert.ok(header.includes(k), k);
     for (const k of ['story-duration-ms', 'data-story-duration-ms', '?play=1', '--keep-frames', '--ffmpeg', '--max-seconds', 'libx264', 'yuv420p', '+faststart']) assert.ok(header.includes(k), k);
     assert.ok(header.trimEnd().endsWith('Built from ideas audited by /w-bbs (run 2026-10-30-unslop); no foreign code.'));
     const mirror = await fs.readFile(path.join(HERE, '..', '.claude', 'helpers', 'kit', 'story-render.js'));
