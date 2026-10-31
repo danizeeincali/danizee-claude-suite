@@ -1,0 +1,494 @@
+/**
+ * story-plan — plan and build a short before/after "story" page for a UI redesign: three to five steps, each one
+ * only a CSS change layered on the steps before it (values change in place, structure never does), played on one
+ * timeline of at most ten seconds. Pure: it reads the files named and writes only to --out; no network.
+ *
+ *   story-plan check [--file <story.json>] [--strict]   (or the JSON on stdin, at most 8 MiB)
+ *       → { ok, duration_ms, problems: [{ step?, code, message }], timeline: [{ id, start_ms, end_ms, tween_end_ms }] }
+ *   story-plan emit [--file <story.json>] --page <original.html> [--out <file>]
+ *       → { html, duration_ms, steps }   (with --out: { out, bytes, duration_ms, steps }, the html is written to the file)
+ *   story-plan template                                  → an example story.json that passes check
+ *
+ * Story: { title, format: "square"|"wide", easing?, intro_ms?, outro_ms?, credit?, steps: [
+ *   { id, label, css: { "<selector>": { "<prop>": "<value>" } }, swap?: { selector, text, ink? },
+ *     redline?: { selector, label, measure? }, tween_ms?, hold_ms? } ] }
+ * Rules (each break is a problem with a `code`, a `step` where one step is at fault, and a `message` that says how to fix it):
+ *   bad-title, bad-format       title is a non-empty string (at most 80 chars); format is square (1080x1080) or wide (1920x1080)
+ *   unknown-key, bad-shape      only the keys above exist; steps, css, swap and redline are objects of the right type
+ *   step-count                  three to five steps
+ *   step-id, step-id-duplicate  ids are 1-32 chars of a-z 0-9 - _ and unique;  step-label: a label of 1-60 chars
+ *   step-empty                  a step changes something (css or swap)
+ *   css-selector                selectors are plain (no braces, semicolons, <, @, comments or pseudo-elements)
+ *   css-prop                    only tweenable properties: color, background-color, opacity, transform, filter,
+ *                               letter-spacing, font-weight, border-radius (and corner forms), box-shadow, gap/row-gap/
+ *                               column-gap, padding*, margin*. A gradient cannot tween: fade it out on its own layer.
+ *   css-value                   values are short plain strings (no url(), no ; { } < > @ \ or !important);  css-content: no `content` property
+ *   pill-radius                 a pill radius (999px and up) cannot tween: write half the element height
+ *   swap-length, swap-count     swap text at most 80 chars; at most 3 swaps in all (text swaps are blur-out / blur-in);  swap-selector-reuse
+ *   tween-range, hold-range     tween_ms 0-900 (default 600); hold_ms 0-5000 (default 900), whole numbers
+ *   easing                      one shared easing: linear, ease, ease-in, ease-out, ease-in-out (in/out/in-out too) or a cubic-bezier [x1,y1,x2,y2]
+ *   intro-outro                 intro_ms 0-5000 (default 500); outro_ms 0-5000 (default 1000)
+ *   duration                    intro + steps x (tween + hold) + outro is at most 10000 ms
+ *   redline-label, redline-measure, redline-selector-reuse   a redline names the slop the step removes (label 1-40 chars; measure up to 20)
+ *   redline-missing             a step that changes spacing (gap, padding, margin) or corners (radius) has a redline
+ *   credit-length               credit at most 60 chars
+ * Timeline: step i starts when the one before it ends; its css tween runs start..tween_end, then it holds until end.
+ * Exit codes: check is advisory (exit 0, even when ok is false) unless --strict, which exits 2 when not ok;
+ * emit exits 1 when the story is not ok; a bad flag, a duplicate flag, an unreadable or binary or oversize (8 MiB) or
+ * empty input, JSON that is not an object, or a missing/unreadable --page exits 1 with the message on stderr.
+ * emit: the original page (scripts, links, iframes and on* handlers removed) sits in a 1080x1080 or 1920x1080 frame;
+ * one <style data-story-step> per step plays on CSS animations only (no JS), started by the class story-play on <html>, so
+ * a faked clock renders it deterministically; redlines are an outline plus a small tag on the step's selector (the
+ * selector gets position:relative; it needs a pseudo-element, so not img or input); the page declares
+ * <meta name="story-duration-ms">; under prefers-reduced-motion the final state is shown.
+ * Built from ideas audited by /w-bbs (run 2026-10-30-unslop); no foreign code.
+ */
+import fs from 'fs/promises';
+import { constants as fsc, fstatSync } from 'fs';
+import path from 'path';
+import { KitExit } from './kit-exit.js';
+
+export const verb = 'story-plan';
+export const usage = 'cli.js story-plan check [--file <story.json>] [--strict] | emit [--file <story.json>] --page <original.html> [--out <file>] | template  (story JSON on stdin or --file, at most 8 MiB)';
+
+export const MAX_BYTES = 8 * 1024 * 1024;
+export const MAX_DURATION_MS = 10000;
+export const MAX_TWEEN_MS = 900;
+export const MAX_SWAPS = 3;
+export const FORMATS = { square: { w: 1080, h: 1080 }, wide: { w: 1920, h: 1080 } };
+const DEFAULTS = { tween_ms: 600, hold_ms: 900, intro_ms: 500, outro_ms: 1000, easing: 'ease-in-out' };
+const EASINGS = { linear: 'linear', ease: 'ease', 'ease-in': 'ease-in', 'ease-out': 'ease-out', 'ease-in-out': 'ease-in-out', in: 'ease-in', out: 'ease-out', 'in-out': 'ease-in-out' };
+const TOP_KEYS = ['title', 'format', 'easing', 'intro_ms', 'outro_ms', 'credit', 'steps'];
+const STEP_KEYS = ['id', 'label', 'css', 'swap', 'redline', 'tween_ms', 'hold_ms'];
+const SPACING = /^(gap|row-gap|column-gap|padding(-(top|right|bottom|left))?|margin(-(top|right|bottom|left))?)$/;
+const RADIUS = /^border(-(top|bottom)-(left|right))?-radius$/;
+const TWEENABLE = new Set(['color', 'background-color', 'opacity', 'transform', 'filter', 'letter-spacing', 'font-weight', 'box-shadow']);
+const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+const isInt = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+const bad = m => new KitExit(m, 1);
+
+const TAG = /<([a-zA-Z][\w:-]*)((?:[^<>"']|"[^"]*"|'[^']*')*)>/g;
+const HANDLER = /\s+(?:on[a-zA-Z]+|(?:href|src|action|formaction|xlink:href)(?=\s*=\s*["']?\s*javascript:))(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?/gi;
+
+function tweenable(prop) { return TWEENABLE.has(prop) || SPACING.test(prop) || RADIUS.test(prop); }
+
+/** The easing as CSS, or null when it is not one of the allowed forms. */
+export function easingCss(e) {
+  if (e === undefined) return DEFAULTS.easing;
+  if (typeof e === 'string') return own(EASINGS, e) ? EASINGS[e] : null;
+  if (Array.isArray(e) && e.length === 4 && e.every(n => typeof n === 'number' && Number.isFinite(n)) && e[0] >= 0 && e[0] <= 1 && e[2] >= 0 && e[2] <= 1) return `cubic-bezier(${e.join(',')})`;
+  return null;
+}
+
+const num = (v, d) => (Number.isInteger(v) && v >= 0 ? v : d);
+
+/** Timeline math on the story as given; fields that are not valid whole numbers fall back to their defaults. */
+export function timeline(story) {
+  const steps = Array.isArray(story && story.steps) ? story.steps : [];
+  let t = num(story && story.intro_ms, DEFAULTS.intro_ms);
+  const out = [];
+  for (const s of steps) {
+    const st = isObj(s) ? s : {};
+    const tween = num(st.tween_ms, DEFAULTS.tween_ms), hold = num(st.hold_ms, DEFAULTS.hold_ms);
+    out.push({ id: typeof st.id === 'string' ? st.id : '', start_ms: t, end_ms: t + tween + hold, tween_end_ms: t + tween });
+    t += tween + hold;
+  }
+  return { timeline: out, duration_ms: t + num(story && story.outro_ms, DEFAULTS.outro_ms) };
+}
+
+const BAD_SELECTOR = /[{};<@\\]|\/\*|::|:(before|after|first-line|first-letter)\b/i;
+const BAD_VALUE = /[;{}<>@\\\n\r]|url\s*\(|expression|\/\*|!important|image-set|import/i;
+
+/** Validate a parsed story. Returns { ok, duration_ms, problems, timeline }. */
+export function check(story) {
+  const problems = [];
+  const add = (code, message, step) => problems.push(step === undefined ? { code, message } : { step, code, message });
+  if (!isObj(story)) throw bad('story must be a JSON object');
+  for (const k of Object.keys(story)) if (!TOP_KEYS.includes(k)) add('unknown-key', `unknown key "${k}": the story takes ${TOP_KEYS.join(', ')}`);
+  if (typeof story.title !== 'string' || !story.title.trim() || story.title.length > 80) add('bad-title', 'title must be a non-empty string of at most 80 characters');
+  if (!own(FORMATS, story.format)) add('bad-format', 'format must be "square" (1080x1080) or "wide" (1920x1080)');
+  if (easingCss(story.easing) === null) add('easing', 'easing must be one of linear, ease, ease-in, ease-out, ease-in-out or a cubic-bezier array [x1,y1,x2,y2] with x within 0..1; one easing is shared by every step');
+  for (const k of ['intro_ms', 'outro_ms']) if (story[k] !== undefined && !isInt(story[k], 0, 5000)) add('intro-outro', `${k} must be a whole number from 0 to 5000`);
+  if (story.credit !== undefined && (typeof story.credit !== 'string' || story.credit.length > 60)) add('credit-length', 'credit must be a string of at most 60 characters');
+  const steps = story.steps;
+  if (!Array.isArray(steps)) {
+    add('step-count', 'steps must be an array of three to five steps');
+  } else {
+    if (steps.length < 3 || steps.length > 5) add('step-count', `a story has three to five steps, found ${steps.length}: merge passes so each step changes something visible`);
+    const ids = new Set(), swapSel = new Set(), redSel = new Set();
+    let swaps = 0;
+    steps.forEach((s, i) => {
+      const at = isObj(s) && typeof s.id === 'string' && s.id ? s.id : `#${i + 1}`;
+      if (!isObj(s)) { add('bad-shape', `step ${i + 1} must be an object`, at); return; }
+      for (const k of Object.keys(s)) if (!STEP_KEYS.includes(k)) add('unknown-key', `unknown step key "${k}": steps change CSS in place, so no html or new elements (keys: ${STEP_KEYS.join(', ')})`, at);
+      if (typeof s.id !== 'string' || !/^[a-z0-9_-]{1,32}$/.test(s.id)) add('step-id', 'id must be 1-32 characters of a-z 0-9 - _', at);
+      else if (ids.has(s.id)) add('step-id-duplicate', `id "${s.id}" is used twice`, at);
+      else ids.add(s.id);
+      if (typeof s.label !== 'string' || !s.label.trim() || s.label.length > 60) add('step-label', 'label must be a non-empty string of at most 60 characters', at);
+      if (s.tween_ms !== undefined && !isInt(s.tween_ms, 0, MAX_TWEEN_MS)) add('tween-range', `tween_ms must be a whole number from 0 to ${MAX_TWEEN_MS}`, at);
+      if (s.hold_ms !== undefined && !isInt(s.hold_ms, 0, 5000)) add('hold-range', 'hold_ms must be a whole number from 0 to 5000', at);
+      let changes = 0, spacingOrCorner = false;
+      if (s.css !== undefined) {
+        if (!isObj(s.css)) add('bad-shape', 'css must be an object of selector to property changes', at);
+        else for (const [sel, props] of Object.entries(s.css)) {
+          if (!sel.trim() || sel.length > 200 || BAD_SELECTOR.test(sel)) add('css-selector', `selector "${sel.slice(0, 60)}" must be a plain selector of at most 200 characters (no { } ; < @, comments or pseudo-elements)`, at);
+          if (!isObj(props)) { add('bad-shape', `css["${sel.slice(0, 60)}"] must be an object of property to value`, at); continue; }
+          for (const [prop, raw] of Object.entries(props)) {
+            changes++;
+            const p = prop.toLowerCase();
+            if (p === 'content') add('css-content', 'the content property is not allowed; use swap { selector, text } for a text change', at);
+            else if (!tweenable(p)) add('css-prop', `"${prop}" cannot tween in place; use one of color, background-color, opacity, transform, filter, letter-spacing, font-weight, border-radius, box-shadow, gap, padding, margin (a gradient fades out on its own layer instead)`, at);
+            const v = typeof raw === 'number' && Number.isFinite(raw) ? String(raw) : raw;
+            if (typeof v !== 'string' || !v.trim() || v.length > 200 || BAD_VALUE.test(v)) add('css-value', `value for ${prop} must be a short plain string (no url(), ; { } < > @ \\ or !important)`, at);
+            else if (RADIUS.test(p)) {
+              const m = /^\s*(\d+(?:\.\d+)?)(px)?\s*$/.exec(v);
+              if (m && Number(m[1]) >= 500) add('pill-radius', `${prop}: ${v} is a pill radius and cannot tween; write half the element height instead`, at);
+            }
+            if (SPACING.test(p) || RADIUS.test(p)) spacingOrCorner = true;
+          }
+        }
+      }
+      if (s.swap !== undefined) {
+        const w = s.swap;
+        if (!isObj(w) || typeof w.selector !== 'string' || typeof w.text !== 'string') add('bad-shape', 'swap must be { selector, text, ink? } with string selector and text', at);
+        else {
+          changes++; swaps++;
+          if (w.text.length > 80) add('swap-length', `swap text is ${w.text.length} characters; at most 80`, at);
+          if (!w.selector.trim() || w.selector.length > 200 || BAD_SELECTOR.test(w.selector)) add('css-selector', 'swap selector must be a plain selector', at);
+          if (swapSel.has(w.selector)) add('swap-selector-reuse', `"${w.selector.slice(0, 60)}" is swapped in two steps; one swap per element`, at);
+          swapSel.add(w.selector);
+          if (w.ink !== undefined && (typeof w.ink !== 'string' || w.ink.length > 40 || BAD_VALUE.test(w.ink))) add('css-value', 'swap ink must be a short plain color string', at);
+        }
+      }
+      if (changes === 0) add('step-empty', 'a step must change something: give it css changes or a swap', at);
+      if (s.redline !== undefined) {
+        const r = s.redline;
+        if (!isObj(r) || typeof r.selector !== 'string' || typeof r.label !== 'string') add('bad-shape', 'redline must be { selector, label, measure? }', at);
+        else {
+          if (!r.label.trim() || r.label.length > 40) add('redline-label', 'redline label names the slop this step removes, 1-40 characters', at);
+          if (r.measure !== undefined && (typeof r.measure !== 'string' || r.measure.length > 20)) add('redline-measure', 'redline measure is a string of at most 20 characters, such as "24px"', at);
+          if (!r.selector.trim() || r.selector.length > 200 || BAD_SELECTOR.test(r.selector)) add('css-selector', 'redline selector must be a plain selector', at);
+          if (redSel.has(r.selector)) add('redline-selector-reuse', `"${r.selector.slice(0, 60)}" is redlined in two steps; one redline per element`, at);
+          redSel.add(r.selector);
+        }
+      } else if (spacingOrCorner) add('redline-missing', 'this step changes spacing or corners: add a redline naming the slop it removes', at);
+    });
+    if (swaps > MAX_SWAPS) add('swap-count', `${swaps} text swaps; keep them to ${MAX_SWAPS} at most so the video does not read as a cut between two pictures`);
+  }
+  const tl = timeline(story);
+  if (tl.duration_ms > MAX_DURATION_MS) add('duration', `total ${tl.duration_ms} ms is over ${MAX_DURATION_MS} ms: shorten holds, tweens, intro or outro`);
+  return { ok: problems.length === 0, duration_ms: tl.duration_ms, problems, timeline: tl.timeline };
+}
+
+export function template() {
+  return {
+    title: 'Pricing page, before and after',
+    format: 'square',
+    easing: 'ease-in-out',
+    intro_ms: 500,
+    outro_ms: 1200,
+    credit: 'Redesign by the team',
+    steps: [
+      { id: 'color', label: 'Calm the palette', css: { '.card': { 'background-color': '#fafafa', 'box-shadow': '0 1px 2px rgba(0,0,0,0.08)' }, 'h1': { color: '#111827' } }, tween_ms: 700, hold_ms: 800 },
+      { id: 'space', label: 'Even out the spacing', css: { '.card': { padding: '32px', gap: '16px' } }, redline: { selector: '.card', label: 'uneven gaps', measure: '16px' }, tween_ms: 700, hold_ms: 900 },
+      { id: 'corners', label: 'Match the corners', css: { '.btn': { 'border-radius': '24px' }, '.card': { 'border-radius': '12px' } }, redline: { selector: '.btn', label: 'mixed radii', measure: '12px' }, swap: { selector: '.btn', text: 'Start free' }, tween_ms: 600, hold_ms: 1000 },
+    ],
+  };
+}
+
+// ---------- emit ----------
+
+const escHtml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const escCssStr = s => String(s).replace(/[\\"]/g, '\\$&').replace(/[\n\r]/g, ' ').replace(/</g, '\\3c ').replace(/>/g, '\\3e ');
+const q = n => (n === 0 ? '0ms' : `${n}ms`);
+
+/** Remove whole elements by tag name (open tag to the matching close tag, no nesting needed for these), by index scan: linear. */
+function stripElements(html, names) {
+  let out = '', i = 0, count = 0;
+  const lower = html.toLowerCase();
+  const re = new RegExp(`<(${names.join('|')})(?=[\\s/>])`, 'g');
+  for (;;) {
+    re.lastIndex = i;
+    const m = re.exec(lower);
+    if (!m) break;
+    out += html.slice(i, m.index);
+    count++;
+    const name = m[1];
+    const gt = lower.indexOf('>', m.index);
+    if (gt < 0) { i = html.length; break; }
+    if (name === 'link') { i = gt + 1; continue; }
+    const close = lower.indexOf(`</${name}`, gt);
+    if (close < 0) { i = html.length; break; }
+    const end = lower.indexOf('>', close);
+    i = end < 0 ? html.length : end + 1;
+  }
+  return { html: out + html.slice(i), count };
+}
+
+function pullStyles(html) {
+  const lower = html.toLowerCase();
+  const styles = [];
+  let out = '', i = 0;
+  for (;;) {
+    const m = /<style(?=[\s/>])/g;
+    m.lastIndex = i;
+    const f = m.exec(lower);
+    if (!f) break;
+    out += html.slice(i, f.index);
+    const gt = lower.indexOf('>', f.index);
+    if (gt < 0) { i = html.length; break; }
+    const close = lower.indexOf('</style', gt);
+    styles.push(html.slice(gt + 1, close < 0 ? html.length : close));
+    if (close < 0) { i = html.length; break; }
+    const end = lower.indexOf('>', close);
+    i = end < 0 ? html.length : end + 1;
+  }
+  return { html: out + html.slice(i), styles };
+}
+
+/** html/body selectors in the page's own styles now mean the page container. */
+function scopeCss(css) {
+  return css
+    .replace(/(^|[,}{;\s])html\s*>?\s*body(?![\w-])/gi, '$1#story-page')
+    .replace(/(^|[,}{;\s])(html|body|:root)(?![\w-])/gi, '$1#story-page');
+}
+
+function bodyOf(html) {
+  const lower = html.toLowerCase();
+  let attrs = '';
+  let inner = html;
+  const b = /<body(?=[\s/>])/.exec(lower);
+  if (b) {
+    const gt = lower.indexOf('>', b.index);
+    if (gt >= 0) {
+      attrs = html.slice(b.index + 5, gt);
+      const close = lower.lastIndexOf('</body');
+      inner = html.slice(gt + 1, close > gt ? close : html.length);
+    }
+  } else {
+    const h = lower.indexOf('</head>');
+    if (h >= 0) inner = html.slice(h + 7);
+    inner = inner.replace(/<\/?html[^>]*>/gi, '');
+  }
+  const keep = [];
+  for (const m of attrs.matchAll(/\b(class|style)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi)) keep.push(`${m[1].toLowerCase()}="${escHtml(m[2] ?? m[3] ?? m[4] ?? '')}"`);
+  return { inner: inner.replace(/<!doctype[^>]*>/gi, ''), attrs: keep.join(' ') };
+}
+
+/** The original page, made safe to play: scripts, links, iframes, objects and on* handlers removed. */
+export function preparePage(html) {
+  let h = html.replace(/^﻿/, '');
+  const s1 = stripElements(h, ['script', 'iframe', 'object', 'embed']);
+  const s2 = stripElements(s1.html, ['link']);
+  const withoutHandlers = s2.html.replace(TAG, (tag, name, attrs) => `<${name}${attrs.replace(HANDLER, '')}>`);
+  const st = pullStyles(withoutHandlers);
+  const body = bodyOf(st.html);
+  return { body: body.inner, bodyAttrs: body.attrs, css: st.styles.map(scopeCss).join('\n'), stripped: { scripts: s1.count, links: s2.count } };
+}
+
+function stepLayers(story) {
+  const ease = easingCss(story.easing);
+  const tl = timeline(story).timeline;
+  const prev = new Map(); // selector -> prop -> last value
+  const anims = new Map(); // selector -> animation list so far
+  const final = new Map(); // selector -> prop -> final value
+  const layers = [];
+  story.steps.forEach((s, i) => {
+    const t = tl[i];
+    const tween = t.tween_end_ms - t.start_ms;
+    const rules = [], reduced = [], keyframes = [];
+    const push = (sel, a) => { if (!anims.has(sel)) anims.set(sel, []); anims.get(sel).push(a); };
+    const touched = new Set();
+    let k = 0;
+    for (const [sel, props] of Object.entries(s.css || {})) {
+      const name = `story-s${i + 1}-${k++}`;
+      const from = [], to = [];
+      if (!prev.has(sel)) prev.set(sel, new Map());
+      if (!final.has(sel)) final.set(sel, new Map());
+      for (const [prop, raw] of Object.entries(props)) {
+        const p = prop.toLowerCase(), v = String(raw).trim();
+        if (prev.get(sel).has(p)) from.push(`${p}:${prev.get(sel).get(p)}`);
+        to.push(`${p}:${v}`);
+        prev.get(sel).set(p, v);
+        final.get(sel).set(p, v);
+      }
+      keyframes.push(`@keyframes ${name}{${from.length ? `from{${from.join(';')}}` : ''}to{${to.join(';')}}}`);
+      push(sel, `${name} ${q(tween)} ${ease} ${q(t.start_ms)} 1 normal forwards`);
+      touched.add(sel);
+    }
+    const win = Math.max(1, t.end_ms - t.start_ms);
+    if (s.redline) {
+      const r = s.redline, name = `story-r${i + 1}`;
+      keyframes.push(`@keyframes ${name}{0%{outline-color:transparent}10%{outline-color:#e5484d}90%{outline-color:#e5484d}100%{outline-color:transparent}}`);
+      keyframes.push(`@keyframes ${name}-tag{0%{opacity:0}10%{opacity:1}90%{opacity:1}100%{opacity:0}}`);
+      push(r.selector, `${name} ${q(win)} linear ${q(t.start_ms)} 1 normal forwards`);
+      touched.add(r.selector);
+      const label = r.measure ? `${r.label}  ${r.measure}` : r.label;
+      rules.push(`html.story-play :is(${r.selector}){position:relative;outline:2px solid transparent;outline-offset:3px}`);
+      rules.push(`html.story-play :is(${r.selector})::before{content:"${escCssStr(label)}";position:absolute;left:0;top:0;transform:translateY(-100%);font:600 12px/1.4 ui-monospace,Menlo,monospace;color:#fff;background:#e5484d;padding:1px 6px;border-radius:2px;white-space:nowrap;pointer-events:none;z-index:9;opacity:0;animation:${name}-tag ${q(win)} linear ${q(t.start_ms)} 1 normal forwards}`);
+      reduced.push(`html.story-play :is(${r.selector}){outline:none !important;animation-name:none !important}`, `html.story-play :is(${r.selector})::before{display:none !important}`);
+    }
+    if (s.swap) {
+      const w = s.swap, name = `story-w${i + 1}`;
+      keyframes.push(`@keyframes ${name}{0%{opacity:1;filter:blur(0)}49%{opacity:0;filter:blur(8px);color:inherit}50%{opacity:0;filter:blur(8px);color:transparent}100%{opacity:1;filter:blur(0);color:transparent}}`);
+      keyframes.push(`@keyframes ${name}-in{0%,49%{opacity:0}100%{opacity:1}}`);
+      push(w.selector, `${name} ${q(tween)} ${ease} ${q(t.start_ms)} 1 normal forwards`);
+      touched.add(w.selector);
+      const ink = w.ink && w.ink.trim() ? w.ink.trim() : '#111';
+      rules.push(`html.story-play :is(${w.selector}){position:relative}`);
+      rules.push(`html.story-play :is(${w.selector})::after{content:"${escCssStr(w.text)}";position:absolute;left:0;top:0;width:100%;text-align:inherit;color:${ink};opacity:0;animation:${name}-in ${q(tween)} ${ease} ${q(t.start_ms)} 1 normal forwards}`);
+      reduced.push(`html.story-play :is(${w.selector}){color:transparent !important}`, `html.story-play :is(${w.selector})::after{opacity:1 !important;animation:none !important}`);
+    }
+    for (const sel of touched) rules.push(`html.story-play :is(${sel}){animation:${anims.get(sel).join(',')}}`);
+    for (const sel of Object.keys(s.css || {})) {
+      const decl = [...final.get(sel)].map(([p, v]) => `${p}:${v} !important`).join(';');
+      reduced.push(`html.story-play :is(${sel}){animation:none !important;${decl}}`);
+    }
+    layers.push({ id: s.id, start: t.start_ms, end: t.end_ms, css: `${keyframes.join('\n')}\n${rules.join('\n')}\n@media (prefers-reduced-motion:reduce){\n${reduced.join('\n')}\n}` });
+  });
+  return layers;
+}
+
+/** Build the single-file story page. The story must pass check; the page is the original HTML text. */
+export function emit(story, pageHtml) {
+  const res = check(story);
+  if (!res.ok) throw bad(`story is not ok: ${res.problems.slice(0, 5).map(p => `${p.step ? p.step + ': ' : ''}${p.code}`).join(', ')}${res.problems.length > 5 ? ', ...' : ''}`);
+  const f = FORMATS[story.format];
+  const page = preparePage(pageHtml);
+  const layers = stepLayers(story);
+  const D = res.duration_ms;
+  const credit = story.credit ? `<div id="story-credit">${escHtml(story.credit)}</div>` : '';
+  const creditStart = Math.max(0, D - num(story.outro_ms, DEFAULTS.outro_ms));
+  const base = `html,body{margin:0;padding:0;background:#0b0b0c;overflow:hidden}
+#story-frame{position:relative;width:${f.w}px;height:${f.h}px;margin:0 auto;overflow:hidden;background:#fff}
+#story-page{position:absolute;left:0;top:0;width:${f.w}px;height:${f.h}px;overflow:hidden;box-sizing:border-box}
+#story-credit{position:absolute;right:24px;bottom:16px;z-index:20;font:500 14px/1.2 system-ui,sans-serif;color:#fff;background:rgba(0,0,0,.6);padding:4px 10px;border-radius:999px;opacity:0}
+@keyframes story-credit{from{opacity:0}to{opacity:1}}
+html.story-play #story-credit{animation:story-credit 300ms linear ${q(creditStart)} 1 normal forwards}
+@media (prefers-reduced-motion:reduce){html.story-play #story-credit{opacity:1;animation:none}}`;
+  const styles = layers.map(l => `<style data-story-step="${escHtml(l.id)}" data-start-ms="${l.start}" data-end-ms="${l.end}">\n${l.css}\n</style>`).join('\n');
+  const html = `<!doctype html>
+<html lang="en" class="story-play">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=${f.w}">
+<meta name="story-duration-ms" content="${D}">
+<title>${escHtml(story.title)}</title>
+<style data-story-frame>
+${base}
+</style>
+<style data-story-page>
+${page.css.replace(/<\/style/gi, '<\\/style')}
+</style>
+${styles}
+</head>
+<body>
+<div id="story-frame">
+<div id="story-page"${page.bodyAttrs ? ' ' + page.bodyAttrs : ''}>
+${page.body}
+</div>
+${credit}
+</div>
+</body>
+</html>
+`;
+  return { html, duration_ms: D, steps: story.steps.length, stripped: page.stripped };
+}
+
+// ---------- io ----------
+
+const PROTECTED = /^\/(dev|proc)(\/|$)/;
+async function openRegular(p) {
+  let real = p;
+  try { real = await fs.realpath(p); } catch { /* open reports it */ }
+  if (PROTECTED.test(p) || PROTECTED.test(real)) throw bad(`${p} is not a regular file (paths under /dev and /proc are refused)`);
+  const fh = await fs.open(p, fsc.O_RDONLY | fsc.O_NONBLOCK);
+  try {
+    const st = await fh.stat({ bigint: true });
+    if (!st.isFile()) throw bad(`${p} is not a regular file`);
+    let s0 = null;
+    try { s0 = fstatSync(0, { bigint: true }); } catch { /* no stdin */ }
+    if (s0 && s0.ino !== 0n && s0.dev === st.dev && s0.ino === st.ino) throw bad(`${p} is not a regular file (it is the same file as standard input)`);
+    const buf = Buffer.alloc(MAX_BYTES + 1);
+    let n = 0;
+    while (n < buf.length) {
+      const { bytesRead } = await fh.read(buf, n, buf.length - n, null);
+      if (!bytesRead) break;
+      n += bytesRead;
+    }
+    if (n > MAX_BYTES) throw bad(`${p} is larger than 8 MiB`);
+    return buf.subarray(0, n);
+  } finally { await fh.close().catch(() => {}); }
+}
+
+async function readFileText(cwd, file, what) {
+  const p = path.resolve(cwd, file);
+  let buf;
+  try { buf = await openRegular(p); } catch (e) {
+    if (e instanceof KitExit) throw e;
+    throw bad(`cannot read ${what} ${p}: ${e.code || e.message}`);
+  }
+  return buf;
+}
+
+function parseFlags(rest, spec) {
+  const got = {};
+  while (rest.length) {
+    const a = rest.shift();
+    const def = spec[a];
+    if (!def || !own(spec, a)) throw bad(`unexpected argument "${a}"\n${usage}`);
+    if (own(got, a)) throw bad(`${a} given more than once`);
+    if (def === 'bool') { got[a] = true; continue; }
+    if (!rest.length || rest[0].startsWith('--')) throw bad(`${a} needs a value`);
+    const v = rest.shift();
+    if (!v) throw bad(`${a} needs a non-empty value`);
+    got[a] = v;
+  }
+  return got;
+}
+
+async function readStory(flags, io) {
+  const cwd = io.cwd || process.cwd();
+  let buf;
+  if (flags['--file'] !== undefined) buf = await readFileText(cwd, flags['--file'], 'story');
+  else buf = Buffer.from(await (typeof io.stdinBytes === 'function' ? io.stdinBytes({ maxBytes: MAX_BYTES + 1 }) : io.stdin({ maxBytes: MAX_BYTES + 1 })));
+  if (buf.length > MAX_BYTES) throw bad('input is larger than 8 MiB');
+  if (buf.includes(0)) throw bad('input looks binary (contains NUL bytes)');
+  const text = buf.toString('utf-8').replace(/^﻿/, '');
+  if (!text.trim()) throw bad('no input: pass the story JSON on stdin or --file');
+  let story;
+  try { story = JSON.parse(text); } catch (e) { throw bad(`story is not valid JSON: ${e.message}`); }
+  if (!isObj(story)) throw bad('story must be a JSON object');
+  return story;
+}
+
+export async function run(args, io) {
+  const [cmd, ...rest] = args;
+  const cwd = io.cwd || process.cwd();
+  if (cmd === 'template') {
+    if (rest.length) throw bad(`template takes no arguments\n${usage}`);
+    return template();
+  }
+  if (cmd === 'check') {
+    const flags = parseFlags(rest, { '--file': 'val', '--strict': 'bool' });
+    const res = check(await readStory(flags, io));
+    if (flags['--strict'] && !res.ok) return { ...res, exit: 2 };
+    return res;
+  }
+  if (cmd === 'emit') {
+    const flags = parseFlags(rest, { '--file': 'val', '--page': 'val', '--out': 'val' });
+    if (flags['--page'] === undefined) throw bad(`emit needs --page <original.html>\n${usage}`);
+    const story = await readStory(flags, io);
+    const pbuf = await readFileText(cwd, flags['--page'], 'page');
+    if (pbuf.includes(0)) throw bad('page looks binary (contains NUL bytes)');
+    const pageText = pbuf.toString('utf-8');
+    if (!pageText.trim()) throw bad('page is empty');
+    const r = emit(story, pageText);
+    if (flags['--out'] === undefined) return r;
+    const outPath = path.resolve(cwd, flags['--out']);
+    try { await fs.writeFile(outPath, r.html); } catch (e) { throw bad(`cannot write ${outPath}: ${e.code || e.message}`); }
+    return { out: outPath, bytes: Buffer.byteLength(r.html), duration_ms: r.duration_ms, steps: r.steps, stripped: r.stripped };
+  }
+  throw bad(`first argument must be check, emit or template\n${usage}`);
+}
