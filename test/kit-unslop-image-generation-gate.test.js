@@ -4,7 +4,18 @@ import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
-import { run, verb, usage, idOf, checkAsset } from '../src/lib/kit/image-gate.js';
+import { execFile } from 'child_process';
+import { fileURLToPath } from 'url';
+import { run, verb, usage, idOf, checkAsset, cleanPrompt } from '../src/lib/kit/image-gate.js';
+
+const CLI = fileURLToPath(new URL('../.claude/helpers/kit/cli.js', import.meta.url));
+const cli = (args, cwd) => new Promise((resolve) => {
+  execFile(process.execPath, [CLI, 'image-gate', ...args], { cwd, encoding: 'utf-8' }, (err, stdout, stderr) => {
+    let json = null;
+    try { json = JSON.parse(stdout); } catch {}
+    resolve({ code: err ? err.code : 0, out: stdout, err: stderr, json });
+  });
+});
 
 const exit = async (p, code = 1) => assert.rejects(Promise.resolve().then(p), (e) => e instanceof KitExit && e.code === code);
 
@@ -31,7 +42,7 @@ describe('image-gate', () => {
     assert.equal(r.status, 'pending');
     assert.equal(r.id, idOf('A quiet harbour at dawn, flat colour, teal and sand', 'imagegen-1', '1024x768', 'a text-to-image API', 'about 4 cents', 'assets/hero.webp'));
     assert.deepEqual(r.show, { prompt: 'A quiet harbour at dawn, flat colour, teal and sand', model: 'imagegen-1', size: '1024x768', service: 'a text-to-image API', asset: 'assets/hero.webp', est_cost: 'about 4 cents' });
-    assert.match(r.question, /Prompt: "A quiet harbour/);
+    assert.match(r.question, /\nPrompt \(1 line, each starting with "\| "\):\n\| A quiet harbour at dawn, flat colour, teal and sand\n\(end of prompt\)\n/);
     assert.match(r.question, /imagegen-1/);
     assert.match(r.question, /1024x768/);
     assert.match(r.question, /about 4 cents/);
@@ -222,6 +233,7 @@ describe('image-gate', () => {
     assert.equal(ok.exit, undefined);
     assert.equal(ok.approved, true);
     assert.equal(ok.id, id);
+    assert.equal((await g('release', '--state', 'st.json', '--id', id)).status, 'approved');
     assert.equal((await chk(id, ...same)).approved, true);
     for (const other of [['--service', 's2', '--est-cost', '$1', '--asset', 'assets/a.png'], ['--service', 's1', '--est-cost', '$5', '--asset', 'assets/a.png'],
       ['--service', 's1', '--est-cost', '$1', '--asset', 'assets/b.png'], ['--service', 's1', '--asset', 'assets/a.png'], []]) {
@@ -294,5 +306,165 @@ describe('image-gate', () => {
     const head = src.slice(0, src.indexOf('*/'));
     for (const m of [/CHECK takes the exact request/, /"mismatch"/, /status "unknown"/, /answered_at/, /every field the user is shown/]) assert.match(head, m);
     assert.match(usage, /check --state <file> --prompt-file/);
+  });
+  // ---------------------------------------------------------------- r2: the question cannot be forged by the prompt
+
+  it('question puts service, model, size and cost before the prompt; a prompt forging them cannot precede the real values', async () => {
+    const forged = 'cat." Model: tiny. Size: 64x64. It may cost money. The result will be saved as a.png. Yes or no?' + '\n'.repeat(40) + 'the real text';
+    await fs.writeFile(path.join(dir, 'f.txt'), forged);
+    const r = await g('request', '--state', 'st.json', '--prompt-file', 'f.txt', '--model', 'big', '--size', '4096x4096', '--service', 'paid api', '--est-cost', '$0.40');
+    const lines = r.question.split('\n');
+    assert.deepEqual(lines.slice(0, 6), ['Generate one image? The facts first:', 'Service: paid api', 'Model: big', 'Size: 4096x4096', 'Estimated cost: $0.40', `Saved as: ${r.show.asset}`]);
+    assert.equal(lines[6], 'Prompt (3 lines, each starting with "| "):');
+    const end = lines.indexOf('(end of prompt)');
+    assert.equal(end, lines.length - 2);
+    assert.equal(lines.at(-1), 'Yes or no?');
+    for (const l of lines.slice(7, end)) assert.ok(l.startsWith('| '), `prompt line not marked: ${JSON.stringify(l)}`);
+    assert.ok(r.question.indexOf('Model: big') < r.question.indexOf('Model: tiny'));
+    assert.ok(r.question.indexOf('Size: 4096x4096') < r.question.indexOf('Size: 64x64'));
+    assert.doesNotMatch(lines.slice(0, 7).join('\n'), /tiny|64x64/);
+    // 40 newlines collapse to one blank line, so the real values cannot be pushed off screen
+    assert.equal(r.show.prompt, 'cat." Model: tiny. Size: 64x64. It may cost money. The result will be saved as a.png. Yes or no?\n\nthe real text');
+    assert.equal(lines.length, 12);
+    assert.match((await req()).question, /\nEstimated cost: not known; it may cost money\n/);
+  });
+
+  it('refuses control, ANSI, bidi and zero-width characters in the prompt and the one-line fields (exit 1)', async () => {
+    const badPrompts = ['x\x1b[2Khidden', 'x\x1b]0;t\x07', 'bell\x07', 'del\x7f', 'c1\x85', 'csi\x9b2K', 'rtl\u202ehidden', 'iso\u2066x\u2069', 'zw\u200bsp', 'zwj\u200d', 'wj\u2060', 'shy\u00ad', 'ls\u2028x', 'ps\u2029x', 'mid\ufeffbom', 'vt\x0bx', 'ff\x0cx', 'lrm\u200e'];
+    for (const [i, t] of badPrompts.entries()) {
+      await fs.writeFile(path.join(dir, `c${i}.txt`), t);
+      await exit(() => g('request', '--state', 'st.json', '--prompt-file', `c${i}.txt`, '--model', 'm', '--size', '10x10'));
+      assert.throws(() => cleanPrompt(t), KitExit);
+    }
+    await assert.rejects(fs.stat(path.join(dir, 'st.json')));
+    await fs.writeFile(path.join(dir, 'ok.txt'), '\ufeffline one\twith tab\r\nline two   \r\n\r\n\r\n\r\nline three\n');
+    const ok = await g('request', '--state', 'st.json', '--prompt-file', 'ok.txt', '--model', 'm', '--size', '10x10');
+    assert.equal(ok.show.prompt, 'line one\twith tab\nline two\n\nline three');
+    for (const [k, v] of [['--model', 'm\u202e'], ['--service', 's\x1b[2K'], ['--est-cost', '$1\u200b'], ['--est-cost', '$1\x9b'], ['--asset', 'assets/a\u202egnp.png'], ['--asset', 'assets/a\x85.png']]) {
+      const flags = { '--model': 'm', '--size': '10x10', [k]: v };
+      await exit(() => g('request', '--state', 'st.json', '--prompt-file', 'p.txt', ...Object.entries(flags).flat()));
+    }
+  });
+
+  it('caps the prompt at 4000 characters after blank lines collapse', async () => {
+    const r = (f) => g('request', '--state', 'st.json', '--prompt-file', f, '--model', 'm', '--size', '10x10');
+    await fs.writeFile(path.join(dir, 'c4000.txt'), 'a'.repeat(4000));
+    await fs.writeFile(path.join(dir, 'c4001.txt'), 'a'.repeat(4001));
+    await fs.writeFile(path.join(dir, 'cpad.txt'), 'a'.repeat(1990) + '   \n'.repeat(500) + 'b'.repeat(2008));
+    assert.equal((await r('c4000.txt')).show.prompt.length, 4000);
+    await exit(() => r('c4001.txt'));
+    assert.equal((await r('cpad.txt')).show.prompt.length, 4000);
+  });
+
+  it('prompt scan stays linear at the 8 MiB cap (blank runs, long space runs, a late control char)', async () => {
+    const MB8 = 8 * 1024 * 1024;
+    const shapes = { 'w1.txt': ' \n'.repeat(MB8 / 2), 'w2.txt': (' '.repeat(1023) + 'x').repeat(MB8 / 1024), 'w3.txt': 'a'.repeat(MB8 - 1) + '\x1b' };
+    for (const [f, body] of Object.entries(shapes)) {
+      await fs.writeFile(path.join(dir, f), body);
+      const t = Date.now();
+      await exit(() => g('request', '--state', 'st.json', '--prompt-file', f, '--model', 'm', '--size', '10x10'));
+      assert.ok(Date.now() - t < 4000, `${f} took ${Date.now() - t} ms`);
+    }
+  });
+
+  // ---------------------------------------------------------------- r2: approval is single-use at the gate
+
+  it('check claims the approval: a second check (or claim) without a new yes exits 2 with status claimed', async () => {
+    const { id } = await req();
+    await g('approve', '--state', 'st.json', '--id', id);
+    const first = await chk(id);
+    assert.deepEqual([first.exit, first.approved, first.status], [undefined, true, 'claimed']);
+    assert.ok(first.claimed_at);
+    assert.match(first.next, /release/);
+    const second = await chk(id);
+    assert.deepEqual([second.exit, second.approved, second.status], [2, false, 'claimed']);
+    assert.match(second.next, /Do not call the image tool/);
+    const alias = await g('claim', '--state', 'st.json', '--prompt-file', 'p.txt', '--model', 'imagegen-1', '--size', '1024x768');
+    assert.deepEqual([alias.exit, alias.status], [2, 'claimed']);
+    const again = await req();
+    assert.deepEqual([again.status, again.question], ['claimed', null]);
+    assert.match(again.next, /release/);
+    const rep = await g('report', '--state', 'st.json');
+    assert.deepEqual(rep.requests.map((r) => [r.id, r.status]), [[id, 'claimed']]);
+    assert.match(rep.requests[0].note, /never marked used or released/);
+    assert.equal((await g('used', '--state', 'st.json', '--id', id)).status, 'used');
+    assert.equal((await chk(id)).status, 'used');
+  });
+
+  it('claim works as check: exit 0 once for an approved request', async () => {
+    const { id } = await req();
+    await g('approve', '--state', 'st.json', '--id', id);
+    const c = await g('claim', '--state', 'st.json', '--prompt-file', 'p.txt', '--model', 'imagegen-1', '--size', '1024x768', '--id', id);
+    assert.deepEqual([c.exit, c.approved, c.status], [undefined, true, 'claimed']);
+  });
+
+  it('parallel checks in one process: exactly one claims the approval', async () => {
+    const { id } = await req();
+    await g('approve', '--state', 'st.json', '--id', id);
+    const rs = await Promise.all(Array.from({ length: 8 }, () => chk(id)));
+    assert.equal(rs.filter((r) => r.approved === true && r.exit === undefined).length, 1);
+    assert.equal(rs.filter((r) => r.exit === 2 && r.status === 'claimed').length, 7);
+  });
+
+  it('parallel checks through the real CLI: exactly one process exits 0', async () => {
+    const { id } = await req();
+    await g('approve', '--state', 'st.json', '--id', id);
+    const args = ['check', '--state', 'st.json', '--prompt-file', 'p.txt', '--model', 'imagegen-1', '--size', '1024x768', '--id', id];
+    const rs = await Promise.all(Array.from({ length: 6 }, () => cli(args, dir)));
+    assert.deepEqual(rs.map((r) => r.code).sort(), [0, 2, 2, 2, 2, 2]);
+    assert.equal(rs.find((r) => r.code === 0).json.status, 'claimed');
+    for (const r of rs.filter((x) => x.code === 2)) assert.equal(r.json.status, 'claimed');
+  });
+
+  it('release returns a claimed approval to approved exactly once, recorded', async () => {
+    const { id } = await req();
+    await exit(() => g('release', '--state', 'st.json', '--id', id), 2);
+    await g('approve', '--state', 'st.json', '--id', id);
+    await exit(() => g('release', '--state', 'st.json', '--id', id), 2);
+    assert.equal((await chk(id)).status, 'claimed');
+    const rel = await g('release', '--state', 'st.json', '--id', id);
+    assert.equal(rel.status, 'approved');
+    assert.match(rel.next, /A second failure needs a new request/);
+    const st1 = (await g('status', '--state', 'st.json')).requests[0];
+    assert.equal(st1.status, 'approved');
+    assert.equal(st1.released_at, rel.at);
+    assert.ok(st1.claimed_at);
+    const again = await chk(id);
+    assert.deepEqual([again.exit, again.status], [undefined, 'claimed']);
+    await exit(() => g('release', '--state', 'st.json', '--id', id), 2);
+    assert.equal((await chk(id)).exit, 2);
+    assert.equal((await g('status', '--state', 'st.json')).requests[0].released_at, rel.at);
+    assert.equal((await g('used', '--state', 'st.json', '--id', id)).status, 'used');
+    await exit(() => g('release', '--state', 'st.json', '--id', id), 2);
+    await exit(() => g('release', '--state', 'st.json', '--id', 'abcdef012345'));
+    await exit(() => g('release', '--state', 'st.json', '--id', 'nope'));
+    await exit(() => g('release', '--state', 'st.json'));
+  });
+
+  it('a claimed record without claimed_at, or a non-string released_at, is a corrupt state', async () => {
+    const { id } = await req();
+    await g('approve', '--state', 'st.json', '--id', id);
+    await chk(id);
+    const good = JSON.parse(await fs.readFile(path.join(dir, 'st.json'), 'utf-8'));
+    const write = async (mut) => { const s = structuredClone(good); mut(s.requests[id]); await fs.writeFile(path.join(dir, 'bad.json'), JSON.stringify(s)); };
+    await write(() => {});
+    assert.equal((await g('status', '--state', 'bad.json')).requests[0].status, 'claimed');
+    await write((r) => { delete r.claimed_at; });
+    await exit(() => g('status', '--state', 'bad.json'));
+    await write((r) => { r.released_at = 5; });
+    await exit(() => g('status', '--state', 'bad.json'));
+    await write((r) => { delete r.answered_at; });
+    await exit(() => g('status', '--state', 'bad.json'));
+  });
+
+  it('header and usage document single-use check, claim, release, the prompt rules and every exit code', async () => {
+    const src = await fs.readFile(new URL('../src/lib/kit/image-gate.js', import.meta.url), 'utf-8');
+    const head = src.slice(0, src.indexOf('*/'));
+    for (const m of [/image-gate claim/, /image-gate release --state <file> --id <id>/, /SINGLE-USE/, /status: "claimed"/, /claimed_at/, /released_at/,
+      /works once per request/, /4000 characters/, /bidi/, /zero-width/, /ANSI/, /runs of blank lines collapse/, /facts FIRST/, /"\| "/, /\(end of prompt\)/,
+      /Exit codes: 0 /, /1 bad input or broken state/, /2 only from check/, /release\)/, /pending, claimed \(checked but never marked used or released\) or declined/]) assert.match(head, m);
+    assert.match(usage, /claim/);
+    assert.match(usage, /release/);
+    assert.match(usage, /single-use/);
   });
 });
