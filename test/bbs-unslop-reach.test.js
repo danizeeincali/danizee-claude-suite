@@ -9,9 +9,10 @@
  * does. Where one verb feeds another, the fixture is the real producer's output, made by running the producer's own
  * workflow step (slop-audit scan for slop-triage, design-brief assume for direction from-brief, story-plan template
  * for story-plan check/emit, and the page story-plan emit wrote for the story-render step at /pt Build).
+ * The live page snapshot rows capture a local file:// page only (never the internet): plan and the remote-URL refusal
+ * always run; the capture itself is checked when playwright resolves and its exit-4 advisory skip when it does not.
  *
- * The table ROWS holds one entry per integration.md row; PENDING lists the rows of the second pass (their verbs are
- * still in review). To wire one later, add its fixtures to `before`, move its entry from PENDING to ROWS with a `check`.
+ * The table ROWS holds one entry per integration.md row (all 23 are wired).
  */
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -19,7 +20,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { stepSection } from '../.claude/helpers/bbs/wiring.js';
 import { validateFinishLine, evaluateGate } from '../.claude/helpers/marathon/gate.js';
 import { readAll } from '../.claude/helpers/marathon/store.js';
@@ -122,6 +123,19 @@ before(() => {
   fx.STREAM = 'ui';
   fx.MT_STREAM = 'none';
   fx.SCREENS = `${fx.slopScreen}\n${fx.cleanScreen}`;
+  // a local live page for the snapshot: a linked stylesheet, an image, a script and a handler the copy must drop
+  const live = path.join(dir, 'live');
+  fs.mkdirSync(live);
+  fs.writeFileSync(path.join(live, 'site.css'), '.hero{color:rgb(27,26,23);padding:24px}\n');
+  fs.writeFileSync(path.join(live, 'dot.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64'));
+  fs.writeFileSync(path.join(live, 'index.html'), [
+    '<!doctype html><html lang="en"><head><title>Ledgerly</title><link rel="stylesheet" href="site.css"></head>',
+    '<body><section class="hero"><h1>Ledgerly keeps freelance invoices in order</h1>',
+    '<img src="dot.png" alt="A red PAID stamp"><button onclick="alert(2)">Start a ledger</button></section>',
+    '<script>document.title = "changed"; alert(1)</script></body></html>', ''].join('\n'));
+  fx.SNAP_URL = pathToFileURL(path.join(live, 'index.html')).href;
+  fx.SNAP_OUT = path.join(dir, 'snapshot');
+  fx.SNAP_REMOTE = 'no';
 });
 after(() => { fs.rmSync(dir, { recursive: true, force: true }); });
 
@@ -159,7 +173,7 @@ function slice(file, heading, verb, prefix = '') {
  * line's own placeholder check kept) and the block line that runs the command, as one bash script from the project
  * root. `over` replaces fixtures for this run.
  */
-function run(s, over = {}) {
+function run(s, over = {}, env = null) {
   const map = { ...fx, ...over };
   const q = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
   const assigns = s.block.filter(l => /^[A-Za-z_][A-Za-z0-9_]*=(?:'<[^']*>'|\$\()/.test(l)).map(l => {
@@ -170,7 +184,7 @@ function run(s, over = {}) {
   });
   const script = [...assigns, s.line].join('\n');
   assert.match(s.line, new RegExp(`node ${KIT.replace(/[.]/g, '\\.')} `), 'the step runs the installed kit CLI');
-  const r = spawnSync('bash', ['-c', script], { cwd: ROOT, encoding: 'utf-8', timeout: 120000 });
+  const r = spawnSync('bash', ['-c', script], { cwd: ROOT, encoding: 'utf-8', timeout: 120000, ...(env ? { env: { ...process.env, ...env } } : {}) });
   assert.doesNotMatch(r.stderr, /is still the placeholder/, `a filled placeholder did not reach the command: ${r.stderr}`);
   assert.doesNotMatch(r.stdout, /kit not installed/, 'the installed kit runs');
   let json = null;
@@ -699,6 +713,100 @@ function checklist(file, heading, { blocking }) {
   }
 }
 
+/**
+ * Live page snapshot: plan (no browser, no network) for a local and a remote URL, the refusal of a remote URL without
+ * consent (exit 2, nothing written, nothing launched), --allow-remote passed only for SNAP_REMOTE=yes (seen through a
+ * `node` stand-in on PATH, so nothing is fetched), and a real capture of a local file:// page when playwright resolves
+ * (else the exit-4 advisory skip). Never the internet.
+ */
+async function snapshot(file, heading) {
+  const p = slice(file, heading, 'page-snapshot', 'plan');
+  const c = slice(file, heading, 'page-snapshot', 'capture');
+  const text = `${p.text}\n${c.text}`;
+  gated(text, 'page-snapshot', { gate: UI, blocking: false });
+  assert.match(text, /live (?:URL|link)/);
+  assert.match(text, /A `file:\/\/`, `localhost` or `127\.0\.0\.1` (?:page|link) needs no flag/);
+  assert.match(text, /is an outbound network call to that site/);
+  assert.match(text, /`SNAP_REMOTE=yes`[^.]*`--allow-remote`/);
+  assert.match(text, /Exit 2 is a refusal by the network policy[^.]*: never retry with `SNAP_REMOTE=yes`/);
+  assert.match(text, /Exit 4 means playwright is not installed or its browser cannot start: say so in one line and skip the snapshot/);
+  assert.match(text, /The step is advisory: whatever it prints, the (?:workflow|run) goes on/);
+  assert.match(text, /describe it from the screenshot/);
+  if (file === WF.plan) {
+    assert.match(text, /only when the user gave this URL themselves in the task, since the URL the user gave is that agreement/);
+    assert.match(text, /A URL you found yourself[^.]*is not: ask the user before capturing it, and capture nothing on a no/);
+    assert.match(text, /\*\*When \/pt runs as the build of a \/w-marathon stream\*\* \(\/w-marathon 4\.3 says so\), skip this step and never ask: \/w-marathon took the baseline at its own CHECKPOINT 0: Search\./);
+    const s = step(file, heading);
+    assert.ok(s.indexOf('**📸 Live page snapshot') > s.indexOf('**🌐 BROWSER CHECK'), 'after the browser check it falls back to');
+  } else {
+    assert.match(text, /only a URL the user gave at the Interview counts as their agreement/);
+    assert.match(text, /run the capture block once, right after the Interview, with `SNAP_REMOTE=yes`[^.]*for that URL only/);
+    assert.match(text, /\*\*It never asks mid-run and never waits:\*\* a remote link the user did not give at the Interview[^:]*is never captured/);
+    assert.match(text, /`- \[ \] snapshot: <url> needs the owner's yes at the next Interview` line in `checklist\.md`/);
+    assert.match(text, /the stream's gate never waits on it/);
+    assert.doesNotMatch(text, /AskUserQuestion|ask the user/);
+  }
+  const tag = short(file);
+  // plan: local needs no consent, remote does; neither opens a browser or the network
+  const out = path.join(dir, `snap-${tag}`);
+  const local = run(p, { SNAP_OUT: out });
+  assert.equal(local.status, 0, local.stderr);
+  assert.deepEqual([local.json.url, local.json.local, local.json.needs_consent], [fx.SNAP_URL, true, false]);
+  assert.deepEqual(local.json.out_files, ['page.html', 'screenshot.png', 'manifest.json'].map(f => path.join(out, f)));
+  const remoteUrl = 'https://ledgerly.example/pricing';
+  const remote = run(p, { SNAP_URL: remoteUrl, SNAP_OUT: out });
+  assert.equal(remote.status, 0);
+  assert.deepEqual([remote.json.local, remote.json.needs_consent], [false, true]);
+  assert.equal(fs.existsSync(out), false, 'plan writes nothing');
+  // refusal: a remote URL without the user's yes is exit 2 and nothing is written
+  const refusedOut = path.join(dir, `snap-refused-${tag}`);
+  const refused = run(c, { SNAP_URL: remoteUrl, SNAP_OUT: refusedOut, SNAP_REMOTE: 'no' });
+  assert.equal(refused.status, 2, refused.stderr);
+  assert.match(refused.stderr, /refused: url refused: https:\/\/ledgerly\.example is not local[^\n]*--allow-remote/);
+  assert.equal(fs.existsSync(refusedOut), false);
+  // other refusals hold even with SNAP_REMOTE=yes, before any browser or lookup
+  for (const bad of ['https://user:pw@ledgerly.example/', 'ftp://ledgerly.example/x.html']) {
+    const r = run(c, { SNAP_URL: bad, SNAP_OUT: refusedOut, SNAP_REMOTE: 'yes' });
+    assert.equal(r.status, 2, `${bad}: ${r.stderr}`);
+  }
+  assert.equal(fs.existsSync(refusedOut), false);
+  // --allow-remote is passed exactly when SNAP_REMOTE=yes (a node stand-in prints its arguments; nothing is fetched)
+  const shim = fs.mkdtempSync(path.join(os.tmpdir(), 'unslop-node-'));
+  try {
+    fs.writeFileSync(path.join(shim, 'node'), '#!/bin/sh\necho "ARGS $*"\n', { mode: 0o755 });
+    const PATH = `${shim}${path.delimiter}${process.env.PATH}`;
+    const yes = run(c, { SNAP_URL: remoteUrl, SNAP_OUT: refusedOut, SNAP_REMOTE: 'yes' }, { PATH });
+    assert.equal(yes.stdout.trim(), `ARGS .claude/helpers/kit/cli.js page-snapshot capture --url ${remoteUrl} --out ${refusedOut} --allow-remote`);
+    const no = run(c, { SNAP_URL: fx.SNAP_URL, SNAP_OUT: refusedOut, SNAP_REMOTE: 'no' }, { PATH });
+    assert.equal(no.stdout.trim(), `ARGS .claude/helpers/kit/cli.js page-snapshot capture --url ${fx.SNAP_URL} --out ${refusedOut}`);
+  } finally { fs.rmSync(shim, { recursive: true, force: true }); }
+  // capture the local page: needs playwright; without it the step's exit-4 advisory skip
+  const { resolvePlaywright } = await import('../src/lib/kit/frame-capture.js');
+  const pw = await resolvePlaywright(ROOT);
+  const cap = run(c, { SNAP_OUT: out, SNAP_REMOTE: 'no' });
+  if (!pw || cap.status === 4) {
+    assert.equal(cap.status, 4, cap.stderr);
+    assert.equal(cap.json.captured, false);
+    if (!pw) assert.equal(cap.json.reason, 'playwright not installed: page-snapshot capture needs it');
+    else assert.match(cap.json.reason, /playwright|browser/);
+    return;
+  }
+  assert.equal(cap.status, 0, cap.stderr);
+  assert.equal(cap.json.captured, true);
+  const html = fs.readFileSync(path.join(out, 'page.html'), 'utf-8');
+  assert.match(html, /<meta name="snapshot-source" content="file:\/\//);
+  assert.match(html, /Content-Security-Policy/);
+  assert.match(html, /Ledgerly keeps freelance invoices in order/);
+  assert.match(html, /padding: ?24px/, 'the stylesheet is inlined');
+  assert.match(html, /src="data:image\/png;base64,/, 'the image is inlined');
+  assert.match(html, /alt="A red PAID stamp"/, 'alt text survives');
+  assert.doesNotMatch(html, /<script|alert\(|onclick/i, 'nothing runs when the copy is opened');
+  assert.deepEqual([...fs.readFileSync(path.join(out, 'screenshot.png')).subarray(0, 4)], [0x89, 0x50, 0x4e, 0x47]);
+  const manifest = JSON.parse(fs.readFileSync(path.join(out, 'manifest.json'), 'utf-8'));
+  assert.equal(manifest.url, fx.SNAP_URL);
+  assert.equal(manifest.remote, false);
+}
+
 // ---------- the rows of integration.md wired in this pass ----------
 const ROWS = [
   { power: 'unslop slop audit', file: WF.plan, heading: H.review, mode: 'blocking', check: slopAudit },
@@ -721,13 +829,9 @@ const ROWS = [
   { power: 'unslop story video authoring', file: WF.plan, heading: H.spec, mode: 'advisory', check: storyPlan },
   { power: 'unslop story video authoring', file: WF.marathon, heading: H.mLoop, mode: 'advisory', check: storyPlan },
   { power: 'unslop do-not list and final checklist', file: WF.plan, heading: H.review, mode: 'blocking', check: (f, h) => checklist(f, h, { blocking: true }) },
-  { power: 'unslop do-not list and final checklist', file: WF.marathon, heading: H.mChecklist, mode: 'advisory', check: (f, h) => checklist(f, h, { blocking: false }) }
-];
-
-// ---------- second pass: verbs still in review (add fixtures and a check, then move the entry to ROWS) ----------
-const PENDING = [
-  { power: 'unslop live page snapshot', verb: 'page-snapshot', file: WF.plan, heading: H.search, mode: 'advisory' },
-  { power: 'unslop live page snapshot', verb: 'page-snapshot', file: WF.marathon, heading: H.mSearch, mode: 'advisory' }
+  { power: 'unslop do-not list and final checklist', file: WF.marathon, heading: H.mChecklist, mode: 'advisory', check: (f, h) => checklist(f, h, { blocking: false }) },
+  { power: 'unslop live page snapshot', file: WF.plan, heading: H.search, mode: 'advisory', check: snapshot },
+  { power: 'unslop live page snapshot', file: WF.marathon, heading: H.mSearch, mode: 'advisory', check: snapshot }
 ];
 
 const short = (f) => path.basename(f, '.md');
@@ -738,9 +842,7 @@ for (const power of [...new Set(ROWS.map(r => r.power))]) {
     }
   });
 }
-describe('second pass (not wired yet)', () => {
-  for (const row of PENDING) it.todo(`${row.power}: ${short(row.file)} › ${row.heading} (${row.mode}) runs ${row.verb}`);
-});
+it('every integration.md row is wired: 23 rows', () => assert.equal(ROWS.length, 23));
 
 describe('slop audit gate in /w-marathon', () => {
   it('unresolved signs keep the scripted stream gate unmet however many green test runs follow', async () => {
@@ -832,7 +934,7 @@ describe('triage scan with an unfilled AUDIT', () => {
 });
 
 describe('without the kit', () => {
-  const VERBS = ['slop-audit', 'direction', 'slop-triage', 'redline-passes', 'design-tokens', 'image-effects', 'visual-direction', 'image-gate', 'story-render', 'story-plan', 'redesign-checklist'];
+  const VERBS = ['slop-audit', 'direction', 'slop-triage', 'redline-passes', 'design-tokens', 'image-effects', 'visual-direction', 'image-gate', 'story-render', 'story-plan', 'redesign-checklist', 'page-snapshot'];
   const blocks = (file) => {
     const lines = fs.readFileSync(path.join(ROOT, file), 'utf-8').split('\n');
     const out = [];
@@ -851,7 +953,7 @@ describe('without the kit', () => {
       const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'unslop-nokit-'));
       try {
         const all = blocks(file);
-        assert.ok(all.length >= (file === WF.plan ? 20 : 19), `found ${all.length} blocks`);
+        assert.ok(all.length >= (file === WF.plan ? 22 : 21), `found ${all.length} blocks`);
         for (const block of all) {
           const q = (v) => `'${String(v).replace(/'/g, `'\\''`)}'`;
           const script = block.map(l => l.replace(/^([A-Za-z_][A-Za-z0-9_]*)='<[^']*>'/, (m, name) => `${name}=${q(fx[name] ?? 'x')}`)).join('\n');

@@ -37,8 +37,10 @@ targets. The bbs CLI was left unchanged. This file is where the proving test for
 | unslop story video authoring | /w-marathon · ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met | advisory | unslop story video authoring › w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met (advisory) |
 | unslop do-not list and final checklist | /w-plan-tdd-swarm · ⛔ CHECKPOINT 6: Review | blocking | unslop do-not list and final checklist › w-plan-tdd-swarm › ⛔ CHECKPOINT 6: Review (blocking) |
 | unslop do-not list and final checklist | /w-marathon · Completion Checklist | advisory | unslop do-not list and final checklist › w-marathon › Completion Checklist (advisory) |
+| unslop live page snapshot | /w-plan-tdd-swarm · ⛔ CHECKPOINT 0: Search | advisory | unslop live page snapshot › w-plan-tdd-swarm › ⛔ CHECKPOINT 0: Search (advisory) |
+| unslop live page snapshot | /w-marathon · ⛔ CHECKPOINT 0: Search | advisory | unslop live page snapshot › w-marathon › ⛔ CHECKPOINT 0: Search (advisory) |
 
-Not wired yet (listed as `it.todo` under "second pass (not wired yet)"): unslop live page snapshot (`page-snapshot`).
+All 23 rows of `integration.md` are wired (checked by "every integration.md row is wired: 23 rows").
 
 Other tests in the same file that back the rows above:
 
@@ -49,5 +51,10 @@ Other tests in the same file that back the rows above:
   the row's own block runs `check` and `emit`, and the page `emit` wrote goes into the story-render plan block at /pt
   CHECKPOINT 5: Build with the `format` emit printed (a wide story plans at 1920x1080); the /pt Build story-render block
   now takes `STORY_FORMAT` for that hand-off, since story-render reads the page's duration but not its format
+- the live page snapshot rows never reach the internet: `plan` runs for a local file:// page and a remote URL, the
+  capture block refuses a remote URL with `SNAP_REMOTE=no` (exit 2, nothing written) and refuses credentials in the URL
+  or a non-http scheme even with `SNAP_REMOTE=yes`; a `node` stand-in on PATH shows `--allow-remote` is passed exactly
+  when `SNAP_REMOTE=yes`; the capture of the local page (stylesheet and image inlined, script and handler gone, PNG
+  screenshot, manifest) runs when playwright resolves, else its exit-4 advisory skip is checked
 - the /pt image gate inside a /w-marathon build (`MT_STREAM` set: the request is queued, never asked) is checked inside "unslop image generation gate › w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build (blocking)"
 - triage scan with an unfilled AUDIT (both workflows), without the kit (both workflows), source and installed copies

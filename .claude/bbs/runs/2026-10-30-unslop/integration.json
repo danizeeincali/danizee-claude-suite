@@ -1,6 +1,6 @@
 {
   "run": "2026-10-30-unslop",
-  "ts": "2026-10-31T02:19:48.643Z",
+  "ts": "2026-10-31T21:12:16.531Z",
   "powers": {
     "unslop slop audit": {
       "verb": "slop-audit",
@@ -54,6 +54,11 @@
     },
     "unslop story video authoring": {
       "verb": "story-plan",
+      "entry": null,
+      "reach": []
+    },
+    "unslop live page snapshot": {
+      "verb": "page-snapshot",
       "entry": null,
       "reach": []
     }
