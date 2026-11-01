@@ -111,7 +111,7 @@ SNAP_REMOTE='<yes only when plan said needs_consent and the user gave this URL a
 if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/helpers/kit/cli.js missing): step skipped, advisory"; (exit 0); else ALLOW=''; [ "$SNAP_REMOTE" = yes ] && ALLOW='--allow-remote'; node .claude/helpers/kit/cli.js page-snapshot capture --url "$SNAP_URL" --out "$SNAP_OUT" $ALLOW; RC=$?; (exit $RC); fi
 ```
 
-Exit 0 printed the answer (`plan`: the files the capture will write; `capture`: `captured: true` with the paths of `page.html`, `screenshot.png` and `manifest.json`; `network_idle: false` means a late asset was left out and listed in `skipped`, and the copy is still written). Exit 1 is wrong input or a page that could not load (a bad URL, an HTTP error, a page that did not answer in time): note it in the report and go on without a baseline. Exit 2 is a refusal by the network policy (a remote URL without `--allow-remote`, an unsupported scheme, credentials in the URL, a remote page that led the browser to a private address): never retry with `SNAP_REMOTE=yes` for a URL not given at the Interview; note it in the report and go on. Exit 4 means playwright is not installed or its browser cannot start: say so in one line and skip the snapshot. The step is advisory: whatever it prints, the run goes on.
+Exit 0 printed the answer (`plan`: the files the capture will write; `capture`: `captured: true` with the paths of `page.html`, `screenshot.png` and `manifest.json`; `network_idle: false` means a late asset was left out and listed in `skipped`, and the copy is still written). Exit 1 is wrong input or a page that could not load (a bad URL, an HTTP error, a page that did not answer in time, or, in remote mode, a network that only allows egress through a proxy: remote mode connects directly and ignores `HTTP_PROXY` and `HTTPS_PROXY`): note it in the report and go on without a baseline. Exit 2 is a refusal by the network policy (a remote URL without `--allow-remote`, an unsupported scheme, credentials in the URL, a remote page that led the browser to a private address): never retry with `SNAP_REMOTE=yes` for a URL not given at the Interview; note it in the report and go on. Exit 4 means playwright is not installed or its browser cannot start: say so in one line and skip the snapshot; the printed `reason` says which cause (playwright older than 1.48, which needs an upgrade rather than an install, or a browser that cannot apply the remote address guard are also exit 4), so report that `reason`. The step is advisory: whatever it prints, the run goes on.
 
 **REQUIRED OUTPUT:** past solutions (0+), prior runs (0+), applicable patterns.
 
@@ -179,6 +179,8 @@ if [ ! -f .claude/helpers/kit/cli.js ]; then echo "kit not installed (.claude/he
 ```
 
 Exit 0 with a printed line: add it as is. Exit 0 with "kit not installed": add nothing. Exit 1: the placeholder is still there; fill it.
+
+**🔗 Live link (UI / landing page streams only):** When a stream builds or redesigns UI or a landing page and begins from a live link, ask for that link in this single interview batch: the URL, and a yes or no for capturing it if it is a remote site (an outbound network call to that site). A yes given here is the only agreement the capture needs. Right after the Interview, run the Live page snapshot capture block under CHECKPOINT 0: Search for each agreed remote link, with `SNAP_REMOTE=yes` for that URL only; a no, or no link, means no capture and the stream goes on without a baseline.
 
 End with: "What did I forget to ask about?"
 

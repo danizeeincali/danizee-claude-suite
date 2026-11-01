@@ -533,6 +533,15 @@ function storyRender(file, heading) {
   }
   const play = run(slice(file, heading, 'story-render', 'play'));
   assert.match(play.json.play_url, /^file:\/\/.*\?play=1$/);
+  // an unfilled STORY_FORMAT exits 1 with the format error, and the exit text names that cause
+  assert.match(p.text, /Exit 1 is a story page with no or a bad duration, a `STORY_FORMAT` that is still the placeholder or not square or wide/);
+  for (const verb of ['plan', 'render', 'play']) {
+    const sl = slice(file, heading, 'story-render', verb);
+    const script = [`STORY=${JSON.stringify(fx.STORY)}`, `VIDEO_OUT=${JSON.stringify(path.join(dir, 'unfilled.mp4'))}`, `STORY_FORMAT='<square or wide, the format story-plan emit printed>'`, sl.line].join('\n');
+    const bad = spawnSync('bash', ['-c', script], { cwd: ROOT, encoding: 'utf-8', timeout: 60000 });
+    assert.equal(bad.status, 1, `story-render ${verb} with an unfilled STORY_FORMAT exits 1: ${bad.stdout}${bad.stderr}`);
+    assert.match(bad.stderr, /--format must be square or wide/);
+  }
 }
 
 const STORY_GATE = /When the task redesigns UI and the user asks for a before-and-after story video|When the stream redesigns UI and its plan ships a before-and-after story video/;
@@ -730,6 +739,8 @@ async function snapshot(file, heading) {
   assert.match(text, /`SNAP_REMOTE=yes`[^.]*`--allow-remote`/);
   assert.match(text, /Exit 2 is a refusal by the network policy[^.]*: never retry with `SNAP_REMOTE=yes`/);
   assert.match(text, /Exit 4 means playwright is not installed or its browser cannot start: say so in one line and skip the snapshot/);
+  assert.match(text, /the printed `reason` says which cause \(playwright older than 1\.48[^)]*remote address guard[^)]*\)[^.]*report that `reason`/, 'every exit-4 cause');
+  assert.match(text, /network that only allows egress through a proxy: remote mode connects directly and ignores `HTTP_PROXY` and `HTTPS_PROXY`/, 'the proxy-only exit-1 case');
   assert.match(text, /The step is advisory: whatever it prints, the (?:workflow|run) goes on/);
   assert.match(text, /describe it from the screenshot/);
   if (file === WF.plan) {
@@ -740,6 +751,9 @@ async function snapshot(file, heading) {
     assert.ok(s.indexOf('**📸 Live page snapshot') > s.indexOf('**🌐 BROWSER CHECK'), 'after the browser check it falls back to');
   } else {
     assert.match(text, /only a URL the user gave at the Interview counts as their agreement/);
+    const iv = step(WF.marathon, H.mInterview);
+    assert.match(iv, /\*\*🔗 Live link \(UI \/ landing page streams only\):\*\*[^\n]*in this single interview batch: the URL, and a yes or no for capturing it/);
+    assert.match(iv, /Right after the Interview, run the Live page snapshot capture block under CHECKPOINT 0: Search for each agreed remote link, with `SNAP_REMOTE=yes` for that URL only/);
     assert.match(text, /run the capture block once, right after the Interview, with `SNAP_REMOTE=yes`[^.]*for that URL only/);
     assert.match(text, /\*\*It never asks mid-run and never waits:\*\* a remote link the user did not give at the Interview[^:]*is never captured/);
     assert.match(text, /`- \[ \] snapshot: <url> needs the owner's yes at the next Interview` line in `checklist\.md`/);
