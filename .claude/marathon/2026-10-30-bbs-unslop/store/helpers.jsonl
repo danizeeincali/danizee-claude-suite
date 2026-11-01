@@ -183,3 +183,5 @@
 {"helper_id":"6eda24b7-5180-4464-a2c8-c3b46e624920","tokens":136241,"outcome":"green","event":"done","id":"7e50ce5b-1820-4b9c-bf7a-440814538af6","ts":"2026-10-31T02:24:38.471Z"}
 {"helper_id":"ed3919db-e2e9-4638-8161-d0c1ad4adaa3","tokens":55780,"outcome":"green","event":"done","id":"69e4ffd4-8d6b-4ab9-8d3e-6c5a94d02716","ts":"2026-10-31T21:03:11.323Z"}
 {"role":"build","model":"opus","stream":"integration","budget":120000,"event":"spawn","id":"bbbd4780-fd2d-4ac7-9bbf-aba0be91e4df","ts":"2026-10-31T21:06:43.952Z"}
+{"helper_id":"bbbd4780-fd2d-4ac7-9bbf-aba0be91e4df","tokens":118831,"outcome":"green","event":"done","id":"43713ecc-8551-40e9-833b-1c471e407f98","ts":"2026-11-01T17:59:54.949Z"}
+{"role":"review","model":"opus","stream":"integration","budget":200000,"event":"spawn","id":"59d8e9ed-13cb-41c4-825d-733f417124cc","ts":"2026-11-01T18:00:02.281Z"}
