@@ -1,0 +1,15 @@
+# Review 83a3b2ba-658d-41e9-ac26-353221b195a8 — unslop-image-generation-gate, round 1
+
+- Commit: b13d3e7
+- Angle: one input method at a time
+- Result: pass
+- 3 findings
+
+## Medium (2)
+
+- **check is keyed by id alone, so it cannot confirm the prompt/model/size the step is about to send** — `.claude/helpers/kit/image-gate.js:279` (correctness): check takes only --state and --id (SPECS line 104), and exits 0 whenever that id is approved. It never sees the prompt file, model or size the workflow will pass to the image tool. A step that edits its prompt file or switches model after approval and re-runs check with the id it already holds gets exit 0 for a request the user never saw. The header (lines 30-34) does not tell the step to send exactly show.prompt/model/size either. So the gate does not prove 'approved for exactly this prompt/model/size'; it proves only 'some approved id exists'. No test covers check against a changed prompt. — fix: Let check also take (or require) --prompt-file/--model/--size, recompute idOf with the same normalisation as request, and exit 2 when it differs from --id or from the stored record. At minimum, state in the header and in next that the tool must be called with exactly check's show values. Add a test where the prompt file changes after approval and check exits 2.
+- **Re-request with a different --service/--est-cost/--asset silently reuses the old approval** — `.claude/helpers/kit/image-gate.js:295` (correctness): The id hashes only prompt, model and size (line 73), and request returns the stored record unchanged when the id exists (line 295). Probe: approve with --service cheap --est-cost '$0.01', then request again with --service pricey --est-cost '$5' --asset img/hero.png. The result is status approved, question null, with the old service, cost and asset in show, and check exits 0. The user agreed to one cost and one service, and a different paid run goes ahead without asking again. The caller's new --asset is also dropped without a word, so the result is saved somewhere other than the step asked. — fix: When an existing record's service, est\_cost or asset differs from the new flags: for a pending record, update it and re-ask; for an approved one, return status pending with a fresh question (or refuse with exit 2 and say what differs). Never return 'Already approved' for different terms. Add a test for it.
+
+## Low (1)
+
+- **validateState does not tie a record's id to its content or require answered\_at on approved records** — `.claude/helpers/kit/image-gate.js:137` (correctness): A state record passes validation as long as r.id equals its key and the status is known. Nothing checks that id === idOf(prompt, model, size), or that an approved record carries answered\_at. A state file that was hand-edited or written by another tool, with status 'approved' or with a prompt swapped under an approved id, makes check exit 0 and show a prompt the user never approved. — fix: In validateState, reject a record whose id !== idOf(r.prompt, r.model, r.size), and an approved or used record without answered\_at; add a corrupt-state test for each.

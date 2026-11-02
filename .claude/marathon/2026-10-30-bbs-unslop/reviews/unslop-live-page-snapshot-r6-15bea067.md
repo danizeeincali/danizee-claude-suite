@@ -1,0 +1,15 @@
+# Review 15bea067-ab9b-4d4d-83d0-8893bf924ad3 — unslop-live-page-snapshot, round 6
+
+- Commit: c982a47
+- Angle: facts and content
+- Result: pass
+- 3 findings
+
+## Medium (1)
+
+- **Adopted sheets are put before the shadow root's own styles, so they lose the cascade they win live** — `src/lib/kit/page-snapshot.js:735` (correctness): In the cascade, adoptedStyleSheets come after a shadow root's own \<style\>/\<link\> sheets. scope() inserts the adopted sheets' text as the FIRST child of the declarative template (tpl.content.insertBefore(st, tpl.content.firstChild)), which puts them before the root's own styles, so on equal specificity the root's inline style wins in the copy. Probe (file:// page, local Chromium): a root with \<style\>p{color:rgb(1,1,1)}\</style\> and an adopted sheet p{color:rgb(9,9,9)} computes rgb(9, 9, 9) live and rgb(1, 1, 1) in page.html. Components that combine adopted sheets with an inline \<style\> are common enough (Lit static styles plus a \<style\> in the template, for example), so the baseline copy renders wrong without any warning. The document-level adopted sheets (line 745) have the same problem against any \<style\>/\<link\> in \<body\>, because they are appended to the end of \<head\>. The r5 test misses this because the inline and adopted rules set different properties (color vs background). — fix: Append the adopted \<style\> as the last child of tpl.content (after the root's own nodes), and the document's adopted \<style\> as the last child of body (or of the clone), so they come after every page sheet. Add a test where an inline rule and an adopted rule set the same property and the adopted one must win in the copy.
+
+## Low (2)
+
+- **Declarative template drops the root's slotAssignment (and delegatesFocus/clonable)** — `src/lib/kit/page-snapshot.js:728` (correctness): Only shadowrootmode="open" is written. A root made with slotAssignment:"manual" shows only the light children that script assigned; in the copy the template gets the default named slotting, so the parser auto-assigns light children and they render where they did not render live. delegatesFocus/clonable/serializable are lost too (smaller effect on a static copy). — fix: Set shadowrootslotassignment (where supported) or, when sr.slotAssignment === 'manual', drop or mark the unassigned light children; set shadowrootdelegatesfocus/shadowrootclonable from sr.delegatesFocus/sr.clonable.
+- **NEUTERED\_APIS doc comment now sits above the closed-shadow constants; snapshotDom doc still says object is removed** — `src/lib/kit/page-snapshot.js:128` (docs): The JSDoc for NEUTERED\_APIS (lines 128-129) is now attached to CLOSED\_SHADOW\_KEY, and the NEUTER\_SCRIPT's new attachShadow wrapper has no doc on the constant. The snapshotDom JSDoc (lines 651-652) lists object among elements that are removed, without the r6 behaviour that its fallback content is kept (the module header line 13 says it correctly). — fix: Move CLOSED\_SHADOW\_KEY/CLOSED\_SHADOW above the NEUTERED\_APIS comment and give them their own line; add 'object (its fallback content kept)' to the snapshotDom doc.

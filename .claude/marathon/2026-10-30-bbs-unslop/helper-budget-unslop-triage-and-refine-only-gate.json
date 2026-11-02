@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "openedAt": 1793403840175,
+  "limits": {
+    "steps": 400,
+    "cost": 2000000,
+    "timeMs": null
+  },
+  "spent": {
+    "steps": 420,
+    "cost": 474035
+  },
+  "clock": {
+    "depth": 0,
+    "startedAt": null,
+    "elapsedMs": 1115163
+  },
+  "helpers": {
+    "build-unslop-triage-and-refine-only-gate": {
+      "steps": 60,
+      "cost": 72813,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r1-unslop-triage-and-refine-only-gate": {
+      "steps": 60,
+      "cost": 75401,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r1-unslop-triage-and-refine-only-gate": {
+      "steps": 60,
+      "cost": 77701,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r2-unslop-triage-and-refine-only-gate": {
+      "steps": 60,
+      "cost": 71862,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r2-unslop-triage-and-refine-only-gate": {
+      "steps": 60,
+      "cost": 49700,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r3-unslop-triage-and-refine-only-gate": {
+      "steps": 60,
+      "cost": 63824,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r3-unslop-triage-and-refine-only-gate": {
+      "steps": 60,
+      "cost": 62734,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    }
+  }
+}

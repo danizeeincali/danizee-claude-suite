@@ -1,0 +1,145 @@
+{
+  "streams": [
+    {
+      "name": "_meta",
+      "state": "meta",
+      "isolation": "worktree",
+      "mode": "marathon",
+      "command": "w-marathon",
+      "created": "2026-10-30T23:28:29.299Z",
+      "tasks": [],
+      "finished": "2026-11-02T07:21:19.873Z"
+    },
+    {
+      "name": "unslop-slop-audit",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-slop-audit.md",
+      "next": "integration wires it",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-slop-audit",
+      "phase": "done",
+      "base": "e2d81ce5fe4cf53073d5faffcd9dd5cbc7b1dcbd"
+    },
+    {
+      "name": "unslop-direction-brief",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-direction-brief.md",
+      "next": "integration wires it",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-direction-brief",
+      "phase": "done",
+      "base": "e2d81ce5fe4cf53073d5faffcd9dd5cbc7b1dcbd"
+    },
+    {
+      "name": "unslop-triage-and-refine-only-gate",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-triage-and-refine-only-gate.md",
+      "next": "integration wires it",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-triage-and-refine-only-gate",
+      "phase": "done",
+      "base": "b67b1e322ae3e966871c10cb30b0ad3110d790d7"
+    },
+    {
+      "name": "unslop-ordered-redline-passes",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-ordered-redline-passes.md",
+      "next": "integration wires it",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-ordered-redline-passes",
+      "phase": "done",
+      "base": "e2d81ce5fe4cf53073d5faffcd9dd5cbc7b1dcbd"
+    },
+    {
+      "name": "unslop-design-tokens",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-design-tokens.md",
+      "next": "integration wires it",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-design-tokens",
+      "phase": "done",
+      "base": "b67b1e322ae3e966871c10cb30b0ad3110d790d7"
+    },
+    {
+      "name": "unslop-glyph-and-duotone-effects",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-glyph-and-duotone-effects.md",
+      "next": "integration wires it",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-glyph-and-duotone-effects",
+      "phase": "done",
+      "base": "53e5f6acc5f98261def53b24780b1f0fe6b1d46f"
+    },
+    {
+      "name": "unslop-visual-direction",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-visual-direction.md",
+      "next": "integration wires it",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-visual-direction",
+      "phase": "done",
+      "base": "53e5f6acc5f98261def53b24780b1f0fe6b1d46f"
+    },
+    {
+      "name": "unslop-image-generation-gate",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-image-generation-gate.md",
+      "next": "integration wires it",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-image-generation-gate",
+      "phase": "done",
+      "base": "53e5f6acc5f98261def53b24780b1f0fe6b1d46f"
+    },
+    {
+      "name": "unslop-live-page-snapshot",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-live-page-snapshot.md",
+      "next": "integration wires it",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-live-page-snapshot",
+      "phase": "done",
+      "base": "242ee1cf5725f5bc97e601a2c135695ba47a4e7b"
+    },
+    {
+      "name": "unslop-story-video-renderer",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-story-video-renderer.md",
+      "next": "integration wires it",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-story-video-renderer",
+      "phase": "done",
+      "base": "242ee1cf5725f5bc97e601a2c135695ba47a4e7b"
+    },
+    {
+      "name": "unslop-story-video-authoring",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-story-video-authoring.md",
+      "next": "integration wires it",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-story-video-authoring",
+      "phase": "done",
+      "base": "242ee1cf5725f5bc97e601a2c135695ba47a4e7b"
+    },
+    {
+      "name": "unslop-do-not-list-and-final-checklist",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/briefs/unslop-do-not-list-and-final-checklist.md",
+      "next": "integration wires it",
+      "tasks": [],
+      "isolation": "../danizee-claude-suite-unslop-do-not-list-and-final-checklist",
+      "phase": "done",
+      "base": "b67b1e322ae3e966871c10cb30b0ad3110d790d7"
+    },
+    {
+      "name": "integration",
+      "state": "done",
+      "plan": ".claude/bbs/runs/2026-10-30-unslop/integration.md",
+      "next": "after every build stream is done: wire each power into its approved steps",
+      "tasks": [],
+      "phase": "done",
+      "isolation": "../danizee-claude-suite-integration",
+      "base": "f290087d7a04c481901f3d585b537722aee5c804"
+    }
+  ],
+  "handoff": null
+}

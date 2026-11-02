@@ -1,0 +1,307 @@
+{
+  "run": "2026-10-30-unslop",
+  "ts": "2026-10-30T22:43:51.690Z",
+  "usage_evidence": "owner",
+  "targets": {
+    "unslop slop audit": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 6: Review",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 6: Review",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 6: Review",
+        "how": "For UI, landing page or dashboard tasks, walk the changed screens against the slop-sign list and write one line per sign with its fix; unresolved signs stop the review. Advisory for non-UI work.",
+        "mode": "blocking",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "how": "In UI, landing page or dashboard streams, run the slop audit each loop pass and treat unresolved signs as an unmet build gate. Advisory for non-UI streams.",
+        "mode": "blocking",
+        "by": "proposed"
+      }
+    ],
+    "unslop direction brief": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 2: Plan",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 2: Plan",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 2: Plan",
+        "how": "For UI, landing page or dashboard tasks, write the five-line direction (product, character, world, moments, signature) into the plan before any visual change; advisory otherwise.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 1: Interview (HIL — once)",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 1: Interview (HIL — once)",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 1: Interview (HIL — once)",
+        "how": "For UI, landing page or dashboard streams, derive the direction from the product and confirm it in the single interview batch; advisory for non-UI work.",
+        "mode": "advisory",
+        "by": "proposed"
+      }
+    ],
+    "unslop triage and refine-only gate": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 1: Interview (MANDATORY - NEVER SKIP)",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 1: Interview (MANDATORY - NEVER SKIP)",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 1: Interview (MANDATORY - NEVER SKIP)",
+        "how": "For UI, landing page or dashboard tasks, grade the existing screen as heavy, light or no slop and ask the user to confirm the direction in the interview; advisory otherwise.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 2: Kickoff (HIL — the last question)",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 2: Kickoff (HIL — the last question)",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 2: Kickoff (HIL — the last question)",
+        "how": "For UI, landing page or dashboard streams, include the triage grade and refine-only option in the kickoff question; advisory for non-UI work.",
+        "mode": "advisory",
+        "by": "proposed"
+      }
+    ],
+    "unslop ordered redline passes": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 5: Build",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 5: Build",
+        "how": "When building or redesigning UI, landing page or dashboard screens, apply the nine passes in order, finishing each across the whole screen; advisory otherwise.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "how": "In UI, landing page or dashboard streams, run one ordered pass per loop iteration from spacing to motion; advisory for non-UI streams.",
+        "mode": "advisory",
+        "by": "proposed"
+      }
+    ],
+    "unslop design tokens": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 3: Spec",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 3: Spec",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 3: Spec",
+        "how": "For UI, landing page or dashboard specs, use the token sheet as starting values for spacing, ramps, type and motion unless the project already has a system; advisory otherwise.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "how": "In UI streams, pull spacing, color, radius and motion values from the token sheet when the project has none; advisory for non-UI work.",
+        "mode": "advisory",
+        "by": "proposed"
+      }
+    ],
+    "unslop glyph and duotone effects": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 5: Build",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 5: Build",
+        "how": "When a landing page hero image needs to match the palette, offer one glyph, halftone, dither or duotone treatment on the main visual only; advisory otherwise.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "how": "In landing page streams with a hero image, apply a single duotone or glyph treatment in the visuals pass; advisory for non-UI streams.",
+        "mode": "advisory",
+        "by": "proposed"
+      }
+    ],
+    "unslop visual direction": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 2: Plan",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 2: Plan",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 2: Plan",
+        "how": "For landing page or empty-state work, decide whether a visual is needed and write it as one plain sentence before any generation; advisory for dashboards and non-UI work.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "how": "In landing page streams, choose the visual style and write the prompt recipe only after the screen works without it; advisory for non-UI work.",
+        "mode": "advisory",
+        "by": "proposed"
+      }
+    ],
+    "unslop image generation gate": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 5: Build",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 5: Build",
+        "how": "Before any paid image generation for a UI or landing page, show prompt, model and size and wait for approval; if declined leave an empty slot and put the prompt in the report.",
+        "mode": "blocking",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "how": "Before any paid image generation in a UI or landing page stream, require approval of prompt, model and size; declined means an empty slot, not a stalled loop.",
+        "mode": "blocking",
+        "by": "proposed"
+      }
+    ],
+    "unslop live page snapshot": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 0: Search",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 0: Search",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 0: Search",
+        "how": "When a UI redesign starts from only a live URL, save a static HTML copy and screenshot to work on and compare against; advisory otherwise.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 0: Search",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 0: Search",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 0: Search",
+        "how": "For UI or landing page streams that begin from a live link, snapshot the page once up front as the baseline copy; advisory for non-UI work.",
+        "mode": "advisory",
+        "by": "proposed"
+      }
+    ],
+    "unslop story video renderer": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 5: Build",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 5: Build",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 5: Build",
+        "how": "When the user asks for a before-and-after video of a UI redesign, render the story page to MP4 with the headless browser and ffmpeg; advisory and optional.",
+        "mode": "advisory",
+        "by": "proposed"
+      }
+    ],
+    "unslop story video authoring": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 3: Spec",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 3: Spec",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 3: Spec",
+        "how": "When a before-and-after story video is requested for a UI redesign, spec the story page as three to five CSS-only steps with redlines; advisory otherwise.",
+        "mode": "advisory",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "reach": "/w-marathon › ⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "workflow": "w-marathon",
+        "step": "⛔ CHECKPOINT 4: Loop — per stream, until the build gate is met",
+        "how": "In UI streams that ship a redesign story, author the story steps from the original screen after the passes are done; advisory for non-UI work.",
+        "mode": "advisory",
+        "by": "proposed"
+      }
+    ],
+    "unslop do-not list and final checklist": [
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "file": ".claude/commands/.shortcuts/w-plan-tdd-swarm.md",
+        "at": "⛔ CHECKPOINT 6: Review",
+        "reach": "/w-plan-tdd-swarm › ⛔ CHECKPOINT 6: Review",
+        "workflow": "w-plan-tdd-swarm",
+        "step": "⛔ CHECKPOINT 6: Review",
+        "how": "For UI, landing page or dashboard work, check the redesign against the do-not list, the closing checklist and the swap-the-product-name template test; failures stop the review. Advisory for non-UI work.",
+        "mode": "blocking",
+        "by": "proposed"
+      },
+      {
+        "kind": "workflow",
+        "surface": "workflow:.claude/commands/.shortcuts/w-marathon.md",
+        "file": ".claude/commands/.shortcuts/w-marathon.md",
+        "at": "Completion Checklist",
+        "reach": "/w-marathon › Completion Checklist",
+        "workflow": "w-marathon",
+        "step": "Completion Checklist",
+        "how": "For UI, landing page or dashboard streams, confirm the do-not limits and template-fit test before closing; advisory for non-UI work.",
+        "mode": "advisory",
+        "by": "proposed"
+      }
+    ]
+  }
+}

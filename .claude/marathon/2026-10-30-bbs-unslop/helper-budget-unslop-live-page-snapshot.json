@@ -1,0 +1,176 @@
+{
+  "version": 1,
+  "openedAt": 1793404559414,
+  "limits": {
+    "steps": 400,
+    "cost": 2000000,
+    "timeMs": null
+  },
+  "spent": {
+    "steps": 780,
+    "cost": 1372310
+  },
+  "clock": {
+    "depth": 0,
+    "startedAt": null,
+    "elapsedMs": 75173210
+  },
+  "helpers": {
+    "build-unslop-live-page-snapshot": {
+      "steps": 60,
+      "cost": 148196,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r1-unslop-live-page-snapshot": {
+      "steps": 60,
+      "cost": 99089,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r1-unslop-live-page-snapshot": {
+      "steps": 60,
+      "cost": 177900,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r2-unslop-live-page-snapshot": {
+      "steps": 60,
+      "cost": 94317,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r2-unslop-live-page-snapshot": {
+      "steps": 60,
+      "cost": 91259,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r3-unslop-live-page-snapshot": {
+      "steps": 60,
+      "cost": 92654,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r3-unslop-live-page-snapshot": {
+      "steps": 60,
+      "cost": 82798,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r4-unslop-live-page-snapshot": {
+      "steps": 60,
+      "cost": 104166,
+      "ok": 1,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r4-unslop-live-page-snapshot": {
+      "steps": 60,
+      "cost": 174238,
+      "ok": 1,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r5-unslop-live-page-snapshot": {
+      "steps": 60,
+      "cost": 90676,
+      "ok": 1,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r5-unslop-live-page-snapshot": {
+      "steps": 60,
+      "cost": 75530,
+      "ok": 1,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r6-unslop-live-page-snapshot": {
+      "steps": 60,
+      "cost": 85707,
+      "ok": 1,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r6-unslop-live-page-snapshot": {
+      "steps": 60,
+      "cost": 55780,
+      "ok": 1,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    }
+  }
+}

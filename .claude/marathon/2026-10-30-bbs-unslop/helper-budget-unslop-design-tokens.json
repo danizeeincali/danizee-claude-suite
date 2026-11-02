@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "openedAt": 1793403841166,
+  "limits": {
+    "steps": 400,
+    "cost": 2000000,
+    "timeMs": null
+  },
+  "spent": {
+    "steps": 300,
+    "cost": 363567
+  },
+  "clock": {
+    "depth": 0,
+    "startedAt": null,
+    "elapsedMs": 1120983
+  },
+  "helpers": {
+    "build-unslop-design-tokens": {
+      "steps": 60,
+      "cost": 95737,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r1-unslop-design-tokens": {
+      "steps": 60,
+      "cost": 80019,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r1-unslop-design-tokens": {
+      "steps": 60,
+      "cost": 54946,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r2-unslop-design-tokens": {
+      "steps": 60,
+      "cost": 87018,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r2-unslop-design-tokens": {
+      "steps": 60,
+      "cost": 45847,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    }
+  }
+}

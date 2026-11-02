@@ -1,0 +1,525 @@
+{
+  "run": "2026-10-30-unslop",
+  "source_identity": "git:4652254daff586ff4739849395a127b56f7f8cc7",
+  "ts": "2026-10-30T22:41:48.505Z",
+  "candidates": {
+    "unslop slop audit": [
+      {
+        "id": "helper:.claude/helpers/kit/design-brief.js",
+        "kind": "helper",
+        "name": "design-brief",
+        "path": ".claude/helpers/kit/design-brief.js",
+        "score": 0.089
+      },
+      {
+        "id": "module:src/lib/kit/design-brief.js",
+        "kind": "module",
+        "name": "design-brief",
+        "path": "src/lib/kit/design-brief.js",
+        "score": 0.089
+      },
+      {
+        "id": "helper:.claude/helpers/kit/landing-sections.js",
+        "kind": "helper",
+        "name": "landing-sections",
+        "path": ".claude/helpers/kit/landing-sections.js",
+        "score": 0.083
+      },
+      {
+        "id": "module:src/lib/kit/landing-sections.js",
+        "kind": "module",
+        "name": "landing-sections",
+        "path": "src/lib/kit/landing-sections.js",
+        "score": 0.083
+      },
+      {
+        "id": "command:.claude/commands/analysis/layout.md",
+        "kind": "command",
+        "name": "layout",
+        "path": ".claude/commands/analysis/layout.md",
+        "score": 0.067
+      }
+    ],
+    "unslop direction brief": [
+      {
+        "id": "helper:.claude/helpers/kit/design-brief.js",
+        "kind": "helper",
+        "name": "design-brief",
+        "path": ".claude/helpers/kit/design-brief.js",
+        "score": 0.147
+      },
+      {
+        "id": "module:src/lib/kit/design-brief.js",
+        "kind": "module",
+        "name": "design-brief",
+        "path": "src/lib/kit/design-brief.js",
+        "score": 0.147
+      },
+      {
+        "id": "helper:.claude/helpers/kit/exit-codes.js",
+        "kind": "helper",
+        "name": "exit-codes",
+        "path": ".claude/helpers/kit/exit-codes.js",
+        "score": 0.13
+      },
+      {
+        "id": "module:src/lib/kit/exit-codes.js",
+        "kind": "module",
+        "name": "exit-codes",
+        "path": "src/lib/kit/exit-codes.js",
+        "score": 0.13
+      },
+      {
+        "id": "command:.claude/commands/analysis/design.md",
+        "kind": "command",
+        "name": "design",
+        "path": ".claude/commands/analysis/design.md",
+        "score": 0.077
+      }
+    ],
+    "unslop triage and refine-only gate": [
+      {
+        "id": "command:.claude/commands/.shortcuts/w-bg-idea-tdd-swarm.md",
+        "kind": "command",
+        "name": "w-bg-idea-tdd-swarm",
+        "path": ".claude/commands/.shortcuts/w-bg-idea-tdd-swarm.md",
+        "score": 0.079
+      },
+      {
+        "id": "helper:.claude/helpers/kit/triage.js",
+        "kind": "helper",
+        "name": "triage",
+        "path": ".claude/helpers/kit/triage.js",
+        "score": 0.078
+      },
+      {
+        "id": "module:src/lib/kit/triage.js",
+        "kind": "module",
+        "name": "triage",
+        "path": "src/lib/kit/triage.js",
+        "score": 0.078
+      },
+      {
+        "id": "helper:.claude/helpers/kit/design-brief.js",
+        "kind": "helper",
+        "name": "design-brief",
+        "path": ".claude/helpers/kit/design-brief.js",
+        "score": 0.076
+      },
+      {
+        "id": "module:src/lib/kit/design-brief.js",
+        "kind": "module",
+        "name": "design-brief",
+        "path": "src/lib/kit/design-brief.js",
+        "score": 0.076
+      }
+    ],
+    "unslop ordered redline passes": [
+      {
+        "id": "command:.claude/commands/analysis/layout.md",
+        "kind": "command",
+        "name": "layout",
+        "path": ".claude/commands/analysis/layout.md",
+        "score": 0.13
+      },
+      {
+        "id": "helper:.claude/helpers/kit/design-brief.js",
+        "kind": "helper",
+        "name": "design-brief",
+        "path": ".claude/helpers/kit/design-brief.js",
+        "score": 0.095
+      },
+      {
+        "id": "module:src/lib/kit/design-brief.js",
+        "kind": "module",
+        "name": "design-brief",
+        "path": "src/lib/kit/design-brief.js",
+        "score": 0.095
+      },
+      {
+        "id": "helper:.claude/helpers/kit/entrance.js",
+        "kind": "helper",
+        "name": "entrance",
+        "path": ".claude/helpers/kit/entrance.js",
+        "score": 0.09
+      },
+      {
+        "id": "module:src/lib/kit/entrance.js",
+        "kind": "module",
+        "name": "entrance",
+        "path": "src/lib/kit/entrance.js",
+        "score": 0.09
+      }
+    ],
+    "unslop design tokens": [
+      {
+        "id": "command:.claude/commands/analysis/theme.md",
+        "kind": "command",
+        "name": "theme",
+        "path": ".claude/commands/analysis/theme.md",
+        "score": 0.144
+      },
+      {
+        "id": "helper:.claude/helpers/kit/design-brief.js",
+        "kind": "helper",
+        "name": "design-brief",
+        "path": ".claude/helpers/kit/design-brief.js",
+        "score": 0.102
+      },
+      {
+        "id": "module:src/lib/kit/design-brief.js",
+        "kind": "module",
+        "name": "design-brief",
+        "path": "src/lib/kit/design-brief.js",
+        "score": 0.102
+      },
+      {
+        "id": "helper:.claude/helpers/kit/entrance.js",
+        "kind": "helper",
+        "name": "entrance",
+        "path": ".claude/helpers/kit/entrance.js",
+        "score": 0.099
+      },
+      {
+        "id": "module:src/lib/kit/entrance.js",
+        "kind": "module",
+        "name": "entrance",
+        "path": "src/lib/kit/entrance.js",
+        "score": 0.099
+      }
+    ],
+    "unslop glyph and duotone effects": [
+      {
+        "id": "helper:.claude/helpers/kit/layer-place.js",
+        "kind": "helper",
+        "name": "layer-place",
+        "path": ".claude/helpers/kit/layer-place.js",
+        "score": 0.062
+      },
+      {
+        "id": "module:src/lib/kit/layer-place.js",
+        "kind": "module",
+        "name": "layer-place",
+        "path": "src/lib/kit/layer-place.js",
+        "score": 0.062
+      },
+      {
+        "id": "helper:.claude/helpers/kit/bg-fill.js",
+        "kind": "helper",
+        "name": "bg-fill",
+        "path": ".claude/helpers/kit/bg-fill.js",
+        "score": 0.061
+      },
+      {
+        "id": "module:src/lib/kit/bg-fill.js",
+        "kind": "module",
+        "name": "bg-fill",
+        "path": "src/lib/kit/bg-fill.js",
+        "score": 0.061
+      },
+      {
+        "id": "helper:.claude/helpers/kit/impact.js",
+        "kind": "helper",
+        "name": "impact",
+        "path": ".claude/helpers/kit/impact.js",
+        "score": 0.049
+      }
+    ],
+    "unslop visual direction": [
+      {
+        "id": "helper:.claude/helpers/kit/design-brief.js",
+        "kind": "helper",
+        "name": "design-brief",
+        "path": ".claude/helpers/kit/design-brief.js",
+        "score": 0.103
+      },
+      {
+        "id": "module:src/lib/kit/design-brief.js",
+        "kind": "module",
+        "name": "design-brief",
+        "path": "src/lib/kit/design-brief.js",
+        "score": 0.103
+      },
+      {
+        "id": "helper:.claude/helpers/kit/exit-codes.js",
+        "kind": "helper",
+        "name": "exit-codes",
+        "path": ".claude/helpers/kit/exit-codes.js",
+        "score": 0.085
+      },
+      {
+        "id": "module:src/lib/kit/exit-codes.js",
+        "kind": "module",
+        "name": "exit-codes",
+        "path": "src/lib/kit/exit-codes.js",
+        "score": 0.085
+      },
+      {
+        "id": "helper:.claude/helpers/kit/landing-sections.js",
+        "kind": "helper",
+        "name": "landing-sections",
+        "path": ".claude/helpers/kit/landing-sections.js",
+        "score": 0.077
+      }
+    ],
+    "unslop image generation gate": [
+      {
+        "id": "helper:.claude/helpers/kit/bg-fill.js",
+        "kind": "helper",
+        "name": "bg-fill",
+        "path": ".claude/helpers/kit/bg-fill.js",
+        "score": 0.156
+      },
+      {
+        "id": "module:src/lib/kit/bg-fill.js",
+        "kind": "module",
+        "name": "bg-fill",
+        "path": "src/lib/kit/bg-fill.js",
+        "score": 0.156
+      },
+      {
+        "id": "helper:.claude/helpers/kit/design-brief.js",
+        "kind": "helper",
+        "name": "design-brief",
+        "path": ".claude/helpers/kit/design-brief.js",
+        "score": 0.083
+      },
+      {
+        "id": "module:src/lib/kit/design-brief.js",
+        "kind": "module",
+        "name": "design-brief",
+        "path": "src/lib/kit/design-brief.js",
+        "score": 0.083
+      },
+      {
+        "id": "helper:.claude/helpers/kit/layer-place.js",
+        "kind": "helper",
+        "name": "layer-place",
+        "path": ".claude/helpers/kit/layer-place.js",
+        "score": 0.078
+      }
+    ],
+    "unslop live page snapshot": [
+      {
+        "id": "helper:.claude/helpers/kit/review-fixtures/repos/pager-off-by-one/src/legacy.js",
+        "kind": "helper",
+        "name": "legacy",
+        "path": ".claude/helpers/kit/review-fixtures/repos/pager-off-by-one/src/legacy.js",
+        "score": 0.151
+      },
+      {
+        "id": "module:src/lib/kit/review-fixtures/repos/pager-off-by-one/src/legacy.js",
+        "kind": "module",
+        "name": "legacy",
+        "path": "src/lib/kit/review-fixtures/repos/pager-off-by-one/src/legacy.js",
+        "score": 0.151
+      },
+      {
+        "id": "command:.claude/commands/analysis/theme.md",
+        "kind": "command",
+        "name": "theme",
+        "path": ".claude/commands/analysis/theme.md",
+        "score": 0.113
+      },
+      {
+        "id": "helper:.claude/helpers/kit/review-fixtures/repos/pager-off-by-one/src/pager.js",
+        "kind": "helper",
+        "name": "pager",
+        "path": ".claude/helpers/kit/review-fixtures/repos/pager-off-by-one/src/pager.js",
+        "score": 0.104
+      },
+      {
+        "id": "module:src/lib/kit/review-fixtures/repos/pager-off-by-one/src/pager.js",
+        "kind": "module",
+        "name": "pager",
+        "path": "src/lib/kit/review-fixtures/repos/pager-off-by-one/src/pager.js",
+        "score": 0.104
+      }
+    ],
+    "unslop story video renderer": [
+      {
+        "id": "helper:.claude/helpers/kit/keyframes.js",
+        "kind": "helper",
+        "name": "keyframes",
+        "path": ".claude/helpers/kit/keyframes.js",
+        "score": 0.168
+      },
+      {
+        "id": "module:src/lib/kit/keyframes.js",
+        "kind": "module",
+        "name": "keyframes",
+        "path": "src/lib/kit/keyframes.js",
+        "score": 0.168
+      },
+      {
+        "id": "helper:.claude/helpers/kit/frame-capture.js",
+        "kind": "helper",
+        "name": "frame-capture",
+        "path": ".claude/helpers/kit/frame-capture.js",
+        "score": 0.166
+      },
+      {
+        "id": "module:src/lib/kit/frame-capture.js",
+        "kind": "module",
+        "name": "frame-capture",
+        "path": "src/lib/kit/frame-capture.js",
+        "score": 0.166
+      },
+      {
+        "id": "helper:.claude/helpers/kit/layer-place.js",
+        "kind": "helper",
+        "name": "layer-place",
+        "path": ".claude/helpers/kit/layer-place.js",
+        "score": 0.108
+      }
+    ],
+    "unslop story video authoring": [
+      {
+        "id": "helper:.claude/helpers/kit/keyframes.js",
+        "kind": "helper",
+        "name": "keyframes",
+        "path": ".claude/helpers/kit/keyframes.js",
+        "score": 0.153
+      },
+      {
+        "id": "module:src/lib/kit/keyframes.js",
+        "kind": "module",
+        "name": "keyframes",
+        "path": "src/lib/kit/keyframes.js",
+        "score": 0.153
+      },
+      {
+        "id": "command:.claude/commands/analysis/design.md",
+        "kind": "command",
+        "name": "design",
+        "path": ".claude/commands/analysis/design.md",
+        "score": 0.072
+      },
+      {
+        "id": "helper:.claude/helpers/bbs/steps.js",
+        "kind": "helper",
+        "name": "steps",
+        "path": ".claude/helpers/bbs/steps.js",
+        "score": 0.07
+      },
+      {
+        "id": "module:src/lib/bbs/steps.js",
+        "kind": "module",
+        "name": "steps",
+        "path": "src/lib/bbs/steps.js",
+        "score": 0.07
+      }
+    ],
+    "unslop do-not list and final checklist": [
+      {
+        "id": "helper:.claude/helpers/kit/exit-codes.js",
+        "kind": "helper",
+        "name": "exit-codes",
+        "path": ".claude/helpers/kit/exit-codes.js",
+        "score": 0.094
+      },
+      {
+        "id": "module:src/lib/kit/exit-codes.js",
+        "kind": "module",
+        "name": "exit-codes",
+        "path": "src/lib/kit/exit-codes.js",
+        "score": 0.094
+      },
+      {
+        "id": "helper:.claude/helpers/kit/landing-sections.js",
+        "kind": "helper",
+        "name": "landing-sections",
+        "path": ".claude/helpers/kit/landing-sections.js",
+        "score": 0.094
+      },
+      {
+        "id": "module:src/lib/kit/landing-sections.js",
+        "kind": "module",
+        "name": "landing-sections",
+        "path": "src/lib/kit/landing-sections.js",
+        "score": 0.094
+      },
+      {
+        "id": "command:.claude/commands/.shortcuts/w-marathon.md",
+        "kind": "command",
+        "name": "w-marathon",
+        "path": ".claude/commands/.shortcuts/w-marathon.md",
+        "score": 0.075
+      }
+    ]
+  },
+  "judgments": {
+    "unslop slop audit": {
+      "status": "missing",
+      "tool": null,
+      "why": "No candidate walks a screen against a slop-sign list; landing-sections checks page section order and CTAs, design-brief collects answers, and the rest are unrelated.",
+      "ts": "2026-10-30T22:42:54.365Z"
+    },
+    "unslop direction brief": {
+      "status": "partial",
+      "tool": "helper:.claude/helpers/kit/design-brief.js",
+      "why": "questions/assume capture product offer, audience and brand constraints, but nothing on character, world, moments or signature, no banned-adjective list, and its default brand text uses 'clean'.",
+      "ts": "2026-10-30T22:42:54.365Z"
+    },
+    "unslop triage and refine-only gate": {
+      "status": "missing",
+      "tool": null,
+      "why": "triage.js tracks finding identity across runs and issue lifecycle; no candidate grades a screen as heavy, light or no slop or gates on user agreement.",
+      "ts": "2026-10-30T22:42:54.365Z"
+    },
+    "unslop ordered redline passes": {
+      "status": "missing",
+      "tool": null,
+      "why": "No candidate applies the nine ordered passes; entrance.js has entrance keyframes using blur, scale and several easings, which conflicts with the motion pass rules rather than implementing them.",
+      "ts": "2026-10-30T22:42:54.365Z"
+    },
+    "unslop design tokens": {
+      "status": "partial",
+      "tool": "helper:.claude/helpers/kit/entrance.js",
+      "why": "entrance.js holds per-kind durations, a shared ease-out curve and a container stagger, covering part of the motion tokens only; no spacing scale, neutral ramps, type scale, radii or six-item stagger cap.",
+      "ts": "2026-10-30T22:42:54.365Z"
+    },
+    "unslop glyph and duotone effects": {
+      "status": "missing",
+      "tool": null,
+      "why": "layer-place.js and bg-fill.js place and size images; none renders glyph grids, halftone, dithering or duotone.",
+      "ts": "2026-10-30T22:42:54.365Z"
+    },
+    "unslop visual direction": {
+      "status": "missing",
+      "tool": null,
+      "why": "No candidate decides whether a visual is needed, writes a one-sentence visual brief or builds a generation prompt; landing-sections only lists a hero visual as a required element.",
+      "ts": "2026-10-30T22:42:54.365Z"
+    },
+    "unslop image generation gate": {
+      "status": "missing",
+      "tool": null,
+      "why": "No candidate generates images or asks for a yes before a paid run; bg-fill.js only computes CSS background sizing for an existing image.",
+      "ts": "2026-10-30T22:42:54.365Z"
+    },
+    "unslop live page snapshot": {
+      "status": "missing",
+      "tool": null,
+      "why": "The only candidates are pager and legacy review fixtures and the theme command; none opens a live page in a headless browser or inlines its assets.",
+      "ts": "2026-10-30T22:42:54.365Z"
+    },
+    "unslop story video renderer": {
+      "status": "partial",
+      "tool": "helper:.claude/helpers/kit/frame-capture.js",
+      "why": "capture steps a faked clock at fps, pauses CSS animations and screenshots each frame with a manifest, covering the deterministic frame core; no ffmpeg MP4 encoding, stage scaling, redline overlays, step classes, play mode or loopback server.",
+      "ts": "2026-10-30T22:42:54.365Z"
+    },
+    "unslop story video authoring": {
+      "status": "partial",
+      "tool": "helper:.claude/helpers/kit/keyframes.js",
+      "why": "check enforces one-sentence stories, seamless loop start and end, and unison offsets, and the engine evaluates eased tracks; no step plan, CSS tween rules for gradients, pills or text, redlines, camera framing or credit line.",
+      "ts": "2026-10-30T22:42:54.365Z"
+    },
+    "unslop do-not list and final checklist": {
+      "status": "partial",
+      "tool": "helper:.claude/helpers/kit/landing-sections.js",
+      "why": "check verifies section order against the canonical plan and that hero and final CTAs exist and match; nothing covers logo handling, emoji or exclamation marks, dead bands, real visuals, motion calm or the template test.",
+      "ts": "2026-10-30T22:42:54.365Z"
+    }
+  }
+}

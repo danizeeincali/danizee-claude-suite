@@ -1,0 +1,647 @@
+{
+  "tolerance": {
+    "high": 0,
+    "medium": 2,
+    "low": 5,
+    "passes_in_a_row": 2
+  },
+  "lines": [
+    {
+      "id": "tests_green_unslop-slop-audit",
+      "label": "unslop-slop-audit: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "unslop-slop-audit"
+    },
+    {
+      "id": "egress_zero_unslop-slop-audit",
+      "label": "unslop-slop-audit: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_unslop-slop-audit",
+      "stream": "unslop-slop-audit"
+    },
+    {
+      "id": "six_sigma_unslop-slop-audit",
+      "label": "unslop-slop-audit: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "unslop-slop-audit"
+    },
+    {
+      "id": "wired_unslop-slop-audit",
+      "label": "unslop-slop-audit: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_unslop-slop-audit",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_unslop-slop-audit",
+      "label": "unslop-slop-audit: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_unslop-slop-audit",
+      "stream": "unslop-slop-audit"
+    },
+    {
+      "id": "tests_green_unslop-direction-brief",
+      "label": "unslop-direction-brief: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "unslop-direction-brief"
+    },
+    {
+      "id": "egress_zero_unslop-direction-brief",
+      "label": "unslop-direction-brief: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_unslop-direction-brief",
+      "stream": "unslop-direction-brief"
+    },
+    {
+      "id": "six_sigma_unslop-direction-brief",
+      "label": "unslop-direction-brief: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "unslop-direction-brief"
+    },
+    {
+      "id": "wired_unslop-direction-brief",
+      "label": "unslop-direction-brief: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_unslop-direction-brief",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_unslop-direction-brief",
+      "label": "unslop-direction-brief: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_unslop-direction-brief",
+      "stream": "unslop-direction-brief"
+    },
+    {
+      "id": "tests_green_unslop-triage-and-refine-only-gate",
+      "label": "unslop-triage-and-refine-only-gate: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "unslop-triage-and-refine-only-gate"
+    },
+    {
+      "id": "egress_zero_unslop-triage-and-refine-only-gate",
+      "label": "unslop-triage-and-refine-only-gate: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_unslop-triage-and-refine-only-gate",
+      "stream": "unslop-triage-and-refine-only-gate"
+    },
+    {
+      "id": "six_sigma_unslop-triage-and-refine-only-gate",
+      "label": "unslop-triage-and-refine-only-gate: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "unslop-triage-and-refine-only-gate"
+    },
+    {
+      "id": "wired_unslop-triage-and-refine-only-gate",
+      "label": "unslop-triage-and-refine-only-gate: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_unslop-triage-and-refine-only-gate",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_unslop-triage-and-refine-only-gate",
+      "label": "unslop-triage-and-refine-only-gate: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_unslop-triage-and-refine-only-gate",
+      "stream": "unslop-triage-and-refine-only-gate"
+    },
+    {
+      "id": "tests_green_unslop-ordered-redline-passes",
+      "label": "unslop-ordered-redline-passes: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "unslop-ordered-redline-passes"
+    },
+    {
+      "id": "egress_zero_unslop-ordered-redline-passes",
+      "label": "unslop-ordered-redline-passes: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_unslop-ordered-redline-passes",
+      "stream": "unslop-ordered-redline-passes"
+    },
+    {
+      "id": "six_sigma_unslop-ordered-redline-passes",
+      "label": "unslop-ordered-redline-passes: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "unslop-ordered-redline-passes"
+    },
+    {
+      "id": "wired_unslop-ordered-redline-passes",
+      "label": "unslop-ordered-redline-passes: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_unslop-ordered-redline-passes",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_unslop-ordered-redline-passes",
+      "label": "unslop-ordered-redline-passes: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_unslop-ordered-redline-passes",
+      "stream": "unslop-ordered-redline-passes"
+    },
+    {
+      "id": "tests_green_unslop-design-tokens",
+      "label": "unslop-design-tokens: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "unslop-design-tokens"
+    },
+    {
+      "id": "egress_zero_unslop-design-tokens",
+      "label": "unslop-design-tokens: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_unslop-design-tokens",
+      "stream": "unslop-design-tokens"
+    },
+    {
+      "id": "six_sigma_unslop-design-tokens",
+      "label": "unslop-design-tokens: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "unslop-design-tokens"
+    },
+    {
+      "id": "wired_unslop-design-tokens",
+      "label": "unslop-design-tokens: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_unslop-design-tokens",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_unslop-design-tokens",
+      "label": "unslop-design-tokens: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_unslop-design-tokens",
+      "stream": "unslop-design-tokens"
+    },
+    {
+      "id": "tests_green_unslop-glyph-and-duotone-effects",
+      "label": "unslop-glyph-and-duotone-effects: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "unslop-glyph-and-duotone-effects"
+    },
+    {
+      "id": "egress_zero_unslop-glyph-and-duotone-effects",
+      "label": "unslop-glyph-and-duotone-effects: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_unslop-glyph-and-duotone-effects",
+      "stream": "unslop-glyph-and-duotone-effects"
+    },
+    {
+      "id": "six_sigma_unslop-glyph-and-duotone-effects",
+      "label": "unslop-glyph-and-duotone-effects: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "unslop-glyph-and-duotone-effects"
+    },
+    {
+      "id": "wired_unslop-glyph-and-duotone-effects",
+      "label": "unslop-glyph-and-duotone-effects: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_unslop-glyph-and-duotone-effects",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_unslop-glyph-and-duotone-effects",
+      "label": "unslop-glyph-and-duotone-effects: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_unslop-glyph-and-duotone-effects",
+      "stream": "unslop-glyph-and-duotone-effects"
+    },
+    {
+      "id": "tests_green_unslop-visual-direction",
+      "label": "unslop-visual-direction: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "unslop-visual-direction"
+    },
+    {
+      "id": "egress_zero_unslop-visual-direction",
+      "label": "unslop-visual-direction: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_unslop-visual-direction",
+      "stream": "unslop-visual-direction"
+    },
+    {
+      "id": "six_sigma_unslop-visual-direction",
+      "label": "unslop-visual-direction: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "unslop-visual-direction"
+    },
+    {
+      "id": "wired_unslop-visual-direction",
+      "label": "unslop-visual-direction: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_unslop-visual-direction",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_unslop-visual-direction",
+      "label": "unslop-visual-direction: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_unslop-visual-direction",
+      "stream": "unslop-visual-direction"
+    },
+    {
+      "id": "tests_green_unslop-image-generation-gate",
+      "label": "unslop-image-generation-gate: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "unslop-image-generation-gate"
+    },
+    {
+      "id": "egress_zero_unslop-image-generation-gate",
+      "label": "unslop-image-generation-gate: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_unslop-image-generation-gate",
+      "stream": "unslop-image-generation-gate"
+    },
+    {
+      "id": "six_sigma_unslop-image-generation-gate",
+      "label": "unslop-image-generation-gate: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "unslop-image-generation-gate"
+    },
+    {
+      "id": "wired_unslop-image-generation-gate",
+      "label": "unslop-image-generation-gate: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_unslop-image-generation-gate",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_unslop-image-generation-gate",
+      "label": "unslop-image-generation-gate: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_unslop-image-generation-gate",
+      "stream": "unslop-image-generation-gate"
+    },
+    {
+      "id": "tests_green_unslop-live-page-snapshot",
+      "label": "unslop-live-page-snapshot: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "unslop-live-page-snapshot"
+    },
+    {
+      "id": "egress_zero_unslop-live-page-snapshot",
+      "label": "unslop-live-page-snapshot: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_unslop-live-page-snapshot",
+      "stream": "unslop-live-page-snapshot"
+    },
+    {
+      "id": "six_sigma_unslop-live-page-snapshot",
+      "label": "unslop-live-page-snapshot: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "unslop-live-page-snapshot"
+    },
+    {
+      "id": "wired_unslop-live-page-snapshot",
+      "label": "unslop-live-page-snapshot: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_unslop-live-page-snapshot",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_unslop-live-page-snapshot",
+      "label": "unslop-live-page-snapshot: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_unslop-live-page-snapshot",
+      "stream": "unslop-live-page-snapshot"
+    },
+    {
+      "id": "tests_green_unslop-story-video-renderer",
+      "label": "unslop-story-video-renderer: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "unslop-story-video-renderer"
+    },
+    {
+      "id": "egress_zero_unslop-story-video-renderer",
+      "label": "unslop-story-video-renderer: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_unslop-story-video-renderer",
+      "stream": "unslop-story-video-renderer"
+    },
+    {
+      "id": "six_sigma_unslop-story-video-renderer",
+      "label": "unslop-story-video-renderer: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "unslop-story-video-renderer"
+    },
+    {
+      "id": "wired_unslop-story-video-renderer",
+      "label": "unslop-story-video-renderer: wired into its target, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "measure:wired_unslop-story-video-renderer",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_unslop-story-video-renderer",
+      "label": "unslop-story-video-renderer: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_unslop-story-video-renderer",
+      "stream": "unslop-story-video-renderer"
+    },
+    {
+      "id": "tests_green_unslop-story-video-authoring",
+      "label": "unslop-story-video-authoring: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "unslop-story-video-authoring"
+    },
+    {
+      "id": "egress_zero_unslop-story-video-authoring",
+      "label": "unslop-story-video-authoring: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_unslop-story-video-authoring",
+      "stream": "unslop-story-video-authoring"
+    },
+    {
+      "id": "six_sigma_unslop-story-video-authoring",
+      "label": "unslop-story-video-authoring: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "unslop-story-video-authoring"
+    },
+    {
+      "id": "wired_unslop-story-video-authoring",
+      "label": "unslop-story-video-authoring: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_unslop-story-video-authoring",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_unslop-story-video-authoring",
+      "label": "unslop-story-video-authoring: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_unslop-story-video-authoring",
+      "stream": "unslop-story-video-authoring"
+    },
+    {
+      "id": "tests_green_unslop-do-not-list-and-final-checklist",
+      "label": "unslop-do-not-list-and-final-checklist: green unit runs in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 1,
+      "owner": "build",
+      "source": "runs.streak:unit",
+      "stream": "unslop-do-not-list-and-final-checklist"
+    },
+    {
+      "id": "egress_zero_unslop-do-not-list-and-final-checklist",
+      "label": "unslop-do-not-list-and-final-checklist: zero egress in the packaged check",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:egress_zero_unslop-do-not-list-and-final-checklist",
+      "stream": "unslop-do-not-list-and-final-checklist"
+    },
+    {
+      "id": "six_sigma_unslop-do-not-list-and-final-checklist",
+      "label": "unslop-do-not-list-and-final-checklist: clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak",
+      "stream": "unslop-do-not-list-and-final-checklist"
+    },
+    {
+      "id": "wired_unslop-do-not-list-and-final-checklist",
+      "label": "unslop-do-not-list-and-final-checklist: wired into all 2 targets, reached by a user",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "measure:wired_unslop-do-not-list-and-final-checklist",
+      "stream": "integration"
+    },
+    {
+      "id": "packaged_unslop-do-not-list-and-final-checklist",
+      "label": "unslop-do-not-list-and-final-checklist: packaged check passes",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:packaged_unslop-do-not-list-and-final-checklist",
+      "stream": "unslop-do-not-list-and-final-checklist"
+    },
+    {
+      "id": "delivered",
+      "label": "The owner was told what they got: delivered.md lists every power, wired, with its command",
+      "type": "bool",
+      "op": "is",
+      "value": true,
+      "owner": "build",
+      "source": "measure:delivered",
+      "stream": "integration"
+    },
+    {
+      "id": "clean_reviews",
+      "label": "Clean reviews in a row",
+      "type": "number",
+      "op": "at_least",
+      "value": 2,
+      "owner": "build",
+      "source": "reviews.streak"
+    },
+    {
+      "id": "latest_high",
+      "label": "High findings in the latest review",
+      "type": "number",
+      "op": "at_most",
+      "value": 0,
+      "owner": "build",
+      "source": "reviews.latest.high"
+    },
+    {
+      "id": "open_high",
+      "label": "Open high findings",
+      "type": "number",
+      "op": "at_most",
+      "value": 0,
+      "owner": "build",
+      "source": "findings.open:high"
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "format": "jsx",
+  "hits": [
+    {
+      "sign": "emoji-icons",
+      "group": "icons",
+      "line": 1,
+      "excerpt": "() => (<div><h1>Welcome to the future! 🚀</h1><p>Unlock the power of seamless AI.</p><button>Get started</but",
+      "fix": "Use one consistent icon set (or no icon) instead of emoji."
+    },
+    {
+      "sign": "exclamation-marks",
+      "group": "copy",
+      "line": 1,
+      "excerpt": "ult () => (<div><h1>Welcome to the future! 🚀</h1><p>Unlock the power of seamless AI.</p><button>Get started</",
+      "fix": "End the sentence with a period, or remove the sentence."
+    },
+    {
+      "sign": "hype-words",
+      "group": "copy",
+      "line": 1,
+      "excerpt": "iv><h1>Welcome to the future! 🚀</h1><p>Unlock the power of seamless AI.</p><button>Get started</button></div>",
+      "fix": "Say what it does in plain words with a concrete detail."
+    }
+  ],
+  "counts": {
+    "surfaces": 0,
+    "type": 0,
+    "icons": 1,
+    "spacing": 0,
+    "copy": 2,
+    "components": 0,
+    "landing-hero": 0,
+    "motion": 0,
+    "template-look": 0
+  },
+  "total": 3,
+  "manual": [
+    "mixed-number-formats",
+    "rainbow-chart",
+    "pill-badge-hero",
+    "glossy-orb-logo",
+    "grey-neutrals",
+    "inter-default",
+    "leftover-brand-color"
+  ]
+}

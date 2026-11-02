@@ -1,0 +1,200 @@
+{
+  "version": 1,
+  "openedAt": 1793404561029,
+  "limits": {
+    "steps": 400,
+    "cost": 2000000,
+    "timeMs": null
+  },
+  "spent": {
+    "steps": 900,
+    "cost": 1561615
+  },
+  "clock": {
+    "depth": 0,
+    "startedAt": null,
+    "elapsedMs": 7809054
+  },
+  "helpers": {
+    "build-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 106901,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r1-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 89858,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r1-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 139331,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r2-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 87658,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r2-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 183801,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r3-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 97907,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r3-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 135354,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r4-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 92230,
+      "ok": 1,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r4-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 83333,
+      "ok": 1,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r5-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 86931,
+      "ok": 1,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r5-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 170181,
+      "ok": 1,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r6-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 88477,
+      "ok": 1,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r6-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 56628,
+      "ok": 1,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r7-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 86581,
+      "ok": 1,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r7-unslop-story-video-authoring": {
+      "steps": 60,
+      "cost": 56444,
+      "ok": 1,
+      "failed": 0,
+      "grants": 0,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    }
+  }
+}

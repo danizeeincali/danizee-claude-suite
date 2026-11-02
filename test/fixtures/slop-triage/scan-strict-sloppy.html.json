@@ -1,0 +1,76 @@
+{
+  "format": "html",
+  "hits": [
+    {
+      "sign": "purple-blue-gradient",
+      "group": "surfaces",
+      "line": 1,
+      "excerpt": "<html><body style=\"background: linear-gradient(135deg, #667eea, #764ba2)\">",
+      "fix": "Use one flat brand or neutral surface; if a gradient stays, keep it to two close shades of one hue."
+    },
+    {
+      "sign": "emoji-icons",
+      "group": "icons",
+      "line": 2,
+      "excerpt": "<h1>Welcome to the future! 🚀</h1>",
+      "fix": "Use one consistent icon set (or no icon) instead of emoji."
+    },
+    {
+      "sign": "exclamation-marks",
+      "group": "copy",
+      "line": 2,
+      "excerpt": "<h1>Welcome to the future! 🚀</h1>",
+      "fix": "End the sentence with a period, or remove the sentence."
+    },
+    {
+      "sign": "hype-words",
+      "group": "copy",
+      "line": 3,
+      "excerpt": "<p>Unlock the power of seamless, game-changing AI.</p>",
+      "fix": "Say what it does in plain words with a concrete detail."
+    },
+    {
+      "sign": "off-grid-spacing",
+      "group": "spacing",
+      "line": 4,
+      "excerpt": "px rgba(0,0,0,.3); border-radius: 24px; padding: 13px\">Trusted by 10,000+ teams</div>",
+      "fix": "Snap to a multiple of 4 (4, 8, 12, 16, 24, 32 ...) or use the spacing scale."
+    },
+    {
+      "sign": "unverified-social-proof",
+      "group": "landing-hero",
+      "line": 4,
+      "excerpt": "3); border-radius: 24px; padding: 13px\">Trusted by 10,000+ teams</div>",
+      "fix": "Cite a real number with a source, name real customers, or remove the claim."
+    },
+    {
+      "sign": "fake-data",
+      "group": "copy",
+      "line": 5,
+      "excerpt": "<p>John Doe, lorem ipsum</p>",
+      "fix": "Use realistic content with believable, uneven values, or real data."
+    }
+  ],
+  "counts": {
+    "surfaces": 1,
+    "type": 0,
+    "icons": 1,
+    "spacing": 1,
+    "copy": 3,
+    "components": 0,
+    "landing-hero": 1,
+    "motion": 0,
+    "template-look": 0
+  },
+  "total": 7,
+  "manual": [
+    "mixed-number-formats",
+    "rainbow-chart",
+    "pill-badge-hero",
+    "glossy-orb-logo",
+    "grey-neutrals",
+    "inter-default",
+    "leftover-brand-color"
+  ],
+  "exit": 2
+}

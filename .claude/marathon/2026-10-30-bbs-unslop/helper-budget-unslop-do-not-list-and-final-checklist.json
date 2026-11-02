@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "openedAt": 1793403841948,
+  "limits": {
+    "steps": 400,
+    "cost": 2000000,
+    "timeMs": null
+  },
+  "spent": {
+    "steps": 300,
+    "cost": 346003
+  },
+  "clock": {
+    "depth": 0,
+    "startedAt": null,
+    "elapsedMs": 823712
+  },
+  "helpers": {
+    "build-unslop-do-not-list-and-final-checklist": {
+      "steps": 60,
+      "cost": 75600,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r1-unslop-do-not-list-and-final-checklist": {
+      "steps": 60,
+      "cost": 73031,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r1-unslop-do-not-list-and-final-checklist": {
+      "steps": 60,
+      "cost": 64714,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r2-unslop-do-not-list-and-final-checklist": {
+      "steps": 60,
+      "cost": 73587,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r2-unslop-do-not-list-and-final-checklist": {
+      "steps": 60,
+      "cost": 59071,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    }
+  }
+}

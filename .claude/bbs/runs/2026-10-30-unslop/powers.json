@@ -1,0 +1,161 @@
+{
+  "run": "2026-10-30-unslop",
+  "source_identity": "git:4652254daff586ff4739849395a127b56f7f8cc7",
+  "powers": [
+    {
+      "name": "unslop slop audit",
+      "what": "Checklist of the usual AI-looking UI tells, each paired with its fix, grouped by surfaces, type, icons, spacing, copy, components, landing heroes, visuals, motion and template look",
+      "evidence": "skills/unslop/references/signs.md:1-104 (groups at 5, 16, 25, 33, 41, 51, 63, 75, 83, 92)",
+      "dependencies": [],
+      "data_needed": "The screen under review, read as code or as a rendered page; no config",
+      "network": "none",
+      "size": "small",
+      "licence": "CC-BY-4.0",
+      "idea": "Before any edit, walk the screen against a fixed list of slop signs and write one line per sign with where it lives. The list covers purple-to-blue gradients, gradient text, colored glows, neon borders, weight 800 headings, uppercase tracked labels, mixed number formats, emoji icons, arbitrary pixel margins, greeting headlines, exclamation marks, hype words, fake data, glowing badges, rainbow or glowing charts, sparkline-decorated stat cards, glossy orb logos, pill badges above hero headlines, unverified social proof, looping pulses, transition-all and hover scale, and animating layout properties. Each sign carries its fix in the same line, so the audit doubles as the plan. A final group lists template-look fallbacks that a cleaned screen drifts into, such as a pure grey page with Inter and an old brand color on a warm product, so they can be checked after the fixes."
+    },
+    {
+      "name": "unslop direction brief",
+      "what": "Five-line creative direction (product, character, world, moments, signature) derived from the product itself before any visual change",
+      "evidence": "skills/unslop/SKILL.md:54-66; signs of a real brand at 66",
+      "dependencies": [],
+      "data_needed": "The product's own copy and purpose, plus any real brand assets (logo, color, typeface) the user wants kept",
+      "network": "none",
+      "size": "small",
+      "licence": "CC-BY-4.0",
+      "idea": "Write five short lines before touching anything. Product is one plain sentence on what it does and for whom. Character is two or three concrete words, with a banned list of generic adjectives such as clean, modern, sleek, minimal and premium, because they fit every template. World is the place or material the product naturally belongs to, which sets the tint of the neutrals, the accent and the visual. Moments are one or two places where color, material and detail are allowed to get rich, chosen from what the product shows. Signature is one small detail only this product would have, used consistently and nowhere else. The examples in the source are shapes of an answer, not answers to reuse. A real brand color, logo or typeface that is not slop is kept and the direction is built around it. Gradients, sparkles and glow do not count as brand unless the user says they do."
+    },
+    {
+      "name": "unslop triage and refine-only gate",
+      "what": "Decides heavy redesign, light polish or refine-only from the audit, and stops for the user to confirm the direction before editing",
+      "evidence": "skills/unslop/SKILL.md:39-50 (triage at 40-43, stop-and-confirm at 44, keep-a-run-quick at 50)",
+      "dependencies": [],
+      "data_needed": "The audit result and the user's answer to the direction (or an instruction to just do it)",
+      "network": "none",
+      "size": "small",
+      "licence": "CC-BY-4.0",
+      "idea": "Grade the audit honestly into three modes. Heavy slop, with many signs across color, type, icons and copy, runs the full ordered process. Light slop, where the screen is mostly designed, gets polish mode: fix only what the audit found, take the direction from the existing brand, keep palette, type, layout and visual, and send bigger ideas to the report as suggestions. No slop means saying so plainly, offering two or three small refinements with exact values, and applying them only if the user agrees; a good screen is never changed just to look different. For heavy and light runs, write the direction and wait for the user before editing, because changing direction later means redoing every pass. Skip the wait only when the user has already said to just do it. Keep the run quick by rendering at most three times, and start any image generation as soon as the direction is confirmed."
+    },
+    {
+      "name": "unslop ordered redline passes",
+      "what": "Nine ordered design passes from spacing through motion, each finished across the whole screen before the next starts",
+      "evidence": "skills/unslop/SKILL.md:45 (order), 68-76 (spacing), 78-92 (color), 94-100 (icons), 102-113 (copy), 115-123 (type), 125-137 (layout), 139-153 (details), 155-166 (visuals), 168-175 (motion)",
+      "dependencies": [],
+      "data_needed": "The direction brief and the audit list; the screen's source files",
+      "network": "none",
+      "size": "medium",
+      "licence": "CC-BY-4.0",
+      "idea": "Apply nine passes in a fixed order and finish each across the whole screen before starting the next. Spacing comes first, on a 4px grid with equal things sized equally, groups tighter than the space between them, and aligned icon, label and number columns. Color follows, from one tinted neutral ramp with three text roles and a single rare accent, with gradients, glows and colored shadows removed. Icons become one line set at one size and stroke. Copy comes before type and layout because the headline length sets its size and placement; it is plain, specific, without exclamation marks, hype or greetings,. Type is chosen for the direction with two weights and no tracked uppercase. Layout keeps section order and gives apps real proportions and heroes an asymmetric or scene composition. Details cover nested radii, quiet meta, keycaps and charts with one accent and a clear main chart. Visuals come only after the screen works without them. Motion is last, with no looping, one easing curve and animations limited to color, opacity and transform. When nearly every line changes, the passes may be planned in order and written in one go, provided each one is applied."
+    },
+    {
+      "name": "unslop design tokens",
+      "what": "Starting values for spacing, neutral ramps, accents, type families and scale, radii, icons, depth and motion timing",
+      "evidence": "skills/unslop/references/tokens.md:5-131 (spacing 5-14, app layout 16-22, ramps 24-62, buttons 64-69, type 71-97, radius 99-108, icons 110-112, depth 114-117, motion 119-131)",
+      "dependencies": [],
+      "data_needed": "The project's existing design system if one exists; the direction brief to choose the ramp and families",
+      "network": "none",
+      "size": "small",
+      "licence": "CC-BY-4.0",
+      "idea": "A reference sheet of starting values, to be overridden when the project already has a good system. The spacing scale is a 4-based ladder with per-use ranges for controls, lists, groups, sections and heroes, and fixed row heights for compact and touch layouts. Neutral ramps come in graphite, warm and ink variants for dark and light themes, with page, card, raised, hairline and three text roles, and semantic positive and negative colors toned to sit inside any ramp. The accent rule says keep a real brand color, otherwise take one from the world, and hold 4.5 to 1 contrast on text. Type families are grouped by character, one interface family with an optional mono or display partner, and the scale runs from small labels to hero headlines with letter spacing set by size. Radii are per element with the nested rule inner equals outer minus padding. Motion uses one easing curve with durations for feedback, menus and entrances, and a small stagger capped at six items."
+    },
+    {
+      "name": "unslop glyph and duotone effects",
+      "what": "Optional code treatments that turn a hero image into characters, halftone dots, dither or a two-color duotone in the page palette",
+      "evidence": "skills/unslop/references/effects.md:5-109 (glyphs 5-87 with implementation at 19-85, halftone 89-91, dithering 93-95, duotone 97-99, performance 101-109)",
+      "dependencies": [
+        "browser:canvas-2d",
+        "IntersectionObserver"
+      ],
+      "data_needed": "A generated or real image for the main visual, and the mono font and palette from the tokens",
+      "network": "none",
+      "size": "medium",
+      "licence": "CC-BY-4.0",
+      "idea": "When the direction fits, render the main image as a grid of characters whose brightness picks the glyph, using characters drawn from the product's own material, such as money symbols for finance or code symbols for developer tools. Pixels are sampled once at load, glyphs are prepared in a prebuilt atlas, and only a small share of cells change at eight to twelve steps per second, paused off screen. Halftone sizes dots by brightness for editorial and print looks, dithering uses two or three ramp colors once at load for retro or technical looks, and a duotone maps brightness onto the darkest surface and the accent, which is the simplest way to make any generated image match the palette. Use one treatment on the main visual only, never as decoration elsewhere, and cap canvas size at a device pixel ratio of two."
+    },
+    {
+      "name": "unslop visual direction",
+      "what": "Chooses what a hero or empty-state visual should be, how to phrase it as one sentence, and how to write the image prompt",
+      "evidence": "skills/unslop/references/visuals.md:5-80 (decide 5-19, styles 21-38, objects 40-50, prompt recipe 62-72, placing 74-80); skills/unslop/SKILL.md:155-166",
+      "dependencies": [],
+      "data_needed": "The direction brief; an image tool only if a generated visual is chosen",
+      "network": "none",
+      "size": "medium",
+      "licence": "CC-BY-4.0",
+      "idea": "Decide first whether the screen needs a visual at all, since dashboards and settings usually do not, while landing heroes and empty states often do. Then prefer a scene from the product's world with the subject on one side and calm space for the headline, with the product preview rising from the bottom edge. Without an image tool, build a code preview of the one moment that proves the headline, using project components where they exist and plausible data. Write the visual as one plain sentence before any generation; if the sentence is unclear, the visual is not clear yet. Pick one style for the whole page from a short list, such as painted background, cinematic object, soft 3D, product object render, light and optics, or engraving, and avoid film grain prompts, multiple subjects, and glossy purple abstractions. The prompt is built in fixed parts: subject, setting, light and palette named by hex, style, composition, exclusions of text and logos, and the slot's aspect ratio at twice the display size. Edges are faded into the page color in code so no hard rectangle shows."
+    },
+    {
+      "name": "unslop image generation gate",
+      "what": "Requires showing the prompt, model and size and getting approval before any paid image generation, with an empty slot if declined",
+      "evidence": "skills/unslop/references/visuals.md:52-60 (generate at 52-60); skills/unslop/SKILL.md:50, 160, 165",
+      "dependencies": [
+        "image generation tool exposed through an MCP server (optional)"
+      ],
+      "data_needed": "A connected image generation tool (for example fal, Replicate, OpenAI images or Higgsfield), the user's approval for each paid run",
+      "network": "outbound",
+      "size": "small",
+      "licence": "CC-BY-4.0",
+      "idea": "Image generation can cost money, so the agent must show the user the prompt, the model and the size, and wait for a yes before each run. Run once, judge the result against the one-sentence brief and the palette, and change the prompt rather than rerolling the same one. Save the result into the project's assets, not a temporary URL. If no image tool is connected and the screen needs a scene or object, say so before the visuals pass and offer to connect one. If the user declines or skips, leave an empty slot of the exact size with the layout radius and no text, and put the prompt in the report rather than on the page, so unfinished placeholders cannot ship by accident. Tell the user which kind of service could generate it and the file name to save it under."
+    },
+    {
+      "name": "unslop live page snapshot",
+      "what": "Saves a live web page as a single static HTML copy with its styles and images inlined, plus a screenshot, for redesign work",
+      "evidence": "skills/unslop/scripts/snapshot.mjs:1-141 (usage 5, browser launch 17-32, capture 34-136, screenshot 140)",
+      "dependencies": [
+        "playwright (or playwright-core)",
+        "node:fs",
+        "node:path",
+        "node:module",
+        "system Chrome (optional)"
+      ],
+      "data_needed": "A URL the user gave, the output path, an optional pass label, an optional theme flag and viewport size",
+      "network": "outbound",
+      "size": "medium",
+      "licence": "CC-BY-4.0",
+      "idea": "When the user has only a link, open the page in a headless browser at a set viewport, wait for the network to settle and fonts to load, then copy the rendered document. Stylesheets are fetched and inlined, images and CSS URLs are turned into data URIs under a size limit, srcset and scripts are dropped, and links are made absolute. The theme can be forced to light or dark by rewriting media queries. The result is a standalone HTML file to work on as a copy, plus a live screenshot to compare against. Scripted animated backgrounds do not survive the copy, so the audit should describe them from the live screenshot. The tool expects Playwright to be installed in the project and will use a local Chrome if one is found."
+    },
+    {
+      "name": "unslop story video renderer",
+      "what": "Renders a story HTML page into a square or wide MP4 by driving a headless browser frame by frame and encoding with ffmpeg, with a live play mode",
+      "evidence": "skills/unslop/scripts/story.mjs:1-461 (meta and frame 37-65, stage and runtime 67-343, plan and timing 403-428, ffmpeg encode 459)",
+      "dependencies": [
+        "playwright (or playwright-core)",
+        "ffmpeg (system binary)",
+        "node:http",
+        "node:child_process",
+        "node:fs",
+        "node:path",
+        "node:module"
+      ],
+      "data_needed": "A story.html file in the project with its step list and frame meta tags; an output path, or the play flag",
+      "network": "none",
+      "size": "large",
+      "licence": "CC-BY-4.0",
+      "idea": "Serves the story file from a local loopback server, places it inside a stage page that scales it into a square or 16:9 frame, and advances the step timeline in fixed frame increments at 60 frames per second, screenshotting each frame. Step classes switch on the page, and a runtime pauses CSS animations and steps them by time so the morphing is deterministic. Redline overlays are placed from live measurements for data-driven spacing gaps, corner radii and marked slop, and the tool stops after the timeline is complete. Frames are encoded with ffmpeg into a high-quality H.264 MP4 and the temporary frame folder is removed. The play mode loops the animation in a visible browser window until it is closed. It needs Playwright and ffmpeg installed. Note that the story page is loaded only from local files, but any remote fonts or resources the story references would still be fetched by the browser."
+    },
+    {
+      "name": "unslop story video authoring",
+      "what": "Conventions for a short before-and-after story page where each step changes CSS in place and redlines measure the slop",
+      "evidence": "skills/unslop/SKILL.md:177-207 (morph and wave 181-183, steps and CSS layers 189-191, swaps and reveals 192-199, redlines 200-203, frame and render 204-208)",
+      "dependencies": [],
+      "data_needed": "The original screen as a standalone story page; the list of 3 to 5 steps and their target values",
+      "network": "none",
+      "size": "medium",
+      "licence": "CC-BY-4.0",
+      "idea": "Build one story page from the original screen and keep its rules as step zero. Declare three to five steps, merging passes so each step changes something visible, and name them so spacing and corner steps get their redlines. Each later step is only CSS layered on top of the previous ones, changing values rather than structure, so padding, gaps, colors, radii and shadows tween in place. Things that cannot tween are handled separately: gradients fade out on their own layer, pill radii are written as half the height, text that changes uses a blur-out and letter-by-letter roll, and emoji turn into icons by crossfading stacked elements. Keep text swaps to a handful at most, so the video does not read as a cut between two pictures. Redlines mark a few gaps in vertical stacks and a few corners, and optional red slop tags appear briefly first. The camera is set to a square or wide frame cropped close on the part that changes most, around ten seconds long. The clean result still ships as normal project code without story classes. Every video carries a small credit to the author."
+    },
+    {
+      "name": "unslop do-not list and final checklist",
+      "what": "Hard limits on what a redesign may change, plus the closing checklist and template-fit test that every run must pass",
+      "evidence": "skills/unslop/SKILL.md:209-233 (do-not 209-215, checklist 217-233)",
+      "dependencies": [],
+      "data_needed": "The audit list and the rendered screen after the passes",
+      "network": "none",
+      "size": "small",
+      "licence": "CC-BY-4.0",
+      "idea": "Before handing over, check the redesign against hard limits: do not rename the product, keep a real logo, and redraw a slop logo flat rather than as a glossy or gradient tile; do not change the product's features, content or section order; do not swap removed decoration for new trends such as glass, grain, neon or bento grids; do not invent features, claims or data; and do not reuse the same look for every product. The checklist then confirms the direction is followed, the spacing is on the scale, icons and numbers align, colors and type meet the rules, no emoji or exclamation marks remain, the hero has a real visual with a moment, the first screen has no dead band, and motion is calm. The final template test swaps in another product's name and asks whether the screen still fits; if it does, the direction, copy, visual and signature should be pushed harder."
+    }
+  ],
+  "not_inventoried": [],
+  "total": 12,
+  "none_found": null,
+  "ts": "2026-10-30T22:41:48.065Z"
+}

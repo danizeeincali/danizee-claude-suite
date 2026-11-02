@@ -1,0 +1,66 @@
+{
+  "run": "2026-10-30-unslop",
+  "ts": "2026-10-31T21:12:16.531Z",
+  "powers": {
+    "unslop slop audit": {
+      "verb": "slop-audit",
+      "entry": null,
+      "reach": []
+    },
+    "unslop direction brief": {
+      "verb": "direction",
+      "entry": null,
+      "reach": []
+    },
+    "unslop triage and refine-only gate": {
+      "verb": "slop-triage",
+      "entry": null,
+      "reach": []
+    },
+    "unslop ordered redline passes": {
+      "verb": "redline-passes",
+      "entry": null,
+      "reach": []
+    },
+    "unslop design tokens": {
+      "verb": "design-tokens",
+      "entry": null,
+      "reach": []
+    },
+    "unslop glyph and duotone effects": {
+      "verb": "image-effects",
+      "entry": null,
+      "reach": []
+    },
+    "unslop visual direction": {
+      "verb": "visual-direction",
+      "entry": null,
+      "reach": []
+    },
+    "unslop image generation gate": {
+      "verb": "image-gate",
+      "entry": null,
+      "reach": []
+    },
+    "unslop story video renderer": {
+      "verb": "story-render",
+      "entry": null,
+      "reach": []
+    },
+    "unslop do-not list and final checklist": {
+      "verb": "redesign-checklist",
+      "entry": null,
+      "reach": []
+    },
+    "unslop story video authoring": {
+      "verb": "story-plan",
+      "entry": null,
+      "reach": []
+    },
+    "unslop live page snapshot": {
+      "verb": "page-snapshot",
+      "entry": null,
+      "reach": []
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "format": "html",
+  "hits": [],
+  "counts": {
+    "surfaces": 0,
+    "type": 0,
+    "icons": 0,
+    "spacing": 0,
+    "copy": 0,
+    "components": 0,
+    "landing-hero": 0,
+    "motion": 0,
+    "template-look": 0
+  },
+  "total": 0,
+  "manual": [
+    "mixed-number-formats",
+    "rainbow-chart",
+    "pill-badge-hero",
+    "glossy-orb-logo",
+    "grey-neutrals",
+    "inter-default",
+    "leftover-brand-color"
+  ]
+}

@@ -1,0 +1,138 @@
+{
+  "version": 1,
+  "openedAt": 1793407991070,
+  "limits": {
+    "steps": 1000,
+    "cost": 3000000,
+    "timeMs": null
+  },
+  "spent": {
+    "steps": 540,
+    "cost": 1156481
+  },
+  "clock": {
+    "depth": 0,
+    "startedAt": null,
+    "elapsedMs": 127454198
+  },
+  "helpers": {
+    "build-integration-1": {
+      "steps": 60,
+      "cost": 205868,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r1-integration": {
+      "steps": 60,
+      "cost": 143898,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r1-integration": {
+      "steps": 60,
+      "cost": 140850,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r2-integration": {
+      "steps": 60,
+      "cost": 144802,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r2-integration": {
+      "steps": 60,
+      "cost": 106797,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "build-integration-2": {
+      "steps": 60,
+      "cost": 136241,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "build-integration-3": {
+      "steps": 60,
+      "cost": 118831,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review-r3-integration": {
+      "steps": 60,
+      "cost": 91857,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 1,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "fix-r3-integration": {
+      "steps": 60,
+      "cost": 67337,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    }
+  },
+  "raised": [
+    {
+      "at": "2026-11-01T18:00:26.871Z",
+      "steps": {
+        "from": 400,
+        "to": 1000
+      },
+      "why": "step allowance was the orchestrator own guess at open (kickoff sets none); each helper is booked at a flat 60 steps"
+    }
+  ]
+}
