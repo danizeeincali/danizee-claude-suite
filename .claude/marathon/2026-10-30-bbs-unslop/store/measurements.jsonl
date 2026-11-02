@@ -40,3 +40,16 @@
 {"key":"packaged_unslop-live-page-snapshot","value":true,"id":"67d18dda-7d4f-4591-a64f-7e1744d0e87a","ts":"2026-10-31T21:06:18.930Z"}
 {"key":"egress_zero_unslop-live-page-snapshot","value":true,"id":"ab4cd96c-f0b8-4b1c-88ea-4f7172bd90e6","ts":"2026-10-31T21:06:19.109Z"}
 {"key":"callers_unslop-live-page-snapshot","value":0,"id":"1dfa2452-60b6-4b55-98e9-ede84a5478ce","ts":"2026-10-31T21:06:19.271Z"}
+{"key":"wired_unslop-slop-audit","value":2,"id":"ed19eff2-11c7-48ea-989c-cecd2917968b","ts":"2026-11-02T07:20:50.205Z"}
+{"key":"wired_unslop-direction-brief","value":2,"id":"2686ba27-5c1b-4f91-8ffa-6785a0710da8","ts":"2026-11-02T07:20:50.472Z"}
+{"key":"wired_unslop-triage-and-refine-only-gate","value":2,"id":"7bd8fe65-0170-48ee-9b57-725f3ff6a991","ts":"2026-11-02T07:20:50.725Z"}
+{"key":"wired_unslop-ordered-redline-passes","value":2,"id":"0a8c62a8-eea0-4533-9586-0ee31c37a30a","ts":"2026-11-02T07:20:50.937Z"}
+{"key":"wired_unslop-design-tokens","value":2,"id":"d8cf656e-739b-413b-9f9c-fae0285a667c","ts":"2026-11-02T07:20:51.159Z"}
+{"key":"wired_unslop-glyph-and-duotone-effects","value":2,"id":"cc49a326-108f-4a40-b27f-c0fd8b22668c","ts":"2026-11-02T07:20:51.414Z"}
+{"key":"wired_unslop-visual-direction","value":2,"id":"245c0bd8-8c9a-4b82-9da9-1384cbffe196","ts":"2026-11-02T07:20:51.672Z"}
+{"key":"wired_unslop-image-generation-gate","value":2,"id":"912c46db-ecc6-48c1-b80d-6e18c0daa571","ts":"2026-11-02T07:20:51.954Z"}
+{"key":"wired_unslop-story-video-renderer","value":1,"id":"7dff70f5-e13a-4048-9d23-740751e472ec","ts":"2026-11-02T07:20:52.232Z"}
+{"key":"wired_unslop-do-not-list-and-final-checklist","value":2,"id":"6ab8c8cf-f017-4d4f-9900-88f11b4e6d40","ts":"2026-11-02T07:20:52.456Z"}
+{"key":"wired_unslop-story-video-authoring","value":2,"id":"57705ca5-0b0c-48c5-a434-fc9ed92cd2c9","ts":"2026-11-02T07:20:52.715Z"}
+{"key":"wired_unslop-live-page-snapshot","value":2,"id":"89dd3ea3-9baf-4599-9476-b580aeaae4f1","ts":"2026-11-02T07:20:52.962Z"}
+{"key":"delivered","value":true,"id":"8b7028f8-78d1-4084-ace2-1edfb054cf7b","ts":"2026-11-02T07:21:02.374Z"}
