@@ -236,7 +236,7 @@ async function openRegular(p) {
 // Decided from the text alone (never the file extension), so stdin and --file agree. Skipped first: a BOM, a
 // leading front-matter block (--- ... ---), comments, and <?...?>, {%...%} or {#...#} prologs.
 const SKIP = [['<!--', '-->'], ['<?', '?>'], ['{%', '%}'], ['{#', '#}']];
-function sniff(text) {
+export function sniff(text) {
   let i = text.charCodeAt(0) === 0xfeff ? 1 : 0;
   const fm = /^---[ \t]*\r?\n[\s\S]*?\r?\n---[ \t]*(\r?\n|$)/.exec(text.slice(i));
   if (fm) i += fm[0].length;

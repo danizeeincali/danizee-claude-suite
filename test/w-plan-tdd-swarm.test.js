@@ -73,15 +73,14 @@ describe('w-plan-tdd-swarm.md content', () => {
   });
 
   it('plan checkpoint has AskUserQuestion after plan output', () => {
-    // Find the Plan section and verify it has a gate
+    // Find the Plan checkpoint by its heading (other sections name the word "plan", e.g. `page-snapshot plan` at Search)
     const sections = content.split('###');
-    const planSection = sections.find(s => /plan/i.test(s) && /checkpoint/i.test(s) && !/spec/i.test(s.substring(0, 30)));
-    if (planSection) {
-      assert.ok(
-        planSection.includes('AskUserQuestion') || planSection.includes('USER GATE'),
-        'Plan section must contain AskUserQuestion or USER GATE'
-      );
-    }
+    const planSection = sections.find(s => /^\s*⛔ CHECKPOINT \d+: Plan\b/.test(s));
+    assert.ok(planSection, 'the Plan checkpoint heading exists');
+    assert.ok(
+      planSection.includes('AskUserQuestion') || planSection.includes('USER GATE'),
+      'Plan section must contain AskUserQuestion or USER GATE'
+    );
   });
 
   it('tests checkpoint is blocking', () => {
