@@ -25,7 +25,7 @@ not on npm. `npx` installs it straight from the repository, using your own git a
 
 ```bash
 npx github:danizeeincali/danizee-claude-suite init           # latest main
-npx github:danizeeincali/danizee-claude-suite#v4.6.0 init    # a tagged release
+npx github:danizeeincali/danizee-claude-suite#v4.8.0 init    # a tagged release
 ```
 
 Or from a local checkout:

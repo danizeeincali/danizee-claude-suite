@@ -4,6 +4,45 @@ Releases are version tags with a GitHub release; the suite is no longer publishe
 (npm stays at 4.1.0). Versions 4.2.0 to 4.5.0 were set in `package.json` but never published
 or tagged, so 4.6.0 is the first release after 4.1.0 and carries all of them.
 
+## 4.8.0 — 2026-11-04
+
+Twelve UI de-slop powers from the `/w-bbs` run on heydamir/unslop (CC BY 4.0, by Damir Sokolovsky),
+each rebuilt from the source's idea with no code copied. Each is a kit verb
+(`node .claude/helpers/kit/cli.js <verb>`) wired into `/pt` and `/mt`, and the steps run only for UI,
+landing page or dashboard work. Write-up: `docs/solutions/features/bbs-unslop-audit.md`.
+
+### Added
+- **`slop-audit`**: a checklist of the usual AI-looking UI tells (gradients, glows, emoji labels,
+  shouty copy, uneven spacing, template look), each paired with its fix. It is **blocking** in `/pt`
+  Review and `/mt` Loop (one `slop_<stream>` measure per pass over every screen).
+- **`direction`**: a five-line creative direction (product, character, world, moments, signature)
+  taken from the product before any visual change (`/pt` Plan, `/mt` Interview).
+- **`slop-triage`**: decides heavy redesign, light polish or refine-only from the audit and has the
+  user confirm the direction before editing (`/pt` Interview, `/mt` Kickoff).
+- **`redline-passes`**: nine ordered design passes from spacing through motion, each finished across
+  the whole screen before the next (`/pt` Build, `/mt` Loop).
+- **`design-tokens`**: starting values for spacing, neutrals, accents, type, radii, icons, depth and
+  motion timing (`/pt` Spec, `/mt` Loop).
+- **`image-effects`**: optional glyph, halftone, dither and duotone treatments for a hero image in the
+  page palette (`/pt` Build, `/mt` Loop).
+- **`visual-direction`**: chooses what a hero or empty-state visual should be and writes its image
+  prompt (`/pt` Plan, `/mt` Loop).
+- **`image-gate`**: shows the prompt, model and size and gets approval before any paid image
+  generation, leaving an empty slot if declined. **Blocking** in `/pt` Build and `/mt` Loop (in `/mt`
+  requests are queued and asked only at the Interview or handoff).
+- **`page-snapshot`**: captures a live page as a self-contained snapshot (`/pt` and `/mt` Search). A
+  remote URL is captured only with the user's agreement, and remote mode connects without the proxy so
+  its private-address check holds.
+- **`story-render`**: renders a story page into a square or wide MP4 frame by frame with ffmpeg, with
+  a live play mode (`/pt` Build).
+- **`story-plan`**: conventions for a short before-and-after story page where each step changes CSS in
+  place and redlines measure the slop (`/pt` Spec, `/mt` Loop).
+- **`redesign-checklist`**: hard limits on what a redesign may change, plus the closing checklist and
+  template-fit test. **Blocking** in `/pt` Review; advisory in the `/mt` Completion Checklist.
+
+### Removed
+- A stray `-encoders` file at the repository root, left by a build step.
+
 ## 4.7.0 — 2026-10-28
 
 Twelve design and animation powers from the `/w-bbs` run on elayadesign/ai-design-skills (MIT),
