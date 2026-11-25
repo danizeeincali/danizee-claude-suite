@@ -3,16 +3,21 @@
  * then read the picks back. Node built-ins only; no network. Reads the files named, writes only to --out.
  *
  *   decision-deck check [--file <deck.json>]                 (or the deck JSON on stdin, at most 16 MiB)
- *       → { ok, cards, problems: [{ path, message, fix }] }   exit 0 either way; exit 1 on unreadable input
+ *       → { ok, cards, problems: [{ path, message, fix }], collection?, progress? }
+ *         exit 0 either way; exit 1 on unreadable input. collection and progress (the deck's database paths, below)
+ *         come only when the deck is ok.
  *   decision-deck emit [--file <deck.json>] --out <deck.html> [--standalone]
- *       → { out, bytes, cards, title }                        exit 1 when the deck is not ok (problems on stderr)
+ *       → { out, bytes, cards, title, collection }            exit 1 when the deck is not ok (problems on stderr)
  *         The page is written in the Claude-artifact form (no doctype/html/head/body: the artifact host wraps it).
  *         --standalone wraps it in its own <!doctype html> skeleton for opening as a local file.
  *   decision-deck read [--file <decisions>] --deck <deck.json>
- *       → { decided: [{ id, title, choice, note }], undecided: [ids], byChoice: { <choice>: [ids] }, problems: [{ path, message }] }
- *         <decisions> is the page's copied text (`id | choice | note` lines) or a JSON array of rows { id, choice, note, at }
- *         (as an artifact database listing of `decisions` gives; a row may carry its fields under `data`, and its id as
- *         `path` "decisions/<id>"). Unknown ids, unknown choices and repeated ids are listed under problems, never dropped.
+ *       → { decided: [{ id, title, choice, note }], undecided: [ids], byChoice: { <choice>: [ids] }, problems: [{ path, message }], collection }
+ *         <decisions> is the page's copied text (`id | choice | note` lines) or a JSON array of rows { id, choice, note, at, title }
+ *         (as an artifact database listing of the deck's collection gives; a row may carry its fields under `data`, and
+ *         its id as `path` "decks/<key>/decisions/<id>"). Progress is derived from these rows alone. Unknown ids,
+ *         unknown choices and repeated ids are listed under problems, never dropped; so are rows of another deck (a
+ *         `path` outside this deck's collection, including an older page's bare "decisions/<id>", or a `title` that is
+ *         not the card's), which are not counted. Rows with no path are taken as given; `decks/<key>` is skipped.
  *
  * Deck JSON: { kind: "decision-deck", v: 1, title (1-60), lede? (≤140), choices? (2-4 of { id, label }; default
  *   fix / later / no), cards: [{ id ([a-z0-9-]{1,40}, unique), title (1-90), why (1-220), quote? (≤160), who? (≤60),
@@ -23,18 +28,26 @@
  *
  * The page: an optional scroll story, then one card at a time decided by button, swipe (right = first choice, left = last,
  * up = middle of three) or keys (1-4, arrows, n note, z undo), an optional note, Undo and Decide later, then an end
- * screen with counts, the list by choice (tap a row to change it) and "Copy my decisions". It saves to localStorage, and,
- * as a Claude artifact published with capabilities { db: {}, user: {} }, to the artifact database: one document
- * `decisions/<card id>` = { choice, note, at, title } per pick (choice null after an undo), and `decks/meta` =
- * { title, cards, decided, done, at }. An agent reads the picks with the database `list` of the `decisions` collection
- * and passes the rows to `read`.
+ * screen with counts, the list by choice (tap a row to change it) and "Copy my decisions". It saves to localStorage
+ * (key `decision-deck:<key>`), and, as a Claude artifact published with capabilities { db: {}, user: {} }, to the
+ * artifact database under the deck's own key (8 hex, FNV-1a of the deck title, card ids and card titles, so a new deck
+ * republished to the same artifact never resumes another deck's picks): one document `decks/<key>/decisions/<card id>`
+ * = { choice, note, at, title } per pick (choice null after an undo), and `decks/<key>` = { title, cards, decided,
+ * done, at }, the progress of the device that saved last (a hint; the decision rows are the truth). Writes time out
+ * after 10 s; unavailable, resource_exhausted (longer pause) and unknown codes are retried once; final codes or a second
+ * failure mark that pick failed, and failed picks are sent again after the next write that lands, when the end screen
+ * opens, or from its "Try saving again". The end screen says "Saving…" while anything is in flight, "Saved. The agent
+ * has your decisions." only when every pick written has landed, "Saved on this device only. Copy your decisions to send
+ * them." after a failure, and "Not saved yet. Copy your decisions to send them." when localStorage refused too. An agent
+ * gets the collection from `check` or `emit` (or `deckPaths`), lists it with the database `list`, and passes the rows
+ * to `read`.
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { KitExit } from './kit-exit.js';
 
 export const verb = 'decision-deck';
-export const usage = 'cli.js decision-deck check [--file <deck.json>] | emit [--file <deck.json>] --out <deck.html> [--standalone] | read [--file <decisions.txt|json>] --deck <deck.json>  (input on stdin or --file, at most 16 MiB; check prints {ok, problems} and exits 0 either way; exit 1 on unreadable input, a deck that is not ok for emit, or a bad flag)';
+export const usage = 'cli.js decision-deck check [--file <deck.json>] | emit [--file <deck.json>] --out <deck.html> [--standalone] | read [--file <decisions.txt|json>] --deck <deck.json>  (input on stdin or --file, at most 16 MiB; check prints {ok, problems, collection} and exits 0 either way; exit 1 on unreadable input, a deck that is not ok for emit, or a bad flag)';
 
 export const MAX_INPUT_BYTES = 16 * 1024 * 1024;
 export const MAX_PAGE_BYTES = 12 * 1000 * 1000;
@@ -210,17 +223,21 @@ export function swipeIntent(dx, dy, width, height, choiceIds) {
 /** The copied text: one line per card, `id | choice | note` (choice "undecided" for a card left open). */
 export function exportText(cards, picks) {
   return cards.map((c) => {
-    const p = picks[c.id];
+    const p = Object.prototype.hasOwnProperty.call(picks, c.id) ? picks[c.id] : null;
     const note = p && p.note ? String(p.note).replace(/[\r\n]+/g, ' ').trim() : '';
     return `${c.id} | ${p && p.choice ? p.choice : 'undecided'} | ${note}`;
   }).join('\n');
 }
 
-/** Merge saved picks: for the same card the newer `at` wins, a tie or a cloud row with no `at` goes to the cloud; a cloud row with choice null clears the card unless the local pick is newer. */
-export function mergeResume(local, rows, cardIds, choiceIds) {
-  const out = {};
-  const okCard = (id) => cardIds.indexOf(id) !== -1;
-  const okChoice = (c) => choiceIds.indexOf(c) !== -1;
+/**
+ * Merge saved picks into a prototype-less map: for the same card the newer `at` wins, a tie or a cloud row with no `at`
+ * goes to the cloud; a cloud row with choice null clears the card unless the local pick is newer. With `cardTitles`
+ * (in the order of `cardIds`), a row carrying a `title` that is not its card's title belongs to another deck and is ignored.
+ */
+export function mergeResume(local, rows, cardIds, choiceIds, cardTitles) {
+  const out = Object.create(null);
+  const okCard = (id) => typeof id === 'string' && cardIds.indexOf(id) !== -1;
+  const okChoice = (c) => typeof c === 'string' && choiceIds.indexOf(c) !== -1;
   if (local && typeof local === 'object') {
     for (const id of Object.keys(local)) {
       const p = local[id];
@@ -229,8 +246,9 @@ export function mergeResume(local, rows, cardIds, choiceIds) {
   }
   for (const r of rows || []) {
     if (!r || !okCard(r.id)) continue;
+    if (cardTitles && typeof r.title === 'string' && r.title !== cardTitles[cardIds.indexOf(r.id)]) continue;
     const at = Number(r.at) || 0;
-    const mine = out[r.id];
+    const mine = Object.prototype.hasOwnProperty.call(out, r.id) ? out[r.id] : null;
     if (mine && at > 0 && mine.at > at) continue;
     if (r.choice === null) { delete out[r.id]; continue; }
     if (okChoice(r.choice)) out[r.id] = { choice: r.choice, note: typeof r.note === 'string' ? r.note : '', at };
@@ -238,9 +256,13 @@ export function mergeResume(local, rows, cardIds, choiceIds) {
   return out;
 }
 
-/** The localStorage key: the deck's title and card ids, hashed (FNV-1a, 32 bit). */
-export function deckKey(title, ids) {
-  const s = `${title}\n${ids.join(',')}`;
+/**
+ * The localStorage key: the deck's title, card ids and (when given) card titles, hashed (FNV-1a, 32 bit), as
+ * `decision-deck:<8 hex>`. The hex part also names the deck in the artifact database (`decks/<hex>/...`), so a new
+ * deck republished to the same artifact with the same card ids but other findings gets its own picks.
+ */
+export function deckKey(title, ids, titles) {
+  const s = `${title}\n${ids.join(',')}${titles ? `\n${titles.join('\n')}` : ''}`;
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
   return `decision-deck:${h.toString(16).padStart(8, '0')}`;
@@ -248,11 +270,24 @@ export function deckKey(title, ids) {
 
 /** The first card index at or after `from` with no pick, or -1. */
 export function nextOpen(cards, picks, from) {
-  for (let i = Math.max(0, from); i < cards.length; i++) if (!picks[cards[i].id]) return i;
+  for (let i = Math.max(0, from); i < cards.length; i++) if (!Object.prototype.hasOwnProperty.call(picks, cards[i].id) || !picks[cards[i].id]) return i;
   return -1;
 }
 
 const PAGE_FUNCTIONS = [swipeIntent, exportText, mergeResume, deckKey, nextOpen];
+const KEY_PREFIX = 'decision-deck:';
+
+/**
+ * Where a deck lives: `key` (the page's localStorage key), `collection` (`decks/<hex>/decisions`, one document per card
+ * id holding that card's pick) and `progress` (`decks/<hex>`, the document holding the progress of the device that
+ * saved last). The same deck JSON always gives the same paths.
+ */
+export function deckPaths(deck) {
+  const cards = deck.cards;
+  const key = deckKey(deck.title, cards.map((c) => c.id), cards.map((c) => c.title));
+  const hex = key.slice(KEY_PREFIX.length);
+  return { key, collection: `decks/${hex}/decisions`, progress: `decks/${hex}` };
+}
 
 /* ---------- read ---------- */
 
@@ -284,27 +319,42 @@ export function parseDecisions(input) {
     if (!isObj(r)) return { id: '', choice: null, note: '', where, bad: true };
     const d = isObj(r.data) ? { ...r, ...r.data } : r;
     let id = typeof d.id === 'string' ? d.id : '';
-    if (typeof d.path === 'string') {
-      const segs = d.path.split('/');
-      if (segs.length === 2 && segs[0] !== 'decisions') return { skip: true };
+    const docPath = typeof d.path === 'string' ? d.path : undefined;
+    if (docPath !== undefined) {
+      const segs = docPath.split('/');
+      if (segs.length === 2 && segs[0] === 'decks') return { skip: true }; // a deck's progress document
       if (!id) id = segs[segs.length - 1];
     }
     const choice = typeof d.choice === 'string' && d.choice && d.choice !== UNDECIDED ? d.choice : null;
-    return { id, choice, note: typeof d.note === 'string' ? d.note : '', at: d.at, where };
+    return { id, choice, note: typeof d.note === 'string' ? d.note : '', at: d.at, title: typeof d.title === 'string' ? d.title : undefined, path: docPath, where };
   }).filter((r) => !r.skip);
 }
 
-/** What an agent gets back: decided, undecided, byChoice and problems. */
+/**
+ * What an agent gets back: decided, undecided, byChoice, problems and the deck's database collection. Progress is
+ * derived from the decision rows alone (never from the progress document). A row whose `path` is not in this deck's
+ * collection (another deck's, or an old bare `decisions/<id>`) or whose `title` is not its card's title belongs to
+ * another deck: it is listed under problems and not counted. A row with no path is taken as given.
+ */
 export function read(deck, input) {
   const choices = Array.isArray(deck.choices) ? deck.choices : DEFAULT_CHOICES;
   const choiceIds = choices.map((c) => c.id);
   const cards = deck.cards;
+  const { collection } = deckPaths(deck);
   const byId = new Map(cards.map((c) => [c.id, c]));
   const problems = [];
   const picks = new Map();
   for (const r of parseDecisions(input)) {
     if (r.bad) { problems.push({ path: r.where, message: 'a row must be an object { id, choice, note }' }); continue; }
+    if (r.path !== undefined && r.path.includes('/') && r.path.slice(0, r.path.lastIndexOf('/')) !== collection) {
+      problems.push({ path: r.where, message: `"${r.path}" belongs to another deck (this deck's decisions are in ${collection}); not counted` });
+      continue;
+    }
     if (!byId.has(r.id)) { problems.push({ path: r.where, message: `unknown card id "${r.id}"${r.choice ? ` (choice "${r.choice}")` : ''}` }); continue; }
+    if (r.title !== undefined && r.title !== byId.get(r.id).title) {
+      problems.push({ path: r.where, message: `card "${r.id}": the row's title "${r.title}" is not this card's title "${byId.get(r.id).title}"; it belongs to another deck and is not counted` });
+      continue;
+    }
     if (r.choice !== null && !choiceIds.includes(r.choice)) { problems.push({ path: r.where, message: `card "${r.id}": unknown choice "${r.choice}" (the choices are ${choiceIds.join(', ')})` }); continue; }
     if (picks.has(r.id)) problems.push({ path: r.where, message: `card "${r.id}" appears more than once; the last row counts` });
     picks.set(r.id, r);
@@ -319,7 +369,7 @@ export function read(deck, input) {
       byChoice[p.choice].push(c.id);
     } else undecided.push(c.id);
   }
-  return { decided, undecided, byChoice, problems };
+  return { decided, undecided, byChoice, problems, collection };
 }
 
 /* ---------- emit ---------- */
@@ -487,6 +537,7 @@ button { cursor: pointer; }
 .pick small { color: var(--muted); font-size: 14px; }
 .cloud { margin: 0; font-size: 15px; color: var(--accent); font-weight: 600; }
 .cloud.local { color: var(--muted); font-weight: 400; }
+.retry { align-self: flex-start; color: var(--accent); margin-top: -10px; padding: 0; }
 .export { width: 100%; min-height: 120px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); padding: 10px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 @media (prefers-reduced-motion: reduce) {
   .card.spring, .card.fly, .track > span, .choice { transition: none; }
@@ -522,12 +573,13 @@ const MARKUP = `<div id="app">
   <label for="note" class="sr-only">Add a note, optional</label>
   <input id="note" class="note" type="text" placeholder="Add a note, optional" autocomplete="off" maxlength="500" enterkeyhint="done">
   <div id="choices" class="choices" role="group" aria-label="Your decision"></div>
-  <div class="row"><button id="undo" class="quiet-btn" type="button" aria-keyshortcuts="z">Undo</button><p id="save-line" class="quiet"></p><button id="later" class="quiet-btn" type="button" aria-keyshortcuts="ArrowDown">Decide later</button></div>
+  <div class="row"><button id="undo" class="quiet-btn" type="button" aria-keyshortcuts="z">Undo</button><p id="save-line" class="quiet" aria-live="polite"></p><button id="later" class="quiet-btn" type="button" aria-keyshortcuts="ArrowDown">Decide later</button></div>
 </section>
 <section id="end" class="end" hidden aria-label="Your decisions">
   <h1 id="end-title" tabindex="-1"></h1>
   <ul id="counts" class="counts"></ul>
   <p id="cloud-line" class="cloud" role="status"></p>
+  <button id="retry" class="quiet-btn retry" type="button" hidden>Try saving again</button>
   <button id="copy" class="primary" type="button">Copy my decisions</button>
   <p id="copy-status" class="quiet" role="status"></p>
   <label for="export" class="sr-only">Your decisions as text</label>
@@ -543,71 +595,172 @@ var CARDS = DECK.cards;
 var CHOICES = DECK.choices;
 var IDS = CHOICES.map(function (c) { return c.id; });
 var CARD_IDS = CARDS.map(function (c) { return c.id; });
-var KEY = deckKey(DECK.title, CARD_IDS);
+var CARD_TITLES = CARDS.map(function (c) { return c.title; });
+var KEY = deckKey(DECK.title, CARD_IDS, CARD_TITLES);
+var SEG = KEY.slice(KEY.indexOf(':') + 1);
+var COLL = 'decks/' + SEG + '/decisions';
+var PROGRESS = 'decks/' + SEG;
 var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 var labelOf = function (id) { for (var i = 0; i < CHOICES.length; i++) if (CHOICES[i].id === id) return CHOICES[i].label; return id; };
+var has = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
+var pickOf = function (id) { return has(picks, id) ? picks[id] : null; };
 
-var picks = {};
+var picks = Object.create(null);
 var history = [];
 var index = 0;
 var editing = false;
 var view = 'deck';
+var dragging = false;
 
-/* ---- store: localStorage always; the artifact database when window.claude.use("db") gives one ---- */
+/*
+ * store: localStorage always; the artifact database when window.claude.use("db") gives one. Each document is written
+ * on its own chain so writes to one path land in order. A write that does not settle in 10 s fails; one refused as
+ * unavailable, resource_exhausted (after a longer pause) or with an unknown code is tried once more; a final code or a
+ * second refusal marks that document failed, and failed documents are pushed again after the next write that lands,
+ * when the end screen opens, and from "Try saving again". One failure never turns the database off.
+ */
 var store = (function () {
+  var WRITE_MS = 10000;
+  var FINAL = { invalid_argument: 1, quota_exceeded: 1, not_granted: 1, revoked: 1 };
   var db = null;
-  var failed = false;
-  var chains = {};
+  var connecting = false;
+  var cloudOff = false;
+  var localFailed = false;
+  var chains = Object.create(null);
+  var latest = Object.create(null);
+  var gen = Object.create(null);
+  var landed = Object.create(null);
+  var failed = Object.create(null);
+  var pending = 0;
   var lastCount = -1;
   function loadLocal() { try { var v = window.localStorage.getItem(KEY); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
-  function saveLocal() { try { window.localStorage.setItem(KEY, JSON.stringify(picks)); } catch (e) { /* private window: keep going */ } }
-  function withTimeout(p, ms) { return Promise.race([p, new Promise(function (_, rej) { setTimeout(function () { rej(new Error('timeout')); }, ms); })]); }
-  function fail() { if (!failed) { failed = true; db = null; status(); } }
+  function saveLocal() {
+    try { window.localStorage.setItem(KEY, JSON.stringify(picks)); localFailed = false; } catch (e) { localFailed = true; }
+  }
+  function withTimeout(p, ms) {
+    var timer = null;
+    var limit = new Promise(function (_, rej) { timer = setTimeout(function () { rej({ code: 'timeout' }); }, ms); });
+    return Promise.race([p, limit]).then(function (v) { clearTimeout(timer); return v; }, function (e) { clearTimeout(timer); throw e; });
+  }
+  function pause(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function codeOf(e) { return e && typeof e.code === 'string' ? e.code : ''; }
+  function attempt(path, body) {
+    return Promise.resolve().then(function () { return withTimeout(Promise.resolve(db.doc(path).set(body)), WRITE_MS); });
+  }
+  function setWithRetry(path, body) {
+    return attempt(path, body).catch(function (e) {
+      var code = codeOf(e);
+      if (has(FINAL, code) || code === 'timeout') throw e;
+      var ms = code === 'resource_exhausted' ? 1500 + Math.random() * 1500 : 250 + Math.random() * 500;
+      return pause(ms).then(function () { return attempt(path, body); });
+    });
+  }
   function write(path, body) {
     if (!db) return;
-    var ref;
-    try { ref = db.doc(path); } catch (e) { fail(); return; }
-    var prev = chains[path] || Promise.resolve();
-    chains[path] = prev.then(function () { if (!db) return; return ref.set(body); }).catch(fail);
+    latest[path] = body;
+    var g = (has(gen, path) ? gen[path] : 0) + 1;
+    gen[path] = g;
+    delete failed[path];
+    pending++;
+    status();
+    var prev = has(chains, path) ? chains[path] : Promise.resolve();
+    chains[path] = prev.then(function () {
+      if (gen[path] !== g) return 'stale';
+      return setWithRetry(path, body).then(function () { return 'ok'; });
+    }).then(function (r) {
+      pending--;
+      if (r === 'ok') { landed[path] = g; retryFailed(); }
+      status();
+    }, function () {
+      pending--;
+      if (gen[path] === g) failed[path] = true;
+      status();
+    });
+  }
+  function retryFailed() {
+    if (!db) return;
+    Object.keys(failed).forEach(function (p) { write(p, latest[p]); });
   }
   function meta() {
     var k = Object.keys(picks).length;
     if (k === lastCount) return;
     lastCount = k;
-    write('decks/meta', { title: DECK.title, cards: CARDS.length, decided: k, done: k === CARDS.length, at: Date.now() });
+    write(PROGRESS, { title: DECK.title, cards: CARDS.length, decided: k, done: k === CARDS.length, at: Date.now() });
   }
   function put(card) {
     saveLocal();
-    var p = picks[card.id];
-    write('decisions/' + card.id, { choice: p ? p.choice : null, note: p ? p.note : '', at: p && p.at ? p.at : Date.now(), title: card.title });
+    var p = pickOf(card.id);
+    write(COLL + '/' + card.id, { choice: p ? p.choice : null, note: p ? p.note : '', at: p && p.at ? p.at : Date.now(), title: card.title });
     meta();
+    status();
+  }
+  function read(ns) {
+    return withTimeout(Promise.resolve(ns.collection(COLL).get()), 10000).catch(function (e) {
+      var code = codeOf(e);
+      if (has(FINAL, code) || code === 'timeout') throw e;
+      return pause(code === 'resource_exhausted' ? 1500 + Math.random() * 1500 : 250 + Math.random() * 500).then(function () {
+        return withTimeout(Promise.resolve(ns.collection(COLL).get()), 10000);
+      });
+    });
   }
   function init(onResume) {
     if (!(window.claude && typeof window.claude.use === 'function')) return;
-    withTimeout(Promise.resolve(window.claude.use('db')), 10000).then(function (ns) {
-      if (!ns) return;
-      return withTimeout(ns.collection('decisions').get(), 10000).then(function (snap) {
+    connecting = true;
+    status();
+    withTimeout(Promise.resolve(window.claude.use('db')), 15000).then(function (ns) {
+      if (!ns) { connecting = false; status(); return; }
+      return read(ns).then(function (snap) {
         db = ns;
+        connecting = false;
         var rows = [];
-        (snap && snap.docs || []).forEach(function (d) { if (d.exists) { var x = d.data() || {}; rows.push({ id: d.id, choice: x.choice === undefined ? undefined : x.choice, note: x.note, at: x.at }); } });
-        var cloudAt = {};
-        rows.forEach(function (r) { cloudAt[r.id] = Number(r.at) || 0; });
+        (snap && snap.docs || []).forEach(function (d) {
+          if (!d.exists) return;
+          var x = d.data() || {};
+          rows.push({ id: d.id, choice: x.choice === undefined ? undefined : x.choice, note: x.note, at: x.at, title: x.title });
+        });
+        var cloudAt = Object.create(null);
+        rows.forEach(function (r) { if (typeof r.id === 'string') cloudAt[r.id] = Number(r.at) || 0; });
         onResume(rows);
         lastCount = -1;
-        CARDS.forEach(function (c) { var p = picks[c.id]; if (p && (!(c.id in cloudAt) || p.at > cloudAt[c.id])) put(c); });
+        CARDS.forEach(function (c) { var p = pickOf(c.id); if (p && (!has(cloudAt, c.id) || p.at > cloudAt[c.id])) put(c); });
         meta();
         status();
       });
-    }).catch(fail);
+    }).catch(function () { connecting = false; cloudOff = true; db = null; status(); });
   }
-  return { load: loadLocal, save: saveLocal, put: put, init: init, cloud: function () { return !!db; }, failed: function () { return failed; } };
+  /* cloud: 'saving' (connecting or a write in flight), 'saved' (every pick written landed), 'failed' (a write failed,
+     or the database could not be read), 'none' (no database here). local: false when the browser refused the picks. */
+  function state() {
+    var cloud = 'none';
+    if (db) {
+      if (pending > 0) cloud = 'saving';
+      else {
+        cloud = 'saved';
+        Object.keys(gen).forEach(function (p) { if (p.indexOf(COLL + '/') === 0 && landed[p] !== gen[p]) cloud = 'failed'; });
+      }
+    } else if (connecting) cloud = 'saving';
+    else if (cloudOff) cloud = 'failed';
+    return { cloud: cloud, local: !localFailed, canRetry: !!db && Object.keys(failed).length > 0 };
+  }
+  return { load: loadLocal, save: saveLocal, put: put, init: init, state: state, retry: retryFailed };
 })();
 
 function status() {
-  $('save-line').textContent = store.failed() ? 'Saved on this device only' : '';
+  var s = store.state();
+  var save = '';
+  if (s.cloud === 'failed') save = s.local ? 'Saved on this device only' : 'Not saved yet';
+  else if (s.cloud === 'none' && !s.local) save = 'Not saved yet';
+  if ($('save-line').textContent !== save) $('save-line').textContent = save;
   var line = $('cloud-line');
-  if (store.cloud()) { line.textContent = 'Saved. The agent has your decisions.'; line.className = 'cloud'; }
-  else { line.textContent = store.failed() ? 'Saved on this device only. Copy your decisions to send them.' : 'Saved on this device. Copy your decisions to send them.'; line.className = 'cloud local'; }
+  var text; var cls = 'cloud local';
+  if (s.cloud === 'saving') text = 'Saving…';
+  else if (s.cloud === 'saved') { text = 'Saved. The agent has your decisions.'; cls = 'cloud'; }
+  else if (!s.local) text = 'Not saved yet. Copy your decisions to send them.';
+  else if (s.cloud === 'failed') text = 'Saved on this device only. Copy your decisions to send them.';
+  else text = 'Saved on this device. Copy your decisions to send them.';
+  if (line.textContent !== text) line.textContent = text;
+  line.className = cls;
+  $('retry').hidden = !s.canRetry;
 }
 
 /* ---- story ---- */
@@ -667,7 +820,7 @@ function setView(v) {
   view = v;
   show('story', v === 'story'); show('deck', v === 'deck'); show('end', v === 'end');
   if (v === 'deck') renderCard();
-  if (v === 'end') { renderEnd(); $('end-title').focus(); }
+  if (v === 'end') { store.retry(); renderEnd(); $('end-title').focus(); }
 }
 function toList() {
   var id = CARDS[index].id;
@@ -676,12 +829,21 @@ function toList() {
   var rows = $('groups').querySelectorAll('.pick');
   for (var i = 0; i < rows.length; i++) if (rows[i].dataset.id === id) { rows[i].focus(); return; }
 }
+function renderProgress() {
+  $('progress').textContent = (index + 1) + ' of ' + CARDS.length;
+  $('track').style.width = Math.round(100 * Object.keys(picks).length / CARDS.length) + '%';
+  $('undo').disabled = history.length === 0;
+}
+function renderPressed() {
+  var p = pickOf(CARDS[index].id);
+  Array.prototype.forEach.call($('choices').children, function (b) {
+    b.setAttribute('aria-pressed', p && p.choice === b.dataset.choice ? 'true' : 'false');
+  });
+}
 function renderCard() {
   var c = CARDS[index];
-  var decided = Object.keys(picks).length;
   $('deck-title').textContent = DECK.title;
-  $('progress').textContent = (index + 1) + ' of ' + CARDS.length;
-  $('track').style.width = Math.round(100 * decided / CARDS.length) + '%';
+  renderProgress();
   $('card-tag').textContent = c.tag || ''; $('card-tag').hidden = !c.tag;
   $('card-suggested').textContent = c.recommend ? 'Suggested: ' + labelOf(c.recommend) : ''; $('card-suggested').hidden = !c.recommend;
   $('card-top').hidden = !c.tag && !c.recommend;
@@ -700,16 +862,15 @@ function renderCard() {
   if (c.image) { im.src = c.image; im.alt = 'Picture for: ' + c.title; im.hidden = false; } else { im.removeAttribute('src'); im.hidden = true; }
   $('card-cost').hidden = !c.cost;
   $('card-cost').querySelector('span').textContent = c.cost || '';
-  var p = picks[c.id];
+  var p = pickOf(c.id);
   $('note').value = p ? p.note : '';
   Array.prototype.forEach.call($('choices').children, function (b) {
     var sug = b.dataset.choice === c.recommend;
     b.classList.toggle('is-suggested', sug);
     b.querySelector('small').hidden = !sug;
     b.classList.remove('armed');
-    b.setAttribute('aria-pressed', p && p.choice === b.dataset.choice ? 'true' : 'false');
   });
-  $('undo').disabled = history.length === 0;
+  renderPressed();
   $('later').textContent = editing ? 'Back to the list' : 'Decide later';
   var card = $('card');
   card.className = 'card'; card.style.transform = ''; card.scrollTop = 0; $('drag-label').style.opacity = '0';
@@ -726,7 +887,7 @@ function decide(choice, fly) {
   if (busy || Date.now() < lockUntil) return;
   lockUntil = Date.now() + 350;
   var c = CARDS[index];
-  var prev = picks[c.id] || null;
+  var prev = pickOf(c.id);
   var note = $('note').value.trim();
   history.push({ kind: 'pick', index: index, id: c.id, prev: prev, editing: editing });
   picks[c.id] = { choice: choice, note: note, at: Date.now() };
@@ -740,6 +901,8 @@ function decide(choice, fly) {
   } else advance();
 }
 function later() {
+  if (busy || Date.now() < lockUntil) return;
+  lockUntil = Date.now() + 350;
   if (editing) { toList(); return; }
   history.push({ kind: 'skip', index: index });
   var next = index + 1 < CARDS.length ? index + 1 : -1;
@@ -757,7 +920,7 @@ function undo() {
     editing = h.editing;
   }
   setView('deck');
-  if (h.kind === 'pick' && picks[h.id]) $('note').value = picks[h.id].note;
+  if (h.kind === 'pick' && pickOf(h.id)) $('note').value = pickOf(h.id).note;
   $('card').focus();
 }
 
@@ -771,6 +934,7 @@ function undo() {
   card.addEventListener('pointerdown', function (e) {
     if (e.button !== undefined && e.button !== 0) return;
     start = { x: e.clientX, y: e.clientY, id: e.pointerId };
+    dragging = true;
     try { card.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
     card.classList.remove('spring');
   });
@@ -792,6 +956,7 @@ function undo() {
   function end(e) {
     if (!start || e.pointerId !== start.id) return;
     start = null;
+    dragging = false;
     var it = intent; intent = null;
     if (it && it.choice && it.commit && e.type === 'pointerup') {
       var dir = it.choice === IDS[0] ? 'translate(120%, 0) rotate(14deg)' : it.choice === IDS[IDS.length - 1] ? 'translate(-120%, 0) rotate(-14deg)' : 'translate(0, -120%)';
@@ -829,7 +994,7 @@ function renderEnd() {
   $('end-title').textContent = open === 0 ? 'All ' + CARDS.length + ' decided' : decided + ' decided, ' + open + ' left';
   var counts = $('counts'); counts.textContent = '';
   CHOICES.forEach(function (c) {
-    var n = CARDS.filter(function (x) { return picks[x.id] && picks[x.id].choice === c.id; }).length;
+    var n = CARDS.filter(function (x) { var p = pickOf(x.id); return p && p.choice === c.id; }).length;
     var li = document.createElement('li'); var b = document.createElement('b'); b.textContent = String(n);
     var s = document.createElement('span'); s.textContent = c.label;
     li.appendChild(b); li.appendChild(s); counts.appendChild(li);
@@ -837,7 +1002,7 @@ function renderEnd() {
   var groups = $('groups'); groups.textContent = '';
   var sets = CHOICES.map(function (c) { return { label: c.label, id: c.id }; }).concat([{ label: 'Not decided yet', id: null }]);
   sets.forEach(function (g) {
-    var items = CARDS.map(function (c, i) { return [c, i]; }).filter(function (x) { var p = picks[x[0].id]; return g.id ? p && p.choice === g.id : !p; });
+    var items = CARDS.map(function (c, i) { return [c, i]; }).filter(function (x) { var p = pickOf(x[0].id); return g.id ? p && p.choice === g.id : !p; });
     if (!items.length) return;
     var sec = document.createElement('section'); sec.className = 'group';
     var h = document.createElement('h2'); h.textContent = g.label + ' · ' + items.length; sec.appendChild(h);
@@ -845,7 +1010,7 @@ function renderEnd() {
     items.forEach(function (x) {
       var li = document.createElement('li'); var b = document.createElement('button'); b.type = 'button'; b.className = 'pick';
       var t = document.createElement('span'); t.textContent = x[0].title; b.appendChild(t);
-      var p = picks[x[0].id];
+      var p = pickOf(x[0].id);
       if (p && p.note) { var sm = document.createElement('small'); sm.textContent = 'Note: ' + p.note; b.appendChild(sm); }
       b.dataset.id = x[0].id;
       b.setAttribute('aria-label', x[0].title + (p ? ', ' + labelOf(p.choice) + '. Change' : '. Decide'));
@@ -868,6 +1033,7 @@ $('copy').addEventListener('click', function () {
 });
 
 $('undo').addEventListener('click', undo);
+$('retry').addEventListener('click', function () { store.retry(); });
 $('later').addEventListener('click', later);
 function begin() { setView(startAt()); if (view === 'deck') $('card').focus(); }
 $('start').addEventListener('click', begin);
@@ -875,18 +1041,28 @@ $('skip-story').addEventListener('click', begin);
 
 /* ---- start ---- */
 buildChoices();
-picks = mergeResume(store.load(), [], CARD_IDS, IDS);
+picks = mergeResume(store.load(), [], CARD_IDS, IDS, CARD_TITLES);
 function startAt() { var i = nextOpen(CARDS, picks, 0); if (i === -1) return 'end'; index = i; return 'deck'; }
 var resumed = Object.keys(picks).length > 0;
 if (DECK.story.length && !resumed) { buildStory(); setView('story'); } else { if (DECK.story.length) buildStory(); setView(startAt()); }
 status();
+/* A late database answer: refresh what it changed, never the note being typed, the card's scroll or a drag. */
 store.init(function (rows) {
-  var before = JSON.stringify(picks);
-  picks = mergeResume(picks, rows, CARD_IDS, IDS);
+  var cur = CARDS[index].id;
+  var was = pickOf(cur);
+  picks = mergeResume(picks, rows, CARD_IDS, IDS, CARD_TITLES);
   store.save();
-  if (JSON.stringify(picks) !== before && view !== 'story' && !editing && history.length === 0) setView(startAt());
-  else if (view === 'end') renderEnd();
-  else if (view === 'deck') renderCard();
+  if (view === 'end') { renderEnd(); return; }
+  if (view !== 'deck') return;
+  var now = pickOf(cur);
+  var same = (was ? was.choice + '\n' + was.note : '') === (now ? now.choice + '\n' + now.note : '');
+  var note = $('note');
+  var typing = document.activeElement === note || note.value.trim() !== (was ? was.note : '');
+  renderProgress();
+  if (same) return;
+  if (typing || dragging) { renderPressed(); return; }
+  if (now && !editing && history.length === 0) setView(startAt());
+  else renderCard();
 });
 `;
 
@@ -947,7 +1123,11 @@ export async function run(args, io = {}) {
   if (!cmd || cmd === '--help' || cmd === '-h') return { usage };
   if (cmd === 'check') {
     const flags = parseFlags(rest, { '--file': 'val' });
-    return check(parseDeck(await readText(flags, io, 'deck JSON'), 'the deck'));
+    const deck = parseDeck(await readText(flags, io, 'deck JSON'), 'the deck');
+    const res = check(deck);
+    if (!res.ok) return res;
+    const { collection, progress } = deckPaths(deck);
+    return { ...res, collection, progress };
   }
   if (cmd === 'emit') {
     const flags = parseFlags(rest, { '--file': 'val', '--out': 'val', '--standalone': 'bool' });
@@ -957,7 +1137,7 @@ export async function run(args, io = {}) {
     const out = path.resolve(cwd, flags['--out']);
     if (flags['--file'] !== undefined && path.resolve(cwd, flags['--file']) === out) throw bad('--out is the same file as --file; refusing to overwrite the deck');
     try { await fs.writeFile(out, html); } catch (e) { throw bad(`cannot write ${out}: ${e.code || e.message}`); }
-    return { out, bytes: Buffer.byteLength(html), cards: deck.cards.length, title: pageTitle(deck.title) };
+    return { out, bytes: Buffer.byteLength(html), cards: deck.cards.length, title: pageTitle(deck.title), collection: deckPaths(deck).collection };
   }
   if (cmd === 'read') {
     const flags = parseFlags(rest, { '--file': 'val', '--deck': 'val' });

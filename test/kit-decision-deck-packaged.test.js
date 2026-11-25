@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { installPackaged } from './helpers/packaged.js';
+import { deckPaths } from '../src/lib/kit/decision-deck.js';
 
 const FIXTURE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'decision-deck', 'sample.json');
 
@@ -19,7 +20,9 @@ describe('decision-deck — packaged end to end', () => {
 
     const c = pkg.kit(['decision-deck', 'check', '--file', 'deck.json']);
     assert.equal(c.code, 0, c.err);
-    assert.deepEqual(c.json, { ok: true, cards: 6, problems: [] });
+    const { collection, progress } = deckPaths(JSON.parse(deckText));
+    assert.match(collection, /^decks\/[0-9a-f]{8}\/decisions$/);
+    assert.deepEqual(c.json, { ok: true, cards: 6, problems: [], collection, progress });
     assert.deepEqual(pkg.kit(['decision-deck', 'check'], deckText).json, c.json);
 
     const bad = pkg.kit(['decision-deck', 'check'], JSON.stringify({ ...JSON.parse(deckText), title: '' }));
@@ -30,6 +33,7 @@ describe('decision-deck — packaged end to end', () => {
     const e = pkg.kit(['decision-deck', 'emit', '--file', 'deck.json', '--out', 'deck.html']);
     assert.equal(e.code, 0, e.err);
     assert.equal(e.json.cards, 6);
+    assert.equal(e.json.collection, collection);
     const html = fs.readFileSync(path.join(pkg.dir, 'deck.html'), 'utf-8');
     assert.doesNotMatch(html, /https?:\/\//);
     assert.match(html, /<title>Round 1 decisions<\/title>/);
@@ -43,6 +47,10 @@ describe('decision-deck — packaged end to end', () => {
     assert.equal(r.json.problems.length, 1);
     const rows = pkg.kit(['decision-deck', 'read', '--deck', 'deck.json'], JSON.stringify([{ id: 'f2', choice: 'later', note: 'after launch', at: 1 }]));
     assert.deepEqual(rows.json.decided, [{ id: 'f2', title: JSON.parse(deckText).cards[1].title, choice: 'later', note: 'after launch' }]);
+    assert.equal(rows.json.collection, collection);
+    const old = pkg.kit(['decision-deck', 'read', '--deck', 'deck.json'], JSON.stringify([{ path: 'decisions/f2', data: { choice: 'later', note: '', at: 1 } }]));
+    assert.deepEqual(old.json.decided, []);
+    assert.match(old.json.problems[0].message, /belongs to another deck/);
 
     assert.equal(pkg.kit(['decision-deck', 'check', '--file', 'missing.json']).code, 1);
     assert.equal(pkg.kit(['decision-deck', 'check'], '').code, 1);

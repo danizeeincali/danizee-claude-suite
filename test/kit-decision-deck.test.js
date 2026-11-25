@@ -8,7 +8,9 @@ import { fileURLToPath } from 'node:url';
 import { KitExit } from '../src/lib/kit/kit-exit.js';
 import * as dd from '../src/lib/kit/decision-deck.js';
 
-const { check, emit, read, run, verb, swipeIntent, exportText, mergeResume, deckKey, nextOpen, pageTitle, parseDecisions, embedJson } = dd;
+const { check, emit, read, run, verb, swipeIntent, exportText, mergeResume, deckKey, deckPaths, nextOpen, pageTitle, parseDecisions, embedJson } = dd;
+/** A map with no prototype, as the page's id-keyed maps are. */
+const bare = (o) => Object.assign(Object.create(null), o);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(HERE, 'fixtures', 'decision-deck', 'sample.json');
 const sample = () => JSON.parse(fs.readFileSync(FIXTURE, 'utf-8'));
@@ -193,9 +195,11 @@ describe('decision-deck — emit', () => {
     const uses = page.match(/(window\.)?claude\.[a-zA-Z_]+/g);
     assert.deepEqual([...new Set(uses)].sort(), ['window.claude.use']);
     assert.match(page, /window\.claude\.use\('db'\)/);
-    assert.match(page, /collection\('decisions'\)\.get\(\)/);
-    assert.match(page, /'decisions\/' \+ card\.id/);
-    assert.match(page, /'decks\/meta'/);
+    assert.match(page, /collection\(COLL\)\.get\(\)/);
+    assert.match(page, /var COLL = 'decks\/' \+ SEG \+ '\/decisions';/);
+    assert.match(page, /COLL \+ '\/' \+ card\.id/);
+    assert.match(page, /var PROGRESS = 'decks\/' \+ SEG;/);
+    assert.doesNotMatch(page, /'decks\/meta'|collection\('decisions'\)|'decisions\/'/, 'no unscoped paths are left');
   });
 
   it('embeds the cards safely: a </script> in a title cannot break out', () => {
@@ -260,9 +264,9 @@ describe('decision-deck — page logic (pure functions embedded in the page)', (
   it('mergeResume: cloud wins, null clears, unknown ids and choices are dropped', () => {
     const local = { a: { choice: 'fix', note: 'L', at: 1 }, b: { choice: 'no', note: '', at: 1 }, z: { choice: 'fix' }, c: { choice: 'maybe' } };
     const rows = [{ id: 'a', choice: 'later', note: 'C', at: 2 }, { id: 'b', choice: null }, { id: 'q', choice: 'fix' }];
-    assert.deepEqual(mergeResume(local, rows, ['a', 'b', 'c'], three), { a: { choice: 'later', note: 'C', at: 2 } });
-    assert.deepEqual(mergeResume(null, [], ['a'], three), {});
-    assert.deepEqual(mergeResume({ a: { choice: 'fix', note: 'x', at: 3 } }, [], ['a'], three), { a: { choice: 'fix', note: 'x', at: 3 } });
+    assert.deepEqual(mergeResume(local, rows, ['a', 'b', 'c'], three), bare({ a: { choice: 'later', note: 'C', at: 2 } }));
+    assert.deepEqual(mergeResume(null, [], ['a'], three), bare({}));
+    assert.deepEqual(mergeResume({ a: { choice: 'fix', note: 'x', at: 3 } }, [], ['a'], three), bare({ a: { choice: 'fix', note: 'x', at: 3 } }));
   });
 
   it('mergeResume: the newer of local and cloud wins by `at`; a cloud tie or a row without `at` goes to the cloud', () => {
@@ -274,13 +278,13 @@ describe('decision-deck — page logic (pure functions embedded in the page)', (
       { id: 'c', choice: null, note: '', at: 10 },
       { id: 'd', choice: 'no', note: 'C' },
     ];
-    assert.deepEqual(mergeResume(local, rows, ids, three), {
+    assert.deepEqual(mergeResume(local, rows, ids, three), bare({
       a: { choice: 'fix', note: 'L', at: 50 },
       b: { choice: 'no', note: 'C', at: 50 },
       c: { choice: 'fix', note: 'L', at: 50 },
       d: { choice: 'no', note: 'C', at: 0 },
-    });
-    assert.deepEqual(mergeResume({ a: { choice: 'fix', note: '', at: 5 } }, [{ id: 'a', choice: null, at: 9 }], ['a'], three), {}, 'a newer clear still clears');
+    }));
+    assert.deepEqual(mergeResume({ a: { choice: 'fix', note: '', at: 5 } }, [{ id: 'a', choice: null, at: 9 }], ['a'], three), bare({}), 'a newer clear still clears');
   });
 
   it('deckKey and nextOpen', () => {
@@ -291,6 +295,40 @@ describe('decision-deck — page logic (pure functions embedded in the page)', (
     assert.equal(nextOpen(cards, { a: {} }, 0), 1);
     assert.equal(nextOpen(cards, { a: {}, b: {}, c: {} }, 0), -1);
     assert.equal(nextOpen(cards, {}, 2), 2);
+  });
+
+  it('a card id that is a prototype name ("constructor") is never taken as decided', () => {
+    const cards = [{ id: 'constructor' }, { id: 'b' }];
+    assert.equal(nextOpen(cards, {}, 0), 0, 'a plain {} has an inherited constructor, but no pick');
+    assert.equal(exportText(cards, {}), 'constructor | undecided | \nb | undecided | ');
+    const none = mergeResume(null, [], ['constructor', 'b'], three);
+    assert.equal(Object.getPrototypeOf(none), null);
+    assert.equal(none.constructor, undefined);
+    assert.equal(nextOpen(cards, none, 0), 0);
+    const local = JSON.parse('{"constructor": {"choice": "fix", "note": "n", "at": 2}}');
+    assert.deepEqual(mergeResume(local, [], ['constructor'], three), bare({ constructor: { choice: 'fix', note: 'n', at: 2 } }));
+    assert.deepEqual(mergeResume(null, [{ id: 'constructor', choice: 'no', note: '', at: 3 }], ['constructor'], three), bare({ constructor: { choice: 'no', note: '', at: 3 } }));
+    assert.deepEqual(mergeResume(null, [{ id: 'toString', choice: 'no' }, { id: '__proto__', choice: 'no' }], ['constructor'], three), bare({}));
+  });
+
+  it('mergeResume: a row whose title is not the card\'s title belongs to another deck and is ignored', () => {
+    const rows = [{ id: 'a', choice: 'no', note: '', at: 9, title: 'Something else' }, { id: 'b', choice: 'fix', note: '', at: 9, title: 'B' }, { id: 'c', choice: 'fix', note: '', at: 9 }];
+    assert.deepEqual(mergeResume(null, rows, ['a', 'b', 'c'], three, ['A', 'B', 'C']), bare({ b: { choice: 'fix', note: '', at: 9 }, c: { choice: 'fix', note: '', at: 9 } }));
+  });
+
+  it('deckKey and deckPaths: one key per deck JSON, a different key when a card\'s title changes, legal path segments', () => {
+    assert.notEqual(deckKey('T', ['a'], ['Do A']), deckKey('T', ['a'], ['Do B']));
+    assert.equal(deckKey('T', ['a'], ['Do A']), deckKey('T', ['a'], ['Do A']));
+    const p = deckPaths(sample());
+    assert.deepEqual(p, deckPaths(sample()));
+    assert.match(p.collection, /^decks\/[0-9a-f]{8}\/decisions$/);
+    assert.equal(p.progress, p.collection.replace(/\/decisions$/, ''));
+    assert.equal(p.key, `decision-deck:${p.progress.slice('decks/'.length)}`);
+    for (const seg of p.collection.split('/')) assert.match(seg, /^[A-Za-z0-9_\-.~:@+]+$/);
+    const s2 = sample(); s2.cards[0].title = 'A different finding with the same id';
+    assert.notEqual(deckPaths(s2).collection, p.collection, 'a new deck with the same title and card ids gets its own collection');
+    const s3 = sample(); s3.cards[0].why = 'Reworded evidence.';
+    assert.equal(deckPaths(s3).collection, p.collection, 'rewording the evidence keeps the picks');
   });
 });
 
@@ -308,18 +346,48 @@ describe('decision-deck — read', () => {
     assert.deepEqual(r.problems, []);
   });
 
-  it('reads database rows (flat, nested under data, or by path) and skips decks/meta', () => {
+  it('reads database rows (flat, nested under data, or by path) and skips the progress document', () => {
+    const { collection, progress } = deckPaths(deck);
     const rows = [
       { id: 'f1', choice: 'fix', note: 'n', at: 1 },
-      { path: 'decisions/f2', data: { choice: 'no', note: '', at: 2, title: 'x' } },
+      { path: `${collection}/f2`, data: { choice: 'no', note: '', at: 2, title: deck.cards[1].title } },
       { id: 'f3', data: { choice: null, note: '' } },
-      { path: 'decks/meta', data: { title: 'x', cards: 6, decided: 2 } },
+      { path: progress, data: { title: 'x', cards: 6, decided: 2 } },
     ];
     const r = read(deck, JSON.stringify(rows));
     assert.deepEqual(r.decided.map((d) => [d.id, d.choice]), [['f1', 'fix'], ['f2', 'no']]);
     assert.deepEqual(r.undecided, ['f3', 'f4', 'f5', 'f6']);
     assert.deepEqual(r.problems, []);
     assert.deepEqual(read(deck, { documents: rows }).decided.length, 2);
+  });
+
+  it('rows of another deck (its collection, an old bare decisions/<id> path, or another title) are problems, not picks', () => {
+    const { collection } = deckPaths(deck);
+    const other = deckPaths({ ...deck, title: 'Round 0' }).collection;
+    const rows = [
+      { path: 'decisions/f1', data: { choice: 'no', note: 'old page', at: 1, title: deck.cards[0].title } },
+      { path: `${other}/f2`, data: { choice: 'no', note: '', at: 1, title: deck.cards[1].title } },
+      { path: `${collection}/f3`, data: { choice: 'no', note: '', at: 1, title: 'A finding from last round' } },
+      { id: 'f4', choice: 'later', note: '', at: 1, title: 'Another old title' },
+      { path: `${collection}/f5`, data: { choice: 'fix', note: '', at: 1, title: deck.cards[4].title } },
+      { id: 'f6', choice: 'later', note: 'as given', at: 1 },
+    ];
+    const r = read(deck, JSON.stringify(rows));
+    assert.deepEqual(r.decided.map((d) => [d.id, d.choice]), [['f5', 'fix'], ['f6', 'later']]);
+    assert.deepEqual(r.undecided, ['f1', 'f2', 'f3', 'f4']);
+    assert.equal(r.collection, collection);
+    assert.deepEqual(r.problems.map((p) => p.path), ['[0]', '[1]', '[2]', '[3]']);
+    assert.match(r.problems[0].message, /"decisions\/f1" belongs to another deck/);
+    assert.match(r.problems[1].message, /belongs to another deck/);
+    assert.ok(r.problems[1].message.includes(collection), 'the message names this deck\'s collection');
+    assert.match(r.problems[2].message, /card "f3": the row's title "A finding from last round" is not this card's title/);
+    assert.match(r.problems[3].message, /card "f4": the row's title/);
+  });
+
+  it('a card id "constructor" is read like any other', () => {
+    const d = mini({ cards: [{ id: 'constructor', title: 'Build it', why: 'W' }, { id: 'b', title: 'B', why: 'W' }] });
+    assert.deepEqual(read(d, 'b | fix |').undecided, ['constructor']);
+    assert.deepEqual(read(d, JSON.stringify([{ id: 'constructor', choice: 'no', note: '', at: 1 }])).byChoice, { fix: [], later: [], no: ['constructor'] });
   });
 
   it('lists unknown ids, unknown choices and repeats under problems, never silently', () => {
@@ -343,7 +411,10 @@ describe('decision-deck — run', () => {
   it('check prints {ok, problems} and exits 0 either way; unreadable input is exit 1', async () => {
     const dir = tmp();
     try {
-      assert.equal((await run(['check', '--file', FIXTURE], io('', dir))).ok, true);
+      const good = await run(['check', '--file', FIXTURE], io('', dir));
+      assert.equal(good.ok, true);
+      assert.equal(good.collection, deckPaths(sample()).collection, 'check tells the agent which collection to list');
+      assert.equal(good.progress, deckPaths(sample()).progress);
       const bad = await run(['check'], io(JSON.stringify(mini({ title: '' })), dir));
       assert.equal(bad.ok, false);
       assert.equal(bad.exit, undefined);
@@ -366,6 +437,7 @@ describe('decision-deck — run', () => {
       const r = await run(['emit', '--file', FIXTURE, '--out', 'deck.html'], io('', dir));
       assert.equal(r.cards, 6);
       assert.equal(r.title, 'Round 1 decisions');
+      assert.equal(r.collection, deckPaths(sample()).collection, 'emit prints the collection the page writes to');
       assert.equal(fs.readFileSync(path.join(dir, 'deck.html'), 'utf-8'), emit(sample()));
       const s = await run(['emit', '--out', 's.html', '--standalone'], io(fs.readFileSync(FIXTURE), dir));
       assert.equal(s.bytes, Buffer.byteLength(fs.readFileSync(path.join(dir, 's.html'))));
@@ -383,6 +455,7 @@ describe('decision-deck — run', () => {
       fs.writeFileSync(path.join(dir, 'picks.txt'), 'f1 | fix | ok\n');
       const a = await run(['read', '--file', 'picks.txt', '--deck', FIXTURE], io('', dir));
       assert.deepEqual(a.byChoice.fix, ['f1']);
+      assert.equal(a.collection, deckPaths(sample()).collection);
       const b = await run(['read', '--deck', FIXTURE], io('f2 | no | ', dir));
       assert.deepEqual(b.byChoice.no, ['f2']);
       await exit1(() => run(['read', '--file', 'picks.txt'], io('', dir)));

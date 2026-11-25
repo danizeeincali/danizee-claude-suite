@@ -356,16 +356,28 @@ The deck JSON (`test/fixtures/decision-deck/sample.json` is a full example):
 field but `id`, `title` and `why` are optional. Images are `data:` URIs (png, jpeg or webp, at most 400 KB each).
 
 ```bash
-node .claude/helpers/kit/cli.js decision-deck check --file deck.json             # {ok, cards, problems:[{path,message,fix}]}, exit 0 either way
-node .claude/helpers/kit/cli.js decision-deck emit --file deck.json --out deck.html  # add --standalone to open it as a local file
-node .claude/helpers/kit/cli.js decision-deck read --file picks.txt --deck deck.json  # {decided, undecided, byChoice, problems}
+node .claude/helpers/kit/cli.js decision-deck check --file deck.json             # {ok, cards, problems:[{path,message,fix}], collection, progress}, exit 0 either way
+node .claude/helpers/kit/cli.js decision-deck emit --file deck.json --out deck.html  # {out, bytes, cards, title, collection}; add --standalone to open it as a local file
+node .claude/helpers/kit/cli.js decision-deck read --file picks.txt --deck deck.json  # {decided, undecided, byChoice, problems, collection}
 ```
 
-**In Claude:** publish the emitted page as a Claude artifact with `capabilities: {db: {}, user: {}}`. Each pick is
-saved to the artifact database as `decisions/<card id>` (`{choice, note, at, title}`; `choice` is null after an undo)
-and the progress as `decks/meta` (`{title, cards, decided, done, at}`); the owner sees "Saved. The agent has your
-decisions." Read the picks back with the artifact database `list` of the `decisions` collection and pass the rows to
-`read --deck deck.json`. Unknown ids or choices come back under `problems`, never dropped.
+**In Claude:** publish the emitted page as a Claude artifact with `capabilities: {db: {}, user: {}}`. Each deck has
+its own place in the artifact database, `decks/<key>`, where `<key>` is 8 hex characters hashed from the deck's
+title, card ids and card titles (the same deck JSON always gives the same key; a new deck republished to the same
+artifact gets a new one, so it never resumes the old deck's picks). Each pick is saved as the document
+`decks/<key>/decisions/<card id>` (`{choice, note, at, title}`; `choice` is null after an undo), and
+`decks/<key>` holds the progress of the device that saved last (`{title, cards, decided, done, at}`), which is a
+hint, not the count. `check` and `emit` print the collection (`"collection": "decks/<key>/decisions"`), so the agent
+can find it from the deck JSON alone. The end screen says "Saving…" while a write is on its way, "Saved. The agent
+has your decisions." only once every pick has landed, and otherwise "Saved on this device only. Copy your decisions to
+send them." with a "Try saving again" button (or "Not saved yet. Copy your decisions to send them." when the browser
+could not keep them either). A refused write is tried once more (after a longer pause when the database says it is
+busy), a write that does not answer in 10 s counts as failed, and failed picks are sent again after the next write
+that lands. Read the picks back with the artifact database `list` of that collection and pass the rows to
+`read --deck deck.json`; `read` counts only the decision rows (never the progress document). Unknown ids or choices
+come back under `problems`, never dropped, and so do rows that belong to another deck: a `path` outside this deck's
+collection (including an older page's bare `decisions/<id>`) or a `title` that is not the card's title. Rows with no
+`path` are taken as given.
 
 **Anywhere else:** open the page (`emit --standalone`), decide, press "Copy my decisions" and paste the text (one line
 per card, `id | choice | note`) back to the agent, which runs `read` on it. The page always keeps the picks in the

@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { emit } from '../src/lib/kit/decision-deck.js';
+import { emit, deckPaths } from '../src/lib/kit/decision-deck.js';
 
 const require = createRequire(import.meta.url);
 const FIXTURE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'decision-deck', 'sample.json');
@@ -31,7 +31,7 @@ describe('decision-deck — in the browser', { skip: chromium ? false : 'playwri
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  async function open(t, init, { viewport = { width: 390, height: 844 }, deck = null } = {}) {
+  async function open(t, init, { viewport = { width: 390, height: 844 }, deck = null, arg, clock = false } = {}) {
     if (!browser) { t.skip(`chromium will not launch: ${String(launchError && launchError.message).split('\n')[0]}`); return null; }
     let target = url;
     if (deck) {
@@ -44,7 +44,8 @@ describe('decision-deck — in the browser', { skip: chromium ? false : 'playwri
     const errors = [];
     page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
     page.on('request', (r) => { if (!/^(file|data|blob):/.test(r.url())) errors.push(`request: ${r.url()}`); });
-    if (init) await page.addInitScript(init);
+    if (clock) await page.clock.install();
+    if (init) await page.addInitScript(init, arg);
     await page.goto(target);
     return { ctx, page, errors };
   }
@@ -106,7 +107,7 @@ describe('decision-deck — in the browser', { skip: chromium ? false : 'playwri
       assert.equal(await text(page, '#progress'), '4 of 6');
 
       // the rest: decide later
-      for (let i = 0; i < 3; i++) await page.click('#later');
+      for (let i = 0; i < 3; i++) { await page.waitForTimeout(400); await page.click('#later'); }
       assert.equal(await page.locator('#end').isVisible(), true);
       assert.equal(await text(page, '#end-title'), '3 decided, 3 left');
       assert.deepEqual(await page.$$eval('#counts li', (ls) => ls.map((l) => l.textContent)), ['2Fix', '0Later', '1No']);
@@ -137,37 +138,38 @@ describe('decision-deck — in the browser', { skip: chromium ? false : 'playwri
   });
 
   it('as a Claude artifact: resumes from the database, writes each pick, touches only claude.use', async (t) => {
-    const init = () => {
+    const { collection, progress } = deckPaths(JSON.parse(fs.readFileSync(FIXTURE, 'utf-8')));
+    const init = ({ collection }) => {
       const touched = new Set();
       const writes = [];
       window.__touched = touched;
       window.__writes = writes;
       const db = {
         doc: (p) => ({ set: async (body) => { writes.push([p, body]); } }),
-        collection: (p) => ({ get: async () => ({ docs: p === 'decisions' ? [{ id: 'f1', exists: true, data: () => ({ choice: 'no', note: 'from the cloud', at: 1 }) }] : [] }) }),
+        collection: (p) => ({ get: async () => ({ docs: p === collection ? [{ id: 'f1', exists: true, data: () => ({ choice: 'no', note: 'from the cloud', at: 1 }) }] : [] }) }),
       };
       window.claude = new Proxy({ use: async (name) => (name === 'db' ? db : null) }, { get(target, k) { touched.add(String(k)); return target[k]; } });
     };
-    const o = await open(t, init);
+    const o = await open(t, init, { arg: { collection } });
     if (!o) return;
     const { ctx, page, errors } = o;
     try {
       await page.click('#skip-story');
-      await page.waitForFunction(() => window.__writes.some(([p]) => p === 'decks/meta'));
+      await page.waitForFunction((pr) => window.__writes.some(([p]) => p === pr), progress);
       assert.equal(await text(page, '#progress'), '2 of 6', 'the card decided in the cloud is skipped');
       await page.click('.choice[data-choice="fix"]');
       await page.waitForTimeout(400);
-      await page.waitForFunction(() => window.__writes.some(([p]) => p === 'decisions/f2'));
+      await page.waitForFunction((f) => window.__writes.some(([p]) => p === f), `${collection}/f2`);
       const writes = await page.evaluate(() => window.__writes);
-      const f2 = writes.find(([p]) => p === 'decisions/f2')[1];
+      const f2 = writes.find(([p]) => p === `${collection}/f2`)[1];
       assert.equal(f2.choice, 'fix');
       assert.equal(f2.note, '');
       assert.equal(f2.title, 'Invoices say "draft" when they were already sent');
       assert.equal(typeof f2.at, 'number');
-      assert.deepEqual(writes.filter(([p]) => p === 'decks/meta').map(([, b]) => [b.decided, b.done, b.cards]), [[1, false, 6], [2, false, 6]]);
+      assert.deepEqual(writes.filter(([p]) => p === progress).map(([, b]) => [b.decided, b.done, b.cards]), [[1, false, 6], [2, false, 6]]);
       for (let i = 0; i < 4; i++) { await page.keyboard.press('1'); await page.waitForTimeout(400); }
       assert.equal(await text(page, '#cloud-line'), 'Saved. The agent has your decisions.');
-      await page.waitForFunction(() => window.__writes.some(([p, b]) => p === 'decks/meta' && b.done));
+      await page.waitForFunction((pr) => window.__writes.some(([p, b]) => p === pr && b.done), progress);
       assert.match(await text(page, '#groups'), /Note: from the cloud/);
       assert.deepEqual([...await page.evaluate(() => [...window.__touched])], ['use']);
       assert.deepEqual(errors, []);
@@ -251,7 +253,8 @@ describe('decision-deck — in the browser', { skip: chromium ? false : 'playwri
   });
 
   it('a pick made while the database read is still pending is not lost to an older row', async (t) => {
-    const init = () => {
+    const { collection, progress } = deckPaths(JSON.parse(fs.readFileSync(FIXTURE, 'utf-8')));
+    const init = ({ collection }) => {
       const writes = [];
       window.__writes = writes;
       let release;
@@ -263,11 +266,11 @@ describe('decision-deck — in the browser', { skip: chromium ? false : 'playwri
       ];
       const db = {
         doc: (p) => ({ set: async (body) => { writes.push([p, body]); } }),
-        collection: (p) => ({ get: async () => { await gate; return { docs: p === 'decisions' ? rows : [] }; } }),
+        collection: (p) => ({ get: async () => { await gate; return { docs: p === collection ? rows : [] }; } }),
       };
       window.claude = { use: async () => db };
     };
-    const o = await open(t, init);
+    const o = await open(t, init, { arg: { collection } });
     if (!o) return;
     const { ctx, page, errors } = o;
     try {
@@ -277,13 +280,13 @@ describe('decision-deck — in the browser', { skip: chromium ? false : 'playwri
       await page.click('.choice[data-choice="fix"]');
       assert.equal(await text(page, '#progress'), '2 of 6');
       await page.evaluate(() => window.__release());
-      await page.waitForFunction(() => window.__writes.some(([p]) => p === 'decks/meta'));
+      await page.waitForFunction((pr) => window.__writes.some(([p]) => p === pr), progress);
       const writes = await page.evaluate(() => window.__writes);
-      const f1 = writes.filter(([p]) => p === 'decisions/f1');
+      const f1 = writes.filter(([p]) => p === `${collection}/f1`);
       assert.equal(f1.length, 1, 'the newer local pick is pushed over the stale row');
       assert.equal(f1[0][1].choice, 'fix');
       assert.equal(f1[0][1].note, 'newer local note');
-      assert.equal(writes.filter(([p]) => p === 'decisions/f2').length, 0, 'a row with no newer local pick is not rewritten');
+      assert.equal(writes.filter(([p]) => p === `${collection}/f2`).length, 0, 'a row with no newer local pick is not rewritten');
       const local = await page.evaluate(() => JSON.parse(localStorage.getItem(Object.keys(localStorage).find((k) => k.startsWith('decision-deck:')))));
       assert.equal(local.f1.choice, 'fix', 'the local pick survives the merge');
       assert.equal(local.f2.choice, 'later', 'a row with no local pick still resumes');
@@ -351,6 +354,279 @@ describe('decision-deck — in the browser', { skip: chromium ? false : 'playwri
       await page.waitForTimeout(300);
       a = await active();
       assert.match(a.label, /^Rename "Your team" to "Staff", No\. Change$/, 'focus returns to the row of the card just edited');
+      assert.deepEqual(errors, []);
+    } finally { await ctx.close(); }
+  });
+
+  /* ---- a configurable artifact database: rows by collection path, set() outcomes scripted per call ---- */
+  const mockDb = (o) => {
+    const writes = []; const calls = []; const reads = [];
+    window.__writes = writes; window.__calls = calls; window.__reads = reads;
+    window.__refuse = !!o.refuse;
+    let release; const gate = new Promise((r) => { release = r; });
+    window.__release = () => release();
+    const fails = (o.fail || []).slice();
+    const db = {
+      doc: (p) => ({ set: (body) => {
+        calls.push(p);
+        if (o.hang === 'forever') return new Promise(() => {});
+        const aimed = p.includes('/decisions/'); // scripted refusals hit the decision documents, not the progress one
+        const code = aimed && fails.length ? fails.shift() : (window.__refuse ? o.refuse : null);
+        if (code) return Promise.reject({ code, message: 'refused' });
+        const done = () => { writes.push([p, body]); };
+        if (o.hang === 'gate') return gate.then(done);
+        done();
+        return Promise.resolve();
+      } }),
+      collection: (p) => ({ get: async () => {
+        reads.push(p);
+        return { docs: ((o.rows || {})[p] || []).map((r) => ({ id: r.id, exists: true, data: () => r })) };
+      } }),
+    };
+    window.claude = { use: (name) => new Promise((r) => setTimeout(() => { window.__resolved = true; r(name === 'db' ? db : null); }, o.delay || 0)) };
+  };
+  const quick = (n, title = `Quick ${n}`) => ({ kind: 'decision-deck', v: 1, title, cards: Array.from({ length: n }, (_, i) => ({ id: `c${i}`, title: `Card ${i}`, why: 'Because.' })) });
+  const sampleDeck = () => JSON.parse(fs.readFileSync(FIXTURE, 'utf-8'));
+
+  it('a new deck republished to the same artifact does not resume another deck\'s picks', async (t) => {
+    const deck = sampleDeck();
+    const { collection } = deckPaths(deck);
+    const f1 = { id: 'f1', choice: 'no', note: 'old', at: 1, title: deck.cards[0].title };
+    const rows = {
+      decisions: [f1],
+      'decks/00000000/decisions': [f1],
+      [collection]: [{ id: 'f2', choice: 'no', note: '', at: 1, title: 'A finding from last round' }],
+    };
+    const o = await open(t, mockDb, { arg: { rows } });
+    if (!o) return;
+    const { ctx, page, errors } = o;
+    try {
+      await page.waitForFunction(() => window.__reads.length > 0);
+      await page.waitForTimeout(150);
+      await page.click('#skip-story');
+      assert.deepEqual(await page.evaluate(() => window.__reads), [collection], 'the page reads only its own deck\'s collection');
+      assert.equal(await text(page, '#progress'), '1 of 6', 'card 1 is undecided');
+      assert.equal(await page.locator('.choice[aria-pressed="true"]').count(), 0);
+      await page.keyboard.press('1');
+      assert.equal(await text(page, '#progress'), '2 of 6', 'a row of this collection with another card title is not a pick either');
+      assert.equal(await text(page, '#card-title'), deck.cards[1].title);
+      await page.waitForFunction((f) => window.__writes.some(([p]) => p === f), `${collection}/f1`);
+      assert.deepEqual(errors, []);
+    } finally { await ctx.close(); }
+  });
+
+  it('the database answering late keeps a typed note, the card scroll and a drag in progress', async (t) => {
+    const deck = { ...longDeck(), cards: [...longDeck().cards, { id: 'l3', title: 'Third', why: 'Short.' }] };
+    const { collection } = deckPaths(deck);
+    const o = await open(t, mockDb, { viewport: { width: 360, height: 640 }, deck, arg: { delay: 1500, rows: { [collection]: [{ id: 'l2', choice: 'no', note: '', at: 1, title: 'Second' }] } } });
+    if (!o) return;
+    const { ctx, page, errors } = o;
+    try {
+      await page.fill('#note', 'half a thought');
+      await page.evaluate(() => { document.getElementById('card').scrollTop = 60; });
+      const box = await page.locator('#card').boundingBox();
+      const cx = box.x + box.width / 2; const cy = box.y + 120;
+      await page.mouse.move(cx, cy); await page.mouse.down(); await page.mouse.move(cx + 50, cy, { steps: 4 });
+      assert.equal(await page.evaluate(() => window.__resolved === true), false, 'the drag started before the database answered');
+      await page.waitForFunction(() => document.getElementById('track').style.width === '33%');
+      assert.equal(await page.inputValue('#note'), 'half a thought', 'the unsaved note is kept');
+      assert.equal(await page.evaluate(() => document.getElementById('card').scrollTop), 60, 'the card keeps its scroll');
+      assert.notEqual(await page.evaluate(() => document.getElementById('card').style.transform), '', 'the drag is not reset');
+      await page.mouse.up();
+      assert.equal(await text(page, '#progress'), '1 of 3');
+      await page.waitForTimeout(400);
+      await page.click('.choice[data-choice="fix"]');
+      assert.equal(await text(page, '#progress'), '3 of 3', 'the card decided in the database is skipped');
+      assert.deepEqual(errors, []);
+    } finally { await ctx.close(); }
+  });
+
+  it('the database deciding the card being typed on shows the pick but never touches the note', async (t) => {
+    const deck = sampleDeck();
+    const { collection } = deckPaths(deck);
+    const o = await open(t, mockDb, { arg: { delay: 1500, rows: { [collection]: [{ id: 'f1', choice: 'no', note: 'from the cloud', at: 1, title: deck.cards[0].title }] } } });
+    if (!o) return;
+    const { ctx, page, errors } = o;
+    try {
+      await page.click('#skip-story');
+      await page.click('#note');
+      await page.keyboard.type('typing while it loads');
+      await page.waitForFunction(() => window.__resolved === true);
+      await page.waitForFunction(() => document.querySelector('.choice[data-choice="no"]').getAttribute('aria-pressed') === 'true');
+      assert.equal(await page.inputValue('#note'), 'typing while it loads');
+      assert.equal(await page.evaluate(() => document.activeElement.id), 'note', 'focus stays in the note');
+      assert.equal(await text(page, '#progress'), '1 of 6', 'the owner is not moved off the card');
+      await page.keyboard.type(', done');
+      assert.equal(await page.inputValue('#note'), 'typing while it loads, done');
+      assert.deepEqual(errors, []);
+    } finally { await ctx.close(); }
+  });
+
+  it('says "Saving…" while a write is pending and the saved sentence only once it has landed', async (t) => {
+    const deck = quick(1);
+    const o = await open(t, mockDb, { deck, arg: { hang: 'gate' } });
+    if (!o) return;
+    const { ctx, page, errors } = o;
+    try {
+      await page.waitForFunction(() => window.__resolved === true);
+      await page.waitForTimeout(100);
+      await page.keyboard.press('1');
+      assert.equal(await page.locator('#end').isVisible(), true);
+      assert.equal(await page.getAttribute('#cloud-line', 'role'), 'status');
+      assert.equal(await text(page, '#cloud-line'), 'Saving…');
+      await page.evaluate(() => window.__release());
+      await page.waitForFunction(() => document.getElementById('cloud-line').textContent === 'Saved. The agent has your decisions.');
+      assert.deepEqual(errors, []);
+    } finally { await ctx.close(); }
+  });
+
+  it('a write that never settles times out after about 10 s and says so; later writes are not blocked', async (t) => {
+    const deck = quick(1);
+    const o = await open(t, mockDb, { deck, clock: true, arg: { hang: 'forever' } });
+    if (!o) return;
+    const { ctx, page, errors } = o;
+    try {
+      await page.waitForFunction(() => window.__resolved === true);
+      await page.waitForTimeout(100);
+      await page.keyboard.press('1');
+      assert.equal(await text(page, '#cloud-line'), 'Saving…');
+      await page.clock.fastForward(11000);
+      await page.waitForFunction(() => document.getElementById('cloud-line').textContent === 'Saved on this device only. Copy your decisions to send them.');
+      assert.equal(await page.locator('#retry').isVisible(), true, 'the end screen offers to try again');
+      const before = await page.evaluate(() => window.__calls.length);
+      await page.click('#retry');
+      await page.waitForFunction((n) => window.__calls.length > n, before);
+      assert.deepEqual(errors, []);
+    } finally { await ctx.close(); }
+  });
+
+  it('a write refused as unavailable is retried once and reaches the database', async (t) => {
+    const deck = quick(1);
+    const { collection } = deckPaths(deck);
+    const o = await open(t, mockDb, { deck, arg: { fail: ['unavailable'] } });
+    if (!o) return;
+    const { ctx, page, errors } = o;
+    try {
+      await page.waitForFunction(() => window.__resolved === true);
+      await page.waitForTimeout(100);
+      await page.keyboard.press('1');
+      await page.waitForFunction((f) => window.__writes.some(([p, b]) => p === f && b.choice === 'fix'), `${collection}/c0`, { timeout: 5000 });
+      assert.equal(await page.evaluate((f) => window.__calls.filter((p) => p === f).length, `${collection}/c0`), 2);
+      await page.waitForFunction(() => document.getElementById('cloud-line').textContent === 'Saved. The agent has your decisions.');
+      assert.equal(await text(page, '#save-line'), '');
+      assert.deepEqual(errors, []);
+    } finally { await ctx.close(); }
+  });
+
+  it('a write refused as resource_exhausted backs off and is retried', async (t) => {
+    const deck = quick(1);
+    const { collection } = deckPaths(deck);
+    const o = await open(t, mockDb, { deck, arg: { fail: ['resource_exhausted'] } });
+    if (!o) return;
+    const { ctx, page, errors } = o;
+    try {
+      await page.waitForFunction(() => window.__resolved === true);
+      await page.waitForTimeout(100);
+      const t0 = Date.now();
+      await page.keyboard.press('1');
+      await page.waitForFunction((f) => window.__writes.some(([p]) => p === f), `${collection}/c0`, { timeout: 8000 });
+      assert.ok(Date.now() - t0 >= 1000, 'the retry waits longer after a rate signal');
+      assert.deepEqual(errors, []);
+    } finally { await ctx.close(); }
+  });
+
+  it('a finally refused pick does not turn the database off: later picks still go, and the refused one is pushed again', async (t) => {
+    const deck = quick(2);
+    const { collection } = deckPaths(deck);
+    // two refusals: the first write of c0, and its re-push when the progress document lands
+    const o = await open(t, mockDb, { deck, arg: { fail: ['invalid_argument', 'invalid_argument'] } });
+    if (!o) return;
+    const { ctx, page, errors } = o;
+    try {
+      await page.waitForFunction(() => window.__resolved === true);
+      await page.waitForTimeout(100);
+      await page.keyboard.press('1');
+      await page.waitForFunction(() => document.getElementById('save-line').textContent === 'Saved on this device only');
+      await page.waitForTimeout(400);
+      await page.keyboard.press('3');
+      await page.waitForFunction((c) => window.__writes.some(([p]) => p === `${c}/c1`) && window.__writes.some(([p]) => p === `${c}/c0`), collection, { timeout: 5000 });
+      const c0 = await page.evaluate((f) => window.__writes.find(([p]) => p === f)[1], `${collection}/c0`);
+      assert.equal(c0.choice, 'fix');
+      await page.waitForFunction(() => document.getElementById('cloud-line').textContent === 'Saved. The agent has your decisions.');
+      assert.equal(await page.locator('#retry').isVisible(), false);
+      assert.deepEqual(errors, []);
+    } finally { await ctx.close(); }
+  });
+
+  it('"Try saving again" on the end screen pushes the refused picks once the database takes them', async (t) => {
+    const deck = quick(1);
+    const { collection } = deckPaths(deck);
+    const o = await open(t, mockDb, { deck, arg: { refuse: 'quota_exceeded' } });
+    if (!o) return;
+    const { ctx, page, errors } = o;
+    try {
+      await page.waitForFunction(() => window.__resolved === true);
+      await page.waitForTimeout(100);
+      await page.keyboard.press('1');
+      await page.waitForFunction(() => document.getElementById('cloud-line').textContent === 'Saved on this device only. Copy your decisions to send them.');
+      assert.equal(await page.locator('#retry').isVisible(), true);
+      assert.ok((await page.locator('#retry').boundingBox()).height >= 44);
+      await page.evaluate(() => { window.__refuse = false; });
+      await page.click('#retry');
+      await page.waitForFunction(() => document.getElementById('cloud-line').textContent === 'Saved. The agent has your decisions.');
+      assert.ok(await page.evaluate((f) => window.__writes.some(([p]) => p === f), `${collection}/c0`));
+      assert.equal(await page.locator('#retry').isVisible(), false);
+      assert.deepEqual(errors, []);
+    } finally { await ctx.close(); }
+  });
+
+  it('when the browser cannot keep the picks it says "Not saved yet", never "Saved on this device"', async (t) => {
+    const init = () => { Storage.prototype.setItem = function () { throw new DOMException('full', 'QuotaExceededError'); }; };
+    const o = await open(t, init, { deck: quick(2) });
+    if (!o) return;
+    const { ctx, page, errors } = o;
+    try {
+      await page.keyboard.press('1');
+      assert.equal(await text(page, '#save-line'), 'Not saved yet');
+      assert.equal(await page.getAttribute('#save-line', 'aria-live'), 'polite');
+      await page.waitForTimeout(400);
+      await page.keyboard.press('1');
+      assert.equal(await text(page, '#cloud-line'), 'Not saved yet. Copy your decisions to send them.');
+      assert.deepEqual(errors, []);
+    } finally { await ctx.close(); }
+  });
+
+  it('a card with the id "constructor" starts undecided', async (t) => {
+    const deck = { kind: 'decision-deck', v: 1, title: 'Prototype names', cards: [{ id: 'constructor', title: 'Build the thing', why: 'W' }, { id: 'b', title: 'B', why: 'W' }] };
+    const o = await open(t, null, { deck });
+    if (!o) return;
+    const { ctx, page, errors } = o;
+    try {
+      assert.equal(await page.locator('#deck').isVisible(), true);
+      assert.equal(await text(page, '#progress'), '1 of 2');
+      assert.equal(await text(page, '#card-title'), 'Build the thing');
+      await page.keyboard.press('1');
+      assert.equal(await text(page, '#progress'), '2 of 2');
+      assert.deepEqual(errors, []);
+    } finally { await ctx.close(); }
+  });
+
+  it('a double tap on Decide later skips one card; a fast second ArrowDown skips nothing more', async (t) => {
+    const o = await open(t);
+    if (!o) return;
+    const { ctx, page, errors } = o;
+    try {
+      await page.click('#skip-story');
+      await page.dblclick('#later');
+      await page.waitForTimeout(100);
+      assert.equal(await text(page, '#progress'), '2 of 6', 'the second tap of a double tap does not skip the next card');
+      await page.waitForTimeout(400);
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('ArrowDown');
+      assert.equal(await text(page, '#progress'), '3 of 6');
+      await page.waitForTimeout(400);
+      await page.click('#later');
+      assert.equal(await text(page, '#progress'), '4 of 6', 'and the next deliberate tap works');
       assert.deepEqual(errors, []);
     } finally { await ctx.close(); }
   });

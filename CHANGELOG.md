@@ -10,8 +10,16 @@ or tagged, so 4.6.0 is the first release after 4.1.0 and carries all of them.
 - **`decision-deck`**: a kit verb (`check`, `emit`, `read`) that turns an agent's findings into a one-card-at-a-time
   page the owner decides on a phone by tap, swipe or key, with an optional note, undo, "Decide later", an end screen
   grouped by choice and a "Copy my decisions" export. The page makes no requests; as a Claude artifact with
-  `capabilities: {db: {}, user: {}}` it saves each pick to `decisions/<card id>` and progress to `decks/meta`, and
-  `read` turns the database rows or the copied text back into `{decided, undecided, byChoice, problems}`.
+  `capabilities: {db: {}, user: {}}` it saves each pick to `decks/<key>/decisions/<card id>` and this device's last
+  progress to `decks/<key>`, where `<key>` is hashed from the deck's title, card ids and card titles, so a new deck
+  republished to the same artifact never resumes another deck's picks. `check` and `emit` print the collection to
+  list, and `read` turns the database rows or the copied text back into `{decided, undecided, byChoice, problems,
+  collection}`, counting only this deck's decision rows (rows of another deck, by path or card title, are problems).
+  The end screen says "Saving…" until every write lands and only then "Saved. The agent has your decisions.";
+  refused writes are retried (once after a short pause, longer when the database is busy), time out after 10 s,
+  never turn the database off for the visit, and are sent again after the next write that lands or from "Try saving
+  again". A browser that cannot keep the picks says "Not saved yet". Card ids such as `constructor` work, and
+  "Decide later" has the same double-tap guard as the choices.
 
 ## 4.8.0 — 2026-11-04
 
