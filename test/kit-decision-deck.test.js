@@ -265,6 +265,24 @@ describe('decision-deck — page logic (pure functions embedded in the page)', (
     assert.deepEqual(mergeResume({ a: { choice: 'fix', note: 'x', at: 3 } }, [], ['a'], three), { a: { choice: 'fix', note: 'x', at: 3 } });
   });
 
+  it('mergeResume: the newer of local and cloud wins by `at`; a cloud tie or a row without `at` goes to the cloud', () => {
+    const ids = ['a', 'b', 'c', 'd'];
+    const local = { a: { choice: 'fix', note: 'L', at: 50 }, b: { choice: 'fix', note: 'L', at: 50 }, c: { choice: 'fix', note: 'L', at: 50 }, d: { choice: 'fix', note: 'L', at: 50 } };
+    const rows = [
+      { id: 'a', choice: 'no', note: 'C', at: 10 },
+      { id: 'b', choice: 'no', note: 'C', at: 50 },
+      { id: 'c', choice: null, note: '', at: 10 },
+      { id: 'd', choice: 'no', note: 'C' },
+    ];
+    assert.deepEqual(mergeResume(local, rows, ids, three), {
+      a: { choice: 'fix', note: 'L', at: 50 },
+      b: { choice: 'no', note: 'C', at: 50 },
+      c: { choice: 'fix', note: 'L', at: 50 },
+      d: { choice: 'no', note: 'C', at: 0 },
+    });
+    assert.deepEqual(mergeResume({ a: { choice: 'fix', note: '', at: 5 } }, [{ id: 'a', choice: null, at: 9 }], ['a'], three), {}, 'a newer clear still clears');
+  });
+
   it('deckKey and nextOpen', () => {
     assert.equal(deckKey('T', ['a', 'b']), deckKey('T', ['a', 'b']));
     assert.notEqual(deckKey('T', ['a', 'b']), deckKey('T', ['a', 'c']));

@@ -216,7 +216,7 @@ export function exportText(cards, picks) {
   }).join('\n');
 }
 
-/** Merge saved picks: cloud rows win over local ones for the same card; a cloud row with choice null clears the card. */
+/** Merge saved picks: for the same card the newer `at` wins, a tie or a cloud row with no `at` goes to the cloud; a cloud row with choice null clears the card unless the local pick is newer. */
 export function mergeResume(local, rows, cardIds, choiceIds) {
   const out = {};
   const okCard = (id) => cardIds.indexOf(id) !== -1;
@@ -229,8 +229,11 @@ export function mergeResume(local, rows, cardIds, choiceIds) {
   }
   for (const r of rows || []) {
     if (!r || !okCard(r.id)) continue;
+    const at = Number(r.at) || 0;
+    const mine = out[r.id];
+    if (mine && at > 0 && mine.at > at) continue;
     if (r.choice === null) { delete out[r.id]; continue; }
-    if (okChoice(r.choice)) out[r.id] = { choice: r.choice, note: typeof r.note === 'string' ? r.note : '', at: Number(r.at) || 0 };
+    if (okChoice(r.choice)) out[r.id] = { choice: r.choice, note: typeof r.note === 'string' ? r.note : '', at };
   }
   return out;
 }
@@ -422,8 +425,10 @@ button { cursor: pointer; }
 .track { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; margin-top: -6px; }
 .track > span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s ease; }
 .stage { flex: 1; min-height: 0; position: relative; }
-.card { position: absolute; inset: 0; background: var(--card); border-radius: 20px; box-shadow: var(--shadow); padding: 22px 22px 20px; display: flex; flex-direction: column; gap: 14px; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; will-change: transform; }
+.card { position: absolute; inset: 0; background: var(--card); border-radius: 20px; box-shadow: var(--shadow); padding: 22px 22px 20px; display: flex; flex-direction: column; gap: 14px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; user-select: none; -webkit-user-select: none; will-change: transform; }
+.card > * { flex-shrink: 0; }
 .card:focus { outline: none; }
+.card:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; }
 .card.spring { transition: transform .28s cubic-bezier(.2, .9, .3, 1.2); }
 .card.fly { transition: transform .22s ease-in, opacity .22s ease-in; opacity: 0; }
 .card-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-height: 0; }
@@ -468,6 +473,7 @@ button { cursor: pointer; }
 .story-lede { margin: 0; font-size: 18px; color: var(--muted); }
 /* end */
 .end { overflow-y: auto; height: 100%; padding-block: 20px 32px; display: flex; flex-direction: column; gap: 18px; }
+.end h1:focus { outline: none; }
 .end h1 { margin: 0; font-family: var(--font-display); font-size: 30px; line-height: 1.15; }
 .counts { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .counts li { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 14px; display: flex; gap: 8px; align-items: baseline; }
@@ -500,7 +506,7 @@ const MARKUP = `<div id="app">
   <div class="bar"><p id="deck-title" class="eyebrow"></p><p id="progress" class="progress" aria-live="polite"></p></div>
   <div class="track" aria-hidden="true"><span id="track"></span></div>
   <div class="stage">
-    <article id="card" class="card" tabindex="-1" aria-labelledby="card-title" aria-describedby="card-why">
+    <article id="card" class="card" tabindex="0" aria-labelledby="card-title" aria-describedby="card-why">
       <div class="card-top" id="card-top"><span id="card-tag" class="chip"></span><span id="card-suggested" class="suggested"></span></div>
       <div class="card-body">
       <div id="card-stat" class="stat"><span class="stat-value"></span><span class="stat-label"></span></div>
@@ -510,8 +516,8 @@ const MARKUP = `<div id="app">
       <img id="card-image" alt="">
       </div>
       <p id="card-cost" class="cost"><b>If yes:</b> <span></span></p>
-      <div id="drag-label" class="drag-label" aria-hidden="true"></div>
     </article>
+    <div id="drag-label" class="drag-label" aria-hidden="true"></div>
   </div>
   <label for="note" class="sr-only">Add a note, optional</label>
   <input id="note" class="note" type="text" placeholder="Add a note, optional" autocomplete="off" maxlength="500" enterkeyhint="done">
@@ -519,7 +525,7 @@ const MARKUP = `<div id="app">
   <div class="row"><button id="undo" class="quiet-btn" type="button" aria-keyshortcuts="z">Undo</button><p id="save-line" class="quiet"></p><button id="later" class="quiet-btn" type="button" aria-keyshortcuts="ArrowDown">Decide later</button></div>
 </section>
 <section id="end" class="end" hidden aria-label="Your decisions">
-  <h1 id="end-title"></h1>
+  <h1 id="end-title" tabindex="-1"></h1>
   <ul id="counts" class="counts"></ul>
   <p id="cloud-line" class="cloud" role="status"></p>
   <button id="copy" class="primary" type="button">Copy my decisions</button>
@@ -573,7 +579,7 @@ var store = (function () {
   function put(card) {
     saveLocal();
     var p = picks[card.id];
-    write('decisions/' + card.id, { choice: p ? p.choice : null, note: p ? p.note : '', at: Date.now(), title: card.title });
+    write('decisions/' + card.id, { choice: p ? p.choice : null, note: p ? p.note : '', at: p && p.at ? p.at : Date.now(), title: card.title });
     meta();
   }
   function init(onResume) {
@@ -584,10 +590,11 @@ var store = (function () {
         db = ns;
         var rows = [];
         (snap && snap.docs || []).forEach(function (d) { if (d.exists) { var x = d.data() || {}; rows.push({ id: d.id, choice: x.choice === undefined ? undefined : x.choice, note: x.note, at: x.at }); } });
-        var cloudIds = rows.map(function (r) { return r.id; });
+        var cloudAt = {};
+        rows.forEach(function (r) { cloudAt[r.id] = Number(r.at) || 0; });
         onResume(rows);
         lastCount = -1;
-        CARDS.forEach(function (c) { if (picks[c.id] && cloudIds.indexOf(c.id) === -1) put(c); });
+        CARDS.forEach(function (c) { var p = picks[c.id]; if (p && (!(c.id in cloudAt) || p.at > cloudAt[c.id])) put(c); });
         meta();
         status();
       });
@@ -660,7 +667,14 @@ function setView(v) {
   view = v;
   show('story', v === 'story'); show('deck', v === 'deck'); show('end', v === 'end');
   if (v === 'deck') renderCard();
-  if (v === 'end') renderEnd();
+  if (v === 'end') { renderEnd(); $('end-title').focus(); }
+}
+function toList() {
+  var id = CARDS[index].id;
+  editing = false;
+  setView('end');
+  var rows = $('groups').querySelectorAll('.pick');
+  for (var i = 0; i < rows.length; i++) if (rows[i].dataset.id === id) { rows[i].focus(); return; }
 }
 function renderCard() {
   var c = CARDS[index];
@@ -698,17 +712,19 @@ function renderCard() {
   $('undo').disabled = history.length === 0;
   $('later').textContent = editing ? 'Back to the list' : 'Decide later';
   var card = $('card');
-  card.className = 'card'; card.style.transform = ''; $('drag-label').style.opacity = '0';
+  card.className = 'card'; card.style.transform = ''; card.scrollTop = 0; $('drag-label').style.opacity = '0';
 }
 function advance() {
-  if (editing) { editing = false; setView('end'); return; }
+  if (editing) { toList(); return; }
   var next = nextOpen(CARDS, picks, index + 1);
   if (next === -1) { setView('end'); return; }
-  index = next; renderCard();
+  index = next; renderCard(); $('card').focus();
 }
 var busy = false;
+var lockUntil = 0;
 function decide(choice, fly) {
-  if (busy) return;
+  if (busy || Date.now() < lockUntil) return;
+  lockUntil = Date.now() + 350;
   var c = CARDS[index];
   var prev = picks[c.id] || null;
   var note = $('note').value.trim();
@@ -724,18 +740,19 @@ function decide(choice, fly) {
   } else advance();
 }
 function later() {
-  if (editing) { editing = false; setView('end'); return; }
+  if (editing) { toList(); return; }
   history.push({ kind: 'skip', index: index });
   var next = index + 1 < CARDS.length ? index + 1 : -1;
   if (next === -1) { setView('end'); return; }
-  index = next; renderCard();
+  index = next; renderCard(); $('card').focus();
 }
 function undo() {
   var h = history.pop();
   if (!h) return;
+  lockUntil = 0;
   index = h.index;
   if (h.kind === 'pick') {
-    if (h.prev) picks[h.id] = h.prev; else delete picks[h.id];
+    if (h.prev) picks[h.id] = { choice: h.prev.choice, note: h.prev.note, at: Date.now() }; else delete picks[h.id];
     store.put(CARDS[h.index]);
     editing = h.editing;
   }
@@ -761,6 +778,10 @@ function undo() {
     if (!start || e.pointerId !== start.id) return;
     var dx = e.clientX - start.x; var dy = e.clientY - start.y;
     var r = card.getBoundingClientRect();
+    if (card.scrollHeight > card.clientHeight && Math.abs(dy) > Math.abs(dx)) {
+      intent = null; card.style.transform = ''; label.style.opacity = '0'; arm(null);
+      return;
+    }
     intent = swipeIntent(dx, dy, r.width, r.height, IDS);
     var rot = reduced ? 0 : Math.max(-12, Math.min(12, dx / 18));
     card.style.transform = 'translate(' + dx + 'px,' + Math.min(dy, 40) + 'px) rotate(' + rot + 'deg)';
@@ -785,7 +806,7 @@ function undo() {
 
 /* keys */
 document.addEventListener('keydown', function (e) {
-  if (view !== 'deck' || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (view !== 'deck' || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
   var t = e.target;
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) {
     if (e.key === 'Escape' || e.key === 'Enter') { t.blur(); $('card').focus(); e.preventDefault(); }
@@ -826,6 +847,7 @@ function renderEnd() {
       var t = document.createElement('span'); t.textContent = x[0].title; b.appendChild(t);
       var p = picks[x[0].id];
       if (p && p.note) { var sm = document.createElement('small'); sm.textContent = 'Note: ' + p.note; b.appendChild(sm); }
+      b.dataset.id = x[0].id;
       b.setAttribute('aria-label', x[0].title + (p ? ', ' + labelOf(p.choice) + '. Change' : '. Decide'));
       b.addEventListener('click', function () { index = x[1]; editing = true; setView('deck'); $('card').focus(); });
       li.appendChild(b); ul.appendChild(li);
