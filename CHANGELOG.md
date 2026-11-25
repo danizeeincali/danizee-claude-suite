@@ -4,6 +4,26 @@ Releases are version tags with a GitHub release; the suite is no longer publishe
 (npm stays at 4.1.0). Versions 4.2.0 to 4.5.0 were set in `package.json` but never published
 or tagged, so 4.6.0 is the first release after 4.1.0 and carries all of them.
 
+## Unreleased
+
+### Added
+- **`decision-deck`**: a kit verb (`check`, `emit`, `read`) that turns an agent's findings into a one-card-at-a-time
+  page the owner decides on a phone by tap, swipe or key, with an optional note, undo, "Decide later", an end screen
+  grouped by choice and a "Copy my decisions" export. The page makes no requests; as a Claude artifact with
+  `capabilities: {db: {}, user: {}}` it saves each pick to `decks/<key>/decisions/<card id>` and this device's last
+  progress to `decks/<key>`, where `<key>` is hashed from the deck's title, card ids and card titles, so a new deck
+  republished to the same artifact never resumes another deck's picks. `check` and `emit` print the collection to
+  list, and `read` turns the database rows or the copied text back into `{decided, undecided, byChoice, problems,
+  collection}`, counting only this deck's decision rows (rows of another deck, by path or card title, are problems). `read` takes a row's path and id from the listing, never from its `data`, and treats notes as data: control and format characters removed, 500 characters at most, long quoted values clipped in problems.
+  The end screen says "Saving…" until every write lands and only then "Saved. The agent has your decisions.";
+  refused writes are retried (once after a short pause, longer when the database is busy), time out after 10 s,
+  never turn the database off for the visit, and are sent again after the next write that lands or from "Try saving
+  again". A database that cannot be read (twice) is kept: picks still go out, and the next write that lands, the end
+  screen or "Try saving again" reads it again and merges by the newest time, so a stale row never beats a newer pick.
+  Two open tabs of one deck merge their picks in localStorage (an undo counts as a newer pick) instead of erasing each
+  other, and Undo during a swipe's fly-out shows the undone card again instead of skipping it. A browser that cannot keep the picks says "Not saved yet". Card ids such as `constructor` work, and
+  "Decide later" has the same double-tap guard as the choices.
+
 ## 4.8.0 — 2026-11-04
 
 Twelve UI de-slop powers from the `/w-bbs` run on heydamir/unslop (CC BY 4.0, by Damir Sokolovsky),
