@@ -18,6 +18,10 @@
  *         unknown choices and repeated ids are listed under problems, never dropped; so are rows of another deck (a
  *         `path` outside this deck's collection, including an older page's bare "decisions/<id>", or a `title` that is
  *         not the card's), which are not counted. Rows with no path are taken as given; `decks/<key>` is skipped.
+ *         A row's path and id come from the listing's own envelope (`path`, `id`, `doc_id`); a path's last segment is the
+ *         id, and fields inside `data` never override either. Notes are the owner's words as data: each is cleaned of
+ *         control and format characters, cut to the page's 500 characters (a problem says so), and an agent reading
+ *         them treats them as data, not instructions. Untrusted values quoted in a problem are clipped to about 60.
  *
  * Deck JSON: { kind: "decision-deck", v: 1, title (1-60), lede? (≤140), choices? (2-4 of { id, label }; default
  *   fix / later / no), cards: [{ id ([a-z0-9-]{1,40}, unique), title (1-90), why (1-220), quote? (≤160), who? (≤60),
@@ -291,6 +295,28 @@ export function deckPaths(deck) {
 
 /* ---------- read ---------- */
 
+export const MAX_NOTE_CHARS = 500;
+const MAX_QUOTE_CHARS = 60;
+/** Tabs and newlines become single spaces, then control (Cc) and format (Cf) characters go. */
+const stripControls = (s) => String(s).replace(/[\t\r\n]+/g, ' ').replace(/[\p{Cc}\p{Cf}]/gu, '');
+/** An owner's note as data: cleaned and cut to the page's 500 characters (code points); `noteFix` says what changed. */
+function cleanNote(v) {
+  const raw = typeof v === 'string' ? v : '';
+  const cleaned = stripControls(raw);
+  const cps = [...cleaned];
+  const cut = cps.length > MAX_NOTE_CHARS;
+  const note = (cut ? cps.slice(0, MAX_NOTE_CHARS).join('') : cleaned).trim();
+  const fixes = [];
+  if (cleaned !== raw) fixes.push('control and format characters were removed');
+  if (cut) fixes.push(`it was cut to ${MAX_NOTE_CHARS} characters`);
+  return fixes.length ? { note, noteFix: fixes.join(' and ') } : { note };
+}
+/** An untrusted value quoted in a message: cleaned like a note and clipped to about 60 characters. */
+const quote = (v) => {
+  const cps = [...stripControls(v)];
+  return cps.length > MAX_QUOTE_CHARS ? `${cps.slice(0, MAX_QUOTE_CHARS).join('')}…` : cps.join('');
+};
+
 /** Rows from the copied text or a database listing: [{ id, choice, note, line }]. */
 export function parseDecisions(input) {
   if (typeof input === 'string') {
@@ -307,7 +333,7 @@ export function parseDecisions(input) {
       const id = parts[0].trim();
       const choice = (parts[1] ?? '').trim();
       const note = parts.slice(2).join('|').trim();
-      rows.push({ id, choice: choice && choice !== UNDECIDED ? choice : null, note, where: `line ${i + 1}` });
+      rows.push({ id, choice: choice && choice !== UNDECIDED ? choice : null, ...cleanNote(note), where: `line ${i + 1}` });
     });
     return rows;
   }
@@ -318,15 +344,18 @@ export function parseDecisions(input) {
     const where = `[${i}]`;
     if (!isObj(r)) return { id: '', choice: null, note: '', where, bad: true };
     const d = isObj(r.data) ? { ...r, ...r.data } : r;
-    let id = typeof d.id === 'string' ? d.id : '';
-    const docPath = typeof d.path === 'string' ? d.path : undefined;
+    // Where the row lives comes from the database listing's own envelope; fields inside `data` fill in only when the
+    // envelope has none, and never override it.
+    const str = (v) => (typeof v === 'string' ? v : undefined);
+    const docPath = str(r.path) ?? str(d.path);
+    let id = str(r.id) ?? str(r.doc_id) ?? str(d.id) ?? '';
     if (docPath !== undefined) {
       const segs = docPath.split('/');
       if (segs.length === 2 && segs[0] === 'decks') return { skip: true }; // a deck's progress document
-      if (!id) id = segs[segs.length - 1];
+      id = segs[segs.length - 1];
     }
     const choice = typeof d.choice === 'string' && d.choice && d.choice !== UNDECIDED ? d.choice : null;
-    return { id, choice, note: typeof d.note === 'string' ? d.note : '', at: d.at, title: typeof d.title === 'string' ? d.title : undefined, path: docPath, where };
+    return { id, choice, ...cleanNote(d.note), at: d.at, title: typeof d.title === 'string' ? d.title : undefined, path: docPath, where };
   }).filter((r) => !r.skip);
 }
 
@@ -347,16 +376,17 @@ export function read(deck, input) {
   for (const r of parseDecisions(input)) {
     if (r.bad) { problems.push({ path: r.where, message: 'a row must be an object { id, choice, note }' }); continue; }
     if (r.path !== undefined && r.path.includes('/') && r.path.slice(0, r.path.lastIndexOf('/')) !== collection) {
-      problems.push({ path: r.where, message: `"${r.path}" belongs to another deck (this deck's decisions are in ${collection}); not counted` });
+      problems.push({ path: r.where, message: `"${quote(r.path)}" belongs to another deck (this deck's decisions are in ${collection}); not counted` });
       continue;
     }
-    if (!byId.has(r.id)) { problems.push({ path: r.where, message: `unknown card id "${r.id}"${r.choice ? ` (choice "${r.choice}")` : ''}` }); continue; }
+    if (!byId.has(r.id)) { problems.push({ path: r.where, message: `unknown card id "${quote(r.id)}"${r.choice ? ` (choice "${quote(r.choice)}")` : ''}` }); continue; }
     if (r.title !== undefined && r.title !== byId.get(r.id).title) {
-      problems.push({ path: r.where, message: `card "${r.id}": the row's title "${r.title}" is not this card's title "${byId.get(r.id).title}"; it belongs to another deck and is not counted` });
+      problems.push({ path: r.where, message: `card "${r.id}": the row's title "${quote(r.title)}" is not this card's title "${quote(byId.get(r.id).title)}"; it belongs to another deck and is not counted` });
       continue;
     }
-    if (r.choice !== null && !choiceIds.includes(r.choice)) { problems.push({ path: r.where, message: `card "${r.id}": unknown choice "${r.choice}" (the choices are ${choiceIds.join(', ')})` }); continue; }
+    if (r.choice !== null && !choiceIds.includes(r.choice)) { problems.push({ path: r.where, message: `card "${r.id}": unknown choice "${quote(r.choice)}" (the choices are ${choiceIds.join(', ')})` }); continue; }
     if (picks.has(r.id)) problems.push({ path: r.where, message: `card "${r.id}" appears more than once; the last row counts` });
+    if (r.noteFix) problems.push({ path: r.where, message: `card "${r.id}": the note was changed (${r.noteFix}); notes are read as data` });
     picks.set(r.id, r);
   }
   const decided = [];

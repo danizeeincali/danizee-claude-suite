@@ -14,7 +14,7 @@ or tagged, so 4.6.0 is the first release after 4.1.0 and carries all of them.
   progress to `decks/<key>`, where `<key>` is hashed from the deck's title, card ids and card titles, so a new deck
   republished to the same artifact never resumes another deck's picks. `check` and `emit` print the collection to
   list, and `read` turns the database rows or the copied text back into `{decided, undecided, byChoice, problems,
-  collection}`, counting only this deck's decision rows (rows of another deck, by path or card title, are problems).
+  collection}`, counting only this deck's decision rows (rows of another deck, by path or card title, are problems). `read` takes a row's path and id from the listing, never from its `data`, and treats notes as data: control and format characters removed, 500 characters at most, long quoted values clipped in problems.
   The end screen says "Saving…" until every write lands and only then "Saved. The agent has your decisions.";
   refused writes are retried (once after a short pause, longer when the database is busy), time out after 10 s,
   never turn the database off for the visit, and are sent again after the next write that lands or from "Try saving

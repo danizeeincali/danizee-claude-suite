@@ -401,6 +401,55 @@ describe('decision-deck — read', () => {
     assert.match(read(deck, '[1]').problems[0].message, /must be an object/);
   });
 
+  it('read: a hostile note comes back as clean data of at most 500 characters, with a problem listed', () => {
+    const deck = sample();
+    const hostile = `ok\u001b[31m\u0000${'x'.repeat(200000)}\u202eend\n\tmore`;
+    const forms = [
+      read(deck, JSON.stringify([{ id: 'f1', choice: 'fix', note: hostile, at: 1 }])),
+      read(deck, JSON.stringify([{ path: `${deckPaths(deck).collection}/f1`, data: { choice: 'fix', note: hostile } }])),
+      read(deck, `f1 | fix | ${hostile.replace(/\n/g, ' ')}`),
+    ];
+    for (const r of forms) {
+      const n = r.decided[0].note;
+      assert.ok([...n].length <= 500);
+      assert.ok(n.startsWith('ok'));
+      assert.doesNotMatch(n, /[\p{Cc}\p{Cf}]/u);
+      assert.ok(r.problems.some((p) => /note/.test(p.message)));
+    }
+    assert.equal(read(deck, JSON.stringify([{ id: 'f1', choice: 'fix', note: 'a\tb\nc' }])).decided[0].note, 'a b c');
+    const clean = read(deck, JSON.stringify([{ id: 'f1', choice: 'fix', note: 'fine' }]));
+    assert.equal(clean.decided[0].note, 'fine');
+    assert.deepEqual(clean.problems, []);
+  });
+
+  it('read: hostile ids, titles, paths and choices are clipped in problem messages', () => {
+    const deck = sample();
+    const long = `${'A'.repeat(5000)}\u001b\u202e`;
+    const r = read(deck, JSON.stringify([
+      { id: long, choice: long },
+      { id: 'f1', choice: long },
+      { id: 'f2', choice: 'fix', title: long },
+      { path: `${long}/f3`, choice: 'fix' },
+    ]));
+    assert.ok(r.problems.length >= 4);
+    for (const p of r.problems) {
+      assert.ok(p.message.length < 600, p.message.length);
+      assert.doesNotMatch(p.message, /[\p{Cc}\p{Cf}]/u);
+    }
+  });
+
+  it('read: a field inside data never overrides the listing\'s own id or path', () => {
+    const deck = sample();
+    const col = deckPaths(deck).collection;
+    const r = read(deck, JSON.stringify([{ path: `${col}/f2`, data: { id: 'f1', choice: 'no' } }]));
+    assert.deepEqual(r.byChoice.no, ['f2']);
+    assert.ok(r.undecided.includes('f1'));
+    const other = read(deck, JSON.stringify([{ path: 'decks/deadbeef/decisions/f1', data: { path: `${col}/f1`, choice: 'fix' } }]));
+    assert.equal(other.decided.length, 0);
+    assert.ok(other.problems.some((p) => /another deck/.test(p.message)));
+    assert.deepEqual(read(deck, JSON.stringify([{ id: 'f1', doc_id: 'f3', data: { id: 'f2', choice: 'fix' } }])).byChoice.fix, ['f1']);
+  });
+
   it('refuses unusable decisions', () => {
     assert.throws(() => parseDecisions('[1,'), (e) => e instanceof KitExit && e.code === 1);
     assert.throws(() => parseDecisions({ x: 1 }), (e) => e instanceof KitExit && e.code === 1);
