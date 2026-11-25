@@ -373,7 +373,10 @@ has your decisions." only once every pick has landed, and otherwise "Saved on th
 send them." with a "Try saving again" button (or "Not saved yet. Copy your decisions to send them." when the browser
 could not keep them either). A refused write is tried once more (after a longer pause when the database says it is
 busy), a write that does not answer in 10 s counts as failed, and failed picks are sent again after the next write
-that lands. Read the picks back with the artifact database `list` of that collection and pass the rows to
+that lands. A database that cannot be read is kept, not turned off: picks still go out, and the next write that lands,
+the end screen or "Try saving again" reads it again and merges by the newest time (a stale row never beats a newer pick).
+Two open tabs of one deck merge their picks in localStorage; Undo during a swipe's fly-out shows the card again.
+Read the picks back with the artifact database `list` of that collection and pass the rows to
 `read --deck deck.json`; `read` counts only the decision rows (never the progress document). Unknown ids or choices
 come back under `problems`, never dropped, and so do rows that belong to another deck: a `path` outside this deck's
 collection (including an older page's bare `decisions/<id>`) or a `title` that is not the card's title. Rows with no

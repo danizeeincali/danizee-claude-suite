@@ -606,6 +606,7 @@ var has = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
 var pickOf = function (id) { return has(picks, id) ? picks[id] : null; };
 
 var picks = Object.create(null);
+var tombs = Object.create(null); /* card id -> when an undo cleared it: an older pick elsewhere must not bring it back */
 var history = [];
 var index = 0;
 var editing = false;
@@ -625,6 +626,9 @@ var store = (function () {
   var db = null;
   var connecting = false;
   var cloudOff = false;
+  var unmerged = false;
+  var merging = false;
+  var resume = null;
   var localFailed = false;
   var chains = Object.create(null);
   var latest = Object.create(null);
@@ -634,8 +638,46 @@ var store = (function () {
   var pending = 0;
   var lastCount = -1;
   function loadLocal() { try { var v = window.localStorage.getItem(KEY); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+  /* What is stored beside this tab's picks, newest "at" per card (mergeResume's rule, and an undo is a stored choice
+     null that wins over an older pick). Returns {picks, tombs}; reads and changes nothing. */
+  function combine(raw) {
+    var rows = [];
+    var t = Object.create(null);
+    Object.keys(tombs).forEach(function (id) { t[id] = tombs[id]; });
+    if (raw && typeof raw === 'object') {
+      Object.keys(raw).forEach(function (id) {
+        var r = raw[id];
+        if (!r || typeof r !== 'object' || CARD_IDS.indexOf(id) === -1) return;
+        var at = Number(r.at) || 0;
+        var mine = pickOf(id);
+        if (mine ? mine.at > at : (has(t, id) && t[id] >= at)) return;
+        if (r.choice === null) { rows.push({ id: id, choice: null, at: at }); t[id] = at; } else rows.push({ id: id, choice: r.choice, note: r.note, at: at });
+      });
+    }
+    var merged = mergeResume(picks, rows, CARD_IDS, IDS);
+    Object.keys(merged).forEach(function (id) { delete t[id]; });
+    return { picks: merged, tombs: t };
+  }
   function saveLocal() {
-    try { window.localStorage.setItem(KEY, JSON.stringify(picks)); localFailed = false; } catch (e) { localFailed = true; }
+    try {
+      var c = combine(loadLocal());
+      var out = {};
+      Object.keys(c.picks).forEach(function (id) { out[id] = c.picks[id]; });
+      Object.keys(c.tombs).forEach(function (id) { if (!has(c.picks, id)) out[id] = { choice: null, note: '', at: c.tombs[id] }; });
+      window.localStorage.setItem(KEY, JSON.stringify(out));
+      localFailed = false;
+    } catch (e) { localFailed = true; }
+  }
+  /* Another tab saved: take what is newer from it. Returns true when this tab's picks changed. */
+  function adoptLocal() {
+    var c = combine(loadLocal());
+    var changed = false;
+    CARD_IDS.forEach(function (id) {
+      var a = has(picks, id) ? picks[id] : null; var b = has(c.picks, id) ? c.picks[id] : null;
+      if ((a ? a.choice + '\n' + a.note + '\n' + a.at : '') !== (b ? b.choice + '\n' + b.note + '\n' + b.at : '')) changed = true;
+    });
+    picks = c.picks; tombs = c.tombs;
+    return changed;
   }
   function withTimeout(p, ms) {
     var timer = null;
@@ -669,7 +711,7 @@ var store = (function () {
       return setWithRetry(path, body).then(function () { return 'ok'; });
     }).then(function (r) {
       pending--;
-      if (r === 'ok') { landed[path] = g; retryFailed(); }
+      if (r === 'ok') { landed[path] = g; retryFailed(); if (unmerged) reconcile(); }
       status();
     }, function () {
       pending--;
@@ -679,6 +721,7 @@ var store = (function () {
   }
   function retryFailed() {
     if (!db) return;
+    if (unmerged) reconcile();
     Object.keys(failed).forEach(function (p) { write(p, latest[p]); });
   }
   function meta() {
@@ -690,7 +733,7 @@ var store = (function () {
   function put(card) {
     saveLocal();
     var p = pickOf(card.id);
-    write(COLL + '/' + card.id, { choice: p ? p.choice : null, note: p ? p.note : '', at: p && p.at ? p.at : Date.now(), title: card.title });
+    write(COLL + '/' + card.id, { choice: p ? p.choice : null, note: p ? p.note : '', at: p && p.at ? p.at : (has(tombs, card.id) ? tombs[card.id] : Date.now()), title: card.title });
     meta();
     status();
   }
@@ -703,29 +746,45 @@ var store = (function () {
       });
     });
   }
+  /* Read the cloud rows and merge them (newest "at" wins; an undo here is never undone by an older row), then push
+     what is newer here. A failed read keeps the database: "unmerged" stays set and the next write that lands, the end
+     screen or "Try saving again" reads again. */
+  function reconcile(target) {
+    target = target || db;
+    if (!target || merging || !resume) return;
+    merging = true;
+    read(target).then(function (snap) {
+      var rows = [];
+      (snap && snap.docs || []).forEach(function (d) {
+        if (!d.exists) return;
+        var x = d.data() || {};
+        rows.push({ id: d.id, choice: x.choice === undefined ? undefined : x.choice, note: x.note, at: x.at, title: x.title });
+      });
+      var cloudAt = Object.create(null);
+      rows.forEach(function (r) { if (typeof r.id === 'string') cloudAt[r.id] = Number(r.at) || 0; });
+      resume(rows.filter(function (r) { return !(typeof r.id === 'string' && has(tombs, r.id) && tombs[r.id] >= (Number(r.at) || 0)); }));
+      db = target;
+      connecting = false;
+      unmerged = false;
+      merging = false;
+      lastCount = -1;
+      CARDS.forEach(function (c) {
+        var p = pickOf(c.id);
+        if (p ? (!has(cloudAt, c.id) || p.at > cloudAt[c.id]) : (has(tombs, c.id) && has(cloudAt, c.id) && tombs[c.id] > cloudAt[c.id])) put(c);
+      });
+      meta();
+      retryFailed();
+      status();
+    }, function () { db = target; connecting = false; merging = false; unmerged = true; status(); });
+  }
   function init(onResume) {
     if (!(window.claude && typeof window.claude.use === 'function')) return;
     connecting = true;
+    resume = onResume;
     status();
     withTimeout(Promise.resolve(window.claude.use('db')), 15000).then(function (ns) {
       if (!ns) { connecting = false; status(); return; }
-      return read(ns).then(function (snap) {
-        db = ns;
-        connecting = false;
-        var rows = [];
-        (snap && snap.docs || []).forEach(function (d) {
-          if (!d.exists) return;
-          var x = d.data() || {};
-          rows.push({ id: d.id, choice: x.choice === undefined ? undefined : x.choice, note: x.note, at: x.at, title: x.title });
-        });
-        var cloudAt = Object.create(null);
-        rows.forEach(function (r) { if (typeof r.id === 'string') cloudAt[r.id] = Number(r.at) || 0; });
-        onResume(rows);
-        lastCount = -1;
-        CARDS.forEach(function (c) { var p = pickOf(c.id); if (p && (!has(cloudAt, c.id) || p.at > cloudAt[c.id])) put(c); });
-        meta();
-        status();
-      });
+      reconcile(ns);
     }).catch(function () { connecting = false; cloudOff = true; db = null; status(); });
   }
   /* cloud: 'saving' (connecting or a write in flight), 'saved' (every pick written landed), 'failed' (a write failed,
@@ -734,15 +793,16 @@ var store = (function () {
     var cloud = 'none';
     if (db) {
       if (pending > 0) cloud = 'saving';
+      else if (unmerged) cloud = 'failed';
       else {
         cloud = 'saved';
         Object.keys(gen).forEach(function (p) { if (p.indexOf(COLL + '/') === 0 && landed[p] !== gen[p]) cloud = 'failed'; });
       }
     } else if (connecting) cloud = 'saving';
     else if (cloudOff) cloud = 'failed';
-    return { cloud: cloud, local: !localFailed, canRetry: !!db && Object.keys(failed).length > 0 };
+    return { cloud: cloud, local: !localFailed, canRetry: !!db && (unmerged || Object.keys(failed).length > 0) };
   }
-  return { load: loadLocal, save: saveLocal, put: put, init: init, state: state, retry: retryFailed };
+  return { load: loadLocal, save: saveLocal, adopt: adoptLocal, put: put, init: init, state: state, retry: retryFailed };
 })();
 
 function status() {
@@ -882,6 +942,7 @@ function advance() {
   index = next; renderCard(); $('card').focus();
 }
 var busy = false;
+var flyTimer = 0;
 var lockUntil = 0;
 function decide(choice, fly) {
   if (busy || Date.now() < lockUntil) return;
@@ -890,14 +951,16 @@ function decide(choice, fly) {
   var prev = pickOf(c.id);
   var note = $('note').value.trim();
   history.push({ kind: 'pick', index: index, id: c.id, prev: prev, editing: editing });
+  $('undo').disabled = false;
   picks[c.id] = { choice: choice, note: note, at: Date.now() };
+  delete tombs[c.id];
   store.put(c);
   var card = $('card');
   if (fly && !reduced) {
     card.classList.add('fly');
     card.style.transform = fly;
     busy = true;
-    setTimeout(function () { busy = false; advance(); }, 200);
+    flyTimer = setTimeout(function () { flyTimer = 0; busy = false; advance(); }, 200);
   } else advance();
 }
 function later() {
@@ -913,9 +976,11 @@ function undo() {
   var h = history.pop();
   if (!h) return;
   lockUntil = 0;
+  if (flyTimer) { clearTimeout(flyTimer); flyTimer = 0; }
+  busy = false;
   index = h.index;
   if (h.kind === 'pick') {
-    if (h.prev) picks[h.id] = { choice: h.prev.choice, note: h.prev.note, at: Date.now() }; else delete picks[h.id];
+    if (h.prev) { picks[h.id] = { choice: h.prev.choice, note: h.prev.note, at: Date.now() }; delete tombs[h.id]; } else { delete picks[h.id]; tombs[h.id] = Date.now(); }
     store.put(CARDS[h.index]);
     editing = h.editing;
   }
@@ -1047,11 +1112,7 @@ var resumed = Object.keys(picks).length > 0;
 if (DECK.story.length && !resumed) { buildStory(); setView('story'); } else { if (DECK.story.length) buildStory(); setView(startAt()); }
 status();
 /* A late database answer: refresh what it changed, never the note being typed, the card's scroll or a drag. */
-store.init(function (rows) {
-  var cur = CARDS[index].id;
-  var was = pickOf(cur);
-  picks = mergeResume(picks, rows, CARD_IDS, IDS, CARD_TITLES);
-  store.save();
+function refreshAfter(was, cur) {
   if (view === 'end') { renderEnd(); return; }
   if (view !== 'deck') return;
   var now = pickOf(cur);
@@ -1063,6 +1124,20 @@ store.init(function (rows) {
   if (typing || dragging) { renderPressed(); return; }
   if (now && !editing && history.length === 0) setView(startAt());
   else renderCard();
+}
+store.init(function (rows) {
+  var cur = CARDS[index].id;
+  var was = pickOf(cur);
+  picks = mergeResume(picks, rows, CARD_IDS, IDS, CARD_TITLES);
+  store.save();
+  refreshAfter(was, cur);
+});
+/* Another tab of this deck saved: take what is newer from it, the same way. */
+window.addEventListener('storage', function (e) {
+  if (e.key !== KEY) return;
+  var cur = CARDS[index].id;
+  var was = pickOf(cur);
+  if (store.adopt()) refreshAfter(was, cur);
 });
 `;
 

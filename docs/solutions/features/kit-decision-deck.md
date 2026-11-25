@@ -22,7 +22,12 @@ re-rendered only when its own pick changed, and never while the note has focus o
 code is retried once after a short random pause; `invalid_argument`, `quota_exceeded`, `not_granted`, `revoked`, a
 timeout or a second refusal mark that document failed. Failures never turn the database off: later picks still write,
 and failed documents are pushed again after the next write that lands, when the end screen opens, and from its "Try
-saving again" button. The end screen (a polite status region) says "Saving…" while anything is in flight, "Saved. The
+saving again" button. A database that cannot be read (twice) is still kept (`db` set, cloud rows marked not yet
+merged): later picks write, and the next write that lands, the end screen or "Try saving again" reads it again and
+merges by the newest `at` before pushing; a pick is never overwritten by an older cloud row, and an undo is a
+tombstone (`choice: null`, newer `at`) so an older row cannot bring the pick back. localStorage is merged per card by
+newest `at` on every save (undo tombstones included) and on the `storage` event, so two tabs of one deck keep each
+other's picks; Undo during a swipe's 200 ms fly-out cancels the pending advance. The end screen (a polite status region) says "Saving…" while anything is in flight, "Saved. The
 agent has your decisions." only when every pick written has landed, "Saved on this device only. Copy your decisions
 to send them." after a failure, and "Not saved yet. Copy your decisions to send them." when localStorage refused the
 picks too. The deck's quiet line says "Saved on this device only" or "Not saved yet" in the same cases.

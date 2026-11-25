@@ -18,7 +18,10 @@ or tagged, so 4.6.0 is the first release after 4.1.0 and carries all of them.
   The end screen says "Saving…" until every write lands and only then "Saved. The agent has your decisions.";
   refused writes are retried (once after a short pause, longer when the database is busy), time out after 10 s,
   never turn the database off for the visit, and are sent again after the next write that lands or from "Try saving
-  again". A browser that cannot keep the picks says "Not saved yet". Card ids such as `constructor` work, and
+  again". A database that cannot be read (twice) is kept: picks still go out, and the next write that lands, the end
+  screen or "Try saving again" reads it again and merges by the newest time, so a stale row never beats a newer pick.
+  Two open tabs of one deck merge their picks in localStorage (an undo counts as a newer pick) instead of erasing each
+  other, and Undo during a swipe's fly-out shows the undone card again instead of skipping it. A browser that cannot keep the picks says "Not saved yet". Card ids such as `constructor` work, and
   "Decide later" has the same double-tap guard as the choices.
 
 ## 4.8.0 — 2026-11-04
