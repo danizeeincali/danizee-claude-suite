@@ -1,0 +1,73 @@
+{
+  "kind": "decision-deck",
+  "v": 1,
+  "title": "Round 1: what the testers found",
+  "lede": "12 walks, 6 things to decide.",
+  "choices": [
+    { "id": "fix", "label": "Fix" },
+    { "id": "later", "label": "Later" },
+    { "id": "no", "label": "No" }
+  ],
+  "story": [
+    { "heading": "Twelve owners tried the app for the first time.", "body": "Each walk was a café, a salon or a shop owner opening it cold, with no help.", "stat": { "value": "12", "label": "first-time walks" } },
+    { "heading": "Most reached a real result in under two minutes.", "body": "Three got stuck in the same place. Those are the first cards.", "stat": { "value": "9/12", "label": "reached a result" } }
+  ],
+  "cards": [
+    {
+      "id": "f1",
+      "title": "Nobody knew what to press after the morning brief",
+      "why": "8 of 12 walks stalled here for over a minute. The brief ends with no next step.",
+      "quote": "OK... now what?",
+      "who": "Café owner, first five minutes",
+      "tag": "blocker",
+      "stat": { "value": "8/12", "label": "walks stalled" },
+      "recommend": "fix",
+      "cost": "Small, about an hour"
+    },
+    {
+      "id": "f2",
+      "title": "Invoices say \"draft\" when they were already sent",
+      "why": "4 owners re-sent an invoice because the status never changed after sending.",
+      "quote": "Did it go? I'll send it again to be safe.",
+      "who": "Salon owner, invoicing",
+      "tag": "trust",
+      "stat": { "value": "4", "label": "double sends" },
+      "recommend": "fix",
+      "cost": "About half a day"
+    },
+    {
+      "id": "f3",
+      "title": "Add a dark theme to the schedule",
+      "why": "Two testers asked for it while checking bookings late at night.",
+      "tag": "request",
+      "recommend": "later",
+      "cost": "One day"
+    },
+    {
+      "id": "f4",
+      "title": "The approval card hides the price below the fold on small phones",
+      "why": "On a 375-wide screen the amount sits under the buttons. 3 testers approved without seeing it.",
+      "who": "Shop owner, approving a refund",
+      "tag": "money",
+      "stat": { "value": "3", "label": "approved blind" },
+      "recommend": "fix",
+      "cost": "Small, about two hours"
+    },
+    {
+      "id": "f5",
+      "title": "Rename \"Your team\" to \"Staff\"",
+      "why": "One tester expected to find their employees there. The other eleven read it as intended.",
+      "tag": "words",
+      "recommend": "no"
+    },
+    {
+      "id": "f6",
+      "title": "Let owners import last year's customers from a spreadsheet",
+      "why": "5 owners keep their customer list in a spreadsheet and asked how to bring it in.",
+      "quote": "I've got 400 regulars in Excel.",
+      "who": "Café owner, setup",
+      "tag": "request",
+      "cost": "Two to three days"
+    }
+  ]
+}

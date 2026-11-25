@@ -4,6 +4,15 @@ Releases are version tags with a GitHub release; the suite is no longer publishe
 (npm stays at 4.1.0). Versions 4.2.0 to 4.5.0 were set in `package.json` but never published
 or tagged, so 4.6.0 is the first release after 4.1.0 and carries all of them.
 
+## Unreleased
+
+### Added
+- **`decision-deck`**: a kit verb (`check`, `emit`, `read`) that turns an agent's findings into a one-card-at-a-time
+  page the owner decides on a phone by tap, swipe or key, with an optional note, undo, "Decide later", an end screen
+  grouped by choice and a "Copy my decisions" export. The page makes no requests; as a Claude artifact with
+  `capabilities: {db: {}, user: {}}` it saves each pick to `decisions/<card id>` and progress to `decks/meta`, and
+  `read` turns the database rows or the copied text back into `{decided, undecided, byChoice, problems}`.
+
 ## 4.8.0 — 2026-11-04
 
 Twelve UI de-slop powers from the `/w-bbs` run on heydamir/unslop (CC BY 4.0, by Damir Sokolovsky),

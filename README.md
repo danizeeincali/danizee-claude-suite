@@ -330,6 +330,47 @@ Each run lives in `.claude/bbs/runs/<run-id>/`; the registry of audited sources 
 
 **Worked example:** `/w-bbs https://github.com/openqodex/openqodex` — the suite has no OpenQodex-specific code; it is just the first source to point the command at.
 
+### Decision deck — decide findings on a phone
+
+An agent that finds 10 to 40 things should not hand the owner a report. `decision-deck` turns the findings into one page
+with one card per decision: the decision in one line, one or two lines of evidence, and big buttons at thumb height.
+The owner taps, swipes (right is the first choice, left the last, up the middle of three) or presses keys (1-4, arrows,
+`n` for a note, `z` to undo), can add a note, undo or decide later, and ends on a list grouped by choice with a
+"Copy my decisions" button. The page is self-contained: no requests of any kind, both themes, phone width first.
+
+The deck JSON (`test/fixtures/decision-deck/sample.json` is a full example):
+
+```json
+{ "kind": "decision-deck", "v": 1,
+  "title": "Round 1: what the testers found",
+  "lede": "12 walks, 6 things to decide.",
+  "choices": [ {"id": "fix", "label": "Fix"}, {"id": "later", "label": "Later"}, {"id": "no", "label": "No"} ],
+  "cards": [ { "id": "f1", "title": "Nobody knew what to press after the morning brief",
+               "why": "8 of 12 walks stalled here for over a minute.", "quote": "OK... now what?",
+               "who": "Café owner, first five minutes", "tag": "blocker", "stat": {"value": "8/12", "label": "walks"},
+               "image": null, "recommend": "fix", "cost": "Small, about an hour" } ],
+  "story": [ { "heading": "Twelve owners tried the app.", "body": "...", "stat": {"value": "12"} } ] }
+```
+
+`choices` (2-4, default Fix / Later / No), `lede`, `story` (at most 6 scroll panels before the cards) and every card
+field but `id`, `title` and `why` are optional. Images are `data:` URIs (png, jpeg or webp, at most 400 KB each).
+
+```bash
+node .claude/helpers/kit/cli.js decision-deck check --file deck.json             # {ok, cards, problems:[{path,message,fix}]}, exit 0 either way
+node .claude/helpers/kit/cli.js decision-deck emit --file deck.json --out deck.html  # add --standalone to open it as a local file
+node .claude/helpers/kit/cli.js decision-deck read --file picks.txt --deck deck.json  # {decided, undecided, byChoice, problems}
+```
+
+**In Claude:** publish the emitted page as a Claude artifact with `capabilities: {db: {}, user: {}}`. Each pick is
+saved to the artifact database as `decisions/<card id>` (`{choice, note, at, title}`; `choice` is null after an undo)
+and the progress as `decks/meta` (`{title, cards, decided, done, at}`); the owner sees "Saved. The agent has your
+decisions." Read the picks back with the artifact database `list` of the `decisions` collection and pass the rows to
+`read --deck deck.json`. Unknown ids or choices come back under `problems`, never dropped.
+
+**Anywhere else:** open the page (`emit --standalone`), decide, press "Copy my decisions" and paste the text (one line
+per card, `id | choice | note`) back to the agent, which runs `read` on it. The page always keeps the picks in the
+browser too, so a reload resumes where the owner stopped.
+
 ### Compaction hooks and `/bc` vs `/bcp`
 
 Only you can run `/compact` or `/clear`; Claude cannot. Automatic compaction runs at about 97% of
