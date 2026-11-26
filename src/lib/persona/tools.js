@@ -489,7 +489,12 @@ export async function receiveBundle(db, raw, now, visitor = "", opts = {}) {
         await db.prepare("DELETE FROM persona_bundles WHERE code = ?").bind(code).run().catch(() => {});
         throw e;
       }
-      await inOrder(db, [db.prepare(`DELETE FROM persona_bundle_briefs WHERE code IN (${beyond})`).bind(visitor, visitor), db.prepare(`DELETE FROM persona_bundles WHERE code IN (${beyond})`).bind(visitor, visitor)]);
+      // Best effort: the bundle is already kept, so a prune that fails must not cost the poster its code (the hour's expiry clears what is left).
+      try {
+        await inOrder(db, [db.prepare(`DELETE FROM persona_bundle_briefs WHERE code IN (${beyond})`).bind(visitor, visitor), db.prepare(`DELETE FROM persona_bundles WHERE code IN (${beyond})`).bind(visitor, visitor)]);
+      } catch {
+        // Left for retention.
+      }
       return { status: 201, code };
     }
     throw new Error("bundle code clash");
@@ -509,17 +514,30 @@ export async function receiveBundle(db, raw, now, visitor = "", opts = {}) {
  */
 export async function readExport(db, code, now) {
   if (typeof code !== "string" || !CODE_RE.test(code)) return null;
-  // The read is claimed first, in one statement: of requests running together only as many as there are reads left get a row.
+  const live = await db.prepare("SELECT round FROM persona_exports WHERE code = ? AND expires_at > ? AND reads < ?").bind(code, iso(now), EXPORT_READS).first();
+  if (!live) return null;
+  // The reports are read before the read is claimed, so a read that fails spends nothing.
+  const rows = await roundReports(db, live.round, true);
+  // Claimed in one statement: of requests running together only as many as there are reads left get a row.
   const row = await db.prepare("UPDATE persona_exports SET reads = reads + 1 WHERE code = ? AND expires_at > ? AND reads < ? RETURNING round, reads").bind(code, iso(now), EXPORT_READS).first();
   if (!row) return null;
   if (row.reads >= EXPORT_READS) await db.prepare("DELETE FROM persona_exports WHERE code = ?").bind(code).run();
-  const { results } = await db.prepare("SELECT walk_id FROM persona_briefs WHERE round = ? ORDER BY walk_id").bind(row.round).all();
-  const reports = [];
-  for (const { walk_id } of results) {
-    const rep = await walkReport(db, walk_id);
-    if (rep) reports.push({ id: walk_id, status: rep.status, version: rep.version, started: rep.started_at, received: rep.received_at, clock_minutes: clockMinutes(rep.started_at, rep.received_at), body: rep.body });
-  }
+  const reports = rows.filter((x) => x.version !== null).map((x) => ({ id: x.walk_id, status: x.status, version: x.version, started: x.started_at, received: x.received_at, clock_minutes: clockMinutes(x.started_at, x.received_at), body: x.body }));
   return { round: row.round, reports };
+}
+
+/**
+ * Every walk of a round with its report (the latest accepted version, else the latest; nulls when none) and its start,
+ * in ONE query however many walks there are: a hosted store allows only so many queries per request.
+ */
+async function roundReports(db, r, withBody = false) {
+  const { results } = await db
+    .prepare(
+      `SELECT b.walk_id, w.started_at AS walk_started, r.version, r.status, r.problems, r.received_at, r.started_at${withBody ? ", r.body" : ""} FROM persona_briefs b LEFT JOIN persona_walks w ON w.walk_id = b.walk_id LEFT JOIN persona_reports r ON r.walk_id = b.walk_id AND r.version = (SELECT x.version FROM persona_reports x WHERE x.walk_id = b.walk_id ORDER BY x.status = 'accepted' DESC, x.version DESC LIMIT 1) WHERE b.round = ? ORDER BY b.walk_id`,
+    )
+    .bind(r)
+    .all();
+  return results.map((x) => ({ ...x, version: x.version ?? null }));
 }
 
 /**
@@ -641,15 +659,19 @@ async function runTool(name, a, db, now, opts) {
       if ((last?.n ?? 0) >= CAPS.versionsPerWalk) no(`${id} already has ${CAPS.versionsPerWalk} versions, the most a walk keeps. Ask the coding thread with ask instead of handing it in again.`);
       const inRound = await db.prepare("SELECT COUNT(*) AS n FROM persona_reports r JOIN persona_briefs b ON b.walk_id = r.walk_id WHERE b.round = ?").bind(b.round).first();
       if ((inRound?.n ?? 0) >= CAPS.rowsPerRound) no(`Round ${b.round} already holds ${CAPS.rowsPerRound} reports, the most it keeps. Ask the coding thread.`);
-      const { problems } = submissionProblems(raw, id, opts);
+      // What is stored is the stripped text, so that is checked too: a report that only reads cleanly before stripping is not accepted.
+      const stored = stripFragments(raw, opts);
+      let { problems } = submissionProblems(raw, id, opts);
+      if (problems.length === 0) problems = submissionProblems(stored, id, opts).problems;
       const shown = capped(stripDeep(problems, opts));
       const status = problems.length === 0 ? "accepted" : "rejected";
-      const version = (last?.v ?? 0) + 1;
-      await write(db, now, [
-        db
-          .prepare("INSERT INTO persona_reports (walk_id, version, body, status, problems, received_at, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-          .bind(id, version, stripFragments(raw, opts), status, JSON.stringify({ total: problems.length, lines: shown }), iso(now), started),
-      ]);
+      // The version is taken inside the insert itself, so two hand-ins of one walk arriving together get two versions, never a clash.
+      await write(db, now, []);
+      const put = await db
+        .prepare("INSERT INTO persona_reports (walk_id, version, body, status, problems, received_at, started_at) SELECT ?, COALESCE(MAX(version), 0) + 1, ?, ?, ?, ?, ? FROM persona_reports WHERE walk_id = ? RETURNING version")
+        .bind(id, stored, status, JSON.stringify({ total: problems.length, lines: shown }), iso(now), started, id)
+        .first();
+      const version = put.version;
       if (status !== "accepted") return { accepted: false, version, problems: shown };
       return { accepted: true, version, clock_minutes: clockMinutes(started, iso(now)) };
     }
@@ -695,7 +717,8 @@ async function runTool(name, a, db, now, opts) {
         ]);
       }
       if (a.briefs === undefined) no("Give briefs (a list of {id, brief}) or a bundle (the code posting one answered).");
-      const guide = a.guide === undefined ? null : text(a.guide, "guide", CAPS.briefBytes);
+      // Stripped as a bundle's guide is, so the same guide is stored the same way however it arrives.
+      const guide = a.guide === undefined ? null : stripFragments(text(a.guide, "guide", CAPS.briefBytes), opts);
       return publishRows(db, now, r, guide, parseBriefs(r, a.briefs), []);
     }
     case "close_round": {
@@ -794,14 +817,11 @@ async function runTool(name, a, db, now, opts) {
     }
     case "list_reports": {
       const r = round(a.round);
-      const { results } = await db.prepare("SELECT walk_id FROM persona_briefs WHERE round = ? ORDER BY walk_id").bind(r).all();
-      const walks = [];
-      for (const { walk_id } of results) {
-        const rep = await walkReport(db, walk_id);
-        const started = rep ? rep.started_at : await startOf(db, walk_id);
-        const clock = { started, clock_minutes: clockMinutes(started, rep?.received_at ?? null) };
-        walks.push(rep ? { id: walk_id, status: rep.status, version: rep.version, received: rep.received_at, problems: problemsOf(rep).total, ...clock } : { id: walk_id, status: "none", version: null, received: null, problems: 0, ...clock });
-      }
+      const walks = (await roundReports(db, r)).map((x) => {
+        const started = x.version !== null ? x.started_at : x.walk_started ?? null;
+        const clock = { started, clock_minutes: clockMinutes(started, x.received_at ?? null) };
+        return x.version !== null ? { id: x.walk_id, status: x.status, version: x.version, received: x.received_at, problems: problemsOf(x).total, ...clock } : { id: x.walk_id, status: "none", version: null, received: null, problems: 0, ...clock };
+      });
       return { round: r, walks };
     }
     case "get_report": {
