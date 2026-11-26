@@ -6,3 +6,4 @@
 {"stream":"rounds","counts":{"high":1,"medium":2,"low":1},"angle":"older environments and degraded networks","tokens":104168,"commit":"ad2849a","pass":false,"round":3,"id":"0c4bdfd7-fa11-41b8-9b22-4baa1aad62d2","ts":"2026-11-26T22:11:58.593Z"}
 {"stream":"rounds","counts":{"high":1,"medium":1,"low":1},"angle":"the three safety probes: egress, secrets, sandbox escape","tokens":136185,"commit":"8b6a038","pass":false,"round":4,"id":"5e4cf3cf-3f61-496e-a3b1-257ed2f0d0cd","ts":"2026-11-26T22:24:53.008Z"}
 {"stream":"rounds","counts":{"high":0,"medium":3,"low":7},"angle":"accessibility","tokens":167002,"commit":"7d2c823","pass":false,"round":5,"id":"ab6175f1-4367-4e66-acd7-53677a49a4c1","ts":"2026-11-26T22:34:33.429Z"}
+{"stream":"rounds","counts":{"high":0,"medium":2,"low":4},"angle":"facts and content","tokens":208107,"commit":"bc8d27e","pass":true,"round":6,"id":"a7819210-0885-4bb8-99e5-274281bbff27","ts":"2026-11-26T22:45:57.305Z"}
