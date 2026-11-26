@@ -9,6 +9,7 @@ import { REPORT_NAME, stripFragments } from "./report-shape.js";
 
 export const MAX_PUBLISH_BYTES = 2 * 1024 * 1024;
 export const TIMEOUT_MS = 60_000;
+export const FETCH_AT_ONCE = 4;
 
 const fail = (m) => {
   throw new Error(m);
@@ -133,16 +134,21 @@ export async function fetchReports(dir, round, conn, { secretPaths = [], secrets
   const missing = [];
   const clock = [];
   fs.mkdirSync(path.join(dir, "reports"), { recursive: true });
+  const accepted = [];
   for (const w of list.walks ?? []) {
     if (typeof w.id !== "string" || !REPORT_NAME.test(w.id)) continue;
-    if (w.status !== "accepted") {
-      missing.push(w.id);
-      continue;
-    }
-    const got = await conn.call("get_report", { id: w.id });
-    writeAtomic(path.join(dir, "reports", `${w.id}.md`), stripFragments(String(got.report ?? ""), { secretPaths, secrets }));
-    fetched.push(w.id);
-    if (typeof w.clock_minutes === "number") clock.push({ id: w.id, started: w.started ?? null, clock_minutes: w.clock_minutes });
+    if (w.status !== "accepted") missing.push(w.id);
+    else accepted.push(w);
+  }
+  // A few at a time: a round of forty walks is ten waits, not forty, and the server is never flooded.
+  for (let i = 0; i < accepted.length; i += FETCH_AT_ONCE) {
+    const some = accepted.slice(i, i + FETCH_AT_ONCE);
+    const got = await Promise.all(some.map((w) => conn.call("get_report", { id: w.id })));
+    some.forEach((w, k) => {
+      writeAtomic(path.join(dir, "reports", `${w.id}.md`), stripFragments(String(got[k].report ?? ""), { secretPaths, secrets }));
+      fetched.push(w.id);
+      if (typeof w.clock_minutes === "number") clock.push({ id: w.id, started: w.started ?? null, clock_minutes: w.clock_minutes });
+    });
   }
   writeAtomic(path.join(dir, `clock-r${round}.json`), `${JSON.stringify({ round, walks: clock }, null, 2)}\n`);
   return { round, fetched, missing, clock: clock.length };

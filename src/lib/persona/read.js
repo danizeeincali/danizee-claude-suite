@@ -175,11 +175,13 @@ function readClock(dir, round, unreadable) {
   return map;
 }
 
+/** How much of a walk's free notes the findings keep (the known: lines are read from the whole notes first). */
+export const MAX_NOTES_KEPT = 4000;
 const STOP = new Set(["the", "a", "an", "to", "of", "is", "it", "in", "on", "and", "for", "i", "my", "me", "do", "that", "this", "was", "are", "be", "at", "with"]);
 const words = (s) => new Set(String(s ?? "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter((w) => w && !STOP.has(w)));
 /** Two titles are alike when their significant words overlap by at least 0.6 (Jaccard). Kept strict: under-merging is the safe side. */
-const alike = (a, b) => {
-  const x = words(a), y = words(b);
+const alike = (a, b) => alikeWords(words(a), words(b));
+const alikeWords = (x, y) => {
   if (!x.size || !y.size) return false;
   let n = 0;
   for (const w of x) if (y.has(w)) n++;
@@ -209,16 +211,43 @@ const rank = (s) => (s === null ? SEVERITY.length : SEVERITY.indexOf(s));
 /** Findings from many walks merged when the place is the same and the title is alike every title already in the group. */
 export function mergeFindings(walks) {
   const groups = [];
+  // Per place, the groups that hold each word: two titles with no word in common are never alike, so only the groups
+  // that share a word with the new title are compared, each title's words worked out once. Without this, one walk's
+  // long list of findings on one screen made every later finding scan every group.
+  const byPlace = new Map();
   for (const w of [...walks].sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0)))
     for (const f of w.report.findings ?? []) {
       const key = findingKey(f);
-      const g = key === null ? null : groups.find((x) => x.key === key && x.titles.every((t) => alike(t, f.title)));
+      const fw = words(f.title);
+      let g = null;
+      if (key !== null && fw.size) {
+        const index = byPlace.get(key);
+        const near = new Set();
+        if (index) for (const word of fw) for (const n of index.get(word) ?? []) near.add(n);
+        // The first group in the order the groups were made, as before.
+        for (const n of [...near].sort((a, b) => a - b)) {
+          if (groups[n].words.every((tw) => alikeWords(tw, fw))) {
+            g = groups[n];
+            break;
+          }
+        }
+      }
+      const remember = (n) => {
+        if (key === null) return;
+        const index = byPlace.get(key) ?? byPlace.set(key, new Map()).get(key);
+        for (const word of fw) (index.get(word) ?? index.set(word, new Set()).get(word)).add(n);
+      };
       const ev = { walk: w.report.id ?? w.file, finding: f.n, severity: f.severity, said: f.persona_said, happened: stripFragments(f.what_happened ?? "") || null, shot: f.shot };
       if (g) {
         g.evidence.push(ev);
         g.titles.push(f.title);
+        g.words.push(fw);
+        remember(g.n);
         if (rank(f.severity) < rank(g.severity)) g.severity = f.severity;
-      } else groups.push({ key, titles: [f.title], title: f.title, severity: f.severity, screen: f.screen, address: f.address, expected: f.expected, evidence: [ev] });
+      } else {
+        groups.push({ n: groups.length, key, titles: [f.title], words: [fw], title: f.title, severity: f.severity, screen: f.screen, address: f.address, expected: f.expected, evidence: [ev] });
+        remember(groups.length - 1);
+      }
     }
   for (const g of groups) g.walks = new Set(g.evidence.map((e) => e.walk)).size;
   // A finding's id comes from what it is (its place and its first title), never from where it ranks, so a late report
@@ -236,7 +265,7 @@ export function mergeFindings(walks) {
     }
   }
   groups.sort((a, b) => rank(a.severity) - rank(b.severity) || b.walks - a.walks);
-  return groups.map(({ key, titles, id, ...g }, i) => ({ id, rank: i + 1, ...g }));
+  return groups.map(({ key, titles, words: _w, n: _n, id, ...g }, i) => ({ id, rank: i + 1, ...g }));
 }
 
 const avg = (xs) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
@@ -443,7 +472,8 @@ export function collect(dir, round, { secrets = [] } = {}) {
         first_five: w.report.first_five,
         come_back: w.report.come_back,
         questions: w.report.questions,
-        notes: w.report.notes,
+        // Kept short: the findings file quotes a few hundred characters, and every later pass strips this text again.
+        notes: typeof w.report.notes === "string" ? w.report.notes.slice(0, MAX_NOTES_KEPT) : w.report.notes,
         known_met: w.known,
         ...(deepRound ? { deep: deepOf.get(w.report.id) } : {}),
         ...(clock ? { clock: clock.has(w.report.id) ? { real_minutes: clock.get(w.report.id), tester_minutes: w.report.minutes } : null } : {}),
