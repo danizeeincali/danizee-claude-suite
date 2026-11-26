@@ -7,3 +7,5 @@
 {"role":"review","model":"opus","stream":"server","budget":200000,"event":"spawn","id":"978a603f-1c51-4518-a67b-accee5e2fc04","ts":"2026-11-26T21:11:01.244Z"}
 {"role":"build","model":"sonnet","stream":"rounds","budget":200000,"event":"spawn","id":"5ab9573b-64ef-44e2-9369-157a79155b2c","ts":"2026-11-26T21:11:01.315Z"}
 {"role":"build","model":"sonnet","stream":"rounds","budget":200000,"event":"spawn","id":"9804bb82-3eeb-4b9d-8401-222a0474d09e","ts":"2026-11-26T21:11:01.385Z"}
+{"helper_id":"978a603f-1c51-4518-a67b-accee5e2fc04","tokens":150000,"outcome":"green","event":"done","id":"0320084d-c544-4b93-99af-2963717cec90","ts":"2026-11-26T21:13:37.323Z"}
+{"role":"review","model":"opus","stream":"server","budget":200000,"event":"spawn","id":"6f932922-13bb-40df-b4b7-bda02eab5408","ts":"2026-11-26T21:14:22.183Z"}

@@ -7,8 +7,8 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 190,
-    "cost": 45
+    "steps": 230,
+    "cost": 60
   },
   "clock": {
     "depth": 0,
@@ -53,6 +53,18 @@
       }
     },
     "review1": {
+      "steps": 40,
+      "cost": 15,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review2": {
       "steps": 0,
       "cost": 0,
       "ok": 0,

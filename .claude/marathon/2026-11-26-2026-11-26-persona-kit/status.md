@@ -1,7 +1,7 @@
 # Marathon 2026-11-26-2026-11-26-persona-kit
 
 - State: RUNNING
-- Budget: 1,090,000 / 14,000,000 tokens
+- Budget: 1,240,000 / 14,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
@@ -19,9 +19,9 @@
 | Line | Owner | Status | Actual | Target |
 |---|---|---|---|---|
 | Green end-to-end runs in a row | build | failing | 0 | at_least 3 |
-| Green unit runs in a row | build | met | 3 | at_least 3 |
+| Green unit runs in a row | build | met | 4 | at_least 3 |
 | Clean reviews in a row | build | failing | 0 | at_least 2 |
-| High findings in the latest review | build | failing | — | at_most 0 |
+| High findings in the latest review | build | failing | 1 | at_most 0 |
 | Open high findings | build | met | 0 | at_most 0 |
 | Helpers that blew their budget | build | met | 0 | at_most 2 |
 | A fresh project gets helpers/persona and /w-persona-test from init | build | failing | — | is true |
