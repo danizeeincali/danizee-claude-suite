@@ -1,0 +1,21 @@
+# Copy to wrangler.toml next to worker.js and fill in the placeholders. No secret belongs in this file.
+#
+#   wrangler d1 create persona
+#   wrangler d1 execute persona --remote --file ../schema.sql
+#   wrangler secret put PERSONA_TESTER_KEY     # 24+ characters
+#   wrangler secret put PERSONA_CODING_KEY     # 24+ characters, different from the tester key
+#   wrangler deploy
+#
+# Optional: wrangler secret put PERSONA_SECRET_PATHS (comma-separated paths to strip, such as /private/sign-in)
+
+name = "persona-tester"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "persona"
+database_id = "00000000-0000-0000-0000-000000000000"
+
+[vars]
+PERSONA_PRODUCT = "Your Product"

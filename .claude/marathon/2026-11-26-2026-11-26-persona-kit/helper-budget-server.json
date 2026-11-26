@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "openedAt": 1795725978689,
+  "limits": {
+    "steps": 400,
+    "cost": 100,
+    "timeMs": null
+  },
+  "spent": {
+    "steps": 310,
+    "cost": 90
+  },
+  "clock": {
+    "depth": 0,
+    "startedAt": null,
+    "elapsedMs": 1437437
+  },
+  "helpers": {
+    "tools": {
+      "steps": 80,
+      "cost": 20,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "shape-tests": {
+      "steps": 30,
+      "cost": 5,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "transport": {
+      "steps": 80,
+      "cost": 20,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review1": {
+      "steps": 40,
+      "cost": 15,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review2": {
+      "steps": 40,
+      "cost": 15,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review3": {
+      "steps": 40,
+      "cost": 15,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    }
+  }
+}

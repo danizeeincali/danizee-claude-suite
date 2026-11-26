@@ -1532,3 +1532,199 @@ STATUS: PASS|FAIL
 **Status**: ready (only runs if RC-D040 fails)
 
 ---
+
+---
+
+### RC-D041: The address rule in report-shape.js is linear on long dotted labels
+
+**Auto-Generated From**: /w-background-compound on 2026-11-26
+**Type**: Diagnostic
+**Verifies**: the address rule in `src/lib/persona/report-shape.js` backtracks on long dotted labels (about 2.7 s per MB of tester text); stripping must stay linear
+
+**Test Command**:
+```bash
+node -e "import('./src/lib/persona/report-shape.js').then(m=>{const t='a.'.repeat(500000);const s=Date.now();m.strip?.(t);console.log(Date.now()-s)})"; # expect under 500 ms for 1 MB
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: THE_ADDRESS_RULE_IN_REPORT-SHAPE.JS_IS_L
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F037 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+---
+
+### RC-F037: Rewrite the address rule so it cannot backtrack
+
+**Auto-Generated From**: /w-background-compound on 2026-11-26
+**Type**: Conditional Fix
+**Triggered By**: RC-D041 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// match a label, then ( '.' label )* with a possessive-style scan (loop on charCodes or an atomic lookahead),
+// never nested quantifiers over the same character class
+```
+
+**File**: src/lib/persona/report-shape.js and test/persona-report-shape.test.js
+
+**Completion Tests**:
+1. Test: 1 MB of dotted labels strips in under 500 ms
+2. Test: every existing strip test still passes
+
+**Status**: ready (only runs if RC-D041 fails)
+
+
+---
+
+### RC-D042: Helpers over their token budget count against the marathon finish line with no way to raise a budget up front
+
+**Auto-Generated From**: /w-background-compound on 2026-11-26
+**Type**: Diagnostic
+**Verifies**: the marathon finish line counts a helper that went over its token budget, and `cli.js` has no way to give one helper a larger budget when it is spawned (seen in the persona-kit run, `helper-budget-*.json`)
+
+**Test Command**:
+```bash
+grep -n "budget" .claude/helpers/marathon/cli.js | head -30; # expect a verb or flag that sets one helper's budget before it is spawned
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: HELPERS_OVER_THEIR_TOKEN_BUDGET_COUNT_AG
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F038 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+---
+
+### RC-F038: Let a helper's budget be raised up front and recorded
+
+**Auto-Generated From**: /w-background-compound on 2026-11-26
+**Type**: Conditional Fix
+**Triggered By**: RC-D042 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// cli.js budget --helper <id> --tokens <n>: records the raised budget in the ledger before the spawn;
+// the finish line compares spend with that row, not the default
+```
+
+**File**: .claude/helpers/marathon/cli.js and its test
+
+**Completion Tests**:
+1. Pattern: a verb sets a per-helper budget
+2. Test: a helper under its raised budget does not count against the finish line
+
+**Status**: ready (only runs if RC-D042 fails)
+
+
+---
+
+### RC-D043: The persona kit has not been tried on a real project or a deployed Worker
+
+**Auto-Generated From**: /w-background-compound on 2026-11-26
+**Type**: Diagnostic
+**Verifies**: `/w-persona-test` has only run against fixtures and the local server; no real project has used it end to end and the Cloudflare Worker from `worker --out` has not been deployed
+
+**Test Command**:
+```bash
+ls persona-testing/project.json 2>/dev/null; ls docs/solutions/features | grep -i persona; # expect a note of a real first run (project name, round, what broke)
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: THE_PERSONA_KIT_HAS_NOT_BEEN_TRIED_ON_A_
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F039 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+---
+
+### RC-F039: Run one real round and one deployed Worker, then record what broke
+
+**Auto-Generated From**: /w-background-compound on 2026-11-26
+**Type**: Conditional Fix
+**Triggered By**: RC-D043 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// init in a real project -> plan -> worker --out -> deploy -> publish -> one tester walk -> fetch -> read -> deliver;
+// every break becomes a test in test/persona-*.test.js
+```
+
+**File**: docs/solutions/features/ (a follow-up note) and src/lib/persona/
+
+**Completion Tests**:
+1. Test: each break found has a regression test
+2. Doc: a follow-up note names the project and what changed
+
+**Status**: ready (only runs if RC-D043 fails)
+
+
+---
+
+### RC-D044: Fetch gets reports four at a time over separate requests
+
+**Auto-Generated From**: /w-background-compound on 2026-11-26
+**Type**: Diagnostic
+**Verifies**: `fetchReports` in `src/lib/persona/client.js` calls `get_report` a few at a time; a round of many walks costs many round trips where one JSON-RPC batch would do
+
+**Test Command**:
+```bash
+grep -n "get_report" src/lib/persona/client.js; # expect one batched JSON-RPC request
+```
+
+**AI-Verifiable Output**:
+```
+DIAGNOSTIC: FETCH_GETS_REPORTS_FOUR_AT_A_TIME_OVER_S
+PATTERN_FOUND: YES|NO
+LOCATION: [file:line] or NONE
+STATUS: PASS|FAIL
+```
+
+**Triggers**: RC-F040 if STATUS: FAIL
+**Priority**: P2
+**Status**: ready
+
+---
+
+### RC-F040: Batch get_report over JSON-RPC
+
+**Auto-Generated From**: /w-background-compound on 2026-11-26
+**Type**: Conditional Fix
+**Triggered By**: RC-D044 failure
+**Priority**: P2
+
+**Pattern to Restore**:
+```javascript
+// POST one JSON array of get_report calls; the server answers an array;
+// keep the key-cutting and the per-batch size cap; any failure in the batch stops the fetch
+```
+
+**File**: src/lib/persona/client.js, src/lib/persona/mcp.js and their tests
+
+**Completion Tests**:
+1. Test: a 20-walk round is fetched in one request
+2. Test: a failure inside the batch stops the fetch and names the walk
+
+**Status**: ready (only runs if RC-D044 fails)
+

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marathon 2026-11-26-2026-11-26-persona-kit</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --fg: #1b1f24;
+  --muted: #5f6b76;
+  --line: #d8dee4;
+  --ok: #1a7f37;
+  --warn: #9a6700;
+  --bad: #cf222e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d1117;
+    --fg: #e6edf3;
+    --muted: #8b98a5;
+    --line: #30363d;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --bad: #f85149;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 64rem; margin: 0 auto; padding: 24px 16px 48px; }
+h1 { font-size: 1.5rem; margin: 0 0 4px; }
+h2 { font-size: 1.1rem; margin: 32px 0 8px; }
+p { margin: 4px 0; }
+.muted { color: var(--muted); }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+.ok { color: var(--ok); font-weight: 600; }
+.warn { color: var(--warn); font-weight: 600; }
+.bad { color: var(--bad); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+<h1>Marathon 2026-11-26-2026-11-26-persona-kit</h1>
+<p class="muted">Snapshot of the run: finish line, streams, review ledger and helper spend.</p>
+
+<h2>Gate</h2>
+<p>Build gate: <span class="bad">not met</span> · Full gate: <span class="bad">not met</span></p>
+<p class="muted">Failing: helpers_over_budget · Waiting on human: none</p>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Line</th><th scope="col">Owner</th><th scope="col">Target</th><th scope="col">Actual</th><th scope="col">Status</th></tr></thead>
+<tbody>
+<tr><td>Green end-to-end runs in a row</td><td>build</td><td>at least 3</td><td>21</td><td class="ok">met</td></tr>
+<tr><td>Green unit runs in a row</td><td>build</td><td>at least 3</td><td>14</td><td class="ok">met</td></tr>
+<tr><td>Clean reviews in a row</td><td>build</td><td>at least 2</td><td>2</td><td class="ok">met</td></tr>
+<tr><td>High findings in the latest review</td><td>build</td><td>at most 0</td><td>0</td><td class="ok">met</td></tr>
+<tr><td>Open high findings</td><td>build</td><td>at most 0</td><td>0</td><td class="ok">met</td></tr>
+<tr><td>Helpers that blew their budget</td><td>build</td><td>at most 2</td><td>3</td><td class="bad">failing</td></tr>
+<tr><td>A fresh project gets helpers/persona and /w-persona-test from init</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+<tr><td>bos has no change</td><td>build</td><td>is true</td><td>true</td><td class="ok">met</td></tr>
+</tbody>
+</table></div>
+
+<h2>Streams</h2>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Stream</th><th scope="col">State</th><th scope="col">Phase</th><th scope="col">Next</th><th scope="col">Tasks</th></tr></thead>
+<tbody>
+<tr><td>server</td><td>done</td><td>/w-tdd-swarm · done</td><td>merged into rounds; compound at the end</td><td></td></tr>
+<tr><td>rounds</td><td>done</td><td>review</td><td>review round 1 (opus)</td><td></td></tr>
+</tbody>
+</table></div>
+
+<h2>Review ledger</h2>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Review</th><th scope="col">Stream</th><th scope="col">Round</th><th scope="col">Result</th><th scope="col">High / medium / low</th><th scope="col">Time</th></tr></thead>
+<tbody>
+<tr><td>e7555792-3704-419f-a80a-e8022b3bd6a3</td><td>server</td><td>1</td><td class="bad">over</td><td>1 / 1 / 2</td><td>2026-11-26T21:13:37.463Z</td></tr>
+<tr><td>9526c058-cfa9-4d03-b3a5-fe1c0bcbe827</td><td>server</td><td>2</td><td class="ok">pass</td><td>0 / 1 / 3</td><td>2026-11-26T21:16:19.762Z</td></tr>
+<tr><td>01216823-63f8-4c30-932e-b32f8eb7a345</td><td>server</td><td>3</td><td class="ok">pass</td><td>0 / 1 / 3</td><td>2026-11-26T21:24:31.417Z</td></tr>
+<tr><td>d93069aa-77a5-4841-b0ce-ad8666b0a0a5</td><td>rounds</td><td>1</td><td class="bad">over</td><td>1 / 1 / 4</td><td>2026-11-26T21:49:19.298Z</td></tr>
+<tr><td>70117868-ab57-46c7-b0e2-d88cff1b4f8e</td><td>rounds</td><td>2</td><td class="bad">over</td><td>0 / 4 / 4</td><td>2026-11-26T22:04:42.837Z</td></tr>
+<tr><td>0c4bdfd7-fa11-41b8-9b22-4baa1aad62d2</td><td>rounds</td><td>3</td><td class="bad">over</td><td>1 / 2 / 1</td><td>2026-11-26T22:11:58.593Z</td></tr>
+<tr><td>5e4cf3cf-3f61-496e-a3b1-257ed2f0d0cd</td><td>rounds</td><td>4</td><td class="bad">over</td><td>1 / 1 / 1</td><td>2026-11-26T22:24:53.008Z</td></tr>
+<tr><td>ab6175f1-4367-4e66-acd7-53677a49a4c1</td><td>rounds</td><td>5</td><td class="bad">over</td><td>0 / 3 / 7</td><td>2026-11-26T22:34:33.429Z</td></tr>
+<tr><td>a7819210-0885-4bb8-99e5-274281bbff27</td><td>rounds</td><td>6</td><td class="ok">pass</td><td>0 / 2 / 4</td><td>2026-11-26T22:45:57.305Z</td></tr>
+<tr><td>ffb70656-8ddc-4c84-9a4f-7743ff36e22e</td><td>rounds</td><td>7</td><td class="ok">pass</td><td>0 / 2 / 1</td><td>2026-11-26T22:57:34.584Z</td></tr>
+</tbody>
+</table></div>
+
+<h2>Helper spend by model</h2>
+<div class="scroll"><table>
+<thead><tr><th scope="col">Model</th><th scope="col">Helpers</th><th scope="col">Done</th><th scope="col">Tokens used</th><th scope="col">Tokens budgeted in flight</th></tr></thead>
+<tbody>
+<tr><td>sonnet</td><td>5</td><td>5</td><td>1,012,886</td><td>0</td></tr>
+<tr><td>haiku</td><td>1</td><td>1</td><td>90,000</td><td>0</td></tr>
+<tr><td>opus</td><td>10</td><td>10</td><td>1,550,339</td><td>0</td></tr>
+</tbody>
+</table></div>
+</main>
+</body>
+</html>
