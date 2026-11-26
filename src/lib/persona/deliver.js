@@ -100,15 +100,23 @@ function freezes(walks) {
   return out;
 }
 
+/** `unreadable` holds reports and the round's other files (the project, the rounds, the clock); only a report is counted as one. */
+const OTHER_FILE = /^(project\.json|rounds\.json|clock-r\d+\.json)$/;
+const unreadReports = (result) => (result.unreadable ?? []).filter((x) => !OTHER_FILE.test(String(x?.file)));
+const unreadOthers = (result) => (result.unreadable ?? []).filter((x) => OTHER_FILE.test(String(x?.file)));
+
 function unreadableWords(result) {
-  const u = result.unreadable ?? [];
-  if (!u.length) return "";
-  return `${plural(u.length, "report")} could not be read: ${u.map((x) => name(x.file)).join(", ")}.`;
+  const u = unreadReports(result);
+  const o = unreadOthers(result);
+  const parts = [];
+  if (u.length) parts.push(`${plural(u.length, "report")} could not be read: ${u.map((x) => name(x.file)).join(", ")}.`);
+  if (o.length) parts.push(`${o.map((x) => name(x.file)).join(", ")} could not be read, so what ${o.length === 1 ? "it holds" : "they hold"} (names, targets or the real minutes) may be missing below; every report file was still looked at.`);
+  return parts.join(" ");
 }
 
 /** The deck's first slide body: counts only, never a walk id or a file name. */
 function countWords(result) {
-  const u = result.unreadable ?? [];
+  const u = unreadReports(result);
   const unreadIds = new Set(u.map((x) => String(x.file ?? "").replace(/\.md$/, "")));
   const out = (result.missing ?? []).filter((id) => !unreadIds.has(id)).length;
   const parts = [result.reports === 0 ? "No reports have come back yet." : Number(result.briefs) === 0 ? `${plural(Number(result.reports), "walk")} came back.` : `${Number(result.reports)} of ${Number(result.briefs)} ${Number(result.briefs) === 1 ? "walk is" : "walks are"} back.`];
@@ -333,7 +341,8 @@ export function buildMarkdown(raw, rawPicks = null, { project = null } = {}) {
   for (const d of picks?.decided ?? []) {
     const id = name(d.id).toLowerCase();
     const f = byId.get(id);
-    if (!f) unmatched.push({ d, why: "no finding has this id" });
+    if (!f && id === "no-findings" && findings.length === 0) continue;
+    else if (!f) unmatched.push({ d, why: "no finding has this id" });
     else if (!PICK_CHOICES.includes(d.choice)) unmatched.push({ d, why: "its choice is not fix, later or no" });
     else if (typeof d.title === "string" && clip(d.title, 90) !== cardTitle(f)) unmatched.push({ d, why: `its title does not match the finding's: ${quote(cardTitle(f))}` });
     else pickOf.set(id, d);
@@ -349,10 +358,12 @@ export function buildMarkdown(raw, rawPicks = null, { project = null } = {}) {
   const unread = unreadableWords(result);
   if (unread) L.push(unread, "");
   const problems = picks?.problems ?? [];
-  const nProblems = (Array.isArray(problems) ? problems.length : 0) + unmatched.length;
+  const readNotes = Array.isArray(problems) ? problems : [];
+  const nProblems = unmatched.length + (pickOf.size === 0 ? readNotes.length : 0);
   const rule = "Build only findings marked **fix**; leave **later** and **no** alone.";
   if (picks && findings.length > 0 && pickOf.size === findings.length) L.push(`The owner has picked. ${rule}`, "");
   else if (picks && pickOf.size > 0) L.push(`The owner has picked ${pickOf.size} of ${findings.length}. ${rule} A finding not decided is left alone.`, "");
+  else if (findings.length === 0 && nProblems === 0) L.push("Nothing to decide this round: the testers reported no findings.", "");
   else if (picks && nProblems > 0) L.push("The picks did not match this deck (it may have changed since the owner picked). Do not build from this file; publish the deck again and ask for new picks.", "");
   else L.push("The owner has not picked yet. Do not build from this file until the picks are in.", "");
   L.push("## Core loop", "");
@@ -419,10 +430,14 @@ export function buildMarkdown(raw, rawPicks = null, { project = null } = {}) {
     for (const e of f.evidence ?? []) L.push(`- ${name(e.walk)} #${name(e.finding)}${e.said ? `: ${quote(e.said)}` : ""}${e.happened ? `; what happened: ${quote(e.happened, 300)}` : ""}${e.shot ? ` (shot: \`reports/${name(e.walk)}/${name(e.shot)}\`)` : ""}`);
     L.push("");
   }
-  if (nProblems) {
+  if (unmatched.length) {
     L.push("## Picks that did not match", "", "These picks were not applied. Ask before building from them.", "");
     for (const { d, why } of unmatched) L.push(`- ${name(d.id)}: ${quote(d.choice ?? "no choice")}${d.title ? ` (${quote(d.title)})` : ""}: ${why}.`);
-    for (const p of Array.isArray(problems) ? problems : []) L.push(`- ${quote(p?.message ?? "no message", 300)}${p?.path ? ` (${quote(p.path, 80)})` : ""}`);
+    L.push("");
+  }
+  if (readNotes.length) {
+    L.push("## Notes from reading the picks", "", "What the reader said about the picks as it read them. A pick shown on an Owner's pick line above was applied; ask before building from anything unclear here.", "");
+    for (const p of readNotes) L.push(`- ${quote(p?.message ?? "no message", 300)}${p?.path ? ` (${quote(p.path, 80)})` : ""}`);
     L.push("");
   }
   const kn = result.known_met ?? { count: 0, items: [] };

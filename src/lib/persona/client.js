@@ -14,6 +14,14 @@ const fail = (m) => {
   throw new Error(m);
 };
 const base = (url) => String(url ?? "").replace(/\/+$/, "");
+/** An address as it may be printed: the origin only, so a key in a path or in userinfo never reaches a message. */
+const shown = (url) => {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "the server";
+  }
+};
 
 /** The one sentence for a request that went wrong at the transport. */
 async function send(fetchImpl, url, init, timeoutMs) {
@@ -21,8 +29,8 @@ async function send(fetchImpl, url, init, timeoutMs) {
   try {
     res = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
   } catch (e) {
-    if (e?.name === "TimeoutError" || e?.name === "AbortError" || /aborted/i.test(String(e?.message))) fail(`${url} did not answer within ${Math.round(timeoutMs / 1000)} seconds.`);
-    return fail(`Could not reach ${new URL(url).origin}: check that the server is running and the url in connector.json is right.`);
+    if (e?.name === "TimeoutError" || e?.name === "AbortError" || /aborted/i.test(String(e?.message))) fail(`${shown(url)} did not answer within ${Math.round(timeoutMs / 1000)} seconds.`);
+    return fail(`Could not reach ${shown(url)}: check that the server is running and the url in connector.json is right.`);
   }
   return res;
 }
@@ -40,7 +48,8 @@ export function connect({ url, key, fetchImpl = globalThis.fetch, timeoutMs = TI
   const rpc = async (method, params) => {
     const res = await send(fetchImpl, `${root}/mcp`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json", authorization: `Bearer ${key}` }, body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }) }, timeoutMs);
     if (res.status === 401) fail("The server refused the key: check the coding key in .keys.json or PERSONA_CODING_KEY.");
-    if (res.status === 404) fail(`${root}/mcp is not a persona server (or it has no keys set).`);
+    if (res.status === 404) fail(`${shown(root)} is not a persona server at /mcp (or it has no keys set).`);
+    if (res.status === 413) fail("The server said the request is too large: split the round into two rounds with fewer walks each.");
     if (res.status !== 200) fail(`The server answered ${res.status}.`);
     let j;
     try {
@@ -85,7 +94,8 @@ function readRoundFolder(dir, round) {
   return { briefs, guide };
 }
 
-const sizeOf = ({ briefs, guide }) => briefs.reduce((n, b) => n + Buffer.byteLength(b.brief) + Buffer.byteLength(b.id), 0) + Buffer.byteLength(guide ?? "");
+/** The size the server will measure: the JSON body, where every newline and quote is escaped, plus room for the envelope. */
+const sizeOf = ({ briefs, guide }) => Buffer.byteLength(JSON.stringify({ guide: guide ?? "", briefs })) + 512;
 
 /** Publishes the round's briefs and guide with the coding key. One call; over 2 MB it says to split the round. */
 export async function publish(dir, round, conn) {

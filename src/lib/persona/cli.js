@@ -10,8 +10,8 @@ import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { writeAtomic } from "./fsx.js";
 import { EXAMPLE_PROJECT, ID_RE, PROJECT_FILE, checkProject, loadProject } from "./project.js";
-import { checkCoverage, historyOf, planRound, readRounds, recordRound } from "./plan.js";
-import { writeRound } from "./brief.js";
+import { checkCoverage, historyOf, markPublished, planRound, readRounds, recordRound } from "./plan.js";
+import { renderBrief, renderGuide, writeRound } from "./brief.js";
 import { bundle, connect, fetchReports, publish } from "./client.js";
 import { collect } from "./read.js";
 import { deliver } from "./deliver.js";
@@ -38,7 +38,7 @@ const refuse = (m) => {
 
 const USAGE = "Verbs: init, check, plan, serve, worker, connect, publish, bundle, note, notes-clear, status, questions, answer, close, fetch, read, deliver, known (add|list|drop), fixing (set|clear). Every verb takes --dir <folder> (default persona-testing).";
 const VALUE_FLAGS = new Set(["dir", "url", "product", "round", "walks", "jobs", "seed", "doors", "personas", "jobs-only", "port", "db", "out", "name", "id", "picks", "instead", "area", "host"]);
-const BOOL_FLAGS = new Set(["side", "replan", "reopen", "show-keys"]);
+const BOOL_FLAGS = new Set(["side", "replan", "reopen", "show-keys", "offline"]);
 
 /** `{ flags, rest }` from argv: `--name value`, `--name=value`, booleans, and the words left over. */
 export function parseArgs(argv) {
@@ -81,6 +81,8 @@ const readJson = (file, what) => {
 };
 const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "product";
 
+const isReportFile = (u) => !["project.json", "rounds.json"].includes(u.file) && !/^clock-r\d+\.json$/.test(String(u.file));
+
 function keysOf(dir, env) {
   let file = {};
   const f = path.join(dir, ".keys.json");
@@ -92,6 +94,7 @@ function urlOf(dir, flags) {
   const f = path.join(dir, "connector.json");
   if (!fs.existsSync(f)) return bad(`There is no connector.json in ${dir}: run init, or give --url <server>.`);
   const u = readJson(f, "{url, product}").url;
+  if (typeof u === "string" && /\/k\/|\/\/[^/]*@/.test(u)) bad("The url in connector.json holds a key: keep only the server's address there (like https://tester.example.com); the keys stay in .keys.json.");
   return typeof u === "string" && u ? u : bad(`connector.json has no url: set it or give --url <server>.`);
 }
 function codingConn(dir, flags, env, io) {
@@ -156,12 +159,38 @@ function check(dir) {
   return { ok: true, product: p.product.name, personas: p.personas.length, doors: p.doors.length, jobs: p.jobs.length, known: p.known.length, fixing: p.fixing };
 }
 
-function plan(dir, flags, io) {
+/**
+ * The walks of a published round that the server says already have a report, so a replan never drops one that has not
+ * been fetched yet. A server that cannot be asked is a refusal: `--offline` replans from the fetched reports alone.
+ */
+async function reportedOnServer(dir, round, flags, io) {
+  if (flags.replan !== true || flags.offline === true) return [];
+  if (readRounds(dir).rounds[String(round)]?.published !== true) return [];
+  let list;
+  try {
+    list = await codingConn(dir, flags, io.env, io).call("list_reports", { round });
+  } catch (e) {
+    if (e?.refused) return [];
+    return refuse(`Round ${round} was published, and the server could not be asked which walks already have a report (${e.message}) Start the server and replan again, or add --offline to keep only the reports already fetched.`);
+  }
+  return (list?.walks ?? []).filter((w) => typeof w?.id === "string" && w.status === "accepted").map((w) => w.id);
+}
+
+async function plan(dir, flags, io) {
   const round = intFlag(flags, "round", { required: true });
   const project = loadProject(dir);
   const only = { doors: listFlag(flags, "doors"), personas: listFlag(flags, "personas"), jobs: listFlag(flags, "jobs-only") };
   const p = planRound(project, { round, walks: intFlag(flags, "walks"), jobsPerWalk: intFlag(flags, "jobs"), seed: flags.seed, side: flags.side === true, only, history: historyOf(readRounds(dir), round) });
-  const recorded = recordRound(dir, p, { replan: flags.replan === true });
+  const keep = await reportedOnServer(dir, round, flags, io);
+  // Every brief and the guide must render before anything is written, so rounds.json and briefs/ never fall out of step.
+  const draft = recordRound(dir, p, { replan: flags.replan === true, keep, dryRun: true });
+  try {
+    for (const w of draft.walks) renderBrief(project, draft, w);
+    renderGuide(project, draft);
+  } catch (e) {
+    bad(`Round ${round} was not changed: a brief could not be written (${e.message}) A walk that already has a report keeps its persona, door and jobs, so put them back in project.json and plan again.`);
+  }
+  const recorded = recordRound(dir, p, { replan: flags.replan === true, keep });
   const written = writeRound(dir, project, recorded);
   return { round, kind: recorded.kind, seed: recorded.seed, avoid: recorded.avoid, walks: recorded.walks.map((w) => ({ id: w.id, persona: w.persona, door: w.door, jobs: w.jobs, width: w.width })), briefs: rel(io.cwd, written.folder), guide: rel(io.cwd, written.guide), coverage: checkCoverage(recorded, project, { only }) };
 }
@@ -198,12 +227,15 @@ function workerFolder(dir, flags, io) {
   if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(name)) bad("The worker name must be lower-case letters, digits and hyphens, like persona-tester.");
   let product = "Your Product";
   let secretPaths = [];
-  try {
-    const project = loadProject(dir);
+  if (fs.existsSync(path.join(dir, PROJECT_FILE))) {
+    let project;
+    try {
+      project = loadProject(dir);
+    } catch (e) {
+      bad(`The Worker was not written: ${e.message} Run check, fix the project file and try again, so the Worker gets the product's name and its secret paths.`);
+    }
     product = project.product.name;
     secretPaths = project.secret_paths ?? [];
-  } catch {
-    // no project yet: the placeholder stays and the README says to set it
   }
   const targets = ["src/worker.js", "migrations/0001_persona.sql", "wrangler.toml", "README.md", "package.json", ...WORKER_FILES.map((f) => `src/${f}`)];
   const clash = targets.filter((t) => fs.existsSync(path.join(out, t)));
@@ -297,10 +329,11 @@ function known(dir, flags, rest) {
   return bad("known takes add, list or drop.");
 }
 
-/** The project's `secret_paths`, or none when the project file can't be read (fetch still works from keys and a url alone). */
+/** The project's `secret_paths`, read from the file as it is: a problem elsewhere in the project never stops them being cut. None when there is no readable file. */
 function secretPathsOf(dir) {
   try {
-    return loadProject(dir).secret_paths ?? [];
+    const p = JSON.parse(fs.readFileSync(path.join(dir, PROJECT_FILE), "utf8"));
+    return (Array.isArray(p?.secret_paths) ? p.secret_paths : []).filter((s) => typeof s === "string" && s.startsWith("/") && s.length >= 2);
   } catch {
     return [];
   }
@@ -341,7 +374,7 @@ export async function run(argv, io = {}) {
         result = check(dir);
         break;
       case "plan":
-        result = plan(dir, flags, ctx);
+        result = await plan(dir, flags, ctx);
         break;
       case "serve": {
         const s = await serve(dir, flags, ctx);
@@ -357,10 +390,12 @@ export async function run(argv, io = {}) {
       case "publish": {
         const r = roundOf(flags);
         result = await publish(dir, r, codingConn(dir, flags, ctx.env, ctx));
+        markPublished(dir, r);
         break;
       }
       case "bundle":
         result = await bundle(dir, roundOf(flags), { url: urlOf(dir, flags), fetchImpl: ctx.fetchImpl });
+        markPublished(dir, roundOf(flags));
         break;
       case "note": {
         const text = rest.join(" ").trim();
@@ -394,7 +429,7 @@ export async function run(argv, io = {}) {
       case "read": {
         const r = roundOf(flags);
         const f = collect(dir, r);
-        result = { round: r, file: `findings-r${r}.json`, briefs: f.briefs, reports: f.reports, missing: f.missing, unreadable: f.unreadable.length, findings: f.findings.length, known_met: f.known_met.count };
+        result = { round: r, file: `findings-r${r}.json`, briefs: f.briefs, reports: f.reports, missing: f.missing, unreadable: f.unreadable.filter(isReportFile).length, other_files_unreadable: f.unreadable.filter((u) => !isReportFile(u)).map((u) => u.file), findings: f.findings.length, known_met: f.known_met.count };
         break;
       }
       case "deliver": {

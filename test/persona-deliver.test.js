@@ -368,7 +368,8 @@ describe("buildMarkdown", () => {
     assert.match(some, /The owner has picked 1 of 3\./);
     assert.ok(some.includes("Owner's pick: **fix**. Note: “do this first”"));
     assert.equal(some.match(/Owner's pick: not decided/g).length, 2);
-    const sec = some.split("## Picks that did not match")[1].split("\n## ")[0];
+    assert.doesNotMatch(some, /## Picks that did not match/, "the one pick was applied, so nothing is listed as not applied");
+    const sec = some.split("## Notes from reading the picks")[1].split("\n## ")[0];
     assert.ok(sec.includes("title changed \\*bold\\* &lt;!-- x --&gt;"));
     assert.ok(!sec.includes("z".repeat(500)));
     const none = buildMarkdown(result(), read({ problems: [{ path: "decided[0]", message: "unknown id m9" }] }));

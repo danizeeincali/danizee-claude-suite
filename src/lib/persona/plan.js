@@ -201,9 +201,11 @@ export function readRounds(dir) {
 /**
  * Writes the plan into `rounds.json` and returns the plan as recorded. The same plan again changes nothing; a different
  * one for a recorded round is refused unless `replan`, and a replan keeps every walk that already has a report in
- * `reports/` exactly as it was (it holds its number; a new walk with the same number is dropped).
+ * `reports/`, or named in `keep` (the walks the server says have a report), exactly as it was (it holds its number; a new
+ * walk with the same number is dropped). `dryRun` returns what would be recorded and writes nothing.
  */
-export function recordRound(dir, plan, { replan = false } = {}) {
+export function recordRound(dir, plan, { replan = false, keep = [], dryRun = false } = {}) {
+  const alsoKept = new Set(keep);
   const file = path.join(dir, ROUNDS_FILE);
   const all = readRounds(dir);
   const old = all.rounds[String(plan.round)];
@@ -215,15 +217,25 @@ export function recordRound(dir, plan, { replan = false } = {}) {
       fail(`Round ${plan.round} is already planned with ${plural(Array.isArray(old.walks) ? old.walks.length : 0, "walk")}, and this plan has ${what}: ask to replan it to replace it.`);
     }
     if (!same) {
-      const kept = (Array.isArray(old.walks) ? old.walks : []).filter((w) => typeof w?.id === "string" && fs.existsSync(path.join(dir, "reports", `${w.id}.md`)));
+      const kept = (Array.isArray(old.walks) ? old.walks : []).filter((w) => typeof w?.id === "string" && (alsoKept.has(w.id) || fs.existsSync(path.join(dir, "reports", `${w.id}.md`))));
       const held = new Set(kept.map((w) => nnOf(w.id)));
       const keptIds = new Set(kept.map((w) => w.id));
       walks = [...kept, ...plan.walks.filter((w) => !keptIds.has(w.id) && !held.has(nnOf(w.id)))].sort((a, b) => nnOf(a.id) - nnOf(b.id));
     }
   }
   const recorded = { ...plan, walks };
-  all.rounds[String(plan.round)] = { kind: plan.kind, seed: plan.seed, walks, avoid: plan.avoid ?? [], known: plan.known ?? [] };
+  if (dryRun) return recorded;
+  all.rounds[String(plan.round)] = { kind: plan.kind, seed: plan.seed, walks, avoid: plan.avoid ?? [], known: plan.known ?? [], ...(old?.published === true ? { published: true } : {}) };
   fs.mkdirSync(dir, { recursive: true });
   writeAtomic(file, `${JSON.stringify(all, null, 2)}\n`);
   return recorded;
+}
+
+/** Notes in `rounds.json` that the round was sent to the server, so a later replan asks the server which walks have a report. A round that is not recorded is left alone. */
+export function markPublished(dir, round) {
+  const all = readRounds(dir);
+  const entry = all.rounds[String(round)];
+  if (!entry || entry.published === true) return;
+  entry.published = true;
+  writeAtomic(path.join(dir, ROUNDS_FILE), `${JSON.stringify(all, null, 2)}\n`);
 }
