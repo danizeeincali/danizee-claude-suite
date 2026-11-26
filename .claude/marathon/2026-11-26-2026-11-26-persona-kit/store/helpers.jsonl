@@ -23,3 +23,5 @@
 {"role":"review","model":"opus","stream":"rounds","budget":200000,"event":"spawn","id":"e861a277-4e64-4f5f-82aa-290a444cc26f","ts":"2026-11-26T22:04:44.596Z"}
 {"helper_id":"e861a277-4e64-4f5f-82aa-290a444cc26f","tokens":104168,"outcome":"green","event":"done","id":"8b13f4c1-5b9f-428a-9e54-a85e9548608b","ts":"2026-11-26T22:11:58.282Z"}
 {"role":"review","model":"opus","stream":"rounds","budget":200000,"event":"spawn","id":"362ad781-2f47-4b3c-b17c-22a9c93e6d1e","ts":"2026-11-26T22:11:59.942Z"}
+{"helper_id":"362ad781-2f47-4b3c-b17c-22a9c93e6d1e","tokens":136185,"outcome":"green","event":"done","id":"7eff3a0c-cb66-46ed-a135-042c1dca2f9f","ts":"2026-11-26T22:24:52.744Z"}
+{"role":"review","model":"opus","stream":"rounds","budget":200000,"event":"spawn","id":"08a963e3-df3d-48c6-aefc-a3aacc4fdb0c","ts":"2026-11-26T22:24:54.064Z"}
