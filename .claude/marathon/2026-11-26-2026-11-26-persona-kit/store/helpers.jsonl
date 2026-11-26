@@ -14,3 +14,4 @@
 {"helper_id":"9804bb82-3eeb-4b9d-8401-222a0474d09e","tokens":255249,"outcome":"green","event":"done","id":"1618b9b3-e17b-473a-a589-815bc171b75d","ts":"2026-11-26T21:21:13.593Z"}
 {"role":"review","model":"opus","stream":"server","budget":200000,"event":"spawn","id":"53304e90-03a3-4ef3-8b51-b679adb42784","ts":"2026-11-26T21:21:13.970Z"}
 {"role":"build","model":"sonnet","stream":"rounds","budget":200000,"event":"spawn","id":"04ee197e-43c5-40f2-bb19-8bfc3d9d2643","ts":"2026-11-26T21:21:14.171Z"}
+{"helper_id":"53304e90-03a3-4ef3-8b51-b679adb42784","tokens":150000,"outcome":"green","event":"done","id":"e4f9fb62-53d7-4642-ace3-f59f7a3c150e","ts":"2026-11-26T21:24:31.177Z"}
