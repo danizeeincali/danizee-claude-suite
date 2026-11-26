@@ -7,8 +7,8 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 0,
-    "cost": 0
+    "steps": 140,
+    "cost": 40
   },
   "clock": {
     "depth": 0,
@@ -17,18 +17,30 @@
   },
   "helpers": {
     "plan": {
-      "steps": 0,
-      "cost": 0,
-      "ok": 0,
+      "steps": 60,
+      "cost": 15,
+      "ok": 1,
       "failed": 0,
       "grants": 1,
       "skipped": 0,
       "reserved": {
-        "steps": 80,
-        "cost": 20
+        "steps": 0,
+        "cost": 0
       }
     },
     "read": {
+      "steps": 80,
+      "cost": 25,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "cli": {
       "steps": 0,
       "cost": 0,
       "ok": 0,
@@ -36,8 +48,8 @@
       "grants": 1,
       "skipped": 0,
       "reserved": {
-        "steps": 80,
-        "cost": 20
+        "steps": 100,
+        "cost": 30
       }
     }
   }
