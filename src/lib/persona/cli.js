@@ -114,8 +114,7 @@ function init(dir, flags, io) {
   const put = (name, text, mode) => {
     const f = path.join(dir, name);
     if (fs.existsSync(f)) return void skipped.push(name);
-    writeAtomic(f, text);
-    if (mode) fs.chmodSync(f, mode);
+    writeAtomic(f, text, { mode });
     wrote.push(name);
   };
   const project = structuredClone(EXAMPLE_PROJECT);
@@ -198,8 +197,11 @@ function workerFolder(dir, flags, io) {
   const name = flags.name ?? "persona-tester";
   if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(name)) bad("The worker name must be lower-case letters, digits and hyphens, like persona-tester.");
   let product = "Your Product";
+  let secretPaths = [];
   try {
-    product = loadProject(dir).product.name;
+    const project = loadProject(dir);
+    product = project.product.name;
+    secretPaths = project.secret_paths ?? [];
   } catch {
     // no project yet: the placeholder stays and the README says to set it
   }
@@ -220,7 +222,7 @@ function workerFolder(dir, flags, io) {
     .replace(/^\n+/, "")
     .replace('name = "persona-tester"', `name = "${name}"`)
     .replace('main = "worker.js"', 'main = "src/worker.js"')
-    .replace('PERSONA_PRODUCT = "Your Product"', `PERSONA_PRODUCT = ${JSON.stringify(product)}`);
+    .replace('PERSONA_PRODUCT = "Your Product"', `PERSONA_PRODUCT = ${JSON.stringify(product)}\nPERSONA_SECRET_PATHS = ${JSON.stringify(secretPaths.join(","))}`);
   fs.writeFileSync(path.join(out, "wrangler.toml"), `# No secret belongs in this file: the two keys are set with \`wrangler secret put\` (see README.md).\n${toml}`);
   fs.writeFileSync(path.join(out, "package.json"), `${JSON.stringify({ name, private: true, type: "module" }, null, 2)}\n`);
   fs.writeFileSync(
@@ -228,7 +230,7 @@ function workerFolder(dir, flags, io) {
     `# ${name}\n\nThe persona-testing connector for ${product} as a Cloudflare Worker over a D1 database. Run these from this folder, in order:\n\n` +
       "1. `wrangler d1 create persona`\n2. Paste the `database_id` it prints into `wrangler.toml`.\n3. `wrangler d1 migrations apply persona --remote`\n" +
       "4. `wrangler secret put PERSONA_TESTER_KEY` and `wrangler secret put PERSONA_CODING_KEY` (24 or more characters each, different; the same two values as in your `persona-testing/.keys.json`, or new ones)\n5. `wrangler deploy`\n\n" +
-      "Then put the Worker's address in `persona-testing/connector.json` and run `connect`.\n\nOptional: `wrangler secret put PERSONA_SECRET_PATHS` with the project's `secret_paths` joined by commas, so sign-in paths are cut from anything stored.\n",
+      "Then put the Worker's address in `persona-testing/connector.json` and run `connect`.\n\n`wrangler.toml` carries the project's `secret_paths` as `PERSONA_SECRET_PATHS` (paths, not secrets), so sign-in paths are cut from anything stored. If you change `secret_paths` in the project file, change that line and deploy again.\n",
   );
   return { out: rel(io.cwd, out), name, product, files: targets.map((t) => t), next: "Run the five commands in README.md; this command never runs wrangler and writes no key." };
 }
@@ -295,11 +297,20 @@ function known(dir, flags, rest) {
   return bad("known takes add, list or drop.");
 }
 
+/** The project's `secret_paths`, or none when the project file can't be read (fetch still works from keys and a url alone). */
+function secretPathsOf(dir) {
+  try {
+    return loadProject(dir).secret_paths ?? [];
+  } catch {
+    return [];
+  }
+}
+
 function fixing(dir, rest) {
-  const [sub, list] = rest;
+  const [sub, ...words] = rest;
   if (sub === "clear") return editProject(dir, (obj) => ((obj.fixing = []), { fixing: [] }));
   if (sub === "set") {
-    const areas = (list ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+    const areas = words.join(",").split(",").map((s) => s.trim()).filter(Boolean);
     if (areas.length === 0) bad("fixing set needs the areas, like: fixing set setup,billing.");
     return editProject(dir, (obj) => ((obj.fixing = areas), { fixing: areas }));
   }
@@ -378,7 +389,7 @@ export async function run(argv, io = {}) {
         result = await codingConn(dir, flags, ctx.env, ctx).call("close_round", { round: roundOf(flags), ...(flags.reopen ? { reopen: true } : {}) });
         break;
       case "fetch":
-        result = await fetchReports(dir, roundOf(flags), codingConn(dir, flags, ctx.env, ctx));
+        result = await fetchReports(dir, roundOf(flags), codingConn(dir, flags, ctx.env, ctx), { secretPaths: secretPathsOf(dir) });
         break;
       case "read": {
         const r = roundOf(flags);

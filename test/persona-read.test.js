@@ -410,16 +410,12 @@ describe("collect", () => {
     assert.match(res.unreadable[0].problem, /json/);
   });
 
-  it("a report modified in the last 15 seconds is skipped as still being written", () => {
+  it("a report written a moment ago is read: fetch writes each file whole, so read can follow it at once", () => {
     const dir = folder({ rounds: ROUND, reports: { [ids[0]]: REPORT(ids[0]) } });
     const mtime = fs.statSync(path.join(dir, "reports", `${ids[0]}.md`)).mtimeMs;
-    const fresh = collect(dir, 1, { now: mtime + 5000 });
-    assert.equal(fresh.reports, 0);
-    assert.deepEqual(fresh.unreadable, [{ file: `${ids[0]}.md`, problem: "still being written" }]);
-    assert.ok(fresh.missing.includes(ids[0]));
-    const later = collect(dir, 1, { now: mtime + 20000 });
-    assert.equal(later.reports, 1);
-    assert.deepEqual(later.unreadable, []);
+    const fresh = collect(dir, 1, { now: mtime + 1 });
+    assert.equal(fresh.reports, 1);
+    assert.deepEqual(fresh.unreadable, []);
   });
 
   it("a report dated ahead of the clock is read normally", () => {

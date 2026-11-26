@@ -5,7 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { writeAtomic } from "./fsx.js";
-import { REPORT_NAME } from "./report-shape.js";
+import { REPORT_NAME, stripFragments } from "./report-shape.js";
 
 export const MAX_PUBLISH_BYTES = 2 * 1024 * 1024;
 export const TIMEOUT_MS = 60_000;
@@ -94,8 +94,8 @@ export async function publish(dir, round, conn) {
   return conn.call("publish_round", { round, ...(r.guide === undefined ? {} : { guide: r.guide }), briefs: r.briefs });
 }
 
-/** Lists the round's reports and writes every accepted one to `reports/<id>.md`, with `clock-r<round>.json`. */
-export async function fetchReports(dir, round, conn) {
+/** Lists the round's reports and writes every accepted one to `reports/<id>.md`, with `clock-r<round>.json`. Sign-in links and `secretPaths` are cut again here, whatever the server was set up to cut. */
+export async function fetchReports(dir, round, conn, { secretPaths = [] } = {}) {
   const list = await conn.call("list_reports", { round });
   const fetched = [];
   const missing = [];
@@ -108,7 +108,7 @@ export async function fetchReports(dir, round, conn) {
       continue;
     }
     const got = await conn.call("get_report", { id: w.id });
-    writeAtomic(path.join(dir, "reports", `${w.id}.md`), String(got.report ?? ""));
+    writeAtomic(path.join(dir, "reports", `${w.id}.md`), stripFragments(String(got.report ?? ""), { secretPaths }));
     fetched.push(w.id);
     if (typeof w.clock_minutes === "number") clock.push({ id: w.id, started: w.started ?? null, clock_minutes: w.clock_minutes });
   }

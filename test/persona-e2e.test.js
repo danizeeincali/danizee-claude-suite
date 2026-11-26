@@ -148,9 +148,7 @@ describe("persona testing end to end", () => {
     for (const id of round1) assert.ok(existsSync(path.join(dir, "reports", `${id}.md`)));
     assert.ok(existsSync(path.join(dir, "clock-r1.json")));
 
-    // Reports were just fetched: the reader waits out the 15 seconds a file may still be written.
-    const old = new Date(Date.now() - 60_000);
-    for (const id of round1) spawnSync("touch", ["-d", old.toISOString(), path.join(dir, "reports", `${id}.md`)]);
+    // Read runs straight after fetch, as the command does.
     const rd = cli("read", "--round", "1");
     assert.equal(rd.code, 0, rd.err);
     assert.equal(rd.json.reports, 3);

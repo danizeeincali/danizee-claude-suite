@@ -19,8 +19,6 @@ or tagged, so 4.6.0 is the first release after 4.1.0 and carries all of them.
   `fetch` talk to it; `read` merges reports into findings with a scorecard and `deliver` writes a deck for
   `decision-deck` and a markdown findings file, with "Known things met". Tester words are data: everything a report says
   is stripped of sign-in links and quoted.
-
-### Added
 - **`decision-deck`**: a kit verb (`check`, `emit`, `read`) that turns an agent's findings into a one-card-at-a-time
   page the owner decides on a phone by tap, swipe or key, with an optional note, undo, "Decide later", an end screen
   grouped by choice and a "Copy my decisions" export. The page makes no requests; as a Claude artifact with

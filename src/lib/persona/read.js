@@ -19,7 +19,6 @@ export { MAX_LIST, MAX_REPORT_BYTES, parseReport, safeName, stripDeep, stripFrag
 
 /** What a project that names no targets is held to. */
 export const DEFAULT_TARGETS = Object.freeze({ loops: 5, within_minutes: 30, first_aha_seconds: 120, stalls: 0 });
-const STILL_WRITING_MS = 15000;
 const MAX_KNOWN_PER_WALK = 50;
 const MAX_KNOWN_CHARS = 300;
 
@@ -383,12 +382,6 @@ export function collect(dir, round, { now = Date.now() } = {}) {
     // One report that still throws (for any reason) costs only itself, never the round.
     try {
       const st = fs.statSync(full);
-      const age = now - st.mtimeMs;
-      // A future mtime (a mount clock ahead) is read normally; only a file touched in the last 15 seconds is still being written.
-      if (age >= 0 && age < STILL_WRITING_MS) {
-        unreadable.push({ file, problem: "still being written" });
-        continue;
-      }
       // Sized before it is read: a report over the cap is never loaded, let alone parsed.
       if (st.size > MAX_REPORT_BYTES) {
         unreadable.push({ file, problem: "too large" });
