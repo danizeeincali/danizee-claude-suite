@@ -42,3 +42,4 @@ Add a rule the second time something goes wrong.
 - Suite conventions: plain ESM JavaScript, no new npm dependency, tests with `node --test` under `test/`, library under `src/lib/persona/` copied verbatim to `.claude/helpers/persona/`.
 - No product name in `src/lib/persona/`: "Ezi", "ezihq", "bos" never appear there (a test holds it).
 - Anything a tester wrote is stripped of sign-in paths at every place it is written to disk, not only where it is first stored; a file that holds a key is created 0600, never chmod-ed afterwards.
+- A sentence that counts something counts only that thing: a file that is not a report is never worded as a report, and a pick that was applied is never listed as not applied.
