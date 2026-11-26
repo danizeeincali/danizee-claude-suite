@@ -349,10 +349,10 @@ function readProject(dir, unreadable) {
  * Reads `<dir>/reports/r<round>-*.md`, `project.json` and `rounds.json`, writes `<dir>/findings-r<round>.json` and returns it,
  * every string stripped. A file whose name is no walk of the round is listed in `unreadable` under its sanitised name.
  */
-export function collect(dir, round, { now = Date.now() } = {}) {
+export function collect(dir, round, { secrets = [] } = {}) {
   const unreadable = [];
   const project = readProject(dir, unreadable);
-  const opts = { secretPaths: project.secretPaths };
+  const opts = { secretPaths: project.secretPaths, secrets };
   const rj = readJson(dir, "rounds.json");
   if (rj.problem) unreadable.push({ file: "rounds.json", problem: rj.problem });
   const entry = isObj(rj.value?.rounds) && Object.hasOwn(rj.value.rounds, String(round)) && isObj(rj.value.rounds[String(round)]) ? rj.value.rounds[String(round)] : null;

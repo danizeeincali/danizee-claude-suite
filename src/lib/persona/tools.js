@@ -879,7 +879,7 @@ export async function callTool(name, rawArgs, deps) {
     if (!deps.db) return refuse("The tester store isn't set up here.");
     const store = { prepare: (sql) => deps.db.prepare(sql) };
     if (deps.db.batch) store.batch = (st) => deps.db.batch(st);
-    return ok(await run(name, args, store, deps.now ?? Date.now(), { secretPaths: deps.secretPaths ?? [] }));
+    return ok(await run(name, args, store, deps.now ?? Date.now(), { secretPaths: deps.secretPaths ?? [], secrets: deps.secrets ?? [] }));
   } catch (e) {
     if (e instanceof Refusal) return refuse(e.message);
     // A store whose tables were never made is a setup step missed, not an outage: say so, or everyone waits for nothing.

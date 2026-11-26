@@ -17,6 +17,7 @@ import { collect } from "./read.js";
 import { deliver } from "./deliver.js";
 import { startServer } from "./serve.js";
 import { MIN_KEY_CHARS } from "./http.js";
+import { stripDeep } from "./report-shape.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_DIR = "persona-testing";
@@ -339,6 +340,17 @@ function secretPathsOf(dir) {
   }
 }
 
+/** What is cut from anything a tester wrote before it is printed or written: the project's sign-in paths and the two keys themselves. */
+function stripOpts(dir, env) {
+  let keys = { tester: null, coding: null };
+  try {
+    keys = keysOf(dir, env);
+  } catch {
+    // an unreadable keys file is said by the verb that needs a key
+  }
+  return { secretPaths: secretPathsOf(dir), secrets: [keys.tester, keys.coding].filter(Boolean) };
+}
+
 function fixing(dir, rest) {
   const [sub, ...words] = rest;
   if (sub === "clear") return editProject(dir, (obj) => ((obj.fixing = []), { fixing: [] }));
@@ -412,11 +424,11 @@ export async function run(argv, io = {}) {
         break;
       case "status": {
         const conn = codingConn(dir, flags, ctx.env, ctx);
-        result = flags.round ? await conn.call("list_reports", { round: intFlag(flags, "round") }) : await conn.call("rounds", {});
+        result = stripDeep(flags.round ? await conn.call("list_reports", { round: intFlag(flags, "round") }) : await conn.call("rounds", {}), stripOpts(dir, ctx.env));
         break;
       }
       case "questions":
-        result = await codingConn(dir, flags, ctx.env, ctx).call("open_questions", {});
+        result = stripDeep(await codingConn(dir, flags, ctx.env, ctx).call("open_questions", {}), stripOpts(dir, ctx.env));
         break;
       case "answer": {
         const text = rest.join(" ").trim();
@@ -428,11 +440,11 @@ export async function run(argv, io = {}) {
         result = await codingConn(dir, flags, ctx.env, ctx).call("close_round", { round: roundOf(flags), ...(flags.reopen ? { reopen: true } : {}) });
         break;
       case "fetch":
-        result = await fetchReports(dir, roundOf(flags), codingConn(dir, flags, ctx.env, ctx), { secretPaths: secretPathsOf(dir) });
+        result = await fetchReports(dir, roundOf(flags), codingConn(dir, flags, ctx.env, ctx), stripOpts(dir, ctx.env));
         break;
       case "read": {
         const r = roundOf(flags);
-        const f = collect(dir, r);
+        const f = collect(dir, r, { secrets: stripOpts(dir, ctx.env).secrets });
         result = { round: r, file: `findings-r${r}.json`, briefs: f.briefs, reports: f.reports, missing: f.missing, unreadable: f.unreadable.filter(isReportFile).length, other_files_unreadable: f.unreadable.filter((u) => !isReportFile(u)).map((u) => u.file), findings: f.findings.length, known_met: f.known_met.count };
         break;
       }

@@ -22,6 +22,10 @@ const PAIR = new RegExp(`(?:(?<=%23)|(?<!${K}))(?:\\d{4}-\\d{2}-\\d{2}|${K}{6,12
 const RUN = new RegExp(WRAPPED, "g");
 /** One pattern per secret path: the path (its slashes also written %2F) kept, everything after it dropped, up to whitespace or a quote or bracket (so a path inside a JSON string never takes the closing quote with it). */
 const pathRule = (p) => new RegExp(`(${String(p).split("/").map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("(?:\\/|%2F)")})[^${STOP_CHARS}]+`, "gi");
+// The connector's own key forms, whatever the key looks like (a hex key reads like a slug, so the 40-character rule lets it by).
+const KEY_IN_PATH = new RegExp(`((?:\\/|%2F)k(?:\\/|%2F))[^\\/${STOP_CHARS}]{16,}`, "gi");
+const BEARER = /(\bBearer\s+)[A-Za-z0-9_.~+\/=-]{16,}/gi;
+const literal = (s) => new RegExp(String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g");
 const TOKEN = /(?:#|%23)[A-Za-z0-9_.~%+=-]{20,}[^\s)>\]"'`<]*/gi;
 /**
  * Takes secrets out of tester text. Sign-in links usually keep their secret after a `#`, often as `#<left>.<right>` (a
@@ -29,10 +33,16 @@ const TOKEN = /(?:#|%23)[A-Za-z0-9_.~%+=-]{20,}[^\s)>\]"'`<]*/gi;
  * pair; any run of 40+ base64url characters that could be a key (also when a line break splits it), with or without a
  * `#`; everything after each of `secretPaths` (a project's own sign-in paths, like `/sign-in/tester`) up to whitespace; a fragment (`#…` or `%23…`) off every address (full, host-only
  * or bare path, with or without a query); and any `#` or `%23` followed by 20+ of [A-Za-z0-9_.~%+=-], wherever it stands.
- * Over-stripping is the safe side. Nothing marks where text was dropped.
+ * Before all of that it drops every exact string in `secrets` (8+ characters: the connector's own keys), whatever follows
+ * `/k/` in a key-in-path address, and whatever follows `Bearer `. Over-stripping is the safe side. Nothing marks where text was dropped.
  */
-export function stripFragments(text, { secretPaths = [] } = {}) {
-  let t = String(text ?? "")
+export function stripFragments(text, { secretPaths = [], secrets = [] } = {}) {
+  let t = String(text ?? "");
+  // First of all the exact secrets the caller holds (the connector's two keys), then the connector's key forms.
+  for (const s of secrets) if (typeof s === "string" && s.length >= 8) t = t.replace(literal(s), "");
+  t = t
+    .replace(KEY_IN_PATH, "$1")
+    .replace(BEARER, "$1")
     .replace(PAIR, (m, right) => (joined(right).length >= 40 && keyLike(joined(right)) ? "" : m))
     .replace(RUN, (m) => (keyLike(joined(m)) ? "" : m))
   for (const p of secretPaths) if (typeof p === "string" && p.length >= 2) t = t.replace(pathRule(p), "$1");

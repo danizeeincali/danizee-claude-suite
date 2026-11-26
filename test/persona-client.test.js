@@ -98,12 +98,12 @@ describe("persona client against a real server", () => {
       const body = JSON.parse(init.body);
       return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: body.method === "tools/call" ? { content: [{ type: "text", text: JSON.stringify({ ok: 1 }) }] } : {} }), { status: 200 });
     };
-    const c = connect({ url: "http://x.test/", key: "k".repeat(24), fetchImpl });
+    const c = connect({ url: "https://x.test/", key: "k".repeat(24), fetchImpl });
     assert.deepEqual(await c.call("rounds"), { ok: 1 });
     await c.call("rounds");
     assert.equal(calls.filter((x) => x[1] === "initialize").length, 1);
-    assert.equal(calls[0][0], "http://x.test/mcp");
-    const slow = connect({ url: "http://x.test", key: "k".repeat(24), timeoutMs: 20, fetchImpl: (u, init) => new Promise((_, rej) => init.signal.addEventListener("abort", () => rej(new Error("aborted")))) });
+    assert.equal(calls[0][0], "https://x.test/mcp");
+    const slow = connect({ url: "https://x.test", key: "k".repeat(24), timeoutMs: 20, fetchImpl: (u, init) => new Promise((_, rej) => init.signal.addEventListener("abort", () => rej(new Error("aborted")))) });
     await assert.rejects(() => slow.call("rounds"), /did not answer/);
   });
 });

@@ -29,7 +29,7 @@ const error = (id, code, message) => ({ jsonrpc: "2.0", id, error: { code, messa
  * The answer to one JSON-RPC message, an array of answers to a batch, or null when there is nothing to send back (a
  * notification, or a batch of nothing but notifications).
  * @param {unknown} message The parsed body.
- * @param {{ db: object | undefined, now?: number, role?: "tester" | "coding", product?: string, secretPaths?: string[] }} deps
+ * @param {{ db: object | undefined, now?: number, role?: "tester" | "coding", product?: string, secretPaths?: string[], secrets?: string[] }} deps
  * @returns {Promise<object | object[] | null>}
  */
 export async function handleRpc(message, deps) {
@@ -76,7 +76,7 @@ async function one(msg, deps) {
     case "tools/list":
       return { jsonrpc: "2.0", id, result: { tools: toolsFor(role) } };
     case "tools/call":
-      return { jsonrpc: "2.0", id, result: await callTool(params?.name, params?.arguments, { db: deps?.db, now: deps?.now, role, secretPaths: deps?.secretPaths }) };
+      return { jsonrpc: "2.0", id, result: await callTool(params?.name, params?.arguments, { db: deps?.db, now: deps?.now, role, secretPaths: deps?.secretPaths, secrets: deps?.secrets }) };
     default:
       return error(id, METHOD_NOT_FOUND, `Method not found: ${msg.method.slice(0, 80)}`);
   }

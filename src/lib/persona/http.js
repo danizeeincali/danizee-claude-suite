@@ -109,7 +109,7 @@ export function createHandler({ db, testerKey, codingKey, product = "This produc
     } catch {
       return json(400, { jsonrpc: "2.0", id: null, error: { code: PARSE_ERROR, message: "Parse error: the body is not JSON." } });
     }
-    const reply = await handleRpc(body, { db: await store(), now: now(), role, product, secretPaths });
+    const reply = await handleRpc(body, { db: await store(), now: now(), role, product, secretPaths, secrets: [testerKey, codingKey] });
     return reply === null ? noBody(202) : json(200, reply);
   }
 
@@ -131,7 +131,7 @@ export function createHandler({ db, testerKey, codingKey, product = "This produc
     } catch {
       return json(400, { error: "bad_request" });
     }
-    const r = await receiveBundle(d, raw, at, visitor, { secretPaths });
+    const r = await receiveBundle(d, raw, at, visitor, { secretPaths, secrets: [testerKey, codingKey] });
     if (r.status === 201) return json(201, { code: r.code });
     return json(r.status, { error: r.status === 503 ? "full" : r.status === 413 ? "too_large" : "bad_request", text: r.error });
   }

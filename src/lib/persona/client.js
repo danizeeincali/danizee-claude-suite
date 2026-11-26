@@ -30,12 +30,26 @@ const slow = (url, timeoutMs) => `${shown(url)} did not answer within ${Math.rou
 async function send(fetchImpl, url, init, timeoutMs) {
   let res;
   try {
-    res = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+    // A redirect is never followed: the round goes only to the address the user configured.
+    res = await fetchImpl(url, { ...init, redirect: "manual", signal: AbortSignal.timeout(timeoutMs) });
   } catch (e) {
     if (timedOut(e)) fail(slow(url, timeoutMs));
     return fail(`Could not reach ${shown(url)}: check that the server is running and the url in connector.json is right.`);
   }
+  if (res.type === "opaqueredirect" || (res.status >= 300 && res.status < 400)) fail(`${shown(url)} answered with a redirect, and nothing was sent on: put the server's final address in connector.json.`);
   return res;
+}
+
+/** http:// is for a server on this computer only: anywhere else the key and the briefs would travel in the clear. */
+function checkAddress(root) {
+  if (!/^https?:\/\//i.test(root)) fail("The server url must start with http:// or https://.");
+  let u;
+  try {
+    u = new URL(root);
+  } catch {
+    return fail("The server url could not be read as an address.");
+  }
+  if (u.protocol === "http:" && !["127.0.0.1", "localhost", "[::1]"].includes(u.hostname)) fail("Use https:// for a server that is not on this computer: over http:// the key and the briefs would travel unprotected.");
 }
 
 /**
@@ -44,7 +58,7 @@ async function send(fetchImpl, url, init, timeoutMs) {
  */
 export function connect({ url, key, fetchImpl = globalThis.fetch, timeoutMs = TIMEOUT_MS }) {
   const root = base(url);
-  if (!/^https?:\/\//i.test(root)) fail("The server url must start with http:// or https://.");
+  checkAddress(root);
   if (typeof key !== "string" || key === "") fail("A key is needed to call the server.");
   let id = 0;
   let ready = null;
@@ -109,7 +123,7 @@ export async function publish(dir, round, conn) {
 }
 
 /** Lists the round's reports and writes every accepted one to `reports/<id>.md`, with `clock-r<round>.json`. Sign-in links and `secretPaths` are cut again here, whatever the server was set up to cut. */
-export async function fetchReports(dir, round, conn, { secretPaths = [] } = {}) {
+export async function fetchReports(dir, round, conn, { secretPaths = [], secrets = [] } = {}) {
   const list = await conn.call("list_reports", { round });
   const fetched = [];
   const missing = [];
@@ -122,7 +136,7 @@ export async function fetchReports(dir, round, conn, { secretPaths = [] } = {}) 
       continue;
     }
     const got = await conn.call("get_report", { id: w.id });
-    writeAtomic(path.join(dir, "reports", `${w.id}.md`), stripFragments(String(got.report ?? ""), { secretPaths }));
+    writeAtomic(path.join(dir, "reports", `${w.id}.md`), stripFragments(String(got.report ?? ""), { secretPaths, secrets }));
     fetched.push(w.id);
     if (typeof w.clock_minutes === "number") clock.push({ id: w.id, started: w.started ?? null, clock_minutes: w.clock_minutes });
   }
@@ -134,6 +148,7 @@ export async function fetchReports(dir, round, conn, { secretPaths = [] } = {}) 
 export async function bundle(dir, round, { url, fetchImpl = globalThis.fetch, timeoutMs = TIMEOUT_MS }) {
   const r = readRoundFolder(dir, round);
   if (sizeOf(r) > MAX_PUBLISH_BYTES) fail(`Round ${round} is over 2 MB: split the round into two rounds with fewer walks each.`);
+  checkAddress(base(url));
   const res = await send(fetchImpl, `${base(url)}/bundle`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ round, ...(r.guide === undefined ? {} : { guide: r.guide }), briefs: r.briefs }) }, timeoutMs);
   let j = {};
   try {
