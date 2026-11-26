@@ -139,9 +139,9 @@ describe("buildDeck", () => {
   it("shows the worst findings first up to the limit and says how many are left for the full report", () => {
     const deck = buildDeck(result(), { maxCards: 2 });
     assert.deepEqual(deck.cards.map((c) => c.id), ["f-00000001", "f-00000002"]);
-    assert.match(deck.lede, /1 smaller one in the full report/);
-    assert.doesNotMatch(buildDeck(result()).lede, /smaller/);
-    assert.match(buildDeck(result({ findings: [finding(1), finding(2)] }), { maxCards: 1 }).lede, /1 smaller one in the full report/);
+    assert.match(deck.lede, /1 more in the full report/);
+    assert.doesNotMatch(buildDeck(result()).lede, /smaller|more in the full report/);
+    assert.match(buildDeck(result({ findings: [finding(1), finding(2)] }), { maxCards: 1 }).lede, /1 more in the full report/);
   });
   it("never invents a number: unknown loop and aha values get no stat and say not known", () => {
     const deck = buildDeck(result({ scorecard: { targets: T, overall: row({ loopsWithin: null, medianSecondsToFirstAha: null, firstAha: { median: null, medianNever: false, never: 0, reached: 0, known: 0, reachedMedian: null }, stalls: null }) } }));

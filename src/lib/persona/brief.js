@@ -40,7 +40,7 @@ export function renderBrief(projectIn, plan, walk) {
   L.push(`# Brief ${walk.id}`, "");
   L.push(`Window width: **${walk.width} px** (set it before you start). Time: about ${project.defaults.minutes} minutes in one sitting. Everything you need is in this brief; the report's exact shape is in the ${product.name} tester connector's \`guide\`.`, "");
   if (side) {
-    L.push(`This is a side walk: other parts of ${product.name} are being fixed right now, so this walk stays in parts nobody is changing. Keep to the jobs below and do not wander into the parts on the "already known" list.${avoid.length ? ` Parts being fixed: ${avoid.join(", ")}.` : ""}`, "");
+    L.push(`This is a side walk: other parts of ${product.name} are being fixed right now, so this walk stays in parts nobody is changing. Keep to the jobs below${avoid.length ? ` and stay out of the parts being fixed: ${avoid.join(", ")}` : ""}.`, "");
   }
 
   L.push("## Who you are");
@@ -122,7 +122,7 @@ export function renderGuide(projectIn, plan) {
   L.push("7. `notes` and `next_walk` answer `check_again_minutes`: check again after that many minutes. Never check during a walk.");
   L.push("");
   L.push("Do one walk at a time.");
-  if (exclusive.length) L.push(`Never two at once for ${exclusive.map((d) => `"${oneLine(d.label)}"`).join(", ")}: those walks share one test account, and every walk resets it.`);
+  if (exclusive.length) L.push(`Never two at once for ${exclusive.map((d) => `"${oneLine(d.label)}"`).join(", ")}: those walks share one test account, so one walk would disturb another.`);
   L.push("");
 
   L.push("## What a walk is", "");
@@ -130,7 +130,7 @@ export function renderGuide(projectIn, plan) {
 
   if (side) {
     L.push("## Already known and being fixed", "");
-    L.push(`Each brief lists the things already found that are being fixed now. If you meet one, do what the brief says about it, give it at most one line in Notes ("known: ..."), and write no finding for it. Something new and different in the same place still counts. Keep to the brief's jobs and stay out of these parts of ${product.name}: ${avoid.length ? avoid.join(", ") : "the ones the brief lists"}.`, "");
+    L.push(`Each brief lists the things already known; the ones in the parts being fixed come first. If you meet one, do what the brief says about it, give it at most one line in Notes ("known: ..."), and write no finding for it. Something new and different in the same place still counts. Keep to the brief's jobs${avoid.length ? ` and stay out of these parts of ${product.name}: ${avoid.join(", ")}` : ""}.`, "");
   }
 
   L.push("## Ground rules", "");

@@ -464,6 +464,16 @@ export async function run(argv, io = {}) {
         const conn = codingConn(dir, flags, ctx.env, ctx);
         if (!plannedHere(dir, r) && ((await conn.call("list_reports", { round: r }))?.walks ?? []).length === 0) bad(notPlanned(r));
         result = await fetchReports(dir, r, conn, stripOpts(dir, ctx.env));
+        // A planned walk the server does not list has no report either: it is missing, and the round may never have been sent.
+        let entry = null;
+        try {
+          entry = readRounds(dir).rounds[String(r)] ?? null;
+        } catch {
+          // an unreadable rounds file is said by read
+        }
+        const listed = new Set([...result.fetched, ...result.missing]);
+        const unlisted = (Array.isArray(entry?.walks) ? entry.walks : []).map((w) => w?.id).filter((id) => typeof id === "string" && !listed.has(id));
+        if (unlisted.length) result = { ...result, missing: [...result.missing, ...unlisted], next: `${unlisted.length} planned ${unlisted.length === 1 ? "walk is" : "walks are"} not on the server: run publish --round ${r} to send ${unlisted.length === 1 ? "it" : "them"}.` };
         break;
       }
       case "read": {

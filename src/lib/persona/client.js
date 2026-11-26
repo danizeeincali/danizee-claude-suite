@@ -13,6 +13,10 @@ export const TIMEOUT_MS = 60_000;
 const fail = (m) => {
   throw new Error(m);
 };
+/** The server answered and said no (or the round is too large to send): the caller's exit code for a refusal. */
+const refused = (m) => {
+  throw Object.assign(new Error(m), { refused: true });
+};
 const base = (url) => String(url ?? "").replace(/\/+$/, "");
 /** An address as it may be printed: the origin only, so a key in a path or in userinfo never reaches a message. */
 const shown = (url) => {
@@ -66,7 +70,7 @@ export function connect({ url, key, fetchImpl = globalThis.fetch, timeoutMs = TI
     const res = await send(fetchImpl, `${root}/mcp`, { method: "POST", headers: { "content-type": "application/json", accept: "application/json", authorization: `Bearer ${key}` }, body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }) }, timeoutMs);
     if (res.status === 401) fail("The server refused the key: check the coding key in .keys.json or PERSONA_CODING_KEY.");
     if (res.status === 404) fail(`${shown(root)} is not a persona server at /mcp (or it has no keys set).`);
-    if (res.status === 413) fail("The server said the request is too large: split the round into two rounds with fewer walks each.");
+    if (res.status === 413) refused("The server said the request is too large: split the round into two rounds with fewer walks each.");
     if (res.status !== 200) fail(`The server answered ${res.status}.`);
     let j;
     try {
@@ -118,7 +122,7 @@ const sizeOf = ({ briefs, guide }) => Buffer.byteLength(JSON.stringify({ guide: 
 /** Publishes the round's briefs and guide with the coding key. One call; over 2 MB it says to split the round. */
 export async function publish(dir, round, conn) {
   const r = readRoundFolder(dir, round);
-  if (sizeOf(r) > MAX_PUBLISH_BYTES) fail(`Round ${round} is over 2 MB: split the round into two rounds with fewer walks each.`);
+  if (sizeOf(r) > MAX_PUBLISH_BYTES) refused(`Round ${round} is over 2 MB: split the round into two rounds with fewer walks each.`);
   return conn.call("publish_round", { round, ...(r.guide === undefined ? {} : { guide: r.guide }), briefs: r.briefs });
 }
 
@@ -147,7 +151,7 @@ export async function fetchReports(dir, round, conn, { secretPaths = [], secrets
 /** Posts the round to `<url>/bundle` (no key) and answers `{code}`: give it to `publish_round({bundle})` from a session that has only the connector. */
 export async function bundle(dir, round, { url, fetchImpl = globalThis.fetch, timeoutMs = TIMEOUT_MS }) {
   const r = readRoundFolder(dir, round);
-  if (sizeOf(r) > MAX_PUBLISH_BYTES) fail(`Round ${round} is over 2 MB: split the round into two rounds with fewer walks each.`);
+  if (sizeOf(r) > MAX_PUBLISH_BYTES) refused(`Round ${round} is over 2 MB: split the round into two rounds with fewer walks each.`);
   checkAddress(base(url));
   const res = await send(fetchImpl, `${base(url)}/bundle`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ round, ...(r.guide === undefined ? {} : { guide: r.guide }), briefs: r.briefs }) }, timeoutMs);
   let j = {};
@@ -158,5 +162,6 @@ export async function bundle(dir, round, { url, fetchImpl = globalThis.fetch, ti
     // anything else is answered below
   }
   if (res.status === 201 && typeof j.code === "string") return { code: j.code };
-  return fail(res.status === 429 ? "The server takes only a few bundles an hour: wait, or publish with the coding key." : `The server did not take the bundle (${res.status}): ${String(j.text ?? j.error ?? "no reason given")}`);
+  if (res.status === 413) refused("The server said the request is too large: split the round into two rounds with fewer walks each.");
+  return (res.status >= 400 && res.status < 500 ? refused : fail)(res.status === 429 ? "The server takes only a few bundles an hour: wait, or publish with the coding key." : `The server did not take the bundle (${res.status}): ${String(j.text ?? j.error ?? "no reason given")}`);
 }

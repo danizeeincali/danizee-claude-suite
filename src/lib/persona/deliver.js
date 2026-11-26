@@ -133,7 +133,7 @@ function ahaSlide(o, T) {
     const aha = num(o.medianSecondsToFirstAha);
     return {
       heading: clip(aha === null ? "Time to the first aha is not known." : `The first aha took ${aha} seconds.`, 80),
-      body: clip(`That is the middle walk. The target is under ${S} seconds.`, 400),
+      body: clip(`That is the median of the walks. The target is under ${S} seconds.`, 400),
       ...(aha === null ? {} : { stat: { value: clip(`${aha}s`, 12), label: clip(`target under ${S}s`, 30) } }),
     };
   }
@@ -151,7 +151,7 @@ function ahaSlide(o, T) {
   const under = o.ahaUnderTarget?.walks ?? 0;
   return {
     heading: clip(`The first aha took ${aha} seconds.`, 80),
-    body: clip(`That is the middle walk. ${under} of ${plural(fa.known, "walk")} reached an aha in under ${S} seconds${fa.never ? `; ${fa.never} of ${plural(fa.known, "walk")} never reached one` : ""}.`, 400),
+    body: clip(`That is the median of the walks. ${under} of ${plural(fa.known, "walk")} reached an aha in under ${S} seconds${fa.never ? `; ${fa.never} of ${plural(fa.known, "walk")} never reached one` : ""}.`, 400),
     stat: { value: clip(`${aha}s`, 12), label: clip(`target under ${S}s`, 30) },
   };
 }
@@ -292,7 +292,7 @@ export function buildDeck(raw, { maxCards = 12, project = null } = {}) {
     kind: "decision-deck",
     v: 1,
     title: clip(W.product ? `${W.product}: round ${result.round} findings` : `Round ${result.round} findings`, 60),
-    lede: clip(`${plural(result.reports, "walk")}, ${plural(shown.length, "thing")} to decide${left > 0 ? `, ${left} smaller ${left === 1 ? "one" : "ones"} in the full report` : ""}.`, 140),
+    lede: clip(`${plural(result.reports, "walk")}, ${plural(shown.length, "thing")} to decide${left > 0 ? `, ${left} more in the full report` : ""}.`, 140),
     story: story(result, W),
     cards,
   };
