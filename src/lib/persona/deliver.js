@@ -399,7 +399,9 @@ export function buildMarkdown(raw, rawPicks = null, { project = null } = {}) {
       if (Number(d.loopsWithoutSitting)) L.push(`| no sitting given | ${Number(d.loopsWithoutSitting)} | not known |`);
       L.push("");
     }
-    L.push(`Remembered what it was told earlier: ${yn(d.remembered)}. Would pay now: ${yn(d.wouldPay)}.`, "");
+    // Only what a walk was asked for and answered is reported: a measure no walk gave is left out, not shown as "0 of 0".
+    const asked = [Number(d.remembered?.known) > 0 && `Remembered what it was told earlier: ${yn(d.remembered)}.`, Number(d.wouldPay?.known) > 0 && `Would pay now: ${yn(d.wouldPay)}.`].filter(Boolean);
+    if (asked.length) L.push(asked.join(" "), "");
   }
   const measured = (result.walks ?? []).filter((w) => w.measures);
   const freezeSection = (title, intro, group) => {

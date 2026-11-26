@@ -214,7 +214,7 @@ export function recordRound(dir, plan, { replan = false, keep = [], dryRun = fal
     const same = old.kind === plan.kind && old.seed === plan.seed && JSON.stringify(old.walks) === JSON.stringify(plan.walks);
     if (!same && !replan) {
       const what = [old.kind !== plan.kind && "a different kind (side or standard)", old.seed !== plan.seed && "a different seed", JSON.stringify(old.walks) !== JSON.stringify(plan.walks) && "different walks"].filter(Boolean).join(" and ");
-      fail(`Round ${plan.round} is already planned with ${plural(Array.isArray(old.walks) ? old.walks.length : 0, "walk")}, and this plan has ${what}: ask to replan it to replace it.`);
+      fail(`Round ${plan.round} is already planned with ${plural(Array.isArray(old.walks) ? old.walks.length : 0, "walk")}, and this plan has ${what}: add --replan to replace it (a walk that already has a report is kept).`);
     }
     if (!same) {
       const kept = (Array.isArray(old.walks) ? old.walks : []).filter((w) => typeof w?.id === "string" && (alsoKept.has(w.id) || fs.existsSync(path.join(dir, "reports", `${w.id}.md`))));

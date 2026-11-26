@@ -219,7 +219,8 @@ export function parseReport(raw, opts) {
     return r;
   }
   if (!block.tagged) problems.push("format slip: the block is fenced with ``` and no json tag");
-  r.notes = block.prose;
+  // The template's own "## Notes" heading is not part of what the tester said.
+  r.notes = block.prose.replace(/^#{1,6}[ \t]*Notes[ \t]*:?[ \t]*(?:\r?\n|$)/i, "").trim();
   const src = repair(block.body, problems);
   let d;
   try {

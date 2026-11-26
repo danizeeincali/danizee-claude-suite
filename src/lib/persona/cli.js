@@ -12,7 +12,7 @@ import { writeAtomic } from "./fsx.js";
 import { EXAMPLE_PROJECT, ID_RE, PROJECT_FILE, checkProject, loadProject } from "./project.js";
 import { checkCoverage, historyOf, markPublished, planRound, readRounds, recordRound } from "./plan.js";
 import { renderBrief, renderGuide, writeRound } from "./brief.js";
-import { bundle, connect, fetchReports, publish } from "./client.js";
+import { bundle, checkAddress, connect, fetchReports, publish } from "./client.js";
 import { collect } from "./read.js";
 import { deliver } from "./deliver.js";
 import { startServer } from "./serve.js";
@@ -171,8 +171,9 @@ async function reportedOnServer(dir, round, flags, io) {
   try {
     list = await codingConn(dir, flags, io.env, io).call("list_reports", { round });
   } catch (e) {
-    // Any failure is a refusal, a server's own "try again" included: an unanswered question is never read as "no reports".
-    return refuse(`Round ${round} was published, and the server could not say which walks already have a report (${e.message}) Try again when the server answers, or add --offline to keep only the reports already fetched.`);
+    // Any failure stops the replan, a server's own "try again" included: an unanswered question is never read as "no reports".
+    // The code is the same as every other verb's: 2 when the server said no, 1 when it could not be reached.
+    return (e?.refused ? refuse : bad)(`Round ${round} was published, and the server could not say which walks already have a report (${e.message}) Try again when the server answers, or add --offline to keep only the reports already fetched.`);
   }
   return (list?.walks ?? []).filter((w) => typeof w?.id === "string" && w.status === "accepted").map((w) => w.id);
 }
@@ -193,7 +194,8 @@ async function plan(dir, flags, io) {
   }
   const recorded = recordRound(dir, p, { replan: flags.replan === true, keep });
   const written = writeRound(dir, project, recorded);
-  return { round, kind: recorded.kind, seed: recorded.seed, avoid: recorded.avoid, walks: recorded.walks.map((w) => ({ id: w.id, persona: w.persona, door: w.door, jobs: w.jobs, width: w.width })), briefs: rel(io.cwd, written.folder), guide: rel(io.cwd, written.guide), coverage: checkCoverage(recorded, project, { only }) };
+  const sent = readRounds(dir).rounds[String(round)]?.published === true;
+  return { round, ...(sent ? { next: `Round ${round} was published before: run publish --round ${round} again so the tester gets these briefs.` } : {}), kind: recorded.kind, seed: recorded.seed, avoid: recorded.avoid, walks: recorded.walks.map((w) => ({ id: w.id, persona: w.persona, door: w.door, jobs: w.jobs, width: w.width })), briefs: rel(io.cwd, written.folder), guide: rel(io.cwd, written.guide), coverage: checkCoverage(recorded, project, { only }) };
 }
 
 async function serve(dir, flags, io) {
@@ -270,6 +272,11 @@ function workerFolder(dir, flags, io) {
 
 function connectInfo(dir, flags, io) {
   const url = urlOf(dir, flags).replace(/\/+$/, "");
+  try {
+    checkAddress(url);
+  } catch (e) {
+    bad(e.message);
+  }
   const keys = keysOf(dir, io.env);
   let product = "this product";
   try {
@@ -351,6 +358,17 @@ function stripOpts(dir, env) {
   return { secretPaths: secretPathsOf(dir), secrets: [keys.tester, keys.coding].filter(Boolean) };
 }
 
+/** A round number that is nowhere (not planned here, no report here, nothing on the server) is a typo, never "no findings". */
+const notPlanned = (r) => `Round ${r} is not planned here and has no reports: plan it first, or check the round number.`;
+function plannedHere(dir, r) {
+  try {
+    return readRounds(dir).rounds[String(r)] !== undefined;
+  } catch {
+    return true; // an unreadable rounds file is said by the reader itself
+  }
+}
+const reportsHere = (dir, r) => fs.existsSync(path.join(dir, "reports")) && fs.readdirSync(path.join(dir, "reports")).some((f) => f.startsWith(`r${r}-`));
+
 function fixing(dir, rest) {
   const [sub, ...words] = rest;
   if (sub === "clear") return editProject(dir, (obj) => ((obj.fixing = []), { fixing: [] }));
@@ -373,6 +391,7 @@ export async function run(argv, io = {}) {
     const [verb, ...tokens] = argv;
     if (!verb || verb === "help" || verb === "--help") {
       ctx.out(json({ usage: USAGE }));
+      if (!verb) ctx.err("Give a verb, like init or check; the list is above.\n");
       return { code: verb ? 0 : 1 };
     }
     const { flags, rest } = parseArgs(tokens);
@@ -425,6 +444,7 @@ export async function run(argv, io = {}) {
       case "status": {
         const conn = codingConn(dir, flags, ctx.env, ctx);
         result = stripDeep(flags.round ? await conn.call("list_reports", { round: intFlag(flags, "round") }) : await conn.call("rounds", {}), stripOpts(dir, ctx.env));
+        if (flags.round && !plannedHere(dir, intFlag(flags, "round")) && (result?.walks ?? []).length === 0) bad(notPlanned(intFlag(flags, "round")));
         break;
       }
       case "questions":
@@ -439,13 +459,18 @@ export async function run(argv, io = {}) {
       case "close":
         result = await codingConn(dir, flags, ctx.env, ctx).call("close_round", { round: roundOf(flags), ...(flags.reopen ? { reopen: true } : {}) });
         break;
-      case "fetch":
-        result = await fetchReports(dir, roundOf(flags), codingConn(dir, flags, ctx.env, ctx), stripOpts(dir, ctx.env));
+      case "fetch": {
+        const r = roundOf(flags);
+        const conn = codingConn(dir, flags, ctx.env, ctx);
+        if (!plannedHere(dir, r) && ((await conn.call("list_reports", { round: r }))?.walks ?? []).length === 0) bad(notPlanned(r));
+        result = await fetchReports(dir, r, conn, stripOpts(dir, ctx.env));
         break;
+      }
       case "read": {
         const r = roundOf(flags);
+        if (!plannedHere(dir, r) && !reportsHere(dir, r)) bad(notPlanned(r));
         const f = collect(dir, r, { secrets: stripOpts(dir, ctx.env).secrets });
-        result = { round: r, file: `findings-r${r}.json`, briefs: f.briefs, reports: f.reports, missing: f.missing, unreadable: f.unreadable.filter(isReportFile).length, other_files_unreadable: f.unreadable.filter((u) => !isReportFile(u)).map((u) => u.file), findings: f.findings.length, known_met: f.known_met.count };
+        result = { round: r, file: rel(ctx.cwd, path.join(dir, `findings-r${r}.json`)), briefs: f.briefs, reports: f.reports, missing: f.missing, unreadable: f.unreadable.filter(isReportFile).length, other_files_unreadable: f.unreadable.filter((u) => !isReportFile(u)).map((u) => u.file), findings: f.findings.length, known_met: f.known_met.count };
         break;
       }
       case "deliver": {

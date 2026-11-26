@@ -41,7 +41,7 @@ async function send(fetchImpl, url, init, timeoutMs) {
 }
 
 /** http:// is for a server on this computer only: anywhere else the key and the briefs would travel in the clear. */
-function checkAddress(root) {
+export function checkAddress(root) {
   if (!/^https?:\/\//i.test(root)) fail("The server url must start with http:// or https://.");
   let u;
   try {

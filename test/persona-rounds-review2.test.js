@@ -81,7 +81,7 @@ describe("rounds review 2", () => {
       await serve.server.close();
     }
     const down = await cli(cwd, ["plan", "--round", "1", "--walks", "3", "--seed", "third", "--replan", "--url", url]);
-    assert.equal(down.code, 2);
+    assert.equal(down.code, 1, "a server that cannot be reached is exit 1 in every verb; the replan still does not happen");
     assert.match(down.err, /--offline/);
     assert.equal((await cli(cwd, ["plan", "--round", "1", "--walks", "3", "--seed", "third", "--replan", "--offline"])).code, 0);
   });

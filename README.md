@@ -414,7 +414,7 @@ Optional: `rules`, `rig` (what the test account does that is not a finding), `se
 anything stored), `known`, `fixing`, `defaults`, `targets` and `words`. A door can be `site_only` (a public page read
 without signing in) or `exclusive` (walks through it share one test account and go one at a time).
 
-**Local or Worker.** `serve` keeps reports in `persona-testing/tester.db` and needs Node 22.5 or newer; stop it with
+**Local or Worker.** `serve` keeps reports in `persona-testing/tester.db` and needs Node 22.13 or newer (22.5 to 22.12 with `--experimental-sqlite`), or `better-sqlite3` installed; stop it with
 Ctrl-C. `worker --out <folder>` writes `src/`, `migrations/0001_persona.sql`, `wrangler.toml` and a README with the five
 deploy commands (`wrangler d1 create`, paste the id, `wrangler d1 migrations apply --remote`, two `wrangler secret put`,
 `wrangler deploy`); it never runs wrangler and never writes a key. Keys are read from `.keys.json` or from

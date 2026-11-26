@@ -149,7 +149,7 @@ export function renderGuide(projectIn, plan) {
   L.push("");
 
   L.push("## The report", "");
-  L.push("One JSON block that is read by machine, then a few lines of prose. Copy this shape exactly; keep every key, use `null` when you do not know. Times are seconds since you opened the first link, never clock times. Scores are the numbers 0 or 1, never words. `aha` and `stall` are true or false. `shot` is always null. A brief may add a few keys (`sitting`, `jobs`, `would_pay`); it says exactly how.", "");
+  L.push("One JSON block that is read by machine, then a few lines of prose. Copy this shape exactly; keep every key, use `null` when you do not know. Times are seconds since you opened the first link, never clock times. Scores are the numbers 0 or 1, never words. `aha` and `stall` are true or false. `shot` is always null. A brief may add a few keys (`jobs`, `would_pay`); it says exactly how.", "");
   L.push("````", REPORT_TEMPLATE("<walk id>", product.tester).trimEnd(), "````", "");
   L.push("Rules for the block:");
   L.push('- A loop that never gave a result: `"result_s": null`, `"stall": true`, and what the screen said in `stall_words`.');
