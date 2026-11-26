@@ -21,3 +21,7 @@
 {"kind":"e2e","status":"green","stream":"rounds","commit":"7d2c823","id":"74d923be-a30c-45c1-8ea5-8da702377791","ts":"2026-11-26T22:24:53.609Z"}
 {"kind":"e2e","status":"green","stream":"rounds","commit":"7d2c823","id":"80df565c-6742-4291-9113-66960a5fbd6a","ts":"2026-11-26T22:24:53.686Z"}
 {"kind":"e2e","status":"green","stream":"rounds","commit":"7d2c823","id":"c9b4be09-cdc2-4abb-871e-58f4a61ed424","ts":"2026-11-26T22:24:53.752Z"}
+{"kind":"unit","status":"green","stream":"rounds","commit":"bc8d27e","id":"a5f35246-9ec4-4cee-817d-a654aacf2ff3","ts":"2026-11-26T22:34:34.774Z"}
+{"kind":"e2e","status":"green","stream":"rounds","commit":"bc8d27e","id":"e987228e-0c93-4f45-9b20-11363e7b1e68","ts":"2026-11-26T22:34:34.833Z"}
+{"kind":"e2e","status":"green","stream":"rounds","commit":"bc8d27e","id":"8477d92b-8109-4897-afe0-6cc09c4ce6af","ts":"2026-11-26T22:34:34.907Z"}
+{"kind":"e2e","status":"green","stream":"rounds","commit":"bc8d27e","id":"3c1c0dcb-8e8f-4e46-a4b6-5bbb5e404beb","ts":"2026-11-26T22:34:34.974Z"}
