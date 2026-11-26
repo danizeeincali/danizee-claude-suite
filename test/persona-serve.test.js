@@ -154,13 +154,13 @@ function script(args, env) {
 }
 
 describe("serve.js as a script", () => {
-  it("prints one JSON line {url, mcp} and never a key, with keys from the environment", async () => {
+  it("prints one JSON line {url, mcp, store} and never a key, with keys from the environment", async () => {
     const s = script(["--port", "0"], { PERSONA_TESTER_KEY: TESTER, PERSONA_CODING_KEY: CODING });
     try {
       const line = await s.first;
       assert.equal(typeof line, "string", JSON.stringify(line));
       const j = JSON.parse(line);
-      assert.deepEqual(Object.keys(j).sort(), ["mcp", "url"]);
+      assert.deepEqual(Object.keys(j).sort(), ["mcp", "store", "url"]);
       assert.equal(j.mcp, `${j.url}/mcp`);
       assert.doesNotMatch(line, new RegExp(`${TESTER}|${CODING}`));
       const res = await fetch(j.mcp, { method: "POST", headers: { authorization: `Bearer ${TESTER}` }, body: JSON.stringify(rpc("ping")) });
