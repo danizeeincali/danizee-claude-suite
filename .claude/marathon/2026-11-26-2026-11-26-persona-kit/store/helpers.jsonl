@@ -1,0 +1,2 @@
+{"role":"build","model":"sonnet","stream":"server","budget":200000,"event":"spawn","id":"4b6e7916-038c-4381-b0b0-4c6c12d4a139","ts":"2026-11-26T20:46:49.495Z"}
+{"role":"build","model":"haiku","stream":"server","budget":120000,"event":"spawn","id":"5cc79891-7e4a-449d-9ce7-5442d576c1be","ts":"2026-11-26T20:46:49.558Z"}

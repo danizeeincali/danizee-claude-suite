@@ -1,17 +1,17 @@
 # Marathon 2026-11-26-2026-11-26-persona-kit
 
 - State: RUNNING
-- Budget: 0 / 14,000,000 tokens
+- Budget: 320,000 / 14,000,000 tokens
 - Allowance: unknown (ceiling 100%)
 - Gate (run-wide, all streams): 0/2 clean reviews — build gate not met, full gate not met
 - Escapes: 0
-- Next for you: Next stream "server": create its worktree (`git worktree add ../<repo>-server -b marathon/2026-11-26-2026-11-26-persona-kit/server`) and activate it with `cli.js stream server state=active isolation=<path>`, then /w-marathon --resume 2026-11-26-2026-11-26-persona-kit.
+- Next for you: Continue stream "server" (next: builders: tools, then transport) — /w-marathon --resume 2026-11-26-2026-11-26-persona-kit.
 
 ## Streams
 
 | Stream | Isolation | Plan | State | Gate | Phase | Next | Tasks | Escapes |
 |---|---|---|---|---|---|---|---|---|
-| server |  | .claude/marathon/2026-11-26-2026-11-26-persona-kit/plan-server.md | queued | clean 0/2 |  | write contract, port tests |  | 0 |
+| server | /home/user/danizee-claude-suite-server | .claude/marathon/2026-11-26-2026-11-26-persona-kit/plan-server.md | active | clean 0/2 | /w-tdd-swarm · build | builders: tools, then transport |  | 0 |
 | rounds |  | .claude/marathon/2026-11-26-2026-11-26-persona-kit/plan-rounds.md | queued | clean 0/2 |  | waits on server |  | 0 |
 
 ## Finish line

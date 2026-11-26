@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "openedAt": 1795725978689,
+  "limits": {
+    "steps": 400,
+    "cost": 100,
+    "timeMs": null
+  },
+  "spent": {
+    "steps": 0,
+    "cost": 0
+  },
+  "clock": {
+    "depth": 1,
+    "startedAt": 1795726009856,
+    "elapsedMs": 0
+  },
+  "helpers": {
+    "tools": {
+      "steps": 0,
+      "cost": 0,
+      "ok": 0,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 80,
+        "cost": 20
+      }
+    },
+    "shape-tests": {
+      "steps": 0,
+      "cost": 0,
+      "ok": 0,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 40,
+        "cost": 8
+      }
+    }
+  }
+}

@@ -11,10 +11,14 @@
     },
     {
       "name": "server",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/marathon/2026-11-26-2026-11-26-persona-kit/plan-server.md",
-      "next": "write contract, port tests",
-      "tasks": []
+      "next": "builders: tools, then transport",
+      "tasks": [],
+      "isolation": "/home/user/danizee-claude-suite-server",
+      "phase": "build",
+      "skill": "w-tdd-swarm",
+      "base": "7d0c2687d93f577dc0dcd10342761f3ee23cad7a"
     },
     {
       "name": "rounds",
