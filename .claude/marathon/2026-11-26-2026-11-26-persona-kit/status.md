@@ -12,7 +12,7 @@
 | Stream | Isolation | Plan | State | Gate | Phase | Next | Tasks | Escapes |
 |---|---|---|---|---|---|---|---|---|
 | server | /home/user/danizee-claude-suite-server | .claude/marathon/2026-11-26-2026-11-26-persona-kit/plan-server.md | done | met | /w-tdd-swarm · done | merged into rounds; compound at the end |  | 0 |
-| rounds | /home/user/danizee-claude-suite-rounds | .claude/marathon/2026-11-26-2026-11-26-persona-kit/plan-rounds.md | done | met | review | review round 1 (opus) |  | 0 |
+| rounds | /home/user/danizee-claude-suite-rounds | .claude/marathon/2026-11-26-2026-11-26-persona-kit/plan-rounds.md | done | met | review | merged into claude/project-thread-i5jkp4; waits on Dani's review |  | 0 |
 
 ## Finish line
 

@@ -24,7 +24,7 @@
       "name": "rounds",
       "state": "done",
       "plan": ".claude/marathon/2026-11-26-2026-11-26-persona-kit/plan-rounds.md",
-      "next": "review round 1 (opus)",
+      "next": "merged into claude/project-thread-i5jkp4; waits on Dani's review",
       "tasks": [],
       "isolation": "/home/user/danizee-claude-suite-rounds",
       "phase": "review",
