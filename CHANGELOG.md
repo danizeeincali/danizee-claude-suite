@@ -6,6 +6,20 @@ or tagged, so 4.6.0 is the first release after 4.1.0 and carries all of them.
 
 ## Unreleased
 
+## 4.9.0 — 2026-11-26
+
+### Added
+- **`/w-persona-test`** (alias `/ptest`) and the `persona` helper (`.claude/helpers/persona/cli.js`): persona testing for
+  any product from one project file, `persona-testing/project.json`. `init` scaffolds the folder (new random keys in a
+  git-ignored `.keys.json`, never overwriting); `check` validates the file with a fix per problem; `plan` deals walks so
+  every persona and door is used before any repeats, records the round and writes one self-contained brief per walk
+  and the round's guide, with side rounds (`--side`) that stay out of the areas being fixed (`fixing`, `known`); `serve`
+  runs the tester connector on a local SQLite file, `worker --out` writes a self-contained Cloudflare Worker folder;
+  `connect` prints how a tester connects without a key; `publish`, `note`, `status`, `questions`, `answer`, `close`,
+  `fetch` talk to it; `read` merges reports into findings with a scorecard and `deliver` writes a deck for
+  `decision-deck` and a markdown findings file, with "Known things met". Tester words are data: everything a report says
+  is stripped of sign-in links and quoted.
+
 ### Added
 - **`decision-deck`**: a kit verb (`check`, `emit`, `read`) that turns an agent's findings into a one-card-at-a-time
   page the owner decides on a phone by tap, swipe or key, with an optional note, undo, "Decide later", an end screen

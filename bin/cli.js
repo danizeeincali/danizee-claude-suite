@@ -134,6 +134,7 @@ program
       console.log(`  ${status.plugins.marathon ? chalk.green('✓') : chalk.red('✗')} Marathon helpers + hooks (/w-marathon)`);
       console.log(`  ${status.plugins.bc ? chalk.green('✓') : chalk.red('✗')} /bc helper + compaction hooks (/bc, /bcp)`);
       console.log(`  ${status.plugins.bbs ? chalk.green('✓') : chalk.red('✗')} BBS helpers (/w-bbs, /bbs)`);
+      console.log(`  ${status.plugins.persona ? chalk.green('✓') : chalk.red('✗')} Persona testing helpers (/w-persona-test, /ptest)`);
       console.log(`  ${status.plugins.agentCookbook ? chalk.green('✓') : chalk.dim('○')} Agent Cookbook (optional)`);
       console.log(`  ${status.plugins.pmShortcuts ? chalk.green('✓') : chalk.dim('○')} PM Module (optional, --with-pm)`);
 

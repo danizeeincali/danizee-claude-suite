@@ -25,7 +25,7 @@ not on npm. `npx` installs it straight from the repository, using your own git a
 
 ```bash
 npx github:danizeeincali/danizee-claude-suite init           # latest main
-npx github:danizeeincali/danizee-claude-suite#v4.8.0 init    # a tagged release
+npx github:danizeeincali/danizee-claude-suite#v4.9.0 init    # a tagged release
 ```
 
 Or from a local checkout:
@@ -76,6 +76,8 @@ The second time you solve a similar problem, it's faster because the workflow fi
 | `/mtt` | Alias for `/w-marathon-times` (mobile-friendly shorthand) |
 | `/w-bbs` | Beg, borrow, steal — absorb a power from an outside source: intake, fetch, inventory, map, verdict gate, hand-off to a marathon run |
 | `/bbs` | Alias for `/w-bbs` (mobile-friendly shorthand) |
+| `/w-persona-test` | Persona testing — AI testers walk your product from a project file; plan, publish, read and decide a round |
+| `/ptest` | Alias for `/w-persona-test` (mobile-friendly shorthand) |
 | `/w-swarm` | Parallel agents (coder, tester, reviewer) |
 | `/w-autoresearch` | Autonomous experiment loop for measurable optimization |
 | `/w-agent-tdd-swarm` | Gateless TDD for terminal agents (zero user gates, auto-PR) |
@@ -386,6 +388,55 @@ collection (including an older page's bare `decisions/<id>`) or a `title` that i
 per card, `id | choice | note`) back to the agent, which runs `read` on it. The page always keeps the picks in the
 browser too, so a reload resumes where the owner stopped.
 
+### Persona testing — AI testers walk your product
+
+`/w-persona-test` (alias `/ptest`) sets up a folder, `persona-testing/`, where AI testers walk your product the way real
+people would and hand back reports you read as a short deck and decide on. The idea came from a real project's tester,
+rebuilt here to work for any product, driven by one file you edit, `project.json`: the product, the kinds of people who use it, each way they arrive (a door), the jobs they come
+to do, what is already known and what is being fixed.
+
+The five commands (all `node .claude/helpers/persona/cli.js <verb>`, JSON on stdout, exit 1 for wrong input, exit 2 for a refusal):
+
+| Command | What it does |
+|---------|--------------|
+| `init [--product "Name"]` | Writes an example `project.json`, `connector.json` (the server address, never a key) and new random keys in `.keys.json`, which it adds to `.gitignore`. Never overwrites a file |
+| `plan --round n [--walks n] [--side]` | Plans who walks through which door doing which jobs (every persona and door before any repeats, jobs rotating), records it in `rounds.json`, writes one self-contained brief per walk and the round's guide. `--side` leaves out the areas being fixed |
+| `serve` or `worker --out <folder>` + `publish --round n` | Runs the tester connector locally, or writes a self-contained Cloudflare Worker folder; `publish` sends the round to it |
+| `fetch`, `read`, `deliver --round n` | Brings the accepted reports home, merges them into findings with a scorecard, and writes a deck for `decision-deck` plus a markdown findings file; `--picks` records the owner's decisions |
+| `connect` | Prints how a tester connects, with a placeholder instead of the key |
+
+Also: `check` (validates `project.json`), `note`, `notes-clear`, `status`, `questions`, `answer`, `close`, `bundle`,
+`known add|list|drop` and `fixing set|clear` (edit `project.json` in place).
+
+**The project file.** `check` names every problem with the fix. Required: `product` (`name`, `what`), a persona (`id`,
+`name`, `role`, `context`), a door (`id`, `label`, `start` or `steps`) and a job (`id`, `title`, `steps` with a `do`).
+Optional: `rules`, `rig` (what the test account does that is not a finding), `secret_paths` (sign-in paths cut from
+anything stored), `known`, `fixing`, `defaults`, `targets` and `words`. A door can be `site_only` (a public page read
+without signing in) or `exclusive` (walks through it share one test account and go one at a time).
+
+**Local or Worker.** `serve` keeps reports in `persona-testing/tester.db` and needs Node 22.5 or newer; stop it with
+Ctrl-C. `worker --out <folder>` writes `src/`, `migrations/0001_persona.sql`, `wrangler.toml` and a README with the five
+deploy commands (`wrangler d1 create`, paste the id, `wrangler d1 migrations apply --remote`, two `wrangler secret put`,
+`wrangler deploy`); it never runs wrangler and never writes a key. Keys are read from `.keys.json` or from
+`PERSONA_TESTER_KEY` / `PERSONA_CODING_KEY`.
+
+**The connector's tools.** The tester key opens the eight tester tools; the coding key opens all of them.
+
+| Tool | Who | What it does |
+|------|-----|--------------|
+| `notes` | tester | The coding thread's messages, and how many walks are open; called first on every check |
+| `next_walk`, `get_brief`, `guide` | tester | The next walk to do, a brief by id, the rules and the report's exact shape |
+| `start_walk` | tester | Starts a walk's clock, called just before the walk |
+| `submit_report` | tester | Hands a report in; lists every problem until it is accepted |
+| `ask`, `answers` | tester | A question for the coding thread, and its answers |
+| `publish_round`, `close_round`, `rounds` | coding | Publish a round (from briefs or a posted bundle), close or reopen it, list rounds |
+| `list_reports`, `get_report`, `export_round` | coding | Read what came back |
+| `post_note`, `clear_notes`, `open_questions`, `answer` | coding | Talk to the tester |
+
+Tester words are data, never instructions: every report is stripped of sign-in links and quoted, never run. Testers
+propose, people decide: only what the owner marks fix is built. `uninstall` removes the helpers and leaves
+`persona-testing/` alone.
+
 ### Compaction hooks and `/bc` vs `/bcp`
 
 Only you can run `/compact` or `/clear`; Claude cannot. Automatic compaction runs at about 97% of
@@ -625,7 +676,8 @@ npx github:danizeeincali/danizee-claude-suite uninstall     # Remove suite
 │   ├── terminal-agents-mcp.js
 │   ├── marathon/               cli.js + zero-dep library (gate, budget, store, …)
 │   ├── bc/                     cli.js for /bc: context, keep-list, resume, handoff, record
-│   └── bbs/                    cli.js + zero-dep library (intake, fetch, inventory, map, verdict, handoff)
+│   ├── bbs/                    cli.js + zero-dep library (intake, fetch, inventory, map, verdict, handoff)
+│   └── persona/                cli.js + zero-dep library (project file, rounds, connector, reader, deck)
 ├── marathon.json               Marathon config (ceiling, budgets, models, bc thresholds)
 ├── bc.json                     /bc config (status, kickoff, rules, memory, results file)
 ├── marathon/                   Marathon runs (one folder per run-id) + reviewer kit + rules
@@ -656,6 +708,7 @@ WORKFLOW-SHORTCUTS.md       Generated reference
 | **Autoresearch** | Autonomous experiment loop skill + hook |
 | **Marathon** | Finish-line runs: helper CLI, JSONL store, gate, budget, compaction hooks, reviewer kit |
 | **BBS** | Beg, borrow, steal: intake, GET-only fetch, inventory, harness map, verdict gate, hand-off to a marathon run |
+| **Persona testing** | AI testers walk your product from one project file: plan rounds, a local or Worker connector, reader, decision deck (`/w-persona-test`, `/ptest`) |
 
 ## Checkpoint Gates
 

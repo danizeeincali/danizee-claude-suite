@@ -187,6 +187,7 @@ Use the \`/w-\` prefix for quick workflow invocation:
 | \`/w-marathon-times <time> [work]\` | Timed marathon: works a backlog until a deadline (5h, 12pm PST), then wraps up (alias \`/mtt\`) |
 | \`/w-bug-hunt <time> [scope]\` | Time-boxed bug hunt: parallel hunters, a verifier per claim, every bug proved by a failing test (alias \`/bh\`) |
 | \`/w-bbs [source]\` | Absorb a power from an outside source: intake, fetch, inventory, map, verdict gate, hand-off to a marathon run (alias \`/bbs\`) |
+| \`/w-persona-test [round|read <n>]\` | Persona testing: AI testers walk your product from a project file; plan, publish, read and decide a round (alias \`/ptest\`) |
 | \`/w-background-compound\` | Background write-up + handoff + prune line; commits, never pushes (alias \`/bc\`) |
 | \`/bcp\` | Same as \`/bc\` with \`--push\`: commit, push and merge |
 | \`/w-swarm [task]\` | Parallel agents for rapid implementation |
