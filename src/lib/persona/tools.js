@@ -641,14 +641,17 @@ async function runTool(name, a, db, now, opts) {
       if ((last?.n ?? 0) >= CAPS.versionsPerWalk) no(`${id} already has ${CAPS.versionsPerWalk} versions, the most a walk keeps. Ask the coding thread with ask instead of handing it in again.`);
       const inRound = await db.prepare("SELECT COUNT(*) AS n FROM persona_reports r JOIN persona_briefs b ON b.walk_id = r.walk_id WHERE b.round = ?").bind(b.round).first();
       if ((inRound?.n ?? 0) >= CAPS.rowsPerRound) no(`Round ${b.round} already holds ${CAPS.rowsPerRound} reports, the most it keeps. Ask the coding thread.`);
-      const { problems } = submissionProblems(raw, id, opts);
+      // What is stored is the stripped text, so that is checked too: a report that only reads cleanly before stripping is not accepted.
+      const stored = stripFragments(raw, opts);
+      let { problems } = submissionProblems(raw, id, opts);
+      if (problems.length === 0) problems = submissionProblems(stored, id, opts).problems;
       const shown = capped(stripDeep(problems, opts));
       const status = problems.length === 0 ? "accepted" : "rejected";
       const version = (last?.v ?? 0) + 1;
       await write(db, now, [
         db
           .prepare("INSERT INTO persona_reports (walk_id, version, body, status, problems, received_at, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-          .bind(id, version, stripFragments(raw, opts), status, JSON.stringify({ total: problems.length, lines: shown }), iso(now), started),
+          .bind(id, version, stored, status, JSON.stringify({ total: problems.length, lines: shown }), iso(now), started),
       ]);
       if (status !== "accepted") return { accepted: false, version, problems: shown };
       return { accepted: true, version, clock_minutes: clockMinutes(started, iso(now)) };
@@ -695,7 +698,8 @@ async function runTool(name, a, db, now, opts) {
         ]);
       }
       if (a.briefs === undefined) no("Give briefs (a list of {id, brief}) or a bundle (the code posting one answered).");
-      const guide = a.guide === undefined ? null : text(a.guide, "guide", CAPS.briefBytes);
+      // Stripped as a bundle's guide is, so the same guide is stored the same way however it arrives.
+      const guide = a.guide === undefined ? null : stripFragments(text(a.guide, "guide", CAPS.briefBytes), opts);
       return publishRows(db, now, r, guide, parseBriefs(r, a.briefs), []);
     }
     case "close_round": {

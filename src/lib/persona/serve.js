@@ -87,8 +87,12 @@ export async function runScript(argv, env, print) {
     }
   }
   const port = flag(argv, "port");
-  const server = await startServer({ file: flag(argv, "db"), port: port === undefined ? undefined : Number(port), host: flag(argv, "host"), testerKey, codingKey, product: flag(argv, "product") });
-  print(JSON.stringify({ url: server.url, mcp: server.mcp }));
+  // The project's own sign-in paths, as the Worker reads them: comma-separated, from --secret-paths or PERSONA_SECRET_PATHS.
+  const secretPaths = String(flag(argv, "secret-paths") ?? env.PERSONA_SECRET_PATHS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  const file = flag(argv, "db");
+  const server = await startServer({ file, port: port === undefined ? undefined : Number(port), host: flag(argv, "host"), testerKey, codingKey, product: flag(argv, "product"), secretPaths });
+  // The line says where reports are kept, so a run without --db cannot lose them unnoticed.
+  print(JSON.stringify({ url: server.url, mcp: server.mcp, store: file === undefined ? "memory (nothing is kept when this stops; give --db <file>)" : file }));
   return server;
 }
 

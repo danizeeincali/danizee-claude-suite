@@ -20,8 +20,8 @@ const joined = (s) => s.replace(/\r?\n/g, "");
 const keyLike = (s) => s.length >= 40 && !/^[a-z0-9-]+$/.test(s) && !/^[A-Z]?[a-z]+$/.test(s);
 const PAIR = new RegExp(`(?:(?<=%23)|(?<!${K}))(?:\\d{4}-\\d{2}-\\d{2}|${K}{6,12})\\.(?:\\r?\\n)?(${WRAPPED})`, "gi");
 const RUN = new RegExp(WRAPPED, "g");
-/** One pattern per secret path: the path (its slashes also written %2F) kept, everything after it up to whitespace dropped. */
-const pathRule = (p) => new RegExp(`(${String(p).split("/").map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("(?:\\/|%2F)")})\\S+`, "gi");
+/** One pattern per secret path: the path (its slashes also written %2F) kept, everything after it dropped, up to whitespace or a quote or bracket (so a path inside a JSON string never takes the closing quote with it). */
+const pathRule = (p) => new RegExp(`(${String(p).split("/").map((x) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("(?:\\/|%2F)")})[^${STOP_CHARS}]+`, "gi");
 const TOKEN = /(?:#|%23)[A-Za-z0-9_.~%+=-]{20,}[^\s)>\]"'`<]*/gi;
 /**
  * Takes secrets out of tester text. Sign-in links usually keep their secret after a `#`, often as `#<left>.<right>` (a
