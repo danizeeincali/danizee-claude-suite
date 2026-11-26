@@ -24,10 +24,10 @@
       "name": "rounds",
       "state": "active",
       "plan": ".claude/marathon/2026-11-26-2026-11-26-persona-kit/plan-rounds.md",
-      "next": "builders: project+plan+brief, read+deliver; then cli+wiring+e2e",
+      "next": "review round 1 (opus)",
       "tasks": [],
       "isolation": "/home/user/danizee-claude-suite-rounds",
-      "phase": "build",
+      "phase": "review",
       "base": "33ece21722b7427298261fb6c1f1e42bd7d8743d"
     }
   ],

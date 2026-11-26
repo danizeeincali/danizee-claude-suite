@@ -7,8 +7,8 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 140,
-    "cost": 40
+    "steps": 220,
+    "cost": 60
   },
   "clock": {
     "depth": 0,
@@ -41,6 +41,18 @@
       }
     },
     "cli": {
+      "steps": 80,
+      "cost": 20,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review1": {
       "steps": 0,
       "cost": 0,
       "ok": 0,
@@ -48,8 +60,8 @@
       "grants": 1,
       "skipped": 0,
       "reserved": {
-        "steps": 100,
-        "cost": 30
+        "steps": 60,
+        "cost": 20
       }
     }
   }
