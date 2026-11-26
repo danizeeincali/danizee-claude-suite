@@ -170,8 +170,8 @@ async function reportedOnServer(dir, round, flags, io) {
   try {
     list = await codingConn(dir, flags, io.env, io).call("list_reports", { round });
   } catch (e) {
-    if (e?.refused) return [];
-    return refuse(`Round ${round} was published, and the server could not be asked which walks already have a report (${e.message}) Start the server and replan again, or add --offline to keep only the reports already fetched.`);
+    // Any failure is a refusal, a server's own "try again" included: an unanswered question is never read as "no reports".
+    return refuse(`Round ${round} was published, and the server could not say which walks already have a report (${e.message}) Try again when the server answers, or add --offline to keep only the reports already fetched.`);
   }
   return (list?.walks ?? []).filter((w) => typeof w?.id === "string" && w.status === "accepted").map((w) => w.id);
 }
@@ -389,14 +389,18 @@ export async function run(argv, io = {}) {
         break;
       case "publish": {
         const r = roundOf(flags);
-        result = await publish(dir, r, codingConn(dir, flags, ctx.env, ctx));
+        const conn = codingConn(dir, flags, ctx.env, ctx);
+        // Marked before it is sent: an answer lost on the way still leaves the round marked, so a later replan asks the server.
         markPublished(dir, r);
+        result = await publish(dir, r, conn);
         break;
       }
-      case "bundle":
-        result = await bundle(dir, roundOf(flags), { url: urlOf(dir, flags), fetchImpl: ctx.fetchImpl });
+      case "bundle": {
+        const to = urlOf(dir, flags);
         markPublished(dir, roundOf(flags));
+        result = await bundle(dir, roundOf(flags), { url: to, fetchImpl: ctx.fetchImpl });
         break;
+      }
       case "note": {
         const text = rest.join(" ").trim();
         if (!text) bad('note needs the text, like: note "Start with the cafe owner." [--round 2]');

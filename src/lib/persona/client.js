@@ -23,13 +23,16 @@ const shown = (url) => {
   }
 };
 
+const timedOut = (e) => e?.name === "TimeoutError" || e?.name === "AbortError" || /aborted/i.test(String(e?.message));
+const slow = (url, timeoutMs) => `${shown(url)} did not answer within ${Math.round(timeoutMs / 1000)} seconds.`;
+
 /** The one sentence for a request that went wrong at the transport. */
 async function send(fetchImpl, url, init, timeoutMs) {
   let res;
   try {
     res = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
   } catch (e) {
-    if (e?.name === "TimeoutError" || e?.name === "AbortError" || /aborted/i.test(String(e?.message))) fail(`${shown(url)} did not answer within ${Math.round(timeoutMs / 1000)} seconds.`);
+    if (timedOut(e)) fail(slow(url, timeoutMs));
     return fail(`Could not reach ${shown(url)}: check that the server is running and the url in connector.json is right.`);
   }
   return res;
@@ -54,8 +57,9 @@ export function connect({ url, key, fetchImpl = globalThis.fetch, timeoutMs = TI
     let j;
     try {
       j = await res.json();
-    } catch {
-      return fail("The server's answer was not JSON.");
+    } catch (e) {
+      // The time limit also covers the body: an answer that stalls half way is slow, not malformed.
+      return fail(timedOut(e) ? slow(root, timeoutMs) : "The server's answer was not JSON.");
     }
     if (j.error) fail(String(j.error.message ?? "The server refused the call."));
     return j.result;
@@ -134,8 +138,9 @@ export async function bundle(dir, round, { url, fetchImpl = globalThis.fetch, ti
   let j = {};
   try {
     j = await res.json();
-  } catch {
-    // answered below
+  } catch (e) {
+    if (timedOut(e)) fail(slow(url, timeoutMs));
+    // anything else is answered below
   }
   if (res.status === 201 && typeof j.code === "string") return { code: j.code };
   return fail(res.status === 429 ? "The server takes only a few bundles an hour: wait, or publish with the coding key." : `The server did not take the bundle (${res.status}): ${String(j.text ?? j.error ?? "no reason given")}`);
