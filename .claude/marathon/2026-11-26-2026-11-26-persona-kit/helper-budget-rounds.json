@@ -7,13 +7,13 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 246,
-    "cost": 75
+    "steps": 273,
+    "cost": 90
   },
   "clock": {
     "depth": 1,
-    "startedAt": 1795729767640,
-    "elapsedMs": 0
+    "startedAt": 1795730684799,
+    "elapsedMs": 915054
   },
   "helpers": {
     "plan": {
@@ -65,6 +65,18 @@
       }
     },
     "review2": {
+      "steps": 27,
+      "cost": 15,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review3": {
       "steps": 0,
       "cost": 0,
       "ok": 0,
