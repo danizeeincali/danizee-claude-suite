@@ -1,3 +1,4 @@
 {"category":"correctness","kind":"test","ref":"test/persona-review1.test.js","area":null,"id":"6c836eeb-b2ba-4ee0-9df1-26686dd85d96","ts":"2026-11-26T21:25:06.713Z"}
 {"category":"security","kind":"rule","ref":".claude/marathon/2026-11-26-2026-11-26-persona-kit/rules.md","area":null,"id":"b86535b5-36a7-43eb-bd7d-5a00ce502fa8","ts":"2026-11-26T21:49:38.263Z"}
 {"category":"facts","kind":"rule","ref":".claude/marathon/2026-11-26-2026-11-26-persona-kit/rules.md","area":null,"id":"043f1baa-ce98-4f3d-8b3c-bc85c077eac6","ts":"2026-11-26T22:04:57.775Z"}
+{"category":"docs","kind":"rule","ref":".claude/marathon/2026-11-26-2026-11-26-persona-kit/rules.md","area":null,"id":"25b07035-770b-47e1-8661-0e6b4e168092","ts":"2026-11-26T22:34:48.637Z"}
