@@ -13,19 +13,22 @@
       "name": "server",
       "state": "active",
       "plan": ".claude/marathon/2026-11-26-2026-11-26-persona-kit/plan-server.md",
-      "next": "builders: tools, then transport",
+      "next": "review round 1 (opus)",
       "tasks": [],
       "isolation": "/home/user/danizee-claude-suite-server",
-      "phase": "build",
+      "phase": "review",
       "skill": "w-tdd-swarm",
       "base": "7d0c2687d93f577dc0dcd10342761f3ee23cad7a"
     },
     {
       "name": "rounds",
-      "state": "queued",
+      "state": "active",
       "plan": ".claude/marathon/2026-11-26-2026-11-26-persona-kit/plan-rounds.md",
-      "next": "waits on server",
-      "tasks": []
+      "next": "builders: project+plan+brief, read+deliver; then cli+wiring+e2e",
+      "tasks": [],
+      "isolation": "/home/user/danizee-claude-suite-rounds",
+      "phase": "build",
+      "base": "33ece21722b7427298261fb6c1f1e42bd7d8743d"
     }
   ],
   "handoff": null

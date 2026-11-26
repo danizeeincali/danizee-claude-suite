@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "openedAt": 1795727455426,
+  "limits": {
+    "steps": 600,
+    "cost": 150,
+    "timeMs": null
+  },
+  "spent": {
+    "steps": 0,
+    "cost": 0
+  },
+  "clock": {
+    "depth": 0,
+    "startedAt": null,
+    "elapsedMs": 0
+  },
+  "helpers": {
+    "plan": {
+      "steps": 0,
+      "cost": 0,
+      "ok": 0,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 80,
+        "cost": 20
+      }
+    },
+    "read": {
+      "steps": 0,
+      "cost": 0,
+      "ok": 0,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 80,
+        "cost": 20
+      }
+    }
+  }
+}

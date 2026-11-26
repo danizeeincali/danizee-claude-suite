@@ -7,28 +7,52 @@
     "timeMs": null
   },
   "spent": {
-    "steps": 0,
-    "cost": 0
+    "steps": 190,
+    "cost": 45
   },
   "clock": {
-    "depth": 1,
-    "startedAt": 1795726009856,
-    "elapsedMs": 0
+    "depth": 0,
+    "startedAt": null,
+    "elapsedMs": 1437437
   },
   "helpers": {
     "tools": {
-      "steps": 0,
-      "cost": 0,
-      "ok": 0,
+      "steps": 80,
+      "cost": 20,
+      "ok": 1,
       "failed": 0,
       "grants": 1,
       "skipped": 0,
       "reserved": {
-        "steps": 80,
-        "cost": 20
+        "steps": 0,
+        "cost": 0
       }
     },
     "shape-tests": {
+      "steps": 30,
+      "cost": 5,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "transport": {
+      "steps": 80,
+      "cost": 20,
+      "ok": 1,
+      "failed": 0,
+      "grants": 1,
+      "skipped": 0,
+      "reserved": {
+        "steps": 0,
+        "cost": 0
+      }
+    },
+    "review1": {
       "steps": 0,
       "cost": 0,
       "ok": 0,
@@ -36,8 +60,8 @@
       "grants": 1,
       "skipped": 0,
       "reserved": {
-        "steps": 40,
-        "cost": 8
+        "steps": 60,
+        "cost": 20
       }
     }
   }
