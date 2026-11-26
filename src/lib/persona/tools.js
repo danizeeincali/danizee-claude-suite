@@ -122,9 +122,13 @@ CREATE TABLE IF NOT EXISTS persona_rate (
  * more), in the answer and in storage, so the stored list stays far under the column's limit however bad a report is.
  * A walk keeps at most `versionsPerWalk` versions, so one walk stuck handing in again can never fill its round.
  */
+/** What every tool answers while the store has no tables yet. */
+export const NOT_SET_UP = "The tester store has no tables yet: its schema (schema.sql) was never applied. Tell the coding thread; trying again will not help.";
 export const CAPS = { briefBytes: 64 * 1024, reportBytes: 256 * 1024, textBytes: 4 * 1024, rowsPerRound: 500, versionsPerWalk: 30, questions: 2000, problemsShown: 60 };
 export const RETENTION_DAYS = 90;
 /** A pending bundle lives an hour; at most this many are pending at once (every visitor together). */
+/** A bundle row is kept this long until all its briefs are in; then it gets BUNDLE_TTL_MS. */
+export const BUNDLE_PROVISIONAL_MS = 60_000;
 export const BUNDLE_TTL_MS = 3_600_000;
 export const MAX_PENDING_BUNDLES = 20;
 /** At most this many pending bundles per visitor (a third replaces their oldest), one bundle at most this big, and every pending bundle together. */
@@ -477,7 +481,7 @@ export async function receiveBundle(db, raw, now, visitor = "", opts = {}) {
         .prepare(
           "INSERT OR IGNORE INTO persona_bundles (code, round, guide, created_at, expires_at, visitor, bytes) SELECT ?, ?, ?, ?, ?, ?, ? WHERE (SELECT COUNT(*) FROM persona_bundles WHERE expires_at > ?) < ? AND (SELECT COALESCE(SUM(bytes), 0) FROM persona_bundles WHERE expires_at > ?) + ? <= ?",
         )
-        .bind(code, r, guide, at, iso(now + BUNDLE_TTL_MS), visitor, size, at, MAX_PENDING_BUNDLES, at, size, MAX_PENDING_BYTES)
+        .bind(code, r, guide, at, iso(now + BUNDLE_PROVISIONAL_MS), visitor, size, at, MAX_PENDING_BUNDLES, at, size, MAX_PENDING_BYTES)
         .run();
       if ((res.meta?.changes ?? 0) !== 1) {
         if (await db.prepare("SELECT 1 AS x FROM persona_bundles WHERE code = ?").bind(code).first()) continue;
@@ -489,6 +493,8 @@ export async function receiveBundle(db, raw, now, visitor = "", opts = {}) {
         await db.prepare("DELETE FROM persona_bundles WHERE code = ?").bind(code).run().catch(() => {});
         throw e;
       }
+      // Only now does the bundle get its hour: one whose briefs never landed (a dropped connection) is gone in a minute and holds no room.
+      await db.prepare("UPDATE persona_bundles SET expires_at = ? WHERE code = ?").bind(iso(now + BUNDLE_TTL_MS), code).run();
       // Best effort: the bundle is already kept, so a prune that fails must not cost the poster its code (the hour's expiry clears what is left).
       try {
         await inOrder(db, [db.prepare(`DELETE FROM persona_bundle_briefs WHERE code IN (${beyond})`).bind(visitor, visitor), db.prepare(`DELETE FROM persona_bundles WHERE code IN (${beyond})`).bind(visitor, visitor)]);
@@ -521,7 +527,8 @@ export async function readExport(db, code, now) {
   // Claimed in one statement: of requests running together only as many as there are reads left get a row.
   const row = await db.prepare("UPDATE persona_exports SET reads = reads + 1 WHERE code = ? AND expires_at > ? AND reads < ? RETURNING round, reads").bind(code, iso(now), EXPORT_READS).first();
   if (!row) return null;
-  if (row.reads >= EXPORT_READS) await db.prepare("DELETE FROM persona_exports WHERE code = ?").bind(code).run();
+  // Tidying only (a spent code already opens nothing), so a delete that fails must not cost the last read.
+  if (row.reads >= EXPORT_READS) await db.prepare("DELETE FROM persona_exports WHERE code = ?").bind(code).run().catch(() => {});
   const reports = rows.filter((x) => x.version !== null).map((x) => ({ id: x.walk_id, status: x.status, version: x.version, started: x.started_at, received: x.received_at, clock_minutes: clockMinutes(x.started_at, x.received_at), body: x.body }));
   return { round: row.round, reports };
 }
@@ -874,6 +881,9 @@ export async function callTool(name, rawArgs, deps) {
     if (deps.db.batch) store.batch = (st) => deps.db.batch(st);
     return ok(await run(name, args, store, deps.now ?? Date.now(), { secretPaths: deps.secretPaths ?? [] }));
   } catch (e) {
-    return refuse(e instanceof Refusal ? e.message : "The tester store couldn't be read just now. Try again in a minute.");
+    if (e instanceof Refusal) return refuse(e.message);
+    // A store whose tables were never made is a setup step missed, not an outage: say so, or everyone waits for nothing.
+    if (/no such table/i.test(String(e?.message ?? e))) return refuse(NOT_SET_UP);
+    return refuse("The tester store couldn't be read just now. Try again in a minute.");
   }
 }

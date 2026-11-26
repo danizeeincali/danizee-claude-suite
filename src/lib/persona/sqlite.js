@@ -1,7 +1,7 @@
 /**
  * A D1-like store over a local SQLite file (Node only): `prepare(sql).bind(...).first()/all()/run()` and `batch([...])`
  * as one transaction that rolls back on a throw, the same interface the tools use over a Cloudflare D1 database.
- * Uses `node:sqlite` (Node 22.5 or newer) when it can be imported, else `better-sqlite3` when it is installed.
+ * Uses `node:sqlite` (Node 22.13 or newer; 22.5 to 22.12 only with --experimental-sqlite) when it can be imported, else `better-sqlite3` when it is installed.
  */
 import { SCHEMA } from "./tools.js";
 
@@ -32,7 +32,7 @@ async function betterSqlite() {
 }
 
 const Driver = (await nodeSqlite()) ?? (await betterSqlite());
-const NEEDS = "The local tester store needs Node 22.5 or newer (it uses node:sqlite), or run npm i better-sqlite3.";
+export const NEEDS = "The local tester store needs Node 22.13 or newer (it uses node:sqlite; Node 22.5 to 22.12 only with --experimental-sqlite), or run npm i better-sqlite3.";
 
 /** A plain object for a row (node:sqlite hands back objects with no prototype). */
 const plain = (row) => (row === undefined || row === null ? null : { ...row });
