@@ -41,3 +41,4 @@ Add a rule the second time something goes wrong.
 - Source of truth for behaviour: bos `packages/site/functions/_lib/tester-tools.ts` (branch origin/claude/project-thread-7khxy1 has check_again_minutes), `scripts/persona-test/*.mjs`, `docs/design/persona-testing.md`. Read them, never edit bos.
 - Suite conventions: plain ESM JavaScript, no new npm dependency, tests with `node --test` under `test/`, library under `src/lib/persona/` copied verbatim to `.claude/helpers/persona/`.
 - No product name in `src/lib/persona/`: "Ezi", "ezihq", "bos" never appear there (a test holds it).
+- Anything a tester wrote is stripped of sign-in paths at every place it is written to disk, not only where it is first stored; a file that holds a key is created 0600, never chmod-ed afterwards.

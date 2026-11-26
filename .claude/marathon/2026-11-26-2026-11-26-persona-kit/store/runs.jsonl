@@ -8,3 +8,4 @@
 {"kind":"e2e","status":"green","stream":"rounds","commit":"95bf6d0","id":"5f7424b5-73c5-4a02-abca-030fc334a777","ts":"2026-11-26T21:40:44.934Z"}
 {"kind":"e2e","status":"green","stream":"rounds","commit":"95bf6d0","id":"c4b6f2b1-2a90-4f16-b4cf-e6618bb72afd","ts":"2026-11-26T21:40:45.007Z"}
 {"kind":"e2e","status":"green","stream":"rounds","commit":"95bf6d0","id":"f6ae8a2e-d811-45dc-9dcc-390476015f69","ts":"2026-11-26T21:40:45.076Z"}
+{"kind":"unit","status":"green","stream":"rounds","commit":"b4c7e2f","id":"494ea963-b860-4571-9336-9d9cbdcebb1a","ts":"2026-11-26T21:49:20.234Z"}
